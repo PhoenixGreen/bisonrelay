@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -76,16 +77,38 @@ class CanvasTransitionBar extends StatelessWidget {
                   ? "Every scene, unless it says otherwise"
                   : "After ${scenes[index].saysAt(index)}",
               children: [
-                CanvasDropdown<SceneTransitionKind>(
-                  key: const ValueKey("transitionKind"),
+                // The family first, then the one. Two dozen names in a single
+                // list is a wall nobody reads to the end of; asked in two
+                // steps the question is "what sort of change" and then
+                // "which one". Choosing a family applies the first of its
+                // kinds, so the canvas shows something at once.
+                CanvasDropdown<SceneTransitionFamily>(
+                  key: const ValueKey("transitionFamily"),
                   label: "Gives way with",
-                  value: value.kind,
-                  width: 168,
+                  value: value.kind.familyOf,
+                  width: 128,
                   options: [
-                    for (var k in SceneTransitionKind.values) (k, k.label)
+                    for (var f in SceneTransitionFamily.values)
+                      (f, f == SceneTransitionFamily.none ? "A cut" : f.label)
                   ],
-                  onChanged: (v) => write(value.copyWith(kind: v)),
+                  onChanged: (f) => write(value.copyWith(
+                      kind: f == SceneTransitionFamily.none
+                          ? SceneTransitionKind.cut
+                          : SceneTransitionKind.inFamily(f).first)),
                 ),
+                if (value.on)
+                  CanvasDropdown<SceneTransitionKind>(
+                    key: const ValueKey("transitionKind"),
+                    label: "Which",
+                    value: value.kind,
+                    width: 168,
+                    options: [
+                      for (var k
+                          in SceneTransitionKind.inFamily(value.kind.familyOf))
+                        (k, k.label)
+                    ],
+                    onChanged: (v) => write(value.copyWith(kind: v)),
+                  ),
                 if (value.on) ...[
                   CanvasNumberField(
                     key: const ValueKey("transitionFrames"),
@@ -118,9 +141,56 @@ class CanvasTransitionBar extends StatelessWidget {
                   ),
                   if (value.kind.takesColour)
                     CanvasColorButton(
-                      label: "Through",
+                      label: value.kind == SceneTransitionKind.band
+                          ? "The band"
+                          : "Through",
                       color: value.color,
                       onChanged: (c) => write(value.copyWith(color: c)),
+                    ),
+                  // What the overlay kinds need, and only the ones that need
+                  // it: a direction, a shape, how many bars, how soft the
+                  // edge is.
+                  if (value.kind.takesWay)
+                    CanvasDropdown<SceneTransitionWay>(
+                      key: const ValueKey("transitionWay"),
+                      label: "Which way",
+                      value: value.way,
+                      width: 128,
+                      options: [
+                        for (var w in SceneTransitionWay.values) (w, w.label)
+                      ],
+                      onChanged: (v) => write(value.copyWith(way: v)),
+                    ),
+                  if (value.kind.takesShape)
+                    CanvasDropdown<ShapeKind>(
+                      key: const ValueKey("transitionShape"),
+                      label: "Shape",
+                      value: value.shape,
+                      width: 140,
+                      options: [for (var k in ShapeKind.values) (k, k.label)],
+                      onChanged: (v) => write(value.copyWith(shape: v)),
+                    ),
+                  if (value.kind.takesCount)
+                    CanvasNumberField(
+                      key: const ValueKey("transitionCount"),
+                      label: "Bars",
+                      value: value.count.toDouble(),
+                      min: 2,
+                      max: 40,
+                      decimals: 0,
+                      width: 54,
+                      onChanged: (v) => write(value.copyWith(count: v.round())),
+                    ),
+                  if (value.kind.takesSoftness)
+                    CanvasNumberField(
+                      key: const ValueKey("transitionSoftness"),
+                      label: "Soft edge",
+                      value: value.softness,
+                      min: 0,
+                      max: 1,
+                      decimals: 2,
+                      width: 62,
+                      onChanged: (v) => write(value.copyWith(softness: v)),
                     ),
                 ],
                 CanvasIconButton(

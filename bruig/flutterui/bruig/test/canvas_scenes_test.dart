@@ -236,6 +236,53 @@ void main() {
     });
   });
 
+  group("a scene's own backdrop", () {
+    test("belongs to that scene and not to the next one", () {
+      // They share the document's until one of them is given a backdrop of
+      // its own -- and writing that shared one is how changing scene one's
+      // background changed scene two's.
+      var it = _twoScenes().copyWith(
+          background: const CanvasBackground(
+              spec: ProceduralSpec(style: ProceduralStyle.plain)));
+
+      var painted = it.withScene(
+          0,
+          it.allScenes.first.copyWith(
+              background: const CanvasBackground(
+                  spec: ProceduralSpec(style: ProceduralStyle.dotGrid))));
+
+      expect(painted.backgroundOf(0).spec.style, ProceduralStyle.dotGrid);
+      expect(painted.backgroundOf(1).spec.style, ProceduralStyle.plain,
+          reason: "the other scene keeps the one it had");
+      expect(painted.drawnBackground.spec.style, ProceduralStyle.dotGrid,
+          reason: "and the canvas shows the scene being edited");
+    });
+
+    test("and the shared one wins while the master is on", () {
+      var it = _twoScenes()
+          .withScene(
+              0,
+              const CanvasScene(
+                  id: "a",
+                  background: CanvasBackground(
+                      spec: ProceduralSpec(style: ProceduralStyle.dotGrid))))
+          .withMaster(const CanvasScene(
+            id: "master",
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.flowWaves)),
+          ));
+
+      expect(it.backgroundOf(0).spec.style, ProceduralStyle.dotGrid,
+          reason: "the master is off");
+      var on = it.copyWith(masterOn: true);
+      expect(on.backgroundOf(0).spec.style, ProceduralStyle.flowWaves,
+          reason: "the shared canvas is the backdrop while it is on");
+      expect(on.copyWith(masterOn: false).backgroundOf(0).spec.style,
+          ProceduralStyle.dotGrid,
+          reason: "and the scene's own comes back when it goes");
+    });
+  });
+
   group("saved and read back", () {
     test("scenes, their names, lengths and elements", () {
       var back = CanvasDocument.fromJson(_twoScenes().goToScene(1).toJson());

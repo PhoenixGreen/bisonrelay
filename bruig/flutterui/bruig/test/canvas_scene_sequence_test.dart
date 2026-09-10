@@ -245,6 +245,152 @@ void main() {
       expect(mid[blue] ?? 0, greaterThan(500), reason: "the new one, coming");
     });
   });
+
+  group("the overlay family", () {
+    // Each of these puts something *over* the join rather than crossing the
+    // two scenes: a band of colour, a set of bars, a shape opening. What is
+    // measured is that the middle of the transition is neither scene as it
+    // stands, and that the end of it is the scene arriving.
+    Future<Map<int, int>> midOf(SceneTransition over) =>
+        _ink(_two(over: over), 7);
+
+    testWidgets("a band covers the page as the scenes change", (tester) async {
+      late Map<int, int> mid;
+      late Map<int, int> after;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.band,
+            frames: 4,
+            overlap: 4,
+            color: Color(0xFF00FF00),
+            ease: SceneTransitionEase.straight));
+        after = await _ink(
+            _two(
+                over: const SceneTransition(
+                    kind: SceneTransitionKind.band, frames: 4, overlap: 4)),
+            10);
+      });
+
+      // The page is 200 by 112 and the picture 200 by 120, so the strip
+      // below the page is the scene's own and is not the band's to cover.
+      expect(mid[0x00FF00FF] ?? 0, greaterThan(20000),
+          reason: "the band is over the whole page in the middle of it");
+      expect((mid[red] ?? 0) + (mid[blue] ?? 0), lessThan(1600),
+          reason: "which is why the change behind it is not seen");
+      expect(after[blue], 24000, reason: "and it ends on the scene arriving");
+    });
+
+    testWidgets("blinds show the next scene through bars", (tester) async {
+      late Map<int, int> mid;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.blinds,
+            frames: 4,
+            overlap: 4,
+            count: 6,
+            ease: SceneTransitionEase.straight));
+      });
+      // Both, at full strength: the bars are a clip rather than a blend.
+      expect(mid[red] ?? 0, greaterThan(4000));
+      expect(mid[blue] ?? 0, greaterThan(4000));
+    });
+
+    testWidgets("a shape opens in the middle of the old one", (tester) async {
+      late Map<int, int> mid;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.shapeWipe,
+            frames: 4,
+            overlap: 4,
+            shape: ShapeKind.circle,
+            ease: SceneTransitionEase.straight));
+      });
+      expect(mid[blue] ?? 0, greaterThan(2000),
+          reason: "the scene arriving, through the opening");
+      expect(mid[red] ?? 0, greaterThan(2000),
+          reason: "and the one it is opening in");
+    });
+
+    testWidgets("barn doors pull the old scene apart", (tester) async {
+      late Map<int, int> mid;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.barn,
+            frames: 4,
+            overlap: 4,
+            ease: SceneTransitionEase.straight));
+      });
+      expect(mid[blue] ?? 0, greaterThan(2000), reason: "through the gap");
+      expect(mid[red] ?? 0, greaterThan(2000), reason: "the doors themselves");
+    });
+
+    testWidgets("a clock sweeps round", (tester) async {
+      late Map<int, int> mid;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.clock,
+            frames: 4,
+            overlap: 4,
+            ease: SceneTransitionEase.straight));
+      });
+      // Half the page at the half way point, near enough: a sector of a
+      // rectangle is not exactly half its area at half a turn.
+      expect(mid[blue] ?? 0, greaterThan(6000));
+      expect(mid[red] ?? 0, greaterThan(6000));
+    });
+
+    testWidgets("and a blur goes soft in the middle", (tester) async {
+      late Map<int, int> mid;
+      late Map<int, int> ends;
+      await tester.runAsync(() async {
+        mid = await midOf(const SceneTransition(
+            kind: SceneTransitionKind.blurThrough,
+            frames: 4,
+            overlap: 4,
+            color: Color(0x00000000),
+            ease: SceneTransitionEase.straight));
+        ends = await _ink(
+            _two(
+                over: const SceneTransition(
+                    kind: SceneTransitionKind.blurThrough,
+                    frames: 4,
+                    overlap: 4,
+                    color: Color(0x00000000))),
+            10);
+      });
+      // A blurred flat colour is still that colour in the middle of the page
+      // and mixed at its edges, so the picture is no longer one flat block.
+      expect(mid.length, greaterThan(2),
+          reason: "soft edges, which is what a blur is");
+      expect(ends[blue], 24000, reason: "and sharp again at the end");
+    });
+
+    test("the overlay kinds are one family, and are offered together", () {
+      var overlay = SceneTransitionKind.inFamily(SceneTransitionFamily.overlay);
+      expect(overlay, contains(SceneTransitionKind.band));
+      expect(overlay.length, 6);
+      expect(SceneTransitionKind.cut.familyOf, SceneTransitionFamily.none);
+      expect(
+          SceneTransitionKind.slideLeft.familyOf, SceneTransitionFamily.move);
+      expect(SceneTransitionKind.wipeUp.familyOf, SceneTransitionFamily.wipe);
+    });
+
+    test("and their settings survive being saved", () {
+      var over = const SceneTransition(
+        kind: SceneTransitionKind.blinds,
+        way: SceneTransitionWay.up,
+        shape: ShapeKind.star,
+        count: 9,
+        softness: 0.4,
+      );
+      var back = SceneTransition.fromJson(over.toJson());
+      expect(back.kind, SceneTransitionKind.blinds);
+      expect(back.way, SceneTransitionWay.up);
+      expect(back.shape, ShapeKind.star);
+      expect(back.count, 9);
+      expect(back.softness, 0.4);
+    });
+  });
 }
 
 // Playing the document rather than the canvas in front of you.

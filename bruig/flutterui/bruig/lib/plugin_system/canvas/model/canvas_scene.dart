@@ -3,6 +3,7 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 
 // canvas_scene.dart is one canvas of several in a document.
 //
@@ -17,6 +18,43 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 // document: they are what makes the scenes one piece of work rather than
 // several. A scene that could change the page size would be a second
 // document with extra steps.
+
+/// SceneTransitionFamily groups the kinds in the picker.
+///
+/// The list is long enough that a flat one is a wall of names: asked in two
+/// steps the question is "what sort of change" and then "which one", which is
+/// how somebody actually chooses. The same shape the text animations use.
+enum SceneTransitionFamily {
+  none("None"),
+  fade("Fade"),
+  move("Move"),
+  wipe("Wipe"),
+  overlay("Overlay");
+
+  final String label;
+  const SceneTransitionFamily(this.label);
+}
+
+/// SceneTransitionWay is which way a transition that has a direction goes.
+///
+/// Its own setting rather than four kinds with the direction in their names.
+/// The overlay ones each take a direction and two of them take a count as
+/// well, and a list with every combination spelled out would be sixty names
+/// for six ideas.
+enum SceneTransitionWay {
+  left("To the left"),
+  right("To the right"),
+  up("Upwards"),
+  down("Downwards");
+
+  final String label;
+  const SceneTransitionWay(this.label);
+
+  bool get horizontal => this == left || this == right;
+
+  static SceneTransitionWay fromName(String? name) =>
+      values.firstWhere((w) => w.name == name, orElse: () => right);
+}
 
 /// SceneTransitionKind is how one scene becomes the next.
 enum SceneTransitionKind {
@@ -51,13 +89,79 @@ enum SceneTransitionKind {
 
   /// zoom grows the new scene out of the middle of the old one.
   zoomIn("Zoom in"),
-  zoomOut("Zoom out");
+  zoomOut("Zoom out"),
+
+  // The overlay family: something passes over the join rather than the two
+  // scenes simply crossing. What they have in common is that the change
+  // happens *under* something -- a band of colour, a shape opening, a set of
+  // bars -- which is what makes a cut look deliberate rather than abrupt.
+  /// band sweeps a panel of colour across, the scenes changing behind it.
+  band("A band sweeps over", SceneTransitionFamily.overlay),
+
+  /// blinds reveals the next scene through a set of bars.
+  blinds("Blinds", SceneTransitionFamily.overlay),
+
+  /// barn splits the old scene apart and lets the new one through.
+  barn("Barn doors", SceneTransitionFamily.overlay),
+
+  /// shapeWipe opens a shape in the middle of the old scene.
+  shapeWipe("A shape opens", SceneTransitionFamily.overlay),
+
+  /// clock sweeps round like a hand.
+  clock("Clock sweep", SceneTransitionFamily.overlay),
+
+  /// blurThrough goes soft, changes, and comes back sharp.
+  blurThrough("Blur through", SceneTransitionFamily.overlay);
 
   final String label;
-  const SceneTransitionKind(this.label);
+  final SceneTransitionFamily family;
+  const SceneTransitionKind(this.label,
+      [this.family = SceneTransitionFamily.none]);
 
   /// takesColour is whether the colour setting means anything for this one.
-  bool get takesColour => this == through;
+  bool get takesColour =>
+      this == through || this == band || this == blurThrough;
+
+  /// takesWay is whether it has a direction to be pointed in.
+  bool get takesWay => this == band || this == blinds || this == barn;
+
+  /// takesCount is whether it is made of a number of pieces.
+  bool get takesCount => this == blinds;
+
+  /// takesShape is whether a shape decides what opens.
+  bool get takesShape => this == shapeWipe;
+
+  /// takesSoftness is whether its edge can be feathered.
+  bool get takesSoftness =>
+      this == band || this == blinds || this == shapeWipe || this == clock;
+
+  /// inFamily is the kinds of one family, in the order they are listed.
+  static List<SceneTransitionKind> inFamily(SceneTransitionFamily family) => [
+        for (var kind in values)
+          if (kind.familyOf == family) kind,
+      ];
+
+  /// familyOf is which group this kind belongs to, worked out from its own
+  /// name for the ones that were here before families were.
+  SceneTransitionFamily get familyOf {
+    if (family != SceneTransitionFamily.none) return family;
+    return switch (this) {
+      cut => SceneTransitionFamily.none,
+      fade || through => SceneTransitionFamily.fade,
+      slideLeft ||
+      slideRight ||
+      slideUp ||
+      slideDown ||
+      pushLeft ||
+      pushRight ||
+      pushUp ||
+      pushDown ||
+      zoomIn ||
+      zoomOut =>
+        SceneTransitionFamily.move,
+      _ => SceneTransitionFamily.wipe,
+    };
+  }
 
   /// isCut is whether nothing is drawn between the two scenes.
   bool get isCut => this == cut;
@@ -89,12 +193,32 @@ class SceneTransition {
   /// ease is how the movement is timed, for the ones that move.
   final SceneTransitionEase ease;
 
+  /// way is which direction the ones with a direction go.
+  final SceneTransitionWay way;
+
+  /// shape is what opens, for the shape wipe. Any of the shapes an element
+  /// can be, drawn by the same code -- a transition that could only be a
+  /// circle would be a second, smaller list of shapes to keep in step.
+  final ShapeKind shape;
+
+  /// count is how many pieces it is made of, for the blinds.
+  final int count;
+
+  /// softness feathers the edge, as a fraction of the page. Nothing is a hard
+  /// edge; a little makes a wipe read as a light sweeping across rather than
+  /// as a rectangle being dragged.
+  final double softness;
+
   const SceneTransition({
     this.kind = SceneTransitionKind.cut,
     this.frames = 12,
     this.overlap = 12,
     this.color = const Color(0xFF000000),
     this.ease = SceneTransitionEase.smooth,
+    this.way = SceneTransitionWay.right,
+    this.shape = ShapeKind.circle,
+    this.count = 6,
+    this.softness = 0,
   });
 
   /// cut is the default: nothing between one scene and the next.
@@ -109,6 +233,10 @@ class SceneTransition {
     int? overlap,
     Color? color,
     SceneTransitionEase? ease,
+    SceneTransitionWay? way,
+    ShapeKind? shape,
+    int? count,
+    double? softness,
   }) =>
       SceneTransition(
         kind: kind ?? this.kind,
@@ -116,6 +244,10 @@ class SceneTransition {
         overlap: overlap ?? this.overlap,
         color: color ?? this.color,
         ease: ease ?? this.ease,
+        way: way ?? this.way,
+        shape: shape ?? this.shape,
+        count: count ?? this.count,
+        softness: softness ?? this.softness,
       );
 
   Map<String, dynamic> toJson() => {
@@ -124,6 +256,10 @@ class SceneTransition {
         if (overlap != 12) "overlap": overlap,
         if (color != const Color(0xFF000000)) "color": colorToJson(color),
         if (ease != SceneTransitionEase.smooth) "ease": ease.name,
+        if (way != SceneTransitionWay.right) "way": way.name,
+        if (shape != ShapeKind.circle) "shape": shape.name,
+        if (count != 6) "count": count,
+        if (softness != 0) "softness": softness,
       };
 
   factory SceneTransition.fromJson(Map<String, dynamic> json) =>
@@ -133,6 +269,10 @@ class SceneTransition {
         overlap: jsonInt(json["overlap"], 12).clamp(0, 600),
         color: colorFromJson(json["color"], const Color(0xFF000000)),
         ease: SceneTransitionEase.fromName(json["ease"] as String?),
+        way: SceneTransitionWay.fromName(json["way"] as String?),
+        shape: ShapeKind.fromName(json["shape"] as String?),
+        count: jsonInt(json["count"], 6).clamp(2, 40),
+        softness: jsonDouble(json["softness"], 0).clamp(0.0, 1.0),
       );
 }
 

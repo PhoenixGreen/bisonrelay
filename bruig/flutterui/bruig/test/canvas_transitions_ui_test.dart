@@ -59,7 +59,18 @@ void main() {
         controller.document.transitionAfter(0).kind, SceneTransitionKind.cut);
     expect(find.text("AFTER SCENE 1"), findsOneWidget);
 
-    // Choosing one writes it on this scene, which is what marks it custom.
+    // The family first, then the one: two dozen names in a single list is a
+    // wall nobody reads to the end of. Choosing a family applies the first of
+    // its kinds, so the canvas shows something at once.
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Fade").last);
+    await tester.pumpAndSettle();
+
+    expect(
+        controller.document.transitionAfter(0).kind, SceneTransitionKind.fade,
+        reason: "the first of the family it was given");
+
     await tester.tap(find.byKey(const ValueKey("transitionKind")));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Cross fade").last);
@@ -110,6 +121,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("EVERY SCENE, UNLESS IT SAYS OTHERWISE"), findsOneWidget);
 
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Fade").last);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("transitionKind")));
     await tester.pumpAndSettle();
     await tester.tap(find.text("Fade through a colour").last);
@@ -146,6 +161,40 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(controller.previewAt, isNull);
     expect(controller.playing, isFalse);
+  });
+
+  testWidgets("the overlay kinds bring their own settings", (tester) async {
+    // A direction, a shape, how many bars, how soft the edge is -- each shown
+    // only for the kinds it means anything for.
+    var controller = await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+
+    // The first of the overlay family is the band: a direction and a colour,
+    // and no shape or bars.
+    expect(
+        controller.document.transitionAfter(0).kind, SceneTransitionKind.band);
+    expect(find.byKey(const ValueKey("transitionWay")), findsOneWidget);
+    expect(find.byKey(const ValueKey("transitionShape")), findsNothing);
+    expect(find.byKey(const ValueKey("transitionCount")), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Blinds").last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("transitionCount")), findsOneWidget,
+        reason: "blinds are made of a number of bars");
+
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("A shape opens").last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("transitionShape")), findsOneWidget);
+    expect(find.byKey(const ValueKey("transitionWay")), findsNothing,
+        reason: "a shape opens from the middle, not in a direction");
   });
 
   testWidgets("with one scene there is nothing to give way to", (tester) async {

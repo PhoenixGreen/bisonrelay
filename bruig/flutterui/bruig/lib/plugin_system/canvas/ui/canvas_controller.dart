@@ -1401,6 +1401,16 @@ class CanvasController extends ChangeNotifier {
           transient: transient);
       return;
     }
+    // A scene's own, where there are scenes. They share the document's until
+    // one of them is given a backdrop of its own -- and writing that shared
+    // one is how changing scene one's background changed scene two's.
+    if (document.hasScenes) {
+      apply(
+          document.withScene(
+              document.at, document.scene.copyWith(background: next)),
+          transient: transient);
+      return;
+    }
     apply(document.copyWith(background: next), transient: transient);
   }
 

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
+import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
 
@@ -148,8 +149,17 @@ void paintSequenceFrame(
   if (scenes.isEmpty) return;
 
   void drawScene(int index, int frame) {
-    paintCanvasDocument(canvas, doc.goToScene(index).copyWith(onMaster: false),
-        frame: frame, images: images, backgrounds: backgrounds);
+    // Each scene with its own backdrop -- see CanvasDocument.backgroundOf.
+    // Drawn from the document's own, every scene in the run wore whichever
+    // one was edited last.
+    paintCanvasDocument(
+        canvas,
+        doc
+            .goToScene(index)
+            .copyWith(onMaster: false, background: doc.backgroundOf(index)),
+        frame: frame,
+        images: images,
+        backgrounds: backgrounds);
   }
 
   if (!place.changing) {
@@ -245,6 +255,193 @@ void paintTransition(
     case SceneTransitionKind.zoomOut:
       _scaled(canvas, page, 1 + 0.4 * t, 1 - t, from);
       _faded(canvas, page, t, to);
+
+    // The overlay family: the change happens under something rather than
+    // between the two scenes. See SceneTransitionKind.band and the rest.
+    case SceneTransitionKind.band:
+      // The scenes swap behind the band, at the moment it covers the page.
+      (t >= 0.5 ? to : from)();
+      _paintBand(canvas, page, over, t);
+
+    case SceneTransitionKind.blinds:
+      from();
+      canvas.save();
+      canvas.clipPath(_blindsPath(page, over, t));
+      to();
+      canvas.restore();
+
+    case SceneTransitionKind.barn:
+      // The new scene is behind, and the old one is pulled apart to let it
+      // through -- so what moves is the thing being left rather than the
+      // thing arriving.
+      to();
+      _barnDoors(canvas, page, over, t, from);
+
+    case SceneTransitionKind.shapeWipe:
+      from();
+      canvas.save();
+      canvas.clipPath(_shapeOpening(page, over, t));
+      to();
+      canvas.restore();
+
+    case SceneTransitionKind.clock:
+      from();
+      canvas.save();
+      canvas.clipPath(_clockSweep(page, t));
+      to();
+      canvas.restore();
+
+    case SceneTransitionKind.blurThrough:
+      _blurThrough(canvas, page, over, t, from: from, to: to);
+  }
+}
+
+/// _paintBand draws a panel of colour crossing the page.
+///
+/// Sized to the page and travelling two page widths, so it covers everything
+/// exactly at the half way point -- which is where the scenes change behind
+/// it, and why the change is not seen.
+void _paintBand(ui.Canvas canvas, Rect page, SceneTransition over, double t) {
+  var along = over.way.horizontal ? page.width : page.height;
+  var travel = (t * 2 - 1) * along;
+
+  var band = over.way.horizontal
+      ? Rect.fromLTWH(
+          page.left + (over.way == SceneTransitionWay.right ? travel : -travel),
+          page.top,
+          page.width,
+          page.height)
+      : Rect.fromLTWH(
+          page.left,
+          page.top + (over.way == SceneTransitionWay.down ? travel : -travel),
+          page.width,
+          page.height);
+
+  var paint = Paint()..color = over.color;
+  // A feathered leading edge, where one has been asked for: a band with a
+  // little softness reads as a light sweeping across rather than as a
+  // rectangle being dragged over the page.
+  if (over.softness > 0) {
+    var soft = (over.softness * 0.5).clamp(0.0, 0.5);
+    paint.shader = ui.Gradient.linear(
+      over.way.horizontal ? band.centerLeft : band.topCenter,
+      over.way.horizontal ? band.centerRight : band.bottomCenter,
+      [
+        over.color.withValues(alpha: 0),
+        over.color,
+        over.color,
+        over.color.withValues(alpha: 0),
+      ],
+      [0, soft, 1 - soft, 1],
+    );
+  }
+  canvas.drawRect(band, paint);
+}
+
+/// _blindsPath is the part of the page the arriving scene has taken, as a set
+/// of bars growing from one side.
+ui.Path _blindsPath(Rect page, SceneTransition over, double t) {
+  var path = ui.Path();
+  var bars = over.count.clamp(2, 40);
+  var horizontal = over.way.horizontal;
+  var span = (horizontal ? page.height : page.width) / bars;
+
+  for (var i = 0; i < bars; i++) {
+    var at = (horizontal ? page.top : page.left) + span * i;
+    var grown = (horizontal ? page.width : page.height) * t;
+    path.addRect(horizontal
+        ? Rect.fromLTWH(
+            over.way == SceneTransitionWay.right
+                ? page.left
+                : page.right - grown,
+            at,
+            grown,
+            span)
+        : Rect.fromLTWH(
+            at,
+            over.way == SceneTransitionWay.down
+                ? page.top
+                : page.bottom - grown,
+            span,
+            grown));
+  }
+  return path;
+}
+
+/// _barnDoors draws the scene being left, split apart.
+void _barnDoors(ui.Canvas canvas, Rect page, SceneTransition over, double t,
+    void Function() draw) {
+  var horizontal = over.way.horizontal;
+  var half = horizontal ? page.width / 2 : page.height / 2;
+  var open = half * t;
+
+  for (var side in const [-1.0, 1.0]) {
+    canvas.save();
+    // Moved first and clipped after, so the clip travels with the door.
+    // Clipped to a fixed half and then moved, the picture slid *inside* its
+    // own clip and never left it -- the doors stayed shut however far they
+    // had opened.
+    canvas.translate(
+        horizontal ? side * open : 0, horizontal ? 0 : side * open);
+    canvas.clipRect(horizontal
+        ? Rect.fromLTRB(side < 0 ? page.left : page.center.dx, page.top,
+            side < 0 ? page.center.dx : page.right, page.bottom)
+        : Rect.fromLTRB(page.left, side < 0 ? page.top : page.center.dy,
+            page.right, side < 0 ? page.center.dy : page.bottom));
+    draw();
+    canvas.restore();
+  }
+}
+
+/// _shapeOpening is the shape the arriving scene comes through.
+///
+/// Drawn by the same code an element's shape is -- see shapePath -- so a
+/// transition cannot drift away from what the shapes on the canvas look like.
+ui.Path _shapeOpening(Rect page, SceneTransition over, double t) {
+  // Large enough at the end to cover the corners of the page, whatever shape
+  // it is: a circle that stopped at the edges would leave the corners of the
+  // scene it is replacing showing.
+  var reach = math.sqrt(page.width * page.width + page.height * page.height);
+  var size = reach * t * 1.05;
+  var centre = page.center;
+  return shapePath(
+      over.shape, Rect.fromCenter(center: centre, width: size, height: size),
+      points: 5);
+}
+
+/// _clockSweep is a sector of the page, swept from the top like a hand.
+ui.Path _clockSweep(Rect page, double t) {
+  if (t >= 1) return ui.Path()..addRect(page);
+  var reach = math.sqrt(page.width * page.width + page.height * page.height);
+  var box =
+      Rect.fromCenter(center: page.center, width: reach * 2, height: reach * 2);
+  return ui.Path()
+    ..moveTo(page.center.dx, page.center.dy)
+    ..arcTo(box, -math.pi / 2, 2 * math.pi * t, false)
+    ..close();
+}
+
+/// _blurThrough goes soft, changes, and comes back sharp.
+void _blurThrough(ui.Canvas canvas, Rect page, SceneTransition over, double t,
+    {required void Function() from, required void Function() to}) {
+  // How far from sharp: nothing at either end, most in the middle, where the
+  // change happens and is not seen.
+  var away = (1 - (t * 2 - 1).abs()).clamp(0.0, 1.0);
+  var sigma = math.max(0.1, page.shortestSide * 0.05 * away);
+
+  canvas.saveLayer(
+      page,
+      Paint()
+        ..imageFilter = ui.ImageFilter.blur(
+            sigmaX: sigma, sigmaY: sigma, tileMode: ui.TileMode.decal));
+  (t >= 0.5 ? to : from)();
+  canvas.restore();
+
+  // And a veil of the colour at its strongest in the middle, where the
+  // colour has been given one to show.
+  if (over.color.a > 0) {
+    canvas.drawRect(page,
+        Paint()..color = over.color.withValues(alpha: over.color.a * away));
   }
 }
 
