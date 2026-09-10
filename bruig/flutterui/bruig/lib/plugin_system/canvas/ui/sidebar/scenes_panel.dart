@@ -83,12 +83,22 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
       children: [
-        _master(theme),
-        const SizedBox(height: 6),
-        // Above the list rather than under it: what they do is add to it and
-        // change how it is drawn, and a control that acts on a list belongs
-        // at the top where it is found without reading to the end.
-        _actions(theme, scenes.length),
+        // One line above the list: the shared canvas on the left, and on the
+        // right the two things that act on the list -- adding to it, and
+        // changing how it is drawn. A row of its own for two icons was a
+        // line of mostly nothing in a narrow column.
+        Row(children: [
+          Expanded(child: _master(theme)),
+          const SizedBox(width: 4),
+          _rowButton(theme, Icons.add, "New scene", controller.addScene),
+          _rowButton(
+            theme,
+            _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,
+            _previews ? "Scene preview: off" : "Scene preview",
+            () => setState(() => _previews = !_previews),
+            active: _previews,
+          ),
+        ]),
         // A line and some air between what acts on the list and the list
         // itself: without them the first scene read as another button in the
         // row above it.
@@ -387,42 +397,6 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         controller.removeScene(index);
     }
   }
-
-  // No Duplicate here. Every row's own menu has it, and a second way to
-  // copy *the scene you happen to be on* is a button whose meaning depends on
-  // something else in the panel.
-  Widget _actions(ThemeNotifier theme, int count) => Row(children: [
-        _chip(theme, Icons.add, "New scene", controller.addScene),
-        const Spacer(),
-        _rowButton(
-          theme,
-          _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,
-          _previews ? "Scene preview: off" : "Scene preview",
-          () => setState(() => _previews = !_previews),
-          active: _previews,
-        ),
-      ]);
-
-  Widget _chip(ThemeNotifier theme, IconData icon, String label,
-          VoidCallback onTap) =>
-      InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: theme.colors.outlineVariant),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 14, color: theme.colors.onSurfaceVariant),
-            const SizedBox(width: 5),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11, color: theme.colors.onSurfaceVariant)),
-          ]),
-        ),
-      );
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,
           VoidCallback onTap,

@@ -66,7 +66,7 @@ void main() {
 
   testWidgets("New scene makes one and goes to it", (tester) async {
     var controller = await panel(tester);
-    await tester.tap(find.text("New scene"));
+    await tester.tap(find.byTooltip("New scene"));
     await tester.pumpAndSettle();
 
     expect(controller.document.allScenes.length, 2);
@@ -76,7 +76,7 @@ void main() {
 
   testWidgets("pressing a scene is how you get to it", (tester) async {
     var controller = await panel(tester, document: const CanvasDocument());
-    await tester.tap(find.text("New scene"));
+    await tester.tap(find.byTooltip("New scene"));
     await tester.pumpAndSettle();
     expect(controller.document.at, 1);
 
@@ -89,7 +89,7 @@ void main() {
     // Which is the whole point of the list: the canvas you are on is the one
     // the rest of the editor is editing.
     var controller = await panel(tester);
-    await tester.tap(find.text("New scene"));
+    await tester.tap(find.byTooltip("New scene"));
     await tester.pumpAndSettle();
 
     controller.addElement(
@@ -136,7 +136,7 @@ void main() {
 
   testWidgets("the list can show a picture of each scene", (tester) async {
     var controller = await panel(tester, document: const CanvasDocument());
-    await tester.tap(find.text("New scene"));
+    await tester.tap(find.byTooltip("New scene"));
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.length, 2);
 
@@ -229,9 +229,15 @@ void main() {
           for (var i = 0; i < 4; i++) CanvasScene(id: "s$i"),
         ]));
 
-    var newScene = tester.getRect(find.text("New scene"));
+    // On the same line as the master header, and above the list.
+    var newScene = tester.getRect(find.byTooltip("New scene"));
+    var master = tester.getRect(find.text("Master scene"));
     var firstRow = tester.getRect(find.text("Scene 1"));
     expect(newScene.top, lessThan(firstRow.top));
+    expect((newScene.center.dy - master.center.dy).abs(), lessThan(6),
+        reason: "beside the header rather than on a line of its own");
+    expect(newScene.left, greaterThan(master.left),
+        reason: "and to the right of it");
 
     // And Duplicate is not offered twice: every row's menu has it, and a
     // button that copies whichever scene you happen to be on is a button
