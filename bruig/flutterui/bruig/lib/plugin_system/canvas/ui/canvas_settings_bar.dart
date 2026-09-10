@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
@@ -173,23 +174,29 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
           // them, and hidden so the lines stop crossing the design. Beside
           // the boxes and the handles because all four are the same kind of
           // thing -- what is drawn while working, and never published.
-          _barButton(theme,
-              icon: controller.lockJoins ? Icons.link_off : Icons.link,
-              tooltip: controller.lockJoins
-                  ? "Let the joins between text boxes be dragged again"
-                  : "Lock the joins between text boxes",
-              active: controller.lockJoins,
-              onPressed: () => controller.lockJoins = !controller.lockJoins),
-          _barButton(theme,
-              icon: controller.hideJoins
-                  ? Icons.timeline
-                  : Icons.polyline_outlined,
-              tooltip: controller.hideJoins
-                  ? "Show the lines between linked text boxes"
-                  : "Hide the lines between linked text boxes, keeping their "
-                      "grips",
-              active: controller.hideJoins,
-              onPressed: () => controller.hideJoins = !controller.hideJoins),
+          //
+          // Only where there is a join. On a canvas with no chain of text
+          // boxes on it they are two switches for something that is not
+          // there, in a strip that is short of room.
+          if (_hasJoins) ...[
+            _barButton(theme,
+                icon: controller.lockJoins ? Icons.link_off : Icons.link,
+                tooltip: controller.lockJoins
+                    ? "Let the joins between text boxes be dragged again"
+                    : "Lock the joins between text boxes",
+                active: controller.lockJoins,
+                onPressed: () => controller.lockJoins = !controller.lockJoins),
+            _barButton(theme,
+                icon: controller.hideJoins
+                    ? Icons.timeline
+                    : Icons.polyline_outlined,
+                tooltip: controller.hideJoins
+                    ? "Show the lines between linked text boxes"
+                    : "Hide the lines between linked text boxes, keeping their "
+                        "grips",
+                active: controller.hideJoins,
+                onPressed: () => controller.hideJoins = !controller.hideJoins),
+          ],
           // Every element's box, or only the selected one's. Beside the
           // handles toggle because it is the same kind of thing -- something
           // drawn while working and never published -- and one switch for the
@@ -281,31 +288,55 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     void set(CanvasGuides next) =>
         controller.apply(controller.document.copyWith(guides: next));
 
+    // The switch for the switches, first in the group and always there. What
+    // it hides is the row, not the settings.
+    var shown = controller.showMarkSwitches;
     return [
       _barButton(theme,
-          icon: guides.showGrid ? Icons.grid_on : Icons.grid_off,
-          tooltip: guides.showGrid ? "Hide the grid" : "Show the grid",
-          active: guides.showGrid,
-          onPressed: () => set(guides.copyWith(showGrid: !guides.showGrid))),
-      if (guides.guides.isNotEmpty)
+          icon: shown ? Icons.more_horiz : Icons.more_vert,
+          tooltip: shown
+              ? "Hide the grid, guides and ruler switches"
+              : "Show the grid, guides and ruler switches",
+          active: shown,
+          onPressed: () => controller.showMarkSwitches = !shown),
+      if (shown) ...[
         _barButton(theme,
-            icon: guides.showGuides
-                ? Icons.straighten
-                : Icons.straighten_outlined,
-            tooltip: guides.showGuides ? "Hide the guides" : "Show the guides",
-            active: guides.showGuides,
-            onPressed: () =>
-                set(guides.copyWith(showGuides: !guides.showGuides))),
-      if (guides.rulers.any)
-        _barButton(theme,
-            icon: guides.showRulers
-                ? Icons.square_foot
-                : Icons.square_foot_outlined,
-            tooltip: guides.showRulers ? "Hide the rulers" : "Show the rulers",
-            active: guides.showRulers,
-            onPressed: () =>
-                set(guides.copyWith(showRulers: !guides.showRulers))),
+            icon: guides.showGrid ? Icons.grid_on : Icons.grid_off,
+            tooltip: guides.showGrid ? "Hide the grid" : "Show the grid",
+            active: guides.showGrid,
+            onPressed: () => set(guides.copyWith(showGrid: !guides.showGrid))),
+        if (guides.guides.isNotEmpty)
+          _barButton(theme,
+              icon: guides.showGuides
+                  ? Icons.straighten
+                  : Icons.straighten_outlined,
+              tooltip:
+                  guides.showGuides ? "Hide the guides" : "Show the guides",
+              active: guides.showGuides,
+              onPressed: () =>
+                  set(guides.copyWith(showGuides: !guides.showGuides))),
+        if (guides.rulers.any)
+          _barButton(theme,
+              icon: guides.showRulers
+                  ? Icons.square_foot
+                  : Icons.square_foot_outlined,
+              tooltip:
+                  guides.showRulers ? "Hide the rulers" : "Show the rulers",
+              active: guides.showRulers,
+              onPressed: () =>
+                  set(guides.copyWith(showRulers: !guides.showRulers))),
+      ],
     ];
+  }
+
+  /// _hasJoins is whether any text box on this canvas flows into another.
+  bool get _hasJoins {
+    var document = controller.document;
+    for (var e in document.elements) {
+      if (e is! TextElement || e.flowTo.isEmpty) continue;
+      if (document.elementById(e.flowTo) != null) return true;
+    }
+    return false;
   }
 
   /// _actions is the canvas settings toggle, undo, redo and Publish, pinned to

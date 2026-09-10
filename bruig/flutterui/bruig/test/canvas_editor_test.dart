@@ -1835,6 +1835,19 @@ void main() {
 
       expect(find.byTooltip("Show the grid"), findsOneWidget,
           reason: "there is always a grid to show");
+
+      // The switch for the switches: the row goes, the setting does not, and
+      // the way back is the button that hid them.
+      await tester
+          .tap(find.byTooltip("Hide the grid, guides and ruler switches"));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip("Show the grid"), findsNothing);
+      expect(
+          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget,
+          reason: "the line that sets them up is still a button away");
+      await tester
+          .tap(find.byTooltip("Show the grid, guides and ruler switches"));
+      await tester.pumpAndSettle();
       expect(find.byTooltip("Show the guides"), findsNothing);
       expect(find.byTooltip("Show the rulers"), findsNothing);
 
@@ -1856,6 +1869,38 @@ void main() {
       expect(controller.document.guides.showRulers, isFalse,
           reason: "hidden without forgetting which edges they were on");
       expect(controller.document.guides.rulers.top, isTrue);
+    });
+
+    testWidgets("the join switches are only there when there is a join",
+        (tester) async {
+      // Two switches for something that is not on the canvas, in a strip that
+      // is short of room.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+      expect(find.byTooltip("Lock the joins between text boxes"), findsNothing);
+
+      controller.apply(controller.document
+          .addElement(TextElement(
+              const ElementBase(id: "a", width: 200, height: 60),
+              text: "Words",
+              flowTo: "b"))
+          .addElement(TextElement(
+              const ElementBase(id: "b", y: 100, width: 200, height: 60))));
+      await tester.pumpAndSettle();
+      expect(
+          find.byTooltip("Lock the joins between text boxes"), findsOneWidget);
     });
 
     testWidgets("is off by default and toggles from the band", (tester) async {
