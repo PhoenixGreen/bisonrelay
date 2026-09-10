@@ -1211,6 +1211,33 @@ void main() {
     });
   });
 
+  group("what the editor remembers between visits", () {
+    test("the timeline is off to begin with, and then what it was left as", () {
+      // Most canvases are still designs, and a strip of animation controls
+      // under one is room taken from the page. Somebody who does animate
+      // turns it on once rather than on every visit.
+      SharedPreferences.setMockInitialValues({});
+      var prefs = CanvasPreferences();
+      addTearDown(prefs.dispose);
+      expect(prefs.timeline, isFalse);
+
+      prefs.timeline = true;
+      var later = CanvasPreferences();
+      addTearDown(later.dispose);
+      expect(later.timeline, isFalse, reason: "until it has read the disk");
+    });
+
+    test("and whether the bar carries the grid switches", () {
+      SharedPreferences.setMockInitialValues({});
+      var prefs = CanvasPreferences();
+      addTearDown(prefs.dispose);
+      expect(prefs.markSwitches, isTrue,
+          reason: "there until somebody says otherwise");
+      prefs.markSwitches = false;
+      expect(prefs.markSwitches, isFalse);
+    });
+  });
+
   group("the settings section", () {
     testWidgets("turns Canvas on and off", (tester) async {
       var prefs = CanvasPreferences();
@@ -3688,10 +3715,12 @@ void main() {
       // Not at all in the settings themselves: the panel's header says it.
       expect(find.text("CHART"), findsNothing);
       expect(find.text("CHART SETTINGS"), findsOneWidget);
-      // Twice in the column as a whole, and neither of them is the caption
-      // this test is about: the layer row that names the element, and the Add
-      // chip that makes one.
-      expect(find.text("Chart"), findsNWidgets(2));
+      // Wherever else the word appears in the column -- the layer row that
+      // names the element, the Add chip that makes one -- it is not the
+      // caption this test is about. How many of those are on screen depends
+      // on what fits under the settings, so what is pinned is that the one
+      // inside the layer row is there and the caption is not.
+      expect(find.text("Chart"), findsAtLeastNWidgets(1));
       expect(
           find.descendant(
               of: find.byType(CanvasLayerRow), matching: find.text("Chart")),

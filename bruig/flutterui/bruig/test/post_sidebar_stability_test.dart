@@ -112,6 +112,28 @@ void main() {
     expect(find.byIcon(Icons.arrow_back), findsNothing);
   });
 
+  testWidgets("inside a folder the whole header is the way back",
+      (tester) async {
+    // Not just the arrow. The row reads as one thing -- you are in here, and
+    // here is out of it -- and a small arrow in a narrow column is a small
+    // target for the most ordinary move there is. The canvas library has
+    // worked this way for a while.
+    await _real(tester, () async {
+      await PostStorage.write("Drafts", "Inside", "x");
+      await library.refresh();
+      await library.openFolderNamed("Drafts");
+    });
+    await mount(tester);
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+    // Pressed on the folder's name, well away from the arrow.
+    await tester.tap(find.text("Drafts"));
+    await tester.pumpAndSettle();
+    await _real(tester, () async {});
+    expect(library.folder, "");
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+  });
+
   testWidgets("the reserved notes folder offers no way to remove it",
       (tester) async {
     await _real(tester, () async {

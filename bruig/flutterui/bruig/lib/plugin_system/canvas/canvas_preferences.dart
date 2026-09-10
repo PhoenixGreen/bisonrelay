@@ -24,6 +24,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _allowFetchingKey = "canvasAllowFetching";
   static const _fitKey = "canvasFit";
   static const _markSwitchesKey = "canvasMarkSwitches";
+  static const _timelineKey = "canvasTimeline";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -106,6 +107,23 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// timeline is whether the transport and the strip under the canvas are
+  /// showing.
+  ///
+  /// Off to begin with, and then whatever it was left as. Most canvases are
+  /// still designs and a strip of animation controls under one is a strip of
+  /// room taken from the page -- and somebody who does animate turns it on
+  /// once rather than on every visit.
+  bool get timeline => _timeline;
+  bool _timeline = false;
+
+  set timeline(bool value) {
+    if (_timeline == value) return;
+    _timeline = value;
+    StorageManager.saveBool(_timelineKey, value);
+    notifyListeners();
+  }
+
   /// load reads what was saved. Called once at startup; until it returns the
   /// defaults are in force, which is the right way round -- a nav item that
   /// appeared a moment after the window opened would be worse than one that
@@ -120,6 +138,7 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _markSwitches =
         await StorageManager.readBool(_markSwitchesKey, defaultVal: true);
+    _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     notifyListeners();
   }
 

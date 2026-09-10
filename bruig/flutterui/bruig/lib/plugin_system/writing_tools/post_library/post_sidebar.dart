@@ -107,23 +107,30 @@ class _PostSidebarState extends State<PostSidebar> {
   /// folder is open.
   Widget? _header(ThemeNotifier theme, PostLibraryModel library) {
     if (library.folder.isEmpty) return null;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
-      child: Row(children: [
-        IconButton(
-          icon: const Icon(Icons.arrow_back, size: 18),
-          tooltip: "Back to the Library",
-          visualDensity: VisualDensity.compact,
-          onPressed: () => library.openFolderNamed(""),
+    // The whole line is the way back, not just the arrow. The row reads as
+    // one thing -- "you are in Drafts, and here is out of it" -- and a
+    // fifteen-pixel arrow in a narrow column is a small target for the most
+    // ordinary move there is. The canvas library has worked this way for a
+    // while and it is the better of the two.
+    return InkWell(
+      onTap: () => library.openFolderNamed(""),
+      child: Tooltip(
+        message: "Back to the Library",
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          child: Row(children: [
+            const Icon(Icons.arrow_back, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                folderLabel(library.folder),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ]),
         ),
-        Expanded(
-          child: Text(
-            folderLabel(library.folder),
-            style: const TextStyle(fontWeight: FontWeight.w600),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ]),
+      ),
     );
   }
 

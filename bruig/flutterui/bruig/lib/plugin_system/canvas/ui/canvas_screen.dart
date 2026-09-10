@@ -108,10 +108,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// _timelineOpen is whether the transport and the strip under the canvas
   /// are showing.
   ///
-  /// On, because an editor that opens with its transport hidden is one where
-  /// nobody finds the animation. Off, the canvas takes the room -- which is
-  /// what a still design wants and is a press away either way.
-  bool _timelineOpen = true;
+  /// Off to begin with and then whatever it was left as -- see
+  /// CanvasPreferences.timeline. Most canvases are still designs, and a strip
+  /// of animation controls under one is room taken from the page; somebody
+  /// who does animate turns it on once rather than on every visit.
+  bool _timelineOpen = false;
 
   /// _keyframesOpen is whether the pose bar is out.
   ///
@@ -132,6 +133,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Returning to a page that was left on Design counts as having used it:
     // the reader chose that tab, even if it was last time.
     _designUsed = _panel == CanvasPanel.design;
+    _timelineOpen = prefs.timeline;
     // Only on the very first visit of the session. After that the controller
     // already holds whatever was being worked on, and reopening the last saved
     // file over the top would throw away the unsaved edits this whole
@@ -461,8 +463,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
               if (_guidesOpen) _canvasSettingsOpen = false;
             }),
             timelineOpen: _timelineOpen,
-            onToggleTimeline: () =>
-                setState(() => _timelineOpen = !_timelineOpen),
+            onToggleTimeline: () => setState(() {
+              _timelineOpen = !_timelineOpen;
+              Provider.of<CanvasPreferences>(context, listen: false).timeline =
+                  _timelineOpen;
+            }),
             // Only while the sidebar is away. The band is where every other
             // control on this page lives, so the one that brings the sidebar
             // back belongs in it rather than floating on the page behind it.
