@@ -302,6 +302,17 @@ class CanvasDocument {
       ? (master!.background ?? background)
       : (masterScene?.background ?? scene.background ?? background);
 
+  /// ownBackground is the backdrop the canvas being edited owns: its own
+  /// where it has been given one, and the document's until then.
+  ///
+  /// What the settings panel shows and edits. Not [drawnBackground], which
+  /// answers what is *on screen* -- while the shared canvas has a backdrop
+  /// that is the master's, and a panel that showed it would be offering to
+  /// edit one canvas's settings from another canvas's panel.
+  CanvasBackground get ownBackground => editingMaster
+      ? (master!.background ?? background)
+      : (scene.background ?? background);
+
   /// backgroundOf is the backdrop of one scene, for the painter that draws
   /// the whole run rather than the canvas in front of the reader.
   CanvasBackground backgroundOf(int index) {

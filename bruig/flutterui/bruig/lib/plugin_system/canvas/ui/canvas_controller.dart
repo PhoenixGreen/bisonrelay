@@ -1403,7 +1403,9 @@ class CanvasController extends ChangeNotifier {
     }
     // A scene's own, where there are scenes. They share the document's until
     // one of them is given a backdrop of its own -- and writing that shared
-    // one is how changing scene one's background changed scene two's.
+    // one is how changing scene one's background changed scene two's. What
+    // an edit is built *from* is CanvasDocument.ownBackground, which is the
+    // same answer read the other way round.
     if (document.hasScenes) {
       apply(
           document.withScene(

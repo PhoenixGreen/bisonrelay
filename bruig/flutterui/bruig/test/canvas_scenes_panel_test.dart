@@ -4,6 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
@@ -382,6 +384,65 @@ void main() {
     var after = tester.getRect(find.byTooltip("Publish this canvas"));
     expect(bar.right - after.right, lessThan(14),
         reason: "and the right-hand end has not moved");
+  });
+
+  testWidgets("the background panel shows the scene it is editing",
+      (tester) async {
+    // The reported fault, and it needed the panel to see it: the settings
+    // read the document's background while writing to the scene's, so the
+    // colours never moved -- every edit was built from the one nobody was
+    // looking at, and the next undid the last.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a"),
+      const CanvasScene(id: "b"),
+    ]));
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 320, child: CanvasDesignPanel(controller: controller))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    ProceduralSettings settings() =>
+        tester.widget<ProceduralSettings>(find.byType(ProceduralSettings));
+
+    // Three colours, one after another, the way somebody actually works.
+    const pink = Color(0xFFFF69B4);
+    const green = Color(0xFF00A86B);
+    const gold = Color(0xFFFFD700);
+
+    settings().onChanged(settings().spec.copyWith(background: pink));
+    await tester.pumpAndSettle();
+    expect(settings().spec.background, pink,
+        reason: "the panel says what was just set");
+
+    settings().onChanged(settings().spec.copyWith(foreground: green));
+    await tester.pumpAndSettle();
+    settings().onChanged(settings().spec.copyWith(accent: gold));
+    await tester.pumpAndSettle();
+
+    var drawn = controller.document.drawnBackground.spec;
+    expect(drawn.background, pink);
+    expect(drawn.foreground, green, reason: "the second edit kept the first");
+    expect(drawn.accent, gold, reason: "and the third kept both");
+
+    // And none of it reached the scene after this one.
+    expect(controller.document.backgroundOf(1).spec.background, isNot(pink));
   });
 
   testWidgets("a scene with its own transition is marked", (tester) async {

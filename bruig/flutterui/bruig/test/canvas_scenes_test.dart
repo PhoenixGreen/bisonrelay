@@ -258,6 +258,42 @@ void main() {
           reason: "and the canvas shows the scene being edited");
     });
 
+    test("and one edit builds on the last, not on the document's", () {
+      // The reported fault: a scene given a new colour went on reporting the
+      // old one, because the panel showed the document's background while
+      // writing to the scene's -- so every edit was built from the one
+      // nobody was looking at, and the second undid the first.
+      var it = _twoScenes().copyWith(
+          background: const CanvasBackground(
+              spec: ProceduralSpec(
+                  style: ProceduralStyle.plain,
+                  background: Color(0xFF0000FF))));
+
+      // What the panel shows is what the canvas owns.
+      expect(it.ownBackground.spec.background, const Color(0xFF0000FF));
+
+      // A colour, then a style, the way somebody changes two things.
+      var pink = it.withScene(
+          0,
+          it.scene.copyWith(
+              background: it.ownBackground.copyWith(
+                  spec: it.ownBackground.spec
+                      .copyWith(background: const Color(0xFFFF69B4)))));
+      expect(pink.ownBackground.spec.background, const Color(0xFFFF69B4));
+
+      var dotted = pink.withScene(
+          0,
+          pink.scene.copyWith(
+              background: pink.ownBackground.copyWith(
+                  spec: pink.ownBackground.spec
+                      .copyWith(style: ProceduralStyle.dotGrid))));
+      expect(dotted.ownBackground.spec.style, ProceduralStyle.dotGrid);
+      expect(dotted.ownBackground.spec.background, const Color(0xFFFF69B4),
+          reason: "the colour set a moment ago is still there");
+      expect(dotted.backgroundOf(1).spec.background, const Color(0xFF0000FF),
+          reason: "and the other scene is untouched");
+    });
+
     test("and the shared one wins while the master is on", () {
       var it = _twoScenes()
           .withScene(

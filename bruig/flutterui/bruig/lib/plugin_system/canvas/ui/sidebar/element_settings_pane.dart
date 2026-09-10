@@ -39,11 +39,12 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
 
   if (selected == null) {
     var document = controller.document;
-    // On the shared canvas, the background being edited is the shared one.
-    // Written to the document's instead, turning the master off left every
-    // scene wearing it -- see CanvasScene.background.
-    var onMaster = document.editingMaster;
-    var showing = onMaster ? document.drawnBackground : document.background;
+    // The backdrop this canvas owns -- see CanvasDocument.ownBackground. Read
+    // from the document's instead, as it was, the panel showed the values of
+    // a background nobody was looking at and every edit was built from those:
+    // a scene given a new colour went on reporting the old one, and the next
+    // edit undid the last.
+    var showing = document.ownBackground;
 
     return ProceduralSettings(
       // No caption: the panel's header already says these are the
