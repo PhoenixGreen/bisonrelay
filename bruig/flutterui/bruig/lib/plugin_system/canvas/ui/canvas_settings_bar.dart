@@ -856,21 +856,24 @@ class _ZoomFieldState extends State<_ZoomField> {
 
   /// _boxWidth is the room the widest reading takes.
   ///
-  /// One size, big enough for 1400% and the sign after it. Sized to its
-  /// contents instead the box changed width as the number did, and every way
-  /// of keeping that in step with a view that moves on its own -- a canvas
-  /// resized, a sidebar collapsed -- was another thing to be told; when it
-  /// was not told, the number came out cut off.
+  /// One size for every reading. Sized to its contents instead, the box
+  /// changed width as the number did, and every way of keeping that in step
+  /// with a view that moves on its own -- a canvas resized, a sidebar
+  /// collapsed -- was another thing to be told; when it was not told, the
+  /// number came out cut off.
   ///
-  /// Measured rather than counted, because the digits of this face are not
-  /// all the same width.
+  /// Four eights rather than a real number: the digits of this face are not
+  /// all the same width, and eight is the widest of them. Measured against
+  /// 1400% the box fitted 1400% and not 888%, because the one in it is a
+  /// narrow character -- which is how the sign was still being cut off after
+  /// the box had been given a fixed size.
   double _boxWidth(TextStyle style) {
     var painter = TextPainter(
-      text: TextSpan(text: "1400%", style: style),
+      text: TextSpan(text: "8888%", style: style),
       textDirection: TextDirection.ltr,
     )..layout();
     // The padding either side, and the room the caret needs at the end.
-    return painter.width + 4 + 4;
+    return painter.width + 4 + 6;
   }
 
   @override

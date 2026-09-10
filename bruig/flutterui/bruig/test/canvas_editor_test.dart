@@ -5317,6 +5317,15 @@ void main() {
       await tester.pumpAndSettle();
 
       var reading = tester.getRect(find.text("888%"));
+      var field = tester.getRect(find.byType(TextField));
+      // Inside its own box, sign and all. The box is sized against the widest
+      // digits there are rather than against a number that happens to have a
+      // narrow one in it -- 888% is wider than 1400% in a face whose one is
+      // narrow, which is how the sign was still being cut off.
+      expect(reading.right, lessThanOrEqualTo(field.right + 0.5),
+          reason: "the reading ends at ${reading.right} and the box at "
+              "${field.right}");
+
       var bar = tester.getRect(find.byType(CanvasSettingsBar));
       expect(reading.left, greaterThanOrEqualTo(bar.left),
           reason: "the reading is inside the bar");
