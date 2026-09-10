@@ -159,20 +159,18 @@ class _PresetsSectionState extends State<_PresetsSection> {
       trailing: presets.isEmpty ? null : "${presets.length}",
       children: [
         // Saving first: it is the one thing here that is about the element in
-        // front of you rather than about the list.
-        CanvasControlGroup(label: "This one", children: [
-          CanvasIconButton(
-            key: const ValueKey("savePreset"),
-            icon: Icons.bookmark_add_outlined,
-            tooltip: "Save this one as a preset",
-            onPressed: () async {
-              var name =
-                  await _ask("Save as a preset", initial: widget.element.name);
-              if (name == null) return;
-              await store.save(name, widget.element);
-            },
-          ),
-        ]),
+        // front of you rather than about the list. A button that says what it
+        // does rather than an icon under a caption -- a caption reading "This
+        // one" over a bookmark icon was two attempts at the same sentence and
+        // neither of them said it.
+        _SaveButton(
+          onPressed: () async {
+            var name =
+                await _ask("Save as a preset", initial: widget.element.name);
+            if (name == null) return;
+            await store.save(name, widget.element);
+          },
+        ),
         // A line of plain text rather than a hint: a section with three
         // buttons in it does not need explaining, and the one thing worth
         // saying is what an empty list means.
@@ -269,6 +267,47 @@ class _PresetRow extends StatelessWidget {
             onPressed: onDelete!,
           ),
       ]),
+    );
+  }
+}
+
+/// _SaveButton is the labelled button that keeps this element's design.
+///
+/// Built like the panel's own switches rather than like its icon buttons: it
+/// is the thing somebody comes to this section to press when they are not
+/// choosing a design, and a 24-pixel square with a bookmark on it is not
+/// something anybody finds.
+class _SaveButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _SaveButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        key: const ValueKey("savePreset"),
+        borderRadius: BorderRadius.circular(4),
+        onTap: onPressed,
+        child: Container(
+          height: controlHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: theme.colors.outlineVariant),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.bookmark_add_outlined,
+                size: 14, color: theme.colors.onSurfaceVariant),
+            const SizedBox(width: 5),
+            Text("Save this design",
+                style: TextStyle(
+                    fontSize: 11, color: theme.colors.onSurfaceVariant)),
+          ]),
+        ),
+      ),
     );
   }
 }

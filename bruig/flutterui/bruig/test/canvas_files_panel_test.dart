@@ -4,12 +4,14 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 
 // Every one of these pumps a widget over real files, which needs the
@@ -36,6 +38,9 @@ void main() {
   setUp(() async {
     root = await Directory.systemTemp.createTemp("canvas_files_panel_test");
     CanvasStorage.rootOverride = root.path;
+    // The panel remembers which folder it is in, which goes through the
+    // preference store.
+    SharedPreferences.setMockInitialValues({});
   });
 
   tearDown(() async {
@@ -59,6 +64,7 @@ void main() {
     List<String> folders = const [],
     CanvasController? controller,
     void Function(String folder, String name)? onNew,
+    CanvasPreferences? prefs,
   }) async {
     // Written on the real loop: this is a real directory.
     await tester.runAsync(() async {
@@ -82,6 +88,8 @@ void main() {
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
         ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>.value(
+            value: prefs ?? CanvasPreferences()),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -100,6 +108,52 @@ void main() {
     await idle(tester);
     return it;
   }
+
+  testWidgets("the folder you were in is where you come back to",
+      (tester) async {
+    // Being put at the top of the library every time is being made to walk
+    // back into the folder you were working in. The writing library has
+    // behaved this way for a while.
+    var prefs = CanvasPreferences();
+    addTearDown(prefs.dispose);
+    await pump(tester, folders: ["Season"], prefs: prefs);
+
+    await tester.tap(find.text("Season"));
+    await idle(tester);
+    expect(prefs.filesFolder, "Season");
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+    // A fresh panel, the way the sidebar builds one when the tab has been
+    // away long enough to be thrown out. Pumped over something else first, or
+    // the same State is kept and never asked the question.
+    await tester.pumpWidget(const SizedBox());
+    await idle(tester);
+    await pump(tester, folders: ["Season"], prefs: prefs);
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget,
+        reason: "opened inside the folder it was left in");
+
+    // And out again, which is also remembered.
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await idle(tester);
+    expect(prefs.filesFolder, "");
+  });
+
+  testWidgets("a folder that has gone since is not somewhere to be stuck",
+      (tester) async {
+    // Renamed or deleted from another window, or from this one before it was
+    // remembered. An empty listing is not proof on its own, so the top level
+    // is asked whether the folder is still there.
+    var prefs = CanvasPreferences();
+    addTearDown(prefs.dispose);
+    prefs.filesFolder = "Gone";
+    await pump(tester,
+        folders: ["Season"], canvases: ["Match plan"], prefs: prefs);
+
+    expect(find.byIcon(Icons.arrow_back), findsNothing);
+    expect(find.text("Season"), findsOneWidget,
+        reason: "the top of the library, not an empty folder");
+    expect(prefs.filesFolder, "");
+  });
 
   testWidgets("the things that make something new are along the bottom",
       (tester) async {

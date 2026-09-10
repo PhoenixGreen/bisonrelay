@@ -5563,9 +5563,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Saving comes first: it is the one thing here about the element in
-      // front of you rather than about the list.
+      // front of you rather than about the list, and it says what it does.
       expect(find.byKey(const ValueKey("savePreset")), findsOneWidget);
+      expect(find.text("Save this design"), findsOneWidget);
       expect(find.text("Nothing saved yet."), findsOneWidget);
+      expect(find.text("THIS ONE"), findsNothing,
+          reason: "a caption over a button that already says what it does");
     });
 
     testWidgets("turning off From a document gives back what was typed",

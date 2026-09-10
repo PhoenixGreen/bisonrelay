@@ -25,6 +25,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _fitKey = "canvasFit";
   static const _markSwitchesKey = "canvasMarkSwitches";
   static const _timelineKey = "canvasTimeline";
+  static const _filesFolderKey = "canvasFilesFolder";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -124,6 +125,21 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// filesFolder is the folder the Files panel is looking at.
+  ///
+  /// Kept because being put back at the top of the library every time is
+  /// being made to walk back into the folder you were working in -- which is
+  /// how the writing library behaves, and it is the better of the two.
+  /// Cleared when the folder it names has gone.
+  String get filesFolder => _filesFolder;
+  String _filesFolder = "";
+
+  set filesFolder(String value) {
+    if (_filesFolder == value) return;
+    _filesFolder = value;
+    StorageManager.saveString(_filesFolderKey, value);
+  }
+
   /// load reads what was saved. Called once at startup; until it returns the
   /// defaults are in force, which is the right way round -- a nav item that
   /// appeared a moment after the window opened would be worse than one that
@@ -139,6 +155,7 @@ class CanvasPreferences extends ChangeNotifier {
     _markSwitches =
         await StorageManager.readBool(_markSwitchesKey, defaultVal: true);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
+    _filesFolder = await StorageManager.readString(_filesFolderKey);
     notifyListeners();
   }
 

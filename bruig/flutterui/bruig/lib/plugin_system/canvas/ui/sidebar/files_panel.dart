@@ -4,11 +4,13 @@ import 'dart:math' as math;
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
 // files_panel.dart is the Files tab: the saved canvases, in their folders.
@@ -84,6 +86,10 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   void initState() {
     super.initState();
     controller.addListener(_onControllerChanged);
+    // Back in the folder that was being worked in. Being put at the top of
+    // the library every time is being made to walk back into it.
+    _folder =
+        Provider.of<CanvasPreferences>(context, listen: false).filesFolder;
     _reload();
   }
 
@@ -107,12 +113,29 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
 
   Future<void> _reload() async {
     var entries = await CanvasStorage.list(_folder);
+    // The folder may have been renamed or deleted since it was last looked
+    // at -- from another window, or from this one before it was remembered.
+    // An empty listing is not proof of that on its own, so the top level is
+    // asked whether the folder is still there.
+    if (_folder.isNotEmpty && entries.isEmpty) {
+      var top = await CanvasStorage.list("");
+      if (!top.any((e) => e.isFolder && e.name == _folder)) {
+        _folder = "";
+        entries = top;
+        if (mounted) _rememberFolder();
+      }
+    }
     if (!mounted) return;
     setState(() {
       _entries = entries;
       _loading = false;
     });
   }
+
+  /// _rememberFolder keeps where the reader is, for the next time.
+  void _rememberFolder() =>
+      Provider.of<CanvasPreferences>(context, listen: false).filesFolder =
+          _folder;
 
   /// _ask puts up a one-field dialog. Used for every name this panel needs,
   /// which is four of them, so it is worth having once.
@@ -410,6 +433,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
               _folder = "";
               _loading = true;
             });
+            _rememberFolder();
             _reload();
           },
           child: Padding(
@@ -593,6 +617,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             _folder = entry.name;
             _loading = true;
           });
+          _rememberFolder();
           await _reload();
         } else {
           await widget.onOpen(entry.folder, entry.name);
