@@ -171,6 +171,12 @@ class _PresetsSectionState extends State<_PresetsSection> {
             await store.save(name, widget.element);
           },
         ),
+        // A line under the button, and room either side of it. What is above
+        // it is about the element in front of you and what is below it is a
+        // list of other designs -- two different things in one short section,
+        // and without a break between them the first preset read as another
+        // button belonging to the first one.
+        _Rule(),
         // A line of plain text rather than a hint: a section with three
         // buttons in it does not need explaining, and the one thing worth
         // saying is what an empty list means.
@@ -271,6 +277,21 @@ class _PresetRow extends StatelessWidget {
   }
 }
 
+/// _Rule is the line between the button that saves and the list of designs.
+class _Rule extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Container(
+          height: 1,
+          color: ThemeNotifier.of(context)
+              .colors
+              .outlineVariant
+              .withValues(alpha: 0.6),
+        ),
+      );
+}
+
 /// _SaveButton is the labelled button that keeps this element's design.
 ///
 /// Built like the panel's own switches rather than like its icon buttons: it
@@ -286,7 +307,7 @@ class _SaveButton extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         key: const ValueKey("savePreset"),
         borderRadius: BorderRadius.circular(4),
