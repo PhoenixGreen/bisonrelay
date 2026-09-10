@@ -5162,6 +5162,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.viewScale, closeTo(2.5, 0.001));
+      // And the sign comes back with the reading once it is not being typed
+      // into: the digits alone while the caret is in it, because nobody wants
+      // to steer round a per cent sign to change a number.
+      expect(find.text("250%"), findsOneWidget);
     });
 
     testWidgets("the zoom sits on the same line as the buttons",
@@ -5185,12 +5189,12 @@ void main() {
 
       var field = tester.getRect(find.byType(TextField));
       var icon = tester.getRect(find.byIcon(Icons.zoom_in));
-      var suffix = tester.getRect(find.text("%"));
+      var suffix = tester.getRect(find.text("100%"));
       expect((field.center.dy - icon.center.dy).abs(), lessThan(2),
           reason: "the box is at ${field.center.dy} and the buttons at "
               "${icon.center.dy}");
       expect((suffix.center.dy - icon.center.dy).abs(), lessThan(2),
-          reason: "and the per cent sign with them");
+          reason: "and the reading with them");
     });
 
     testWidgets("and sits against the buttons whatever the number is",
@@ -5223,24 +5227,24 @@ void main() {
       expect(gap, lessThan(12),
           reason: "the number sits with the buttons it belongs to: $gap");
 
-      // A shorter number takes less room, and gives it back on its own side:
-      // what stays put is the edge beside the buttons.
+      // One width, big enough for the widest reading there is, and the
+      // reading is left-aligned inside it: what varies is the empty room
+      // after the sign rather than a gap before the number.
       controller.zoom = 0.25;
       await tester.pumpAndSettle();
-      expect(tester.getRect(find.byType(TextField)).width, lessThan(box));
+      expect(tester.getRect(find.byType(TextField)).width, box);
       expect((gapNow() - gap).abs(), lessThan(0.5),
-          reason: "the box grows and shrinks to the right of the buttons");
+          reason: "the box does not move when the number gets shorter");
 
-      // And the widest reading fits, digits and sign together, with the sign
-      // pinned to the right of the box.
       controller.zoom = 16;
       await tester.pumpAndSettle();
       var wide = tester.getRect(find.byType(TextField));
-      expect(tester.getRect(find.text("1600")).left,
-          greaterThanOrEqualTo(wide.left - 0.5),
+      var reading = tester.getRect(find.text("1600%"));
+      expect(wide.width, box, reason: "still one width");
+      expect(reading.left, greaterThanOrEqualTo(wide.left - 0.5),
           reason: "nothing is cut off the front of it");
-      expect(tester.getRect(find.text("%")).right,
-          lessThanOrEqualTo(wide.right + 0.5));
+      expect(reading.right, lessThanOrEqualTo(wide.right + 0.5),
+          reason: "nor off the end");
     });
 
     testWidgets("a number the view changed by itself is readable",
@@ -5268,19 +5272,19 @@ void main() {
       // against the number that was there before comes up short.
       controller.zoom = 0.25;
       await tester.pumpAndSettle();
-      expect(find.text("25"), findsOneWidget);
+      expect(find.text("25%"), findsOneWidget);
 
       controller.zoom = 16;
       await tester.pumpAndSettle();
-      expect(find.text("1600"), findsOneWidget);
+      expect(find.text("1600%"), findsOneWidget);
 
       var field = tester.getRect(find.byType(TextField));
-      var digits = tester.getRect(find.text("1600"));
+      var digits = tester.getRect(find.text("1600%"));
       expect(digits.width, greaterThan(0));
       expect(digits.left, greaterThanOrEqualTo(field.left - 0.5),
           reason: "the number is inside its box, not cut off by it");
-      expect(tester.getRect(find.text("%")).right,
-          lessThanOrEqualTo(field.right + 0.5));
+      expect(digits.right, lessThanOrEqualTo(field.right + 0.5),
+          reason: "and so is the sign, which is part of it now");
     });
 
     testWidgets("the number stays on screen in a narrow window",
@@ -5306,24 +5310,23 @@ void main() {
 
       controller.zoom = 8.88;
       await tester.pumpAndSettle();
-      expect(find.text("888"), findsOneWidget);
+      expect(find.text("888%"), findsOneWidget);
 
       // A window narrow enough that the tools cannot all fit.
       tester.view.physicalSize = const Size(430, 900);
       await tester.pumpAndSettle();
 
-      var number = tester.getRect(find.text("888"));
-      var sign = tester.getRect(find.text("%"));
+      var reading = tester.getRect(find.text("888%"));
       var bar = tester.getRect(find.byType(CanvasSettingsBar));
-      expect(number.left, greaterThanOrEqualTo(bar.left),
-          reason: "the number is inside the bar");
-      expect(sign.right, lessThanOrEqualTo(bar.right),
-          reason: "and so is the per cent sign");
+      expect(reading.left, greaterThanOrEqualTo(bar.left),
+          reason: "the reading is inside the bar");
+      expect(reading.right, lessThanOrEqualTo(bar.right));
 
       // Not under the buttons on the right either, which is where it went.
       var undo = tester.getRect(find.byIcon(Icons.undo));
-      expect(sign.right, lessThanOrEqualTo(undo.left),
-          reason: "the number is at ${sign.right} and Undo at ${undo.left}");
+      expect(reading.right, lessThanOrEqualTo(undo.left),
+          reason: "the reading ends at ${reading.right} and Undo starts at "
+              "${undo.left}");
     });
 
     testWidgets("the timeline can be hidden from the bar", (tester) async {

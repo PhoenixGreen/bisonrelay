@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -830,7 +829,15 @@ class _ZoomFieldState extends State<_ZoomField> {
   void initState() {
     super.initState();
     _focus.addListener(() {
-      if (!_focus.hasFocus) _commit();
+      if (_focus.hasFocus) {
+        // The digits alone while it is being typed into: nobody wants to
+        // steer a caret round a per cent sign to change a number.
+        _text.text = _text.text.replaceAll("%", "").trim();
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        return;
+      }
+      _commit();
     });
   }
 
@@ -847,34 +854,23 @@ class _ZoomFieldState extends State<_ZoomField> {
     setState(() => _shown = -1);
   }
 
-  /// _boxWidth is how much room the reading needs.
+  /// _boxWidth is the room the widest reading takes.
   ///
-  /// Measured against the number this build is about to show, not against
-  /// whatever is in the field. That is the whole of the fix: sized from the
-  /// field's text, the box was sized from the *previous* number whenever the
-  /// view moved on its own -- the canvas being resized, a fit being chosen --
-  /// so a longer number was cut off until something else rebuilt the box, and
-  /// clicking into a field and out again is not a way to read a number.
+  /// One size, big enough for 1400% and the sign after it. Sized to its
+  /// contents instead the box changed width as the number did, and every way
+  /// of keeping that in step with a view that moves on its own -- a canvas
+  /// resized, a sidebar collapsed -- was another thing to be told; when it
+  /// was not told, the number came out cut off.
   ///
-  /// Whatever is being typed is taken into account as well, so the box does
-  /// not shrink under the cursor; the field is right-aligned, so the per cent
-  /// sign stays pinned to the right edge and what varies is a gap on the left.
-  ///
-  /// Measured rather than counted: the digits of this face are not all the
-  /// same width, so a box sized by character count is a little wrong at every
-  /// number.
-  double _boxWidth(TextStyle style, int showing) {
-    double measure(String of) {
-      var painter = TextPainter(
-        text: TextSpan(text: of, style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      return painter.width;
-    }
-
-    // The content padding either side, and the room the caret needs at the
-    // end of the digits.
-    return math.max(measure("$showing%"), measure("${_text.text}%")) + 4 + 3;
+  /// Measured rather than counted, because the digits of this face are not
+  /// all the same width.
+  double _boxWidth(TextStyle style) {
+    var painter = TextPainter(
+      text: TextSpan(text: "1400%", style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    // The padding either side, and the room the caret needs at the end.
+    return painter.width + 4 + 4;
   }
 
   @override
@@ -882,7 +878,11 @@ class _ZoomFieldState extends State<_ZoomField> {
     var at = (widget.controller.viewScale * 100).round();
     if (!_focus.hasFocus && at != _shown) {
       _shown = at;
-      _text.text = "$at";
+      // The sign is part of the reading rather than a decoration beside it.
+      // As a suffix widget it had to be positioned against a box whose width
+      // depended on the number, which is how the number ended up cut off
+      // whenever the view moved on its own.
+      _text.text = "$at%";
     }
 
     var type = TextStyle(
@@ -902,17 +902,16 @@ class _ZoomFieldState extends State<_ZoomField> {
         child: SizedBox(
       // The room this reading needs, with the per cent sign pinned to the
       // right of the box and the digits against it. See _boxWidth.
-      width: _boxWidth(type, at),
+      width: _boxWidth(type),
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
         child: TextField(
           controller: _text,
           focusNode: _focus,
-          // Right, so the number always sits the same distance from the per
-          // cent sign after it. Centred, the gap between them was whatever
-          // was left over -- wide at 100 and narrow at 1000.
-          textAlign: TextAlign.right,
+          // Left, against the buttons it belongs to. What varies now is the
+          // empty room after the sign rather than a gap before the number.
+          textAlign: TextAlign.left,
           style: type,
           decoration: InputDecoration(
             // Collapsed: no intrinsic padding of its own at all. Dense still
@@ -929,8 +928,6 @@ class _ZoomFieldState extends State<_ZoomField> {
             focusedBorder: UnderlineInputBorder(
                 borderSide:
                     BorderSide(color: widget.theme.colors.primary, width: 1)),
-            suffixText: "%",
-            suffixStyle: type,
             contentPadding: const EdgeInsets.symmetric(horizontal: 2),
           ),
           onSubmitted: (_) => _commit(),
