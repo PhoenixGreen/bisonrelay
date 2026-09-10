@@ -5193,6 +5193,50 @@ void main() {
           reason: "and the per cent sign with them");
     });
 
+    testWidgets("and sits against the buttons whatever the number is",
+        (tester) async {
+      // The box used to be as wide as the widest number there could be, with
+      // the digits against its right-hand edge -- so at 100% there was half a
+      // button of nothing between the zoom buttons and the number, which read
+      // as the number belonging to whatever was on its right.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      double gapNow() =>
+          tester.getRect(find.byType(TextField)).left -
+          tester.getRect(find.byIcon(Icons.zoom_in)).right;
+
+      var gap = gapNow();
+      expect(gap, lessThan(12),
+          reason: "the number sits with the buttons it belongs to: $gap");
+
+      // The smallest zoom there is, and then the largest. The box takes the
+      // room it needs and takes it on its own side, rather than standing at
+      // its widest and leaving a hole beside the buttons.
+      await tester.enterText(find.byType(TextField), "15");
+      await tester.pumpAndSettle();
+      var narrow = tester.getRect(find.byType(TextField)).width;
+
+      await tester.enterText(find.byType(TextField), "978");
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byType(TextField)).width, greaterThan(narrow),
+          reason: "three digits need more room than two");
+      expect((gapNow() - gap).abs(), lessThan(2),
+          reason: "and the gap beside the buttons does not move");
+    });
+
     testWidgets("the timeline can be hidden from the bar", (tester) async {
       // A still canvas has no use for a transport, and forty pixels of it
       // under a picture nobody is animating is forty pixels of picture.

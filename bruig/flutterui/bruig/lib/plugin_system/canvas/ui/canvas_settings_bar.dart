@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -808,6 +809,13 @@ class _ZoomFieldState extends State<_ZoomField> {
     _focus.addListener(() {
       if (!_focus.hasFocus) _commit();
     });
+    // The box is as wide as what is in it, so it has to hear the typing --
+    // otherwise a number typed into it is measured against the number that
+    // was there before, and the box resizes a moment later when the value
+    // commits.
+    _text.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -821,6 +829,27 @@ class _ZoomFieldState extends State<_ZoomField> {
     var wanted = double.tryParse(_text.text.replaceAll("%", "").trim());
     if (wanted != null) widget.controller.setViewScale(wanted / 100);
     setState(() => _shown = -1);
+  }
+
+  /// _widthFor is how much room [text] and the per cent sign after it need.
+  ///
+  /// Measured rather than counted: the digits of this face are not all the
+  /// same width, and a box sized by character count is a box that is a little
+  /// wrong at every number and visibly wrong at one of them.
+  double _widthFor(String text, TextStyle style) {
+    double measure(String of) {
+      var painter = TextPainter(
+        text: TextSpan(text: of, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      return painter.width;
+    }
+
+    // The content padding either side, the room the caret needs at the end of
+    // the digits, and a floor: 15% is the smallest the zoom goes, and a box
+    // that shrank below it would jump about while somebody typed.
+    const around = 4 + 3.0;
+    return math.max(measure("15%"), measure("$text%")) + around;
   }
 
   @override
@@ -846,7 +875,12 @@ class _ZoomFieldState extends State<_ZoomField> {
     // above the line of buttons.
     return Center(
         child: SizedBox(
-      width: 56,
+      // As wide as the number in it, rather than as wide as the widest number
+      // there could be. Fixed, the box was sized for 978% and the digits sat
+      // against its right-hand edge -- so at 100% there was half a button of
+      // nothing between the zoom buttons and the number, which read as the
+      // number belonging to whatever was on its right.
+      width: _widthFor(_text.text, type),
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",
