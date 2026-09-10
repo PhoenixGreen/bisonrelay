@@ -52,7 +52,18 @@ class CanvasLayersPanel extends StatelessWidget {
   /// touching four fields each, against a rebuild that lays out a row of
   /// controls for every one of them.
   String _shape() {
-    var out = StringBuffer("${controller.backgroundSelected}");
+    var document = controller.document;
+    // The background row is part of this list, so what that row says has to
+    // be part of what decides whether the list is drawn again: the style and
+    // colour it shows, and whether the shared canvas's backdrop is switched
+    // off. Without them the eye on that row kept the state it was built with
+    // until something else -- changing scene and coming back -- happened to
+    // rebuild the column.
+    var out = StringBuffer("${controller.backgroundSelected}"
+        "|${document.ownBackground.spec.style.name}"
+        "|${document.ownBackground.spec.background.toARGB32()}"
+        "|${document.editingMaster}"
+        "|${document.master?.backgroundOff}");
     for (var e in controller.document.elements) {
       out.write("|${e.id}:${e.name}:${e.visible}:${e.locked}:"
           "${controller.selection.contains(e.id)}");
@@ -163,7 +174,7 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(2),
                       child: Icon(
-                        off ? Icons.visibility_off_outlined : Icons.visibility,
+                        off ? Icons.visibility_off : Icons.visibility,
                         size: 15,
                         color: theme.colors.onSurfaceVariant,
                       ),

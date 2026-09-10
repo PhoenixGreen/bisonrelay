@@ -445,6 +445,59 @@ void main() {
     expect(controller.document.backgroundOf(1).spec.background, isNot(pink));
   });
 
+  testWidgets("the shared backdrop's switch answers at once", (tester) async {
+    // It answered a scene later: the layers list is drawn from a summary of
+    // what it shows, and the background row's own state was not in that
+    // summary -- so the eye kept the state it was built with until something
+    // else happened to rebuild the column.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a"),
+      const CanvasScene(id: "b")
+    ]).copyWith(
+        master: const CanvasScene(id: "master", background: CanvasBackground()),
+        masterOn: true));
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 320, child: CanvasDesignPanel(controller: controller))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // On the shared canvas, where the switch lives.
+    controller.showMaster();
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.visibility), findsOneWidget,
+        reason: "an open eye while the backdrop is used");
+    expect(find.byIcon(Icons.visibility_off), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey("masterBackgroundOff")));
+    await tester.pumpAndSettle();
+
+    expect(controller.document.master!.backgroundOff, isTrue);
+    expect(find.byIcon(Icons.visibility_off), findsOneWidget,
+        reason: "and a line through it the moment it is switched off");
+    expect(find.byIcon(Icons.visibility), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey("masterBackgroundOff")));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.visibility), findsOneWidget);
+  });
+
   testWidgets("a scene with its own transition is marked", (tester) async {
     // Plain for the document's default, and its own mark for a scene that has
     // been given something particular -- which is the question somebody
