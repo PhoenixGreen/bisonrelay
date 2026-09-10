@@ -90,10 +90,14 @@ class CanvasLayersPanel extends StatelessWidget {
 /// CanvasBackgroundLayerRow is the canvas's own background, shown as the
 /// bottom layer.
 ///
-/// It is not an element and has no reorder, hide or lock controls -- there is
-/// nowhere for it to move to, and a canvas whose background could be switched
-/// off would just be showing the editor's own colour and looking broken.
-/// Selecting it is the only thing it does.
+/// It is not an element and has no reorder or lock controls -- there is
+/// nowhere for it to move to.
+///
+/// It can be switched off on the shared canvas, and only there. A master
+/// worth having is often one that carries a logo and a transition and nothing
+/// else, and the scenes under it want their own backdrops; on an ordinary
+/// canvas the same switch would leave the editor's own colour showing and
+/// look broken.
 class CanvasBackgroundLayerRow extends StatelessWidget {
   final CanvasController controller;
   const CanvasBackgroundLayerRow({required this.controller, super.key});
@@ -102,7 +106,10 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var selected = controller.backgroundSelected;
-    var spec = controller.document.background.spec;
+    var document = controller.document;
+    var spec = document.ownBackground.spec;
+    var onMaster = document.editingMaster;
+    var off = onMaster && document.master!.backgroundOff;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -130,16 +137,39 @@ class CanvasBackgroundLayerRow extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  "Background — ${spec.style.label}",
+                  off
+                      ? "Background — off, each scene shows its own"
+                      : "Background — ${spec.style.label}",
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
-                    color: selected
-                        ? theme.colors.onSecondaryContainer
-                        : theme.colors.onSurface,
+                    color: off
+                        ? theme.colors.onSurfaceVariant
+                        : (selected
+                            ? theme.colors.onSecondaryContainer
+                            : theme.colors.onSurface),
                   ),
                 ),
               ),
+              if (onMaster)
+                Tooltip(
+                  message: off
+                      ? "Use this backdrop on every scene"
+                      : "Leave every scene its own backdrop. This one is kept.",
+                  child: InkWell(
+                    key: const ValueKey("masterBackgroundOff"),
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => controller.setMasterBackgroundOff(!off),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(
+                        off ? Icons.visibility_off_outlined : Icons.visibility,
+                        size: 15,
+                        color: theme.colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
             ]),
           ),
         ),

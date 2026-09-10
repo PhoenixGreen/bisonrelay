@@ -29,7 +29,8 @@ enum SceneTransitionFamily {
   fade("Fade"),
   move("Move"),
   wipe("Wipe"),
-  overlay("Overlay");
+  overlay("Overlay"),
+  drawn("Drawn");
 
   final String label;
   const SceneTransitionFamily(this.label);
@@ -111,7 +112,30 @@ enum SceneTransitionKind {
   clock("Clock sweep", SceneTransitionFamily.overlay),
 
   /// blurThrough goes soft, changes, and comes back sharp.
-  blurThrough("Blur through", SceneTransitionFamily.overlay);
+  blurThrough("Blur through", SceneTransitionFamily.overlay),
+
+  // The drawn family: transitions with a hand in them. Each is a mask made of
+  // shapes rather than of rectangles -- paint thrown at the page, a brush
+  // dragged across it, a comic's dots and speed lines -- and each is built
+  // from its own seed, so the same transition is the same every time it is
+  // played and every time it is exported.
+  /// arrow drives an arrowhead across the page.
+  arrow("An arrow drives through", SceneTransitionFamily.drawn),
+
+  /// splatter throws paint at it.
+  splatter("Paint splatter", SceneTransitionFamily.drawn),
+
+  /// brush drags strokes across it.
+  brush("Brush strokes", SceneTransitionFamily.drawn),
+
+  /// tiles breaks it into squares that turn over in a wave.
+  tiles("Tiles turn over", SceneTransitionFamily.drawn),
+
+  /// halftone grows a comic's dots until they meet.
+  halftone("Comic halftone", SceneTransitionFamily.drawn),
+
+  /// burst throws speed lines out of the middle.
+  burst("Comic burst", SceneTransitionFamily.drawn);
 
   final String label;
   final SceneTransitionFamily family;
@@ -120,20 +144,48 @@ enum SceneTransitionKind {
 
   /// takesColour is whether the colour setting means anything for this one.
   bool get takesColour =>
-      this == through || this == band || this == blurThrough;
+      this == through ||
+      this == band ||
+      this == blurThrough ||
+      this == splatter ||
+      this == brush;
 
   /// takesWay is whether it has a direction to be pointed in.
-  bool get takesWay => this == band || this == blinds || this == barn;
+  bool get takesWay =>
+      this == band ||
+      this == blinds ||
+      this == barn ||
+      this == arrow ||
+      this == brush ||
+      this == tiles;
 
   /// takesCount is whether it is made of a number of pieces.
-  bool get takesCount => this == blinds;
+  bool get takesCount =>
+      this == blinds ||
+      this == splatter ||
+      this == brush ||
+      this == tiles ||
+      this == halftone ||
+      this == burst;
 
   /// takesShape is whether a shape decides what opens.
   bool get takesShape => this == shapeWipe;
 
   /// takesSoftness is whether its edge can be feathered.
+  ///
+  /// Everything that works by masking, which is most of the two later
+  /// families: the edge of the mask is the edge of the transition, and a
+  /// little softness is the difference between a shape being dragged over the
+  /// page and something happening to it.
   bool get takesSoftness =>
-      this == band || this == blinds || this == shapeWipe || this == clock;
+      this == band ||
+      this == blinds ||
+      this == shapeWipe ||
+      this == clock ||
+      familyOf == SceneTransitionFamily.drawn;
+
+  /// takesColour is also true of the drawn ones that put paint on the page.
+  bool get paints => this == splatter || this == brush;
 
   /// inFamily is the kinds of one family, in the order they are listed.
   static List<SceneTransitionKind> inFamily(SceneTransitionFamily family) => [
@@ -162,6 +214,10 @@ enum SceneTransitionKind {
       _ => SceneTransitionFamily.wipe,
     };
   }
+
+  /// seed is a number of this kind's own, so two transitions of different
+  /// kinds do not throw their paint in the same places.
+  int get seed => index * 7919;
 
   /// isCut is whether nothing is drawn between the two scenes.
   bool get isCut => this == cut;
@@ -341,6 +397,14 @@ class CanvasScene {
   /// left every scene wearing it with nothing to say where it came from.
   final CanvasBackground? background;
 
+  /// backgroundOff switches this canvas's backdrop off without forgetting it.
+  ///
+  /// For the shared canvas above all: a master worth having is often one that
+  /// carries a logo and a transition and nothing else, and the scenes under
+  /// it want their own backdrops. Without this the only way to stop the
+  /// master covering them would be to throw its background away.
+  final bool backgroundOff;
+
   /// transition is how this scene gives way to the next, or null for whatever
   /// the document's default is -- see CanvasDocument.defaultTransition, which
   /// is the master scene's.
@@ -358,12 +422,17 @@ class CanvasScene {
     this.actions = const [],
     this.holds = false,
     this.background,
+    this.backgroundOff = false,
     this.transition,
   });
 
   /// says is what the panel calls this scene: its name, or its place in the
   /// order when it has not been given one.
   String saysAt(int index) => name.isEmpty ? "Scene ${index + 1}" : name;
+
+  /// sharedBackground is the backdrop this canvas puts on everything under
+  /// it, or null where it has none or has been told not to.
+  CanvasBackground? get sharedBackground => backgroundOff ? null : background;
 
   /// custom is whether this scene has a transition of its own rather than the
   /// document's.
@@ -378,6 +447,7 @@ class CanvasScene {
     bool? holds,
     CanvasBackground? background,
     bool clearBackground = false,
+    bool? backgroundOff,
     SceneTransition? transition,
     bool clearTransition = false,
   }) =>
@@ -389,6 +459,7 @@ class CanvasScene {
         actions: actions ?? this.actions,
         holds: holds ?? this.holds,
         background: clearBackground ? null : (background ?? this.background),
+        backgroundOff: backgroundOff ?? this.backgroundOff,
         transition: clearTransition ? null : (transition ?? this.transition),
       );
 
@@ -400,6 +471,7 @@ class CanvasScene {
         if (actions.isNotEmpty) "actions": [for (var a in actions) a.toJson()],
         if (holds) "holds": true,
         if (background != null) "background": background!.toJson(),
+        if (backgroundOff) "backgroundOff": true,
         if (transition != null) "transition": transition!.toJson(),
       };
 
@@ -428,6 +500,7 @@ class CanvasScene {
           ? CanvasBackground.fromJson(
               json["background"] as Map<String, dynamic>)
           : null,
+      backgroundOff: jsonBool(json["backgroundOff"], false),
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,

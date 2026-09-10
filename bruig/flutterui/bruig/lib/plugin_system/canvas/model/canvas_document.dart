@@ -300,7 +300,7 @@ class CanvasDocument {
   /// showing the one background it has always had.
   CanvasBackground get drawnBackground => editingMaster
       ? (master!.background ?? background)
-      : (masterScene?.background ?? scene.background ?? background);
+      : (masterScene?.sharedBackground ?? scene.background ?? background);
 
   /// ownBackground is the backdrop the canvas being edited owns: its own
   /// where it has been given one, and the document's until then.
@@ -318,7 +318,9 @@ class CanvasDocument {
   CanvasBackground backgroundOf(int index) {
     var list = allScenes;
     if (index < 0 || index >= list.length) return background;
-    return masterScene?.background ?? list[index].background ?? background;
+    return masterScene?.sharedBackground ??
+        list[index].background ??
+        background;
   }
 
   /// defaultTransition is what a scene with no transition of its own uses:

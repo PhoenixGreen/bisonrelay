@@ -365,6 +365,37 @@ void main() {
       expect(ends[blue], 24000, reason: "and sharp again at the end");
     });
 
+    testWidgets("the drawn kinds each end on the scene arriving",
+        (tester) async {
+      // Six masks made of shapes -- paint, strokes, tiles, dots, speed lines
+      // -- and the thing they all have to do is finish. A mask made of
+      // shapes leaves gaps between them by construction, so each has to close
+      // itself at the end or the transition never quite happens.
+      for (var kind
+          in SceneTransitionKind.inFamily(SceneTransitionFamily.drawn)) {
+        for (var soft in const [0.0, 0.4]) {
+          late Map<int, int> begins;
+          late Map<int, int> ends;
+          await tester.runAsync(() async {
+            var over = SceneTransition(
+                kind: kind,
+                frames: 4,
+                overlap: 4,
+                softness: soft,
+                color: const Color(0x00000000),
+                ease: SceneTransitionEase.straight);
+            // The frame before the join, and the frame after it.
+            begins = await _ink(_two(over: over), 5);
+            ends = await _ink(_two(over: over), 10);
+          });
+          expect(begins[red], 24000,
+              reason: "${kind.name} at softness $soft begins early");
+          expect(ends[blue], 24000,
+              reason: "${kind.name} at softness $soft does not finish");
+        }
+      }
+    });
+
     test("the overlay kinds are one family, and are offered together", () {
       var overlay = SceneTransitionKind.inFamily(SceneTransitionFamily.overlay);
       expect(overlay, contains(SceneTransitionKind.band));

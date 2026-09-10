@@ -1291,10 +1291,15 @@ class CanvasController extends ChangeNotifier {
 
     var over = document.transitionAfter(index);
     var start = document.startOfScene(index + 1);
-    var lead = math.max(4, over.frames);
+    // A little of the scene being left, then the join, then a little of the
+    // one arriving. Started at the join itself, as it was, a short transition
+    // began before the eye had anything to compare it with -- which is the
+    // one thing a preview is for.
+    var lead = math.max(6, (document.frameRate * 0.4).round());
     _previewFrom = document.at;
-    _previewAt = math.max(0, start - lead);
-    _previewEnd = math.min(document.sequenceFrames - 1, start + lead);
+    _previewAt = math.max(0, start - over.overlap - lead);
+    _previewEnd =
+        math.min(document.sequenceFrames - 1, start + over.frames + lead);
     _startTimer();
     notifyListeners();
   }
@@ -1414,6 +1419,17 @@ class CanvasController extends ChangeNotifier {
       return;
     }
     apply(document.copyWith(background: next), transient: transient);
+  }
+
+  /// setMasterBackgroundOff leaves every scene its own backdrop, or puts the
+  /// shared one back over them.
+  ///
+  /// The backdrop itself is kept either way: switching it off is a decision
+  /// about what covers what, not an instruction to throw a design away.
+  void setMasterBackgroundOff(bool off) {
+    var master = _document.master;
+    if (master == null) return;
+    apply(_document.withMaster(master.copyWith(backgroundOff: off)));
   }
 
   /// setSceneHolds decides whether playback runs on into the next scene.

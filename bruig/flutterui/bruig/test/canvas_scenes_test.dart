@@ -319,6 +319,42 @@ void main() {
     });
   });
 
+  group("the shared backdrop can be switched off", () {
+    test("leaving every scene its own, and keeping the shared one", () {
+      // A master worth having is often one that carries a logo and a
+      // transition and nothing else, and the scenes under it want their own
+      // backdrops. Without this the only way to stop the master covering them
+      // is to throw its background away.
+      var it = _twoScenes()
+          .withScene(
+              0,
+              const CanvasScene(
+                  id: "a",
+                  background: CanvasBackground(
+                      spec: ProceduralSpec(style: ProceduralStyle.dotGrid))))
+          .withMaster(const CanvasScene(
+            id: "master",
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.flowWaves)),
+          ))
+          .copyWith(masterOn: true);
+
+      expect(it.backgroundOf(0).spec.style, ProceduralStyle.flowWaves);
+
+      var quiet = it.withMaster(it.master!.copyWith(backgroundOff: true));
+      expect(quiet.backgroundOf(0).spec.style, ProceduralStyle.dotGrid,
+          reason: "the scene's own shows through");
+      expect(quiet.master!.background, isNotNull,
+          reason: "and the shared one is kept, not thrown away");
+      expect(quiet.masterOn, isTrue,
+          reason: "the rest of the shared canvas is still there");
+
+      var back = CanvasDocument.fromJson(quiet.toJson());
+      expect(back.master!.backgroundOff, isTrue);
+      expect(back.backgroundOf(0).spec.style, ProceduralStyle.dotGrid);
+    });
+  });
+
   group("saved and read back", () {
     test("scenes, their names, lengths and elements", () {
       var back = CanvasDocument.fromJson(_twoScenes().goToScene(1).toJson());
