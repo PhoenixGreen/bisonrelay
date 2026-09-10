@@ -195,14 +195,14 @@ Future<CanvasExport?> renderVideo(
   GifProgress? onProgress,
 }) async {
   var ffmpeg = await ffmpegPath();
-  if (ffmpeg == null || document.frames <= 0) return null;
+  if (ffmpeg == null || document.playFrames <= 0) return null;
 
   Directory? work;
   try {
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
 
     var width = 0, height = 0;
-    for (var i = 0; i < document.frames; i++) {
+    for (var i = 0; i < document.playFrames; i++) {
       ui.Image? image;
       try {
         image =
@@ -216,7 +216,7 @@ Future<CanvasExport?> renderVideo(
       } finally {
         image?.dispose();
       }
-      onProgress?.call(i + 1, document.frames);
+      onProgress?.call(i + 1, document.playFrames);
       // The same yield the GIF export makes, and for the same reason: without
       // it the whole run happens in one turn of the event loop and the
       // progress line the caller is drawing never appears.
@@ -326,6 +326,6 @@ int estimateVideoBytes(CanvasDocument document,
   // almost nothing on the rest, so the frames after the first are a fraction
   // of it.
   var first = pixels * perPixel;
-  var rest = math.max(0, document.frames - 1) * pixels * perPixel * 0.15;
+  var rest = math.max(0, document.playFrames - 1) * pixels * perPixel * 0.15;
   return (first + rest).round() + 40000;
 }

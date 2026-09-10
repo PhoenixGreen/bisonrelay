@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
@@ -52,6 +53,12 @@ class StageFraming {
 class StagePainter extends CustomPainter {
   final CanvasDocument document;
   final int frame;
+
+  /// previewAt is a frame of the whole run, when a transition is being
+  /// watched. The canvas then draws the sequence rather than the scene being
+  /// edited -- the same function the export uses, so what is watched is what
+  /// will be published. See paintSequenceFrame.
+  final int? previewAt;
 
   /// scale is document units to screen pixels -- the fitted size times the
   /// reader's zoom, already combined by the stage.
@@ -203,6 +210,7 @@ class StagePainter extends CustomPainter {
     required this.liveStrokeKeeps,
     required this.document,
     required this.frame,
+    this.previewAt,
     required this.scale,
     required this.origin,
     required this.images,
@@ -241,6 +249,13 @@ class StagePainter extends CustomPainter {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
+    if (previewAt case var at?) {
+      paintSequenceFrame(canvas, document, at,
+          images: images, backgrounds: backgrounds);
+      canvas.restore();
+      canvas.restore();
+      return;
+    }
     paintCanvasDocument(canvas, document,
         frame: frame,
         images: images,
@@ -904,6 +919,7 @@ class StagePainter extends CustomPainter {
       !identical(old.framing, framing) ||
       old.document != document ||
       old.frame != frame ||
+      old.previewAt != previewAt ||
       old.scale != scale ||
       old.origin != origin ||
       old.page != page ||

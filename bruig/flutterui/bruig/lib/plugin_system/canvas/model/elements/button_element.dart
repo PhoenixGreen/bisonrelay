@@ -18,6 +18,7 @@ enum ButtonActionKind {
   pause("Pause", "Stop the playhead where it is"),
   restart("Restart", "Go back to the first frame and play"),
   toggleElement("Show or hide", "Flip another element's visibility"),
+  goToScene("Go to a scene", "Show another canvas of this document"),
   openLink("Open a link", "Ask to open a URL in the browser");
 
   final String label;
@@ -32,6 +33,12 @@ enum ButtonActionKind {
   bool get needsFrame =>
       this == goToFrame || this == playFrom || this == playToFrame;
   bool get needsElement => this == toggleElement;
+
+  /// needsScene is whether the action names a canvas of this document. Named
+  /// rather than numbered where it can be: a scene keeps its id across a
+  /// rename and a reorder, and an action pointing at "the third scene" would
+  /// quietly mean a different one the moment the list was rearranged.
+  bool get needsScene => this == goToScene;
   bool get needsUrl => this == openLink;
 }
 
@@ -40,9 +47,11 @@ class ButtonAction {
   final ButtonActionKind kind;
   final int frame;
 
-  /// elementId is the target of [ButtonActionKind.toggleElement]. An id that
-  /// no longer names anything is simply a button that does nothing, which is
-  /// what deleting the thing it pointed at should leave behind.
+  /// elementId is the target of [ButtonActionKind.toggleElement], and the
+  /// scene of [ButtonActionKind.goToScene] -- an id or a name, whichever was
+  /// chosen. An id that no longer names anything is simply a button that does
+  /// nothing, which is what deleting the thing it pointed at should leave
+  /// behind.
   final String elementId;
 
   final String url;

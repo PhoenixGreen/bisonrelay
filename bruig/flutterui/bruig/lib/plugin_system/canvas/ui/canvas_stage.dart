@@ -2328,6 +2328,7 @@ class CanvasStageState extends State<CanvasStage> {
                         view: _viewRect,
                         document: document,
                         frame: controller.frame,
+                        previewAt: controller.previewAt,
                         scale: _scale,
                         origin: _origin,
                         images: controller.images,

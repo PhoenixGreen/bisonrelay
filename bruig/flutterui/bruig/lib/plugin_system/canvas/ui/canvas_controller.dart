@@ -1244,6 +1244,44 @@ class CanvasController extends ChangeNotifier {
 
   // ---- scenes -------------------------------------------------------------
 
+  /// previewAt is the frame of the *whole run* the canvas is showing, or null
+  /// when it is showing the scene being edited.
+  ///
+  /// How a transition is watched: the stage draws the sequence rather than
+  /// the scene, so what is seen is what will be published -- the same
+  /// function, not a second one that agrees for now. See paintSequenceFrame.
+  int? get previewAt => _previewAt;
+  int? _previewAt;
+
+  /// previewEnd is where the preview stops. Kept so that watching a
+  /// transition does not run on through the rest of the document.
+  int _previewEnd = 0;
+
+  /// previewTransitionAfter plays the join between a scene and the next one:
+  /// a little of the scene before it, the transition, and a little of the
+  /// scene after.
+  void previewTransitionAfter(int index) {
+    var document = _document;
+    var scenes = document.allScenes;
+    if (index < 0 || index >= scenes.length - 1) return;
+
+    var over = document.transitionAfter(index);
+    var start = document.startOfScene(index + 1);
+    var lead = math.max(4, over.frames);
+    _previewAt = math.max(0, start - lead);
+    _previewEnd = math.min(document.sequenceFrames - 1, start + lead);
+    _startTimer();
+    notifyListeners();
+  }
+
+  /// stopPreview puts the canvas back on the scene being edited.
+  void stopPreview() {
+    if (_previewAt == null) return;
+    _previewAt = null;
+    pause();
+    notifyListeners();
+  }
+
   /// scenes are the canvases this document plays, in order.
   List<CanvasScene> get scenes => _document.allScenes;
 
@@ -1438,11 +1476,16 @@ class CanvasController extends ChangeNotifier {
   void play() {
     if (playing || _document.frames <= 1) return;
     _loopCounts.clear();
+    _startTimer();
+    notifyListeners();
+  }
+
+  void _startTimer() {
+    _playback?.cancel();
     var interval = Duration(
         microseconds:
             (1000000 / _document.frameRate).round().clamp(8000, 1000000));
     _playback = Timer.periodic(interval, (_) => _tick());
-    notifyListeners();
   }
 
   void pause() {
@@ -1464,6 +1507,21 @@ class CanvasController extends ChangeNotifier {
   /// marker on frame 30 means "having reached 30, stop" -- which is what
   /// putting a marker on a frame looks like it should mean.
   void _tick() {
+    // Watching a transition: the playhead is running through the whole
+    // document rather than through the scene, and it stops at the end of the
+    // stretch that was asked for rather than looping.
+    var preview = _previewAt;
+    if (preview != null) {
+      var next = preview + 1;
+      if (next > _previewEnd) {
+        stopPreview();
+        return;
+      }
+      _previewAt = next;
+      notifyListeners();
+      return;
+    }
+
     var next = _frame + 1;
     if (next >= _document.frames) next = 0;
     _frame = next;
@@ -1522,6 +1580,13 @@ class CanvasController extends ChangeNotifier {
         var target = _document.elementById(action.elementId);
         if (target != null) {
           replaceElement(target.withBase(visible: !target.visible));
+        }
+      case ButtonActionKind.goToScene:
+        var to = _document.sceneIndexNamed(action.elementId);
+        if (to >= 0) {
+          pause();
+          goToScene(to);
+          frame = 0;
         }
       case ButtonActionKind.openLink:
         return action.url;

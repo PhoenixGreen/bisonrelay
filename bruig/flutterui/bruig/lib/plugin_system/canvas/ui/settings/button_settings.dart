@@ -78,6 +78,26 @@ List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
             commit();
           },
         ),
+      // Which canvas of this document to show. Held by id rather than by
+      // place in the order, so rearranging the scenes does not quietly point
+      // the button at a different one.
+      if (action.kind.needsScene)
+        CanvasDropdown<String>(
+          key: const ValueKey("buttonScene"),
+          label: "Scene",
+          value: action.elementId,
+          width: 170,
+          options: [
+            ("", "Nothing"),
+            for (var (i, scene) in controller.document.allScenes.indexed)
+              (scene.id, scene.saysAt(i)),
+          ],
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(action: action.copyWith(elementId: v)));
+            commit();
+          },
+        ),
       if (action.kind.needsUrl)
         CanvasTextField(
           label: "Link",

@@ -79,11 +79,19 @@ class CanvasTimeline extends StatefulWidget {
   /// over the canvas. Held there rather than here because the bar is not part
   /// of this widget -- growing this strip to hold it pushed the canvas up.
   final bool keyframesOpen;
+
+  /// transitionsOpen and onToggleTransitions drive the line that says how
+  /// this scene gives way to the next. Floated by the screen for the reason
+  /// the pose bar is: over the canvas rather than pushing it.
+  final bool transitionsOpen;
+  final VoidCallback? onToggleTransitions;
   final VoidCallback onToggleKeyframes;
 
   const CanvasTimeline({
     required this.controller,
     this.keyframesOpen = false,
+    this.transitionsOpen = false,
+    this.onToggleTransitions,
     this.onToggleKeyframes = _noop,
     super.key,
   });
@@ -647,6 +655,23 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     icon: Icons.close,
                     tooltip: "Remove this marker",
                     onPressed: () => _removeAction(actionHere.frame),
+                  ),
+                ],
+                // How this scene gives way to the next, at the end of the row
+                // because it is about the end of the scene. Only where there
+                // is a next one to give way to -- and on the master canvas,
+                // where it sets what every scene does.
+                if (widget.onToggleTransitions != null &&
+                    (document.editingMaster || document.hasScenes)) ...[
+                  const SizedBox(width: 24),
+                  CanvasIconButton(
+                    key: const ValueKey("transitionsToggle"),
+                    icon: Icons.compare_arrows,
+                    tooltip: document.editingMaster
+                        ? "How every scene gives way to the next"
+                        : "How this scene gives way to the next",
+                    active: widget.transitionsOpen,
+                    onPressed: widget.onToggleTransitions,
                   ),
                 ],
               ]),

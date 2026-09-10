@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:flutter/foundation.dart';
 
 // canvas_export.dart turns a document into bytes somebody can be sent.
@@ -77,7 +78,15 @@ Future<ui.Image> renderFrame(
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
   canvas.scale(s);
-  paintCanvasDocument(canvas, document, frame: frame, images: images);
+  // The whole run, where there is one: a document of several scenes publishes
+  // as the sequence it plays, not as whichever canvas was being edited. The
+  // same function the preview uses -- see paintSequenceFrame -- so what was
+  // watched is what comes out.
+  if (document.hasScenes) {
+    paintSequenceFrame(canvas, document, frame, images: images);
+  } else {
+    paintCanvasDocument(canvas, document, frame: frame, images: images);
+  }
 
   var picture = recorder.endRecording();
   try {
@@ -206,7 +215,7 @@ Future<CanvasExport?> renderGif(
   var delayMs = (1000 / document.frameRate).round().clamp(10, 65535);
 
   try {
-    for (var i = 0; i < document.frames; i++) {
+    for (var i = 0; i < document.playFrames; i++) {
       ui.Image? image;
       try {
         image =
@@ -223,7 +232,7 @@ Future<CanvasExport?> renderGif(
       } finally {
         image?.dispose();
       }
-      onProgress?.call(i + 1, document.frames);
+      onProgress?.call(i + 1, document.playFrames);
       // Yielding between frames keeps the window responsive during a long
       // export. Without it the whole thing runs in one turn of the event loop
       // and the progress the caller is drawing never gets a chance to appear.
@@ -369,7 +378,7 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
 /// estimate for exactly that reason.
 int estimateAnimationBytes(CanvasDocument document, {double scale = 1}) {
   var first = estimateStillBytes(document, scale: scale) * 0.7;
-  return (first + first * 0.35 * (document.frames - 1)).round();
+  return (first + first * 0.35 * (document.playFrames - 1)).round();
 }
 
 /// formatBytes prints a size the way the rest of the app does.

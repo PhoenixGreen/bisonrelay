@@ -233,29 +233,47 @@ class CanvasDocument {
   int get sequenceFrames {
     var list = allScenes;
     var total = 0;
-    for (var (i, s) in list.indexed) {
-      total += s.frames;
-      if (i >= list.length - 1) continue;
-      var over = transitionAfter(i);
-      if (!over.on) continue;
-      // Two scenes playing at once are one stretch of time, not two.
-      total -= math.min(over.overlap, math.min(s.frames, list[i + 1].frames));
+    for (var i = 0; i < list.length; i++) {
+      total += _stepOf(i);
     }
     return total.clamp(1, maxFrameCount).toInt();
   }
 
+  /// playFrames is how long this document runs for when it is played or
+  /// published: the whole sequence where there are scenes, and the one
+  /// scene's own length where there are not.
+  ///
+  /// Asked by the export and by anything that plays the document through. The
+  /// editor's timeline asks [frames] instead, which is the canvas in front of
+  /// the reader -- the two are the same thing until a document has a second
+  /// scene, and then they are exactly not.
+  int get playFrames => hasScenes ? sequenceFrames : frames;
+
   /// startOfScene is the frame the sequence reaches [index] on.
   int startOfScene(int index) {
-    var list = allScenes;
     var reached = 0;
-    for (var i = 0; i < index && i < list.length; i++) {
-      reached += list[i].frames;
-      var over = transitionAfter(i);
-      if (!over.on) continue;
-      reached -=
-          math.min(over.overlap, math.min(list[i].frames, list[i + 1].frames));
+    for (var i = 0; i < index && i < allScenes.length; i++) {
+      reached += _stepOf(i);
     }
     return reached;
+  }
+
+  /// _stepOf is how far the run moves on before the next scene starts.
+  ///
+  /// Two scenes playing at once are one stretch of time rather than two, so
+  /// an overlapping transition shortens the document; one that runs *between*
+  /// two scenes, with nothing overlapping, lengthens it by its own frames.
+  int _stepOf(int index) {
+    var list = allScenes;
+    if (index < 0 || index >= list.length) return 0;
+    var scene = list[index];
+    if (index == list.length - 1) return scene.frames;
+
+    var over = transitionAfter(index);
+    if (!over.on) return scene.frames;
+    var held =
+        math.min(over.overlap, math.min(scene.frames, list[index + 1].frames));
+    return scene.frames - held + (held == 0 ? over.frames : 0);
   }
 
   /// allScenes is every scene in order, whichever way the document is
