@@ -901,7 +901,10 @@ class _SceneFieldState extends State<_SceneField> {
             key: const ValueKey("sceneField"),
             controller: _text,
             focusNode: _focus,
-            textAlign: TextAlign.left,
+            // Centred between the two buttons. The box is as wide as the
+            // longest thing it says, so a shorter reading left-aligned sat
+            // against the button before it with a hole after it.
+            textAlign: TextAlign.center,
             style: type,
             decoration: InputDecoration(
               isCollapsed: true,

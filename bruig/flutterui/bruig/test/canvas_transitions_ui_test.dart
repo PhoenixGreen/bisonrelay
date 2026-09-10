@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_transition_bar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -145,6 +146,46 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(controller.previewAt, isNull);
     expect(controller.playing, isFalse);
+  });
+
+  testWidgets("the timeline says whether the run stops here", (tester) async {
+    // Beside the transition, because they are the two things that happen when
+    // a scene ends.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a", frames: 12),
+      const CanvasScene(id: "b", frames: 12),
+    ]));
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(1400, 400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: CanvasTimeline(
+            controller: controller,
+            onToggleTransitions: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(controller.document.scene.holds, isFalse);
+    await tester.tap(find.byKey(const ValueKey("sceneHolds")));
+    await tester.pumpAndSettle();
+    expect(controller.document.scene.holds, isTrue);
+    expect(controller.document.allScenes[1].holds, isFalse,
+        reason: "this scene, not every scene");
   });
 
   testWidgets("and the last scene has nothing to give way to", (tester) async {

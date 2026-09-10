@@ -74,13 +74,25 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
 
   Widget _body(ThemeNotifier theme) {
     var scenes = document.allScenes;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _master(theme),
-      const SizedBox(height: 4),
-      for (var (i, scene) in scenes.indexed) _scene(theme, i, scene, scenes),
-      const SizedBox(height: 6),
-      _actions(theme, scenes.length),
-    ]);
+    // A list rather than a column: the panel is given a height by the stack
+    // it sits in, and a dozen scenes -- or three with their pictures drawn --
+    // is taller than that. A column simply overflowed the panel it was in.
+    //
+    // The master and the two buttons are the first rows of the same list, so
+    // that a long list scrolls under them rather than pushing them out.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+      children: [
+        _master(theme),
+        const SizedBox(height: 6),
+        // Above the list rather than under it: what they do is add to it and
+        // change how it is drawn, and a control that acts on a list belongs
+        // at the top where it is found without reading to the end.
+        _actions(theme, scenes.length),
+        const SizedBox(height: 6),
+        for (var (i, scene) in scenes.indexed) _scene(theme, i, scene, scenes),
+      ],
+    );
   }
 
   /// _master is the shared canvas, pinned above the list.
@@ -133,19 +145,19 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                       size: 14, color: theme.colors.onSurfaceVariant),
                 ),
               ),
-            Tooltip(
-              message: on
+            // A small switch rather than a Material one: that widget is
+            // built for a settings page and is half the height of this row
+            // again, which made the master's line taller than every scene
+            // under it.
+            _rowButton(
+              theme,
+              on ? Icons.toggle_on : Icons.toggle_off,
+              on
                   ? "Turn the master scene off. What is on it is kept."
                   : "Turn the master scene on: what you put on it appears on "
                       "every scene",
-              child: SizedBox(
-                height: 22,
-                child: Switch(
-                  value: on,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: (v) => controller.masterOn = v,
-                ),
-              ),
+              () => controller.masterOn = !on,
+              active: on,
             ),
           ]),
         ),
@@ -372,14 +384,11 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     }
   }
 
+  // No Duplicate here. Every row's own menu has it, and a second way to
+  // copy *the scene you happen to be on* is a button whose meaning depends on
+  // something else in the panel.
   Widget _actions(ThemeNotifier theme, int count) => Row(children: [
         _chip(theme, Icons.add, "New scene", controller.addScene),
-        const SizedBox(width: 4),
-        // An icon rather than a second labelled chip: two labels and a switch
-        // do not fit a sidebar column, and this one is a convenience -- the
-        // menu on every row offers it as well.
-        _rowButton(theme, Icons.copy_all_outlined, "Duplicate this scene",
-            () => controller.duplicateScene(document.at)),
         const Spacer(),
         _rowButton(
           theme,

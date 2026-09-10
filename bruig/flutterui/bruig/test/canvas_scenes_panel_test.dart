@@ -42,10 +42,13 @@ void main() {
       ],
       child: MaterialApp(
         home: Scaffold(
+          // A height, the way the panel stack gives one. Left unbounded, a
+          // list that is too long for its panel cannot overflow it -- which
+          // is exactly the thing that needs catching.
           body: SizedBox(
               width: 300,
-              child: SingleChildScrollView(
-                  child: CanvasScenesPanel(controller: controller))),
+              height: 420,
+              child: CanvasScenesPanel(controller: controller)),
         ),
       ),
     ));
@@ -174,6 +177,41 @@ void main() {
     expect(menu.top - at.top, lessThan(90),
         reason: "the menu belongs to its button: button at ${at.top}, menu at "
             "${menu.top}");
+  });
+
+  testWidgets("a long list scrolls rather than overflowing its panel",
+      (tester) async {
+    // The panel is given a height by the stack it sits in, and a dozen
+    // scenes -- or three with their pictures drawn -- is taller than that.
+    await panel(tester,
+        document: const CanvasDocument().withScenes([
+          for (var i = 0; i < 14; i++) CanvasScene(id: "s$i"),
+        ]));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Scrollable), findsWidgets);
+
+    // And the master row is the top of the list rather than something the
+    // scrolling pushes away.
+    expect(find.text("Master scene"), findsOneWidget);
+  });
+
+  testWidgets("the things that act on the list are above it", (tester) async {
+    // A control that acts on a list belongs at the top of it, where it is
+    // found without reading to the end.
+    await panel(tester,
+        document: const CanvasDocument().withScenes([
+          for (var i = 0; i < 4; i++) CanvasScene(id: "s$i"),
+        ]));
+
+    var newScene = tester.getRect(find.text("New scene"));
+    var firstRow = tester.getRect(find.text("Scene 1"));
+    expect(newScene.top, lessThan(firstRow.top));
+
+    // And Duplicate is not offered twice: every row's menu has it, and a
+    // button that copies whichever scene you happen to be on is a button
+    // whose meaning depends on something else in the panel.
+    expect(find.byTooltip("Duplicate this scene"), findsNothing);
   });
 
   testWidgets("a scene that holds says so in the list", (tester) async {

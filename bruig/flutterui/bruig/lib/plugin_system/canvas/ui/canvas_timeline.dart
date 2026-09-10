@@ -686,9 +686,32 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 // because it is about the end of the scene. Only where there
                 // is a next one to give way to -- and on the master canvas,
                 // where it sets what every scene does.
+                // Whether the run stops at the end of this scene. Beside the
+                // transition because they are the two things that happen when
+                // a scene ends -- and on the timeline because that is where
+                // the end of a scene is. The panel's menu offers it too: the
+                // list is where a sequence is arranged, and this is part of
+                // how it plays.
+                if (document.hasScenes && !document.editingMaster) ...[
+                  const SizedBox(width: 24),
+                  CanvasIconButton(
+                    key: const ValueKey("sceneHolds"),
+                    icon: document.scene.holds
+                        ? Icons.pause_circle_filled
+                        : Icons.pause_circle_outline,
+                    tooltip: document.scene.holds
+                        ? "Stopping at the end of this scene — press to run "
+                            "on into the next"
+                        : "Running on into the next scene — press to stop at "
+                            "the end of this one",
+                    active: document.scene.holds,
+                    onPressed: () => controller.setSceneHolds(
+                        document.at, !document.scene.holds),
+                  ),
+                ],
                 if (widget.onToggleTransitions != null &&
                     (document.editingMaster || document.hasScenes)) ...[
-                  const SizedBox(width: 24),
+                  SizedBox(width: document.editingMaster ? 24 : 3),
                   CanvasIconButton(
                     key: const ValueKey("transitionsToggle"),
                     icon: Icons.compare_arrows,
