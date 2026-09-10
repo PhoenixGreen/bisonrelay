@@ -809,13 +809,6 @@ class _ZoomFieldState extends State<_ZoomField> {
     _focus.addListener(() {
       if (!_focus.hasFocus) _commit();
     });
-    // The box is as wide as what is in it, so it has to hear the typing --
-    // otherwise a number typed into it is measured against the number that
-    // was there before, and the box resizes a moment later when the value
-    // commits.
-    _text.addListener(() {
-      if (mounted) setState(() {});
-    });
   }
 
   @override
@@ -831,12 +824,23 @@ class _ZoomFieldState extends State<_ZoomField> {
     setState(() => _shown = -1);
   }
 
-  /// _widthFor is how much room [text] and the per cent sign after it need.
+  /// _boxWidth is how much room the reading needs.
+  ///
+  /// Measured against the number this build is about to show, not against
+  /// whatever is in the field. That is the whole of the fix: sized from the
+  /// field's text, the box was sized from the *previous* number whenever the
+  /// view moved on its own -- the canvas being resized, a fit being chosen --
+  /// so a longer number was cut off until something else rebuilt the box, and
+  /// clicking into a field and out again is not a way to read a number.
+  ///
+  /// Whatever is being typed is taken into account as well, so the box does
+  /// not shrink under the cursor; the field is right-aligned, so the per cent
+  /// sign stays pinned to the right edge and what varies is a gap on the left.
   ///
   /// Measured rather than counted: the digits of this face are not all the
-  /// same width, and a box sized by character count is a box that is a little
-  /// wrong at every number and visibly wrong at one of them.
-  double _widthFor(String text, TextStyle style) {
+  /// same width, so a box sized by character count is a little wrong at every
+  /// number.
+  double _boxWidth(TextStyle style, int showing) {
     double measure(String of) {
       var painter = TextPainter(
         text: TextSpan(text: of, style: style),
@@ -845,11 +849,9 @@ class _ZoomFieldState extends State<_ZoomField> {
       return painter.width;
     }
 
-    // The content padding either side, the room the caret needs at the end of
-    // the digits, and a floor: 15% is the smallest the zoom goes, and a box
-    // that shrank below it would jump about while somebody typed.
-    const around = 4 + 3.0;
-    return math.max(measure("15%"), measure("$text%")) + around;
+    // The content padding either side, and the room the caret needs at the
+    // end of the digits.
+    return math.max(measure("$showing%"), measure("${_text.text}%")) + 4 + 3;
   }
 
   @override
@@ -875,12 +877,9 @@ class _ZoomFieldState extends State<_ZoomField> {
     // above the line of buttons.
     return Center(
         child: SizedBox(
-      // As wide as the number in it, rather than as wide as the widest number
-      // there could be. Fixed, the box was sized for 978% and the digits sat
-      // against its right-hand edge -- so at 100% there was half a button of
-      // nothing between the zoom buttons and the number, which read as the
-      // number belonging to whatever was on its right.
-      width: _widthFor(_text.text, type),
+      // The room this reading needs, with the per cent sign pinned to the
+      // right of the box and the digits against it. See _boxWidth.
+      width: _boxWidth(type, at),
       child: Tooltip(
         message: "How large the canvas is drawn, as a percentage of its own "
             "pixels. Type one to go there.",

@@ -5219,22 +5219,68 @@ void main() {
           tester.getRect(find.byIcon(Icons.zoom_in)).right;
 
       var gap = gapNow();
+      var box = tester.getRect(find.byType(TextField)).width;
       expect(gap, lessThan(12),
           reason: "the number sits with the buttons it belongs to: $gap");
 
-      // The smallest zoom there is, and then the largest. The box takes the
-      // room it needs and takes it on its own side, rather than standing at
-      // its widest and leaving a hole beside the buttons.
-      await tester.enterText(find.byType(TextField), "15");
+      // A shorter number takes less room, and gives it back on its own side:
+      // what stays put is the edge beside the buttons.
+      controller.zoom = 0.25;
       await tester.pumpAndSettle();
-      var narrow = tester.getRect(find.byType(TextField)).width;
+      expect(tester.getRect(find.byType(TextField)).width, lessThan(box));
+      expect((gapNow() - gap).abs(), lessThan(0.5),
+          reason: "the box grows and shrinks to the right of the buttons");
 
-      await tester.enterText(find.byType(TextField), "978");
+      // And the widest reading fits, digits and sign together, with the sign
+      // pinned to the right of the box.
+      controller.zoom = 16;
       await tester.pumpAndSettle();
-      expect(tester.getRect(find.byType(TextField)).width, greaterThan(narrow),
-          reason: "three digits need more room than two");
-      expect((gapNow() - gap).abs(), lessThan(2),
-          reason: "and the gap beside the buttons does not move");
+      var wide = tester.getRect(find.byType(TextField));
+      expect(tester.getRect(find.text("1600")).left,
+          greaterThanOrEqualTo(wide.left - 0.5),
+          reason: "nothing is cut off the front of it");
+      expect(tester.getRect(find.text("%")).right,
+          lessThanOrEqualTo(wide.right + 0.5));
+    });
+
+    testWidgets("a number the view changed by itself is readable",
+        (tester) async {
+      // The reported fault: resizing the canvas moved the zoom, and the new
+      // number was cut off until the field was clicked into and out of
+      // again. Clicking into a field and out of it is not a way to read a
+      // number.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+          ));
+
+      // From a short number to a long one, which is where a box measured
+      // against the number that was there before comes up short.
+      controller.zoom = 0.25;
+      await tester.pumpAndSettle();
+      expect(find.text("25"), findsOneWidget);
+
+      controller.zoom = 16;
+      await tester.pumpAndSettle();
+      expect(find.text("1600"), findsOneWidget);
+
+      var field = tester.getRect(find.byType(TextField));
+      var digits = tester.getRect(find.text("1600"));
+      expect(digits.width, greaterThan(0));
+      expect(digits.left, greaterThanOrEqualTo(field.left - 0.5),
+          reason: "the number is inside its box, not cut off by it");
+      expect(tester.getRect(find.text("%")).right,
+          lessThanOrEqualTo(field.right + 0.5));
     });
 
     testWidgets("the timeline can be hidden from the bar", (tester) async {
