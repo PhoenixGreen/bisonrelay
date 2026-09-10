@@ -142,6 +142,35 @@ void main() {
     });
   });
 
+  group("using one", () {
+    test("replaces the element being edited rather than joining it", () async {
+      // Adding put the new design exactly on top of the old one: two
+      // elements in the same place, one of them invisible and still there.
+      var here = TextElement(
+        const ElementBase(id: "t", x: 120, y: 240, width: 400, height: 90),
+        text: "What is here now",
+      );
+      var store = ElementPresetStore.instance;
+      var preset = await store.save(
+          "A design",
+          TextElement(
+            const ElementBase(id: "other", x: 0, y: 0, width: 300, height: 200),
+            text: "The saved design",
+          ));
+
+      // What the settings do with it: the preset's design, in the element's
+      // own place and under its own id.
+      var made = preset!.build();
+      var next = made.withBase(x: here.x, y: here.y).withId(here.id);
+
+      expect(next.id, "t", reason: "the same element, not a second one");
+      expect((next as TextElement).text, "The saved design");
+      expect(next.x, 120);
+      expect(next.y, 240);
+      expect(next.bounds.width, 300, reason: "the design's own shape");
+    });
+  });
+
   group("a preset read back", () {
     test("survives being written and read", () {
       var preset = ElementPreset(

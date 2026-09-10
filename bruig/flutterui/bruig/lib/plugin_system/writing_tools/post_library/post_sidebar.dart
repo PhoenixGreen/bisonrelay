@@ -116,15 +116,20 @@ class _PostSidebarState extends State<PostSidebar> {
       onTap: () => library.openFolderNamed(""),
       child: Tooltip(
         message: "Back to the Library",
+        // The same row as the canvas library's, down to the sizes: two
+        // sidebars that do the same thing should look like they were drawn by
+        // the same hand, and the smaller type is the better of the two in a
+        // narrow column.
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(children: [
-            const Icon(Icons.arrow_back, size: 18),
+            const Icon(Icons.arrow_back, size: 15),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
                 folderLabel(library.folder),
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 overflow: TextOverflow.ellipsis,
               ),
             ),

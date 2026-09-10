@@ -67,8 +67,7 @@ List<Widget> elementSettings(
     if (element is TextElement ||
         element is ChartElement ||
         element is TableElement)
-      boxed(context,
-          presetsSection(context, controller, element.kind, selected: element)),
+      boxed(context, presetsSection(context, controller, element)),
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),

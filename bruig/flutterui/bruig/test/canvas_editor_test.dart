@@ -5551,7 +5551,7 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets("the presets section puts one on the canvas", (tester) async {
+    testWidgets("the presets section offers to save this one", (tester) async {
       // A section that lists things and does nothing when they are pressed is
       // what a model-only test cannot see.
       var controller = await panel(tester);
@@ -5562,8 +5562,10 @@ void main() {
       await tester.tap(find.text("PRESETS"));
       await tester.pumpAndSettle();
 
-      // Nothing saved yet, so the only button is the one that saves.
+      // Saving comes first: it is the one thing here about the element in
+      // front of you rather than about the list.
       expect(find.byKey(const ValueKey("savePreset")), findsOneWidget);
+      expect(find.text("Nothing saved yet."), findsOneWidget);
     });
 
     testWidgets("turning off From a document gives back what was typed",
