@@ -1276,6 +1276,11 @@ class CanvasController extends ChangeNotifier {
   /// transition does not run on through the rest of the document.
   int _previewEnd = 0;
 
+  /// _previewFrom is the scene the preview was started on, so that watching a
+  /// join leaves the editor where it was found. Somebody previewing the same
+  /// join twice should not have to walk back to it in between.
+  int? _previewFrom;
+
   /// previewTransitionAfter plays the join between a scene and the next one:
   /// a little of the scene before it, the transition, and a little of the
   /// scene after.
@@ -1287,6 +1292,7 @@ class CanvasController extends ChangeNotifier {
     var over = document.transitionAfter(index);
     var start = document.startOfScene(index + 1);
     var lead = math.max(4, over.frames);
+    _previewFrom = document.at;
     _previewAt = math.max(0, start - lead);
     _previewEnd = math.min(document.sequenceFrames - 1, start + lead);
     _startTimer();
@@ -1298,6 +1304,15 @@ class CanvasController extends ChangeNotifier {
     if (_previewAt == null) return;
     _previewAt = null;
     pause();
+    // Back to the canvas it was started from. Playing the document walks the
+    // editor through the scenes -- see _tick -- so without this, watching a
+    // join left the reader two scenes further on than they were.
+    var back = _previewFrom;
+    _previewFrom = null;
+    if (back != null && back != _document.at) {
+      _document = _document.goToScene(back);
+      _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    }
     notifyListeners();
   }
 

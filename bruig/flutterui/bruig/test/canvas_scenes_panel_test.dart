@@ -143,9 +143,9 @@ void main() {
     // Drawn by the renderer rather than kept as pictures, so a preview cannot
     // be out of date.
     expect(find.byType(CustomPaint).evaluate().length, greaterThan(0));
-    await tester.tap(find.byTooltip("Show a picture of each scene"));
+    await tester.tap(find.byTooltip("Scene preview"));
     await tester.pumpAndSettle();
-    expect(find.byTooltip("Show a plain list"), findsOneWidget);
+    expect(find.byTooltip("Scene preview: off"), findsOneWidget);
   });
 
   testWidgets("the menu opens under the button that was pressed",
@@ -161,7 +161,7 @@ void main() {
         ]));
     expect(controller.document.allScenes.length, 8);
 
-    var buttons = find.byTooltip("What can be done with this scene");
+    var buttons = find.byTooltip("More");
     expect(buttons, findsNWidgets(8));
 
     // The first row's button, which is a long way from the middle of the
@@ -194,6 +194,31 @@ void main() {
     // And the master row is the top of the list rather than something the
     // scrolling pushes away.
     expect(find.text("Master scene"), findsOneWidget);
+  });
+
+  testWidgets("the preview of a join comes back to the scene it started on",
+      (tester) async {
+    // Playing the document walks the editor through the scenes, so without
+    // this, watching a join left the reader on the scene after the one they
+    // pressed it from -- and pressing it again meant walking back first.
+    var controller = await panel(tester,
+        document: const CanvasDocument().withScenes([
+          const CanvasScene(id: "a", frames: 4),
+          const CanvasScene(id: "b", frames: 4),
+          const CanvasScene(id: "c", frames: 4),
+        ]));
+
+    controller.goToScene(1);
+    controller.playAll = true;
+    controller.previewTransitionAfter(1);
+    expect(controller.previewAt, isNotNull);
+
+    for (var i = 0; i < 20; i++) {
+      controller.tickForTest();
+    }
+    expect(controller.previewAt, isNull, reason: "it finished");
+    expect(controller.document.at, 1,
+        reason: "and left the editor where it was found");
   });
 
   testWidgets("the things that act on the list are above it", (tester) async {

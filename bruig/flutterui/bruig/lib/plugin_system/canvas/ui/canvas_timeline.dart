@@ -716,8 +716,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     key: const ValueKey("transitionsToggle"),
                     icon: Icons.compare_arrows,
                     tooltip: document.editingMaster
-                        ? "How every scene gives way to the next"
-                        : "How this scene gives way to the next",
+                        ? "Scene transition — the one every scene uses"
+                        : "Scene transition",
                     active: widget.transitionsOpen,
                     onPressed: widget.onToggleTransitions,
                   ),

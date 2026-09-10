@@ -89,7 +89,16 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         // change how it is drawn, and a control that acts on a list belongs
         // at the top where it is found without reading to the end.
         _actions(theme, scenes.length),
-        const SizedBox(height: 6),
+        // A line and some air between what acts on the list and the list
+        // itself: without them the first scene read as another button in the
+        // row above it.
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 9),
+          child: Container(
+            height: 1,
+            color: theme.colors.outlineVariant.withValues(alpha: 0.6),
+          ),
+        ),
         for (var (i, scene) in scenes.indexed) _scene(theme, i, scene, scenes),
       ],
     );
@@ -145,19 +154,17 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                       size: 14, color: theme.colors.onSurfaceVariant),
                 ),
               ),
-            // A small switch rather than a Material one: that widget is
-            // built for a settings page and is half the height of this row
-            // again, which made the master's line taller than every scene
-            // under it.
-            _rowButton(
-              theme,
-              on ? Icons.toggle_on : Icons.toggle_off,
-              on
+            // A switch drawn to the height of the row's own text. The
+            // Material one is built for a settings page and made this line
+            // half again as tall as every scene under it; an icon button was
+            // the other way, small enough to read as a decoration.
+            _Switch(
+              on: on,
+              tooltip: on
                   ? "Turn the master scene off. What is on it is kept."
                   : "Turn the master scene on: what you put on it appears on "
                       "every scene",
-              () => controller.masterOn = !on,
-              active: on,
+              onChanged: () => controller.masterOn = !on,
             ),
           ]),
         ),
@@ -226,11 +233,8 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
               // from the panel appeared beside the panel, which for a row
               // half way down a list is nowhere near what was pressed.
               Builder(
-                builder: (context) => _rowButton(
-                    theme,
-                    Icons.more_horiz,
-                    "What can be done with this scene",
-                    () => _menu(context, index, all.length)),
+                builder: (context) => _rowButton(theme, Icons.more_horiz,
+                    "More", () => _menu(context, index, all.length)),
               ),
             ]),
             if (_previews)
@@ -393,7 +397,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         _rowButton(
           theme,
           _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,
-          _previews ? "Show a plain list" : "Show a picture of each scene",
+          _previews ? "Scene preview: off" : "Scene preview",
           () => setState(() => _previews = !_previews),
           active: _previews,
         ),
@@ -466,4 +470,64 @@ class _ScenePainter extends CustomPainter {
   @override
   bool shouldRepaint(_ScenePainter old) =>
       old.index != index || !identical(old.document, document);
+}
+
+/// _Switch is an on-and-off drawn to the height of a line of this panel's
+/// text.
+///
+/// Its own thing because neither of the two ready-made answers fits a list
+/// row: Material's switch is built for a settings page and is half again as
+/// tall as a row, and an icon button is small enough to read as a decoration
+/// rather than as something to press.
+class _Switch extends StatelessWidget {
+  final bool on;
+  final String tooltip;
+  final VoidCallback onChanged;
+
+  const _Switch({
+    required this.on,
+    required this.tooltip,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: onChanged,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          child: Container(
+            width: 26,
+            height: 14,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(7),
+              color: on
+                  ? theme.colors.primary.withValues(alpha: 0.8)
+                  : theme.colors.outlineVariant,
+            ),
+            child: Align(
+              alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: on
+                        ? theme.colors.onPrimary
+                        : theme.colors.onSurfaceVariant.withValues(alpha: 0.75),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
