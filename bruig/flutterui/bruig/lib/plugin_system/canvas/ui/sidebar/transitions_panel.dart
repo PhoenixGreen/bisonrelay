@@ -18,6 +18,23 @@ import 'package:flutter/material.dart';
 // transition of its own uses -- which is what makes the master the place
 // where the look of the whole sequence is decided.
 
+/// _looks is whether a transition has anything to say about how it looks.
+///
+/// A slide has a direction and nothing else; a cut has none of it. Asked
+/// before the group is built so an empty heading and a rule under it are not
+/// what somebody gets for choosing a plain one.
+bool _looks(SceneTransition value) {
+  var kind = value.kind;
+  return kind.takesColour ||
+      kind.takesWay ||
+      kind.takesShape ||
+      kind.takesCount ||
+      kind.takesSpacing ||
+      kind.takesRadius ||
+      kind.takesAngle ||
+      kind.takesSoftness;
+}
+
 class CanvasTransitionsPanel extends StatelessWidget {
   final CanvasController controller;
 
@@ -108,130 +125,9 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     ],
                     onChanged: (v) => write(value.copyWith(kind: v)),
                   ),
-                if (value.on) ...[
-                  CanvasNumberField(
-                    key: const ValueKey("transitionFrames"),
-                    label: "Frames",
-                    value: value.frames.toDouble(),
-                    min: 1,
-                    max: 600,
-                    decimals: 0,
-                    width: 58,
-                    onChanged: (v) => write(value.copyWith(frames: v.round())),
-                  ),
-                  CanvasNumberField(
-                    key: const ValueKey("transitionOverlap"),
-                    label: "Overlap",
-                    value: value.overlap.toDouble(),
-                    min: 0,
-                    max: 600,
-                    decimals: 0,
-                    width: 58,
-                    onChanged: (v) => write(value.copyWith(overlap: v.round())),
-                  ),
-                  CanvasDropdown<SceneTransitionEase>(
-                    label: "Timing",
-                    value: value.ease,
-                    width: 128,
-                    options: [
-                      for (var e in SceneTransitionEase.values) (e, e.label)
-                    ],
-                    onChanged: (v) => write(value.copyWith(ease: v)),
-                  ),
-                  if (value.kind.takesColour)
-                    CanvasColorButton(
-                      label: value.kind.covers ? "Colour" : "Through",
-                      color: value.color,
-                      onChanged: (c) => write(value.copyWith(color: c)),
-                    ),
-                  // What the overlay kinds need, and only the ones that need
-                  // it: a direction, a shape, how many bars, how soft the
-                  // edge is.
-                  if (value.kind.takesWay)
-                    CanvasDropdown<SceneTransitionWay>(
-                      key: const ValueKey("transitionWay"),
-                      label: "Which way",
-                      value: value.way,
-                      width: 128,
-                      options: [
-                        for (var w in SceneTransitionWay.values) (w, w.label)
-                      ],
-                      onChanged: (v) => write(value.copyWith(way: v)),
-                    ),
-                  if (value.kind.takesShape)
-                    CanvasDropdown<ShapeKind>(
-                      key: const ValueKey("transitionShape"),
-                      label: "Shape",
-                      value: value.shape,
-                      width: 140,
-                      options: [for (var k in ShapeKind.values) (k, k.label)],
-                      onChanged: (v) => write(value.copyWith(shape: v)),
-                    ),
-                  if (value.kind.takesCount)
-                    CanvasNumberField(
-                      key: const ValueKey("transitionCount"),
-                      label: switch (value.kind) {
-                        SceneTransitionKind.blinds => "Bars",
-                        SceneTransitionKind.burst => "Rays",
-                        SceneTransitionKind.brush => "Strokes",
-                        SceneTransitionKind.splatter => "Splats",
-                        SceneTransitionKind.tiles => "Across",
-                        SceneTransitionKind.halftone => "Dots",
-                        SceneTransitionKind.arrow => "Arrows",
-                        _ => "How many",
-                      },
-                      value: value.count.toDouble(),
-                      min: 1,
-                      max: 40,
-                      decimals: 0,
-                      width: 54,
-                      onChanged: (v) => write(value.copyWith(count: v.round())),
-                    ),
-                  if (value.kind.takesSpacing)
-                    CanvasNumberField(
-                      key: const ValueKey("transitionSpacing"),
-                      label: "Apart",
-                      value: value.spacing,
-                      min: 0,
-                      max: 2,
-                      decimals: 2,
-                      width: 58,
-                      onChanged: (v) => write(value.copyWith(spacing: v)),
-                    ),
-                  if (value.kind.takesRadius)
-                    CanvasNumberField(
-                      key: const ValueKey("transitionRadius"),
-                      label: "Size",
-                      value: value.radius,
-                      min: 0.05,
-                      max: 1,
-                      decimals: 2,
-                      width: 58,
-                      onChanged: (v) => write(value.copyWith(radius: v)),
-                    ),
-                  if (value.kind.takesAngle)
-                    CanvasNumberField(
-                      key: const ValueKey("transitionAngle"),
-                      label: "Angle",
-                      value: value.angle,
-                      min: -180,
-                      max: 180,
-                      decimals: 0,
-                      width: 58,
-                      onChanged: (v) => write(value.copyWith(angle: v)),
-                    ),
-                  if (value.kind.takesSoftness)
-                    CanvasNumberField(
-                      key: const ValueKey("transitionSoftness"),
-                      label: "Soft edge",
-                      value: value.softness,
-                      min: 0,
-                      max: 1,
-                      decimals: 2,
-                      width: 62,
-                      onChanged: (v) => write(value.copyWith(softness: v)),
-                    ),
-                ],
+                // Beside the two names rather than at the foot of the panel:
+                // the settings under it are for fiddling with, and this is
+                // the button that says what the fiddling did.
                 CanvasIconButton(
                   key: const ValueKey("previewTransition"),
                   icon: Icons.play_circle_outline,
@@ -242,6 +138,147 @@ class CanvasTransitionsPanel extends StatelessWidget {
                 ),
               ],
             ),
+            // How long it takes, kept apart from what it looks like. One
+            // group of ten controls is what this panel was, and ten small
+            // boxes wrapped into a block read as a field of boxes -- the
+            // settings panel beside it splits the same number into Colours,
+            // Amount and Movement, and that is the whole difference.
+            if (value.on)
+              CanvasControlGroup(label: "How long", children: [
+                CanvasNumberField(
+                  key: const ValueKey("transitionFrames"),
+                  label: "Frames",
+                  value: value.frames.toDouble(),
+                  min: 1,
+                  max: 600,
+                  decimals: 0,
+                  width: 58,
+                  onChanged: (v) => write(value.copyWith(frames: v.round())),
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("transitionOverlap"),
+                  label: "Overlap",
+                  value: value.overlap.toDouble(),
+                  min: 0,
+                  max: 600,
+                  decimals: 0,
+                  width: 58,
+                  onChanged: (v) => write(value.copyWith(overlap: v.round())),
+                ),
+                CanvasDropdown<SceneTransitionEase>(
+                  label: "Timing",
+                  value: value.ease,
+                  width: 128,
+                  options: [
+                    for (var e in SceneTransitionEase.values) (e, e.label)
+                  ],
+                  onChanged: (v) => write(value.copyWith(ease: v)),
+                ),
+              ]),
+            // What it looks like: a colour, a direction, a shape, how many of
+            // them, how soft the edge is. Only the ones the kind uses.
+            if (value.on && _looks(value))
+              CanvasControlGroup(label: "What it looks like", children: [
+                if (value.kind.takesColour)
+                  CanvasColorButton(
+                    label: value.kind.covers ? "Colour" : "Through",
+                    color: value.color,
+                    onChanged: (c) => write(value.copyWith(color: c)),
+                  ),
+                // What the overlay kinds need, and only the ones that need
+                // it: a direction, a shape, how many bars, how soft the
+                // edge is.
+                if (value.kind.takesWay)
+                  CanvasDropdown<SceneTransitionWay>(
+                    key: const ValueKey("transitionWay"),
+                    label: "Which way",
+                    value: value.way,
+                    width: 128,
+                    // The ways this kind actually has, said the way this
+                    // kind says them. Barn doors have an axis and not four
+                    // directions -- "to the left" and "to the right" opened
+                    // the same doors -- and the shapes can stay where they
+                    // are instead of travelling.
+                    options: [
+                      for (var w in SceneTransitionWay.waysFor(value.kind))
+                        (w, w.saysFor(value.kind))
+                    ],
+                    onChanged: (v) => write(value.copyWith(way: v)),
+                  ),
+                if (value.kind.takesShape)
+                  CanvasDropdown<ShapeKind>(
+                    key: const ValueKey("transitionShape"),
+                    label: "Shape",
+                    value: value.shape,
+                    width: 140,
+                    options: [for (var k in ShapeKind.values) (k, k.label)],
+                    onChanged: (v) => write(value.copyWith(shape: v)),
+                  ),
+                if (value.kind.takesCount)
+                  CanvasNumberField(
+                    key: const ValueKey("transitionCount"),
+                    label: switch (value.kind) {
+                      SceneTransitionKind.blinds => "Bars",
+                      SceneTransitionKind.burst => "Rays",
+                      SceneTransitionKind.brush => "Strokes",
+                      SceneTransitionKind.splatter => "Splats",
+                      SceneTransitionKind.tiles => "Across",
+                      SceneTransitionKind.halftone => "Dots",
+                      SceneTransitionKind.arrow => "Arrows",
+                      _ => "How many",
+                    },
+                    value: value.count.toDouble(),
+                    min: 1,
+                    max: 40,
+                    decimals: 0,
+                    width: 54,
+                    onChanged: (v) => write(value.copyWith(count: v.round())),
+                  ),
+                if (value.kind.takesSpacing)
+                  CanvasNumberField(
+                    key: const ValueKey("transitionSpacing"),
+                    label: "Apart",
+                    value: value.spacing,
+                    min: 0,
+                    max: 2,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) => write(value.copyWith(spacing: v)),
+                  ),
+                if (value.kind.takesRadius)
+                  CanvasNumberField(
+                    key: const ValueKey("transitionRadius"),
+                    label: "Size",
+                    value: value.radius,
+                    min: 0.05,
+                    max: 1,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) => write(value.copyWith(radius: v)),
+                  ),
+                if (value.kind.takesAngle)
+                  CanvasNumberField(
+                    key: const ValueKey("transitionAngle"),
+                    label: "Angle",
+                    value: value.angle,
+                    min: -180,
+                    max: 180,
+                    decimals: 0,
+                    width: 58,
+                    onChanged: (v) => write(value.copyWith(angle: v)),
+                  ),
+                if (value.kind.takesSoftness)
+                  CanvasNumberField(
+                    key: const ValueKey("transitionSoftness"),
+                    label: "Soft edge",
+                    value: value.softness,
+                    min: 0,
+                    max: 1,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) => write(value.copyWith(softness: v)),
+                  ),
+              ]),
             // Where this transition came from. Not on the shared canvas,
             // where the transition being edited *is* the one every scene
             // comes from.

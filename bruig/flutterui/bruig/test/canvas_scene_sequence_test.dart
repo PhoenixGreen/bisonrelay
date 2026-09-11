@@ -311,6 +311,27 @@ void main() {
       }
     });
 
+    testWidgets("and every one of them is off the page by the end",
+        (tester) async {
+      // The other half of the job. A cover that grows over the join and then
+      // stops growing leaves the transition's colour sitting on the page as
+      // the next scene starts: arrows parked on the far edge, one big shape
+      // in the middle of the page, paint that never washed off.
+      for (var kind in SceneTransitionKind.values.where((k) => k.covers)) {
+        late Map<int, int> last;
+        await tester.runAsync(() async {
+          last = await _inkIn(_two(over: covering(kind)), 9);
+        });
+        // A tenth of the page rather than none of it: a shape leaving the
+        // screen is still a few pixels of it on the last frame, and that is
+        // the transition ending rather than something parked there.
+        expect(last[green] ?? 0, lessThan(2200),
+            reason: "${kind.name} is still on the page when it has ended");
+        expect(last[blue] ?? 0, greaterThan(18000),
+            reason: "${kind.name} does not hand the page over");
+      }
+    });
+
     testWidgets("and the colour is the transition's, not a scene's",
         (tester) async {
       // The colour setting did nothing on most of them, because what showed

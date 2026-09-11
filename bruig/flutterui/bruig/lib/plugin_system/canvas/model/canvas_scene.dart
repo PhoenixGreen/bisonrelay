@@ -43,6 +43,10 @@ enum SceneTransitionFamily {
 /// well, and a list with every combination spelled out would be sixty names
 /// for six ideas.
 enum SceneTransitionWay {
+  /// inPlace is for the kinds that can either travel or simply grow where
+  /// they are -- a row of shapes opening in the middle of the page rather
+  /// than crossing it.
+  inPlace("In place"),
   left("To the left"),
   right("To the right"),
   up("Upwards"),
@@ -51,7 +55,26 @@ enum SceneTransitionWay {
   final String label;
   const SceneTransitionWay(this.label);
 
-  bool get horizontal => this == left || this == right;
+  bool get horizontal => this == left || this == right || this == inPlace;
+
+  /// waysFor is the directions worth offering for one kind.
+  ///
+  /// Barn doors take an axis rather than a side: two doors opening left and
+  /// right look exactly like two doors opening right and left, so offering
+  /// four of them is offering the same two twice. Growing in place is only
+  /// worth having where something can also travel.
+  static List<SceneTransitionWay> waysFor(SceneTransitionKind kind) {
+    if (kind == SceneTransitionKind.barn) return const [left, up];
+    if (kind == SceneTransitionKind.shapeWipe) return values;
+    return const [left, right, up, down];
+  }
+
+  /// says is what this way is called for [kind], which is not always the
+  /// direction it points in.
+  String saysFor(SceneTransitionKind kind) {
+    if (kind != SceneTransitionKind.barn) return label;
+    return this == up ? "Up and down" : "Side to side";
+  }
 
   static SceneTransitionWay fromName(String? name) =>
       values.firstWhere((w) => w.name == name, orElse: () => right);

@@ -3,7 +3,6 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -229,7 +228,7 @@ void main() {
     // Lifted from the line over the timeline, these controls kept that line's
     // arrangement: captions beside their controls and packed in tight, which
     // is right for a strip and wrong for a column.
-    var controller = await bar(tester);
+    await bar(tester);
 
     // Something with settings to lay out: a cut has none.
     await tester.tap(find.byKey(const ValueKey("transitionFamily")));
@@ -269,6 +268,70 @@ void main() {
     var scroll = tester.widget<SingleChildScrollView>(
         find.byType(SingleChildScrollView).first);
     expect(scroll.scrollDirection, Axis.vertical);
+  });
+
+  testWidgets("its settings are laid out in sections", (tester) async {
+    // One group of a dozen controls is what this panel was, and a dozen
+    // small boxes wrapped into a block reads as a field of boxes. The
+    // settings panel beside it splits the same number into Colours, Amount
+    // and Movement, and that is the whole of the difference between the two.
+    await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+
+    expect(find.text("HOW LONG"), findsOneWidget);
+    expect(find.text("WHAT IT LOOKS LIKE"), findsOneWidget);
+
+    // And no empty heading with a rule under it where a transition has
+    // nothing to say about how it looks.
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("A cut").last);
+    await tester.pumpAndSettle();
+    expect(find.text("HOW LONG"), findsNothing);
+    expect(find.text("WHAT IT LOOKS LIKE"), findsNothing);
+  });
+
+  testWidgets("the ways offered are the ones the kind has", (tester) async {
+    // Four directions on everything was two settings that did nothing and
+    // one that was missing: barn doors opened the same whether they were
+    // told left or right, and shapes had no way of being told to stay where
+    // they were.
+    var controller = await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Barn doors").last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey("transitionWay")));
+    await tester.pumpAndSettle();
+    expect(find.text("Up and down"), findsWidgets);
+    expect(find.text("To the left"), findsNothing,
+        reason: "a door opening left and one opening right are one setting");
+    await tester.tap(find.text("Up and down").last);
+    await tester.pumpAndSettle();
+    expect(controller.document.transitionAfter(0).way, SceneTransitionWay.up);
+
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Shapes").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("transitionWay")));
+    await tester.pumpAndSettle();
+    expect(find.text("In place"), findsWidgets,
+        reason: "shapes can grow where they stand rather than travelling");
+    await tester.tap(find.text("In place").last);
+    await tester.pumpAndSettle();
+    expect(
+        controller.document.transitionAfter(0).way, SceneTransitionWay.inPlace);
   });
 
   testWidgets("with one scene the panel is not offered at all", (tester) async {
