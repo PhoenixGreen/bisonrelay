@@ -201,15 +201,56 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     if (added.isEmpty && gone.isEmpty) return;
 
     setState(() {
-      _groups = [
+      var next = [
         for (var group in _groups)
           [
             for (var id in group)
               if (now.contains(id)) id,
           ],
-        for (var id in added) [id],
       ]..removeWhere((group) => group.isEmpty);
+
+      // Back where it was left, where the saved arrangement says: a panel
+      // that comes and goes must not walk to the end of the column every time
+      // it comes back.
+      for (var id in added) {
+        if (!_putBack(next, id)) next.add([id]);
+      }
+      _groups = next;
     });
+  }
+
+  /// _putBack finds [id]'s place in the saved arrangement and puts it there,
+  /// answering whether it managed to.
+  ///
+  /// Beside whichever of its old neighbours is still here -- in the same tab
+  /// group if that group still exists, and otherwise in the same place in the
+  /// order, which is what "where I left it" means once the things either side
+  /// of it may themselves have gone.
+  bool _putBack(List<List<String>> groups, String id) {
+    for (var (g, group) in _saved.indexed) {
+      var at = group.indexOf(id);
+      if (at < 0) continue;
+
+      // The tab group it shared, if any of it is still here.
+      for (var mine in groups) {
+        if (group.any((other) => other != id && mine.contains(other))) {
+          mine.insert(math.min(at, mine.length), id);
+          return true;
+        }
+      }
+
+      // Otherwise after the last group that came before it.
+      var before = <String>{
+        for (var earlier in _saved.take(g)) ...earlier,
+      };
+      var place = 0;
+      for (var (i, mine) in groups.indexed) {
+        if (mine.any(before.contains)) place = i + 1;
+      }
+      groups.insert(math.min(place, groups.length), [id]);
+      return true;
+    }
+    return false;
   }
 
   /// _order is the ids in order, flattened -- for saving, and for the checks
@@ -222,6 +263,15 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   String get _tabKey => "${widget.storageKey}.tab";
   String _openKey(String id) => "${widget.storageKey}.open.$id";
   String _heightKey(String id) => "${widget.storageKey}.height.$id";
+
+  /// _saved is the arrangement as it was read from disk, with every id in it
+  /// -- including panels that are not here at the moment.
+  ///
+  /// Kept because a panel can come and go: the transition settings are there
+  /// only while there is a scene to give way to. Filtered out of the
+  /// arrangement on the way in, such a panel came back at the end of the
+  /// column however it had been arranged, which is a place nobody put it.
+  List<List<String>> _saved = const [];
 
   Future<void> _restore() async {
     var saved = await StorageManager.readString(_orderKey);
@@ -238,6 +288,14 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
 
     setState(() {
       if (saved.isNotEmpty) {
+        _saved = [
+          for (var group in saved.split(","))
+            [
+              for (var id in group.split("+"))
+                if (id.isNotEmpty) id,
+            ],
+        ]..removeWhere((group) => group.isEmpty);
+
         // "a+b,c" is two places: a and b as tabs, then c. An arrangement
         // saved before tabs existed is "a,b,c", which reads as three places
         // of one -- which is exactly what it was.

@@ -5574,6 +5574,34 @@ void main() {
           reason: "one place fewer than there are panels: $saved");
     });
 
+    testWidgets("a panel that comes and goes keeps its place", (tester) async {
+      // The transition settings are there only while there is a scene to give
+      // way to. Filtered out of the arrangement on the way in -- it is not a
+      // panel yet when the column is built -- it came back at the end of the
+      // column however it had been arranged, which is a place nobody put it.
+      SharedPreferences.setMockInitialValues({});
+      await StorageManager.saveString(
+          "canvasDesign.order", "transitions,add,layers,scenes,settings");
+
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+      expect(find.text("TRANSITION"), findsNothing,
+          reason: "one scene has nothing to give way to");
+
+      controller.addScene();
+      await tester.pumpAndSettle();
+
+      double topOf(String name) => tester
+          .getRect(find.ancestor(
+              of: find.text(name),
+              matching: find.byType(DragTarget<PanelDrag>)))
+          .top;
+      expect(topOf("TRANSITION"), lessThan(topOf("ADD")),
+          reason: "back at the top, where the arrangement left it");
+    });
+
     testWidgets("and an arrangement saved before tabs existed still reads",
         (tester) async {
       // "a,b,c" is three places of one, which is exactly what it was.

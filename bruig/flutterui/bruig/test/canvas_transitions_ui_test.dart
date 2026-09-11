@@ -253,18 +253,15 @@ void main() {
         reason: "and starts at the same edge, give or take the box's own "
             "padding");
 
-    // Each section in a box with room round it, the way every section of the
-    // settings panel is. Bare groups in a column sat a caption's height
-    // apart, which reads as one long list rather than as sections.
-    var boxes = tester.widgetList<Container>(find.descendant(
-        of: find.byType(CanvasTransitionsPanel),
-        matching: find.byType(Container)));
-    var bordered = boxes.where((c) {
-      var d = c.decoration;
-      return d is BoxDecoration && d.border != null && d.borderRadius != null;
-    });
-    expect(bordered.length, greaterThanOrEqualTo(2),
-        reason: "a box round each section");
+    // Plain groups, with the rule and the room the panel's own groups have --
+    // no box round each section. A boxed section indents everything inside it
+    // by the box's own padding, so what says there is no box is where the
+    // controls start: hard against the panel's edge.
+    var panel = tester.getRect(find.byType(CanvasTransitionsPanel));
+    var firstControl = tester.getRect(find.text("Gives way with"));
+    expect(firstControl.left - panel.left, lessThan(12),
+        reason: "controls start at the panel's own edge: "
+            "${firstControl.left - panel.left}");
 
     // And it scrolls the way a column does. The line it came from scrolled
     // sideways, which is how a dozen controls ended up somewhere off the end
