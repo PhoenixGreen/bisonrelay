@@ -94,10 +94,15 @@ enum SceneTransitionKind {
   /// whatever the design wants. See SceneTransition.color.
   through("Fade through a colour"),
 
-  slideLeft("The new one slides in, to the left"),
-  slideRight("The new one slides in, to the right"),
-  slideUp("The new one slides in, upwards"),
-  slideDown("The new one slides in, downwards"),
+  // Named the way the movement goes, in as few words as a menu can say it.
+  // They used to be sentences -- "The new one slides in, to the left" --
+  // which is what the label of a setting has to be when it is the only place
+  // the setting is explained, and is far too long for a list beside a dozen
+  // others that say it in two words.
+  slideLeft("Slide left"),
+  slideRight("Slide right"),
+  slideUp("Slide up"),
+  slideDown("Slide down"),
 
   /// push shoves the old scene off with the new one, rather than sliding the
   /// new one over the top of it.
@@ -106,10 +111,10 @@ enum SceneTransitionKind {
   pushUp("Push up"),
   pushDown("Push down"),
 
-  wipeLeft("The new one is uncovered, to the left"),
-  wipeRight("The new one is uncovered, to the right"),
-  wipeUp("The new one is uncovered, upwards"),
-  wipeDown("The new one is uncovered, downwards"),
+  wipeLeft("Uncover left"),
+  wipeRight("Uncover right"),
+  wipeUp("Uncover up"),
+  wipeDown("Uncover down"),
 
   /// zoom grows the new scene out of the middle of the old one.
   zoomIn("Zoom in"),
