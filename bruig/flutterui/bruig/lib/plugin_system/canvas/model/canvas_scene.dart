@@ -422,6 +422,13 @@ class SceneTransition {
       kind: kind,
       frames: length,
       overlap: length,
+      // Pointed a way this kind actually has. Barn doors open on an axis
+      // rather than in four directions, and "to the right" -- the way every
+      // transition started out pointing -- is not one of the two, so the
+      // setting came up with nothing chosen in it.
+      way: SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
+          ? SceneTransitionWay.right
+          : SceneTransitionWay.waysFor(kind).first,
       ease: kind.familyOf == SceneTransitionFamily.move
           ? SceneTransitionEase.smooth
           : SceneTransitionEase.straight,

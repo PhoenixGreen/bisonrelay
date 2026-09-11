@@ -64,10 +64,17 @@ class CanvasTransitionsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: controller,
-        builder: (context, _) => _body(context),
+        // The panel's own width, because the top row sizes itself to it. The
+        // two names and the two buttons beside them are one question -- what
+        // this transition is, and what it looks like -- and a Wrap that
+        // breaks them apart puts the buttons on a line of their own with the
+        // whole width of the panel to the right of them.
+        builder: (context, _) => LayoutBuilder(
+          builder: (context, room) => _body(context, room.maxWidth),
+        ),
       );
 
-  Widget _body(BuildContext context) {
+  Widget _body(BuildContext context, double room) {
     var document = controller.document;
     var master = document.editingMaster;
     var index = document.at;
@@ -88,6 +95,16 @@ class CanvasTransitionsPanel extends StatelessWidget {
     }
 
     var last = !master && index >= scenes.length - 1;
+
+    // How much of the line the two names may take. The buttons are each as
+    // wide as a control is tall and have their own padding; what is left is
+    // shared between the two dropdowns, the second wider than the first
+    // because "Fade through a colour" is a longer thing to say than "Fade".
+    // Each still has a floor: past that the name in it is an ellipsis, and
+    // three letters and a dot is not a setting anybody can read.
+    var free = room - 16 - 70;
+    var family = (free * 0.42).clamp(62.0, 128.0);
+    var which = (free * 0.58).clamp(80.0, 168.0);
 
     // Laid out the way the settings panel beside it is: the same scope, the
     // same width, the same gap under the header. Lifted from the line over
@@ -119,7 +136,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
                   key: const ValueKey("transitionFamily"),
                   label: "Gives way with",
                   value: value.kind.familyOf,
-                  width: 128,
+                  width: family,
+                  tight: true,
                   options: [
                     for (var f in SceneTransitionFamily.values)
                       (f, f == SceneTransitionFamily.none ? "A cut" : f.label)
@@ -135,7 +153,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     key: const ValueKey("transitionKind"),
                     label: "Which",
                     value: value.kind,
-                    width: 168,
+                    width: which,
+                    tight: true,
                     options: [
                       for (var k
                           in SceneTransitionKind.inFamily(value.kind.familyOf))
@@ -221,7 +240,16 @@ class CanvasTransitionsPanel extends StatelessWidget {
                   CanvasDropdown<SceneTransitionWay>(
                     key: const ValueKey("transitionWay"),
                     label: "Which way",
-                    value: value.way,
+                    // The way it is pointed, or the first one this kind has
+                    // if it is pointed somewhere this kind does not go. A
+                    // transition set up before barn doors became an axis
+                    // holds one pointing right, and a dropdown whose value
+                    // is not in its own list shows nothing at all -- which
+                    // is a setting that looks like it has not been set.
+                    value: SceneTransitionWay.waysFor(value.kind)
+                            .contains(value.way)
+                        ? value.way
+                        : SceneTransitionWay.waysFor(value.kind).first,
                     width: 128,
                     // The ways this kind actually has, said the way this
                     // kind says them. Barn doors have an axis and not four

@@ -498,12 +498,21 @@ class CanvasDropdown<T> extends StatelessWidget {
   final double width;
   final ValueChanged<T> onChanged;
 
+  /// tight holds the caption to the width of the box under it.
+  ///
+  /// Off by default, because a caption reading "Gives way w..." is worse than
+  /// a row an inch wider nearly everywhere. It is for the controls that are
+  /// sized to the room there is rather than to what they hold: there, the
+  /// caption deciding the width means narrowing the box achieves nothing.
+  final bool tight;
+
   const CanvasDropdown({
     required this.label,
     required this.value,
     required this.options,
     required this.onChanged,
     this.width = 130,
+    this.tight = false,
     super.key,
   });
 
@@ -513,6 +522,7 @@ class CanvasDropdown<T> extends StatelessWidget {
     return _labelled(
       theme,
       label,
+      cap: tight ? CanvasControlScope.widthFor(context, width) : null,
       Container(
         width: CanvasControlScope.widthFor(context, width),
         height: controlHeight,
@@ -1055,7 +1065,7 @@ class _ScrubLabelState extends State<_ScrubLabel> {
 /// [scrub] makes that caption a handle: dragging it sideways runs the number
 /// up and down. See _ScrubLabel.
 Widget _labelled(ThemeNotifier theme, String label, Widget child,
-    {Widget? scrub}) {
+    {Widget? scrub, double? cap}) {
   return Builder(builder: (context) {
     var inline = CanvasControlScope.isInline(context);
     var caption = Text(
@@ -1101,7 +1111,13 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           if (scrub != null)
             scrub
           else
-            SizedBox(height: controlLabelHeight, child: caption),
+            // Held to the width of the control it names, where the caller
+            // has asked for that. A Column is as wide as its widest child,
+            // so a caption longer than its control is what decides how much
+            // of a row the control takes -- a dropdown narrowed to seventy
+            // pixels still took a hundred and thirty, because that is how
+            // wide "Gives way with" is.
+            SizedBox(height: controlLabelHeight, width: cap, child: caption),
           const SizedBox(height: controlLabelGap),
           child,
         ],

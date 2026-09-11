@@ -18,7 +18,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<CanvasController> bar(WidgetTester tester,
-      {CanvasDocument? document}) async {
+      {CanvasDocument? document, double? width}) async {
     var controller = CanvasController(document ??
         const CanvasDocument().withScenes([
           const CanvasScene(id: "a", frames: 12),
@@ -40,10 +40,13 @@ void main() {
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: CanvasTransitionsPanel(
-            controller: controller,
-            onPreview: () =>
-                controller.previewTransitionAfter(controller.document.at),
+          body: SizedBox(
+            width: width,
+            child: CanvasTransitionsPanel(
+              controller: controller,
+              onPreview: () =>
+                  controller.previewTransitionAfter(controller.document.at),
+            ),
           ),
         ),
       ),
@@ -348,6 +351,61 @@ void main() {
     expect(back.count, SceneTransition.bestFor(kind).count);
     expect(back.spacing, SceneTransition.bestFor(kind).spacing);
     expect(back.frames, SceneTransition.bestFor(kind).frames);
+  });
+
+  testWidgets("the top row holds together in a narrow sidebar", (tester) async {
+    // What this transition is, which one it is, play it, put it back: one
+    // question and the two answers to it. The names were a fixed width, so
+    // in a narrow sidebar the buttons were pushed onto a line of their own
+    // with the whole width of the panel to the right of them.
+    var controller = await bar(tester, width: 250);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+    expect(controller.document.transitionAfter(0).on, isTrue);
+
+    // Against the first of the two names, not the second: the two names
+    // wrapping apart from each other is the same fault one step earlier.
+    var names = tester.getRect(find.byKey(const ValueKey("transitionFamily")));
+    for (var button in [
+      "transitionKind",
+      "resetTransition",
+      "previewTransition"
+    ]) {
+      var box = tester.getRect(find.byKey(ValueKey(button)));
+      expect(box.center.dy, closeTo(names.center.dy, 6),
+          reason: "$button is on its own line: ${box.center.dy} against "
+              "${names.center.dy}");
+      expect(box.right, lessThanOrEqualTo(250),
+          reason: "$button runs off the edge of the panel");
+    }
+  });
+
+  testWidgets("barn doors come up with a direction already chosen",
+      (tester) async {
+    // They open on an axis rather than in four directions, and "to the
+    // right" -- the way every transition started out pointing -- is not one
+    // of the two, so the setting came up with nothing in it.
+    var controller = await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Barn doors").last);
+    await tester.pumpAndSettle();
+
+    var doors = controller.document.transitionAfter(0);
+    expect(SceneTransitionWay.waysFor(SceneTransitionKind.barn),
+        contains(doors.way),
+        reason: "pointed ${doors.way.name}, which barn doors cannot be");
+    // And the dropdown says so rather than showing an empty box.
+    expect(
+        find.text(doors.way.saysFor(SceneTransitionKind.barn)), findsOneWidget);
   });
 
   testWidgets("its settings are laid out in sections", (tester) async {
