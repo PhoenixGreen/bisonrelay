@@ -3,6 +3,7 @@ import 'dart:typed_data' show Float64List;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -125,35 +126,36 @@ ui.Path _band(SceneTransition over, Rect page, double t) {
   return ui.Path()..addRect(page.shift(moved).inflate(1));
 }
 
-/// _blinds is a set of bars, each growing from its own side.
+/// _blinds is a set of slats closing across the page.
+///
+/// They used to be bars growing lengthwise from one edge, all at the same
+/// rate and with no daylight between them, which is a block crossing the
+/// page with a comb for a leading edge. A blind does not do that: every slat
+/// spans the page already and what changes is how much of it is turned to
+/// you. So each one spans the page and thickens from its own edge until they
+/// meet.
 ui.Path _blinds(SceneTransition over, Rect page, double grown, bool going) {
   var path = ui.Path();
   var bars = over.count.clamp(1, 40);
-  // Across the page. Measured against a box drawn well outside it, as this
-  // was, five bars put one or two across the whole picture -- so what arrived
-  // was a block, not blinds.
+  // Slats across the way it points: told left or right they stand upright
+  // and close sideways, told up or down they lie flat.
   var horizontal = over.way.horizontal;
-  var box = page;
-  var span = (horizontal ? box.height : box.width) / bars;
-  var full = horizontal ? box.width : box.height;
+  var span = (horizontal ? page.width : page.height) / bars;
+  // A little over its own share, so the slats have met by the time the page
+  // is covered rather than leaving a hairline between each pair.
+  var thick = span * grown * 1.02;
+  if (thick <= 0) return path;
 
+  var back =
+      over.way == SceneTransitionWay.left || over.way == SceneTransitionWay.up;
   for (var i = 0; i < bars; i++) {
-    var at = (horizontal ? box.top : box.left) + span * i;
-    var length = full * grown;
-    // On from one side and off the other: a bar that grew and shrank from the
-    // same edge would look like a mistake being undone.
-    var startAt = going
-        ? (horizontal ? box.right - length : box.bottom - length)
-        : (horizontal ? box.left : box.top);
-    if (over.way == SceneTransitionWay.left ||
-        over.way == SceneTransitionWay.up) {
-      startAt = going
-          ? (horizontal ? box.left : box.top)
-          : (horizontal ? box.right - length : box.bottom - length);
-    }
+    var edge = (horizontal ? page.left : page.top) + span * i;
+    // Every slat turns the same way, and turning the other way is what the
+    // direction setting means here.
+    var from = back ? edge + span - thick : edge;
     path.addRect(horizontal
-        ? Rect.fromLTWH(startAt, at, length, span)
-        : Rect.fromLTWH(at, startAt, span, length));
+        ? Rect.fromLTRB(from, page.top, from + thick, page.bottom)
+        : Rect.fromLTRB(page.left, from, page.right, from + thick));
   }
   return _turned(path, page, over.angle);
 }
@@ -191,15 +193,23 @@ ui.Path _shapes(SceneTransition over, Rect page, double grown, bool going) {
   var path = ui.Path();
   var across = over.count.clamp(1, 40);
   var cell = page.width / across;
-  var down = math.max(1, (page.height / cell).ceil());
+  // Rows near enough square. Rounded rather than rounded up: two across on a
+  // wide page was two rows of squat cells, so the shapes in them were half
+  // as tall as they were wide apart and the field read as one block.
+  var down = math.max(1, (page.height / cell).round());
   var tall = page.height / down;
 
-  // Big enough to cover its own square when it is fully grown -- the corner
-  // of a square is further away than its side, so a shape the width of one
-  // leaves four gaps.
+  // One shape to a cell rather than half again as big as one. Oversized,
+  // every shape ran into its neighbours from the moment it arrived, and two
+  // squares crossing the page were one big square.
   var size = math.max(cell, tall) *
-      (1.5 + over.radius * 0.8) *
+      (0.78 + over.radius * 0.45) *
       (1 - over.spacing.clamp(0.0, 1.0) * 0.2);
+  // And they swell into each other over the last of the cover, which is what
+  // closes the page: shapes that only ever meet at their edges leave the
+  // corners between them, and filling those in with a rectangle is the
+  // square that used to appear at the end.
+  size *= 1 + 0.55 * ((grown - 0.72) / 0.28).clamp(0.0, 1.0);
 
   var way = switch (over.way) {
     SceneTransitionWay.inPlace => Offset.zero,
@@ -246,16 +256,61 @@ ui.Path _shapes(SceneTransition over, Rect page, double grown, bool going) {
       // leading shapes are on the page from the start and the ones behind
       // catch up.
       var wide = size * (way == Offset.zero ? on : 1);
-      var from = way * ((1 - on) * travel * (going ? 1 : -1));
+      // Quick in and slow to settle, rather than an even slide: at an even
+      // rate a shape with a page and a half to travel spends the first half
+      // of the transition off the edge of the screen.
+      var eased = 1 - math.pow(1 - on, 2.2).toDouble();
+      var from = way * ((1 - eased) * travel * (going ? 1 : -1));
 
+      var box = Rect.fromCenter(center: at + from, width: wide, height: wide);
+      // The shapes that have a front end point the way they are going. They
+      // are drawn pointing right whatever they are told, so an arrow moving
+      // left was an arrow flying backwards.
       path.addPath(
-          shapePath(over.shape,
-              Rect.fromCenter(center: at + from, width: wide, height: wide),
-              points: 5),
+          _pointed(
+              shapePath(over.shape, box, points: 5), over.shape, box, over.way),
           Offset.zero);
     }
   }
   return _closed(_turned(path, page, over.angle), page, grown);
+}
+
+/// _pointed turns a shape that has a front end to face the way it travels.
+///
+/// Only the ones with a front: an arrow, a chevron and a triangle all say
+/// which way they are going, and a circle does not. Turned about its own
+/// middle rather than the page's, so a shape in the corner stays in the
+/// corner.
+ui.Path _pointed(
+    ui.Path path, ShapeKind shape, Rect box, SceneTransitionWay way) {
+  if (shape != ShapeKind.arrow &&
+      shape != ShapeKind.chevron &&
+      shape != ShapeKind.triangle) {
+    return path;
+  }
+  // A triangle is drawn pointing up and the other two point right, so what
+  // each has to turn by to face the same way is not the same number.
+  var facing = shape == ShapeKind.triangle ? -math.pi / 2 : 0.0;
+  var wanted = switch (way) {
+    SceneTransitionWay.inPlace || SceneTransitionWay.right => 0.0,
+    SceneTransitionWay.left => math.pi,
+    SceneTransitionWay.down => math.pi / 2,
+    SceneTransitionWay.up => -math.pi / 2,
+  };
+  var r = wanted - facing;
+  if (r == 0) return path;
+  var cos = math.cos(r);
+  var sin = math.sin(r);
+  var c = box.center;
+  return path.transform(Float64List.fromList([
+    cos, sin, 0, 0, //
+    -sin, cos, 0, 0, //
+    0, 0, 1, 0, //
+    c.dx - cos * c.dx + sin * c.dy,
+    c.dy - sin * c.dx - cos * c.dy,
+    0,
+    1,
+  ]));
 }
 
 /// _clock is a sector sweeping round like a hand.
@@ -297,76 +352,67 @@ Offset Function(double along, double across) _along(
   }
 }
 
-/// _arrows is a train of arrows driving across the page.
+/// _arrows is a train of chevrons sweeping across the page.
 ///
-/// Rewritten from a set of bands with a point on the end of them. Each arrow
-/// was as long as the page, so what crossed the screen was stripes with a
-/// notch in -- at no moment was there anything on the page that looked like
-/// an arrow. These are arrows the length of a hand, several to a lane, with
-/// gaps between them that close as the cover completes: what is seen is a
-/// row of arrows driving across, and what covers the page is the same row
-/// with the daylight taken out of it.
+/// Rewritten twice. First they were bands the length of the page with a point
+/// on the front, so what crossed the screen was stripes with a notch in.
+/// Then they were small arrows several to a lane, which is a picture of
+/// arrows and not a transition -- at any moment half the page was showing
+/// through the gaps between them.
+///
+/// What this is now is the thing people mean by an arrow wipe: chevrons as
+/// tall as the page, nested one behind another, driving across. The page
+/// between two of them is the scene underneath, which is what makes it a
+/// sweep rather than a shape growing.
 ui.Path _arrows(SceneTransition over, Rect page, double t) {
   var path = ui.Path();
-  var lanes = over.count.clamp(1, 40);
+  var many = over.count.clamp(1, 40);
   var grown = coverAt(t).clamp(0.0, 1.0);
   var horizontal = over.way.horizontal;
   var at = _along(over.way, page);
 
   var across = horizontal ? page.width : page.height;
-  var band = (horizontal ? page.height : page.width) / lanes;
-  // The lanes close up as the cover completes, so a gap between them is not
-  // what is on the page at the moment the scenes change.
-  var thick = band * (1 - over.spacing.clamp(0.0, 0.8) * 0.5 * (1 - grown));
+  var cross = horizontal ? page.height : page.width;
+  var mid = cross / 2;
+  // How far the point runs ahead of the corners. Half the page across is a
+  // right angle at the tip, which is the shape of the thing.
+  var depth = mid * (0.55 + over.radius.clamp(0.05, 1.0) * 0.9);
 
-  // One arrow, and the gap behind it. Both shrink to nothing as the page
-  // fills: at the middle of the transition the arrows in a lane have run
-  // together into one bar, which is what makes this a cover at all.
-  var arrow = across * 0.22 * (0.5 + over.radius.clamp(0.05, 1.0));
-  var gap = arrow * 0.5 * (1 - grown);
-  var step = arrow + gap;
-  // The train is as long as the page and one arrow more, however wide the
-  // gaps in it are -- so it fills the page in the middle and is off the far
-  // edge at the end. Run instead until an arrow had left the page, the train
-  // had no back to it: at the end of the transition arrows were still
-  // arriving.
-  var train = across + arrow;
-  var many = math.max(1, (train / step).ceil());
-  var lead = t * (across + train);
+  // How wide one chevron is, and the daylight behind it. The gap closes as
+  // the cover completes: what covers the page at the moment the scenes
+  // change is the chevrons run together.
+  var wide = across / many;
+  var gap = wide * over.spacing.clamp(0.0, 1.5) * 0.5 * (1 - grown);
+  var step = wide + gap;
 
-  for (var i = 0; i < lanes; i++) {
-    var lane = band * i + (band - thick) / 2;
-    // Every other lane a little behind, so the points do not arrive in a
-    // line -- a straight front is a wipe with arrowheads drawn on it.
-    var offset = (i.isEven ? 0.0 : step * 0.4);
-    var head = thick * (0.45 + over.radius * 0.4);
-    // The shaft fattens as the cover completes, until the arrow is the whole
-    // width of its lane and the train is solid.
-    var waist = thick * 0.26 * (1 - grown);
+  // Long enough that the page is covered when the train is over it. The
+  // point runs ahead of the corners by depth at the front and the back, so a
+  // train exactly as long as the page covers the middle of it and leaves two
+  // triangles at the far corners.
+  var train = math.max(1, ((across + depth * 1.15) / wide).ceil());
+  var span = train * step + depth;
+  var lead = t * (across + span);
 
-    for (var k = 0; k < many; k++) {
-      var front = lead - offset - step * k;
-      if (front < -arrow) break;
-      if (front - arrow > across) continue;
+  for (var i = 0; i < train; i++) {
+    var front = lead - step * i;
+    var back = front - wide;
+    if (back - depth > across) continue;
+    if (front < -depth) break;
 
-      var tail = front - arrow;
-      var neck = front - head;
-      var one = ui.Path();
-      var p = at(front, lane + thick / 2);
-      one.moveTo(p.dx, p.dy);
-      for (var xy in [
-        (neck, lane),
-        (neck, lane + waist),
-        (tail, lane + waist),
-        (tail, lane + thick - waist),
-        (neck, lane + thick - waist),
-        (neck, lane + thick),
-      ]) {
-        var q = at(xy.$1, xy.$2);
-        one.lineTo(q.dx, q.dy);
-      }
-      path.addPath(one..close(), Offset.zero);
+    var one = ui.Path();
+    var tip = at(front, mid);
+    one.moveTo(tip.dx, tip.dy);
+    for (var xy in [
+      (front - depth, 0.0),
+      (back - depth, 0.0),
+      (back, mid),
+      (back - depth, cross),
+      (front - depth, cross),
+    ]) {
+      var p = at(xy.$1, xy.$2);
+      one.lineTo(p.dx, p.dy);
     }
+    path.addPath(one..close(), Offset.zero);
   }
   return _closed(_turned(path, page, over.angle), page, grown);
 }
@@ -444,9 +490,16 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
       SceneTransitionWay.down => (at.dy - page.top) / page.height,
       SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
     };
-    // Half the order from where it is and half from its own throw, so the
-    // paint crosses the page without landing in a line.
-    var lands = (along * 0.5 + order[i] * 0.25) * (1 - over.spacing * 0.3);
+    // Mostly where it is and a little of its own throw, so the paint
+    // crosses the page the way the transition points without landing in a
+    // line. Half and half, as it was, is a throw that lands wherever it
+    // likes -- with a dozen splats the direction was not visible at all.
+    var lands = (along * 0.72 + order[i] * 0.18) *
+        (1 - over.spacing * 0.3) *
+        // A handful of splats have nothing to wait for: spread over the same
+        // half of the transition, one splat left the page empty until it
+        // landed and then the safety net finished the job.
+        math.min(1.0, blobs / 3);
     var on = ((grown - lands) / math.max(0.05, 1 - lands)).clamp(0.0, 1.0);
     if (on <= 0) continue;
 
@@ -454,13 +507,16 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
     // across never met, so the last of the cover was the safety net filling
     // in a screen of spots -- which is the round shape that appeared in the
     // middle of the paint.
+    // Bigger when there are fewer of them, so that any number of splats
+    // covers the page between them rather than one lonely blob in the
+    // middle of it.
     var size = reach *
-        0.3 *
+        (0.7 / math.sqrt(blobs)) *
         (0.55 + over.radius) *
         sizes[i] *
         // Landing is quick and the spread after it is slow, the way a thrown
         // thing hits: a splat that grew at an even rate was a balloon.
-        math.pow(on, 0.45).toDouble();
+        math.pow(on, 0.6).toDouble();
     var spread = math.Random(over.kind.seed + i * 31);
     path.addPath(_blob(at, size, spread), Offset.zero);
 
@@ -502,21 +558,40 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
 /// _washed is the second half of a splatter: paint with holes opening in it.
 ui.Path _washed(SceneTransition over, Rect page, double grown,
     List<Offset> spots, List<double> order, double reach) {
-  // Gone by the end, whatever the holes have managed between them.
   var off = (1 - grown).clamp(0.0, 1.0);
-  if (off >= 0.92) return ui.Path();
-
   var holes = ui.Path();
   for (var i = 0; i < spots.length; i++) {
-    // Each hole opens at its own moment, the ones that landed last going
-    // first -- paint comes off the way it went on, in pieces.
-    var opens = order[i] * 0.35;
+    // Each hole opens at its own moment, and in the order the transition
+    // points, so the paint comes off the way it went on rather than all at
+    // once.
+    var at = spots[i];
+    var along = switch (over.way) {
+      SceneTransitionWay.inPlace ||
+      SceneTransitionWay.right =>
+        (at.dx - page.left) / page.width,
+      SceneTransitionWay.left => 1 - (at.dx - page.left) / page.width,
+      SceneTransitionWay.down => (at.dy - page.top) / page.height,
+      SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
+    };
+    var opens = along * 0.4 + order[i] * 0.12;
     var on = ((off - opens) / math.max(0.05, 1 - opens)).clamp(0.0, 1.0);
     if (on <= 0) continue;
+    // Grown so that the last of the paint is gone as the transition ends
+    // rather than a frame or two before it. It used to give up and return
+    // nothing once most of it was off, which is the cut to the next scene
+    // that was showing at the end of every splatter.
     holes.addPath(
-        _blob(spots[i], reach * 0.55 * on * (0.7 + order[i] * 0.6),
+        _blob(at, reach * 0.85 * math.pow(on, 0.7).toDouble(),
             math.Random(over.kind.seed + i * 31)),
         Offset.zero);
+  }
+  // And the last of it taken off in one wipe, for the corners no thrown
+  // blob happened to land near.
+  if (off > 0.88) {
+    holes.addRect(Rect.fromCenter(
+        center: page.center,
+        width: page.width * ((off - 0.88) / 0.12) * 1.05,
+        height: page.height * ((off - 0.88) / 0.12) * 1.05));
   }
   return ui.Path.combine(
       ui.PathOperation.difference, ui.Path()..addRect(page), holes);
@@ -524,12 +599,18 @@ ui.Path _washed(SceneTransition over, Rect page, double grown,
 
 /// _brush is strokes dragged across the page.
 ///
-/// Rewritten. The strokes were built in a box drawn round the page and then
-/// flipped with a matrix to go the other way, and what came of that was
-/// squares where a stroke's ragged end had been turned inside out. These are
-/// built where they are drawn -- see _along -- so there is nothing to flip,
-/// and each one is a ribbon that wavers as it goes, thins towards its end
-/// and leaves the page at a slant, the way a loaded brush does.
+/// Rewritten twice. They were built in a box round the page and flipped with
+/// a matrix to run the other way, which turned their ragged ends inside out.
+/// Then they were built where they are drawn, but they grew from nothing on
+/// the way in and shrank back into nothing on the way out -- a stroke going
+/// back the way it came, which is the one thing a brush stroke never does,
+/// and the width breathing with them on top of that.
+///
+/// Now a stroke is laid down from its start and dragged off the far side:
+/// going on, its head runs ahead and its tail stays; going off, the whole
+/// stroke carries on along the same line until it has left. Its width is
+/// its own -- thick in the body and lifting at the end -- and does not
+/// change as the transition runs.
 ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
   var path = ui.Path();
   var strokes = over.count.clamp(1, 40);
@@ -538,50 +619,49 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
 
   // The stroke crosses the page and comes off the far side, so the end of a
   // stroke is never sitting on the page as a straight edge.
-  var run = (horizontal ? page.width : page.height) * 1.12;
-  var lanes = (horizontal ? page.height : page.width) / strokes;
-  // One stroke covers its lane at the end: with the gap wide open a single
-  // stroke was a band down the middle of a page it was supposed to be
-  // painting.
-  // Wider than its lane as the cover completes, so the strokes overlap
-  // rather than meeting exactly: two wavering edges that meet exactly leave
-  // a line of page between them wherever they waver apart.
-  var thick = lanes *
-      (1 + 0.3 * grown) *
-      (1 - over.spacing.clamp(0.0, 0.8) * 0.45 * (1 - grown));
+  var run = (horizontal ? page.width : page.height) * 1.2;
+  // Over a field a little wider than the page, because the strokes waver as
+  // they go and the outermost ones wavered off the edge -- which is a line
+  // of the old scene down the side of the page at the moment they swap.
+  var cross = horizontal ? page.height : page.width;
+  var edging = cross * 0.05;
+  var lanes = (cross + edging * 2) / strokes;
+  // Wider than its lane, so the strokes overlap rather than meeting exactly:
+  // two wavering edges that meet exactly leave a line of page between them
+  // wherever they waver apart.
+  var thick = lanes * 1.7 * (1 - over.spacing.clamp(0.0, 0.8) * 0.35);
   var random = math.Random(over.kind.seed + strokes);
 
   for (var i = 0; i < strokes; i++) {
-    // Started in order but not in step: a set of strokes laid on at exactly
+    // Laid on in order but not in step: a set of strokes put down at exactly
     // the same moment is a wipe with a texture.
     var starts = (i / strokes) * 0.35 * (0.4 + random.nextDouble());
     var on = ((grown - starts) / math.max(0.05, 1 - starts)).clamp(0.0, 1.0);
-    if (on <= 0) continue;
-    var length = run * on;
-
-    var lane = lanes * i + (lanes - thick) / 2;
-    var waver = lanes * 0.16;
+    var lane = -edging + lanes * i + (lanes - thick) / 2;
+    var waver = lanes * 0.11;
     var phase = random.nextDouble() * math.pi * 2;
     var beats = 1.5 + random.nextDouble() * 1.5;
+    if (on <= 0 && !going) continue;
 
-    // Drawn down one side and back up the other. The two edges waver
-    // together and the width tapers towards the end, which is a brush
-    // running out rather than a rectangle with a rough edge on it.
+    // Where the two ends of the stroke are. Going on, the tail is at the
+    // start and the head runs away from it; going off, both carry on down
+    // the same line until the tail is past the far edge too.
+    var tail = going ? run * (1 - on) : 0.0;
+    var head = going ? run * (1 + (1 - on) * 0.6) : run * on;
+    if (head - tail <= 0) continue;
+
     var steps = 14;
     var edge = <Offset>[];
     var back = <Offset>[];
     for (var k = 0; k <= steps; k++) {
       var f = k / steps;
-      var d = length * f;
-      var wave = math.sin(phase + f * beats * math.pi) * waver;
-      // Full width for most of it and then narrowing, and the very tip a
-      // point rather than a cut end.
-      // The taper goes as the page fills: a stroke that runs out towards its
-      // end is a brush, and forty of them running out at once is a page with
-      // a pale stripe down one side of it at the moment the scenes change.
-      var taper = 1 - grown;
-      var wide = thick * (1 - 0.35 * taper * math.pow(f, 2.5).toDouble());
-      if (f > 0.93) wide *= 1 - taper * (1 - (1 - f) / 0.07);
+      var d = tail + (head - tail) * f;
+      var wave = math.sin(phase + (d / run) * beats * math.pi) * waver;
+      // Thick in the body and lifting towards the end, which is a loaded
+      // brush running out. The same shape however far along it is, so
+      // nothing about the stroke breathes as the transition runs.
+      var wide = thick * (1 - 0.3 * math.pow(f, 2.5).toDouble());
+      if (f > 0.93) wide *= (1 - f) / 0.07;
       edge.add(at(d, lane + wave + (thick - wide) / 2));
       back.add(at(d, lane + wave + (thick + wide) / 2));
     }
@@ -731,18 +811,35 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
             math.max(5, rays)));
   }
 
-  // And the hole it leaves, opening from the middle once it is past the page.
+  // Going off, it comes apart rather than having a hole cut in it. The hole
+  // was a star, and a star opening out of the middle of the page is the
+  // shape people saw -- so instead the daylight between the rays widens
+  // until there is nothing left but daylight, which is a burst flying apart.
   if (t <= 0.5) return path;
-  // Cut in the burst's own shape, and reaching the corners of the page as
-  // the transition ends: half the diagonal is the furthest corner, and a
-  // hole measured by the whole diagonal had swallowed the page before the
-  // lines were out of it.
-  // Wide enough at the end to have taken the corners with it: measured to
-  // the spikes rather than to the notches between them, the hole reached the
-  // end of the transition with paint still standing in the corners.
-  var opening = full / 2 * ((t - 0.5) * 2);
-  var hole = _star(centre, opening * 1.9, opening * 1.15, math.max(5, rays));
-  return ui.Path.combine(ui.PathOperation.difference, path, hole);
+  var leaving = ((t - 0.5) * 2).clamp(0.0, 1.0);
+  var gaps = ui.Path();
+  var far = full * 1.4;
+  // Two at the least. One gap wide enough to take the whole turn is a wedge
+  // that wraps past itself, and a shape wound round twice cancels itself out
+  // -- which is why a burst of one ray was still on the page at the end.
+  var between = math.max(2, rays);
+  for (var i = 0; i < between; i++) {
+    // Between one ray and the next, so what is left standing is the rays.
+    var angle = (i + 0.5) / between * 2 * math.pi;
+    // Wide enough between them by the end to have taken the whole turn: the
+    // rays are gone as the transition ends rather than a frame after it.
+    var g = (math.pi / between) * math.pow(leaving, 0.8).toDouble() * 1.3;
+    gaps.moveTo(centre.dx, centre.dy);
+    gaps.lineTo(centre.dx + math.cos(angle - g) * far,
+        centre.dy + math.sin(angle - g) * far);
+    gaps.lineTo(centre.dx + math.cos(angle) * far * 1.1,
+        centre.dy + math.sin(angle) * far * 1.1);
+    gaps.lineTo(centre.dx + math.cos(angle + g) * far,
+        centre.dy + math.sin(angle + g) * far);
+    gaps.close();
+  }
+  return ui.Path.combine(
+      ui.PathOperation.difference, ui.Path()..addRect(page.inflate(1)), gaps);
 }
 
 /// _star is a spiked outline: [points] long spikes with short ones between.
