@@ -141,9 +141,7 @@ class CanvasTransitionBar extends StatelessWidget {
                   ),
                   if (value.kind.takesColour)
                     CanvasColorButton(
-                      label: value.kind == SceneTransitionKind.band
-                          ? "The band"
-                          : "Through",
+                      label: value.kind.covers ? "Colour" : "Through",
                       color: value.color,
                       onChanged: (c) => write(value.copyWith(color: c)),
                     ),
@@ -173,13 +171,55 @@ class CanvasTransitionBar extends StatelessWidget {
                   if (value.kind.takesCount)
                     CanvasNumberField(
                       key: const ValueKey("transitionCount"),
-                      label: "Bars",
+                      label: switch (value.kind) {
+                        SceneTransitionKind.blinds => "Bars",
+                        SceneTransitionKind.burst => "Rays",
+                        SceneTransitionKind.brush => "Strokes",
+                        SceneTransitionKind.splatter => "Splats",
+                        SceneTransitionKind.tiles => "Across",
+                        SceneTransitionKind.halftone => "Dots",
+                        SceneTransitionKind.arrow => "Arrows",
+                        _ => "How many",
+                      },
                       value: value.count.toDouble(),
-                      min: 2,
+                      min: 1,
                       max: 40,
                       decimals: 0,
                       width: 54,
                       onChanged: (v) => write(value.copyWith(count: v.round())),
+                    ),
+                  if (value.kind.takesSpacing)
+                    CanvasNumberField(
+                      key: const ValueKey("transitionSpacing"),
+                      label: "Apart",
+                      value: value.spacing,
+                      min: 0,
+                      max: 2,
+                      decimals: 2,
+                      width: 58,
+                      onChanged: (v) => write(value.copyWith(spacing: v)),
+                    ),
+                  if (value.kind.takesRadius)
+                    CanvasNumberField(
+                      key: const ValueKey("transitionRadius"),
+                      label: "Size",
+                      value: value.radius,
+                      min: 0.05,
+                      max: 1,
+                      decimals: 2,
+                      width: 58,
+                      onChanged: (v) => write(value.copyWith(radius: v)),
+                    ),
+                  if (value.kind.takesAngle)
+                    CanvasNumberField(
+                      key: const ValueKey("transitionAngle"),
+                      label: "Angle",
+                      value: value.angle,
+                      min: -180,
+                      max: 180,
+                      decimals: 0,
+                      width: 58,
+                      onChanged: (v) => write(value.copyWith(angle: v)),
                     ),
                   if (value.kind.takesSoftness)
                     CanvasNumberField(

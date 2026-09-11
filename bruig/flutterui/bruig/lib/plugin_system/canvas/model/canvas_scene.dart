@@ -28,7 +28,7 @@ enum SceneTransitionFamily {
   none("None"),
   fade("Fade"),
   move("Move"),
-  wipe("Wipe"),
+  wipe("Uncover"),
   overlay("Overlay"),
   drawn("Drawn");
 
@@ -71,10 +71,10 @@ enum SceneTransitionKind {
   /// whatever the design wants. See SceneTransition.color.
   through("Fade through a colour"),
 
-  slideLeft("Slide left"),
-  slideRight("Slide right"),
-  slideUp("Slide up"),
-  slideDown("Slide down"),
+  slideLeft("The new one slides in, to the left"),
+  slideRight("The new one slides in, to the right"),
+  slideUp("The new one slides in, upwards"),
+  slideDown("The new one slides in, downwards"),
 
   /// push shoves the old scene off with the new one, rather than sliding the
   /// new one over the top of it.
@@ -83,10 +83,10 @@ enum SceneTransitionKind {
   pushUp("Push up"),
   pushDown("Push down"),
 
-  wipeLeft("Wipe left"),
-  wipeRight("Wipe right"),
-  wipeUp("Wipe up"),
-  wipeDown("Wipe down"),
+  wipeLeft("The new one is uncovered, to the left"),
+  wipeRight("The new one is uncovered, to the right"),
+  wipeUp("The new one is uncovered, upwards"),
+  wipeDown("The new one is uncovered, downwards"),
 
   /// zoom grows the new scene out of the middle of the old one.
   zoomIn("Zoom in"),
@@ -106,7 +106,7 @@ enum SceneTransitionKind {
   barn("Barn doors", SceneTransitionFamily.overlay),
 
   /// shapeWipe opens a shape in the middle of the old scene.
-  shapeWipe("A shape opens", SceneTransitionFamily.overlay),
+  shapeWipe("Shapes", SceneTransitionFamily.overlay),
 
   /// clock sweeps round like a hand.
   clock("Clock sweep", SceneTransitionFamily.overlay),
@@ -120,7 +120,7 @@ enum SceneTransitionKind {
   // from its own seed, so the same transition is the same every time it is
   // played and every time it is exported.
   /// arrow drives an arrowhead across the page.
-  arrow("An arrow drives through", SceneTransitionFamily.drawn),
+  arrow("Arrows", SceneTransitionFamily.drawn),
 
   /// splatter throws paint at it.
   splatter("Paint splatter", SceneTransitionFamily.drawn),
@@ -142,13 +142,20 @@ enum SceneTransitionKind {
   const SceneTransitionKind(this.label,
       [this.family = SceneTransitionFamily.none]);
 
+  /// covers is whether this kind works by putting something *over* the join
+  /// rather than by showing one scene through the other.
+  ///
+  /// The whole overlay and drawn families do. What they draw is a shape in
+  /// the transition's own colour that grows until it covers the page, and the
+  /// scenes change behind it -- which is what an overlay is, and what these
+  /// were not: built as masks, they were windows onto the next scene, so the
+  /// next scene's backdrop arrived through a shape before the scene did.
+  bool get covers =>
+      familyOf == SceneTransitionFamily.overlay && this != blurThrough ||
+      familyOf == SceneTransitionFamily.drawn;
+
   /// takesColour is whether the colour setting means anything for this one.
-  bool get takesColour =>
-      this == through ||
-      this == band ||
-      this == blurThrough ||
-      this == splatter ||
-      this == brush;
+  bool get takesColour => this == through || this == blurThrough || covers;
 
   /// takesWay is whether it has a direction to be pointed in.
   bool get takesWay =>
@@ -157,16 +164,40 @@ enum SceneTransitionKind {
       this == barn ||
       this == arrow ||
       this == brush ||
-      this == tiles;
+      this == tiles ||
+      this == shapeWipe ||
+      this == splatter;
 
   /// takesCount is whether it is made of a number of pieces.
   bool get takesCount =>
       this == blinds ||
+      this == shapeWipe ||
       this == splatter ||
       this == brush ||
       this == tiles ||
       this == halftone ||
-      this == burst;
+      this == burst ||
+      this == arrow;
+
+  /// takesSpacing is whether the room between those pieces means anything.
+  bool get takesSpacing =>
+      this == shapeWipe ||
+      this == arrow ||
+      this == splatter ||
+      this == brush ||
+      this == tiles ||
+      this == halftone;
+
+  /// takesAngle is whether the arrangement can be turned.
+  bool get takesAngle =>
+      this == arrow || this == brush || this == blinds || this == shapeWipe;
+
+  /// takesRadius is whether each piece has a size of its own.
+  bool get takesRadius =>
+      this == shapeWipe ||
+      this == splatter ||
+      this == halftone ||
+      this == arrow;
 
   /// takesShape is whether a shape decides what opens.
   bool get takesShape => this == shapeWipe;
@@ -260,6 +291,16 @@ class SceneTransition {
   /// count is how many pieces it is made of, for the blinds.
   final int count;
 
+  /// spacing is the room between the pieces, as a fraction of a piece.
+  final double spacing;
+
+  /// angle turns the whole arrangement, in degrees. What lets a set of
+  /// strokes or arrows run across a corner rather than along an edge.
+  final double angle;
+
+  /// radius is how large each piece is, as a fraction of the room it has.
+  final double radius;
+
   /// softness feathers the edge, as a fraction of the page. Nothing is a hard
   /// edge; a little makes a wipe read as a light sweeping across rather than
   /// as a rectangle being dragged.
@@ -274,6 +315,9 @@ class SceneTransition {
     this.way = SceneTransitionWay.right,
     this.shape = ShapeKind.circle,
     this.count = 6,
+    this.spacing = 0.15,
+    this.angle = 0,
+    this.radius = 0.5,
     this.softness = 0,
   });
 
@@ -292,6 +336,9 @@ class SceneTransition {
     SceneTransitionWay? way,
     ShapeKind? shape,
     int? count,
+    double? spacing,
+    double? angle,
+    double? radius,
     double? softness,
   }) =>
       SceneTransition(
@@ -303,6 +350,9 @@ class SceneTransition {
         way: way ?? this.way,
         shape: shape ?? this.shape,
         count: count ?? this.count,
+        spacing: spacing ?? this.spacing,
+        angle: angle ?? this.angle,
+        radius: radius ?? this.radius,
         softness: softness ?? this.softness,
       );
 
@@ -315,6 +365,9 @@ class SceneTransition {
         if (way != SceneTransitionWay.right) "way": way.name,
         if (shape != ShapeKind.circle) "shape": shape.name,
         if (count != 6) "count": count,
+        if (spacing != 0.15) "spacing": spacing,
+        if (angle != 0) "angle": angle,
+        if (radius != 0.5) "radius": radius,
         if (softness != 0) "softness": softness,
       };
 
@@ -327,7 +380,10 @@ class SceneTransition {
         ease: SceneTransitionEase.fromName(json["ease"] as String?),
         way: SceneTransitionWay.fromName(json["way"] as String?),
         shape: ShapeKind.fromName(json["shape"] as String?),
-        count: jsonInt(json["count"], 6).clamp(2, 40),
+        count: jsonInt(json["count"], 6).clamp(1, 40),
+        spacing: jsonDouble(json["spacing"], 0.15).clamp(0.0, 2.0),
+        angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),
+        radius: jsonDouble(json["radius"], 0.5).clamp(0.05, 1.0),
         softness: jsonDouble(json["softness"], 0).clamp(0.0, 1.0),
       );
 }

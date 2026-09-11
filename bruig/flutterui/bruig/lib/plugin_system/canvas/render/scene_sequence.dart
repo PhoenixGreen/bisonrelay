@@ -4,8 +4,8 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
-import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
 import 'package:flutter/painting.dart';
 
 // scene_sequence.dart plays a document through: every scene in order, and
@@ -256,476 +256,42 @@ void paintTransition(
       _scaled(canvas, page, 1 + 0.4 * t, 1 - t, from);
       _faded(canvas, page, t, to);
 
-    // The overlay family: the change happens under something rather than
-    // between the two scenes. See SceneTransitionKind.band and the rest.
+    // Everything that covers: a shape in the transition's own colour grows
+    // until the page is behind it, the scenes change, and it goes away. See
+    // transition_shapes.dart -- and SceneTransitionKind.covers for why these
+    // are not masks.
     case SceneTransitionKind.band:
-      // The scenes swap behind the band, at the moment it covers the page.
-      (t >= 0.5 ? to : from)();
-      _paintBand(canvas, page, over, t);
-
     case SceneTransitionKind.blinds:
-      from();
-      _through(canvas, page, _blindsPath(page, over, t), over.softness, to);
-
     case SceneTransitionKind.barn:
-      // The new scene is behind, and the old one is pulled apart to let it
-      // through -- so what moves is the thing being left rather than the
-      // thing arriving.
-      to();
-      _barnDoors(canvas, page, over, t, from);
-
     case SceneTransitionKind.shapeWipe:
-      from();
-      _through(canvas, page, _shapeOpening(page, over, t), over.softness, to);
-
     case SceneTransitionKind.clock:
-      from();
-      _through(canvas, page, _clockSweep(page, t), over.softness, to);
+    case SceneTransitionKind.arrow:
+    case SceneTransitionKind.splatter:
+    case SceneTransitionKind.brush:
+    case SceneTransitionKind.tiles:
+    case SceneTransitionKind.halftone:
+    case SceneTransitionKind.burst:
+      // Behind the cover, and swapped at the moment it is complete.
+      (t >= 0.5 ? to : from)();
+      _drawCover(canvas, page, over, t);
 
     case SceneTransitionKind.blurThrough:
       _blurThrough(canvas, page, over, t, from: from, to: to);
-
-    // The drawn family. Each is a mask made of shapes, and the two that put
-    // paint on the page draw the paint over the join as well -- what a
-    // splatter looks like is paint landing, not a hole opening.
-    case SceneTransitionKind.arrow:
-      from();
-      _through(canvas, page, _arrowPath(page, over, t), over.softness, to);
-
-    case SceneTransitionKind.splatter:
-      from();
-      _paintOver(canvas, page, over, _splatterPath(page, over, t), t);
-      _through(canvas, page, _splatterPath(page, over, t), over.softness, to);
-
-    case SceneTransitionKind.brush:
-      from();
-      _paintOver(canvas, page, over, _brushPath(page, over, t), t);
-      _through(canvas, page, _brushPath(page, over, t), over.softness, to);
-
-    case SceneTransitionKind.tiles:
-      from();
-      _through(canvas, page, _tilesPath(page, over, t), over.softness, to);
-
-    case SceneTransitionKind.halftone:
-      from();
-      _through(canvas, page, _halftonePath(page, over, t), over.softness, to);
-
-    case SceneTransitionKind.burst:
-      from();
-      _through(canvas, page, _burstPath(page, over, t), over.softness, to);
   }
 }
 
-/// _through draws [what] through [mask], softly where softness has been asked
-/// for.
-///
-/// A clip where the edge is meant to be hard, and a blurred stencil where it
-/// is not: a clip path cannot be feathered, so a soft edge is the scene drawn
-/// into a layer and then cut back with a blurred copy of the same shape.
-void _through(ui.Canvas canvas, Rect page, ui.Path mask, double softness,
-    void Function() what) {
-  if (softness <= 0) {
-    canvas.save();
-    canvas.clipPath(mask);
-    what();
-    canvas.restore();
-    return;
-  }
-
-  // The stencil first, then the scene kept only where the stencil is: drawn
-  // the other way round -- scene first, then the mask with dstIn -- the parts
-  // of the layer the mask never touched were left alone rather than cut away,
-  // so an empty mask kept the whole scene and the arriving canvas was there
-  // from the first frame.
-  canvas.saveLayer(page, Paint());
-  canvas.drawPath(
-      mask,
-      Paint()
-        ..color = const Color(0xFF000000)
-        // Solid rather than normal: the shape stays as it is and the blur
-        // spreads outwards from it. Blurred both ways, the mask ate into its
-        // own edges -- so a mask that had grown to cover the page still lost
-        // a soft band all round it, and the scene arriving never quite
-        // arrived.
-        ..maskFilter = ui.MaskFilter.blur(
-            ui.BlurStyle.solid, page.shortestSide * softness * 0.08));
-  canvas.saveLayer(page, Paint()..blendMode = ui.BlendMode.srcIn);
-  what();
-  canvas.restore();
-  canvas.restore();
-}
-
-/// _paintOver draws the mask itself in the transition's colour, so a splatter
-/// looks like paint landing rather than like a hole opening.
-///
-/// Strongest as it lands and gone by the end, which is what leaves the scene
-/// arriving clean.
-void _paintOver(
-    ui.Canvas canvas, Rect page, SceneTransition over, ui.Path mask, double t) {
-  var strength = (1 - t) * 0.85;
-  if (strength <= 0.01 || over.color.a <= 0) return;
-  canvas.drawPath(
-      mask,
-      Paint()
-        ..color = over.color.withValues(alpha: over.color.a * strength)
-        ..maskFilter =
-            ui.MaskFilter.blur(ui.BlurStyle.normal, page.shortestSide * 0.01));
-}
-
-/// _arrowPath is an arrowhead driving across the page.
-ui.Path _arrowPath(Rect page, SceneTransition over, double t) {
-  var across = over.way.horizontal ? page.width : page.height;
-  // The head starts off one edge and leaves by the other, and the tail fills
-  // in behind it -- so what is revealed is everything the arrow has passed.
-  var deep = (over.way.horizontal ? page.height : page.width) * 0.55;
-  // Off the page to begin with: the head has to arrive from outside, or the
-  // arrow is already through the edge of the picture on the first frame.
-  var reach = across * (t * 1.7) - deep;
-
-  var path = ui.Path();
-  switch (over.way) {
-    case SceneTransitionWay.right:
-      path.moveTo(page.left - deep, page.top);
-      path.lineTo(page.left + reach, page.top);
-      path.lineTo(page.left + reach + deep, page.center.dy);
-      path.lineTo(page.left + reach, page.bottom);
-      path.lineTo(page.left - deep, page.bottom);
-    case SceneTransitionWay.left:
-      path.moveTo(page.right + deep, page.top);
-      path.lineTo(page.right - reach, page.top);
-      path.lineTo(page.right - reach - deep, page.center.dy);
-      path.lineTo(page.right - reach, page.bottom);
-      path.lineTo(page.right + deep, page.bottom);
-    case SceneTransitionWay.down:
-      path.moveTo(page.left, page.top - deep);
-      path.lineTo(page.left, page.top + reach);
-      path.lineTo(page.center.dx, page.top + reach + deep);
-      path.lineTo(page.right, page.top + reach);
-      path.lineTo(page.right, page.top - deep);
-    case SceneTransitionWay.up:
-      path.moveTo(page.left, page.bottom + deep);
-      path.lineTo(page.left, page.bottom - reach);
-      path.lineTo(page.center.dx, page.bottom - reach - deep);
-      path.lineTo(page.right, page.bottom - reach);
-      path.lineTo(page.right, page.bottom + deep);
-  }
-  return path..close();
-}
-
-/// _splatterPath is paint thrown at the page: blobs that land in an order of
-/// their own and grow until they meet.
-ui.Path _splatterPath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var blobs = over.count.clamp(2, 40);
-  var random = math.Random(over.kind.seed + blobs);
-  var reach = page.longestSide;
-
-  for (var i = 0; i < blobs; i++) {
-    // Where it lands and when, both decided once from a seed of the
-    // transition's own -- a splatter that consulted a fresh random number
-    // would land somewhere else on every frame of an export.
-    var at = Offset(page.left + random.nextDouble() * page.width,
-        page.top + random.nextDouble() * page.height);
-    var lands = random.nextDouble() * 0.6;
-    var grown = ((t - lands) / (1 - lands)).clamp(0.0, 1.0);
-    if (grown <= 0) continue;
-
-    // Ragged rather than round: a blob with a few arms reads as paint, and a
-    // circle reads as a hole.
-    var size = reach * 0.16 * grown * (0.6 + random.nextDouble() * 0.8);
-    var arms = 7 + random.nextInt(4);
-    for (var a = 0; a < arms; a++) {
-      var angle = a / arms * 2 * math.pi;
-      var out = size * (0.55 + random.nextDouble() * 0.7);
-      var spot = at + Offset(math.cos(angle) * out, math.sin(angle) * out);
-      path.addOval(Rect.fromCircle(center: spot, radius: size * 0.42));
-    }
-    path.addOval(Rect.fromCircle(center: at, radius: size * 0.8));
-  }
-  // And the whole page at the end, so nothing of the old scene is left in the
-  // gaps between the blobs.
-  if (t > 0.92) {
-    var over92 = (t - 0.92) / 0.08;
-    path.addRect(Rect.fromCenter(
-        center: page.center,
-        width: page.width * over92 * 1.2,
-        height: page.height * over92 * 1.2));
-  }
-  return path;
-}
-
-/// _brushPath is strokes dragged across the page, one after another.
-ui.Path _brushPath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var strokes = over.count.clamp(2, 40);
-  var horizontal = over.way.horizontal;
-  var thick = (horizontal ? page.height : page.width) / strokes;
-  var random = math.Random(over.kind.seed + strokes);
-
-  for (var i = 0; i < strokes; i++) {
-    // Each stroke starts a little after the one before it, so the page is
-    // painted rather than covered all at once.
-    var starts = i / strokes * 0.45;
-    var run = ((t - starts) / (1 - starts)).clamp(0.0, 1.0);
-    if (run <= 0) continue;
-
-    var along = (horizontal ? page.width : page.height) * run * 1.15;
-    var at = (horizontal ? page.top : page.left) + thick * i;
-    // A stroke is not a rectangle: it is thickest in the middle and its ends
-    // are rounded, which is what the extra ovals are for.
-    var body = horizontal
-        ? Rect.fromLTWH(
-            over.way == SceneTransitionWay.right
-                ? page.left
-                : page.right - along,
-            at + thick * 0.08,
-            along,
-            thick * 0.84)
-        : Rect.fromLTWH(
-            at + thick * 0.08,
-            over.way == SceneTransitionWay.down
-                ? page.top
-                : page.bottom - along,
-            thick * 0.84,
-            along);
-    path.addRRect(RRect.fromRectAndRadius(body, Radius.circular(thick * 0.42)));
-
-    // A little wander at the leading end, so no two strokes end level.
-    var wobble = thick * (random.nextDouble() * 0.5 - 0.25);
-    path.addOval(Rect.fromCircle(
-        center: horizontal
-            ? Offset(
-                over.way == SceneTransitionWay.right ? body.right : body.left,
-                body.center.dy + wobble)
-            : Offset(body.center.dx + wobble,
-                over.way == SceneTransitionWay.down ? body.bottom : body.top),
-        radius: thick * 0.5));
-  }
-
-  // And the page itself at the very end. Strokes leave gaps at their edges by
-  // construction -- that is what makes them strokes -- and a transition that
-  // ended with a few of them showing would be a transition that never
-  // finished.
-  if (t > 0.9) {
-    var last = (t - 0.9) / 0.1;
-    path.addRect(Rect.fromCenter(
-        center: page.center,
-        width: page.width * last * 1.2,
-        height: page.height * last * 1.2));
-  }
-  return path;
-}
-
-/// _tilesPath breaks the page into squares that arrive in a wave.
-ui.Path _tilesPath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var across = over.count.clamp(2, 40);
-  var wide = page.width / across;
-  var down = math.max(1, (page.height / math.max(1.0, wide)).round());
-  var tall = page.height / down;
-
-  for (var x = 0; x < across; x++) {
-    for (var y = 0; y < down; y++) {
-      // The wave runs the way the transition points, with a little of the
-      // other axis mixed in so the edge is a diagonal rather than a line.
-      var along = switch (over.way) {
-        SceneTransitionWay.right => x / across,
-        SceneTransitionWay.left => 1 - x / across,
-        SceneTransitionWay.down => y / down,
-        SceneTransitionWay.up => 1 - y / down,
-      };
-      var lean = (over.way.horizontal ? y / down : x / across) * 0.25;
-      var starts = (along * 0.7 + lean).clamp(0.0, 0.95);
-      var grown = ((t - starts) / (1 - starts)).clamp(0.0, 1.0);
-      if (grown <= 0) continue;
-
-      // Each tile grows from its own middle, which is what makes it read as
-      // turning over rather than as a square being uncovered.
-      var box =
-          Rect.fromLTWH(page.left + wide * x, page.top + tall * y, wide, tall);
-      path.addRect(Rect.fromCenter(
-          center: box.center,
-          width: box.width * grown,
-          height: box.height * grown));
-    }
-  }
-  return path;
-}
-
-/// _halftonePath grows a comic's dots until they meet and the page is full.
-ui.Path _halftonePath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var across = over.count.clamp(2, 40);
-  var step = page.width / across;
-  var rows = math.max(1, (page.height / step).ceil()) + 1;
-
-  // Big enough at the end to close every gap between the dots, which is what
-  // takes a halftone from a pattern to a full page.
-  var reach = step * 0.72 * (t * 1.45);
-  for (var y = 0; y < rows; y++) {
-    for (var x = -1; x <= across; x++) {
-      // Every other row half a step over, the way a printed halftone is.
-      var at = Offset(
-          page.left + step * (x + (y.isEven ? 0 : 0.5)), page.top + step * y);
-      // Later towards the far corner, so the dots come in as a wave rather
-      // than all at once.
-      var away = (at - page.topLeft).distance / page.longestSide;
-      var grown = reach * (1.35 - away * 0.7);
-      if (grown <= 0) continue;
-      path.addOval(Rect.fromCircle(center: at, radius: grown));
-    }
-  }
-  return path;
-}
-
-/// _burstPath throws speed lines out of the middle.
-ui.Path _burstPath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var rays = over.count.clamp(2, 40);
-  var reach = page.longestSide * t * 1.2;
-  if (reach <= 0) return path;
-  var random = math.Random(over.kind.seed + rays);
-
-  for (var i = 0; i < rays; i++) {
-    var angle = i / rays * 2 * math.pi;
-    // Each ray a different width, so it reads as drawn rather than as a pie
-    // chart -- and the widths are fixed by the seed, not by the frame.
-    var spread = (math.pi / rays) * (0.55 + random.nextDouble() * 0.9);
-    path.moveTo(page.center.dx, page.center.dy);
-    path.lineTo(page.center.dx + math.cos(angle - spread) * reach,
-        page.center.dy + math.sin(angle - spread) * reach);
-    path.lineTo(page.center.dx + math.cos(angle + spread) * reach,
-        page.center.dy + math.sin(angle + spread) * reach);
-    path.close();
-  }
-  // And the middle fills in behind them.
-  path.addOval(Rect.fromCircle(center: page.center, radius: reach * 0.55));
-  return path;
-}
-
-/// _paintBand draws a panel of colour crossing the page.
-///
-/// Sized to the page and travelling two page widths, so it covers everything
-/// exactly at the half way point -- which is where the scenes change behind
-/// it, and why the change is not seen.
-void _paintBand(ui.Canvas canvas, Rect page, SceneTransition over, double t) {
-  var along = over.way.horizontal ? page.width : page.height;
-  var travel = (t * 2 - 1) * along;
-
-  var band = over.way.horizontal
-      ? Rect.fromLTWH(
-          page.left + (over.way == SceneTransitionWay.right ? travel : -travel),
-          page.top,
-          page.width,
-          page.height)
-      : Rect.fromLTWH(
-          page.left,
-          page.top + (over.way == SceneTransitionWay.down ? travel : -travel),
-          page.width,
-          page.height);
-
+/// _drawCover paints the overlay's own shape over the join.
+void _drawCover(ui.Canvas canvas, Rect page, SceneTransition over, double t) {
+  var shape = overlayPath(over, page, t);
   var paint = Paint()..color = over.color;
-  // A feathered leading edge, where one has been asked for: a band with a
-  // little softness reads as a light sweeping across rather than as a
-  // rectangle being dragged over the page.
   if (over.softness > 0) {
-    var soft = (over.softness * 0.5).clamp(0.0, 0.5);
-    paint.shader = ui.Gradient.linear(
-      over.way.horizontal ? band.centerLeft : band.topCenter,
-      over.way.horizontal ? band.centerRight : band.bottomCenter,
-      [
-        over.color.withValues(alpha: 0),
-        over.color,
-        over.color,
-        over.color.withValues(alpha: 0),
-      ],
-      [0, soft, 1 - soft, 1],
-    );
+    // Outwards only, so a cover that has grown to the page stays solid: blur
+    // it both ways and it eats its own edges, and the scene behind shows
+    // through the very moment it is meant to be hidden.
+    paint.maskFilter = ui.MaskFilter.blur(
+        ui.BlurStyle.solid, page.shortestSide * over.softness * 0.06);
   }
-  canvas.drawRect(band, paint);
-}
-
-/// _blindsPath is the part of the page the arriving scene has taken, as a set
-/// of bars growing from one side.
-ui.Path _blindsPath(Rect page, SceneTransition over, double t) {
-  var path = ui.Path();
-  var bars = over.count.clamp(2, 40);
-  var horizontal = over.way.horizontal;
-  var span = (horizontal ? page.height : page.width) / bars;
-
-  for (var i = 0; i < bars; i++) {
-    var at = (horizontal ? page.top : page.left) + span * i;
-    var grown = (horizontal ? page.width : page.height) * t;
-    path.addRect(horizontal
-        ? Rect.fromLTWH(
-            over.way == SceneTransitionWay.right
-                ? page.left
-                : page.right - grown,
-            at,
-            grown,
-            span)
-        : Rect.fromLTWH(
-            at,
-            over.way == SceneTransitionWay.down
-                ? page.top
-                : page.bottom - grown,
-            span,
-            grown));
-  }
-  return path;
-}
-
-/// _barnDoors draws the scene being left, split apart.
-void _barnDoors(ui.Canvas canvas, Rect page, SceneTransition over, double t,
-    void Function() draw) {
-  var horizontal = over.way.horizontal;
-  var half = horizontal ? page.width / 2 : page.height / 2;
-  var open = half * t;
-
-  for (var side in const [-1.0, 1.0]) {
-    canvas.save();
-    // Moved first and clipped after, so the clip travels with the door.
-    // Clipped to a fixed half and then moved, the picture slid *inside* its
-    // own clip and never left it -- the doors stayed shut however far they
-    // had opened.
-    canvas.translate(
-        horizontal ? side * open : 0, horizontal ? 0 : side * open);
-    canvas.clipRect(horizontal
-        ? Rect.fromLTRB(side < 0 ? page.left : page.center.dx, page.top,
-            side < 0 ? page.center.dx : page.right, page.bottom)
-        : Rect.fromLTRB(page.left, side < 0 ? page.top : page.center.dy,
-            page.right, side < 0 ? page.center.dy : page.bottom));
-    draw();
-    canvas.restore();
-  }
-}
-
-/// _shapeOpening is the shape the arriving scene comes through.
-///
-/// Drawn by the same code an element's shape is -- see shapePath -- so a
-/// transition cannot drift away from what the shapes on the canvas look like.
-ui.Path _shapeOpening(Rect page, SceneTransition over, double t) {
-  // Large enough at the end to cover the corners of the page, whatever shape
-  // it is: a circle that stopped at the edges would leave the corners of the
-  // scene it is replacing showing.
-  var reach = math.sqrt(page.width * page.width + page.height * page.height);
-  var size = reach * t * 1.05;
-  var centre = page.center;
-  return shapePath(
-      over.shape, Rect.fromCenter(center: centre, width: size, height: size),
-      points: 5);
-}
-
-/// _clockSweep is a sector of the page, swept from the top like a hand.
-ui.Path _clockSweep(Rect page, double t) {
-  if (t >= 1) return ui.Path()..addRect(page);
-  var reach = math.sqrt(page.width * page.width + page.height * page.height);
-  var box =
-      Rect.fromCenter(center: page.center, width: reach * 2, height: reach * 2);
-  return ui.Path()
-    ..moveTo(page.center.dx, page.center.dy)
-    ..arcTo(box, -math.pi / 2, 2 * math.pi * t, false)
-    ..close();
+  canvas.drawPath(shape, paint);
 }
 
 /// _blurThrough goes soft, changes, and comes back sharp.

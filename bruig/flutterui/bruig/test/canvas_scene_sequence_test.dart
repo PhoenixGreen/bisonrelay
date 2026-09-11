@@ -32,7 +32,22 @@ CanvasDocument _two({SceneTransition? over}) => CanvasDocument(
       ]),
     ]);
 
-Future<Map<int, int>> _ink(CanvasDocument document, int at) async {
+/// _inkIn counts the colours inside the page itself.
+///
+/// The scenes in this file are drawn a little taller than the page they are
+/// on -- the shapes are 200 by 120 and a 16:9 page 200 wide is 112 -- and
+/// nothing clips an element to the page here. A transition covers the page,
+/// so the strip below it is not a gap in the cover and must not be counted
+/// as one.
+Future<Map<int, int>> _inkIn(CanvasDocument document, int at) async {
+  var page = document.size.rect;
+  var ink = await _ink(document, at);
+  var all = await _ink(document, at, only: page);
+  return all.isEmpty ? ink : all;
+}
+
+Future<Map<int, int>> _ink(CanvasDocument document, int at,
+    {Rect? only}) async {
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
   canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 120),
@@ -43,6 +58,12 @@ Future<Map<int, int>> _ink(CanvasDocument document, int at) async {
   var bytes = (await image.toByteData())!;
   var counts = <int, int>{};
   for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+    if (only != null) {
+      var at = i ~/ 4;
+      var x = (at % 200).toDouble();
+      var y = (at ~/ 200).toDouble();
+      if (!only.contains(Offset(x, y))) continue;
+    }
     var pixel = bytes.getUint32(i);
     counts[pixel] = (counts[pixel] ?? 0) + 1;
   }
@@ -246,154 +267,83 @@ void main() {
     });
   });
 
-  group("the overlay family", () {
-    // Each of these puts something *over* the join rather than crossing the
-    // two scenes: a band of colour, a set of bars, a shape opening. What is
-    // measured is that the middle of the transition is neither scene as it
-    // stands, and that the end of it is the scene arriving.
-    Future<Map<int, int>> midOf(SceneTransition over) =>
-        _ink(_two(over: over), 7);
+  group("the transitions that cover the join", () {
+    // Every one of these puts something *over* the join rather than showing
+    // one scene through the other: a shape in the transition's own colour
+    // that grows until the page is behind it, and the scenes change while it
+    // is. Built as masks, as they were, what arrived through a splatter was
+    // the next scene's backdrop rather than paint -- so they looked like
+    // holes opening instead of like something landing on the page.
+    const green = 0x00FF00FF;
 
-    testWidgets("a band covers the page as the scenes change", (tester) async {
+    SceneTransition covering(SceneTransitionKind kind) => SceneTransition(
+          kind: kind,
+          frames: 4,
+          overlap: 4,
+          color: const Color(0xFF00FF00),
+          ease: SceneTransitionEase.straight,
+        );
+
+    testWidgets("each of them hides the change behind its own colour",
+        (tester) async {
+      for (var kind in SceneTransitionKind.values.where((k) => k.covers)) {
+        late Map<int, int> begins;
+        late Map<int, int> middle;
+        late Map<int, int> ends;
+        await tester.runAsync(() async {
+          var over = covering(kind);
+          begins = await _inkIn(_two(over: over), 5);
+          middle = await _inkIn(_two(over: over), 7);
+          ends = await _inkIn(_two(over: over), 10);
+        });
+
+        expect(begins[red] ?? 0, greaterThan(20000),
+            reason: "${kind.name} starts on the scene it is leaving");
+        // What matters is that neither scene is showing when they swap: a
+        // gap at that moment is the cut the cover was put there to hide. A
+        // pixel or two of the page's own edge is rounding, not a gap.
+        expect((middle[red] ?? 0) + (middle[blue] ?? 0), 0,
+            reason: "${kind.name} lets a scene show at the moment they swap");
+        expect(middle[green] ?? 0, greaterThan(20000),
+            reason: "${kind.name} does not cover the page");
+        expect(ends[blue] ?? 0, greaterThan(20000),
+            reason: "${kind.name} does not finish on the scene arriving");
+      }
+    });
+
+    testWidgets("and the colour is the transition's, not a scene's",
+        (tester) async {
+      // The colour setting did nothing on most of them, because what showed
+      // through was the next scene rather than paint.
       late Map<int, int> mid;
-      late Map<int, int> after;
       await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.band,
-            frames: 4,
-            overlap: 4,
-            color: Color(0xFF00FF00),
-            ease: SceneTransitionEase.straight));
-        after = await _ink(
+        mid = await _inkIn(
             _two(
                 over: const SceneTransition(
-                    kind: SceneTransitionKind.band, frames: 4, overlap: 4)),
-            10);
-      });
-
-      // The page is 200 by 112 and the picture 200 by 120, so the strip
-      // below the page is the scene's own and is not the band's to cover.
-      expect(mid[0x00FF00FF] ?? 0, greaterThan(20000),
-          reason: "the band is over the whole page in the middle of it");
-      expect((mid[red] ?? 0) + (mid[blue] ?? 0), lessThan(1600),
-          reason: "which is why the change behind it is not seen");
-      expect(after[blue], 24000, reason: "and it ends on the scene arriving");
-    });
-
-    testWidgets("blinds show the next scene through bars", (tester) async {
-      late Map<int, int> mid;
-      await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.blinds,
-            frames: 4,
-            overlap: 4,
-            count: 6,
-            ease: SceneTransitionEase.straight));
-      });
-      // Both, at full strength: the bars are a clip rather than a blend.
-      expect(mid[red] ?? 0, greaterThan(4000));
-      expect(mid[blue] ?? 0, greaterThan(4000));
-    });
-
-    testWidgets("a shape opens in the middle of the old one", (tester) async {
-      late Map<int, int> mid;
-      await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.shapeWipe,
-            frames: 4,
-            overlap: 4,
-            shape: ShapeKind.circle,
-            ease: SceneTransitionEase.straight));
-      });
-      expect(mid[blue] ?? 0, greaterThan(2000),
-          reason: "the scene arriving, through the opening");
-      expect(mid[red] ?? 0, greaterThan(2000),
-          reason: "and the one it is opening in");
-    });
-
-    testWidgets("barn doors pull the old scene apart", (tester) async {
-      late Map<int, int> mid;
-      await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.barn,
-            frames: 4,
-            overlap: 4,
-            ease: SceneTransitionEase.straight));
-      });
-      expect(mid[blue] ?? 0, greaterThan(2000), reason: "through the gap");
-      expect(mid[red] ?? 0, greaterThan(2000), reason: "the doors themselves");
-    });
-
-    testWidgets("a clock sweeps round", (tester) async {
-      late Map<int, int> mid;
-      await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.clock,
-            frames: 4,
-            overlap: 4,
-            ease: SceneTransitionEase.straight));
-      });
-      // Half the page at the half way point, near enough: a sector of a
-      // rectangle is not exactly half its area at half a turn.
-      expect(mid[blue] ?? 0, greaterThan(6000));
-      expect(mid[red] ?? 0, greaterThan(6000));
-    });
-
-    testWidgets("and a blur goes soft in the middle", (tester) async {
-      late Map<int, int> mid;
-      late Map<int, int> ends;
-      await tester.runAsync(() async {
-        mid = await midOf(const SceneTransition(
-            kind: SceneTransitionKind.blurThrough,
-            frames: 4,
-            overlap: 4,
-            color: Color(0x00000000),
-            ease: SceneTransitionEase.straight));
-        ends = await _ink(
-            _two(
-                over: const SceneTransition(
-                    kind: SceneTransitionKind.blurThrough,
+                    kind: SceneTransitionKind.splatter,
                     frames: 4,
                     overlap: 4,
-                    color: Color(0x00000000))),
-            10);
+                    color: Color(0xFFFF00FF),
+                    ease: SceneTransitionEase.straight)),
+            7);
       });
-      // A blurred flat colour is still that colour in the middle of the page
-      // and mixed at its edges, so the picture is no longer one flat block.
-      expect(mid.length, greaterThan(2),
-          reason: "soft edges, which is what a blur is");
-      expect(ends[blue], 24000, reason: "and sharp again at the end");
+      expect(mid[0xFF00FFFF] ?? 0, greaterThan(20000),
+          reason: "the paint's own colour");
+      expect((mid[red] ?? 0) + (mid[blue] ?? 0), 0);
     });
 
-    testWidgets("the drawn kinds each end on the scene arriving",
+    testWidgets("a band still passes across rather than growing",
         (tester) async {
-      // Six masks made of shapes -- paint, strokes, tiles, dots, speed lines
-      // -- and the thing they all have to do is finish. A mask made of
-      // shapes leaves gaps between them by construction, so each has to close
-      // itself at the end or the transition never quite happens.
-      for (var kind
-          in SceneTransitionKind.inFamily(SceneTransitionFamily.drawn)) {
-        for (var soft in const [0.0, 0.4]) {
-          late Map<int, int> begins;
-          late Map<int, int> ends;
-          await tester.runAsync(() async {
-            var over = SceneTransition(
-                kind: kind,
-                frames: 4,
-                overlap: 4,
-                softness: soft,
-                color: const Color(0x00000000),
-                ease: SceneTransitionEase.straight);
-            // The frame before the join, and the frame after it.
-            begins = await _ink(_two(over: over), 5);
-            ends = await _ink(_two(over: over), 10);
-          });
-          expect(begins[red], 24000,
-              reason: "${kind.name} at softness $soft begins early");
-          expect(ends[blue], 24000,
-              reason: "${kind.name} at softness $soft does not finish");
-        }
-      }
+      // Its own shape among the covers: it arrives from one side and leaves
+      // by the other, which is why a quarter of the way through it is half
+      // on.
+      late Map<int, int> quarter;
+      await tester.runAsync(() async {
+        quarter =
+            await _inkIn(_two(over: covering(SceneTransitionKind.band)), 6);
+      });
+      expect(quarter[green] ?? 0, greaterThan(8000));
+      expect(quarter[red] ?? 0, greaterThan(8000));
     });
 
     test("the overlay kinds are one family, and are offered together", () {

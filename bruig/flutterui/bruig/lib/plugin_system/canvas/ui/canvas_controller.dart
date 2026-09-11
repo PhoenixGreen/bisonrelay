@@ -1281,12 +1281,25 @@ class CanvasController extends ChangeNotifier {
   /// join twice should not have to walk back to it in between.
   int? _previewFrom;
 
+  /// _previewFromMaster is whether the shared canvas was the one open when
+  /// the preview started, so that watching a join puts it back rather than
+  /// leaving the reader on whichever scene the playhead stopped in.
+  bool _previewFromMaster = false;
+
   /// previewTransitionAfter plays the join between a scene and the next one:
   /// a little of the scene before it, the transition, and a little of the
   /// scene after.
   void previewTransitionAfter(int index) {
     var document = _document;
     var scenes = document.allScenes;
+    if (scenes.length < 2) return;
+
+    // On the shared canvas the bar is editing the default every scene starts
+    // from, and there is no "this scene" for it to be after -- so the first
+    // join stands for all of them. Asked for the join after whatever scene
+    // was last open, the button did nothing at all whenever that was the last
+    // scene, which is what made it seem temperamental.
+    if (document.editingMaster) index = 0;
     if (index < 0 || index >= scenes.length - 1) return;
 
     var over = document.transitionAfter(index);
@@ -1297,6 +1310,7 @@ class CanvasController extends ChangeNotifier {
     // one thing a preview is for.
     var lead = math.max(6, (document.frameRate * 0.4).round());
     _previewFrom = document.at;
+    _previewFromMaster = document.editingMaster;
     _previewAt = math.max(0, start - over.overlap - lead);
     _previewEnd =
         math.min(document.sequenceFrames - 1, start + over.frames + lead);
@@ -1313,9 +1327,18 @@ class CanvasController extends ChangeNotifier {
     // editor through the scenes -- see _tick -- so without this, watching a
     // join left the reader two scenes further on than they were.
     var back = _previewFrom;
+    var wasMaster = _previewFromMaster;
     _previewFrom = null;
+    _previewFromMaster = false;
     if (back != null && back != _document.at) {
       _document = _document.goToScene(back);
+      _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    }
+    // And back onto the shared canvas where that is where it started: the
+    // playhead walks the scenes while a join is watched, and returning to a
+    // scene would leave somebody editing the master looking at scene one.
+    if (wasMaster && !_document.editingMaster) {
+      _document = _document.copyWith(onMaster: true);
       _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
     }
     notifyListeners();

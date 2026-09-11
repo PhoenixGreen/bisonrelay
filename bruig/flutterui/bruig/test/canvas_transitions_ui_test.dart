@@ -190,11 +190,38 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey("transitionKind")));
     await tester.pumpAndSettle();
-    await tester.tap(find.text("A shape opens").last);
+    await tester.tap(find.text("Shapes").last);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("transitionShape")), findsOneWidget);
-    expect(find.byKey(const ValueKey("transitionWay")), findsNothing,
-        reason: "a shape opens from the middle, not in a direction");
+    expect(find.byKey(const ValueKey("transitionCount")), findsOneWidget,
+        reason: "how many of them, and how far apart");
+    expect(find.byKey(const ValueKey("transitionSpacing")), findsOneWidget);
+    expect(find.byKey(const ValueKey("transitionRadius")), findsOneWidget,
+        reason: "and how big each one is");
+  });
+
+  test("the preview works from the shared canvas, whichever scene was last",
+      () {
+    // Asked for the join after whatever scene was last open, the button did
+    // nothing at all whenever that was the last scene -- which is what made
+    // it seem temperamental.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a", frames: 12),
+      const CanvasScene(id: "b", frames: 12),
+    ]));
+    addTearDown(controller.dispose);
+
+    controller.goToScene(1);
+    controller.showMaster();
+    expect(controller.document.editingMaster, isTrue);
+
+    controller.previewTransitionAfter(controller.document.at);
+    expect(controller.previewAt, isNotNull,
+        reason: "the first join stands for the default");
+
+    controller.stopPreview();
+    expect(controller.document.editingMaster, isTrue,
+        reason: "and it puts the shared canvas back when it is done");
   });
 
   testWidgets("with one scene there is nothing to give way to", (tester) async {
