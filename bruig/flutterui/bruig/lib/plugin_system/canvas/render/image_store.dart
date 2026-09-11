@@ -341,16 +341,6 @@ Future<ui.Image?> _rasterise(Uint8List bytes) async {
   }
 }
 
-/// removeBackground applies [removal] to [image], returning a new picture with
-/// an alpha channel cut into it.
-///
-/// Exposed for tests, which check the three modes against pictures whose
-/// answer is known -- the alternative is discovering a broken colour key by
-/// looking at one.
-@visibleForTesting
-Future<ui.Image?> removeBackground(ui.Image image, BackgroundRemoval removal) =>
-    _removeBackground(image, removal);
-
 Future<ui.Image?> _removeBackground(
     ui.Image image, BackgroundRemoval removal) async {
   if (!removal.active) return null;

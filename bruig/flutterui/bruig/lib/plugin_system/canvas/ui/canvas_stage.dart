@@ -513,10 +513,6 @@ class CanvasStageState extends State<CanvasStage> {
   @visibleForTesting
   Rect get contentRect => _origin & _scaledSize;
 
-  /// viewportSize is the room the stage has, for the same tests.
-  @visibleForTesting
-  Size get viewportSize => _viewport;
-
   /// flowGrips is where a selected text box's overflow dots are and what they
   /// say, for the tests that drag one onto another box. Painted rather than
   /// laid out, like everything else here, so there is nothing to find.

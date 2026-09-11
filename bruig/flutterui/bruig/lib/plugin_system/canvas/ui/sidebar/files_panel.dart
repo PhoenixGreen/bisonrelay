@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -167,23 +168,28 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     return result;
   }
 
-  Future<bool> _confirm(String title, String message) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text("Cancel")),
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text("Delete")),
-          ],
-        ),
-      ) ??
-      false;
+  Future<bool> _confirm(String title, String message) =>
+      askToConfirm(context, title: title, message: message, confirm: "Delete");
+
+  /// _freeName is [wanted] as a file name, or null with the reason said.
+  ///
+  /// Two callers ask the same two questions of a name somebody has typed --
+  /// can it be a file at all, and is it taken -- and each had its own copy of
+  /// the pair. The second question is refused rather than overwritten: there
+  /// is no undo for a saved canvas replaced by another one, and landing on an
+  /// existing name is far more often a slip than an intention.
+  Future<String?> _freeName(String wanted, SnackBarModel snackbar) async {
+    var clean = CanvasStorage.sanitizeName(wanted);
+    if (clean == null) {
+      snackbar.error("That name cannot be used for a file.");
+      return null;
+    }
+    if (await CanvasStorage.exists(_folder, clean)) {
+      snackbar.error("There is already a canvas called $clean here.");
+      return null;
+    }
+    return clean;
+  }
 
   /// _saveAs files a canvas that has none.
   ///
@@ -196,18 +202,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         initial: controller.name ?? controller.document.title);
     if (wanted == null) return;
 
-    var clean = CanvasStorage.sanitizeName(wanted);
-    if (clean == null) {
-      snackbar.error("That name cannot be used for a file.");
-      return;
-    }
-    if (await CanvasStorage.exists(_folder, clean)) {
-      // Refused rather than overwritten. There is no undo for a saved canvas
-      // replaced by another one, and "Save as" landing on an existing name is
-      // far more often a slip than an intention.
-      snackbar.error("There is already a canvas called $clean here.");
-      return;
-    }
+    var clean = await _freeName(wanted, snackbar);
+    if (clean == null) return;
 
     var ok = await controller.saveAs(_folder, clean);
     if (!mounted) return;
@@ -589,15 +585,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     var wanted = await _ask("New canvas", "Name");
     if (wanted == null) return;
 
-    var clean = CanvasStorage.sanitizeName(wanted);
-    if (clean == null) {
-      snackbar.error("That name cannot be used for a file.");
-      return;
-    }
-    if (await CanvasStorage.exists(_folder, clean)) {
-      snackbar.error("There is already a canvas called $clean here.");
-      return;
-    }
+    var clean = await _freeName(wanted, snackbar);
+    if (clean == null) return;
     await widget.onNew(_folder, clean);
     await _reload();
   }

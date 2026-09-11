@@ -1,8 +1,8 @@
+import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -195,10 +195,6 @@ class CanvasGuidesPanel extends StatefulWidget {
 class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
   CanvasController get controller => widget.controller;
 
-  /// _scroll is held rather than left to the scroll view, so the line keeps
-  /// its position across the rebuild that follows every switch on it.
-  final ScrollController _scroll = ScrollController();
-
   @override
   void initState() {
     super.initState();
@@ -208,7 +204,6 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
   @override
   void dispose() {
     controller.removeListener(_onChanged);
-    _scroll.dispose();
     super.dispose();
   }
 
@@ -217,64 +212,8 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Material(
-      // Opaque, and with a shadow: it is sitting on top of the design rather
-      // than above it, so it has to read as a thing in front.
-      color: theme.colors.surfaceContainerLow,
-      elevation: 6,
-      child: Container(
-        width: double.infinity,
-        // The same tight strip the canvas settings are, and for the same
-        // reason: it is over the design, so its padding is canvas.
-        padding: const EdgeInsets.fromLTRB(8, 5, 8, 7),
-        decoration: BoxDecoration(
-          border: Border(
-              bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
-        ),
-        // Sideways rather than wrapping, as the canvas settings do. A group is
-        // a column of controls and a row of them is wider than most windows.
-        // No scrollbar. It is a strip two lines tall over the top of the
-        // design, and a bar under the controls is a third line of furniture
-        // saying something the controls already say by being cut off. The
-        // wheel and a trackpad still scroll it.
-        child: ScrollConfiguration(
-          behavior: const _NoScrollbar(),
-          child: SingleChildScrollView(
-            controller: _scroll,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 5),
-            // Captions beside their controls, and the groups spaced and ruled
-            // by the group itself -- the same strip as the canvas settings
-            // beside it, laid out by the same rules rather than by a padding
-            // of its own that happened to be a different number.
-            child: CanvasControlScope(
-              maxWidth: 400,
-              inline: true,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: canvasGuidesSettings(controller,
-                    prefs: Provider.of<CanvasPreferences>(context)),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// _NoScrollbar is a scroll behaviour with no bar on it.
-///
-/// The strip over the canvas is two lines tall and scrolls sideways when the
-/// window is narrow. A bar under the controls is a third line of furniture
-/// saying what being cut off already says.
-class _NoScrollbar extends ScrollBehavior {
-  const _NoScrollbar();
-
-  @override
-  Widget buildScrollbar(
-          BuildContext context, Widget child, ScrollableDetails details) =>
-      child;
+  Widget build(BuildContext context) => CanvasSettingsStrip(
+        groups: (context) => canvasGuidesSettings(controller,
+            prefs: Provider.of<CanvasPreferences>(context)),
+      );
 }

@@ -136,6 +136,40 @@ enum CanvasFit {
 }
 
 /// CanvasController is the editing session.
+/// _afterEntrance is how far into the timeline an element's entrance reaches.
+///
+/// The last frame the reveal channel touches, or nothing if it touches none.
+/// A closing animation starts after it: overlapping the two bands has an
+/// element arriving and leaving at once, which draws as a stutter and reads
+/// as a bug.
+int _afterEntrance(ElementTrack track) {
+  var ends = 0;
+  for (var key in track.keys) {
+    if (key.values.containsKey(KeyframeChannel.reveal)) {
+      ends = math.max(ends, key.frame);
+    }
+  }
+  return ends;
+}
+
+/// _withClosingBand is [track] with one closing animation on it, running
+/// [from] to [to] and replacing whatever closing keyframes it had.
+///
+/// Two callers lay this same pair -- the one that puts a closing preset on
+/// an element and the one that puts it on a chart -- and they had a copy
+/// each of the loop that clears the old keys and the two that write the new
+/// ones.
+ElementTrack _withClosingBand(ElementTrack track, int from, int to) {
+  for (var key in track.keys) {
+    if (key.values.containsKey(KeyframeChannel.close)) {
+      track = track.withoutFrame(key.frame);
+    }
+  }
+  return track
+      .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
+      .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+}
+
 class CanvasController extends ChangeNotifier {
   CanvasController(CanvasDocument document) : _document = document;
 
@@ -905,14 +939,6 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _focusedPlayer = null;
     _selection = made;
-    notifyListeners();
-  }
-
-  /// copyElement puts one row on the clipboard, whatever is selected.
-  void copyElement(String id) {
-    var element = _document.elementById(id);
-    if (element == null) return;
-    _clipboard = List.unmodifiable([element]);
     notifyListeners();
   }
 
@@ -1963,25 +1989,13 @@ class CanvasController extends ChangeNotifier {
         ? element.animation.length
         : defaultAnimationFrames;
     var to = wasTo ?? document.frames - 1;
-    var entranceEnds = 0;
-    for (var key in track.keys) {
-      if (key.values.containsKey(KeyframeChannel.reveal)) {
-        entranceEnds = math.max(entranceEnds, key.frame);
-      }
-    }
+    var entranceEnds = _afterEntrance(track);
     var from = wasFrom != null && wasTo != null && wasTo > wasFrom
         ? wasFrom
         : math.max(entranceEnds + 1, to - span);
     if (from >= to) from = math.max(0, to - 1);
 
-    for (var key in track.keys) {
-      if (key.values.containsKey(KeyframeChannel.close)) {
-        track = track.withoutFrame(key.frame);
-      }
-    }
-    track = track
-        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
-        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+    track = _withClosingBand(track, from, to);
 
     apply(document.withElement(element
         .copyWith(animation: element.animation.copyWith(exit: preset))
@@ -2036,23 +2050,11 @@ class CanvasController extends ChangeNotifier {
     var to = document.frames - 1;
     // Clear of the entrance, which is whatever the reveal channel already
     // reaches.
-    var entranceEnds = 0;
-    for (var key in track.keys) {
-      if (key.values.containsKey(KeyframeChannel.reveal)) {
-        entranceEnds = math.max(entranceEnds, key.frame);
-      }
-    }
+    var entranceEnds = _afterEntrance(track);
     var from = math.max(entranceEnds + 1, to - span);
     if (from >= to) from = math.max(0, to - 1);
 
-    for (var key in track.keys) {
-      if (key.values.containsKey(KeyframeChannel.close)) {
-        track = track.withoutFrame(key.frame);
-      }
-    }
-    track = track
-        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
-        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+    track = _withClosingBand(track, from, to);
 
     apply(document.withElement(element
         .copyWith(animation: element.animation.copyWith(exit: preset))

@@ -38,35 +38,15 @@ List<Widget> lineSettings(CanvasController controller, LineElement e,
         onChanged: (v) => write(e.copyWith(strokeWidth: v)),
         onCommit: commit,
       ),
-      CanvasDropdown<LineStrokeCap>(
-        label: "Stroke end",
-        value: e.cap,
-        width: 92,
-        options: [for (var c in LineStrokeCap.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(cap: v)),
-      ),
-      CanvasDropdown<LineEnd>(
-        label: "Start",
-        value: e.startEnd,
-        width: 124,
-        options: [for (var c in LineEnd.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(startEnd: v)),
-      ),
-      CanvasDropdown<LineEnd>(
-        label: "End",
-        value: e.endEnd,
-        width: 124,
-        options: [for (var c in LineEnd.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(endEnd: v)),
-      ),
-      CanvasNumberField(
-        label: "End size",
-        value: e.endSize,
-        min: 0.2,
-        max: 8,
-        decimals: 1,
-        width: 58,
-        onChanged: (v) {
+      ...strokeEndControls(
+        cap: e.cap,
+        startEnd: e.startEnd,
+        endEnd: e.endEnd,
+        endSize: e.endSize,
+        onCap: (v) => now(e.copyWith(cap: v)),
+        onStart: (v) => now(e.copyWith(startEnd: v)),
+        onEnd: (v) => now(e.copyWith(endEnd: v)),
+        onEndSize: (v) {
           begin();
           write(e.copyWith(endSize: v));
         },
@@ -113,3 +93,55 @@ List<Widget> lineSettings(CanvasController controller, LineElement e,
     ]),
   ];
 }
+
+/// strokeEndControls is how a stroke starts, how it ends, and how big the
+/// ends are.
+///
+/// Shared by the line and the path, which are the same four controls with a
+/// different element behind them: an arrowhead that means one thing on a line
+/// and another on a route is the sort of difference nobody asks for and
+/// everybody notices.
+List<Widget> strokeEndControls({
+  required LineStrokeCap cap,
+  required LineEnd startEnd,
+  required LineEnd endEnd,
+  required double endSize,
+  required ValueChanged<LineStrokeCap> onCap,
+  required ValueChanged<LineEnd> onStart,
+  required ValueChanged<LineEnd> onEnd,
+  required ValueChanged<double> onEndSize,
+  required VoidCallback onCommit,
+}) =>
+    [
+      CanvasDropdown<LineStrokeCap>(
+        label: "Stroke end",
+        value: cap,
+        width: 92,
+        options: [for (var c in LineStrokeCap.values) (c, c.label)],
+        onChanged: onCap,
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "Start",
+        value: startEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: onStart,
+      ),
+      CanvasDropdown<LineEnd>(
+        label: "End",
+        value: endEnd,
+        width: 124,
+        options: [for (var c in LineEnd.values) (c, c.label)],
+        onChanged: onEnd,
+      ),
+      CanvasNumberField(
+        label: "End size",
+        value: endSize,
+        min: 0.2,
+        max: 8,
+        decimals: 1,
+        width: 58,
+        onChanged: onEndSize,
+        onCommit: onCommit,
+      ),
+    ];

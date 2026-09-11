@@ -464,6 +464,23 @@ ui.Path _blob(Offset at, double size, math.Random random) {
   return path..close();
 }
 
+/// _howFarAlong is where a point falls along the way a transition points.
+///
+/// Nought at the side it comes from and one at the side it is heading for,
+/// which is what decides the order a set of pieces arrives in. Shared,
+/// because "which end of the page is this" is the same question for the
+/// paint going on and the paint coming off, and two copies of it is one
+/// direction quietly reversed the day somebody edits one of them.
+double _howFarAlong(SceneTransitionWay way, Rect page, Offset at) =>
+    switch (way) {
+      SceneTransitionWay.inPlace ||
+      SceneTransitionWay.right =>
+        (at.dx - page.left) / page.width,
+      SceneTransitionWay.left => 1 - (at.dx - page.left) / page.width,
+      SceneTransitionWay.down => (at.dy - page.top) / page.height,
+      SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
+    };
+
 /// _splatter is paint thrown at the page, and then washed off it.
 ///
 /// Two halves rather than one played backwards. Going on, splats land in
@@ -496,14 +513,7 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
     // Thrown across the page the way the transition points: the splats on
     // the side it comes from land first. The direction turned the drips and
     // nothing else before, which is most of a setting doing nothing.
-    var along = switch (over.way) {
-      SceneTransitionWay.inPlace ||
-      SceneTransitionWay.right =>
-        (at.dx - page.left) / page.width,
-      SceneTransitionWay.left => 1 - (at.dx - page.left) / page.width,
-      SceneTransitionWay.down => (at.dy - page.top) / page.height,
-      SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
-    };
+    var along = _howFarAlong(over.way, page, at);
     // Mostly where it is and a little of its own throw, so the paint
     // crosses the page the way the transition points without landing in a
     // line. Half and half, as it was, is a throw that lands wherever it
@@ -579,14 +589,7 @@ ui.Path _washed(SceneTransition over, Rect page, double grown,
     // points, so the paint comes off the way it went on rather than all at
     // once.
     var at = spots[i];
-    var along = switch (over.way) {
-      SceneTransitionWay.inPlace ||
-      SceneTransitionWay.right =>
-        (at.dx - page.left) / page.width,
-      SceneTransitionWay.left => 1 - (at.dx - page.left) / page.width,
-      SceneTransitionWay.down => (at.dy - page.top) / page.height,
-      SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
-    };
+    var along = _howFarAlong(over.way, page, at);
     var opens = along * 0.4 + order[i] * 0.12;
     var on = ((off - opens) / math.max(0.05, 1 - opens)).clamp(0.0, 1.0);
     if (on <= 0) continue;
@@ -755,7 +758,13 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
       }
       slits.addPath(one..close(), Offset.zero);
     }
-    path.addPath(ui.Path.combine(ui.PathOperation.difference, stroke, slits),
+    // The combine only when there is something to take out of the stroke.
+    // Cutting nothing out of a shape is a Skia path operation per stroke per
+    // frame for a result identical to the shape.
+    path.addPath(
+        dries <= 0
+            ? stroke
+            : ui.Path.combine(ui.PathOperation.difference, stroke, slits),
         Offset.zero);
   }
   // No closing rectangle: the strokes butt together on their own, and a

@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
@@ -104,25 +105,11 @@ class _PresetsSectionState extends State<_PresetsSection> {
     );
   }
 
-  Future<bool> _confirm(ElementPreset preset) async =>
-      await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text("Use ${preset.name}?"),
-          content: const Text(
-              "This replaces the element you are editing. What you have "
-              "changed about it will be gone."),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text("Cancel")),
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text("Use the preset")),
-          ],
-        ),
-      ) ??
-      false;
+  Future<bool> _confirm(ElementPreset preset) => askToConfirm(context,
+      title: "Use ${preset.name}?",
+      message: "This replaces the element you are editing. What you have "
+          "changed about it will be gone.",
+      confirm: "Use the preset");
 
   Future<String?> _ask(String title, {String initial = ""}) {
     var text = TextEditingController(text: initial);

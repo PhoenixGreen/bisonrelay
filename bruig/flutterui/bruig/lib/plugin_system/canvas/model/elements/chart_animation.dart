@@ -151,6 +151,45 @@ enum ChartEase {
 /// animation is dragged on the timeline like everything else that moves. A
 /// duration stored here would be a second timeline that the first one could
 /// not see.
+/// staggeredProgress is how far item [index] of [count] has got when a
+/// staggered animation is [reveal] through.
+///
+/// One piece of arithmetic for every staggered thing on a canvas. The chart
+/// painter asks it for bars, for points, for slices and for series, and the
+/// text painter asks it for letters, words and lines; a stagger that meant
+/// something slightly different in each is a chart and a headline that do
+/// not line up with each other on the same canvas.
+double staggeredProgress(
+  double reveal,
+  int index,
+  int count, {
+  required bool on,
+  required bool staggers,
+  required bool scrambles,
+  required bool flipOrder,
+  required double gap,
+  required ChartEase ease,
+}) {
+  if (!on) return 1;
+  if (reveal >= 1) return 1;
+  if (reveal <= 0) return 0;
+  if (!staggers || count <= 1) return ease.apply(reveal);
+
+  // The whole animation is one item's movement plus the gaps before every
+  // later one, measured in item-movements.
+  var step = gap.clamp(0.0, 4.0);
+  var total = 1 + step * (count - 1);
+  var place =
+      scrambles ? ChartAnimation.scrambled(index, count) : index.toDouble();
+  // Which end the stagger starts from. On the way out the whole movement runs
+  // backwards, so the item with the *last* place is the first to go -- which
+  // is the chart unwinding. Flipping the places instead empties it from the
+  // front. See flipOrder.
+  if (flipOrder) place = (count - 1) - place;
+  var local = (reveal * total - step * place).clamp(0.0, 1.0);
+  return ease.apply(local);
+}
+
 class ChartAnimation {
   final ChartAnimationPreset preset;
 
@@ -247,25 +286,17 @@ class ChartAnimation {
   /// points, for slices and for series, and a stagger that meant something
   /// slightly different in four places is four animations that do not line up
   /// with each other.
-  double progressAt(double reveal, int index, int count) {
-    if (!on) return 1;
-    if (reveal >= 1) return 1;
-    if (reveal <= 0) return 0;
-    if (!preset.staggers || count <= 1) return ease.apply(reveal);
-
-    // The whole animation is one item's movement plus the gaps before every
-    // later one, measured in item-movements.
-    var step = gap.clamp(0.0, 4.0);
-    var total = 1 + step * (count - 1);
-    var place = preset.scrambles ? scrambled(index, count) : index.toDouble();
-    // Which end the stagger starts from. On the way out the whole movement
-    // runs backwards, so the item with the *last* place is the first to go --
-    // which is the chart unwinding. Flipping the places instead empties it
-    // from the front. See flipOrder.
-    if (flipOrder) place = (count - 1) - place;
-    var local = (reveal * total - step * place).clamp(0.0, 1.0);
-    return ease.apply(local);
-  }
+  double progressAt(double reveal, int index, int count) => staggeredProgress(
+        reveal,
+        index,
+        count,
+        on: on,
+        staggers: preset.staggers,
+        scrambles: preset.scrambles,
+        flipOrder: flipOrder,
+        gap: gap,
+        ease: ease,
+      );
 
   /// scrambled is where item [index] comes in the order things arrive, for the
   /// presets that shuffle. Not a whole number: two items may well arrive

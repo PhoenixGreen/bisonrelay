@@ -72,6 +72,29 @@ const double _rulerHeight = 22;
 const double _markGrabWidth = 9;
 const double _markGrabHeight = 11;
 
+/// _pathDriving is the path that owns a row's keyframes, if one does.
+///
+/// A followed element's track is written by the path and rewritten whenever
+/// a point moves, so keyframes shown on its own row would be marks the
+/// reader could drag and then watch disappear. The strip shows nothing for
+/// it and says where the timing lives instead -- which is also the answer to
+/// "why do I get keyframes on the player *and* on the path".
+///
+/// A function rather than a getter on each of the two widgets that ask it:
+/// the strip and the ruler under it were carrying the same eight lines, and
+/// two copies of "what is being timed here" is the sort of thing that stays
+/// in step until the day it does not.
+PathElement? _pathDriving(CanvasController controller) {
+  var team = controller.focusedTeam;
+  var index = controller.focusedPlayer;
+  if (team != null && index != null) {
+    return controller.pathDriving(team.id, playerIndex: index);
+  }
+  var element = controller.selected;
+  if (element == null || element is PathElement) return null;
+  return controller.pathDriving(element.id);
+}
+
 class CanvasTimeline extends StatefulWidget {
   final CanvasController controller;
 
@@ -215,23 +238,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     return element is PathElement ? element : null;
   }
 
-  /// _drivingPath is the path that owns this row's keyframes, if one does.
-  ///
-  /// A followed element's track is written by the path and rewritten whenever
-  /// a point moves, so keyframes shown on its own row would be marks the
-  /// reader could drag and then watch disappear. The strip shows nothing for
-  /// it and says where the timing lives instead -- which is also the answer to
-  /// "why do I get keyframes on the player *and* on the path".
-  PathElement? get _drivingPath {
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null) {
-      return controller.pathDriving(team.id, playerIndex: index);
-    }
-    var element = controller.selected;
-    if (element == null || element is PathElement) return null;
-    return controller.pathDriving(element.id);
-  }
+  PathElement? get _drivingPath => _pathDriving(controller);
 
   /// _retime moves a mark from one frame to another.
   ///
@@ -1163,18 +1170,7 @@ class _CanvasKeyframeBarState extends State<CanvasKeyframeBar> {
     return controller.selected?.name;
   }
 
-  /// _drivingPath is the path that owns this row's keyframes, if one does.
-  /// The same question the strip asks -- see _CanvasTimelineState._drivingPath.
-  PathElement? get _drivingPath {
-    var team = controller.focusedTeam;
-    var index = controller.focusedPlayer;
-    if (team != null && index != null) {
-      return controller.pathDriving(team.id, playerIndex: index);
-    }
-    var element = controller.selected;
-    if (element == null || element is PathElement) return null;
-    return controller.pathDriving(element.id);
-  }
+  PathElement? get _drivingPath => _pathDriving(controller);
 
   ElementTrack? get _trackHere {
     var team = controller.focusedTeam;

@@ -13,14 +13,6 @@ import 'package:flutter/material.dart';
 // canvas_preferences.dart on why this one is a preference rather than a plugin
 // capability.
 
-/// hasCanvasPage is whether the Canvas section currently exists.
-///
-/// Asked of the menu rather than of the preference, so the one question
-/// another screen wants answered -- "is there a Canvas page to send somebody
-/// to?" -- is answered by whether there is one.
-bool hasCanvasPage(MainMenuModel mainMenu) =>
-    mainMenu.menuForRoute(CanvasScreen.routeName) != null;
-
 /// CanvasNavModel keeps the Canvas destination in step with the preference.
 ///
 /// It holds no state anyone reads -- it exists for the side effect -- so

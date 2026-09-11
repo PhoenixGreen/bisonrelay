@@ -60,40 +60,35 @@ SequencePlace placeInSequence(CanvasDocument doc, int at) {
   var start = 0;
   for (var i = 0; i < scenes.length; i++) {
     var scene = scenes[i];
-    var last = i == scenes.length - 1;
-    var (over, held, runs) = sceneStep(doc, i);
+    var (over, held, runs) = doc.sceneStep(i);
     var local = want - start;
 
-    if (last) {
+    if (i == scenes.length - 1) {
       return SequencePlace(
           scene: i, frame: math.min(math.max(0, local), scene.frames - 1));
     }
 
-    // Inside the frames the two scenes share.
-    if (held > 0 && local >= scene.frames - held && local < scene.frames) {
-      var into = local - (scene.frames - held);
+    // The transition's own stretch of time. It begins where the two scenes
+    // start sharing frames -- or at the end of this scene, when they share
+    // none -- and lasts as long as the transition is set to.
+    //
+    // One branch for both. There were two, one for a transition that runs
+    // across the join and one for a transition that runs between the scenes,
+    // and between them was a case neither handled: a transition longer than
+    // its overlap ran for the overlap and the rest of its length was thrown
+    // away, so setting it to twenty frames over an overlap of five played a
+    // five-frame transition.
+    var begins = scene.frames - held;
+    if (runs > 0 && local >= begins && local < begins + runs) {
+      var into = local - begins;
       return SequencePlace(
         scene: i,
-        frame: local,
+        // Both scenes play for the frames they share and are held either
+        // side of them: the one leaving on its last frame, the one arriving
+        // on the frame it has reached.
+        frame: math.min(local, scene.frames - 1),
         next: i + 1,
-        nextFrame: into,
-        through: (into + 1) / held,
-      );
-    }
-
-    // Or inside a transition that runs between them rather than across them:
-    // the scene leaving is held on its last frame and the one arriving has
-    // not started.
-    if (held == 0 &&
-        runs > 0 &&
-        local >= scene.frames &&
-        local < scene.frames + runs) {
-      var into = local - scene.frames;
-      return SequencePlace(
-        scene: i,
-        frame: scene.frames - 1,
-        next: i + 1,
-        nextFrame: 0,
+        nextFrame: held == 0 ? 0 : math.min(into, held - 1),
         through: (into + 1) / runs,
       );
     }
@@ -107,33 +102,6 @@ SequencePlace placeInSequence(CanvasDocument doc, int at) {
 
   var last = scenes.length - 1;
   return SequencePlace(scene: last, frame: scenes[last].frames - 1);
-}
-
-/// sceneStep is how a scene fits into the run: how far the sequence moves on
-/// before the next one starts, how many frames the two share, and how long a
-/// transition between them runs for.
-///
-/// One answer, asked by the length of the document, by where each scene
-/// starts and by what is drawn at a given moment -- three places that must
-/// not be able to disagree.
-(int, int, int) sceneStep(CanvasDocument doc, int index) {
-  var scenes = doc.allScenes;
-  if (index < 0 || index >= scenes.length) return (0, 0, 0);
-  var scene = scenes[index];
-  if (index == scenes.length - 1) return (scene.frames, 0, 0);
-
-  var over = doc.transitionAfter(index);
-  if (!over.on) return (scene.frames, 0, 0);
-
-  var held =
-      math.min(over.overlap, math.min(scene.frames, scenes[index + 1].frames));
-  // Overlapping, the next scene starts before this one ends. Not
-  // overlapping, the transition is its own stretch of time between them.
-  return (
-    scene.frames - held + (held == 0 ? over.frames : 0),
-    held,
-    over.frames
-  );
 }
 
 /// paintSequenceFrame draws the whole document at one moment of its run.

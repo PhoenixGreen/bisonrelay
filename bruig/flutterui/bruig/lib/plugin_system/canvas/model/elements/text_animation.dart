@@ -660,21 +660,17 @@ class TextAnimation {
   /// The same arithmetic a chart staggers its bars with, and deliberately the
   /// same function: two staggers that meant slightly different things would
   /// be a chart and a headline on one canvas that do not line up.
-  double progressAt(double reveal, int index, int count) {
-    if (!on) return 1;
-    if (reveal >= 1) return 1;
-    if (reveal <= 0) return 0;
-    if (!preset.staggers || count <= 1) return ease.apply(reveal);
-
-    var step = gap.clamp(0.0, 4.0);
-    var total = 1 + step * (count - 1);
-    var place = preset.scrambled
-        ? ChartAnimation.scrambled(index, count)
-        : index.toDouble();
-    if (flipOrder) place = (count - 1) - place;
-    var local = (reveal * total - step * place).clamp(0.0, 1.0);
-    return ease.apply(local);
-  }
+  double progressAt(double reveal, int index, int count) => staggeredProgress(
+        reveal,
+        index,
+        count,
+        on: on,
+        staggers: preset.staggers,
+        scrambles: preset.scrambled,
+        flipOrder: flipOrder,
+        gap: gap,
+        ease: ease,
+      );
 
   Map<String, dynamic> toJson() => {
         "preset": preset.name,

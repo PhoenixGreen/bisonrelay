@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/text.dart';
@@ -248,24 +249,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// the whole of what somebody loses by walking away from a preset.
   Future<bool> _confirmDiscard() async {
     if (!_controller.dirty) return true;
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text("Discard the changes?"),
-            content: Text(
-                "${_controller.name ?? "This canvas"} has changes that have "
-                "not been saved."),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text("Cancel")),
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text("Discard")),
-            ],
-          ),
-        ) ??
-        false;
+    return askToConfirm(context,
+        title: "Discard the changes?",
+        message: "${_controller.name ?? "This canvas"} has changes that have "
+            "not been saved.",
+        confirm: "Discard");
   }
 
   Future<void> _open(String folder, String name) async {
@@ -350,22 +338,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   Future<void> _openLink(String url) async {
     var snackbar = SnackBarModel.of(context);
-    var confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Open this link?"),
-        content: Text(url),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text("Cancel")),
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text("Open")),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+    var confirmed = await askToConfirm(context,
+        title: "Open this link?", message: url, confirm: "Open");
+    if (!confirmed) return;
     try {
       await launchUrl(Uri.parse(url));
     } catch (exception) {

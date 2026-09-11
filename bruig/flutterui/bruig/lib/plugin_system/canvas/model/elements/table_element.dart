@@ -431,12 +431,6 @@ class TableRule {
     return spanMatches(spec, index);
   }
 
-  /// spansColumns is whether the rule names more than one column, which is
-  /// what tells a band how wide to be.
-  bool get spansColumns => column.trim().isEmpty || !_isOne(column.trim());
-
-  static bool _isOne(String spec) => int.tryParse(spec) != null;
-
   bool matches(String cell) => match.isEmpty || runsIn(cell).isNotEmpty;
 
   /// runIn is the first place the match falls inside [cell].

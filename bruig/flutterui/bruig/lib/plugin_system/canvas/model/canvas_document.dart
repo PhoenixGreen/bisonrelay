@@ -258,23 +258,38 @@ class CanvasDocument {
     return reached;
   }
 
-  /// _stepOf is how far the run moves on before the next scene starts.
+  /// sceneStep is how a scene fits into the run: how far the sequence moves
+  /// on before the next one starts, how many frames the two scenes share, and
+  /// how long the transition between them lasts.
   ///
-  /// Two scenes playing at once are one stretch of time rather than two, so
-  /// an overlapping transition shortens the document; one that runs *between*
-  /// two scenes, with nothing overlapping, lengthens it by its own frames.
-  int _stepOf(int index) {
+  /// One answer, asked by the length of the document, by where each scene
+  /// starts and by what is drawn at a given moment -- see placeInSequence,
+  /// which used to work it out a second time. Two opinions about where scene
+  /// four starts is a canvas that exports differently from the one on screen,
+  /// and they had already drifted: this one counted a transition longer than
+  /// its overlap as taking no time at all.
+  (int, int, int) sceneStep(int index) {
     var list = allScenes;
-    if (index < 0 || index >= list.length) return 0;
+    if (index < 0 || index >= list.length) return (0, 0, 0);
     var scene = list[index];
-    if (index == list.length - 1) return scene.frames;
+    if (index == list.length - 1) return (scene.frames, 0, 0);
 
     var over = transitionAfter(index);
-    if (!over.on) return scene.frames;
-    var held =
-        math.min(over.overlap, math.min(scene.frames, list[index + 1].frames));
-    return scene.frames - held + (held == 0 ? over.frames : 0);
+    if (!over.on) return (scene.frames, 0, 0);
+
+    // Never more sharing than there is transition to share, and never more
+    // than either scene has to give.
+    var held = math.min(over.frames,
+        math.min(over.overlap, math.min(scene.frames, list[index + 1].frames)));
+    // This scene, less the frames the next one starts early by, plus whatever
+    // is left of the transition once the sharing has ended -- which is its
+    // own stretch of time, with the scene leaving held on its last frame and
+    // the one arriving not started.
+    return (scene.frames - held + (over.frames - held), held, over.frames);
   }
+
+  /// _stepOf is the first of those three: how far the run moves on.
+  int _stepOf(int index) => sceneStep(index).$1;
 
   /// allScenes is every scene in order, whichever way the document is
   /// arranged. What the Scenes panel lists and what a whole-document export
@@ -642,19 +657,6 @@ class CanvasDocument {
     var moved = next.removeAt(from);
     next.insert(to.clamp(0, next.length), moved);
     return copyWith(elements: next);
-  }
-
-  /// bringToFront and sendToBack are reorder under the names the layer menu
-  /// uses, since "move to index elements.length - 1" is not what anybody is
-  /// thinking when they reach for it.
-  CanvasDocument bringToFront(String id) {
-    var i = indexOf(id);
-    return i < 0 ? this : reorder(i, elements.length - 1);
-  }
-
-  CanvasDocument sendToBack(String id) {
-    var i = indexOf(id);
-    return i < 0 ? this : reorder(i, 0);
   }
 
   /// toJson writes the file.

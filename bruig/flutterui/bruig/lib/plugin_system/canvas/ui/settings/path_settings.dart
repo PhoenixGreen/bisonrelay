@@ -1,10 +1,10 @@
-import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 
 // path settings.dart is a path's settings.
 
@@ -52,35 +52,15 @@ List<Widget> pathSettings(CanvasController controller, PathElement e,
         },
         onCommit: commit,
       ),
-      CanvasDropdown<LineStrokeCap>(
-        label: "Stroke end",
-        value: e.cap,
-        width: 92,
-        options: [for (var c in LineStrokeCap.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(cap: v)),
-      ),
-      CanvasDropdown<LineEnd>(
-        label: "Start",
-        value: e.startEnd,
-        width: 124,
-        options: [for (var c in LineEnd.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(startEnd: v)),
-      ),
-      CanvasDropdown<LineEnd>(
-        label: "End",
-        value: e.endEnd,
-        width: 124,
-        options: [for (var c in LineEnd.values) (c, c.label)],
-        onChanged: (v) => now(e.copyWith(endEnd: v)),
-      ),
-      CanvasNumberField(
-        label: "End size",
-        value: e.endSize,
-        min: 0.2,
-        max: 8,
-        decimals: 1,
-        width: 58,
-        onChanged: (v) {
+      ...strokeEndControls(
+        cap: e.cap,
+        startEnd: e.startEnd,
+        endEnd: e.endEnd,
+        endSize: e.endSize,
+        onCap: (v) => now(e.copyWith(cap: v)),
+        onStart: (v) => now(e.copyWith(startEnd: v)),
+        onEnd: (v) => now(e.copyWith(endEnd: v)),
+        onEndSize: (v) {
           begin();
           write(e.copyWith(endSize: v));
         },

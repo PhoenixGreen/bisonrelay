@@ -123,6 +123,38 @@ void main() {
       expect(during.nextFrame, 0);
     });
 
+    test("and one longer than its overlap keeps the rest of its length", () {
+      // The case between the two above, and the one that was wrong: a
+      // transition of eight frames overlapping four ran for four frames and
+      // threw the other four away, so most of the length setting did
+      // nothing.
+      var document = _two(
+          over: const SceneTransition(
+              kind: SceneTransitionKind.fade, frames: 8, overlap: 4));
+
+      // Ten frames of the first scene, the last four of them shared with the
+      // second, then the four frames of transition left over, and then the
+      // rest of the second scene.
+      expect(document.sequenceFrames, 10 + (8 - 4) + (10 - 4));
+
+      var shared = placeInSequence(document, 6);
+      expect(shared.changing, isTrue);
+      expect(shared.frame, 6, reason: "the scene leaving is still playing");
+      expect(shared.nextFrame, 0, reason: "and the one arriving has started");
+
+      var after = placeInSequence(document, 11);
+      expect(after.changing, isTrue,
+          reason: "the transition is still running at frame 11");
+      expect(after.frame, 9, reason: "the scene leaving is held on its last");
+      expect(after.nextFrame, 3,
+          reason: "and the one arriving is held where the sharing left it");
+      expect(after.through, greaterThan(shared.through));
+
+      // And it is over by the time the arriving scene plays on alone.
+      expect(placeInSequence(document, 14).changing, isFalse);
+      expect(placeInSequence(document, 14).scene, 1);
+    });
+
     test("past the end, the last scene holds on its last frame", () {
       var it = _two();
       var after = placeInSequence(it, 999);

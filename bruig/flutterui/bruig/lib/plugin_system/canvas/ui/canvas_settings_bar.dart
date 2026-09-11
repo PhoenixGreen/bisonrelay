@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -532,11 +533,6 @@ class CanvasSettingsPanel extends StatefulWidget {
 class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
   CanvasController get controller => widget.controller;
 
-  /// _scroll is held rather than left to the scroll view, so the line keeps
-  /// its position across the rebuild that happens on every keystroke in any
-  /// field on it.
-  final ScrollController _scroll = ScrollController();
-
   @override
   void initState() {
     super.initState();
@@ -546,7 +542,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
   @override
   void dispose() {
     controller.removeListener(_onChanged);
-    _scroll.dispose();
     super.dispose();
   }
 
@@ -555,52 +550,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Material(
-      // Opaque, and with a shadow. It is sitting on top of the design rather
-      // than above it, so it has to read as a thing in front rather than as
-      // part of the canvas.
-      color: theme.colors.surfaceContainerLow,
-      elevation: 6,
-      child: Container(
-        width: double.infinity,
-        // Tight. The strip is over the design rather than beside it, so every
-        // pixel of padding is a pixel of canvas -- and with the captions
-        // beside their controls there is nothing here that needs the room.
-        padding: const EdgeInsets.fromLTRB(8, 5, 8, 7),
-        decoration: BoxDecoration(
-          border: Border(
-              bottom: BorderSide(color: theme.colors.outlineVariant, width: 1)),
-        ),
-        // Scrolls sideways rather than wrapping. A group is a Row and a Row
-        // cannot break, so one wider than the window overflows instead of
-        // wrapping -- which is what the band used to do at anything under about
-        // a thousand pixels.
-        // No scrollbar. It is a strip two lines tall over the top of the
-        // design, and a bar under the controls is a third line of furniture
-        // saying something the controls already say by being cut off. The
-        // wheel and a trackpad still scroll it.
-        child: ScrollConfiguration(
-          behavior: const _NoScrollbar(),
-          child: SingleChildScrollView(
-            controller: _scroll,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 5),
-            // Captions beside their controls, which is what makes this two
-            // lines rather than three. See CanvasControlScope.inline.
-            child: CanvasControlScope(
-              maxWidth: 400,
-              inline: true,
-              child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _canvasGroups(context, theme)),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => CanvasSettingsStrip(
+      groups: (context) => _canvasGroups(context, ThemeNotifier.of(context)));
 
   /// _estimateGroup is what publishing this canvas will cost.
   ///
@@ -829,20 +780,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       ]),
     ];
   }
-}
-
-/// _NoScrollbar is a scroll behaviour with no bar on it.
-///
-/// The strip over the canvas is two lines tall and scrolls sideways when the
-/// window is narrow. A bar under the controls is a third line of furniture
-/// saying what being cut off already says.
-class _NoScrollbar extends ScrollBehavior {
-  const _NoScrollbar();
-
-  @override
-  Widget buildScrollbar(
-          BuildContext context, Widget child, ScrollableDetails details) =>
-      child;
 }
 
 /// _SceneField is which canvas of how many, and a way to type a number and go

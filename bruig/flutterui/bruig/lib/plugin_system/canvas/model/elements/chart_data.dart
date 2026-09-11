@@ -65,11 +65,6 @@ enum ChartType {
   /// maximum is worked out.
   bool get isStacked => this == stackedBar;
 
-  /// wantsMultipleSeries is whether adding a second series does anything
-  /// useful. A pie of two series is two pies, which this does not draw.
-  bool get wantsMultipleSeries =>
-      this != pie && this != donut && this != radialBar;
-
   /// needsFourSeries is the candlestick's requirement, stated so the settings
   /// can say so rather than drawing nothing and leaving it a mystery.
   bool get needsFourSeries => isCandles;

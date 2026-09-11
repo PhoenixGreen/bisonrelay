@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -55,22 +53,6 @@ final _idPattern = RegExp(r"^[a-zA-Z0-9]{16}(\.[a-z0-9]{1,5})?$");
 /// drop a photograph in -- but bounded, because the whole library is read when
 /// the sidebar opens and one 200MB file would stall it.
 const int maxAssetBytes = 32 * 1024 * 1024;
-
-int _counter = 0;
-final math.Random _random = math.Random();
-
-/// newAssetId makes an id unique within a session and unlikely to collide
-/// across them.
-String newAssetId() {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-  var buffer = StringBuffer();
-  var salt = (_counter++ << 20) ^ _random.nextInt(1 << 30);
-  for (var i = 0; i < 16; i++) {
-    buffer.write(alphabet[(salt ^ _random.nextInt(1 << 30)) % alphabet.length]);
-    salt >>= 1;
-  }
-  return buffer.toString();
-}
 
 /// CanvasAssets reads and writes the pictures.
 class CanvasAssets {
@@ -239,16 +221,6 @@ class CanvasAssets {
       var length = await source.length();
       if (length > maxAssetBytes) return null;
       return await save(await source.readAsBytes());
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// saveBase64 stores a picture that arrived as text -- which is the form an
-  /// embed pasted out of a post carries.
-  static Future<String?> saveBase64(String data) async {
-    try {
-      return await save(base64Decode(data));
     } catch (_) {
       return null;
     }
