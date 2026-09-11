@@ -80,18 +80,11 @@ class CanvasTimeline extends StatefulWidget {
   /// of this widget -- growing this strip to hold it pushed the canvas up.
   final bool keyframesOpen;
 
-  /// transitionsOpen and onToggleTransitions drive the line that says how
-  /// this scene gives way to the next. Floated by the screen for the reason
-  /// the pose bar is: over the canvas rather than pushing it.
-  final bool transitionsOpen;
-  final VoidCallback? onToggleTransitions;
   final VoidCallback onToggleKeyframes;
 
   const CanvasTimeline({
     required this.controller,
     this.keyframesOpen = false,
-    this.transitionsOpen = false,
-    this.onToggleTransitions,
     this.onToggleKeyframes = _noop,
     super.key,
   });
@@ -680,49 +673,6 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     icon: Icons.close,
                     tooltip: "Remove this marker",
                     onPressed: () => _removeAction(actionHere.frame),
-                  ),
-                ],
-                // How this scene gives way to the next, at the end of the row
-                // because it is about the end of the scene. Only where there
-                // is a next one to give way to -- and on the master canvas,
-                // where it sets what every scene does.
-                // Whether the run stops at the end of this scene. Beside the
-                // transition because they are the two things that happen when
-                // a scene ends -- and on the timeline because that is where
-                // the end of a scene is. The panel's menu offers it too: the
-                // list is where a sequence is arranged, and this is part of
-                // how it plays.
-                if (document.hasScenes && !document.editingMaster) ...[
-                  const SizedBox(width: 24),
-                  CanvasIconButton(
-                    key: const ValueKey("sceneHolds"),
-                    icon: document.scene.holds
-                        ? Icons.pause_circle_filled
-                        : Icons.pause_circle_outline,
-                    tooltip: document.scene.holds
-                        ? "Stopping at the end of this scene — press to run "
-                            "on into the next"
-                        : "Running on into the next scene — press to stop at "
-                            "the end of this one",
-                    active: document.scene.holds,
-                    onPressed: () => controller.setSceneHolds(
-                        document.at, !document.scene.holds),
-                  ),
-                ],
-                // Only where there is another scene to give way to. On the
-                // master canvas it sets the default every scene starts from,
-                // which is worth having as soon as there is more than one.
-                if (widget.onToggleTransitions != null &&
-                    document.hasScenes) ...[
-                  SizedBox(width: document.editingMaster ? 24 : 3),
-                  CanvasIconButton(
-                    key: const ValueKey("transitionsToggle"),
-                    icon: Icons.compare_arrows,
-                    tooltip: document.editingMaster
-                        ? "Scene transition — the one every scene uses"
-                        : "Scene transition",
-                    active: widget.transitionsOpen,
-                    onPressed: widget.onToggleTransitions,
                   ),
                 ],
               ]),

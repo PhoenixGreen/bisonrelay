@@ -4,7 +4,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_transition_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,7 +41,7 @@ void main() {
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: CanvasTransitionBar(
+          body: CanvasTransitionsPanel(
             controller: controller,
             onPreview: () =>
                 controller.previewTransitionAfter(controller.document.at),
@@ -224,13 +225,15 @@ void main() {
         reason: "and it puts the shared canvas back when it is done");
   });
 
-  testWidgets("with one scene there is nothing to give way to", (tester) async {
-    // A page of settings about an event that cannot happen. The button that
-    // opens it is not offered either.
+  testWidgets("with one scene the panel is not offered at all", (tester) async {
+    // A whole panel of settings about an event that cannot happen. The
+    // transition settings live in the sidebar now, beside the other panels --
+    // a dozen controls laid out sideways over the timeline meant scrolling to
+    // reach half of them and scrolling back to see what the first ones said.
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(1400, 400);
+    tester.view.physicalSize = const Size(900, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -244,61 +247,17 @@ void main() {
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: CanvasTimeline(
-            controller: controller,
-            onToggleTransitions: () {},
-          ),
-        ),
+            body: SizedBox(
+                width: 320, child: CanvasDesignPanel(controller: controller))),
       ),
     ));
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey("transitionsToggle")), findsNothing);
+    expect(find.text("TRANSITION"), findsNothing);
 
     controller.addScene();
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey("transitionsToggle")), findsOneWidget,
+    expect(find.text("TRANSITION"), findsOneWidget,
         reason: "and it is there as soon as there is a scene after this one");
-  });
-
-  testWidgets("the timeline says whether the run stops here", (tester) async {
-    // Beside the transition, because they are the two things that happen when
-    // a scene ends.
-    var controller = CanvasController(const CanvasDocument().withScenes([
-      const CanvasScene(id: "a", frames: 12),
-      const CanvasScene(id: "b", frames: 12),
-    ]));
-    addTearDown(controller.dispose);
-
-    tester.view.physicalSize = const Size(1400, 400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-
-    await tester.pumpWidget(MultiProvider(
-      providers: [
-        ChangeNotifierProvider<ThemeNotifier>(
-            create: (c) => ThemeNotifier(doLoad: false)),
-        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ChangeNotifierProvider<CanvasPreferences>(
-            create: (c) => CanvasPreferences()),
-      ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: CanvasTimeline(
-            controller: controller,
-            onToggleTransitions: () {},
-          ),
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    expect(controller.document.scene.holds, isFalse);
-    await tester.tap(find.byKey(const ValueKey("sceneHolds")));
-    await tester.pumpAndSettle();
-    expect(controller.document.scene.holds, isTrue);
-    expect(controller.document.allScenes[1].holds, isFalse,
-        reason: "this scene, not every scene");
   });
 
   testWidgets("and the last scene has nothing to give way to", (tester) async {

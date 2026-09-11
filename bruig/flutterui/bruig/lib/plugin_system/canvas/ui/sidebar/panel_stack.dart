@@ -184,6 +184,34 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     _restore();
   }
 
+  @override
+  void didUpdateWidget(CanvasPanelStack old) {
+    super.didUpdateWidget(old);
+    // A panel can come and go while the column is up: the transition settings
+    // appear the moment there is a second scene to give way to. The
+    // arrangement is worked out once, when the column is built, so one that
+    // arrived later was never given a place and simply did not show.
+    var have = _order.toSet();
+    var now = {for (var p in widget.panels) p.id};
+    var added = [
+      for (var p in widget.panels)
+        if (!have.contains(p.id)) p.id,
+    ];
+    var gone = have.difference(now);
+    if (added.isEmpty && gone.isEmpty) return;
+
+    setState(() {
+      _groups = [
+        for (var group in _groups)
+          [
+            for (var id in group)
+              if (now.contains(id)) id,
+          ],
+        for (var id in added) [id],
+      ]..removeWhere((group) => group.isEmpty);
+    });
+  }
+
   /// _order is the ids in order, flattened -- for saving, and for the checks
   /// that only care which panels exist.
   List<String> get _order => [

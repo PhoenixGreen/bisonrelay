@@ -548,6 +548,26 @@ void main() {
         reason: "and the scene's again the moment it is showing");
   });
 
+  testWidgets("the run stopping here is on the scene's own menu",
+      (tester) async {
+    // It was on the timeline as well. One place is enough, and the list is
+    // where a sequence is arranged.
+    var controller = await panel(tester,
+        document: const CanvasDocument().withScenes([
+          const CanvasScene(id: "a"),
+          const CanvasScene(id: "b"),
+        ]));
+
+    await tester.tap(find.byTooltip("More").first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Stop at the end of this scene"));
+    await tester.pumpAndSettle();
+
+    expect(controller.document.allScenes.first.holds, isTrue);
+    expect(controller.document.allScenes[1].holds, isFalse,
+        reason: "this scene, not every scene");
+  });
+
   testWidgets("a scene with its own transition is marked", (tester) async {
     // Plain for the document's default, and its own mark for a scene that has
     // been given something particular -- which is the question somebody

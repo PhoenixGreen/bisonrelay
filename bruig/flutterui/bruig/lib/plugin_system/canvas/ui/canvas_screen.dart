@@ -15,7 +15,6 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_transition_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
@@ -122,12 +121,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// to hold it took height from the canvas and re-fitted it -- so opening a
   /// panel moved the design.
   bool _keyframesOpen = false;
-
-  /// _transitionsOpen is whether the line that says how this scene gives way
-  /// to the next is out. Its own line rather than a section of the pose bar:
-  /// one is about a moment in a scene and the other about the join between
-  /// two scenes.
-  bool _transitionsOpen = false;
 
   @override
   void initState() {
@@ -543,24 +536,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   right: 0,
                   child: CanvasKeyframeBar(controller: _controller),
                 ),
-              // Not with one scene: there is nothing for it to give way to,
-              // so the line would be a page of settings about an event that
-              // cannot happen. The button that opens it is hidden then too --
-              // see CanvasTimeline -- and this closes the line for the case
-              // where the second scene is deleted while it is open.
-              if (_transitionsOpen &&
-                  _controller.document.hasScenes &&
-                  !_controller.playing)
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: CanvasTransitionBar(
-                    controller: _controller,
-                    onPreview: () => _controller
-                        .previewTransitionAfter(_controller.document.at),
-                  ),
-                ),
             ]),
           ),
           // Hidden by taking it out rather than by shrinking it to nothing:
@@ -572,13 +547,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
               keyframesOpen: _keyframesOpen,
               onToggleKeyframes: () =>
                   setState(() => _keyframesOpen = !_keyframesOpen),
-              transitionsOpen: _transitionsOpen,
               // One line at a time: two strips over the same corner of the
               // canvas would be one on top of the other.
-              onToggleTransitions: () => setState(() {
-                _transitionsOpen = !_transitionsOpen;
-                if (_transitionsOpen) _keyframesOpen = false;
-              }),
             ),
         ]),
       );

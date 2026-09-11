@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/panel_stack.dart';
 import 'package:flutter/material.dart';
 
@@ -47,6 +48,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   /// does not listen at all, because nothing about the document changes it.
   late Widget _add;
   late Widget _scenes;
+  late Widget _transitions;
   late Widget _layers;
   late Widget _settings;
 
@@ -69,6 +71,11 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   void _makeBodies() {
     _add = CanvasElementsPanel(controller: controller);
     _scenes = CanvasScenesPanel(controller: controller);
+    _transitions = CanvasTransitionsPanel(
+      controller: controller,
+      onPreview: () =>
+          controller.previewTransitionAfter(controller.document.at),
+    );
     _layers = CanvasLayersPanel(controller: controller);
     _settings = _SettingsBody(controller: controller);
   }
@@ -112,6 +119,18 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             startsOpen: false,
             body: _scenes,
           ),
+          // Only where there is another scene to give way to: with one
+          // canvas the whole panel would be settings about an event that
+          // cannot happen.
+          if (controller.document.hasScenes)
+            CanvasStackPanel(
+              id: "transitions",
+              label: "Transition",
+              icon: Icons.compare_arrows,
+              hint: "How the scene showing gives way to the next one. On the "
+                  "master canvas this is the one every scene starts from.",
+              body: _transitions,
+            ),
           CanvasStackPanel(
             id: "layers",
             label: "Layers",
