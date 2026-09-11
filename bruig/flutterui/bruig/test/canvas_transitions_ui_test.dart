@@ -225,6 +225,42 @@ void main() {
         reason: "and it puts the shared canvas back when it is done");
   });
 
+  testWidgets("is laid out like the panel beside it", (tester) async {
+    // Lifted from the line over the timeline, these controls kept that line's
+    // arrangement: captions beside their controls and packed in tight, which
+    // is right for a strip and wrong for a column.
+    var controller = await bar(tester);
+
+    // Something with settings to lay out: a cut has none.
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Overlay").last);
+    await tester.pumpAndSettle();
+
+    // A control's own caption sits above it, as it does in the settings
+    // panel. In the strip it sat beside it, which is what packed a dozen
+    // controls into four hundred pixels.
+    var caption = tester.getRect(find.text("Frames"));
+    // The box itself rather than the control around it: the control is the
+    // caption and the box together, so its own top says nothing about which
+    // of the two is on top.
+    var field = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("transitionFrames")),
+        matching: find.byType(EditableText)));
+    expect(caption.bottom, lessThanOrEqualTo(field.top + 1),
+        reason: "caption at ${caption.bottom}, its field at ${field.top}");
+    expect((caption.left - field.left).abs(), lessThan(14),
+        reason: "and starts at the same edge, give or take the box's own "
+            "padding");
+
+    // And it scrolls the way a column does. The line it came from scrolled
+    // sideways, which is how a dozen controls ended up somewhere off the end
+    // of a four-hundred-pixel strip.
+    var scroll = tester.widget<SingleChildScrollView>(
+        find.byType(SingleChildScrollView).first);
+    expect(scroll.scrollDirection, Axis.vertical);
+  });
+
   testWidgets("with one scene the panel is not offered at all", (tester) async {
     // A whole panel of settings about an event that cannot happen. The
     // transition settings live in the sidebar now, beside the other panels --
