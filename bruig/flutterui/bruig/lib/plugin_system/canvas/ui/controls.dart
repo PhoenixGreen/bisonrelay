@@ -181,10 +181,20 @@ class CanvasControlGroup extends StatelessWidget {
   /// panel's own header has already named the element.
   final bool hideCaption;
 
+  /// captionGap is the room between the caption and the controls under it.
+  ///
+  /// The default is what every section heading in the settings panel uses --
+  /// a word or two in small capitals, with its controls close under it. A
+  /// group whose caption is a sentence rather than a name needs more than
+  /// that: read at the same distance, the sentence and the caption of the
+  /// first control under it run together as one paragraph.
+  final double captionGap;
+
   const CanvasControlGroup({
     required this.label,
     required this.children,
     this.hideCaption = false,
+    this.captionGap = 7,
     super.key,
   });
 
@@ -268,7 +278,7 @@ class CanvasControlGroup extends StatelessWidget {
         children: [
           if (!hideCaption)
             Padding(
-                padding: const EdgeInsets.only(bottom: 7, left: 1),
+                padding: EdgeInsets.only(bottom: captionGap, left: 1),
                 child: caption),
           Wrap(runSpacing: 8, children: children),
           Padding(
@@ -774,9 +784,15 @@ class CanvasToggle extends StatelessWidget {
       // them. On the band the captions are beside their controls and there is
       // nothing above to line up under, so the nudge is what pushed this out
       // of line with its neighbours.
+      //
+      // The caption *and* the gap under it. The caption alone left this three
+      // pixels high of where it should be, which is not much until it is a
+      // button sitting beside two dropdowns.
       padding: EdgeInsets.only(
           right: 5,
-          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
+          top: CanvasControlScope.isInline(context)
+              ? 0
+              : controlWithLabelHeight - controlHeight),
       child: InkWell(
         borderRadius: BorderRadius.circular(4),
         onTap: () => onChanged(!value),
@@ -874,9 +890,15 @@ class CanvasIconButton extends StatelessWidget {
       // them. On the band the captions are beside their controls and there is
       // nothing above to line up under, so the nudge is what pushed this out
       // of line with its neighbours.
+      //
+      // The caption *and* the gap under it. The caption alone left this three
+      // pixels high of where it should be, which is not much until it is a
+      // button sitting beside two dropdowns.
       padding: EdgeInsets.only(
           right: 3,
-          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
+          top: CanvasControlScope.isInline(context)
+              ? 0
+              : controlWithLabelHeight - controlHeight),
       child: Tooltip(
         message: tooltip,
         child: InkWell(
@@ -1326,7 +1348,9 @@ class CanvasKeyframeDot extends StatelessWidget {
       // of line with its neighbours.
       padding: EdgeInsets.only(
           right: 4,
-          top: CanvasControlScope.isInline(context) ? 0 : controlLabelHeight),
+          top: CanvasControlScope.isInline(context)
+              ? 0
+              : controlWithLabelHeight - controlHeight),
       child: Tooltip(
         message: tooltip,
         child: InkWell(

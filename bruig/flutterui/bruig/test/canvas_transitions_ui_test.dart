@@ -262,6 +262,27 @@ void main() {
         reason: "controls start at the panel's own edge: "
             "${firstControl.left - panel.left}");
 
+    // A button with no caption of its own sits level with the controls that
+    // have one, rather than three pixels high of them: the nudge that lines
+    // it up allowed for the caption and not for the gap under it, which is
+    // nothing at all until the button is in a row with two dropdowns.
+    var play = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("previewTransition")),
+        matching: find.byType(Icon)));
+    var box = tester.getRect(find.descendant(
+        of: find.byKey(const ValueKey("transitionKind")),
+        matching: find.byType(Container)));
+    expect((play.center.dy - box.center.dy).abs(), lessThan(1.5),
+        reason: "the button's middle at ${play.center.dy}, the dropdown "
+            "beside it at ${box.center.dy}");
+
+    // And the panel's own heading is a sentence, so it is given the room one
+    // needs: close under it, it and the caption below read as one paragraph.
+    var heading = tester.getRect(find.textContaining("AFTER "));
+    var under = tester.getRect(find.text("Gives way with"));
+    expect(under.top - heading.bottom, greaterThan(10),
+        reason: "${under.top - heading.bottom} between them");
+
     // And it scrolls the way a column does. The line it came from scrolled
     // sideways, which is how a dozen controls ended up somewhere off the end
     // of a four-hundred-pixel strip.

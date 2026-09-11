@@ -92,6 +92,10 @@ class CanvasTransitionsPanel extends StatelessWidget {
               label: master
                   ? "Every scene, unless it says otherwise"
                   : "After ${scenes[index].saysAt(index)}",
+              // A sentence rather than a section's name, so it is given the
+              // room a sentence needs -- close under it, it and the caption
+              // of the control below read as one run of text.
+              captionGap: 14,
               children: [
                 // The family first, then the one. Two dozen names in a single
                 // list is a wall nobody reads to the end of; asked in two
