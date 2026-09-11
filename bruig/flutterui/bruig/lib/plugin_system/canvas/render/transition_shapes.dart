@@ -50,7 +50,7 @@ ui.Path overlayPath(SceneTransition over, Rect page, double t) {
     SceneTransitionKind.brush => _brush(over, page, grown, going),
     SceneTransitionKind.tiles => _tiles(over, page, grown, going),
     SceneTransitionKind.halftone => _halftone(over, page, grown),
-    SceneTransitionKind.burst => _burst(over, page, grown),
+    SceneTransitionKind.burst => _burst(over, page, t),
     _ => ui.Path()..addRect(page),
   };
 }
@@ -81,10 +81,18 @@ ui.Path _turned(ui.Path path, Rect page, double degrees) {
 /// what makes it a set of arrows rather than a rectangle -- but the scenes
 /// change at the moment it is complete, and a gap at that moment is the cut
 /// it was put there to hide. So over the last of its travel the gaps close.
-ui.Path _closed(ui.Path path, Rect page, double grown) {
+ui.Path _closed(ui.Path path, Rect page, double grown, {bool round = false}) {
   const from = 0.86;
   if (grown <= from) return path;
   var last = ((grown - from) / (1 - from)).clamp(0.0, 1.0);
+  // Round for the covers made of round things. A rectangle growing out of the
+  // middle of a splatter is a square appearing in the paint, which is exactly
+  // what it looked like.
+  if (round) {
+    return path
+      ..addOval(
+          Rect.fromCircle(center: page.center, radius: _reach(page) * last));
+  }
   return path
     ..addRect(Rect.fromCenter(
         center: page.center,
@@ -223,13 +231,17 @@ ui.Path _arrows(SceneTransition over, Rect page, double t) {
   // covers the page in the middle is the arrows themselves.
   var band = (horizontal ? page.height : page.width) / many;
   var head = band * (0.5 + over.radius);
-  var travelled = (t * 2) * (reach + head * 2);
+  // Along the axis it is crossing, not along the diagonal: measured by the
+  // diagonal, a set of arrows going down a page crossed it half way through
+  // its first frame and read as stripes rather than as anything moving.
+  var across = horizontal ? page.width : page.height;
+  var travelled = (t * 2) * (across + head * 2 + reach * 0.15);
 
   for (var i = 0; i < many; i++) {
     var lane = (horizontal ? page.top : page.left) + band * i;
     var thick = band * (1 - over.spacing.clamp(0.0, 0.9));
     var lead = -head + travelled - (i.isEven ? 0 : band * 0.35);
-    var tail = lead - reach - head;
+    var tail = lead - across - head;
 
     var arrow = ui.Path();
     switch (over.way) {
@@ -312,9 +324,19 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
   for (var i = 0; i < blobs; i++) {
     var at = Offset(page.left + random.nextDouble() * page.width,
         page.top + random.nextDouble() * page.height);
-    // Thrown in an order of their own, and further apart where more room has
-    // been asked for.
-    var lands = random.nextDouble() * 0.55 * (1 - over.spacing * 0.3);
+    // Thrown across the page the way the transition points: the splats on the
+    // side it comes from land first. The direction turned the drips and
+    // nothing else before, which is most of a setting doing nothing.
+    var along = switch (over.way) {
+      SceneTransitionWay.right => (at.dx - page.left) / page.width,
+      SceneTransitionWay.left => 1 - (at.dx - page.left) / page.width,
+      SceneTransitionWay.down => (at.dy - page.top) / page.height,
+      SceneTransitionWay.up => 1 - (at.dy - page.top) / page.height,
+    };
+    // Half the order from where it is and half from its own throw, so the
+    // paint crosses the page without landing in a line.
+    var lands =
+        (along * 0.5 + random.nextDouble() * 0.25) * (1 - over.spacing * 0.3);
     var on = ((grown - lands) / math.max(0.05, 1 - lands)).clamp(0.0, 1.0);
     if (on <= 0) continue;
 
@@ -355,7 +377,7 @@ ui.Path _splatter(SceneTransition over, Rect page, double grown, bool going) {
     }
   }
 
-  return _closed(path, page, grown);
+  return _closed(path, page, grown, round: true);
 }
 
 /// _brush is strokes dragged across the page, each with bristles in it.
@@ -363,9 +385,18 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
   var path = ui.Path();
   var strokes = over.count.clamp(1, 40);
   var horizontal = over.way.horizontal;
-  var box = page.inflate(_reach(page) * 0.4);
-  var lane = (horizontal ? box.height : box.width) / strokes;
-  var thick = lane * (1 - over.spacing.clamp(0.0, 0.8));
+  // Lanes across the page rather than across a box drawn round it: measured
+  // against that larger box, one stroke was wider than the page and covered
+  // it before it had been drawn anywhere.
+  var lane = (horizontal ? page.height : page.width) / strokes;
+  var box = horizontal
+      ? Rect.fromLTRB(page.left - page.width * 0.25, page.top,
+          page.right + page.width * 0.25, page.bottom)
+      : Rect.fromLTRB(page.left, page.top - page.height * 0.25, page.right,
+          page.bottom + page.height * 0.25);
+  // The gaps between strokes close as the cover completes, so the page is
+  // painted rather than striped by the time the scenes change behind it.
+  var thick = lane * (1 - over.spacing.clamp(0.0, 0.8) * (1 - grown)) + 1;
   var random = math.Random(over.kind.seed + strokes);
   var full = horizontal ? box.width : box.height;
 
@@ -374,7 +405,8 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
     var run = ((grown - starts) / math.max(0.05, 1 - starts)).clamp(0.0, 1.0);
     if (run <= 0) continue;
     var length = full * run;
-    var at = (horizontal ? box.top : box.left) + lane * i + (lane - thick) / 2;
+    var at =
+        (horizontal ? page.top : page.left) + lane * i + (lane - thick) / 2;
 
     // The body of the stroke, with a ragged leading edge: a brush does not
     // stop in a straight line, and the wobble is fixed by the seed so the
@@ -420,7 +452,10 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
     }
     path.addPath(stroke, Offset.zero);
   }
-  return _closed(_turned(path, page, over.angle), page, grown);
+  // No closing rectangle: the strokes butt together on their own, and a
+  // square growing out of the middle of a set of brush strokes is the
+  // artefact it looked like.
+  return _turned(path, page, over.angle);
 }
 
 /// _tiles breaks the page into squares that arrive in a wave.
@@ -485,10 +520,18 @@ ui.Path _halftone(SceneTransition over, Rect page, double grown) {
 }
 
 /// _burst is a comic's speed lines, thrown out of the middle.
-ui.Path _burst(SceneTransition over, Rect page, double grown) {
+///
+/// It never shrinks. Every other cover grows on the way in and shrinks on the
+/// way out; on this one that read as the burst being taken back. What a burst
+/// does is carry on out of the frame, so on the way out it keeps growing and
+/// the middle of it opens instead -- the new scene arriving through the hole
+/// the lines leave behind them.
+ui.Path _burst(SceneTransition over, Rect page, double t) {
   var path = ui.Path();
   var rays = over.count.clamp(1, 40);
-  var reach = _reach(page) * grown * 1.15;
+  var full = _reach(page);
+  // Out to the page by the half way point, and on out of it after that.
+  var reach = full * (t <= 0.5 ? t * 2 * 1.15 : 1.15 + (t - 0.5) * 2.2);
   if (reach <= 0) return path;
   var random = math.Random(over.kind.seed + rays);
   var centre = page.center;
@@ -519,5 +562,15 @@ ui.Path _burst(SceneTransition over, Rect page, double grown) {
     i == 0 ? star.moveTo(p.dx, p.dy) : star.lineTo(p.dx, p.dy);
   }
   path.addPath(star..close(), Offset.zero);
-  return _closed(path, page, grown);
+  path = _closed(path, page, t <= 0.5 ? t * 2 : 1, round: true);
+
+  // And the hole it leaves, opening from the middle once it is past the page.
+  if (t <= 0.5) return path;
+  // Reaching the corners of the page exactly as the transition ends: half
+  // the diagonal is the furthest corner, and a hole measured by the whole
+  // diagonal had swallowed the page before the lines were out of it.
+  var hole = ui.Path()
+    ..addOval(Rect.fromCircle(
+        center: page.center, radius: full / 2 * ((t - 0.5) * 2)));
+  return ui.Path.combine(ui.PathOperation.difference, path, hole);
 }
