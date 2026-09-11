@@ -18,6 +18,19 @@ import 'package:flutter/material.dart';
 // transition of its own uses -- which is what makes the master the place
 // where the look of the whole sequence is decided.
 
+/// _started is [value] changed to another kind, set up the way that kind
+/// looks best.
+///
+/// One set of settings cannot suit two dozen transitions -- six is a
+/// sensible number of blinds and a poor number of halftone dots -- so
+/// changing kind starts from what the new one wants rather than from
+/// whatever the last one left behind. Its colour is carried over, because
+/// that is a decision about the design rather than about the transition, and
+/// somebody who has chosen a pink transition means the next one to be pink
+/// too.
+SceneTransition _started(SceneTransition value, SceneTransitionKind kind) =>
+    SceneTransition.bestFor(kind).copyWith(color: value.color);
+
 /// _looks is whether a transition has anything to say about how it looks.
 ///
 /// A slide has a direction and nothing else; a cut has none of it. Asked
@@ -111,8 +124,9 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     for (var f in SceneTransitionFamily.values)
                       (f, f == SceneTransitionFamily.none ? "A cut" : f.label)
                   ],
-                  onChanged: (f) => write(value.copyWith(
-                      kind: f == SceneTransitionFamily.none
+                  onChanged: (f) => write(_started(
+                      value,
+                      f == SceneTransitionFamily.none
                           ? SceneTransitionKind.cut
                           : SceneTransitionKind.inFamily(f).first)),
                 ),
@@ -127,8 +141,19 @@ class CanvasTransitionsPanel extends StatelessWidget {
                           in SceneTransitionKind.inFamily(value.kind.familyOf))
                         (k, k.label)
                     ],
-                    onChanged: (v) => write(value.copyWith(kind: v)),
+                    onChanged: (v) => write(_started(value, v)),
                   ),
+                // Back to the beginning. Beside the preview because they are
+                // the two ways out of a transition that has been fiddled
+                // with past the point of remembering what it was: one says
+                // what the fiddling did, the other undoes all of it.
+                CanvasIconButton(
+                  key: const ValueKey("resetTransition"),
+                  icon: Icons.restart_alt,
+                  tooltip: "Put every setting here back to what this "
+                      "transition looks best at",
+                  onPressed: () => write(SceneTransition.bestFor(value.kind)),
+                ),
                 // Beside the two names rather than at the foot of the panel:
                 // the settings under it are for fiddling with, and this is
                 // the button that says what the fiddling did.

@@ -108,13 +108,12 @@ void main() {
         reason: "stroke starts at $early, then at $later");
   });
 
-  test("a burst comes apart rather than leaving a star", () {
-    // The way out was a star-shaped hole opening in the middle of the page,
-    // so what people saw was a star. Now the daylight between the rays
-    // widens, which means the page shows through at its edges while the rays
-    // are still crossing it.
+  test("comic rays open from the middle out to the edge", () {
+    // Rays is the fan: the daylight between the lines widens until there is
+    // none of them left, which means the page shows through at its edges
+    // while the rays are still crossing it.
     var path =
-        overlayPath(_over(SceneTransitionKind.burst, count: 8), _page, 0.8);
+        overlayPath(_over(SceneTransitionKind.rays, count: 8), _page, 0.8);
 
     var open = 0;
     for (var i = 0; i <= 100; i++) {
@@ -170,5 +169,44 @@ void main() {
     // is two rows, so the middle of the page is the seam between them.
     expect(_bands(path, across: true, at: 0.25), greaterThan(1),
         reason: "four squares in a row, with the page between them");
+  });
+
+  test("a burst leaves through a hole of its own shape", () {
+    // The way out was a star-shaped hole opening in the middle of the page,
+    // so what people saw was a star; before that it was a disc. It is the
+    // rays themselves now: they carry on outwards and their inner ends run
+    // out after them, so the middle of the page is clear while the corners
+    // are still covered.
+    var path =
+        overlayPath(_over(SceneTransitionKind.burst, count: 10), _page, 0.68);
+
+    expect(_on(path, 0.5, 0.5), isFalse, reason: "the middle has opened");
+    expect(_on(path, 0.01, 0.02), isTrue,
+        reason: "and the corner of the page is still covered");
+  });
+
+  test("strokes at an angle still start off the picture", () {
+    // Laid across the page and then turned about its middle, a stroke has
+    // its ends inside the picture -- the corner of a square is further from
+    // the middle than the middle of its side -- so the strokes began in
+    // mid-air.
+    var turned = const SceneTransition(
+        kind: SceneTransitionKind.brush,
+        count: 4,
+        angle: 30,
+        ease: SceneTransitionEase.straight);
+    var path = overlayPath(turned, _page, 0.18);
+
+    // Whatever it has covered by now runs off the edge of the page, rather
+    // than sitting in the middle of it with clear page on every side.
+    var touches = false;
+    for (var i = 0; i <= 100; i++) {
+      var f = i / 100;
+      if (_on(path, 0.002, f) || _on(path, f, 0.002) || _on(path, f, 0.998)) {
+        touches = true;
+      }
+    }
+    expect(touches, isTrue,
+        reason: "the strokes have started somewhere inside the picture");
   });
 }

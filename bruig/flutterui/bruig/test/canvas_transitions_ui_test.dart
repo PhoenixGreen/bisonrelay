@@ -291,6 +291,65 @@ void main() {
     expect(scroll.scrollDirection, Axis.vertical);
   });
 
+  testWidgets("choosing a kind starts it where that kind looks best",
+      (tester) async {
+    // One set of settings cannot suit two dozen transitions: six is a
+    // sensible number of blinds and a poor number of halftone dots, and
+    // eighteen frames is slow for a cut and quick for paint being thrown at
+    // a page and washed off again.
+    var controller = await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Drawn").last);
+    await tester.pumpAndSettle();
+    // The first of the family, which is what choosing a family gives you.
+    var chevrons = controller.document.transitionAfter(0);
+    expect(chevrons.kind, SceneTransitionKind.arrow);
+    expect(chevrons.count,
+        SceneTransition.bestFor(SceneTransitionKind.arrow).count);
+
+    await tester.tap(find.byKey(const ValueKey("transitionKind")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Paint splatter").last);
+    await tester.pumpAndSettle();
+
+    var splats = controller.document.transitionAfter(0);
+    expect(splats.count,
+        SceneTransition.bestFor(SceneTransitionKind.splatter).count);
+    expect(splats.count, isNot(chevrons.count),
+        reason: "splats are not counted in chevrons");
+  });
+
+  testWidgets("and reset puts it back to that", (tester) async {
+    // The two ways out of a transition that has been fiddled with past the
+    // point of remembering what it was: the preview says what the fiddling
+    // did, and this undoes all of it.
+    var controller = await bar(tester);
+
+    await tester.tap(find.byKey(const ValueKey("transitionFamily")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Drawn").last);
+    await tester.pumpAndSettle();
+
+    var kind = controller.document.transitionAfter(0).kind;
+    controller.setSceneTransition(
+        0,
+        controller.document
+            .transitionAfter(0)
+            .copyWith(count: 37, spacing: 1.4, frames: 3));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey("resetTransition")));
+    await tester.pumpAndSettle();
+
+    var back = controller.document.transitionAfter(0);
+    expect(back.kind, kind, reason: "the same transition, not a different one");
+    expect(back.count, SceneTransition.bestFor(kind).count);
+    expect(back.spacing, SceneTransition.bestFor(kind).spacing);
+    expect(back.frames, SceneTransition.bestFor(kind).frames);
+  });
+
   testWidgets("its settings are laid out in sections", (tester) async {
     // One group of a dozen controls is what this panel was, and a dozen
     // small boxes wrapped into a block reads as a field of boxes. The

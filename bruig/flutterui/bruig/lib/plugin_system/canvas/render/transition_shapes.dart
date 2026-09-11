@@ -52,6 +52,7 @@ ui.Path overlayPath(SceneTransition over, Rect page, double t) {
     SceneTransitionKind.tiles => _tiles(over, page, grown, going),
     SceneTransitionKind.halftone => _halftone(over, page, grown),
     SceneTransitionKind.burst => _burst(over, page, t),
+    SceneTransitionKind.rays => _rays(over, page, t),
     _ => ui.Path()..addRect(page),
   };
 }
@@ -328,6 +329,19 @@ ui.Path _clock(SceneTransition over, Rect page, double t) {
     ..moveTo(page.center.dx, page.center.dy)
     ..arcTo(box, from, 2 * math.pi * grown, false)
     ..close();
+}
+
+/// _field is the area an arrangement is laid out over.
+///
+/// The page itself, until it is turned. A set of strokes laid across the page
+/// and then turned about its middle has its ends inside the picture -- the
+/// corner of a square is further from the middle than the middle of its side
+/// -- so the strokes began in mid-air rather than off the edge. Turned, they
+/// are laid out over the square that contains the page at any angle.
+Rect _field(Rect page, double angle) {
+  if (angle == 0) return page;
+  var reach = _reach(page);
+  return Rect.fromCenter(center: page.center, width: reach, height: reach);
 }
 
 /// _along makes a point from a distance travelled and a distance across.
@@ -615,21 +629,29 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
   var path = ui.Path();
   var strokes = over.count.clamp(1, 40);
   var horizontal = over.way.horizontal;
-  var at = _along(over.way, page);
+  // Over the square that holds the page when the strokes are turned, so that
+  // a stroke at an angle still starts off the picture rather than in the
+  // middle of it.
+  var box = _field(page, over.angle);
+  var at = _along(over.way, box);
 
-  // The stroke crosses the page and comes off the far side, so the end of a
-  // stroke is never sitting on the page as a straight edge.
-  var run = (horizontal ? page.width : page.height) * 1.2;
+  // The stroke starts before the page and comes off the far side, so
+  // neither end of it is ever sitting on the picture. Started at the edge,
+  // as it was, the brush going down -- which is the narrow bit at the start
+  // of a stroke -- left a wedge of the old scene along the near edge.
+  var extent = horizontal ? box.width : box.height;
+  var back = extent * 0.22;
+  var run = extent * 1.5;
   // Over a field a little wider than the page, because the strokes waver as
   // they go and the outermost ones wavered off the edge -- which is a line
   // of the old scene down the side of the page at the moment they swap.
-  var cross = horizontal ? page.height : page.width;
+  var cross = horizontal ? box.height : box.width;
   var edging = cross * 0.05;
   var lanes = (cross + edging * 2) / strokes;
   // Wider than its lane, so the strokes overlap rather than meeting exactly:
   // two wavering edges that meet exactly leave a line of page between them
   // wherever they waver apart.
-  var thick = lanes * 1.7 * (1 - over.spacing.clamp(0.0, 0.8) * 0.35);
+  var thick = lanes * 2.1 * (1 - over.spacing.clamp(0.0, 0.8) * 0.35);
   var random = math.Random(over.kind.seed + strokes);
 
   for (var i = 0; i < strokes; i++) {
@@ -641,39 +663,100 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
     var waver = lanes * 0.11;
     var phase = random.nextDouble() * math.pi * 2;
     var beats = 1.5 + random.nextDouble() * 1.5;
+    // How hard this one was pressed, and where it was pressed hardest. A set
+    // of strokes all the same width is a set of rectangles.
+    var press = 0.82 + random.nextDouble() * 0.3;
+    var heavy = 0.2 + random.nextDouble() * 0.5;
+    var bristles = 3 + random.nextInt(3);
+    var splay = random.nextDouble();
+    // The streaks close over the last of the cover. They are bare page, and
+    // bare page at the moment the scenes change is the cut the cover is
+    // there to hide -- so they are there for the sweep and gone by the time
+    // it has the page.
+    var dries = 1 - ((grown - 0.78) / 0.22).clamp(0.0, 1.0);
     if (on <= 0 && !going) continue;
 
     // Where the two ends of the stroke are. Going on, the tail is at the
     // start and the head runs away from it; going off, both carry on down
     // the same line until the tail is past the far edge too.
-    var tail = going ? run * (1 - on) : 0.0;
-    var head = going ? run * (1 + (1 - on) * 0.6) : run * on;
+    var tail = -back + (going ? run * (1 - on) * 1.05 : 0.0);
+    var head = -back + (going ? run * (1 + (1 - on) * 0.6) : run * on);
     if (head - tail <= 0) continue;
 
-    var steps = 14;
-    var edge = <Offset>[];
-    var back = <Offset>[];
+    // The line the stroke is dragged along, and how wide it is at each point
+    // of it. Both are wanted twice -- once for the body and once for the
+    // bristles running through it -- so they are worked out once.
+    var steps = 20;
+    var line = <Offset>[];
+    var wides = <double>[];
     for (var k = 0; k <= steps; k++) {
       var f = k / steps;
       var d = tail + (head - tail) * f;
       var wave = math.sin(phase + (d / run) * beats * math.pi) * waver;
-      // Thick in the body and lifting towards the end, which is a loaded
-      // brush running out. The same shape however far along it is, so
-      // nothing about the stroke breathes as the transition runs.
-      var wide = thick * (1 - 0.3 * math.pow(f, 2.5).toDouble());
-      if (f > 0.93) wide *= (1 - f) / 0.07;
-      edge.add(at(d, lane + wave + (thick - wide) / 2));
-      back.add(at(d, lane + wave + (thick + wide) / 2));
+      // Loaded at the start, heaviest a little way in, and lifting at the
+      // end -- which is a brush being put down, dragged and taken off, and
+      // is most of what makes a stroke read as paint rather than as a bar.
+      var weight =
+          press * (1 - 0.22 * (f - heavy).abs() / math.max(heavy, 1 - heavy));
+      var wide = thick * weight * (1 - 0.22 * math.pow(f, 3).toDouble());
+      if (f < 0.06) wide *= 0.55 + f / 0.06 * 0.45;
+      if (f > 0.9) wide *= (1 - f) / 0.1;
+      line.add(at(d, lane + wave + thick / 2));
+      wides.add(wide);
     }
 
-    var stroke = ui.Path()..moveTo(edge.first.dx, edge.first.dy);
-    for (var p in edge.skip(1)) {
+    var stroke = ui.Path();
+    var side = <Offset>[];
+    for (var k = 0; k <= steps; k++) {
+      var f = k / steps;
+      var d = tail + (head - tail) * f;
+      var wave = math.sin(phase + (d / run) * beats * math.pi) * waver;
+      var half = wides[k] / 2;
+      var top = at(d, lane + wave + thick / 2 - half);
+      side.add(at(d, lane + wave + thick / 2 + half));
+      k == 0 ? stroke.moveTo(top.dx, top.dy) : stroke.lineTo(top.dx, top.dy);
+    }
+    for (var p in side.reversed) {
       stroke.lineTo(p.dx, p.dy);
     }
-    for (var p in back.reversed) {
-      stroke.lineTo(p.dx, p.dy);
+    stroke.close();
+
+    // The bristles: streaks of bare page the brush drags through the end of
+    // its own stroke. Only towards the end, where the paint is running out
+    // -- a stroke split from top to bottom is a comb, and streaks across the
+    // middle of the page would be the old scene showing through the cover.
+    var from = 0.55 + splay * 0.2;
+    var slits = ui.Path();
+    for (var b = 0; b < bristles; b++) {
+      var lay = (b + 0.5) / bristles - 0.5 + (random.nextDouble() - 0.5) * 0.1;
+      var ends = from + 0.25 + random.nextDouble() * 0.2;
+      var slit = <Offset>[];
+      var back = <Offset>[];
+      for (var k = 0; k <= steps; k++) {
+        var f = k / steps;
+        if (f < from) continue;
+        var d = tail + (head - tail) * f;
+        var wave = math.sin(phase + (d / run) * beats * math.pi) * waver;
+        // Opening as the paint runs out and closing again if the stroke has
+        // more in it than this bristle does.
+        var open = ((f - from) / math.max(0.05, ends - from)).clamp(0.0, 1.4);
+        var gap = wides[k] * 0.09 * math.min(open, 1.0) * dries;
+        var mid = lane + wave + thick / 2 + lay * wides[k] * 0.8;
+        slit.add(at(d, mid - gap));
+        back.add(at(d, mid + gap));
+      }
+      if (slit.length < 2) continue;
+      var one = ui.Path()..moveTo(slit.first.dx, slit.first.dy);
+      for (var p in slit.skip(1)) {
+        one.lineTo(p.dx, p.dy);
+      }
+      for (var p in back.reversed) {
+        one.lineTo(p.dx, p.dy);
+      }
+      slits.addPath(one..close(), Offset.zero);
     }
-    path.addPath(stroke..close(), Offset.zero);
+    path.addPath(ui.Path.combine(ui.PathOperation.difference, stroke, slits),
+        Offset.zero);
   }
   // No closing rectangle: the strokes butt together on their own, and a
   // square growing out of the middle of a set of brush strokes is the
@@ -746,30 +829,29 @@ ui.Path _halftone(SceneTransition over, Rect page, double grown) {
 ///
 /// It never shrinks. Every other cover grows on the way in and shrinks on the
 /// way out; on this one that read as the burst being taken back. What a burst
-/// does is carry on out of the frame, so on the way out it keeps growing and
-/// the middle of it opens instead -- the new scene arriving through the hole
-/// the lines leave behind them.
+/// does is carry on out of the frame, so on the way out the rays keep going
+/// and their inner ends run out after them, leaving the page through a hole
+/// shaped like the burst that made it.
 ///
 /// Nothing round in it. The wedges used to be closed off with a growing disc
 /// and the hole they left was another one, so a burst began as a circle and
-/// ended as a circle and the spikes were what happened in between. Now the
-/// wedges widen until they meet each other, and the hole is cut in the shape
-/// of the burst itself.
+/// ended as a circle and the spikes were what happened in between.
 ui.Path _burst(SceneTransition over, Rect page, double t) {
   var path = ui.Path();
   var rays = over.count.clamp(1, 40);
   var full = _reach(page);
   var grown = t <= 0.5 ? t * 2 : 1.0;
+  var leaving = t <= 0.5 ? 0.0 : ((t - 0.5) * 2).clamp(0.0, 1.0);
   // Out to the page by the half way point, and on out of it after that.
-  var reach = full * (t <= 0.5 ? t * 2 * 1.15 : 1.15 + (t - 0.5) * 2.2);
+  var reach = full * (t <= 0.5 ? t * 2 * 1.15 : 1.15 + leaving * 1.6);
   if (reach <= 0) return path;
   var random = math.Random(over.kind.seed + rays);
   var centre = page.center;
 
-  // How much of the turn each wedge is worth. Widening as the burst grows is
-  // what closes the gaps: by the time the scenes change behind it the wedges
-  // have met, and what covers the page is the burst rather than a disc drawn
-  // over it.
+  // How much of the turn each wedge is worth, and how long each one is.
+  // Widening as the burst grows is what closes the gaps: by the time the
+  // scenes change behind it the wedges have met, and what covers the page is
+  // the burst rather than a disc drawn over it.
   var lengths = <double>[];
   var spreads = <double>[];
   for (var i = 0; i < rays; i++) {
@@ -781,17 +863,47 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
     var angle = i / rays * 2 * math.pi;
     // Wedges of different widths, pointed at the middle: even wedges are a
     // pie chart, and a comic's lines are never even.
-    var spread = spreads[i] * (1 + grown * 1.7);
+    // Held short of a half turn, and short of its own share of the circle
+    // however wide the burst is told to be. A wedge wider than that wraps
+    // past its neighbour and past itself, and a shape wound round twice
+    // cancels itself out -- which is a burst of three rays still standing on
+    // the page at the end of the transition.
+    var spread = math.min(spreads[i] * (1 + grown * 1.7),
+        math.min((math.pi / rays) * 1.8, math.pi * 0.9));
     var length = reach * lengths[i];
-    path.moveTo(centre.dx, centre.dy);
+    // Where this ray's inner end is. Nothing while it is coming in, and
+    // running out after the ray once it is going: each at its own rate, so
+    // what opens in the middle is ragged rather than round.
+    var inner = leaving <= 0
+        ? 0.0
+        : full *
+            0.62 *
+            math.pow(leaving, 0.85).toDouble() *
+            (0.72 + lengths[i] * 0.5);
+    if (inner >= length) continue;
+
+    var from = Offset(centre.dx + math.cos(angle - spread) * inner,
+        centre.dy + math.sin(angle - spread) * inner);
+    path.moveTo(from.dx, from.dy);
     path.lineTo(centre.dx + math.cos(angle - spread) * length,
         centre.dy + math.sin(angle - spread) * length);
     path.lineTo(centre.dx + math.cos(angle) * length * 1.1,
         centre.dy + math.sin(angle) * length * 1.1);
     path.lineTo(centre.dx + math.cos(angle + spread) * length,
         centre.dy + math.sin(angle + spread) * length);
+    // The inner end walked round rather than cut straight across. A chord
+    // between the two inner corners of a wide wedge passes behind the middle
+    // of the page and fills in the very hole the ray is supposed to be
+    // leaving behind it.
+    for (var k = 6; k >= 0; k--) {
+      var a = angle - spread + (2 * spread) * k / 6;
+      path.lineTo(
+          centre.dx + math.cos(a) * inner, centre.dy + math.sin(a) * inner);
+    }
     path.close();
   }
+
+  if (leaving > 0) return path;
 
   // The star in the middle they all come out of.
   path = ui.Path.combine(ui.PathOperation.union, path,
@@ -810,25 +922,38 @@ ui.Path _burst(SceneTransition over, Rect page, double t) {
         _star(centre, reach * 1.3 * last, reach * 1.05 * last,
             math.max(5, rays)));
   }
+  return path;
+}
 
-  // Going off, it comes apart rather than having a hole cut in it. The hole
-  // was a star, and a star opening out of the middle of the page is the
-  // shape people saw -- so instead the daylight between the rays widens
-  // until there is nothing left but daylight, which is a burst flying apart.
-  if (t <= 0.5) return path;
-  var leaving = ((t - 0.5) * 2).clamp(0.0, 1.0);
+/// _rays is the same lines swinging shut like a fan and open again.
+///
+/// The other half of what a burst can do, and its own kind rather than the
+/// second half of one: a burst that grows out of the middle and then comes
+/// apart into rays is two ideas in one transition, each good on its own and
+/// strange together. Here the daylight between the rays narrows until there
+/// is none, and then widens again -- the same thing happening at both ends.
+ui.Path _rays(SceneTransition over, Rect page, double t) {
+  var grown = coverAt(t).clamp(0.0, 1.0);
+  var full = _reach(page);
+  var centre = page.center;
+  // Two at the least. One gap wide enough to take the whole turn is a wedge
+  // that wraps past itself, and a shape wound round twice cancels itself
+  // out -- which leaves the page covered when it should be clear.
+  var between = math.max(2, over.count.clamp(1, 40));
+  var random = math.Random(over.kind.seed + between);
+
   var gaps = ui.Path();
   var far = full * 1.4;
-  // Two at the least. One gap wide enough to take the whole turn is a wedge
-  // that wraps past itself, and a shape wound round twice cancels itself out
-  // -- which is why a burst of one ray was still on the page at the end.
-  var between = math.max(2, rays);
   for (var i = 0; i < between; i++) {
-    // Between one ray and the next, so what is left standing is the rays.
     var angle = (i + 0.5) / between * 2 * math.pi;
-    // Wide enough between them by the end to have taken the whole turn: the
-    // rays are gone as the transition ends rather than a frame after it.
-    var g = (math.pi / between) * math.pow(leaving, 0.8).toDouble() * 1.3;
+    // Wide enough between them at each end to have taken the whole turn, and
+    // none of them the same width, so it is a comic's lines rather than a
+    // pie chart.
+    var g = (math.pi / between) *
+        math.pow(1 - grown, 0.8).toDouble() *
+        1.3 *
+        (0.75 + random.nextDouble() * 0.5);
+    if (g <= 0) continue;
     gaps.moveTo(centre.dx, centre.dy);
     gaps.lineTo(centre.dx + math.cos(angle - g) * far,
         centre.dy + math.sin(angle - g) * far);

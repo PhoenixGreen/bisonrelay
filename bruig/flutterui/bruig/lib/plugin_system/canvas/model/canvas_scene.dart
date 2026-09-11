@@ -162,8 +162,17 @@ enum SceneTransitionKind {
   /// halftone grows a comic's dots until they meet.
   halftone("Comic halftone", SceneTransitionFamily.drawn),
 
-  /// burst throws speed lines out of the middle.
-  burst("Comic burst", SceneTransitionFamily.drawn);
+  /// burst throws speed lines out of the middle, and they carry on out of
+  /// the picture rather than coming back.
+  burst("Comic burst", SceneTransitionFamily.drawn),
+
+  /// rays swings the same lines shut like a fan and open again.
+  ///
+  /// Its own kind rather than the second half of burst, because a burst that
+  /// grows out of the middle and then comes apart into rays is two ideas in
+  /// one transition -- each of them good on its own and strange together.
+  /// This one is the same shape doing the same thing at both ends.
+  rays("Comic rays", SceneTransitionFamily.drawn);
 
   final String label;
   final SceneTransitionFamily family;
@@ -205,6 +214,7 @@ enum SceneTransitionKind {
       this == tiles ||
       this == halftone ||
       this == burst ||
+      this == rays ||
       this == arrow;
 
   /// takesSpacing is whether the room between those pieces means anything.
@@ -351,6 +361,76 @@ class SceneTransition {
 
   /// cut is the default: nothing between one scene and the next.
   static const cut = SceneTransition();
+
+  /// bestFor is this kind at its best, for somebody who has just chosen it.
+  ///
+  /// One set of defaults cannot suit two dozen transitions: six pieces is a
+  /// sensible number of blinds and a poor number of halftone dots, and
+  /// eighteen frames is slow for a cut and quick for paint being thrown at
+  /// the page and washed off again. So each kind says what it wants, and
+  /// choosing a kind -- or pressing reset -- starts from that rather than
+  /// from whatever the last kind happened to leave behind.
+  static SceneTransition bestFor(SceneTransitionKind kind) {
+    var length = switch (kind) {
+      SceneTransitionKind.cut => 0,
+      SceneTransitionKind.splatter || SceneTransitionKind.brush => 22,
+      SceneTransitionKind.burst || SceneTransitionKind.rays => 18,
+      SceneTransitionKind.arrow || SceneTransitionKind.shapeWipe => 20,
+      SceneTransitionKind.halftone || SceneTransitionKind.tiles => 20,
+      SceneTransitionKind.blinds || SceneTransitionKind.barn => 16,
+      SceneTransitionKind.clock || SceneTransitionKind.band => 18,
+      _ => 14,
+    };
+    // How many pieces this one is made of. A number that means something
+    // different in each: bars, splats, strokes, dots, rays, shapes.
+    var pieces = switch (kind) {
+      SceneTransitionKind.blinds => 8,
+      SceneTransitionKind.shapeWipe => 5,
+      SceneTransitionKind.splatter => 16,
+      SceneTransitionKind.brush => 5,
+      SceneTransitionKind.tiles => 8,
+      SceneTransitionKind.halftone => 16,
+      SceneTransitionKind.burst || SceneTransitionKind.rays => 12,
+      SceneTransitionKind.arrow => 4,
+      _ => 6,
+    };
+    var apart = switch (kind) {
+      SceneTransitionKind.arrow => 0.3,
+      SceneTransitionKind.brush => 0.1,
+      SceneTransitionKind.shapeWipe => 0.2,
+      SceneTransitionKind.splatter => 0.25,
+      _ => 0.15,
+    };
+    var size = switch (kind) {
+      SceneTransitionKind.arrow => 0.6,
+      SceneTransitionKind.splatter => 0.45,
+      SceneTransitionKind.halftone => 0.55,
+      _ => 0.5,
+    };
+    // A little softness on the ones whose edge is a straight line, and none
+    // on the ones whose edge is already ragged -- paint with a blurred edge
+    // is not paint.
+    var soft = switch (kind) {
+      SceneTransitionKind.band ||
+      SceneTransitionKind.blinds ||
+      SceneTransitionKind.clock ||
+      SceneTransitionKind.shapeWipe =>
+        0.04,
+      _ => 0.0,
+    };
+    return SceneTransition(
+      kind: kind,
+      frames: length,
+      overlap: length,
+      ease: kind.familyOf == SceneTransitionFamily.move
+          ? SceneTransitionEase.smooth
+          : SceneTransitionEase.straight,
+      count: pieces,
+      spacing: apart,
+      radius: size,
+      softness: soft,
+    );
+  }
 
   /// on is whether anything is drawn between the two scenes.
   bool get on => !kind.isCut && frames > 0;

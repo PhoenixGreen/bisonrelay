@@ -271,6 +271,7 @@ void paintTransition(
     case SceneTransitionKind.tiles:
     case SceneTransitionKind.halftone:
     case SceneTransitionKind.burst:
+    case SceneTransitionKind.rays:
       // Behind the cover, and swapped at the moment it is complete.
       (t >= 0.5 ? to : from)();
       _drawCover(canvas, page, over, t);
