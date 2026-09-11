@@ -338,7 +338,7 @@ List<Widget> tableSettings(
 
 /// _tableRuleName says what a rule picks out, for its own heading and for the
 /// button that removes it.
-String _tableRuleName(TableRule rule, int index) {
+String _tableRuleName(TableRule rule) {
   var name = [
     if (rule.column.isNotEmpty) rule.column,
     if (rule.rows.isNotEmpty) "rows ${rule.rows}",
@@ -372,7 +372,7 @@ Widget _tableRuleSettings(TableElement e, int index, SettingsWrite write,
   return CanvasExpander(
     // Named for what it does rather than "Rule 3", so a list of them can be
     // read without opening each one.
-    label: _tableRuleName(rule, index),
+    label: _tableRuleName(rule),
     // Remembered like every other section. A rule being worked on used to
     // shut the moment the element was deselected and selected again, which is
     // every time anybody looks at the canvas and comes back.

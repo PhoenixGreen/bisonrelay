@@ -250,7 +250,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
             if (_previews)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 2),
-                child: _preview(theme, index, scene),
+                child: _preview(index),
               ),
           ]),
         ),
@@ -289,7 +289,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   }
 
   /// _preview draws the scene, at the width the column has.
-  Widget _preview(ThemeNotifier theme, int index, CanvasScene scene) {
+  Widget _preview(int index) {
     var size = document.size;
     var ratio = size.height <= 0 ? 1.0 : size.width / size.height;
     return ClipRRect(

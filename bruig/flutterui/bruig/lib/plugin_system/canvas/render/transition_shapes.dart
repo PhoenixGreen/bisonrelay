@@ -42,14 +42,14 @@ ui.Path overlayPath(SceneTransition over, Rect page, double t) {
 
   return switch (over.kind) {
     SceneTransitionKind.band => _band(over, page, t),
-    SceneTransitionKind.blinds => _blinds(over, page, grown, going),
+    SceneTransitionKind.blinds => _blinds(over, page, grown),
     SceneTransitionKind.barn => _barn(over, page, grown),
     SceneTransitionKind.shapeWipe => _shapes(over, page, grown, going),
-    SceneTransitionKind.clock => _clock(over, page, t),
+    SceneTransitionKind.clock => _clock(page, t),
     SceneTransitionKind.arrow => _arrows(over, page, t),
     SceneTransitionKind.splatter => _splatter(over, page, grown, going),
     SceneTransitionKind.brush => _brush(over, page, grown, going),
-    SceneTransitionKind.tiles => _tiles(over, page, grown, going),
+    SceneTransitionKind.tiles => _tiles(over, page, grown),
     SceneTransitionKind.halftone => _halftone(over, page, grown),
     SceneTransitionKind.burst => _burst(over, page, t),
     SceneTransitionKind.rays => _rays(over, page, t),
@@ -135,7 +135,7 @@ ui.Path _band(SceneTransition over, Rect page, double t) {
 /// spans the page already and what changes is how much of it is turned to
 /// you. So each one spans the page and thickens from its own edge until they
 /// meet.
-ui.Path _blinds(SceneTransition over, Rect page, double grown, bool going) {
+ui.Path _blinds(SceneTransition over, Rect page, double grown) {
   var path = ui.Path();
   var bars = over.count.clamp(1, 40);
   // Slats across the way it points: told left or right they stand upright
@@ -315,7 +315,7 @@ ui.Path _pointed(
 }
 
 /// _clock is a sector sweeping round like a hand.
-ui.Path _clock(SceneTransition over, Rect page, double t) {
+ui.Path _clock(Rect page, double t) {
   var grown = coverAt(t);
   if (grown >= 1) return ui.Path()..addRect(page);
   if (grown <= 0) return ui.Path();
@@ -774,7 +774,7 @@ ui.Path _brush(SceneTransition over, Rect page, double grown, bool going) {
 }
 
 /// _tiles breaks the page into squares that arrive in a wave.
-ui.Path _tiles(SceneTransition over, Rect page, double grown, bool going) {
+ui.Path _tiles(SceneTransition over, Rect page, double grown) {
   var path = ui.Path();
   var across = over.count.clamp(1, 40);
   var wide = page.width / across;

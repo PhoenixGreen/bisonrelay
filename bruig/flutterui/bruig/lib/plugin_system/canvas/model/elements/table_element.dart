@@ -451,6 +451,10 @@ class TableRule {
   static final Map<String, String> _lowered = {};
 
   List<(int, int)> runsIn(String cell, [String? lowered]) {
+    // Kept to a few hundred. The key is whatever somebody has typed into a
+    // rule, and every keystroke is another one, so an unbounded memo is a
+    // map that grows for as long as the editor is open.
+    if (_lowered.length > 256) _lowered.clear();
     var wanted = _lowered[match] ??= match.trim().toLowerCase();
     if (wanted.isEmpty) return const [];
     // The caller may already have lowered it. A cell with three rules looking

@@ -167,8 +167,7 @@ List<WrapShape> wrapObstacles(
       out.add(_pictureShape(other, at, box, e.wrap.gap, images));
       continue;
     }
-    out.add(
-        WrapShape(box, path: _outlineOf(other, at, frame), gap: e.wrap.gap));
+    out.add(WrapShape(box, path: _outlineOf(other, at), gap: e.wrap.gap));
   }
   return out;
 }
@@ -205,7 +204,7 @@ WrapShape _pictureShape(
 /// what a wrap should follow. A picture's outline is its alpha, which is a
 /// different question and not one a layout can ask cheaply; it keeps its box
 /// for now.
-Path? _outlineOf(CanvasElement e, Rect at, int frame) {
+Path? _outlineOf(CanvasElement e, Rect at) {
   if (e is! ShapeElement) return null;
   var path = shapePath(e.shape, at,
       points: e.points, cornerRadius: e.cornerRadius, bubble: e.bubble);
