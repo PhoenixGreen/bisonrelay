@@ -208,8 +208,7 @@ class _CheckerboardPainter extends CustomPainter {
 }
 
 // _ColorPickResult is _CustomColorDialog's pop() value: the committed color,
-// or null where Cancel was pressed. It used to carry a second answer -- a
-// request to hand off to the in-app eyedropper -- which is gone.
+// or null where Cancel was pressed.
 class _ColorPickResult {
   final Color? color;
   const _ColorPickResult.color(this.color);

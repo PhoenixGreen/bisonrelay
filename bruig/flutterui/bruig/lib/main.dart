@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as developer;
 
-import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/tooltips.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/route_error.dart';
@@ -769,18 +768,17 @@ class _AppState extends State<App> with WindowListener {
                 );
               },
               builder: (context, child) {
-                // Wraps the whole navigated app in a RepaintBoundary keyed
-                // by appRepaintBoundaryKey (see components/eyedropper.dart)
-                // so its current frame can be captured for the in-app
-                // eyedropper color picker.
                 // AppTooltips sits outside everything the app navigates to
                 // so the hover-text settings reach the login screens too --
                 // Flutter's TooltipVisibility applies to its whole subtree,
                 // which is why nothing below has to know about it.
-                Widget wrapped = AppTooltips(
-                    child: RepaintBoundary(
-                        key: appRepaintBoundaryKey,
-                        child: child ?? const Text("no child")));
+                //
+                // It used to wrap a RepaintBoundary as well, so that the
+                // app's own frame could be captured for the in-app
+                // eyedropper. The eyedropper is gone and so is the boundary:
+                // it was there for the capture and for nothing else.
+                Widget wrapped =
+                    AppTooltips(child: child ?? const Text("no child"));
 
                 if (theme.fontScale <= 0) {
                   // Use system default font scale.
