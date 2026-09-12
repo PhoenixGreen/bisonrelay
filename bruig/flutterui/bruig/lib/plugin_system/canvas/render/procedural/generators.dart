@@ -133,22 +133,22 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     var frames = spec.passFrames.clamp(1, 100000).toDouble();
     var at = frameRate > 0 ? moment * frameRate : moment;
 
-    if (!spec.loop) {
-      // One run, and then hold where it finished.
-      var through = at / frames;
-      t = through.clamp(0.0, 1.0) * run;
-    } else {
-      // Runs with a rest between them: one run of `frames`, then `loopGap`
-      // frames of the finished picture, then the next run from the start.
-      var cycle = frames + spec.loopGap.clamp(0, 100000);
-      var round = (at / cycle).floor();
-      var done = spec.loopTimes > 0 && round >= spec.loopTimes;
-      // Held at the end once the last run is over, and held at the end
-      // through each gap -- which for rings is an empty page.
-      var within = done ? frames : at - round * cycle;
-      var through = within / frames;
-      t = through.clamp(0.0, 1.0) * run;
-    }
+    // Runs with a rest between them: one run of `frames`, then `loopGap`
+    // frames of the finished picture, then the next run from the start.
+    var cycle = frames + spec.loopGap.clamp(0, 100000);
+    var round = (at / cycle).floor();
+    var done = spec.loopTimes > 0 && round >= spec.loopTimes;
+    // Held at the end once the last run is over, and held at the end through
+    // each gap -- which for rings is an empty page.
+    var within = done ? frames : at - round * cycle;
+    var through = within / frames;
+    // Past the end rather than exactly on it. A run that is over has to be
+    // over for every ring in the set, and roughened spacing moves where a
+    // ring sits in it: one left at the very last instant of its life is, with
+    // a hard edge, a ring at full strength -- and it stays there, with
+    // whatever it was carrying, for the rest of the canvas. A whole life
+    // beyond the end is past the last of them however they are spread.
+    t = through >= 1 ? run + proceduralPass : through * run;
   }
   var area = rect;
   if (spec.rotation != 0) {

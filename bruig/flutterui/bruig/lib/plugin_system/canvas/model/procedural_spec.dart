@@ -166,19 +166,8 @@ class ProceduralSpec {
   /// speed multiplies how far the pattern advances per frame.
   final double speed;
 
-  /// loop is whether the movement starts again when it has been round once.
-  ///
-  /// Off, the pattern runs one pass and then holds where it finished, which
-  /// is what a background under a title card usually wants: the movement
-  /// draws the eye while the words arrive, and then stops pulling at it.
-  ///
-  /// How long that one pass takes is [passFrames] rather than [speed]: a
-  /// movement that runs once is timed against the thing it is under -- the
-  /// title, the scene, the whole canvas -- and that is counted in frames.
-  final bool loop;
-
-  /// passFrames is how many frames one pass takes, start to finish, for a
-  /// movement that does not loop.
+  /// passFrames is how many frames one run takes, start to finish, for a
+  /// movement counted in runs.
   ///
   /// Finished means finished: for rings, every ring born, travelled and
   /// dissolved, with nothing left on the page. See proceduralRunSeconds,
@@ -189,10 +178,12 @@ class ProceduralSpec {
   /// loopGap is how many frames of stillness sit between one run and the
   /// next.
   ///
-  /// Nought times is for ever. Either of them says the movement is counted
-  /// in runs rather than simply going round, which is what [inRuns] answers
-  /// -- and what makes [passFrames] the setting that matters rather than
-  /// [speed].
+  /// Nought times is for ever, which is why there is no separate switch for
+  /// whether it loops: one is a movement that runs once and then holds, and
+  /// nought is one that never stops. Either setting says the movement is
+  /// counted in runs rather than simply going round, which is what [inRuns]
+  /// answers -- and what makes [passFrames] the setting that matters rather
+  /// than [speed].
   final int loopTimes;
   final int loopGap;
 
@@ -239,7 +230,6 @@ class ProceduralSpec {
     this.glyphs = defaultGlyphs,
     this.animated = false,
     this.speed = 1,
-    this.loop = true,
     this.passFrames = 120,
     this.loopTimes = 0,
     this.loopGap = 0,
@@ -254,7 +244,7 @@ class ProceduralSpec {
   /// inRuns is whether the movement is counted in runs rather than going
   /// round for ever: one run that then holds, a set number of them, or runs
   /// with a gap between. All three are timed in frames.
-  bool get inRuns => animated && (!loop || loopTimes > 0 || loopGap > 0);
+  bool get inRuns => animated && (loopTimes > 0 || loopGap > 0);
 
   ProceduralSpec copyWith({
     ProceduralStyle? style,
@@ -273,7 +263,6 @@ class ProceduralSpec {
     String? glyphs,
     bool? animated,
     double? speed,
-    bool? loop,
     int? passFrames,
     int? loopTimes,
     int? loopGap,
@@ -301,7 +290,6 @@ class ProceduralSpec {
         glyphs: glyphs ?? this.glyphs,
         animated: animated ?? this.animated,
         speed: speed ?? this.speed,
-        loop: loop ?? this.loop,
         passFrames: passFrames ?? this.passFrames,
         loopTimes: loopTimes ?? this.loopTimes,
         loopGap: loopGap ?? this.loopGap,
@@ -335,7 +323,6 @@ class ProceduralSpec {
         if (glyphs != defaultGlyphs) "glyphs": glyphs,
         if (animated) "animated": true,
         if (animated) "speed": speed,
-        if (animated && !loop) "loop": false,
         if (animated && inRuns) "passFrames": passFrames,
         if (animated && loopTimes > 0) "loopTimes": loopTimes,
         if (animated && loopGap > 0) "loopGap": loopGap,
@@ -364,9 +351,12 @@ class ProceduralSpec {
         glyphs: jsonString(json["glyphs"], defaultGlyphs),
         animated: jsonBool(json["animated"], false),
         speed: jsonDouble(json["speed"], 1),
-        loop: jsonBool(json["loop"], true),
         passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
-        loopTimes: jsonInt(json["loopTimes"], 0).clamp(0, 100000),
+        // A movement that was written before there were runs said so with a
+        // switch: not looping is one run and then hold, which is one time.
+        loopTimes: jsonInt(json["loopTimes"],
+                jsonBool(json["loop"], true) ? 0 : 1)
+            .clamp(0, 100000),
         loopGap: jsonInt(json["loopGap"], 0).clamp(0, 100000),
         pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
         pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),

@@ -524,19 +524,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(spec.rings.grunge, 0.6);
 
-    // Loop sits beside Animate, and is offered for every style that moves.
-    expect(find.byKey(const ValueKey("loop")), findsOneWidget);
-
-    // Turning the loop off swaps Speed for the number of frames the run
-    // takes: a movement that goes round for ever has a speed, and one that
-    // runs once is timed against whatever it is under.
+    // Asking for a number of runs swaps Speed for the number of frames one
+    // run takes: a movement that goes round for ever has a speed, and one
+    // that is counted is timed against whatever it is under. There is no
+    // separate Loop switch -- nought runs is for ever.
+    expect(find.byKey(const ValueKey("loop")), findsNothing);
     expect(find.byKey(const ValueKey("speed")), findsOneWidget);
     expect(find.byKey(const ValueKey("passFrames")), findsNothing);
-    await tester.ensureVisible(find.byKey(const ValueKey("loop")));
+    await tester.ensureVisible(find.byKey(const ValueKey("loopTimes")));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey("loop")));
+    await tester.enterText(find.byKey(const ValueKey("loopTimes")), "1");
     await tester.pumpAndSettle();
-    expect(spec.loop, isFalse);
+    expect(spec.loopTimes, 1);
     expect(find.byKey(const ValueKey("speed")), findsNothing);
     await tester.ensureVisible(find.byKey(const ValueKey("passFrames")));
     await tester.pumpAndSettle();
@@ -610,7 +609,7 @@ void main() {
     late int afterTheEnd;
     await tester.runAsync(() async {
       var once = _spec(rings: const RingSpec(count: 6))
-          .copyWith(loop: false, passFrames: 100);
+          .copyWith(loopTimes: 1, passFrames: 100);
       // A frame is a frame: the run takes a hundred of them at twenty-five a
       // second, so four seconds.
       Future<int> at(int frame) async {
@@ -639,8 +638,8 @@ void main() {
     late int slow;
     await tester.runAsync(() async {
       var rings = const RingSpec(count: 6);
-      var short = _spec(rings: rings).copyWith(loop: false, passFrames: 50);
-      var long = _spec(rings: rings).copyWith(loop: false, passFrames: 100);
+      var short = _spec(rings: rings).copyWith(loopTimes: 1, passFrames: 50);
+      var long = _spec(rings: rings).copyWith(loopTimes: 1, passFrames: 100);
       (quick, _) = await _ink(short, 25 / 25, rate: 25);
       (slow, _) = await _ink(long, 50 / 25, rate: 25);
     });
@@ -888,11 +887,11 @@ void main() {
       (tester) async {
     var plain = _spec(rings: const RingSpec());
     expect(plain.inRuns, isFalse, reason: "going round for ever");
-    expect(plain.copyWith(loop: false).inRuns, isTrue);
+    expect(plain.copyWith(loopTimes: 1).inRuns, isTrue);
     expect(plain.copyWith(loopTimes: 3).inRuns, isTrue);
     expect(plain.copyWith(loopGap: 10).inRuns, isTrue);
     // And a still background is not a movement at all.
-    expect(plain.copyWith(animated: false, loop: false).inRuns, isFalse);
+    expect(plain.copyWith(animated: false, loopTimes: 1).inRuns, isFalse);
 
     // The settings say the same: Speed while it goes round, Frames once it
     // is counted.
@@ -950,11 +949,12 @@ void main() {
     late int afterwards;
     late int wayAfterwards;
     late int carried;
+    var leftOver = 0;
     await tester.runAsync(() async {
       var hard = _spec(
               rings: const RingSpec(
                   count: 6, edge: RingEdge.hard, fadeIn: 1, buildUp: false))
-          .copyWith(loop: false, passFrames: 150);
+          .copyWith(loopTimes: 1, passFrames: 150);
       Future<int> at(int frame) async {
         var (ink, _) = await _ink(hard, frame / 24, rate: 24);
         return ink;
@@ -968,14 +968,59 @@ void main() {
       var withIcon = _spec(
               rings: const RingSpec(count: 6, edge: RingEdge.hard).copyWith(
                   icons: [const RingIcon(asset: "badge", ring: 6, size: 2)]))
-          .copyWith(loop: false, passFrames: 150);
+          .copyWith(loopTimes: 1, passFrames: 150);
       carried = await _inkWith(withIcon, 188 / 24, within: 80, rate: 24);
+
+      // However the set is spread. Roughened spacing moves where a ring sits
+      // in the set, so with some seeds the one at the back is born later
+      // again -- and a clock held exactly on the end of the run leaves it
+      // there at full strength.
+      for (var seed = 1; seed <= 12 && leftOver == 0; seed++) {
+        var rough = _spec(
+                rings: const RingSpec(
+                    count: 6,
+                    edge: RingEdge.hard,
+                    buildUp: false,
+                    to: 0.5,
+                    spacingJitter: 1))
+            .copyWith(seed: seed, loopTimes: 1, passFrames: 150);
+        var (ink, _) = await _ink(rough, 260 / 24, rate: 24);
+        leftOver = ink;
+      }
     });
 
     expect(atTheEnd, 0, reason: "the run was over and the page was not empty");
     expect(afterwards, 0, reason: "and it stayed on the page afterwards");
     expect(wayAfterwards, 0);
     expect(carried, 0, reason: "the icon outlived the ring that carried it");
+    expect(leftOver, 0, reason: "a roughened set left a ring on the page");
+  });
+
+  test("a movement written before there were runs is read as one run", () {
+    // The switch it used to be saved with. Not looping meant one run and
+    // then hold, which is one time.
+    var once = ProceduralSpec.fromJson({
+      "style": "rings",
+      "animated": true,
+      "loop": false,
+      "passFrames": 90,
+    });
+    expect(once.loopTimes, 1);
+    expect(once.inRuns, isTrue);
+    expect(once.passFrames, 90);
+    // And one that did loop still goes round for ever.
+    var forever = ProceduralSpec.fromJson(
+        {"style": "rings", "animated": true, "loop": true});
+    expect(forever.loopTimes, 0);
+    expect(forever.inRuns, isFalse);
+    // A number that was written wins over the old switch.
+    var counted = ProceduralSpec.fromJson({
+      "style": "rings",
+      "animated": true,
+      "loop": false,
+      "loopTimes": 3,
+    });
+    expect(counted.loopTimes, 3);
   });
 
   test("a run lasts until the ring at the back has died", () {

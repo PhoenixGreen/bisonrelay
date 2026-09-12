@@ -751,24 +751,13 @@ class ProceduralSettings extends StatelessWidget {
               value: spec.animated,
               onChanged: (v) => _setNow(spec.copyWith(animated: v)),
             ),
-            // Beside Animate, because it is the second half of the same
-            // question: whether it moves, and whether it goes on moving.
-            if (spec.animated)
-              CanvasToggle(
-                key: const ValueKey("loop"),
-                label: "Loop",
-                value: spec.loop,
-                onChanged: (v) => _setNow(spec.copyWith(loop: v)),
-              ),
-            // How fast, or how long: they are the same question asked of two
-            // different things. A movement that goes round for ever has a
-            // speed; one that runs once is timed against whatever it is
-            // under, and that is counted in frames.
-            // How many runs, and how long a rest between them. Either of
-            // them makes the movement a thing that is counted rather than
-            // one that simply goes round, which is why Frames takes over
-            // from Speed as soon as one is set.
-            if (spec.animated && spec.loop) ...[
+            // How many runs, and how long a rest between them. Nought times
+            // is for ever, which is why there is no separate Loop switch --
+            // it asked the same question twice. Either setting makes the
+            // movement a thing that is counted rather than one that simply
+            // goes round, which is why Frames takes over from Speed as soon
+            // as one of them is set.
+            if (spec.animated) ...[
               CanvasNumberField(
                 key: const ValueKey("loopTimes"),
                 label: "Times",
@@ -838,15 +827,12 @@ class ProceduralSettings extends StatelessWidget {
                   onPressed: () =>
                       _setNow(spec.copyWith(passFrames: canvasFrames)),
                 ),
-              CanvasHint(spec.loop
-                  ? "How many frames one run takes, start to finish. Times is "
-                      "how many runs there are -- nought is for ever -- and "
-                      "Gap is how many frames of stillness sit between one "
-                      "and the next."
-                  : "How many frames the movement takes from start to "
-                      "finish, after which it holds. Finished means "
-                      "finished: for rings, every ring born, travelled and "
-                      "gone, with nothing left on the page."),
+              const CanvasHint(
+                  "How many frames one run takes, start to finish. Finished "
+                  "means finished: for rings, every ring born, travelled and "
+                  "gone, with nothing left on the page. Times is how many "
+                  "runs there are -- nought is for ever -- and Gap is how "
+                  "many frames of stillness sit between one and the next."),
             ],
             // A rest in the middle of it: which frame it stops on, how long
             // it stays stopped, and how long it takes to slow down into the
