@@ -1,3 +1,4 @@
+import 'package:bruig/components/nav_bar_width.dart';
 import 'package:bruig/components/app_notifications.dart';
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/components/empty_widget.dart';
@@ -37,6 +38,9 @@ class _SidebarState extends State<Sidebar> with WindowListener {
   MainMenuModel get mainMenu => widget.mainMenu;
   SidebarXController ctrl =
       SidebarXController(selectedIndex: 0, extended: true);
+
+  /// _width keeps the bar at whatever width it was left at. See NavBarWidth.
+  late final NavBarWidth _width = NavBarWidth(ctrl);
   FeedModel get feed => widget.feed;
   bool hasUnreadMsgs = false;
   double prevWindowSize = -1;
@@ -141,6 +145,7 @@ class _SidebarState extends State<Sidebar> with WindowListener {
     mainMenu.addListener(menuUpdated);
     client.hasUnreadChats.addListener(hasUnreadMsgsChanged);
     windowManager.addListener(this);
+    _width.restore();
   }
 
   @override
@@ -160,6 +165,7 @@ class _SidebarState extends State<Sidebar> with WindowListener {
 
   @override
   void dispose() {
+    _width.dispose();
     feed.removeListener(feedUpdated);
     client.connState.removeListener(connStateChanged);
     mainMenu.removeListener(menuUpdated);

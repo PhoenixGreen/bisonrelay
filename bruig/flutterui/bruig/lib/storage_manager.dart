@@ -21,6 +21,7 @@ class StorageManager {
   static const String notesToSelfKey = "notesToSelf";
   static const String msgsSentCountKey = "msgsSentCount";
   static const String countRelaysEnabledKey = "countRelaysEnabled";
+  static const String navExtendedKey = "navExtended";
   static const String savedColorsKey = "savedColors";
   static const String pagesSortKey = "pagesSort";
   static const String pagesSidebarOpenKey = "pagesSidebarOpen";
