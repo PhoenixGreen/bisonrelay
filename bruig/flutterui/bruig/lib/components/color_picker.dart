@@ -350,8 +350,13 @@ class _AppColorPickerState extends State<AppColorPicker> {
       // long as the notation allows, and the half thrown away is the half
       // that was pasted.
       if (_textFocus.hasFocus) {
-        _text.selection =
-            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        // After the frame: the tap that brought the focus here puts the caret
+        // where it landed, and it does that after this runs.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_textFocus.hasFocus || !mounted) return;
+          _text.selection =
+              TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        });
         return;
       }
       // And whatever is half-typed goes back to the real colour when the
@@ -545,8 +550,14 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   /// _spread lays the five out from the colour they are led by, leaving
   /// alone any that have been locked.
+  ///
+  /// A custom set is never laid out: its five are wherever they have been
+  /// put, and the whole point of it is that no rule moves them. Re-laid, the
+  /// handle on the rim wiped out the arrangement it was supposed to be
+  /// turning.
   void _spread() {
     var was = _spots;
+    if (_harmony == ColorHarmony.custom && was.length == 5) return;
     _spots = [
       for (var (i, (turn, sat, val)) in _harmony.places.indexed)
         if (i < was.length && i < _locked.length && _locked[i])
@@ -562,6 +573,62 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   /// _spotColor is what one of the five looks like, in the notation in hand.
   Color _spotColor(_Spot spot) => _colorAt(spot.hue, spot.sat, spot.third);
+
+  /// _brightenAll takes the whole set lighter or darker.
+  ///
+  /// An arrangement is re-laid at the new brightness. A custom set is not
+  /// re-laid -- it has no rule to re-lay it by -- so each of its five is
+  /// moved by the same proportion instead, which keeps whatever was built
+  /// and changes only how bright it is.
+  void _brightenAll(double to) {
+    if (_harmony == ColorHarmony.custom && _spots.length == 5) {
+      var by = _leadVal <= 0 ? 1.0 : to / _leadVal;
+      _spots = [
+        for (var (i, spot) in _spots.indexed)
+          if (i < _locked.length && _locked[i])
+            spot
+          else
+            _Spot(
+                hue: spot.hue,
+                sat: spot.sat,
+                third: (spot.third * by).clamp(0.0, 1.0)),
+      ];
+      _leadVal = to;
+      return;
+    }
+    _leadVal = to;
+    _spread();
+  }
+
+  /// _turnAll points the set at a new turn of the wheel.
+  ///
+  /// An arrangement is re-laid around it, which is the same shape pointing
+  /// somewhere else. A custom set has no shape to re-lay -- it is five
+  /// colours somebody has placed -- so it is turned instead: every one of
+  /// them moves by the same amount, which is what makes the handle on the
+  /// rim a way of trying a custom set against every part of the wheel rather
+  /// than a way of losing it.
+  void _turnAll(double hue) {
+    if (_harmony == ColorHarmony.custom) {
+      var by = hue - _leadHue;
+      _spots = [
+        for (var (i, spot) in _spots.indexed)
+          if (i < _locked.length && _locked[i])
+            spot
+          else
+            _Spot(
+                hue: (spot.hue + by) % 360 < 0
+                    ? (spot.hue + by) % 360 + 360
+                    : (spot.hue + by) % 360,
+                sat: spot.sat,
+                third: spot.third),
+      ];
+      _leadHue = hue;
+      return;
+    }
+    _leadHue = hue;
+    _spread();
+  }
 
   /// _lead re-lays the set from one of its handles: a harmony is a shape, and
   /// moving one corner of it moves the shape.
@@ -617,6 +684,15 @@ class _AppColorPickerState extends State<AppColorPicker> {
       if (satOf > 0) _leadSat = (sat / satOf).clamp(0.0, 1.0);
       if (valOf > 0) _leadVal = (third / valOf).clamp(0.0, 1.0);
       _spread();
+      // And then this one exactly, because the arrangement cannot always
+      // reach it: the fourth of a set of shades is drawn at a quarter of the
+      // brightness it is led by, so a bright colour typed there would need a
+      // lead four times brighter than there is room for, and what came back
+      // was a darker colour than the one that had been typed. What is typed
+      // is what that colour becomes; the rest follow the harmony around it.
+      var next = [..._spots];
+      next[index] = _Spot(hue: hue, sat: sat, third: third);
+      _spots = next;
       _pick(index);
     });
   }
@@ -1002,8 +1078,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
               }
               if (_grabbed < 0) {
                 setState(() {
-                  _leadHue = hue;
-                  _spread();
+                  _turnAll(hue);
                   _pick(_picked);
                 });
                 return;
@@ -1059,13 +1134,6 @@ class _AppColorPickerState extends State<AppColorPicker> {
                 }),
               ),
             ),
-          ),
-          IconButton(
-            key: const ValueKey("colorHarmonyReset"),
-            icon: const Icon(Icons.restart_alt, size: 16),
-            visualDensity: VisualDensity.compact,
-            tooltip: "Lay the five out again around the colour in hand",
-            onPressed: () => setState(_leadFromCurrent),
           ),
         ]),
         const SizedBox(height: 6),
@@ -1142,8 +1210,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
           ],
           at: _leadVal,
           onAt: (f) => setState(() {
-            _leadVal = f.clamp(0.02, 1.0);
-            _spread();
+            _brightenAll(f.clamp(0.02, 1.0));
             _pick(_picked);
           }),
         ),
@@ -1800,8 +1867,14 @@ class _SpotHexState extends State<_SpotHex> {
         // long, and the limit would throw away the half that was pasted.
         // Selected, a paste replaces it, which is the only thing anybody
         // pastes a colour in order to do.
-        _text.selection =
-            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        //
+        // After the frame, because the tap that brought the focus here puts
+        // the caret where it landed, and it does that after this runs.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_focus.hasFocus || !mounted) return;
+          _text.selection =
+              TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        });
         return;
       }
       // And what is half-typed goes back to the colour when the field is
@@ -1890,8 +1963,11 @@ class _ChannelFieldState extends State<_ChannelField> {
     // it with a caret is three characters that go nowhere.
     _focus.addListener(() {
       if (!_focus.hasFocus) return;
-      _text.selection =
-          TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_focus.hasFocus || !mounted) return;
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+      });
     });
   }
 

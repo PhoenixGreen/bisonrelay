@@ -622,4 +622,125 @@ void main() {
             "${before.toARGB32().toRadixString(16)} to "
             "${after.toARGB32().toRadixString(16)}");
   });
+
+  testWidgets("a typed colour is the colour, in every harmony", (tester) async {
+    // An arrangement cannot always reach a colour typed into it: the fourth
+    // of a set of shades is drawn at a quarter of the brightness it is led
+    // by, so a bright colour there would need a lead four times brighter
+    // than there is room for -- and what came back was a darker, washed-out
+    // version of what had been typed.
+    for (var harmony in ["Analogous", "Complementary", "Shades"]) {
+      await pump(tester, start: const Color(0xFF884422), width: 380);
+      await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(harmony).last);
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < 5; i++) {
+        await tester.enterText(find.byKey(ValueKey("paletteHex$i")), "3366cc");
+        await tester.pumpAndSettle();
+        var got = (tester
+                .widget<Container>(find.descendant(
+                    of: find.byKey(ValueKey("paletteSpot$i")),
+                    matching: find.byType(Container)))
+                .decoration as BoxDecoration)
+            .color!;
+        expect(got.toARGB32() & 0xFFFFFF, 0x3366cc,
+            reason: "$harmony spot $i came back as "
+                "${got.toARGB32().toRadixString(16)}");
+      }
+    }
+  });
+
+  testWidgets("a custom set is turned by the rim, not re-laid", (tester) async {
+    // The whole point of a custom set is that no rule moves its five. Re-laid
+    // from the harmony's own places, the handle on the rim wiped out the
+    // arrangement it was supposed to be turning.
+    await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Custom").last);
+    await tester.pumpAndSettle();
+
+    Color spot(int i) => (tester
+            .widget<Container>(find.descendant(
+                of: find.byKey(ValueKey("paletteSpot$i")),
+                matching: find.byType(Container)))
+            .decoration as BoxDecoration)
+        .color!;
+
+    // A set somebody has put together by hand.
+    for (var (i, hex)
+        in ["cc2200", "22cc00", "0022cc", "cccc00", "00cccc"].indexed) {
+      await tester.enterText(find.byKey(ValueKey("paletteHex$i")), hex);
+      await tester.pumpAndSettle();
+    }
+    var before = [for (var i = 0; i < 5; i++) HSVColor.fromColor(spot(i)).hue];
+
+    var wheel = tester.getRect(find.byKey(const ValueKey("colorPaletteWheel")));
+    await tester.tapAt(Offset(wheel.center.dx, wheel.top + 4));
+    await tester.pumpAndSettle();
+
+    var after = [for (var i = 0; i < 5; i++) HSVColor.fromColor(spot(i)).hue];
+    var by = (after[0] - before[0]) % 360;
+    expect(by, isNot(closeTo(0, 0.5)), reason: "nothing turned");
+    for (var i = 1; i < 5; i++) {
+      expect((after[i] - before[i]) % 360, closeTo(by, 1.5),
+          reason: "the set was re-laid rather than turned: "
+              "$before became $after");
+    }
+  });
+
+  testWidgets("brightness moves a custom set without re-laying it",
+      (tester) async {
+    await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Custom").last);
+    await tester.pumpAndSettle();
+
+    Color spot(int i) => (tester
+            .widget<Container>(find.descendant(
+                of: find.byKey(ValueKey("paletteSpot$i")),
+                matching: find.byType(Container)))
+            .decoration as BoxDecoration)
+        .color!;
+
+    for (var (i, hex)
+        in ["cc2200", "22cc00", "0022cc", "cccc00", "00cccc"].indexed) {
+      await tester.enterText(find.byKey(ValueKey("paletteHex$i")), hex);
+      await tester.pumpAndSettle();
+    }
+    var hues = [for (var i = 0; i < 5; i++) HSVColor.fromColor(spot(i)).hue];
+
+    var slider = tester.getRect(find.byKey(const ValueKey("paletteValue")));
+    await tester
+        .tapAt(Offset(slider.left + slider.width * 0.35, slider.center.dy));
+    await tester.pumpAndSettle();
+
+    // Darker, and still the same five colours: what was built is kept and
+    // only how bright it is has changed.
+    for (var i = 0; i < 5; i++) {
+      expect(HSVColor.fromColor(spot(i)).hue, closeTo(hues[i], 2),
+          reason: "the custom set was re-laid by the brightness slider");
+    }
+    expect(HSVColor.fromColor(spot(0)).value, lessThan(0.8),
+        reason: "and it did darken");
+  });
+
+  testWidgets("the harmony row has one reset, not two", (tester) async {
+    // The one on the mode line puts every mode back; a second one beside the
+    // harmony that only re-laid the five was the same button doing less.
+    await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("colorHarmonyReset")), findsNothing);
+    expect(find.byKey(const ValueKey("colorReset")), findsOneWidget);
+  });
 }
