@@ -1,6 +1,5 @@
 import 'package:bruig/components/color_picker.dart';
 import 'dart:io';
-import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/snackbars.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
@@ -631,27 +630,21 @@ class _PaletteSectionState extends State<PaletteSection> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(children: [
+            // As wide as the settings page gives it, up to the width that
+            // puts the numbers and the saved colours beside the colour
+            // instead of under it -- see AppColorPicker.width.
             AppColorPicker(
               color: draftColor ?? fullPalette[editing],
               // Lets a palette color blend into whatever it's painted over
               // (e.g. a semi-transparent divider or overlay) instead of
               // always being fully opaque.
               allowAlpha: true,
+              width: (MediaQuery.of(context).size.width - 80).clamp(300, 640),
               onChanged: (c) => setState(() => draftColor = c),
             ),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              IconButton(
-                icon: const Icon(Icons.colorize),
-                tooltip: "Pick color from app (eyedropper)",
-                onPressed: () async {
-                  var picked = await pickColorFromApp(context);
-                  if (picked != null) setState(() => draftColor = picked);
-                },
-              ),
-              Row(children: [
-                TextButton(onPressed: _collapse, child: const Text("Cancel")),
-                TextButton(onPressed: commit, child: const Text("Done")),
-              ]),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: _collapse, child: const Text("Cancel")),
+              TextButton(onPressed: commit, child: const Text("Done")),
             ]),
           ]),
         ),

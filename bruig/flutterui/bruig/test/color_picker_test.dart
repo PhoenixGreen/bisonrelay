@@ -8,18 +8,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 // were bugs in the package it replaced, and the saved colours it adds.
 
 Future<Color> pump(WidgetTester tester,
-    {Color start = const Color(0xFF000000), bool allowAlpha = true}) async {
+    {Color start = const Color(0xFF000000),
+    bool allowAlpha = true,
+    double width = 320}) async {
   var current = start;
   // No provider around it: the picker takes its colours from Material's own
   // scheme, so it works wherever there is a Theme -- which is every panel,
   // every dialog and every test that pumps one.
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
-      body: StatefulBuilder(
-        builder: (context, setState) => AppColorPicker(
-          color: current,
-          allowAlpha: allowAlpha,
-          onChanged: (c) => setState(() => current = c),
+      // Scrolling, the way every real use of it is: a picker in a dialog or
+      // a settings column has a scroll view over it, and the wheel is taller
+      // than a small window.
+      body: SingleChildScrollView(
+        child: StatefulBuilder(
+          builder: (context, setState) => AppColorPicker(
+            color: current,
+            allowAlpha: allowAlpha,
+            width: width,
+            onChanged: (c) => setState(() => current = c),
+          ),
         ),
       ),
     ),
@@ -89,7 +97,8 @@ void main() {
   testWidgets("a colour is kept, offered, and forgotten again", (tester) async {
     await pump(tester, start: const Color(0xFF3366CC));
 
-    expect(find.byType(Wrap), findsNothing, reason: "nothing saved yet");
+    expect(find.byKey(const ValueKey("savedSwatches")), findsNothing,
+        reason: "nothing saved yet");
     await tester.tap(find.byKey(const ValueKey("saveColor")));
     await tester.pumpAndSettle();
 
@@ -143,5 +152,145 @@ void main() {
     await SavedColors.instance.load();
     expect(SavedColors.instance.colors.single.toARGB32(), 0x80FF0000,
         reason: "including how see-through it was");
+  });
+
+  testWidgets("the wheel is another way of saying the same colour",
+      (tester) async {
+    // Three ways of choosing, one colour: whatever is set in one is what the
+    // next one opens on.
+    await pump(tester, start: const Color(0xFFCC3366));
+    await tester.tap(find.byKey(const ValueKey("colorModewheel")));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("colorWheel")), findsOneWidget);
+    expect(_shown(tester).toARGB32(), 0xFFCC3366,
+        reason: "the wheel opened on the colour the square had");
+
+    // A press on the wheel, out towards the rim on the right, is a red.
+    var wheel = tester.getRect(find.byKey(const ValueKey("colorWheel")));
+    await tester
+        .tapAt(Offset(wheel.center.dx + wheel.width * 0.4, wheel.center.dy));
+    await tester.pumpAndSettle();
+    var showing = _shown(tester);
+    expect(showing.r, greaterThan(showing.b),
+        reason: "the right of the wheel is where the reds are: "
+            "${showing.toARGB32().toRadixString(16)}");
+
+    // And back to the sliders, which open on what the wheel left.
+    var fromWheel = _shown(tester).toARGB32();
+    await tester.tap(find.byKey(const ValueKey("colorModesliders")));
+    await tester.pumpAndSettle();
+    expect(_shown(tester).toARGB32(), fromWheel);
+  });
+
+  testWidgets("the palette lays five colours out and answers with one",
+      (tester) async {
+    await pump(tester, start: const Color(0xFF3366CC));
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    // The first of the five is the colour it was opened on: the palette is a
+    // way of asking what goes with this one.
+    expect(_shown(tester).toARGB32(), 0xFF3366CC);
+
+    // Choosing another of the five is what the picker then answers with.
+    await tester.tap(find.byKey(const ValueKey("paletteSpot2")));
+    await tester.pumpAndSettle();
+    expect(_shown(tester).toARGB32(), isNot(0xFF3366CC));
+
+    // A complementary set puts its second colour across the wheel from its
+    // first -- which is the whole of what a harmony is.
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Complementary").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("paletteSpot0")));
+    await tester.pumpAndSettle();
+    var first = HSVColor.fromColor(_shown(tester));
+    await tester.tap(find.byKey(const ValueKey("paletteSpot2")));
+    await tester.pumpAndSettle();
+    var across = HSVColor.fromColor(_shown(tester));
+    var turn = (across.hue - first.hue).abs();
+    expect(turn, closeTo(180, 2),
+        reason: "the two are $turn apart round the wheel");
+  });
+
+  testWidgets("a palette handle keeps hold of the drag it started",
+      (tester) async {
+    // Which handle is being held is decided when the press lands and kept for
+    // the rest of the drag. Worked out on every move instead, a handle
+    // dragged past its neighbour hands the drag over half way and the set
+    // jumps.
+    await pump(tester, start: const Color(0xFFCC3366));
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    var wheel = tester.getRect(find.byKey(const ValueKey("colorPaletteWheel")));
+    // From the middle outwards: the handle in the middle takes the whole set
+    // with it, so what it must not do is let go and grab one of the five.
+    var pointer = await tester.startGesture(wheel.center);
+    await pointer.moveBy(Offset(wheel.width * 0.3, 0));
+    await tester.pumpAndSettle();
+    await pointer.moveBy(Offset(0, wheel.height * 0.2));
+    await tester.pumpAndSettle();
+    await pointer.up();
+    await tester.pumpAndSettle();
+
+    // The five are still the arrangement they were: dragged by the middle,
+    // the shape turns rather than coming apart.
+    var swatches = [
+      for (var i = 0; i < 5; i++)
+        tester.widget<Container>(find.descendant(
+            of: find.byKey(ValueKey("paletteSpot$i")),
+            matching: find.byType(Container))),
+    ];
+    expect(swatches, hasLength(5));
+    expect(_shown(tester).toARGB32(), isNot(0xFFCC3366),
+        reason: "the set moved with the drag");
+  });
+
+  test("a colour is written and read back in every notation", () {
+    // The sums are the only part of the picker that can be wrong in a way
+    // nobody sees, so they are checked without a widget.
+    const colour = Color(0xFF3A7BD5);
+    for (var format in ColorFormat.values) {
+      var written = ColorText.write(colour, format);
+      var read = ColorText.read(written, format, colour);
+      expect(read, isNotNull,
+          reason: "$format wrote '$written' and could "
+              "not read it back");
+      if (format == ColorFormat.grey) continue;
+      // Within a few points per channel. These notations round to whole
+      // numbers on the way out, and one step of L or of a in LAB is worth
+      // more than one step of red.
+      var slack = format == ColorFormat.lab ? 6 : 3;
+      expect((read!.r * 255 - colour.r * 255).abs(), lessThan(slack),
+          reason: "$format red");
+      expect((read.g * 255 - colour.g * 255).abs(), lessThan(slack),
+          reason: "$format green");
+      expect((read.b * 255 - colour.b * 255).abs(), lessThan(slack),
+          reason: "$format blue");
+    }
+
+    // And greyscale is the one that does not round-trip a colour, because it
+    // cannot hold one: it says how bright, and reads back a grey.
+    var grey = ColorText.read("128", ColorFormat.grey, colour)!;
+    expect(grey.r, grey.g);
+    expect(grey.g, grey.b);
+  });
+
+  testWidgets("a wide picker puts the numbers beside the colour",
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pump(tester, start: const Color(0xFF3366CC), width: 620);
+    var square = tester.getRect(find.byKey(const ValueKey("colorShade")));
+    var field = tester.getRect(find.byKey(const ValueKey("colorPickerHex")));
+    expect(field.left, greaterThan(square.right),
+        reason: "the numbers are under the colour rather than beside it");
+
+    // And the field is whole: the hex it holds was being cut off.
+    expect(field.width, greaterThan(120));
   });
 }

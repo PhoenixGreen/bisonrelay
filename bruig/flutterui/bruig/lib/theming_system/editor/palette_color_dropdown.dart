@@ -1,5 +1,4 @@
 import 'package:bruig/components/color_picker.dart';
-import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
 
@@ -66,15 +65,6 @@ class PaletteColorDropdown extends StatelessWidget {
       builder: (context) => _CustomColorDialog(initial: initial),
     );
     if (result == null) return;
-    if (result.useEyedropper) {
-      // The dialog is already closed at this point (see _CustomColorDialog's
-      // eyedropper button), so the capture below sees whatever's actually
-      // behind it, not the dialog's own chrome.
-      if (!context.mounted) return;
-      var picked = await pickColorFromApp(context);
-      if (picked != null) onChanged(picked, null);
-      return;
-    }
     if (result.color != null) onChanged(result.color, null);
   }
 
@@ -217,16 +207,12 @@ class _CheckerboardPainter extends CustomPainter {
   bool shouldRepaint(_CheckerboardPainter old) => old.cell != cell;
 }
 
-// _ColorPickResult is _CustomColorDialog's pop() value: either a committed
-// color (Select) or a request to hand off to the in-app eyedropper (which
-// needs the dialog closed first so it can capture what's behind it).
+// _ColorPickResult is _CustomColorDialog's pop() value: the committed color,
+// or null where Cancel was pressed. It used to carry a second answer -- a
+// request to hand off to the in-app eyedropper -- which is gone.
 class _ColorPickResult {
   final Color? color;
-  final bool useEyedropper;
-  const _ColorPickResult.color(this.color) : useEyedropper = false;
-  const _ColorPickResult.eyedropper()
-      : color = null,
-        useEyedropper = true;
+  const _ColorPickResult.color(this.color);
 }
 
 // _CustomColorDialog lets the user pick an arbitrary color (not limited to
@@ -246,18 +232,11 @@ class _CustomColorDialogState extends State<_CustomColorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(children: [
-        const Expanded(child: Text("Custom color")),
-        IconButton(
-          icon: const Icon(Icons.colorize),
-          tooltip: "Pick color from app (eyedropper)",
-          onPressed: () =>
-              Navigator.of(context).pop(const _ColorPickResult.eyedropper()),
-        ),
-      ]),
+      title: const Text("Custom color"),
       content: SingleChildScrollView(
         child: AppColorPicker(
           color: _color,
+          width: (MediaQuery.of(context).size.width - 120).clamp(300.0, 640.0),
           onChanged: (c) => setState(() => _color = c),
         ),
       ),

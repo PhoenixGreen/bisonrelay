@@ -4,26 +4,140 @@ import 'package:bruig/components/saved_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// color_picker.dart is the app's colour picker: the one dialog behind every
-// swatch, in the canvas, in the palette editor and in the composer's
-// formatting panel.
+// color_picker.dart is the app's colour picker: the one behind every swatch,
+// in the canvas, in the palette editor and in the composer's formatting
+// panel.
 //
-// Written here rather than taken from a package, for three reasons that the
-// package could not be made to answer:
+// Written here rather than taken from a package, because of the things a
+// package could not be asked for: a hue that survives a black, channels that
+// are dragged rather than typed, colours that can be kept between pickers and
+// between sessions, and three ways of choosing rather than one.
 //
-// - The hue slider did nothing on a black, a white or a grey. A colour has
-//   no hue once its saturation or its value is nought, so a picker that
-//   keeps only the colour cannot remember which way the hue slider was
-//   pointing -- and dragging it changed nothing until a colour was picked
-//   out of the square first. This one keeps hue, saturation and value as
-//   three numbers of its own and builds the colour from them, so every
-//   slider always moves something.
-//
-// - The channels are draggable. R, G, B and A are captions you can grab and
-//   pull sideways, which is how every other number in the canvas is set.
-//
-// - Saved colours. See SavedColors: two rows of swatches under the picker,
-//   shared by every picker in the app and kept across restarts.
+// The three ways are the same colour seen three ways, not three settings:
+// whatever is chosen in one is what the others open on.
+
+/// ColorPickerMode is how the colour is being chosen.
+enum ColorPickerMode {
+  /// sliders is the square and the two bars: the plain way, and the one that
+  /// can say exactly what it means.
+  sliders("Sliders", Icons.tune),
+
+  /// wheel is hue round and saturation out from the middle, with brightness
+  /// and opacity under it. Faster to reach a colour with, harder to be exact.
+  wheel("Wheel", Icons.colorize),
+
+  /// palette is five colours at once, arranged by one of the harmonies.
+  palette("Palette", Icons.auto_awesome);
+
+  final String label;
+  final IconData icon;
+  const ColorPickerMode(this.label, this.icon);
+}
+
+/// ColorFormat is how the colour is written out in the field under it.
+///
+/// The same colour in whichever notation the person reading it works in --
+/// hex from a designer, HSL from a stylesheet, CMYK from a printer, LAB from
+/// a colour system, or the one number a greyscale needs.
+enum ColorFormat {
+  hex("Hex"),
+  hsl("HSL"),
+  cmyk("CMYK"),
+  lab("LAB"),
+  grey("Greyscale");
+
+  final String label;
+  const ColorFormat(this.label);
+}
+
+/// ColorHarmony is how five colours are arranged around the wheel.
+///
+/// Each is a set of five places relative to the one being led by: how far
+/// round the wheel, how much of the saturation, and how much of the
+/// brightness. Custom is the absence of a rule -- every handle goes where it
+/// is put.
+enum ColorHarmony {
+  custom("Custom"),
+  analogous("Analogous"),
+  complementary("Complementary"),
+  splitComplementary("Split complementary"),
+  triad("Triad"),
+  square("Square"),
+  compound("Compound"),
+  shades("Shades"),
+  monochromatic("Monochromatic");
+
+  final String label;
+  const ColorHarmony(this.label);
+
+  /// places is the five (turn, saturation, brightness) offsets this harmony
+  /// puts its colours at, the first being the one led by.
+  List<(double, double, double)> get places => switch (this) {
+        custom => const [
+            (0, 1, 1),
+            (30, 1, 1),
+            (-30, 1, 1),
+            (60, 1, 1),
+            (-60, 1, 1)
+          ],
+        analogous => const [
+            (0, 1, 1),
+            (-40, 0.9, 1),
+            (-20, 0.95, 1),
+            (20, 0.95, 1),
+            (40, 0.9, 1)
+          ],
+        complementary => const [
+            (0, 1, 1),
+            (0, 0.55, 1),
+            (180, 1, 1),
+            (180, 0.55, 1),
+            (0, 0.25, 1)
+          ],
+        splitComplementary => const [
+            (0, 1, 1),
+            (150, 1, 1),
+            (210, 1, 1),
+            (150, 0.5, 1),
+            (210, 0.5, 1)
+          ],
+        triad => const [
+            (0, 1, 1),
+            (120, 1, 1),
+            (240, 1, 1),
+            (120, 0.5, 1),
+            (240, 0.5, 1)
+          ],
+        square => const [
+            (0, 1, 1),
+            (90, 1, 1),
+            (180, 1, 1),
+            (270, 1, 1),
+            (0, 0.5, 1)
+          ],
+        compound => const [
+            (0, 1, 1),
+            (30, 0.85, 1),
+            (180, 1, 1),
+            (210, 0.85, 1),
+            (150, 0.7, 1)
+          ],
+        shades => const [
+            (0, 1, 1),
+            (0, 1, 0.8),
+            (0, 1, 0.6),
+            (0, 1, 0.42),
+            (0, 1, 0.28)
+          ],
+        monochromatic => const [
+            (0, 1, 1),
+            (0, 0.75, 0.95),
+            (0, 0.5, 0.9),
+            (0, 0.3, 1),
+            (0, 0.15, 1)
+          ],
+      };
+}
 
 /// pickColor opens the picker as a dialog and answers with the colour
 /// chosen, or null if it was dismissed.
@@ -32,19 +146,35 @@ Future<Color?> pickColor(
   required Color initial,
   bool allowAlpha = true,
   String title = "Colour",
-}) =>
-    showDialog<Color>(
-      context: context,
-      builder: (context) =>
-          _ColorDialog(initial: initial, allowAlpha: allowAlpha, title: title),
-    );
+}) {
+  // As wide as the screen sensibly allows, which is what puts the numbers and
+  // the saved colours beside the picker rather than under it. Measured here
+  // rather than by the picker: a dialog asks what it holds how big it wants
+  // to be, and a widget that measures the room it has been given cannot
+  // answer that question.
+  var room = MediaQuery.of(context).size.width - 120;
+  return showDialog<Color>(
+    context: context,
+    builder: (context) => _ColorDialog(
+      initial: initial,
+      allowAlpha: allowAlpha,
+      title: title,
+      width: room.clamp(300.0, 640.0),
+    ),
+  );
+}
 
 class _ColorDialog extends StatefulWidget {
   final Color initial;
   final bool allowAlpha;
   final String title;
-  const _ColorDialog(
-      {required this.initial, required this.allowAlpha, required this.title});
+  final double width;
+  const _ColorDialog({
+    required this.initial,
+    required this.allowAlpha,
+    required this.title,
+    required this.width,
+  });
 
   @override
   State<_ColorDialog> createState() => _ColorDialogState();
@@ -60,6 +190,7 @@ class _ColorDialogState extends State<_ColorDialog> {
           child: AppColorPicker(
             color: _color,
             allowAlpha: widget.allowAlpha,
+            width: widget.width,
             onChanged: (c) => setState(() => _color = c),
           ),
         ),
@@ -87,20 +218,40 @@ class AppColorPicker extends StatefulWidget {
   /// coloured has no way to be see-through.
   final bool allowAlpha;
 
-  /// width is how wide the picker draws. The default fits ten saved swatches
-  /// to a row with room either side.
+  /// width is how wide the picker draws, and -- past [_wideAt] -- whether the
+  /// numbers and the saved colours sit beside the colour or under it.
+  ///
+  /// Told rather than measured: a LayoutBuilder reads better and breaks the
+  /// moment the picker is put in a dialog, because an AlertDialog measures
+  /// what it holds and a LayoutBuilder cannot answer that question.
   final double width;
 
   const AppColorPicker({
     required this.color,
     required this.onChanged,
     this.allowAlpha = true,
-    this.width = 300,
+    this.width = 320,
     super.key,
   });
 
   @override
   State<AppColorPicker> createState() => _AppColorPickerState();
+}
+
+/// _wideAt is the width at which the picker lays itself out in two columns.
+const double _wideAt = 560;
+
+/// _pickerColumn is how much of a wide picker the colour itself takes.
+const double _pickerColumn = 300;
+
+/// _Spot is one of the five colours in the palette mode.
+class _Spot {
+  final double hue;
+  final double sat;
+  final double val;
+  const _Spot({required this.hue, required this.sat, required this.val});
+
+  Color get color => HSVColor.fromAHSV(1, hue, sat, val).toColor();
 }
 
 class _AppColorPickerState extends State<AppColorPicker> {
@@ -116,18 +267,38 @@ class _AppColorPickerState extends State<AppColorPicker> {
   double _val = 0;
   double _alpha = 1;
 
-  final TextEditingController _hex = TextEditingController();
-  final FocusNode _hexFocus = FocusNode();
+  ColorPickerMode _mode = ColorPickerMode.sliders;
+  ColorFormat _format = ColorFormat.hex;
+
+  // The palette mode's own state. The five colours are a shape laid out
+  // around a colour it is led by, which is not the same thing as the colour
+  // the picker is answering with -- that is whichever of the five has been
+  // picked out. Held apart, or choosing the fourth colour of a triad would
+  // re-lay the triad around it and the set would walk away as it was used.
+  ColorHarmony _harmony = ColorHarmony.analogous;
+  double _leadHue = 0;
+  double _leadSat = 1;
+  double _leadVal = 1;
+  List<_Spot> _spots = const [];
+  int _picked = 0;
+
+  /// _grabbed is which handle a drag on the palette wheel has hold of, or -1
+  /// for the one in the middle that moves them all.
+  int _grabbed = 0;
+
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _textFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _take(widget.color);
-    _hexFocus.addListener(() {
-      // Whatever is half-typed goes back to the real colour when the field
-      // is left, so a field holding "#ff" does not sit there looking like a
+    _leadFromCurrent();
+    _textFocus.addListener(() {
+      // Whatever is half-typed goes back to the real colour when the field is
+      // left, so a field holding "#ff" does not sit there looking like a
       // colour the picker is showing.
-      if (!_hexFocus.hasFocus) setState(_writeHex);
+      if (!_textFocus.hasFocus) setState(_write);
     });
     SavedColors.instance.load();
   }
@@ -135,23 +306,19 @@ class _AppColorPickerState extends State<AppColorPicker> {
   @override
   void didUpdateWidget(AppColorPicker old) {
     super.didUpdateWidget(old);
-    // Only when somebody else has changed it. Taking it every time would
-    // undo the slider positions this picker is holding on to.
+    // Only when somebody else has changed it. Taking it every time would undo
+    // the slider positions this picker is holding on to.
     if (widget.color.toARGB32() != _current.toARGB32()) _take(widget.color);
   }
 
   @override
   void dispose() {
-    _hex.dispose();
-    _hexFocus.dispose();
+    _text.dispose();
+    _textFocus.dispose();
     super.dispose();
   }
 
   /// _take reads a colour in from outside, keeping what it cannot say.
-  ///
-  /// A grey carries no hue and a black carries neither hue nor saturation.
-  /// Rather than reset those to nought -- which is what makes a hue slider
-  /// look stuck -- the picker keeps the ones it already had.
   void _take(Color color) {
     var hsv = HSVColor.fromColor(Color(color.toARGB32()).withAlpha(255));
     // A colour with no saturation or no brightness cannot say what hue it is,
@@ -163,38 +330,659 @@ class _AppColorPickerState extends State<AppColorPicker> {
     if (hsv.value > 0) _sat = hsv.saturation;
     _val = hsv.value;
     _alpha = color.a;
-    _writeHex();
+    _write();
   }
 
   Color get _current =>
       HSVColor.fromAHSV(_alpha.clamp(0, 1), _hue, _sat, _val).toColor();
 
-  /// _pure is the colour at this hue, at full saturation and brightness:
-  /// what the shade square is painted with and what the hue slider points at.
+  /// _pure is the colour at this hue, at full saturation and brightness: what
+  /// the shade square is painted with and what the sliders point at.
   Color get _pure => HSVColor.fromAHSV(1, _hue, 1, 1).toColor();
 
   void _say() {
-    _writeHex();
+    _write();
     widget.onChanged(_current);
   }
 
-  void _writeHex() {
-    var value = _current.toARGB32();
-    var text = widget.allowAlpha
-        ? value.toRadixString(16).padLeft(8, "0")
-        : (value & 0xFFFFFF).toRadixString(16).padLeft(6, "0");
-    if (_hex.text.toLowerCase() != text) _hex.text = text;
+  /// _leadFromCurrent points the palette at the colour in hand and lays the
+  /// five out around it. What happens when the palette is opened, when reset
+  /// is pressed, and when a colour arrives from somewhere else.
+  void _leadFromCurrent() {
+    _leadHue = _hue;
+    _leadSat = _sat <= 0 ? 0.8 : _sat;
+    _leadVal = _val <= 0 ? 0.9 : _val;
+    _spread();
+    _picked = 0;
   }
 
-  void _readHex(String typed) {
-    var clean = typed.replaceAll("#", "").trim();
-    if (clean.length != 6 && clean.length != 8) return;
-    var value = int.tryParse(clean, radix: 16);
-    if (value == null) return;
+  /// _spread lays the five out from the colour they are led by.
+  void _spread() {
+    _spots = [
+      for (var (turn, sat, val) in _harmony.places)
+        _Spot(
+          hue: (_leadHue + turn) % 360,
+          sat: (_leadSat * sat).clamp(0.0, 1.0),
+          val: (_leadVal * val).clamp(0.0, 1.0),
+        ),
+    ];
+  }
+
+  /// _lead re-lays the set from one of its handles: a harmony is a shape, and
+  /// moving one corner of it moves the shape.
+  void _lead(int index, double hue, double sat) {
+    if (_harmony == ColorHarmony.custom) {
+      var next = [..._spots];
+      next[index] = _Spot(hue: hue, sat: sat, val: _spots[index].val);
+      setState(() {
+        _spots = next;
+        _pick(index);
+      });
+      return;
+    }
+    var (turn, satOf, _) = _harmony.places[index];
+    var led = (hue - turn) % 360;
     setState(() {
-      _take(Color(clean.length == 6 ? 0xFF000000 | value : value));
+      _leadHue = led < 0 ? led + 360 : led;
+      if (satOf > 0) _leadSat = (sat / satOf).clamp(0.0, 1.0);
+      _spread();
+      _pick(index);
+    });
+  }
+
+  /// _pick answers with one of the five.
+  void _pick(int index) {
+    _picked = index.clamp(0, _spots.length - 1);
+    var spot = _spots[_picked];
+    _hue = spot.hue;
+    _sat = spot.sat;
+    _val = spot.val;
+    _say();
+  }
+
+  void _write() {
+    var text = ColorText.write(_current, _format, alpha: widget.allowAlpha);
+    if (_text.text != text) _text.text = text;
+  }
+
+  void _read(String typed) {
+    var color = ColorText.read(typed, _format, _current);
+    if (color == null) return;
+    setState(() {
+      _take(color);
       widget.onChanged(_current);
     });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    var wide = widget.width >= _wideAt;
+    var pickerWidth = wide ? _pickerColumn : widget.width;
+    var settingsWidth = wide ? widget.width - _pickerColumn - 20 : widget.width;
+
+    var picking = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _modes(theme, pickerWidth),
+        const SizedBox(height: 10),
+        switch (_mode) {
+          ColorPickerMode.sliders => _slidersMode(theme, pickerWidth),
+          ColorPickerMode.wheel => _wheelMode(theme, pickerWidth),
+          ColorPickerMode.palette => _paletteMode(theme, pickerWidth),
+        },
+      ],
+    );
+
+    var settings = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _channels(theme, settingsWidth),
+        const SizedBox(height: 14),
+        _SavedRow(
+          current: _current,
+          width: settingsWidth,
+          onPick: (c) => setState(() {
+            _take(c);
+            widget.onChanged(_current);
+          }),
+        ),
+      ],
+    );
+
+    if (!wide) {
+      return SizedBox(
+        width: widget.width,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [picking, const SizedBox(height: 14), settings],
+        ),
+      );
+    }
+    return SizedBox(
+      width: widget.width,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: pickerWidth, child: picking),
+          const SizedBox(width: 20),
+          Expanded(child: settings),
+        ],
+      ),
+    );
+  }
+
+  /// _modes is the three ways of choosing, across the top.
+  Widget _modes(ColorScheme theme, double width) => SizedBox(
+        width: width,
+        child: Wrap(
+          spacing: 0,
+          runSpacing: 6,
+          children: [
+            for (var mode in ColorPickerMode.values)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: InkWell(
+                  key: ValueKey("colorMode${mode.name}"),
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () => setState(() {
+                    _mode = mode;
+                    // The palette opens on the colour in hand, so switching to
+                    // it is a way of asking "what goes with this?".
+                    if (mode == ColorPickerMode.palette) _leadFromCurrent();
+                  }),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: _mode == mode ? theme.secondaryContainer : null,
+                      border: Border.all(
+                          color: _mode == mode
+                              ? theme.secondaryContainer
+                              : theme.outlineVariant),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(mode.icon,
+                          size: 13,
+                          color: _mode == mode
+                              ? theme.onSecondaryContainer
+                              : theme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(mode.label,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: _mode == mode
+                                  ? theme.onSecondaryContainer
+                                  : theme.onSurfaceVariant)),
+                    ]),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  /// _slidersMode is the square and the bars under it.
+  Widget _slidersMode(ColorScheme theme, double width) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _shadeSquare(theme, width),
+          const SizedBox(height: 12),
+          _bar(
+            key: "colorHue",
+            width: width,
+            colors: _hueColors,
+            at: _hue / 360,
+            onAt: (f) => setState(() {
+              _hue = f * 360;
+              _say();
+            }),
+            theme: theme,
+          ),
+          if (widget.allowAlpha) ...[
+            const SizedBox(height: 10),
+            _alphaBar(theme, width),
+          ],
+        ],
+      );
+
+  /// _wheelMode is hue round and saturation out, with brightness under it.
+  ///
+  /// The brightness slider is not decoration: a wheel says which colour and
+  /// how much of it, and without a third control there is no way to reach a
+  /// dark one at all.
+  Widget _wheelMode(ColorScheme theme, double width) {
+    var size = math.min(width, 260.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Center(
+          child: _Draggable(
+            onAt: (local, box, _) => setState(() {
+              var (hue, sat) = _wheelAt(local, box);
+              _hue = hue;
+              _sat = sat;
+              _say();
+            }),
+            child: CustomPaint(
+              key: const ValueKey("colorWheel"),
+              size: Size(size, size),
+              painter: _WheelPainter(
+                value: _val,
+                marks: [(_hue, _sat, _current, true)],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _labelledBar(
+          theme: theme,
+          label: "Brightness",
+          key: "colorValue",
+          width: width,
+          colors: [Colors.black, HSVColor.fromAHSV(1, _hue, _sat, 1).toColor()],
+          at: _val,
+          onAt: (f) => setState(() {
+            _val = f;
+            _say();
+          }),
+        ),
+        if (widget.allowAlpha) ...[
+          const SizedBox(height: 10),
+          _labelledBar(
+            theme: theme,
+            label: "Opacity",
+            key: "colorAlpha",
+            width: width,
+            colors: [_pure.withValues(alpha: 0), _pure],
+            at: _alpha,
+            checker: true,
+            onAt: (f) => setState(() {
+              _alpha = f;
+              _say();
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// _paletteMode is five colours at once.
+  Widget _paletteMode(ColorScheme theme, double width) {
+    var size = math.min(width, 260.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Center(
+          child: _Draggable(
+            onAt: (local, box, first) {
+              var (hue, sat) = _wheelAt(local, box);
+              // What was grabbed is decided when the drag starts and held for
+              // the rest of it: the handle in the middle takes the whole set
+              // with it, and the drag leaves the middle on its first pixel.
+              if (first)
+                _grabbed = _atMiddle(local, box) ? -1 : _nearestSpot(hue, sat);
+              if (_grabbed < 0) {
+                setState(() {
+                  _leadHue = hue;
+                  _leadSat = sat;
+                  _spread();
+                  _pick(_picked);
+                });
+                return;
+              }
+              _lead(_grabbed, hue, sat);
+            },
+            child: CustomPaint(
+              key: const ValueKey("colorPaletteWheel"),
+              size: Size(size, size),
+              painter: _WheelPainter(
+                value: _leadVal,
+                middle: true,
+                marks: [
+                  for (var i = 0; i < _spots.length; i++)
+                    (
+                      _spots[i].hue,
+                      _spots[i].sat,
+                      _spots[i].color,
+                      i == _picked
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<ColorHarmony>(
+                key: const ValueKey("colorHarmony"),
+                isDense: true,
+                isExpanded: true,
+                value: _harmony,
+                style: TextStyle(fontSize: 12, color: theme.onSurface),
+                items: [
+                  for (var h in ColorHarmony.values)
+                    DropdownMenuItem(value: h, child: Text(h.label)),
+                ],
+                onChanged: (h) => setState(() {
+                  _harmony = h ?? _harmony;
+                  _spread();
+                  _pick(_picked);
+                }),
+              ),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey("colorHarmonyReset"),
+            icon: const Icon(Icons.restart_alt, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: "Lay the five out again around the colour in hand",
+            onPressed: () => setState(_leadFromCurrent),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        // The five, with the one being answered with ringed. Pressing one is
+        // how the picker is pointed at it.
+        Row(
+          children: [
+            for (var i = 0; i < _spots.length; i++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: InkWell(
+                    key: ValueKey("paletteSpot$i"),
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => setState(() => _pick(i)),
+                    child: Container(
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: _spots[i].color.withValues(alpha: _alpha),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: i == _picked
+                              ? theme.primary
+                              : theme.outlineVariant,
+                          width: i == _picked ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _labelledBar(
+          theme: theme,
+          label: "Brightness",
+          key: "paletteValue",
+          width: width,
+          colors: [
+            Colors.black,
+            HSVColor.fromAHSV(1, _leadHue, _leadSat, 1).toColor()
+          ],
+          at: _leadVal,
+          onAt: (f) => setState(() {
+            _leadVal = f.clamp(0.02, 1.0);
+            _spread();
+            _pick(_picked);
+          }),
+        ),
+        if (widget.allowAlpha) ...[
+          const SizedBox(height: 10),
+          _labelledBar(
+            theme: theme,
+            label: "Opacity",
+            key: "colorAlpha",
+            width: width,
+            colors: [_pure.withValues(alpha: 0), _pure],
+            at: _alpha,
+            checker: true,
+            onAt: (f) => setState(() {
+              _alpha = f;
+              _say();
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// _wheelAt is the hue and saturation a point on the wheel stands for.
+  (double, double) _wheelAt(Offset local, Size box) {
+    var centre = Offset(box.width / 2, box.height / 2);
+    var away = local - centre;
+    var radius = math.min(box.width, box.height) / 2;
+    var hue = (math.atan2(away.dy, away.dx) * 180 / math.pi + 360) % 360;
+    return (hue, (away.distance / radius).clamp(0.0, 1.0));
+  }
+
+  /// _atMiddle is whether a press landed on the handle in the middle.
+  bool _atMiddle(Offset local, Size box) {
+    var centre = Offset(box.width / 2, box.height / 2);
+    return (local - centre).distance < math.min(box.width, box.height) * 0.11;
+  }
+
+  /// _nearestSpot is which of the five a press was aimed at.
+  int _nearestSpot(double hue, double sat) {
+    var best = 0;
+    var closest = double.infinity;
+    for (var i = 0; i < _spots.length; i++) {
+      var turn = (_spots[i].hue - hue).abs();
+      if (turn > 180) turn = 360 - turn;
+      // Degrees and saturation are not the same units; a whole turn is
+      // counted as being worth the whole radius, which is what makes picking
+      // between a near handle and a far one behave.
+      var d = math.sqrt(
+          math.pow(turn / 180, 2) + math.pow((_spots[i].sat - sat) * 1.2, 2));
+      if (d < closest) {
+        closest = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  List<Color> get _hueColors => const [
+        Color(0xFFFF0000),
+        Color(0xFFFFFF00),
+        Color(0xFF00FF00),
+        Color(0xFF00FFFF),
+        Color(0xFF0000FF),
+        Color(0xFFFF00FF),
+        Color(0xFFFF0000),
+      ];
+
+  /// _shadeSquare is saturation across and brightness down, in the hue the
+  /// slider under it is pointing at.
+  Widget _shadeSquare(ColorScheme theme, double width) {
+    var height = width * 0.52;
+    return _Draggable(
+      onAt: (local, size, _) => setState(() {
+        _sat = (local.dx / size.width).clamp(0.0, 1.0);
+        _val = 1 - (local.dy / size.height).clamp(0.0, 1.0);
+        _say();
+      }),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: CustomPaint(
+          key: const ValueKey("colorShade"),
+          size: Size(width, height),
+          painter: _ShadePainter(pure: _pure, at: Offset(_sat, 1 - _val)),
+        ),
+      ),
+    );
+  }
+
+  Widget _alphaBar(ColorScheme theme, double width) => _bar(
+        key: "colorAlpha",
+        width: width,
+        colors: [_pure.withValues(alpha: 0), _pure],
+        at: _alpha,
+        checker: true,
+        theme: theme,
+        onAt: (f) => setState(() {
+          _alpha = f;
+          _say();
+        }),
+      );
+
+  Widget _bar({
+    required String key,
+    required double width,
+    required List<Color> colors,
+    required double at,
+    required ValueChanged<double> onAt,
+    required ColorScheme theme,
+    bool checker = false,
+  }) =>
+      _Draggable(
+        onAt: (local, size, _) => onAt((local.dx / size.width).clamp(0.0, 1.0)),
+        child: CustomPaint(
+          key: ValueKey(key),
+          size: Size(width, 18),
+          painter: _BarPainter(
+              colors: colors,
+              at: at,
+              checker: checker,
+              ring: theme.outlineVariant),
+        ),
+      );
+
+  /// _labelledBar is a bar with its name beside it, for the two that are not
+  /// obvious from their colours.
+  Widget _labelledBar({
+    required ColorScheme theme,
+    required String label,
+    required String key,
+    required double width,
+    required List<Color> colors,
+    required double at,
+    required ValueChanged<double> onAt,
+    bool checker = false,
+  }) {
+    var caption = 66.0;
+    return Row(children: [
+      SizedBox(
+        width: caption,
+        child: Text(label,
+            style: TextStyle(fontSize: 10, color: theme.onSurfaceVariant)),
+      ),
+      _bar(
+        key: key,
+        width: math.max(60, width - caption),
+        colors: colors,
+        at: at,
+        onAt: onAt,
+        theme: theme,
+        checker: checker,
+      ),
+    ]);
+  }
+
+  /// _channels is the four numbers and the notation under them.
+  Widget _channels(ColorScheme theme, double width) {
+    var c = _current;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(children: [
+          _ChannelField(
+              label: "R",
+              value: (c.r * 255).roundToDouble(),
+              onChanged: (v) => _channel(0, v)),
+          _ChannelField(
+              label: "G",
+              value: (c.g * 255).roundToDouble(),
+              onChanged: (v) => _channel(1, v)),
+          _ChannelField(
+              label: "B",
+              value: (c.b * 255).roundToDouble(),
+              onChanged: (v) => _channel(2, v)),
+          if (widget.allowAlpha)
+            _ChannelField(
+                label: "A",
+                value: (_alpha * 255).roundToDouble(),
+                onChanged: (v) => setState(() {
+                      _alpha = (v / 255).clamp(0.0, 1.0);
+                      _say();
+                    })),
+        ]),
+        const SizedBox(height: 10),
+        // The notation and the value in it, laid out the way a channel is:
+        // the name over the box rather than beside it, so this row and the
+        // one above line up instead of sitting at two different heights. The
+        // name is the dropdown -- what the field is holding is the title it
+        // needs.
+        SizedBox(
+          height: 16,
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<ColorFormat>(
+              key: const ValueKey("colorFormat"),
+              isDense: true,
+              value: _format,
+              iconSize: 16,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: theme.onSurfaceVariant),
+              items: [
+                for (var f in ColorFormat.values)
+                  DropdownMenuItem(value: f, child: Text(f.label)),
+              ],
+              onChanged: (f) => setState(() {
+                _format = f ?? _format;
+                _write();
+              }),
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: 30,
+          width: width,
+          child: TextField(
+            key: const ValueKey("colorPickerHex"),
+            controller: _text,
+            focusNode: _textFocus,
+            // No monospace: the family is not on every machine this runs on,
+            // and what came of asking for one was a hex whose "ff" sat tight
+            // and whose other characters did not.
+            style: const TextStyle(fontSize: 12, letterSpacing: 0.6),
+            decoration: InputDecoration(
+              isDense: true,
+              prefixText: _format == ColorFormat.hex ? "#" : null,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: const OutlineInputBorder(),
+              hintText: ColorText.hint(_format, widget.allowAlpha),
+              hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: theme.onSurfaceVariant.withValues(alpha: 0.5)),
+            ),
+            inputFormatters: [
+              if (_format == ColorFormat.hex)
+                FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F#]"))
+              else
+                FilteringTextInputFormatter.allow(RegExp(r"[0-9,.\-% ]")),
+              LengthLimitingTextInputFormatter(24),
+            ],
+            onChanged: _read,
+            onSubmitted: _read,
+          ),
+        ),
+      ],
+    );
   }
 
   /// _channel sets one of red, green and blue, keeping the other two.
@@ -211,197 +999,173 @@ class _AppColorPickerState extends State<AppColorPicker> {
       widget.onChanged(_current);
     });
   }
-
-  @override
-  Widget build(BuildContext context) => _body(context, widget.width);
-
-  /// _body is the picker at a width it has been told, rather than one it has
-  /// measured. A LayoutBuilder here reads well and breaks the moment the
-  /// picker is put in a dialog: an AlertDialog measures what it holds, and a
-  /// LayoutBuilder cannot answer that question. Callers with less room say so
-  /// -- see AppColorPicker.width.
-  Widget _body(BuildContext context, double width) {
-    // The scheme Material is already using, which is the app's own palette --
-    // see ThemeNotifier.colors, which is where MaterialApp's scheme comes
-    // from. Read this way round, the picker works in any context with a
-    // Theme above it, rather than only where the notifier has been provided.
-    var theme = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _shadeSquare(theme, width),
-          const SizedBox(height: 12),
-          _hueSlider(theme, width),
-          if (widget.allowAlpha) ...[
-            const SizedBox(height: 10),
-            _alphaSlider(theme, width),
-          ],
-          const SizedBox(height: 12),
-          _channels(theme, width),
-          const SizedBox(height: 12),
-          _SavedRow(
-            current: _current,
-            onPick: (c) => setState(() {
-              _take(c);
-              widget.onChanged(_current);
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// _shadeSquare is saturation across and brightness down, in the hue the
-  /// slider under it is pointing at.
-  Widget _shadeSquare(ColorScheme theme, double width) {
-    var height = width * 0.52;
-    return _Draggable(
-      onAt: (local, size) => setState(() {
-        _sat = (local.dx / size.width).clamp(0.0, 1.0);
-        _val = 1 - (local.dy / size.height).clamp(0.0, 1.0);
-        _say();
-      }),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: CustomPaint(
-          key: const ValueKey("colorShade"),
-          size: Size(width, height),
-          painter: _ShadePainter(
-              pure: _pure,
-              at: Offset(_sat, 1 - _val),
-              ring: theme.outlineVariant),
-        ),
-      ),
-    );
-  }
-
-  Widget _hueSlider(ColorScheme theme, double width) => _Draggable(
-        onAt: (local, size) => setState(() {
-          _hue = (local.dx / size.width).clamp(0.0, 1.0) * 360;
-          _say();
-        }),
-        child: CustomPaint(
-          key: const ValueKey("colorHue"),
-          size: Size(width, 18),
-          painter: _BarPainter(
-            colors: const [
-              Color(0xFFFF0000),
-              Color(0xFFFFFF00),
-              Color(0xFF00FF00),
-              Color(0xFF00FFFF),
-              Color(0xFF0000FF),
-              Color(0xFFFF00FF),
-              Color(0xFFFF0000),
-            ],
-            at: _hue / 360,
-            checker: false,
-            ring: theme.outlineVariant,
-          ),
-        ),
-      );
-
-  Widget _alphaSlider(ColorScheme theme, double width) => _Draggable(
-        onAt: (local, size) => setState(() {
-          _alpha = (local.dx / size.width).clamp(0.0, 1.0);
-          _say();
-        }),
-        child: CustomPaint(
-          key: const ValueKey("colorAlpha"),
-          size: Size(width, 18),
-          painter: _BarPainter(
-            colors: [_pure.withValues(alpha: 0), _pure],
-            at: _alpha,
-            // The checker is what makes see-through read as see-through
-            // rather than as a colour that happens to be pale.
-            checker: true,
-            ring: theme.outlineVariant,
-          ),
-        ),
-      );
-
-  /// _channels is the four numbers, each with a caption that can be dragged.
-  Widget _channels(ColorScheme theme, double width) {
-    var c = _current;
-    // The hex goes on a line of its own where four channels and a field will
-    // not fit across: a settings column narrower than the picker asked for is
-    // the normal case in a sidebar, and a row that overflows is a stripe of
-    // yellow and black over the colour being chosen.
-    var roomy = width >= 290;
-    var fields = [
-      _ChannelField(
-          label: "R",
-          value: (c.r * 255).roundToDouble(),
-          onChanged: (v) => _channel(0, v)),
-      _ChannelField(
-          label: "G",
-          value: (c.g * 255).roundToDouble(),
-          onChanged: (v) => _channel(1, v)),
-      _ChannelField(
-          label: "B",
-          value: (c.b * 255).roundToDouble(),
-          onChanged: (v) => _channel(2, v)),
-      if (widget.allowAlpha)
-        _ChannelField(
-            label: "A",
-            value: (_alpha * 255).roundToDouble(),
-            onChanged: (v) => setState(() {
-                  _alpha = (v / 255).clamp(0.0, 1.0);
-                  _say();
-                })),
-    ];
-    // The hex, for the colour somebody has been given rather than the one
-    // they are looking for.
-    var hex = TextField(
-      key: const ValueKey("colorPickerHex"),
-      controller: _hex,
-      focusNode: _hexFocus,
-      style: const TextStyle(fontSize: 12, fontFamily: "monospace"),
-      decoration: InputDecoration(
-        isDense: true,
-        prefixText: "#",
-        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        border: const OutlineInputBorder(),
-        hintText: widget.allowAlpha ? "aarrggbb" : "rrggbb",
-        hintStyle: TextStyle(
-            fontSize: 11, color: theme.onSurfaceVariant.withValues(alpha: 0.5)),
-      ),
-      inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F#]")),
-        LengthLimitingTextInputFormatter(9),
-      ],
-      onChanged: _readHex,
-      onSubmitted: _readHex,
-    );
-
-    if (roomy) {
-      return Row(children: [
-        ...fields,
-        const SizedBox(width: 8),
-        Expanded(child: hex),
-      ]);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(children: fields),
-        const SizedBox(height: 8),
-        SizedBox(width: width, child: hex),
-      ],
-    );
-  }
 }
+
+/// _ColorText is a colour written out in one notation, and read back from it.
+///
+/// Its own thing rather than four methods on the picker, so that the sums --
+/// which are the only part of this file that can be wrong in a way nobody
+/// sees -- can be tested without a widget.
+class ColorText {
+  /// write is [color] in [format], without the leading # or any units.
+  static String write(Color color, ColorFormat format, {bool alpha = true}) {
+    switch (format) {
+      case ColorFormat.hex:
+        var value = color.toARGB32();
+        return alpha
+            ? value.toRadixString(16).padLeft(8, "0")
+            : (value & 0xFFFFFF).toRadixString(16).padLeft(6, "0");
+      case ColorFormat.hsl:
+        var hsl = HSLColor.fromColor(color);
+        return "${hsl.hue.round()}, ${(hsl.saturation * 100).round()}%, "
+            "${(hsl.lightness * 100).round()}%";
+      case ColorFormat.cmyk:
+        var (c, m, y, k) = toCmyk(color);
+        return "${(c * 100).round()}, ${(m * 100).round()}, "
+            "${(y * 100).round()}, ${(k * 100).round()}";
+      case ColorFormat.lab:
+        var (l, a, b) = toLab(color);
+        return "${l.round()}, ${a.round()}, ${b.round()}";
+      case ColorFormat.grey:
+        return greyOf(color).round().toString();
+    }
+  }
+
+  /// read is what [typed] means in [format], or null if it means nothing yet.
+  ///
+  /// Nothing yet rather than nothing at all: this is called on every
+  /// keystroke, and half of a colour is what a colour looks like while it is
+  /// being typed.
+  static Color? read(String typed, ColorFormat format, Color was) {
+    if (format == ColorFormat.hex) {
+      var clean = typed.replaceAll("#", "").trim();
+      if (clean.length != 6 && clean.length != 8) return null;
+      var value = int.tryParse(clean, radix: 16);
+      if (value == null) return null;
+      return Color(clean.length == 6 ? 0xFF000000 | value : value);
+    }
+
+    var numbers = [
+      for (var part in typed.split(RegExp(r"[^0-9\.\-]+")))
+        if (part.isNotEmpty) double.tryParse(part),
+    ];
+    if (numbers.any((n) => n == null)) return null;
+    var n = numbers.cast<double>();
+    var alpha = was.a;
+
+    switch (format) {
+      case ColorFormat.hex:
+        return null;
+      case ColorFormat.hsl:
+        if (n.length < 3) return null;
+        return HSLColor.fromAHSL(alpha, n[0] % 360, (n[1] / 100).clamp(0, 1),
+                (n[2] / 100).clamp(0, 1))
+            .toColor();
+      case ColorFormat.cmyk:
+        if (n.length < 4) return null;
+        return fromCmyk(n[0] / 100, n[1] / 100, n[2] / 100, n[3] / 100)
+            .withValues(alpha: alpha);
+      case ColorFormat.lab:
+        if (n.length < 3) return null;
+        return fromLab(n[0], n[1], n[2]).withValues(alpha: alpha);
+      case ColorFormat.grey:
+        if (n.isEmpty) return null;
+        var level = n[0].clamp(0, 255).round();
+        return Color.fromARGB((alpha * 255).round(), level, level, level);
+    }
+  }
+
+  /// hint is what an empty field should say it wants.
+  static String hint(ColorFormat format, bool alpha) => switch (format) {
+        ColorFormat.hex => alpha ? "aarrggbb" : "rrggbb",
+        ColorFormat.hsl => "h, s%, l%",
+        ColorFormat.cmyk => "c, m, y, k",
+        ColorFormat.lab => "l, a, b",
+        ColorFormat.grey => "0-255",
+      };
+}
+
+/// toCmyk is the four inks, as fractions.
+(double, double, double, double) toCmyk(Color color) {
+  double r = color.r, g = color.g, b = color.b;
+  double k = 1 - math.max(r, math.max(g, b));
+  if (k >= 1) return (0.0, 0.0, 0.0, 1.0);
+  return (
+    (1 - r - k) / (1 - k),
+    (1 - g - k) / (1 - k),
+    (1 - b - k) / (1 - k),
+    k,
+  );
+}
+
+/// fromCmyk is the colour those four inks make.
+Color fromCmyk(double c, double m, double y, double k) {
+  double channel(double ink) =>
+      ((1 - ink.clamp(0.0, 1.0)) * (1 - k.clamp(0.0, 1.0))).clamp(0.0, 1.0);
+  return Color.fromARGB(255, (channel(c) * 255).round(),
+      (channel(m) * 255).round(), (channel(y) * 255).round());
+}
+
+/// toLab is CIE L*a*b*, by way of XYZ, against the D65 white point.
+///
+/// Written out rather than reached for, because it is twenty lines and the
+/// alternative is a package for four numbers.
+(double, double, double) toLab(Color color) {
+  double linear(double channel) => channel <= 0.04045
+      ? channel / 12.92
+      : math.pow((channel + 0.055) / 1.055, 2.4).toDouble();
+
+  var r = linear(color.r), g = linear(color.g), b = linear(color.b);
+  var x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+  var y = (r * 0.2126 + g * 0.7152 + b * 0.0722);
+  var z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+
+  double f(double t) =>
+      t > 0.008856 ? math.pow(t, 1 / 3).toDouble() : (7.787 * t) + (16 / 116);
+
+  var fx = f(x), fy = f(y), fz = f(z);
+  return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz));
+}
+
+/// fromLab is the way back.
+Color fromLab(double l, double a, double b) {
+  var fy = (l + 16) / 116;
+  var fx = fy + a / 500;
+  var fz = fy - b / 200;
+
+  double back(double t) =>
+      t * t * t > 0.008856 ? t * t * t : (t - 16 / 116) / 7.787;
+
+  var x = back(fx) * 0.95047, y = back(fy), z = back(fz) * 1.08883;
+  var r = x * 3.2406 + y * -1.5372 + z * -0.4986;
+  var g = x * -0.9689 + y * 1.8758 + z * 0.0415;
+  var bb = x * 0.0557 + y * -0.2040 + z * 1.0570;
+
+  double gamma(double channel) {
+    var v = channel <= 0.0031308
+        ? channel * 12.92
+        : 1.055 * math.pow(channel, 1 / 2.4).toDouble() - 0.055;
+    return v.clamp(0.0, 1.0);
+  }
+
+  return Color.fromARGB(255, (gamma(r) * 255).round(), (gamma(g) * 255).round(),
+      (gamma(bb) * 255).round());
+}
+
+/// greyOf is how bright a colour is, 0 to 255, weighted the way an eye sees
+/// it rather than as a flat average of the three channels.
+double greyOf(Color color) =>
+    (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) * 255;
 
 /// _SavedRow is the two rows of kept colours, and the pair of buttons that
 /// put one there and take it away again.
 class _SavedRow extends StatelessWidget {
   final Color current;
   final ValueChanged<Color> onPick;
+  final double width;
 
-  const _SavedRow({required this.current, required this.onPick});
+  const _SavedRow(
+      {required this.current, required this.onPick, required this.width});
 
   @override
   Widget build(BuildContext context) {
@@ -464,17 +1228,21 @@ class _SavedRow extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: theme.onSurfaceVariant),
               )
             else
-              Wrap(
-                spacing: 5,
-                runSpacing: 5,
-                children: [
-                  for (var c in colors)
-                    _Swatch(
-                      color: c,
-                      chosen: c.toARGB32() == current.toARGB32(),
-                      onTap: () => onPick(c),
-                    ),
-                ],
+              SizedBox(
+                key: const ValueKey("savedSwatches"),
+                width: width,
+                child: Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children: [
+                    for (var c in colors)
+                      _Swatch(
+                        color: c,
+                        chosen: c.toARGB32() == current.toARGB32(),
+                        onTap: () => onPick(c),
+                      ),
+                  ],
+                ),
               ),
           ],
         );
@@ -524,6 +1292,11 @@ class _Swatch extends StatelessWidget {
     );
   }
 }
+
+/// _channelWidth is how wide one channel's box is, and so how wide the
+/// caption over it is: the two are the same number in one place, or they
+/// drift apart and the caption stops sitting over what it names.
+const double _channelWidth = 46;
 
 /// _ChannelField is one channel: a caption that scrubs and a box that types.
 class _ChannelField extends StatefulWidget {
@@ -578,7 +1351,10 @@ class _ChannelFieldState extends State<_ChannelField> {
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        // Over the middle of the box it names, rather than up against its
+        // left edge: the numbers underneath are centred, and a caption
+        // hanging off one corner of them read as a different row.
+        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
           MouseRegion(
@@ -606,25 +1382,29 @@ class _ChannelFieldState extends State<_ChannelField> {
               },
               onPointerUp: (_) => _dragging = false,
               onPointerCancel: (_) => _dragging = false,
-              child: Text(
-                widget.label,
-                key: ValueKey("channel${widget.label}"),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: theme.onSurfaceVariant,
-                  // Dotted, the way a draggable number is marked elsewhere.
-                  decoration: TextDecoration.underline,
-                  decorationStyle: TextDecorationStyle.dotted,
-                  decorationColor:
-                      theme.onSurfaceVariant.withValues(alpha: 0.5),
+              child: SizedBox(
+                width: _channelWidth,
+                child: Text(
+                  widget.label,
+                  key: ValueKey("channel${widget.label}"),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: theme.onSurfaceVariant,
+                    // Dotted, the way a draggable number is marked elsewhere.
+                    decoration: TextDecoration.underline,
+                    decorationStyle: TextDecorationStyle.dotted,
+                    decorationColor:
+                        theme.onSurfaceVariant.withValues(alpha: 0.5),
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 2),
           SizedBox(
-            width: 42,
+            width: _channelWidth,
             height: 28,
             child: TextField(
               controller: _text,
@@ -658,36 +1438,139 @@ class _ChannelFieldState extends State<_ChannelField> {
 /// _Draggable reports where a pointer is inside its child, from the first
 /// pixel of the press and for as long as it is held.
 class _Draggable extends StatelessWidget {
-  final void Function(Offset local, Size size) onAt;
+  /// onAt is where the pointer is, and whether this is the press that started
+  /// the drag -- which is when a thing with several handles decides which of
+  /// them is being held. Decided on every move instead, a handle dragged past
+  /// its neighbour would hand the drag over to it half way.
+  final void Function(Offset local, Size size, bool first) onAt;
   final Widget child;
 
   const _Draggable({required this.onAt, required this.child});
 
-  void _at(BuildContext context, Offset global) {
+  void _at(BuildContext context, Offset global, bool first) {
     var box = context.findRenderObject() as RenderBox?;
     if (box == null) return;
-    onAt(box.globalToLocal(global), box.size);
+    onAt(box.globalToLocal(global), box.size, first);
   }
 
   @override
   Widget build(BuildContext context) => Builder(
         builder: (inner) => Listener(
           behavior: HitTestBehavior.opaque,
-          onPointerDown: (e) => _at(inner, e.position),
-          onPointerMove: (e) => _at(inner, e.position),
+          onPointerDown: (e) => _at(inner, e.position, true),
+          onPointerMove: (e) => _at(inner, e.position, false),
           child: child,
         ),
       );
+}
+
+/// _WheelPainter is hue round and saturation out from the middle, at one
+/// brightness, with the handles drawn on it.
+///
+/// A sweep of hues with a white disc faded over it, rather than a pixel loop:
+/// the two together *are* the wheel -- every hue at the rim, white in the
+/// middle, the shade between -- and a shader is one draw call where a loop
+/// over sixty thousand pixels is sixty thousand.
+class _WheelPainter extends CustomPainter {
+  /// value is how bright the wheel is drawn, so a dark colour is picked out
+  /// of a dark wheel rather than a bright one that lies about it.
+  final double value;
+
+  /// marks are the handles: hue, saturation, what to fill them with, and
+  /// whether each is the one being answered with.
+  final List<(double, double, Color, bool)> marks;
+
+  /// middle is the handle in the centre that takes the whole set with it.
+  final bool middle;
+
+  const _WheelPainter({
+    required this.value,
+    required this.marks,
+    this.middle = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var radius = math.min(size.width, size.height) / 2;
+    var centre = Offset(size.width / 2, size.height / 2);
+    var box = Rect.fromCircle(center: centre, radius: radius);
+
+    canvas.drawCircle(
+        centre,
+        radius,
+        Paint()
+          ..shader = const SweepGradient(colors: [
+            Color(0xFFFF0000),
+            Color(0xFFFFFF00),
+            Color(0xFF00FF00),
+            Color(0xFF00FFFF),
+            Color(0xFF0000FF),
+            Color(0xFFFF00FF),
+            Color(0xFFFF0000),
+          ]).createShader(box));
+    // White out of the middle: saturation is how far from the centre a colour
+    // sits.
+    canvas.drawCircle(
+        centre,
+        radius,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [Colors.white, Colors.white.withValues(alpha: 0)],
+          ).createShader(box));
+    // And the whole thing dimmed to the brightness being worked at.
+    if (value < 1) {
+      canvas.drawCircle(centre, radius,
+          Paint()..color = Colors.black.withValues(alpha: 1 - value));
+    }
+
+    for (var (hue, sat, color, chosen) in marks) {
+      var angle = hue * math.pi / 180;
+      var at =
+          centre + Offset(math.cos(angle), math.sin(angle)) * (sat * radius);
+      _handle(canvas, at, color, chosen ? 10 : 8, chosen);
+    }
+
+    if (middle) {
+      _handle(canvas, centre, Colors.transparent, 9, false);
+      canvas.drawCircle(
+          centre, 3, Paint()..color = Colors.white.withValues(alpha: 0.9));
+    }
+  }
+
+  void _handle(
+      Canvas canvas, Offset at, Color color, double radius, bool chosen) {
+    if (color.a > 0) canvas.drawCircle(at, radius - 2, Paint()..color = color);
+    // Two rings, light over dark, so a handle is visible on a pale part of the
+    // wheel and on a dark one.
+    canvas.drawCircle(
+        at,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = chosen ? 3 : 2
+          ..color = Colors.white);
+    canvas.drawCircle(
+        at,
+        radius + 1,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = Colors.black54);
+  }
+
+  @override
+  bool shouldRepaint(_WheelPainter old) =>
+      old.value != value ||
+      old.middle != middle ||
+      old.marks.toString() != marks.toString();
 }
 
 /// _ShadePainter is the saturation-and-brightness square.
 class _ShadePainter extends CustomPainter {
   final Color pure;
   final Offset at;
-  final Color ring;
 
-  const _ShadePainter(
-      {required this.pure, required this.at, required this.ring});
+  const _ShadePainter({required this.pure, required this.at});
 
   @override
   void paint(Canvas canvas, Size size) {
