@@ -7,11 +7,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 // color_picker_test.dart is the app's one colour picker: the parts of it that
 // were bugs in the package it replaced, and the saved colours it adds.
 
-Future<Color> pump(WidgetTester tester,
+/// _Answer is what the picker last said, which is the only way to read it
+/// back once the field is holding something other than hex.
+class _Answer {
+  Color color;
+  _Answer(this.color);
+}
+
+Future<_Answer> pump(WidgetTester tester,
     {Color start = const Color(0xFF000000),
     bool allowAlpha = true,
     double width = 320}) async {
-  var current = start;
+  var answer = _Answer(start);
   // No provider around it: the picker takes its colours from Material's own
   // scheme, so it works wherever there is a Theme -- which is every panel,
   // every dialog and every test that pumps one.
@@ -23,17 +30,17 @@ Future<Color> pump(WidgetTester tester,
       body: SingleChildScrollView(
         child: StatefulBuilder(
           builder: (context, setState) => AppColorPicker(
-            color: current,
+            color: answer.color,
             allowAlpha: allowAlpha,
             width: width,
-            onChanged: (c) => setState(() => current = c),
+            onChanged: (c) => setState(() => answer.color = c),
           ),
         ),
       ),
     ),
   ));
   await tester.pumpAndSettle();
-  return current;
+  return answer;
 }
 
 /// _shown is the colour the picker is showing, read back off its hex field.
@@ -225,10 +232,11 @@ void main() {
     await tester.pumpAndSettle();
 
     var wheel = tester.getRect(find.byKey(const ValueKey("colorPaletteWheel")));
-    // From the middle outwards: the handle in the middle takes the whole set
-    // with it, so what it must not do is let go and grab one of the five.
-    var pointer = await tester.startGesture(wheel.center);
-    await pointer.moveBy(Offset(wheel.width * 0.3, 0));
+    // The handle on the rim takes the whole set with it, so what it must not
+    // do is let go half way round and grab one of the five.
+    var pointer =
+        await tester.startGesture(Offset(wheel.right - 4, wheel.center.dy));
+    await pointer.moveBy(Offset(-wheel.width * 0.1, wheel.height * 0.3));
     await tester.pumpAndSettle();
     await pointer.moveBy(Offset(0, wheel.height * 0.2));
     await tester.pumpAndSettle();
@@ -292,5 +300,104 @@ void main() {
 
     // And the field is whole: the hex it holds was being cut off.
     expect(field.width, greaterThan(120));
+  });
+
+  testWidgets("the ring outside the wheel turns the whole set", (tester) async {
+    await pump(tester, start: const Color(0xFFCC3366), width: 360);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    // What the five are, relative to each other: a harmony is a shape, and
+    // the handle on the rim turns the shape without changing it.
+    List<double> hues() => [
+          for (var i = 0; i < 5; i++)
+            HSVColor.fromColor(tester
+                        .widget<Container>(find.descendant(
+                            of: find.byKey(ValueKey("paletteSpot$i")),
+                            matching: find.byType(Container)))
+                        .decoration is BoxDecoration
+                    ? ((tester
+                            .widget<Container>(find.descendant(
+                                of: find.byKey(ValueKey("paletteSpot$i")),
+                                matching: find.byType(Container)))
+                            .decoration as BoxDecoration)
+                        .color!)
+                    : const Color(0xFF000000))
+                .hue,
+        ];
+
+    var before = hues();
+    var gaps = [for (var i = 1; i < 5; i++) (before[i] - before[0]) % 360];
+
+    var wheel = tester.getRect(find.byKey(const ValueKey("colorPaletteWheel")));
+    // A press on the rim, a quarter of the way round from where the handle
+    // is: the set should follow it there.
+    await tester.tapAt(Offset(wheel.center.dx, wheel.top + 4));
+    await tester.pumpAndSettle();
+
+    var after = hues();
+    expect((after[0] - before[0]).abs(), greaterThan(20),
+        reason: "the set did not turn");
+    var moved = [for (var i = 1; i < 5; i++) (after[i] - after[0]) % 360];
+    for (var i = 0; i < gaps.length; i++) {
+      expect(moved[i], closeTo(gaps[i], 1.5),
+          reason: "the arrangement came apart: $gaps became $moved");
+    }
+  });
+
+  testWidgets("greyscale takes the colour out of the picker", (tester) async {
+    // A notation is a way of working, not a label on a field: told to work in
+    // greys, the field, the wheel and the answer are all greys.
+    var answer = await pump(tester, start: const Color(0xFFCC3366), width: 360);
+    await tester.tap(find.byKey(const ValueKey("colorFormat")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Greyscale").last);
+    await tester.pumpAndSettle();
+
+    // Read off what the picker answered with rather than out of the field:
+    // the field is holding a brightness now, not a hex.
+    var showing = answer.color;
+    expect((showing.r * 255).round(), (showing.g * 255).round());
+    expect((showing.g * 255).round(), (showing.b * 255).round());
+
+    // The ramp is one axis: dragging up and down it gives darker and lighter
+    // greys and never a colour.
+    var ramp = tester.getRect(find.byKey(const ValueKey("colorShade")));
+    await tester.tapAt(Offset(ramp.left + ramp.width * 0.8, ramp.center.dy));
+    await tester.pumpAndSettle();
+    var lighter = answer.color;
+    expect((lighter.r * 255).round(), (lighter.b * 255).round());
+    expect(lighter.r, greaterThan(showing.r),
+        reason: "the right of the ramp is the light end");
+
+    // And the hue slider is not there at all: a greyscale has no hue to set.
+    expect(find.byKey(const ValueKey("colorHue")), findsNothing);
+  });
+
+  testWidgets("each notation brings its own field and sliders", (tester) async {
+    await pump(tester, start: const Color(0xFF3A7BD5), width: 360);
+
+    Future<void> choose(String name) async {
+      await tester.tap(find.byKey(const ValueKey("colorFormat")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    // CMYK picks out of cyan against magenta, with the other two inks on
+    // sliders of their own.
+    await choose("CMYK");
+    expect(find.byKey(const ValueKey("colorYellow")), findsOneWidget);
+    expect(find.byKey(const ValueKey("colorBlack")), findsOneWidget);
+    expect(find.byKey(const ValueKey("colorHue")), findsNothing);
+
+    // LAB picks out of the a-b plane at a lightness.
+    await choose("LAB");
+    expect(find.byKey(const ValueKey("colorLightness")), findsOneWidget);
+    expect(find.byKey(const ValueKey("colorYellow")), findsNothing);
+
+    // And HSL is back to a hue slider, over a different square.
+    await choose("HSL");
+    expect(find.byKey(const ValueKey("colorHue")), findsOneWidget);
   });
 }

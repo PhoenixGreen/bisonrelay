@@ -283,8 +283,21 @@ class _AppColorPickerState extends State<AppColorPicker> {
   int _picked = 0;
 
   /// _grabbed is which handle a drag on the palette wheel has hold of, or -1
-  /// for the one in the middle that moves them all.
+  /// for the one outside the disc that moves them all.
   int _grabbed = 0;
+
+  // Where the colour sits in the field the chosen notation draws, and what
+  // its one or two extra sliders are set to.
+  //
+  // Held rather than worked out from the colour on every build, for the same
+  // reason the hue is: a colour does not always say where it was picked from.
+  // Black is every hue, a grey is every a and b in LAB, and a colour that has
+  // been through CMYK and back may land a point away from where the handle
+  // was put -- so the handle would creep as it was dragged.
+  double _fx = 0;
+  double _fy = 0;
+  double _fz = 0;
+  double _fw = 0;
 
   final TextEditingController _text = TextEditingController();
   final FocusNode _textFocus = FocusNode();
@@ -293,6 +306,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
   void initState() {
     super.initState();
     _take(widget.color);
+    _readField();
     _leadFromCurrent();
     _textFocus.addListener(() {
       // Whatever is half-typed goes back to the real colour when the field is
@@ -308,7 +322,9 @@ class _AppColorPickerState extends State<AppColorPicker> {
     super.didUpdateWidget(old);
     // Only when somebody else has changed it. Taking it every time would undo
     // the slider positions this picker is holding on to.
-    if (widget.color.toARGB32() != _current.toARGB32()) _take(widget.color);
+    if (widget.color.toARGB32() != _current.toARGB32()) {
+      _tookFromOutside(widget.color);
+    }
   }
 
   @override
@@ -333,8 +349,24 @@ class _AppColorPickerState extends State<AppColorPicker> {
     _write();
   }
 
+  /// _tookFromOutside is _take followed by re-reading where that colour sits
+  /// in the field, for every way a colour can arrive that is not a drag on
+  /// the field itself.
+  void _tookFromOutside(Color color) {
+    _take(color);
+    _readField();
+  }
+
   Color get _current =>
       HSVColor.fromAHSV(_alpha.clamp(0, 1), _hue, _sat, _val).toColor();
+
+  /// _shown is a colour as this picker draws it: itself, or its brightness
+  /// alone where the notation in hand is a greyscale.
+  Color _shown(Color color) {
+    if (_format != ColorFormat.grey) return color;
+    var level = greyOf(color).round().clamp(0, 255);
+    return Color.fromARGB(255, level, level, level);
+  }
 
   /// _pure is the colour at this hue, at full saturation and brightness: what
   /// the shade square is painted with and what the sliders point at.
@@ -394,9 +426,18 @@ class _AppColorPickerState extends State<AppColorPicker> {
   void _pick(int index) {
     _picked = index.clamp(0, _spots.length - 1);
     var spot = _spots[_picked];
-    _hue = spot.hue;
-    _sat = spot.sat;
-    _val = spot.val;
+    if (_format == ColorFormat.grey) {
+      // Working in greys, a palette is five brightnesses: the arrangement
+      // still decides them, and what comes out is how bright each one is.
+      _hue = spot.hue;
+      _sat = 0;
+      _val = (greyOf(spot.color) / 255).clamp(0.0, 1.0);
+    } else {
+      _hue = spot.hue;
+      _sat = spot.sat;
+      _val = spot.val;
+    }
+    _readField();
     _say();
   }
 
@@ -409,7 +450,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
     var color = ColorText.read(typed, _format, _current);
     if (color == null) return;
     setState(() {
-      _take(color);
+      _tookFromOutside(color);
       widget.onChanged(_current);
     });
   }
@@ -445,7 +486,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
           current: _current,
           width: settingsWidth,
           onPick: (c) => setState(() {
-            _take(c);
+            _tookFromOutside(c);
             widget.onChanged(_current);
           }),
         ),
@@ -526,13 +567,55 @@ class _AppColorPickerState extends State<AppColorPicker> {
         ),
       );
 
-  /// _slidersMode is the square and the bars under it.
+  /// _slidersMode is the field and the bars under it.
+  ///
+  /// Which field and which bars is the notation's business: hex picks a
+  /// colour out of saturation against brightness under a hue slider, HSL out
+  /// of saturation against lightness, CMYK out of cyan against magenta with
+  /// the other two inks on sliders, LAB out of the a-b plane at a lightness,
+  /// and greyscale out of a single ramp with no hue anywhere in sight. A
+  /// notation that only changed the writing under the picker would be a
+  /// label, not a way of working.
   Widget _slidersMode(ColorScheme theme, double width) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _shadeSquare(theme, width),
+          _field(theme, width),
           const SizedBox(height: 12),
+          ..._fieldBars(theme, width),
+          if (widget.allowAlpha) ...[
+            const SizedBox(height: 10),
+            _alphaBar(theme, width),
+          ],
+        ],
+      );
+
+  /// _field is the two-dimensional part of whichever notation is chosen.
+  Widget _field(ColorScheme theme, double width) {
+    var flat = _format == ColorFormat.grey;
+    var height = flat ? 40.0 : width * 0.52;
+    return _Draggable(
+      onAt: (local, size, _) => _fromField(
+          local.dx / size.width, flat ? _fy : local.dy / size.height),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: CustomPaint(
+          key: const ValueKey("colorShade"),
+          size: Size(width, height),
+          painter: _FieldPainter(
+              at: _fieldColor, mark: Offset(_fx, _fy), flat: flat),
+        ),
+      ),
+    );
+  }
+
+  /// _fieldBars are the sliders the chosen notation needs beside its field:
+  /// the axes it has that the field has no room for.
+  List<Widget> _fieldBars(ColorScheme theme, double width) {
+    switch (_format) {
+      case ColorFormat.hex:
+      case ColorFormat.hsl:
+        return [
           _bar(
             key: "colorHue",
             width: width,
@@ -540,16 +623,72 @@ class _AppColorPickerState extends State<AppColorPicker> {
             at: _hue / 360,
             onAt: (f) => setState(() {
               _hue = f * 360;
+              // The field is drawn in this hue, so the colour under the
+              // handle is whatever the field now says there. The handle
+              // itself does not move: a hue slider changes the colour, not
+              // where in the square it was picked from.
+              var hsv = HSVColor.fromColor(_fieldColor(_fx, _fy));
+              if (hsv.value > 0) _sat = hsv.saturation;
+              _val = hsv.value;
               _say();
             }),
             theme: theme,
           ),
-          if (widget.allowAlpha) ...[
-            const SizedBox(height: 10),
-            _alphaBar(theme, width),
-          ],
-        ],
-      );
+        ];
+      case ColorFormat.cmyk:
+        return [
+          _labelledBar(
+            theme: theme,
+            label: "Yellow",
+            key: "colorYellow",
+            width: width,
+            colors: [
+              fromCmyk(_fx, _fy, 0, _fw),
+              fromCmyk(_fx, _fy, 1, _fw),
+            ],
+            at: _fz,
+            onAt: (f) => setState(() {
+              _fz = f;
+              _fromField(_fx, _fy);
+            }),
+          ),
+          const SizedBox(height: 10),
+          _labelledBar(
+            theme: theme,
+            label: "Black",
+            key: "colorBlack",
+            width: width,
+            colors: [
+              fromCmyk(_fx, _fy, _fz, 0),
+              fromCmyk(_fx, _fy, _fz, 1),
+            ],
+            at: _fw,
+            onAt: (f) => setState(() {
+              _fw = f;
+              _fromField(_fx, _fy);
+            }),
+          ),
+        ];
+      case ColorFormat.lab:
+        return [
+          _labelledBar(
+            theme: theme,
+            label: "Lightness",
+            key: "colorLightness",
+            width: width,
+            colors: [Colors.black, Colors.white],
+            at: _fz,
+            onAt: (f) => setState(() {
+              _fz = f;
+              _fromField(_fx, _fy);
+            }),
+          ),
+        ];
+      case ColorFormat.grey:
+        // Nothing: a greyscale has one axis, and it is the ramp above.
+        return const [];
+    }
+  }
 
   /// _wheelMode is hue round and saturation out, with brightness under it.
   ///
@@ -566,8 +705,18 @@ class _AppColorPickerState extends State<AppColorPicker> {
           child: _Draggable(
             onAt: (local, box, _) => setState(() {
               var (hue, sat) = _wheelAt(local, box);
-              _hue = hue;
-              _sat = sat;
+              if (_format == ColorFormat.grey) {
+                // The wheel is drawn in greys, so what is picked off it is
+                // the grey that was under the pointer -- not the colour the
+                // wheel would have shown in another notation.
+                var under = HSVColor.fromAHSV(1, hue, sat, _val).toColor();
+                _sat = 0;
+                _val = (greyOf(under) / 255).clamp(0.0, 1.0);
+              } else {
+                _hue = hue;
+                _sat = sat;
+              }
+              _readField();
               _say();
             }),
             child: CustomPaint(
@@ -575,6 +724,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
               size: Size(size, size),
               painter: _WheelPainter(
                 value: _val,
+                grey: _format == ColorFormat.grey,
                 marks: [(_hue, _sat, _current, true)],
               ),
             ),
@@ -623,16 +773,16 @@ class _AppColorPickerState extends State<AppColorPicker> {
         Center(
           child: _Draggable(
             onAt: (local, box, first) {
-              var (hue, sat) = _wheelAt(local, box);
+              var (hue, sat) = _wheelAt(local, box, ringed: true);
               // What was grabbed is decided when the drag starts and held for
-              // the rest of it: the handle in the middle takes the whole set
-              // with it, and the drag leaves the middle on its first pixel.
-              if (first)
-                _grabbed = _atMiddle(local, box) ? -1 : _nearestSpot(hue, sat);
+              // the rest of it. The handle outside the disc takes the whole
+              // set with it: the arrangement keeps its shape and turns.
+              if (first) {
+                _grabbed = _onRing(local, box) ? -1 : _nearestSpot(hue, sat);
+              }
               if (_grabbed < 0) {
                 setState(() {
                   _leadHue = hue;
-                  _leadSat = sat;
                   _spread();
                   _pick(_picked);
                 });
@@ -645,7 +795,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
               size: Size(size, size),
               painter: _WheelPainter(
                 value: _leadVal,
-                middle: true,
+                grey: _format == ColorFormat.grey,
+                ring: _leadHue,
                 marks: [
                   for (var i = 0; i < _spots.length; i++)
                     (
@@ -705,7 +856,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
                     child: Container(
                       height: 30,
                       decoration: BoxDecoration(
-                        color: _spots[i].color.withValues(alpha: _alpha),
+                        color:
+                            _shown(_spots[i].color).withValues(alpha: _alpha),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
                           color: i == _picked
@@ -758,18 +910,20 @@ class _AppColorPickerState extends State<AppColorPicker> {
   }
 
   /// _wheelAt is the hue and saturation a point on the wheel stands for.
-  (double, double) _wheelAt(Offset local, Size box) {
+  (double, double) _wheelAt(Offset local, Size box, {bool ringed = false}) {
     var centre = Offset(box.width / 2, box.height / 2);
     var away = local - centre;
-    var radius = math.min(box.width, box.height) / 2;
+    var radius = wheelRadius(box, ringed: ringed);
     var hue = (math.atan2(away.dy, away.dx) * 180 / math.pi + 360) % 360;
     return (hue, (away.distance / radius).clamp(0.0, 1.0));
   }
 
-  /// _atMiddle is whether a press landed on the handle in the middle.
-  bool _atMiddle(Offset local, Size box) {
+  /// _onRing is whether a press landed outside the disc, where the handle
+  /// that moves the whole set runs.
+  bool _onRing(Offset local, Size box) {
     var centre = Offset(box.width / 2, box.height / 2);
-    return (local - centre).distance < math.min(box.width, box.height) * 0.11;
+    return (local - centre).distance >
+        wheelRadius(box, ringed: true) + _wheelMargin * 0.1;
   }
 
   /// _nearestSpot is which of the five a press was aimed at.
@@ -801,27 +955,6 @@ class _AppColorPickerState extends State<AppColorPicker> {
         Color(0xFFFF00FF),
         Color(0xFFFF0000),
       ];
-
-  /// _shadeSquare is saturation across and brightness down, in the hue the
-  /// slider under it is pointing at.
-  Widget _shadeSquare(ColorScheme theme, double width) {
-    var height = width * 0.52;
-    return _Draggable(
-      onAt: (local, size, _) => setState(() {
-        _sat = (local.dx / size.width).clamp(0.0, 1.0);
-        _val = 1 - (local.dy / size.height).clamp(0.0, 1.0);
-        _say();
-      }),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: CustomPaint(
-          key: const ValueKey("colorShade"),
-          size: Size(width, height),
-          painter: _ShadePainter(pure: _pure, at: Offset(_sat, 1 - _val)),
-        ),
-      ),
-    );
-  }
 
   Widget _alphaBar(ColorScheme theme, double width) => _bar(
         key: "colorAlpha",
@@ -942,7 +1075,20 @@ class _AppColorPickerState extends State<AppColorPicker> {
               ],
               onChanged: (f) => setState(() {
                 _format = f ?? _format;
+                // Where the colour sits in the new notation's field, and
+                // -- for greyscale -- the fact that it no longer has a hue
+                // to sit at. Told to work in greys, the picker works in
+                // greys, and the grey it starts from is how bright the
+                // colour was: dropping the saturation and keeping the value
+                // instead turns a dark red into a light grey, because
+                // brightness in HSV is not brightness to an eye.
+                if (_format == ColorFormat.grey) {
+                  _val = (greyOf(_current) / 255).clamp(0.0, 1.0);
+                  _sat = 0;
+                }
+                _readField();
                 _write();
+                widget.onChanged(_current);
               }),
             ),
           ),
@@ -985,6 +1131,71 @@ class _AppColorPickerState extends State<AppColorPicker> {
     );
   }
 
+  /// _readField works out where the colour in hand sits in the field the
+  /// chosen notation draws. Called when the notation changes and whenever a
+  /// colour arrives from anywhere but the field itself.
+  void _readField() {
+    var colour = _current;
+    switch (_format) {
+      case ColorFormat.hex:
+        _fx = _sat;
+        _fy = 1 - _val;
+      case ColorFormat.hsl:
+        var hsl = HSLColor.fromColor(colour);
+        _fx = hsl.saturation;
+        _fy = 1 - hsl.lightness;
+      case ColorFormat.cmyk:
+        var (c, m, y, k) = toCmyk(colour);
+        _fx = c;
+        _fy = m;
+        _fz = y;
+        _fw = k;
+      case ColorFormat.lab:
+        var (l, a, b) = toLab(colour);
+        _fx = ((a + 110) / 220).clamp(0.0, 1.0);
+        _fy = 1 - ((b + 110) / 220).clamp(0.0, 1.0);
+        _fz = (l / 100).clamp(0.0, 1.0);
+      case ColorFormat.grey:
+        _fx = (greyOf(colour) / 255).clamp(0.0, 1.0);
+    }
+  }
+
+  /// _fieldColor is the colour at a place in the field, given whatever its
+  /// extra sliders are set to. The field is painted with this and read with
+  /// it, so what is picked is what was shown.
+  Color _fieldColor(double x, double y) {
+    switch (_format) {
+      case ColorFormat.hex:
+        return HSVColor.fromAHSV(1, _hue, x, 1 - y).toColor();
+      case ColorFormat.hsl:
+        return HSLColor.fromAHSL(1, _hue, x, 1 - y).toColor();
+      case ColorFormat.cmyk:
+        return fromCmyk(x, y, _fz, _fw);
+      case ColorFormat.lab:
+        return fromLab(_fz * 100, x * 220 - 110, (1 - y) * 220 - 110);
+      case ColorFormat.grey:
+        var level = (x * 255).round();
+        return Color.fromARGB(255, level, level, level);
+    }
+  }
+
+  /// _fromField takes the colour the field is showing at [x], [y].
+  void _fromField(double x, double y) {
+    setState(() {
+      _fx = x.clamp(0.0, 1.0);
+      _fy = y.clamp(0.0, 1.0);
+      // The field is the truth here, so the colour is read out of it rather
+      // than the other way round -- and the handle stays exactly where it was
+      // put even where the notation cannot express the colour precisely.
+      var colour = _fieldColor(_fx, _fy);
+      var hsv = HSVColor.fromColor(colour);
+      if (hsv.saturation > 0 && hsv.value > 0) _hue = hsv.hue;
+      if (hsv.value > 0) _sat = hsv.saturation;
+      _val = hsv.value;
+      _say();
+    });
+  }
+
   /// _channel sets one of red, green and blue, keeping the other two.
   void _channel(int index, double to) {
     var c = _current;
@@ -995,7 +1206,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
       index == 2 ? to.round() : (c.b * 255).round(),
     );
     setState(() {
-      _take(next);
+      _tookFromOutside(next);
       widget.onChanged(_current);
     });
   }
@@ -1464,6 +1675,27 @@ class _Draggable extends StatelessWidget {
       );
 }
 
+/// greyFilter turns whatever is drawn through it into greys, weighted the
+/// way an eye sees brightness rather than as a flat average of the three
+/// channels -- the same weighting greyOf uses, so a colour and its swatch
+/// agree about how bright it is.
+const ColorFilter greyFilter = ColorFilter.matrix(<double>[
+  0.299, 0.587, 0.114, 0, 0, //
+  0.299, 0.587, 0.114, 0, 0, //
+  0.299, 0.587, 0.114, 0, 0, //
+  0, 0, 0, 1, 0, //
+]);
+
+/// _wheelMargin is the ring of room outside the disc that the move-all
+/// handle runs in.
+const double _wheelMargin = 22;
+
+/// wheelRadius is how big the disc is inside a box of [size]. Shared by the
+/// painter and by the hit testing, which have to agree about where the rim
+/// is or a handle cannot be grabbed where it is drawn.
+double wheelRadius(Size size, {required bool ringed}) =>
+    math.min(size.width, size.height) / 2 - (ringed ? _wheelMargin : 0);
+
 /// _WheelPainter is hue round and saturation out from the middle, at one
 /// brightness, with the handles drawn on it.
 ///
@@ -1480,18 +1712,35 @@ class _WheelPainter extends CustomPainter {
   /// whether each is the one being answered with.
   final List<(double, double, Color, bool)> marks;
 
-  /// middle is the handle in the centre that takes the whole set with it.
-  final bool middle;
+  /// grey is whether the wheel is drawn without its colour, for a picker
+  /// working in greyscale: the same wheel, every colour on it flattened to
+  /// how bright it is. A wheel that went on showing colours while the picker
+  /// could only answer in greys would be an invitation to pick something it
+  /// could not give.
+  final bool grey;
+
+  /// ring is where the handle that moves the whole set sits, as a turn of
+  /// the wheel -- or null where there is no such handle. It rides in the
+  /// margin outside the disc, so it is never in the way of the five and
+  /// never mistaken for one of them.
+  final double? ring;
 
   const _WheelPainter({
     required this.value,
     required this.marks,
-    this.middle = false,
+    this.ring,
+    this.grey = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    var radius = math.min(size.width, size.height) / 2;
+    var radius = wheelRadius(size, ringed: ring != null);
+    // Everything the disc is made of goes through one layer, so that
+    // flattening it to greys is a filter over that layer rather than a
+    // second set of colours to keep in step with the first.
+    if (grey) {
+      canvas.saveLayer(Offset.zero & size, Paint()..colorFilter = greyFilter);
+    }
     var centre = Offset(size.width / 2, size.height / 2);
     var box = Rect.fromCircle(center: centre, radius: radius);
 
@@ -1522,6 +1771,7 @@ class _WheelPainter extends CustomPainter {
       canvas.drawCircle(centre, radius,
           Paint()..color = Colors.black.withValues(alpha: 1 - value));
     }
+    if (grey) canvas.restore();
 
     for (var (hue, sat, color, chosen) in marks) {
       var angle = hue * math.pi / 180;
@@ -1530,10 +1780,33 @@ class _WheelPainter extends CustomPainter {
       _handle(canvas, at, color, chosen ? 10 : 8, chosen);
     }
 
-    if (middle) {
-      _handle(canvas, centre, Colors.transparent, 9, false);
+    if (ring != null) {
+      // A track for it, so it reads as a thing that runs round the wheel
+      // rather than a sixth colour that has got loose.
+      var track = radius + _wheelMargin / 2;
       canvas.drawCircle(
-          centre, 3, Paint()..color = Colors.white.withValues(alpha: 0.9));
+          centre,
+          track,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = _wheelMargin - 4
+            ..color = Colors.white.withValues(alpha: 0.12));
+      var angle = ring! * math.pi / 180;
+      var at = centre + Offset(math.cos(angle), math.sin(angle)) * track;
+      canvas.drawCircle(at, 7, Paint()..color = Colors.white);
+      canvas.drawCircle(
+          at,
+          7,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = Colors.black54);
+      // Three dots on it: the mark for a thing that is dragged, and the only
+      // way to tell this handle from the five at a glance.
+      for (var i = -1; i <= 1; i++) {
+        canvas.drawCircle(
+            at + Offset(0, i * 2.6), 0.8, Paint()..color = Colors.black54);
+      }
     }
   }
 
@@ -1561,39 +1834,53 @@ class _WheelPainter extends CustomPainter {
   @override
   bool shouldRepaint(_WheelPainter old) =>
       old.value != value ||
-      old.middle != middle ||
+      old.grey != grey ||
+      old.ring != ring ||
       old.marks.toString() != marks.toString();
 }
 
-/// _ShadePainter is the saturation-and-brightness square.
-class _ShadePainter extends CustomPainter {
-  final Color pure;
-  final Offset at;
+/// _FieldPainter is a two-dimensional colour field: whatever colour the
+/// function gives for a place in it, with a handle where the colour in hand
+/// sits.
+///
+/// One painter for four fields. The shade square is a pair of gradients and
+/// could be drawn with a shader; saturation against lightness, cyan against
+/// magenta, and the a-b plane of LAB are not gradients of anything -- so they
+/// are drawn as a grid fine enough that nobody can see the squares, which is
+/// a few thousand rectangles and still one frame's work.
+class _FieldPainter extends CustomPainter {
+  /// at is the colour at a place in the field, both axes running nought to
+  /// one, with nought at the top left.
+  final Color Function(double x, double y) at;
 
-  const _ShadePainter({required this.pure, required this.at});
+  /// mark is where the colour in hand sits, in those same coordinates.
+  final Offset mark;
+
+  /// flat is whether the field has one axis rather than two -- a greyscale
+  /// ramp, where up and down mean nothing.
+  final bool flat;
+
+  const _FieldPainter(
+      {required this.at, required this.mark, this.flat = false});
 
   @override
   void paint(Canvas canvas, Size size) {
-    var box = Offset.zero & size;
-    canvas.drawRect(box, Paint()..color = pure);
-    // White across and black down, which is what turns one hue into every
-    // shade of itself.
-    canvas.drawRect(
-        box,
-        Paint()
-          ..shader = const LinearGradient(
-            colors: [Colors.white, Colors.transparent],
-          ).createShader(box));
-    canvas.drawRect(
-        box,
-        Paint()
-          ..shader = const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black],
-          ).createShader(box));
+    var across = 72;
+    var down = flat ? 1 : 44;
+    var wide = size.width / across;
+    var tall = size.height / down;
+    for (var x = 0; x < across; x++) {
+      for (var y = 0; y < down; y++) {
+        canvas.drawRect(
+            // A shade over, so the seams between the squares do not show as
+            // a grid of hairlines.
+            Rect.fromLTWH(x * wide, y * tall, wide + 1, tall + 1),
+            Paint()..color = at((x + 0.5) / across, (y + 0.5) / down));
+      }
+    }
 
-    var spot = Offset(at.dx * size.width, at.dy * size.height);
+    var spot = Offset(
+        mark.dx * size.width, flat ? size.height / 2 : mark.dy * size.height);
     // Two rings, dark inside light, so the handle is visible on a white
     // corner and on a black one.
     canvas.drawCircle(
@@ -1613,7 +1900,11 @@ class _ShadePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ShadePainter old) => old.pure != pure || old.at != at;
+  bool shouldRepaint(_FieldPainter old) =>
+      old.mark != mark ||
+      old.flat != flat ||
+      old.at(0.2, 0.2) != at(0.2, 0.2) ||
+      old.at(0.8, 0.7) != at(0.8, 0.7);
 }
 
 /// _BarPainter is a slider: a gradient with a handle on it.
