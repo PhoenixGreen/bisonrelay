@@ -63,7 +63,11 @@ class RingDrift {
 
   const RingDrift({this.least = 0, this.most = 0});
 
-  bool get none => least == 0 && most == 0;
+  /// rest is the value that means no scatter at all: nought where the number
+  /// is added to something, one where it multiplies it.
+  bool resting(double rest) => least == rest && most == rest;
+
+  bool get none => resting(0);
 
   /// at is the number for one icon, given its own roll of nought to one.
   double at(double roll) => least + (most - least) * roll.clamp(0.0, 1.0);
@@ -73,12 +77,40 @@ class RingDrift {
 
   List<double> toJson() => [least, most];
 
-  factory RingDrift.fromJson(dynamic json) => json is List && json.length >= 2
-      ? RingDrift(
-          least: jsonDouble(json[0], 0),
-          most: jsonDouble(json[1], 0),
-        )
-      : const RingDrift();
+  factory RingDrift.fromJson(dynamic json, {double rest = 0}) =>
+      json is List && json.length >= 2
+          ? RingDrift(
+              least: jsonDouble(json[0], rest),
+              most: jsonDouble(json[1], rest),
+            )
+          : RingDrift(least: rest, most: rest);
+}
+
+/// RingPick is one more picture an icon may be drawn as, and how often.
+///
+/// Several pictures spaced around a ring are usually not meant to be the
+/// same picture: a crest, a ball and a boot around a circle read as a set,
+/// and six of one read as a pattern. Each place around the ring takes one of
+/// these at random, and weight is how often it is taken -- a picture at two
+/// comes up twice as often as one at one, and one at nought never.
+class RingPick {
+  final String asset;
+  final double weight;
+
+  const RingPick({this.asset = "", this.weight = 1});
+
+  RingPick copyWith({String? asset, double? weight}) =>
+      RingPick(asset: asset ?? this.asset, weight: weight ?? this.weight);
+
+  Map<String, dynamic> toJson() => {
+        "asset": asset,
+        if (weight != 1) "weight": weight,
+      };
+
+  factory RingPick.fromJson(Map<String, dynamic> json) => RingPick(
+        asset: jsonString(json["asset"], ""),
+        weight: jsonDouble(json["weight"], 1).clamp(0, 100),
+      );
 }
 
 /// RingIcon is a picture carried by one of the rings.
@@ -122,14 +154,48 @@ class RingIcon {
   /// driftWhen is measured in the ring's life, so an icon moved through it
   /// sits off the line -- ahead of the ring or behind it -- and arrives and
   /// leaves at its own moment. driftWhere is measured in the gap between one
-  /// icon and the next, so a half is halfway to its neighbour. driftSize and
-  /// driftFade are added to one: a half is half as big again, and minus a
-  /// half is half the strength. driftTurn is in degrees.
+  /// icon and the next, so a half is halfway to its neighbour. driftSize is
+  /// added to one: a half is half as big again. driftTurn is in degrees.
+  ///
+  /// driftFade is a share of the strength the ring is drawn at rather than
+  /// something added to it: one is the ring's own, and a half is half of it.
+  /// A share rather than an offset because the other way round has a dead
+  /// half -- a ring at full strength cannot be made brighter, so every
+  /// positive number did nothing at all. It never lifts an icon above its
+  /// ring either, which is what keeps a fade out going all the way to
+  /// nothing.
   final RingDrift driftWhen;
   final RingDrift driftWhere;
   final RingDrift driftSize;
   final RingDrift driftTurn;
   final RingDrift driftFade;
+
+  /// also is more pictures this one may be drawn as, each with how often it
+  /// comes up. See RingPick. [weight] is how often [asset] itself does.
+  final List<RingPick> also;
+  final double weight;
+
+  /// The four things an icon may be told rather than inheriting from its
+  /// ring. Null is inherit, which is what every one of them is until it is
+  /// switched on.
+  ///
+  /// opacity is drawn instead of the ring's own strength -- so a picture can
+  /// sit steadily behind rings that come and go. smallest and largest hold
+  /// its size between two fractions of the page: an icon grows with its ring
+  /// and otherwise grows out of the picture with it.
+  final double? opacity;
+  final double? smallest;
+  final double? largest;
+
+  /// holdIn and holdOut leave out the ring's arrival or its departure: a
+  /// badge in the middle that is there from the first frame, or one that
+  /// stays once it has arrived.
+  final bool holdIn;
+  final bool holdOut;
+
+  /// firstRunOnly draws it during the first run of the movement and not the
+  /// ones after it, which is how a title card behaves: said once.
+  final bool firstRunOnly;
 
   const RingIcon({
     this.asset = "",
@@ -144,7 +210,15 @@ class RingIcon {
     this.driftWhere = const RingDrift(),
     this.driftSize = const RingDrift(),
     this.driftTurn = const RingDrift(),
-    this.driftFade = const RingDrift(),
+    this.driftFade = const RingDrift(least: 1, most: 1),
+    this.also = const [],
+    this.weight = 1,
+    this.opacity,
+    this.smallest,
+    this.largest,
+    this.holdIn = false,
+    this.holdOut = false,
+    this.firstRunOnly = false,
   });
 
   RingIcon copyWith({
@@ -161,6 +235,19 @@ class RingIcon {
     RingDrift? driftSize,
     RingDrift? driftTurn,
     RingDrift? driftFade,
+    List<RingPick>? also,
+    double? weight,
+    // The four that may be unset take an "or leave it alone" of their own:
+    // null is a real value here, so null cannot also mean "not given".
+    bool setOpacity = false,
+    double? opacity,
+    bool setSmallest = false,
+    double? smallest,
+    bool setLargest = false,
+    double? largest,
+    bool? holdIn,
+    bool? holdOut,
+    bool? firstRunOnly,
   }) =>
       RingIcon(
         asset: asset ?? this.asset,
@@ -176,6 +263,14 @@ class RingIcon {
         driftSize: driftSize ?? this.driftSize,
         driftTurn: driftTurn ?? this.driftTurn,
         driftFade: driftFade ?? this.driftFade,
+        also: also ?? this.also,
+        weight: weight ?? this.weight,
+        opacity: setOpacity ? opacity : this.opacity,
+        smallest: setSmallest ? smallest : this.smallest,
+        largest: setLargest ? largest : this.largest,
+        holdIn: holdIn ?? this.holdIn,
+        holdOut: holdOut ?? this.holdOut,
+        firstRunOnly: firstRunOnly ?? this.firstRunOnly,
       );
 
   Map<String, dynamic> toJson() => {
@@ -191,7 +286,15 @@ class RingIcon {
         if (!driftWhere.none) "driftWhere": driftWhere.toJson(),
         if (!driftSize.none) "driftSize": driftSize.toJson(),
         if (!driftTurn.none) "driftTurn": driftTurn.toJson(),
-        if (!driftFade.none) "driftFade": driftFade.toJson(),
+        if (!driftFade.resting(1)) "driftFade": driftFade.toJson(),
+        if (also.isNotEmpty) "also": [for (var pick in also) pick.toJson()],
+        if (weight != 1) "weight": weight,
+        if (opacity != null) "opacity": opacity,
+        if (smallest != null) "smallest": smallest,
+        if (largest != null) "largest": largest,
+        if (holdIn) "holdIn": true,
+        if (holdOut) "holdOut": true,
+        if (firstRunOnly) "firstRunOnly": true,
       };
 
   factory RingIcon.fromJson(Map<String, dynamic> json) => RingIcon(
@@ -207,7 +310,24 @@ class RingIcon {
         driftWhere: RingDrift.fromJson(json["driftWhere"]),
         driftSize: RingDrift.fromJson(json["driftSize"]),
         driftTurn: RingDrift.fromJson(json["driftTurn"]),
-        driftFade: RingDrift.fromJson(json["driftFade"]),
+        driftFade: RingDrift.fromJson(json["driftFade"], rest: 1),
+        also: [
+          for (var pick in (json["also"] as List?) ?? [])
+            if (pick is Map<String, dynamic>) RingPick.fromJson(pick),
+        ],
+        weight: jsonDouble(json["weight"], 1).clamp(0, 100),
+        opacity: json["opacity"] == null
+            ? null
+            : jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
+        smallest: json["smallest"] == null
+            ? null
+            : jsonDouble(json["smallest"], 0).clamp(0.0, 4.0),
+        largest: json["largest"] == null
+            ? null
+            : jsonDouble(json["largest"], 1).clamp(0.0, 4.0),
+        holdIn: jsonBool(json["holdIn"], false),
+        holdOut: jsonBool(json["holdOut"], false),
+        firstRunOnly: jsonBool(json["firstRunOnly"], false),
       );
 }
 
@@ -387,7 +507,11 @@ class RingSpec {
   }
 
   /// alphaAt is how strongly a ring shows at a point in its travel.
-  double alphaAt(double through) {
+  ///
+  /// [arriving] and [leaving] are there for a picture a ring carries that has
+  /// been told to keep one of the two ends: see RingIcon.holdIn.
+  double alphaAt(double through,
+      {bool arriving = true, bool leaving = true}) {
     // Both ends, and the weaker of the two wins.
     //
     // Written as two ifs, the second one overruled the first: a ring set to
@@ -396,9 +520,11 @@ class RingSpec {
     // and nothing at death -- no fade in at all. Turning the fade in up to
     // one was the surest way to switch it off, which is what "fade in does
     // not work" was.
-    var arriving = fadeIn > 0 ? (through / fadeIn).clamp(0.0, 1.0) : 1.0;
-    var leaving = fadeOut > 0 ? ((1 - through) / fadeOut).clamp(0.0, 1.0) : 1.0;
-    var on = math.min(arriving, leaving);
+    var came = arriving && fadeIn > 0 ? (through / fadeIn).clamp(0.0, 1.0) : 1.0;
+    var goes = leaving && fadeOut > 0
+        ? ((1 - through) / fadeOut).clamp(0.0, 1.0)
+        : 1.0;
+    var on = math.min(came, goes);
     if (edge == RingEdge.hard) return on <= 0 ? 0 : 1;
     // Smoothed at both ends, so a ring arrives and leaves rather than
     // switching on and then dimming at an even rate.

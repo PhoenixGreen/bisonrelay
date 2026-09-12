@@ -119,6 +119,26 @@ class CanvasLineBreak extends StatelessWidget {
       const SizedBox(width: double.infinity, height: 0);
 }
 
+/// CanvasSeparator is a rule across a row of controls, with air either side.
+///
+/// For a group holding several of the same thing one after another: two
+/// icons' worth of settings with only a line break between them read as one
+/// icon with a great many settings.
+class CanvasSeparator extends StatelessWidget {
+  const CanvasSeparator({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        height: 1,
+        margin: const EdgeInsets.only(top: 12, bottom: 8),
+        color: ThemeNotifier.of(context)
+            .colors
+            .outlineVariant
+            .withValues(alpha: 0.45),
+      );
+}
+
 /// CanvasHint is a question mark that explains a section when it is hovered.
 ///
 /// The sidebar's panels each carried a paragraph of explanation above or below

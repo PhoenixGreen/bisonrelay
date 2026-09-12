@@ -67,6 +67,14 @@ class ProceduralSettings extends StatelessWidget {
       ]));
   void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
 
+  /// _also replaces one of the other pictures an icon may be drawn as.
+  void _also(int at, RingIcon icon, int which, RingPick next) => _icon(
+      at,
+      icon.copyWith(also: [
+        for (var (n, pick) in icon.also.indexed)
+          if (n == which) next else pick,
+      ]));
+
   /// _drift is the two ends of one of an icon's scatter ranges.
   ///
   /// A pair rather than one number, because the useful thing to say is
@@ -80,6 +88,7 @@ class ProceduralSettings extends StatelessWidget {
     RingDrift value,
     RingIcon Function(RingDrift) put, {
     double limit = 1,
+    double? least,
     int decimals = 2,
     String suffix = "",
   }) =>
@@ -92,7 +101,7 @@ class ProceduralSettings extends StatelessWidget {
             width: 54,
             suffix: suffix,
             value: end,
-            min: -limit,
+            min: least ?? -limit,
             max: limit,
             onChanged: (v) {
               onBegin();
@@ -661,6 +670,10 @@ class ProceduralSettings extends StatelessWidget {
                   hideCaption: true,
                   children: [
                     for (var (i, icon) in rings.icons.indexed) ...[
+                      // Air and a rule between one icon and the next: with
+                      // only a line break, two of them read as one icon with
+                      // a great many settings.
+                      if (i > 0) const CanvasSeparator(),
                       CanvasIconButton(
                         key: ValueKey("ringIconPick$i"),
                         icon: icon.asset.isEmpty
@@ -784,8 +797,16 @@ class ProceduralSettings extends StatelessWidget {
                         ..._drift(i, icon, "Turn", "Turn", icon.driftTurn,
                             (d) => icon.copyWith(driftTurn: d),
                             limit: 360, decimals: 0, suffix: "°"),
+                        // A share of what the ring is drawn at rather than
+                        // something added to it, so nought is invisible and
+                        // one is the ring's own strength. Never more than the
+                        // ring: the other way round had a dead half, since a
+                        // ring already at full strength cannot be made
+                        // brighter -- which is what "fade to does nothing"
+                        // was.
                         ..._drift(i, icon, "Fade", "Fade", icon.driftFade,
-                            (d) => icon.copyWith(driftFade: d)),
+                            (d) => icon.copyWith(driftFade: d),
+                            least: 0),
                         const CanvasHint(
                             "How far each of these pictures is allowed to "
                             "differ from the rest, and every one of them "
@@ -795,10 +816,207 @@ class ProceduralSettings extends StatelessWidget {
                             "ring or behind it -- and arrives and leaves at "
                             "its own moment. Position is measured in the gap "
                             "to the next picture. Size and Fade are added to "
-                            "one: a half is half as big again, and minus a "
-                            "half is half the strength."),
+                            "one: a half is half as big again. Fade is a "
+                            "share of the strength its ring is drawn at, so "
+                            "a half is half of it and nought is nothing -- "
+                            "and a picture never outlives the ring carrying "
+                            "it."),
                         const CanvasLineBreak(),
                       ],
+                      // What it may be drawn as instead, and how often. Six
+                      // of one picture round a ring is a pattern; a crest, a
+                      // ball and a boot is a set.
+                      if (icon.place == RingIconPlace.around) ...[
+                        const CanvasLineBreak(),
+                        for (var (n, pick) in icon.also.indexed) ...[
+                          CanvasIconButton(
+                            key: ValueKey("ringIconAlsoPick${i}_$n"),
+                            icon: pick.asset.isEmpty
+                                ? Icons.add_photo_alternate
+                                : Icons.image_outlined,
+                            tooltip: "Choose this picture from a file",
+                            onPressed: () async {
+                              var id = await pickCanvasImage(context);
+                              if (id == null) return;
+                              _also(i, icon, n, pick.copyWith(asset: id));
+                            },
+                          ),
+                          CanvasIconButton(
+                            key: ValueKey("ringIconAlsoLibrary${i}_$n"),
+                            icon: Icons.photo_library_outlined,
+                            tooltip: "Use a picture you have already added",
+                            onPressed: () async {
+                              var id = await showRecentPictures(context);
+                              if (id == null) return;
+                              _also(i, icon, n, pick.copyWith(asset: id));
+                            },
+                          ),
+                          CanvasNumberField(
+                            key: ValueKey("ringIconAlsoWeight${i}_$n"),
+                            label: "How often",
+                            decimals: 1,
+                            width: 58,
+                            value: pick.weight,
+                            min: 0,
+                            max: 100,
+                            onChanged: (v) {
+                              onBegin();
+                              _also(i, icon, n, pick.copyWith(weight: v));
+                            },
+                            onCommit: onCommit,
+                          ),
+                          CanvasIconButton(
+                            key: ValueKey("ringIconAlsoRemove${i}_$n"),
+                            icon: Icons.close,
+                            tooltip: "Stop using this picture",
+                            onPressed: () => _icon(
+                                i,
+                                icon.copyWith(also: [
+                                  for (var (m, other) in icon.also.indexed)
+                                    if (m != n) other,
+                                ])),
+                          ),
+                        ],
+                        // The first picture's own share, which only means
+                        // anything once there is something to share with.
+                        if (icon.also.isNotEmpty)
+                          CanvasNumberField(
+                            key: ValueKey("ringIconWeight$i"),
+                            label: "First one",
+                            decimals: 1,
+                            width: 58,
+                            value: icon.weight,
+                            min: 0,
+                            max: 100,
+                            onChanged: (v) {
+                              onBegin();
+                              _icon(i, icon.copyWith(weight: v));
+                            },
+                            onCommit: onCommit,
+                          ),
+                        CanvasIconButton(
+                          key: ValueKey("ringIconAlsoAdd$i"),
+                          icon: Icons.library_add_outlined,
+                          tooltip: "Another picture to use around this ring",
+                          onPressed: () => _icon(
+                              i,
+                              icon.copyWith(
+                                  also: [...icon.also, const RingPick()])),
+                        ),
+                        if (icon.also.isNotEmpty)
+                          const CanvasHint(
+                              "Each place around the ring takes one of these "
+                              "pictures at random. How often is how much of "
+                              "the draw it gets: one at two comes up twice as "
+                              "often as one at one, and one at nought never."),
+                      ],
+                      // The things it may be told rather than inheriting from
+                      // its ring. Each is off until it is switched on, and
+                      // off means inherit.
+                      const CanvasLineBreak(),
+                      CanvasToggle(
+                        key: ValueKey("ringIconOwnFade$i"),
+                        label: "Own opacity",
+                        value: icon.opacity != null,
+                        onChanged: (v) => _icon(
+                            i,
+                            icon.copyWith(
+                                setOpacity: true, opacity: v ? 1.0 : null)),
+                      ),
+                      if (icon.opacity != null)
+                        CanvasNumberField(
+                          key: ValueKey("ringIconOpacity$i"),
+                          label: "Opacity",
+                          decimals: 2,
+                          width: 58,
+                          value: icon.opacity!,
+                          min: 0,
+                          max: 1,
+                          onChanged: (v) {
+                            onBegin();
+                            _icon(
+                                i, icon.copyWith(setOpacity: true, opacity: v));
+                          },
+                          onCommit: onCommit,
+                        ),
+                      CanvasToggle(
+                        key: ValueKey("ringIconOwnSmallest$i"),
+                        label: "Smallest",
+                        value: icon.smallest != null,
+                        onChanged: (v) => _icon(
+                            i,
+                            icon.copyWith(
+                                setSmallest: true, smallest: v ? 0.1 : null)),
+                      ),
+                      if (icon.smallest != null)
+                        CanvasNumberField(
+                          key: ValueKey("ringIconSmallest$i"),
+                          label: "No smaller than",
+                          decimals: 2,
+                          width: 58,
+                          value: icon.smallest!,
+                          min: 0,
+                          max: 4,
+                          onChanged: (v) {
+                            onBegin();
+                            _icon(i,
+                                icon.copyWith(setSmallest: true, smallest: v));
+                          },
+                          onCommit: onCommit,
+                        ),
+                      CanvasToggle(
+                        key: ValueKey("ringIconOwnLargest$i"),
+                        label: "Largest",
+                        value: icon.largest != null,
+                        onChanged: (v) => _icon(
+                            i,
+                            icon.copyWith(
+                                setLargest: true, largest: v ? 0.4 : null)),
+                      ),
+                      if (icon.largest != null)
+                        CanvasNumberField(
+                          key: ValueKey("ringIconLargest$i"),
+                          label: "No bigger than",
+                          decimals: 2,
+                          width: 58,
+                          value: icon.largest!,
+                          min: 0,
+                          max: 4,
+                          onChanged: (v) {
+                            onBegin();
+                            _icon(
+                                i, icon.copyWith(setLargest: true, largest: v));
+                          },
+                          onCommit: onCommit,
+                        ),
+                      CanvasToggle(
+                        key: ValueKey("ringIconHoldIn$i"),
+                        label: "No fade in",
+                        value: icon.holdIn,
+                        onChanged: (v) => _icon(i, icon.copyWith(holdIn: v)),
+                      ),
+                      CanvasToggle(
+                        key: ValueKey("ringIconHoldOut$i"),
+                        label: "No fade out",
+                        value: icon.holdOut,
+                        onChanged: (v) => _icon(i, icon.copyWith(holdOut: v)),
+                      ),
+                      CanvasToggle(
+                        key: ValueKey("ringIconFirstRun$i"),
+                        label: "First run only",
+                        value: icon.firstRunOnly,
+                        onChanged: (v) =>
+                            _icon(i, icon.copyWith(firstRunOnly: v)),
+                      ),
+                      const CanvasHint(
+                          "Off, each of these is inherited from the ring the "
+                          "picture is tied to. Own opacity draws it at one "
+                          "strength whatever the ring is doing. Smallest and "
+                          "largest hold its size between two fractions of the "
+                          "page, so it stops growing with the ring rather "
+                          "than growing out of the picture. The two fades "
+                          "leave out the ring's arrival or its departure, and "
+                          "first run only says it once."),
                       CanvasIconButton(
                         key: ValueKey("ringIconRemove$i"),
                         icon: Icons.close,

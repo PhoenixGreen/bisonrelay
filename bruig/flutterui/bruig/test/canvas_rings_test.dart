@@ -86,19 +86,29 @@ class _Pictures extends CanvasImageSource {
   /// is still being read.
   factory _Pictures.empty() = _NoPictures;
 
-  final CanvasVector _square = () {
+  static CanvasVector _drawn(Color color) {
     var recorder = ui.PictureRecorder();
-    ui.Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 100, 100),
-        Paint()..color = const Color(0xFFFFFFFF));
+    ui.Canvas(recorder)
+        .drawRect(const Rect.fromLTWH(0, 0, 100, 100), Paint()..color = color);
     return CanvasVector(recorder.endRecording(), const Size(100, 100));
-  }();
+  }
+
+  final CanvasVector _square = _drawn(const Color(0xFFFFFFFF));
+
+  /// A second drawing, told apart by its colour: which picture was chosen is
+  /// otherwise unanswerable from the pixels. Anything asked for by the name
+  /// "red" is this one.
+  final CanvasVector _red = _drawn(const Color(0xFFFF0000));
 
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) => null;
 
   @override
-  CanvasVector? resolveVector(String assetId) =>
-      assetId.isEmpty ? null : _square;
+  CanvasVector? resolveVector(String assetId) => assetId.isEmpty
+      ? null
+      : assetId == "red"
+          ? _red
+          : _square;
 }
 
 /// _inkWith paints with that store and counts the ink within [within] of the
@@ -141,10 +151,10 @@ class _NoPictures extends _Pictures {
 /// Rings themselves are kept out of it by giving them no width worth
 /// counting -- what is being measured here is the pictures they carry.
 Future<List<(double, double, int)>> _marks(ProceduralSpec spec,
-    {double time = 3}) async {
+    {double time = 3, double rate = 0}) async {
   var recorder = ui.PictureRecorder();
   paintProcedural(ui.Canvas(recorder), _page, spec,
-      time: time, images: _Pictures());
+      time: time, frameRate: rate, images: _Pictures());
   var picture = recorder.endRecording();
   var image = await picture.toImage(400, 300);
   var bytes = (await image.toByteData())!;
@@ -160,6 +170,41 @@ Future<List<(double, double, int)>> _marks(ProceduralSpec spec,
   image.dispose();
   picture.dispose();
   return found;
+}
+
+/// _colours is how many pixels of each of the stub's two drawings a picture
+/// holds: the white one and the red one. Which picture a place around a ring
+/// chose is otherwise unanswerable from the pixels.
+Future<(int, int)> _colours(ProceduralSpec spec, {double time = 3}) async {
+  // The rings themselves drawn in the colour of the page, so that what is
+  // counted is the pictures they carry and not the lines they are on.
+  spec = spec.copyWith(
+      foreground: const Color(0xFF000000), accent: const Color(0xFF000000));
+  var recorder = ui.PictureRecorder();
+  paintProcedural(ui.Canvas(recorder), _page, spec,
+      time: time, images: _Pictures());
+  var picture = recorder.endRecording();
+  var image = await picture.toImage(400, 300);
+  var bytes = (await image.toByteData())!;
+  var white = 0;
+  var red = 0;
+  for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+    var pixel = bytes.getUint32(i);
+    // Over an opaque page, so the alpha channel says nothing and the colour
+    // is the whole answer: a red picture drawn faintly is a dark red pixel.
+    var r = (pixel >> 24) & 0xFF;
+    var g = (pixel >> 16) & 0xFF;
+    var b = (pixel >> 8) & 0xFF;
+    if (r < 40 && g < 40 && b < 40) continue;
+    if (r > 40 && g < r ~/ 2) {
+      red++;
+    } else if (r > 40 && g > 40) {
+      white++;
+    }
+  }
+  image.dispose();
+  picture.dispose();
+  return (white, red);
 }
 
 /// _beads is a ring carrying [many] pictures spaced around it, still, so that
@@ -875,10 +920,19 @@ void main() {
     // -- so a picture missed here is one that quietly disappears between one
     // session and the next, which is what happened to every ring icon.
     var spec = const ProceduralSpec(style: ProceduralStyle.rings).copyWith(
-        rings: const RingSpec()
-            .copyWith(icons: [const RingIcon(asset: "badge", ring: 2)]));
+        rings: const RingSpec().copyWith(icons: [
+      const RingIcon(asset: "badge", ring: 2, also: [
+        RingPick(asset: "boot"),
+        RingPick(asset: "ball", weight: 0),
+      ]),
+    ]));
     var doc = CanvasDocument(background: CanvasBackground(spec: spec));
     expect(doc.assetIds, contains("badge"));
+    // Including the ones an icon is only sometimes drawn as. A picture
+    // reached by a roll of the dice is still a picture somebody put there --
+    // and one at nought is one they are about to turn back up.
+    expect(doc.assetIds, contains("boot"));
+    expect(doc.assetIds, contains("ball"));
 
     // And on a scene that is not the one being edited, which was the other
     // half of it: assetIds read the scene in hand rather than all of them.
@@ -1136,6 +1190,55 @@ void main() {
         lessThan(tester.getTopLeft(find.byKey(const ValueKey("ringFrom"))).dx));
   });
 
+  testWidgets("two icons' settings are told apart", (tester) async {
+    // With only a line break between them, one icon's settings ran straight
+    // into the next and the pair read as one icon with a great many.
+    var spec = _spec(
+        rings: const RingSpec(icons: [
+      RingIcon(asset: "badge", ring: 1),
+      RingIcon(asset: "crest", ring: 2),
+    ]));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: CanvasControlScope(
+              maxWidth: 240,
+              child: ProceduralSettings(
+                spec: spec,
+                onBegin: () {},
+                onCommit: () {},
+                onChanged: (next) => spec = next,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    if (find.byKey(const ValueKey("ringIconRing0")).evaluate().isEmpty) {
+      await tester.ensureVisible(find.text("ICONS"));
+      await tester.tap(find.text("ICONS"));
+      await tester.pumpAndSettle();
+    }
+
+    // One rule, between the two of them, rather than one before each.
+    expect(find.byType(CanvasSeparator), findsOneWidget);
+    var rule = tester.getTopLeft(find.byType(CanvasSeparator)).dy;
+    expect(
+        rule,
+        greaterThan(
+            tester.getTopLeft(find.byKey(const ValueKey("ringIconRing0"))).dy));
+    expect(
+        rule,
+        lessThan(
+            tester.getTopLeft(find.byKey(const ValueKey("ringIconRing1"))).dy));
+  });
+
   testWidgets("pictures around a ring scatter rather than sit on the line",
       (tester) async {
     // Beads on a wire is what they were: same moment, same distance out, same
@@ -1171,8 +1274,12 @@ void main() {
       turned = await _marks(_beads(
           icon.copyWith(driftTurn: const RingDrift(least: 45, most: 45))));
 
+      // A share of what the ring is drawn at, so two fifths of it is two
+      // fifths. Never more than the ring: the way round it used to be, every
+      // number above nought did nothing at all, because a ring already at
+      // full strength cannot be made brighter.
       dimmer = await _marks(_beads(
-          icon.copyWith(driftFade: const RingDrift(least: -0.6, most: -0.6))));
+          icon.copyWith(driftFade: const RingDrift(least: 0.4, most: 0.4))));
 
       // And one picture is not another: asked for a range of sizes, the six
       // of them come out six different sizes rather than all at one end of
@@ -1220,6 +1327,139 @@ void main() {
     // Six pictures, six different sizes.
     expect(sizes.toSet().length, greaterThan(4),
         reason: "they all took the same place in the range: $sizes");
+  });
+
+  testWidgets("a ring can carry several pictures, some more often than others",
+      (tester) async {
+    late (int, int) one;
+    late (int, int) even;
+    late (int, int) lopsided;
+    late (int, int) never;
+    await tester.runAsync(() async {
+      const icon = RingIcon(asset: "badge", ring: 1, size: 0.25);
+      one = await _colours(_beads(icon, many: 12));
+      even = await _colours(_beads(
+          icon.copyWith(also: [const RingPick(asset: "red")]),
+          many: 12));
+      // Three times as often, so about a quarter of the places take the
+      // first picture.
+      lopsided = await _colours(_beads(
+          icon.copyWith(also: [const RingPick(asset: "red", weight: 3)]),
+          many: 12));
+      never = await _colours(_beads(
+          icon.copyWith(
+              weight: 0, also: [const RingPick(asset: "red", weight: 1)]),
+          many: 12));
+    });
+
+    expect(one.$1, greaterThan(0));
+    expect(one.$2, 0, reason: "one picture is the only picture");
+
+    expect(even.$2, greaterThan(0), reason: "the second was never chosen");
+    expect(even.$1, greaterThan(0), reason: "the first stopped being chosen");
+
+    double share((int, int) of) => of.$2 / (of.$1 + of.$2);
+    expect(share(lopsided), greaterThan(share(even)),
+        reason: "a picture at three against one should come up more often");
+    expect(share(never), 1.0,
+        reason: "a picture at nought should never come up");
+  });
+
+  testWidgets("a picture can be told what its ring would have told it",
+      (tester) async {
+    // Every one of these is off until it is switched on, and off is inherit.
+    late int inherited;
+    late int ownStrength;
+    late int capped;
+    late int floored;
+    late int arriving;
+    late int held;
+    late int leaving;
+    late int stays;
+    late int firstRun;
+    late int laterRun;
+    await tester.runAsync(() async {
+      // Part way into a fade, where what is inherited and what is overruled
+      // are plainly different numbers.
+      // The rings drawn in the colour of the page, so that what is measured
+      // is the picture they carry rather than the lines it is on.
+      var young = _spec(
+              rings: const RingSpec(
+                  count: 1,
+                  width: 0.0005,
+                  from: 0.5,
+                  to: 0.5,
+                  fadeIn: 0.5,
+                  fadeOut: 0.5,
+                  icons: [RingIcon(asset: "badge", ring: 1, size: 0.3)]),
+              animated: false)
+          .copyWith(
+              foreground: const Color(0xFF000000),
+              accent: const Color(0xFF000000));
+      RingIcon only(ProceduralSpec of) => of.rings.icons.first;
+      ProceduralSpec with_(ProceduralSpec of, RingIcon icon) =>
+          of.copyWith(rings: of.rings.copyWith(icons: [icon]));
+
+      Future<int> strongest(ProceduralSpec spec, {double time = 0}) async {
+        var marks = await _marks(spec, time: time);
+        return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
+      }
+
+      // A still ring sits at the very start of its life, where a fade in has
+      // barely begun.
+      inherited = await strongest(young);
+      ownStrength = await strongest(
+          with_(young, only(young).copyWith(setOpacity: true, opacity: 0.8)));
+      arriving = inherited;
+      held = await strongest(with_(young, only(young).copyWith(holdIn: true)));
+
+      // And at the end of one, where the fade out has all but finished.
+      var old = young.copyWith(
+          animated: true,
+          rings: young.rings.copyWith(count: 1, fadeIn: 0, fadeOut: 1));
+      leaving = await strongest(with_(old, only(old).copyWith(holdIn: true)),
+          time: proceduralPass * 0.98);
+      stays = await strongest(
+          with_(old, only(old).copyWith(holdIn: true, holdOut: true)),
+          time: proceduralPass * 0.98);
+
+      // How big, in fractions of the page rather than of the ring: a picture
+      // grows with its ring, and what that means without a limit is that it
+      // grows out of the picture.
+      var big = with_(young, only(young).copyWith(holdIn: true));
+      var ink = await _marks(big);
+      inherited = ink.length;
+      capped = (await _marks(
+              with_(big, only(big).copyWith(setLargest: true, largest: 0.05))))
+          .length;
+      floored = (await _marks(
+              with_(big, only(big).copyWith(setSmallest: true, smallest: 0.5))))
+          .length;
+
+      // Said once: drawn on the first run of the movement and not the ones
+      // after it. Two runs of sixty frames, and the same moment of each.
+      var over = with_(young, only(young).copyWith(holdIn: true))
+          .copyWith(animated: true, loopTimes: 3, passFrames: 60);
+      var once = with_(over, only(over).copyWith(firstRunOnly: true));
+      firstRun = (await _marks(once, time: 20 / 24, rate: 24)).length;
+      laterRun = (await _marks(once, time: 80 / 24, rate: 24)).length;
+      expect(
+          (await _marks(over, time: 80 / 24, rate: 24)).length, greaterThan(0),
+          reason: "the second run drew nothing at all, so nothing is proved");
+    });
+
+    expect(ownStrength, greaterThan(arriving * 2),
+        reason: "its own opacity was ignored in favour of the ring's fade");
+    expect(held, greaterThan(arriving * 2),
+        reason: "it faded in with the ring after being told not to");
+    expect(stays, greaterThan(leaving * 2),
+        reason: "it faded out with the ring after being told not to");
+    expect(capped, lessThan(inherited),
+        reason: "the largest size did not hold it down");
+    expect(floored, greaterThan(inherited),
+        reason: "the smallest size did not hold it up");
+    expect(firstRun, greaterThan(0));
+    expect(laterRun, 0, reason: "it was said again on the second run");
   });
 
   test("a run lasts until the ring at the back has died", () {

@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
 // canvas_document.dart is a whole canvas: its shape, its background, what is
@@ -386,12 +387,23 @@ class CanvasDocument {
   Set<String> get assetIds {
     var ids = <String>{};
 
+    /// fromIcons is every picture a set of rings carries: the one an icon is
+    /// drawn as, and the others it may be drawn as instead. See RingPick --
+    /// a picture only ever reached by a roll of the dice is still a picture
+    /// somebody put there.
+    void fromIcons(List<RingIcon> icons) {
+      for (var icon in icons) {
+        if (icon.asset.isNotEmpty) ids.add(icon.asset);
+        for (var pick in icon.also) {
+          if (pick.asset.isNotEmpty) ids.add(pick.asset);
+        }
+      }
+    }
+
     void fromBackground(CanvasBackground? bg) {
       if (bg == null) return;
       if (bg.imageAssetId.isNotEmpty) ids.add(bg.imageAssetId);
-      for (var icon in bg.spec.rings.icons) {
-        if (icon.asset.isNotEmpty) ids.add(icon.asset);
-      }
+      fromIcons(bg.spec.rings.icons);
     }
 
     void fromElements(List<CanvasElement> list) {
@@ -399,11 +411,7 @@ class CanvasDocument {
         ids.addAll(e.assetIds);
         // A background *element* carries a design of its own, and that design
         // can carry pictures too.
-        if (e is BackgroundElement) {
-          for (var icon in e.spec.rings.icons) {
-            if (icon.asset.isNotEmpty) ids.add(icon.asset);
-          }
-        }
+        if (e is BackgroundElement) fromIcons(e.spec.rings.icons);
       }
     }
 
