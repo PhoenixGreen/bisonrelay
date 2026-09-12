@@ -1,6 +1,8 @@
 import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/components/saved_colors.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -742,5 +744,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("colorHarmonyReset")), findsNothing);
     expect(find.byKey(const ValueKey("colorReset")), findsOneWidget);
+  });
+
+  testWidgets("a colour pastes in wherever the caret happens to be",
+      (tester) async {
+    // The real gesture, with the real shortcut. A box that is always full --
+    // six hex characters of six -- and a caret sitting at the end of it: the
+    // paste makes twelve characters, and a plain length limit keeps the six
+    // that were already there, so nothing appears to happen.
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == "Clipboard.getData") {
+        return <String, dynamic>{"text": "#3366CC"};
+      }
+      return null;
+    });
+
+    var answer = await pump(tester, start: const Color(0xFF884422), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    var field = find.descendant(
+        of: find.byKey(const ValueKey("paletteHex0")),
+        matching: find.byType(TextField));
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+
+    var controller = tester.widget<TextField>(field).controller!;
+    // The palette opens on the colour it was given, rather than on a
+    // brighter one: its third axis is read at the start like everything else.
+    expect(controller.text, "884422");
+
+    controller.selection =
+        TextSelection.collapsed(offset: controller.text.length);
+    await tester.pump();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+    await tester.pumpAndSettle();
+
+    expect(controller.text.toLowerCase(), "3366cc");
+    expect(answer.color.toARGB32() & 0xFFFFFF, 0x3366cc,
+        reason: "the pasted colour did not reach the palette");
+
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

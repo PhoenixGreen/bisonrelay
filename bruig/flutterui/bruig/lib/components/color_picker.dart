@@ -342,6 +342,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
     super.initState();
     _opened = widget.color;
     _take(widget.color);
+    _readWheel();
+    _readThird();
     _readField();
     _leadFromCurrent();
     _textFocus.addListener(() {
@@ -1449,7 +1451,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
                 FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F#]"))
               else
                 FilteringTextInputFormatter.allow(RegExp(r"[0-9,.\-% ]")),
-              LengthLimitingTextInputFormatter(24),
+              _KeepWhatArrived(24),
             ],
             onChanged: _read,
             onSubmitted: _read,
@@ -1834,6 +1836,36 @@ class _Swatch extends StatelessWidget {
 /// drift apart and the caption stops sitting over what it names.
 const double _channelWidth = 46;
 
+/// _KeepWhatArrived is a length limit that keeps the new characters rather
+/// than the old ones.
+///
+/// LengthLimitingTextInputFormatter truncates from the end, which is the
+/// wrong end for a box that is always full: six hex characters of six, three
+/// digits of three. Pasting a colour with the caret sitting anywhere in one
+/// gives twelve characters, and the six that survive are the six that were
+/// already there -- so the paste appears to do nothing at all.
+///
+/// What is kept instead is the run of characters ending where the caret
+/// finished, which is exactly what was typed or pasted.
+class _KeepWhatArrived extends TextInputFormatter {
+  final int max;
+  const _KeepWhatArrived(this.max);
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue old, TextEditingValue fresh) {
+    if (fresh.text.length <= max) return fresh;
+    var end = fresh.selection.end < 0 ? fresh.text.length : fresh.selection.end;
+    end = end.clamp(0, fresh.text.length);
+    var start = math.max(0, end - max);
+    var kept = fresh.text.substring(start, end);
+    return TextEditingValue(
+      text: kept,
+      selection: TextSelection.collapsed(offset: kept.length),
+    );
+  }
+}
+
 /// _SpotHex is the hex of one of the palette's five, which can be typed over.
 ///
 /// Six characters and no alpha: a palette is about which colours, and how
@@ -1925,7 +1957,7 @@ class _SpotHexState extends State<_SpotHex> {
         ),
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F]")),
-          LengthLimitingTextInputFormatter(6),
+          _KeepWhatArrived(6),
         ],
         onChanged: _read,
         onSubmitted: _read,
@@ -2066,7 +2098,7 @@ class _ChannelFieldState extends State<_ChannelField> {
               keyboardType: TextInputType.number,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(3),
+                _KeepWhatArrived(3),
               ],
               decoration: const InputDecoration(
                 isDense: true,
