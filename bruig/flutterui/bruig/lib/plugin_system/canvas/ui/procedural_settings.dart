@@ -154,11 +154,20 @@ class ProceduralSettings extends StatelessWidget {
         label: "On ring",
         width: 54,
         value: icon.ring.toDouble(),
-        min: 1,
+        // Nought is no ring at all, for the one in the middle: a picture tied
+        // to the movement rather than to a ring, which is the only way to
+        // have one that is simply there while rings come and go.
+        min: around ? 1 : 0,
         max: 200,
         onChanged: (v) => set(icon.copyWith(ring: v.round())),
         onCommit: onCommit,
       ),
+      if (!around && icon.ring <= 0)
+        const CanvasHint(
+            "On no ring. It lives the length of one run rather than of a "
+            "ring, and its size is a fraction of the page rather than of a "
+            "radius. With both fades held it is simply there, for the whole "
+            "animation."),
       if (around)
         CanvasNumberField(
           key: ValueKey("ringIconCount-$at"),
@@ -270,6 +279,9 @@ class ProceduralSettings extends StatelessWidget {
                 if (m != n) other,
             ])),
           ),
+          // A line each: two pictures' buttons side by side are four buttons
+          // in a row, and which of them belongs to which is a guess.
+          const CanvasLineBreak(),
         ],
         // The first picture's own share, which only means anything once there
         // is something to share with.

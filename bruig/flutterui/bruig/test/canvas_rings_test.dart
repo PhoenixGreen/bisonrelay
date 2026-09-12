@@ -1067,7 +1067,10 @@ void main() {
               rings: const RingSpec(count: 6, edge: RingEdge.hard).copyWith(
                   icons: [const RingIcon(asset: "badge", ring: 6, size: 2)]))
           .copyWith(loopTimes: 1, passFrames: 150);
-      carried = await _inkWith(withIcon, 188 / 24, within: 80, rate: 24);
+      // Anywhere on the page, not only in the middle of it: a picture whose
+      // ring has died is a picture that has died, wherever the ring had got
+      // to by then.
+      carried = await _inkWith(withIcon, 188 / 24, within: 500, rate: 24);
 
       // However the set is spread. Roughened spacing moves where a ring sits
       // in the set, so with some seeds the one at the back is born later
@@ -1620,65 +1623,173 @@ void main() {
         reason: "a coloured picture no longer answers to its strength");
   });
 
-  testWidgets("a picture moved through a ring's life still arrives and leaves",
+  testWidgets("a picture moved through a ring's life keeps its own fades",
       (tester) async {
-    // Held at the two ends of the life instead -- which is what clamping the
-    // moment did -- a picture moved earlier sat at the first instant of it
-    // for as long as the offset lasted, at whatever strength that instant
-    // has. With no fade at that end it is a picture that never arrives: on
-    // from the first frame at full strength, however far back it was moved.
-    late List<int> ink;
-    late List<int> strength;
+    // Two things used to cut a moved picture off. Its moment was clamped to
+    // the two ends of the life, so one moved back sat at the first instant
+    // for as long as the offset lasted -- and with no fade at that end, at
+    // full strength, never arriving and never leaving. And it went out with
+    // the ring: a picture half a life behind the ring carrying it is in the
+    // middle of its own life when that ring dies, and was cut off there,
+    // which is a picture that never fades out.
+    late List<int> icon;
+    late List<int> ring;
     await tester.runAsync(() async {
-      ProceduralSpec at(double fadeIn, double fadeOut) => _spec(
-              rings: RingSpec(
-                count: 1,
-                width: 0.0005,
-                from: 0.4,
-                to: 0.4,
-                fadeIn: fadeIn,
-                fadeOut: fadeOut,
-                icons: const [
-                  RingIcon(
-                    asset: "badge",
-                    ring: 1,
-                    size: 0.3,
-                    place: RingIconPlace.around,
-                    count: 8,
-                    driftWhen: RingDrift(least: -1, most: -0.1),
-                  )
-                ],
-              ),
-              animated: true)
-          .copyWith(
-              foreground: const Color(0xFF000000),
-              accent: const Color(0xFF000000));
+      // Half a life behind, exactly, so what is expected of it is a number
+      // rather than a spread.
+      var spec = _spec(
+          rings: const RingSpec(
+            count: 1,
+            width: 0.02,
+            from: 0.4,
+            to: 0.4,
+            fadeIn: 0.4,
+            fadeOut: 0.4,
+            icons: [
+              RingIcon(
+                asset: "badge",
+                ring: 1,
+                size: 0.3,
+                place: RingIconPlace.around,
+                count: 6,
+                driftWhen: RingDrift(least: -0.5, most: -0.5),
+              )
+            ],
+          ),
+          animated: true);
+      var quiet = spec.copyWith(
+          foreground: const Color(0xFF000000), accent: const Color(0xFF000000));
 
-      // Nothing to fade in with, so what is on the page at the first instant
-      // is whatever has been born by then -- which is almost nothing.
-      var blunt = at(0, 0.4);
-      ink = [
-        for (var through in [0.02, 0.5])
-          (await _marks(blunt, time: proceduralPass * through)).length,
+      Future<int> strongest(ProceduralSpec of, double through) async {
+        var marks = await _marks(of, time: proceduralPass * through);
+        return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
+      }
+
+      // The picture's own life, half a turn behind the ring's.
+      icon = [
+        for (var through in [0.5, 0.75, 0.98]) await strongest(quiet, through),
       ];
-      // And with a fade, the ones that are alive are still fading.
-      var soft = at(0.4, 0.4);
-      strength = [
-        for (var through in [0.5, 0.99])
-          await () async {
-            var marks = await _marks(soft, time: proceduralPass * through);
-            return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
-          }(),
+      // And the ring's, with the picture taken off it. Drawn in white like
+      // the picture, because what is measured is one channel of the colour.
+      var bare = spec.copyWith(
+          accent: const Color(0xFFFFFFFF),
+          rings: spec.rings.copyWith(icons: const []));
+      ring = [
+        for (var through in [0.5, 0.75, 0.98]) await strongest(bare, through),
       ];
     });
 
-    expect(ink[1], greaterThan(400),
-        reason: "nothing was drawn in the middle of the life: $ink");
-    expect(ink[0], lessThan(ink[1] ~/ 4),
-        reason: "pictures moved back before the start were drawn anyway: $ink");
-    expect(strength[0], greaterThan(150));
-    expect(strength[1], lessThan(strength[0] ~/ 2),
-        reason: "they were still at full strength at the end: $strength");
+    expect(icon[0], lessThan(20),
+        reason: "a picture half a life behind was already arriving: $icon");
+    expect(icon[1], greaterThan(icon[0] + 60),
+        reason: "it never arrived: $icon");
+    expect(icon[2], greaterThan(200),
+        reason: "it was cut off with the ring instead of living on: $icon");
+    // Which is the opposite of what the ring is doing by then.
+    expect(ring[0], greaterThan(200));
+    expect(ring[2], lessThan(60),
+        reason: "the ring was supposed to be leaving: $ring");
+  });
+
+  testWidgets("a picture on no ring is tied to the movement", (tester) async {
+    // Nought rings. It has no radius to be sized against and no life to
+    // inherit, so it takes the page and the run: which, with both of its
+    // fades held, is a picture that is simply there while rings come and go.
+    late List<int> fading;
+    late List<int> steady;
+    late int gone;
+    late int smaller;
+    await tester.runAsync(() async {
+      ProceduralSpec at(RingIcon icon, {int times = 0}) => _spec(
+              rings: RingSpec(
+            count: 3,
+            width: 0.0005,
+            from: 0.4,
+            to: 0.4,
+            fadeIn: 0.3,
+            fadeOut: 0.3,
+            icons: [icon],
+          )).copyWith(
+              loopTimes: times,
+              passFrames: 48,
+              foreground: const Color(0xFF000000),
+              accent: const Color(0xFF000000));
+
+      const loose = RingIcon(asset: "badge", ring: 0, size: 0.4);
+      Future<int> strongest(ProceduralSpec of, double through) async {
+        var marks = await _marks(of, time: proceduralRunSeconds(of) * through);
+        return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
+      }
+
+      // Inheriting the fades, it arrives and leaves over the run.
+      fading = [
+        for (var through in [0.02, 0.5, 0.99])
+          await strongest(at(loose), through),
+      ];
+      // Told to keep both of them, it is there throughout.
+      var held = loose.copyWith(holdIn: true, holdOut: true);
+      steady = [
+        for (var through in [0.02, 0.5, 0.99])
+          await strongest(at(held), through),
+      ];
+      // And the run is still a run: after the last of them, nothing. Counted
+      // in frames, which is what a run is measured in.
+      var once = at(held, times: 1);
+      var after = await _marks(once, time: 80 / 24, rate: 24);
+      gone = after.isEmpty ? 0 : after.map((m) => m.$3).reduce(math.max);
+
+      // Sized against the page rather than a radius, so the rings' own
+      // journey says nothing about how big it is.
+      var ink =
+          (await _marks(at(held), time: proceduralRunSeconds(at(held)) * 0.5))
+              .length;
+      smaller = (await _marks(at(held.copyWith(size: 0.2)),
+              time: proceduralRunSeconds(at(held)) * 0.5))
+          .length;
+      expect(ink, greaterThan(smaller * 2),
+          reason: "its size did not answer to the setting: $ink, $smaller");
+    });
+
+    expect(fading[1], greaterThan(200), reason: "it was never drawn: $fading");
+    expect(fading[0], lessThan(fading[1] ~/ 2),
+        reason: "it did not arrive over the run: $fading");
+    expect(fading[2], lessThan(fading[1] ~/ 2),
+        reason: "it did not leave over the run: $fading");
+
+    for (var seen in steady) {
+      expect(seen, greaterThan(200),
+          reason: "holding both fades should leave it there: $steady");
+    }
+    expect(gone, 0, reason: "the run was over and it was still on the page");
+  });
+
+  testWidgets("a picture goes when the ring carrying it has gone",
+      (tester) async {
+    // The other half of a run that is over. A picture is drawn even where its
+    // ring is too faint to see -- it may have been told to keep its own
+    // strength -- so what stops it is the ring's age rather than the ring's
+    // fade: once that ring has lived its life, the picture has too.
+    late int during;
+    late int after;
+    await tester.runAsync(() async {
+      var spec = _spec(
+          rings: const RingSpec(
+        count: 2,
+        width: 0.0005,
+        from: 0.2,
+        to: 0.4,
+        icons: [RingIcon(asset: "badge", ring: 1, size: 0.5)],
+      )).copyWith(
+          loopTimes: 1,
+          passFrames: 48,
+          foreground: const Color(0xFF000000),
+          accent: const Color(0xFF000000));
+      during = (await _marks(spec, time: 20 / 24, rate: 24)).length;
+      after = (await _marks(spec, time: 80 / 24, rate: 24)).length;
+    });
+
+    expect(during, greaterThan(100), reason: "it was never drawn at all");
+    expect(after, 0, reason: "the run was over and the picture was still up");
   });
 
   test("a run lasts until the ring at the back has died", () {

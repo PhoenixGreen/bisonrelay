@@ -135,6 +135,11 @@ class RingIcon {
   /// ring is which of them carries it, counted the way people count -- one
   /// is the first ring. Beyond the last, it is carried by no ring and drawn
   /// by nothing.
+  ///
+  /// Nought is on no ring on purpose: the picture is tied to the movement
+  /// instead. It lives the length of one run rather than of a ring and is
+  /// sized against the page rather than a radius, which -- with both of its
+  /// fades held -- is a picture that is simply there while rings come and go.
   final int ring;
 
   final RingIconPlace place;
@@ -312,7 +317,7 @@ class RingIcon {
 
   factory RingIcon.fromJson(Map<String, dynamic> json) => RingIcon(
         asset: jsonString(json["asset"], ""),
-        ring: jsonInt(json["ring"], 1).clamp(1, 200),
+        ring: jsonInt(json["ring"], 1).clamp(0, 200),
         place: RingIconPlace.fromName(json["place"] as String?),
         count: jsonInt(json["count"], 6).clamp(1, 60),
         size: jsonDouble(json["size"], 0.5).clamp(0.01, 4),

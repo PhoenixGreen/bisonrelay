@@ -937,11 +937,13 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     // opened -- and looped -- on rings that were simply there. See
     // RingSpec.buildUp.
     var age = ring.ageOf(i, moving, jitter: jitter);
-    if (ring.buildUp && spec.animated && age < 0) continue;
-    // And dead stays dead within a run: a ring that has finished its life is
-    // not born again, so the end of a run is an empty page rather than the
-    // set going round one more time.
-    if (spec.inRuns && age > 1) continue;
+    // Whether something of this ring's age is alive: born, and not yet gone.
+    // Asked of the pictures it carries as well as of the ring, because a
+    // picture moved through the life has an age of its own -- one moved back
+    // is still going when the ring that carries it has gone, and cutting it
+    // off there is a picture that never fades out.
+    bool alive(double at) =>
+        !(ring.buildUp && spec.animated && at < 0) && !(spec.inRuns && at > 1);
     var through = ring.spread(i, moving, jitter: jitter);
 
     // Bunched towards one end or the other. A half is even. Written as a
@@ -965,11 +967,9 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     // have been told to keep its own strength, or to sit out the ring's
     // arrival, and then the ring being invisible says nothing about the
     // picture. See RingIcon.opacity and holdIn.
-    var showRing = alpha > 0.004;
-    var carries = ring.icons.any((carried) =>
-        carried.ring - 1 == i &&
-        carried.asset.isNotEmpty &&
-        (carried.opacity != null || carried.holdIn || carried.holdOut));
+    var showRing = alpha > 0.004 && alive(age);
+    var carries = ring.icons
+        .any((carried) => carried.ring - 1 == i && carried.asset.isNotEmpty);
     if (!showRing && !carries) continue;
     if (hash(spec.seed, i, 3) > spec.density * 1.6) continue;
 
@@ -1010,10 +1010,172 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     // arrives, swells and dissolves with the ring around it.
     for (var icon in ring.icons) {
       if (icon.ring - 1 != i || icon.asset.isEmpty) continue;
-      _drawRingIcons(canvas, images, icon, spec, ring, i, centre, through,
+      _drawRingIcons(canvas, images, icon, spec, ring, i, centre, age, alive,
           radiusAt, spec.intensity.clamp(0.0, 1.0), unit, round);
     }
   }
+
+  // And whatever is on no ring at all, which is tied to the movement
+  // instead: it lives the length of one run rather than of a ring, is sized
+  // against the page rather than against a radius, and sits where the rings
+  // come from. Told to keep both of its fades, it is simply there --
+  // a badge behind a set of rings that come and go. See RingIcon.ring.
+  for (var icon in ring.icons) {
+    if (icon.ring > 0 || icon.asset.isEmpty) continue;
+    var span = proceduralRunSeconds(spec);
+    var over = !spec.animated || span <= 0 ? 0.0 : t / span;
+    if (spec.inRuns && over > 1) continue;
+    var within = over % 1;
+    _drawLooseIcon(
+        canvas,
+        images,
+        icon,
+        spec,
+        ring,
+        centre,
+        within < 0 ? within + 1 : within,
+        spec.intensity.clamp(0.0, 1.0),
+        unit,
+        round);
+  }
+}
+
+/// _pictures is what an icon may be drawn as, ready to stamp.
+///
+/// Several of them, with how often each comes up: a picture at two against
+/// one is taken twice as often, and one at nought never. Each asset is
+/// resolved once however many places take it.
+class _Pictures {
+  final CanvasImageSource images;
+  final List<(String, double)> choices;
+  final double weighed;
+  final Map<String, (CanvasVector?, ui.Image?, Size)?> made = {};
+
+  _Pictures._(this.images, this.choices, this.weighed);
+
+  static _Pictures? of(CanvasImageSource? images, RingIcon icon) {
+    if (images == null) return null;
+    var choices = <(String, double)>[
+      if (icon.asset.isNotEmpty) (icon.asset, icon.weight.clamp(0.0, 100.0)),
+      for (var pick in icon.also)
+        if (pick.asset.isNotEmpty) (pick.asset, pick.weight.clamp(0.0, 100.0)),
+    ];
+    var weighed = choices.fold(0.0, (sum, c) => sum + c.$2);
+    if (choices.isEmpty || weighed <= 0) return null;
+    return _Pictures._(images, choices, weighed);
+  }
+
+  /// chosen is the picture for one place, by weight.
+  String chosen(double roll) {
+    var want = roll.clamp(0.0, 0.999999) * weighed;
+    for (var (asset, weight) in choices) {
+      want -= weight;
+      if (want < 0) return asset;
+    }
+    return choices.last.$1;
+  }
+
+  (CanvasVector?, ui.Image?, Size)? drawing(String asset) =>
+      made.putIfAbsent(asset, () {
+        var vector = images.resolveVector(asset);
+        var bitmap = vector == null
+            ? images.resolve(asset, const BackgroundRemoval())
+            : null;
+        var natural = vector?.size ??
+            (bitmap == null
+                ? Size.zero
+                : Size(bitmap.width.toDouble(), bitmap.height.toDouble()));
+        if (natural.width <= 0 || natural.height <= 0) return null;
+        return (vector, bitmap, natural);
+      });
+}
+
+/// _stamp draws one picture at one place.
+void _stamp(ui.Canvas canvas, _Pictures from, RingIcon icon, String asset,
+    Offset at, double turn, double side, double alpha) {
+  if (side < 1 || alpha <= 0.004) return;
+  var drawing = from.drawing(asset);
+  if (drawing == null) return;
+  var (vector, bitmap, natural) = drawing;
+
+  // One colour rather than its own, where that has been asked for: a line
+  // drawing carried by a ring usually wants to be the colour of the ring
+  // rather than whatever it was drawn in. srcIn keeps the picture's shape and
+  // replaces everything inside it.
+  var paint = Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
+  if (icon.tinted) {
+    // The colour at its own strength, not at the picture's. Both the filter
+    // and the paint carry an alpha, and they multiply: putting the fade in
+    // the filter as well drew a tinted picture at the square of it -- half
+    // strength came out a quarter, and anywhere a ring was faint the colour
+    // switched the picture off.
+    paint.colorFilter = ui.ColorFilter.mode(icon.tint, BlendMode.srcIn);
+  }
+  // Kept in proportion and fitted to a square of the wanted size, which is
+  // what makes two icons of different shapes look like the same size.
+  var scale = side / math.max(natural.width, natural.height);
+
+  canvas.save();
+  canvas.translate(at.dx, at.dy);
+  if (turn != 0) canvas.rotate(turn);
+  canvas.scale(scale);
+  canvas.translate(-natural.width / 2, -natural.height / 2);
+  if (vector != null) {
+    // A drawing has its own colours and its own transparency, so the strength
+    // and the tint are applied to the layer it is drawn into.
+    canvas.saveLayer(Rect.fromLTWH(0, 0, natural.width, natural.height), paint);
+    canvas.drawPicture(vector.picture);
+    canvas.restore();
+  } else {
+    canvas.drawImage(bitmap!, Offset.zero, paint);
+  }
+  canvas.restore();
+}
+
+/// _iconStrength is how strongly one of a ring's pictures is drawn at a
+/// moment of the ring's life: its own if it has been given one, and
+/// otherwise the ring's, with whichever of the two ends it has been told to
+/// sit out.
+double _iconStrength(RingIcon icon, RingSpec ring, double at) =>
+    icon.opacity ??
+    ring.alphaAt(at, arriving: !icon.holdIn, leaving: !icon.holdOut);
+
+/// _iconSide is a wanted size held between whatever limits it has been
+/// given, as fractions of the page rather than of the ring it is on: a
+/// picture grows with its ring, and what that means without a limit is that
+/// it grows out of the picture.
+double _iconSide(RingIcon icon, double side, double unit) {
+  if (icon.smallest != null) side = math.max(side, icon.smallest! * unit);
+  if (icon.largest != null) side = math.min(side, icon.largest! * unit);
+  return side;
+}
+
+/// _drawLooseIcon draws a picture that is on no ring.
+///
+/// Everything a ring would have lent it comes from the movement instead: its
+/// moment is how far through a run the pattern is, and its size is a fraction
+/// of the page. Which is what makes "on ring: none", with both of its fades
+/// held, a picture that is simply there for the whole animation -- a badge
+/// behind rings that come and go.
+void _drawLooseIcon(
+    ui.Canvas canvas,
+    CanvasImageSource? images,
+    RingIcon icon,
+    ProceduralSpec spec,
+    RingSpec ring,
+    Offset centre,
+    double through,
+    double strength,
+    double unit,
+    int round) {
+  if (icon.firstRunOnly && round > 0) return;
+  var from = _Pictures.of(images, icon);
+  if (from == null) return;
+
+  var alpha = (_iconStrength(icon, ring, through) * strength).clamp(0.0, 1.0);
+  var side = _iconSide(icon, unit * icon.size.clamp(0.01, 4.0), unit);
+  _stamp(canvas, from, icon, from.chosen(hash(spec.seed + 23, 0, 99)), centre,
+      icon.turn * math.pi / 180, side, alpha);
 }
 
 /// _drawRingIcons puts one icon setting's pictures on a ring.
@@ -1031,168 +1193,87 @@ void _drawRingIcons(
     RingSpec ring,
     int index,
     Offset centre,
-    double through,
+    double age,
+    bool Function(double) alive,
     double Function(double) radiusAt,
     double strength,
     double unit,
     int round) {
-  if (images == null || strength <= 0.004) return;
+  if (strength <= 0.004) return;
   // Said once. A picture that belongs to the opening of a thing is wrong on
   // every run after it.
   if (icon.firstRunOnly && round > 0) return;
+  var from = _Pictures.of(images, icon);
+  if (from == null) return;
 
-  // The pictures this one may be drawn as, and how often each comes up.
-  var choices = <(String, double)>[
-    if (icon.asset.isNotEmpty) (icon.asset, icon.weight.clamp(0.0, 100.0)),
-    for (var pick in icon.also)
-      if (pick.asset.isNotEmpty) (pick.asset, pick.weight.clamp(0.0, 100.0)),
-  ];
-  var weighed = choices.fold(0.0, (sum, c) => sum + c.$2);
-  if (choices.isEmpty || weighed <= 0) return;
-
-  /// picture is one of them, and what it is drawn from: the same asset is
-  /// asked for once however many places take it.
-  var made = <String, (CanvasVector?, ui.Image?, Size)?>{};
-  (CanvasVector?, ui.Image?, Size)? picture(String asset) =>
-      made.putIfAbsent(asset, () {
-        var vector = images.resolveVector(asset);
-        var bitmap = vector == null
-            ? images.resolve(asset, const BackgroundRemoval())
-            : null;
-        var natural = vector?.size ??
-            (bitmap == null
-                ? Size.zero
-                : Size(bitmap.width.toDouble(), bitmap.height.toDouble()));
-        if (natural.width <= 0 || natural.height <= 0) return null;
-        return (vector, bitmap, natural);
-      });
-
-  /// chosen is the picture for one place around the ring, by weight: at two
-  /// against one, a picture comes up twice as often.
-  String chosen(double roll) {
-    var want = roll.clamp(0.0, 0.999999) * weighed;
-    for (var (asset, weight) in choices) {
-      want -= weight;
-      if (want < 0) return asset;
-    }
-    return choices.last.$1;
+  /// moment is where a picture of this age is in the ring's life, or null
+  /// where it is not yet born or already gone. A picture moved through the
+  /// life has an age of its own: held at the two ends instead, one moved back
+  /// sat at the first instant of the life for as long as its offset lasted,
+  /// which is a picture that never arrives and never leaves.
+  double? moment(double drift) {
+    var at = age + drift;
+    if (!alive(at)) return null;
+    var wrapped = at % 1;
+    return wrapped < 0 ? wrapped + 1 : wrapped;
   }
 
-  /// showing is how strongly the ring is drawn at a moment of its life, with
-  /// whichever of its two ends this picture has been told to sit out.
-  double showing(double at) =>
-      icon.opacity ??
-      ring.alphaAt(at, arriving: !icon.holdIn, leaving: !icon.holdOut);
-
-  /// held keeps a picture between the two sizes it has been given, as
-  /// fractions of the page rather than of the ring it is on: an icon grows
-  /// with its ring, and what that means without a limit is that it grows out
-  /// of the picture.
-  double held(double side) {
-    if (icon.smallest != null) side = math.max(side, icon.smallest! * unit);
-    if (icon.largest != null) side = math.min(side, icon.largest! * unit);
-    return side;
-  }
-
-  // Where each one is, how big, how turned, how strong, and which picture.
-  var each = <(Offset, double, double, double, String)>[];
   if (icon.place == RingIconPlace.middle) {
-    each.add((
-      centre,
-      icon.turn * math.pi / 180,
-      held(radiusAt(through) * icon.size.clamp(0.01, 4.0)),
-      showing(through) * strength,
-      chosen(hash(spec.seed + 23, index, 99)),
-    ));
-  } else {
-    var many = icon.count.clamp(1, 60);
-    for (var n = 0; n < many; n++) {
-      // Its own roll for each of them, and a different one per picture:
-      // rolled once for the set, every picture would move together, which is
-      // the thing being fixed rather than a cheaper way of doing it.
-      double roll(int of) => hash(spec.seed + 23, index * 64 + of, n);
+    var mine = moment(0);
+    if (mine == null) return;
+    var side =
+        _iconSide(icon, radiusAt(mine) * icon.size.clamp(0.01, 4.0), unit);
+    var alpha = (_iconStrength(icon, ring, mine) * strength).clamp(0.0, 1.0);
+    _stamp(canvas, from, icon, from.chosen(hash(spec.seed + 23, index, 99)),
+        centre, icon.turn * math.pi / 180, side, alpha);
+    return;
+  }
 
-      // Ahead of its ring or behind it, which is what takes an icon off the
-      // line: it is placed by the ring's own journey at its own moment, so
-      // it sits at the radius the ring had then -- and arrives and leaves at
-      // that moment too.
-      var mine = through + icon.driftWhen.at(roll(0));
-      // Outside the ring's life is not yet born, or already gone. Held at the
-      // two ends instead -- which is what clamping it did -- a picture moved
-      // earlier sat at the first instant of the life for as long as the
-      // offset lasted, at whatever strength that instant has: with no fade
-      // at that end, a picture that never arrived and never left.
-      if (mine < 0 || mine > 1) continue;
-      var radius = radiusAt(mine);
-      if (radius <= 0.5) continue;
+  var many = icon.count.clamp(1, 60);
+  for (var n = 0; n < many; n++) {
+    // Its own roll for each of them, and a different one per picture: rolled
+    // once for the set, every picture would move together, which is the thing
+    // being fixed rather than a cheaper way of doing it.
+    double roll(int of) => hash(spec.seed + 23, index * 64 + of, n);
 
-      // Round from where it would have sat, in gaps between one and the
-      // next, so the scatter is the same whatever the count.
-      var gap = 2 * math.pi / many;
-      var angle = n * gap + icon.driftWhere.at(roll(1)) * gap;
+    // Ahead of its ring or behind it, which is what takes a picture off the
+    // line: it is placed by the ring's own journey at its own moment, so it
+    // sits at the radius the ring had then -- and arrives and leaves at that
+    // moment too.
+    var mine = moment(icon.driftWhen.at(roll(0)));
+    if (mine == null) continue;
+    var radius = radiusAt(mine);
+    if (radius <= 0.5) continue;
 
-      var side = held(radius *
-          (icon.size * (1 + icon.driftSize.at(roll(2)))).clamp(0.01, 4.0));
-      if (side < 1) continue;
+    // Round from where it would have sat, in gaps between one and the next,
+    // so the scatter is the same whatever the count.
+    var gap = 2 * math.pi / many;
+    var angle = n * gap + icon.driftWhere.at(roll(1)) * gap;
 
-      // A share of what the ring is drawn at, so a picture never outlives
-      // the ring carrying it: whatever share of nothing is nothing.
-      var alpha = (showing(mine) * strength * icon.driftFade.at(roll(4)))
-          .clamp(0.0, 1.0);
-      if (alpha <= 0.004) continue;
+    var side = _iconSide(
+        icon,
+        radius *
+            (icon.size * (1 + icon.driftSize.at(roll(2)))).clamp(0.01, 4.0),
+        unit);
 
-      each.add((
+    // A share of what the ring is drawn at, so a picture never outlives the
+    // ring carrying it: whatever share of nothing is nothing.
+    var alpha = (_iconStrength(icon, ring, mine) *
+            strength *
+            icon.driftFade.at(roll(4)))
+        .clamp(0.0, 1.0);
+
+    _stamp(
+        canvas,
+        from,
+        icon,
+        from.chosen(roll(5)),
         centre + Offset(math.cos(angle), math.sin(angle)) * radius,
         angle +
             math.pi / 2 +
             (icon.turn + icon.driftTurn.at(roll(3))) * math.pi / 180,
         side,
-        alpha,
-        chosen(roll(5)),
-      ));
-    }
-  }
-
-  for (var (at, turn, side, alpha, asset) in each) {
-    if (side < 1 || alpha <= 0.004) continue;
-    var from = picture(asset);
-    if (from == null) continue;
-    var (vector, bitmap, natural) = from;
-
-    // One colour rather than its own, where that has been asked for: a line
-    // drawing carried by a ring usually wants to be the colour of the ring
-    // rather than whatever it was drawn in. srcIn keeps the picture's shape
-    // and replaces everything inside it.
-    var paint = Paint()
-      ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
-    if (icon.tinted) {
-      // The colour at its own strength, not at the picture's. Both the filter
-      // and the paint carry an alpha, and they multiply: putting the fade in
-      // the filter as well drew a tinted picture at the square of it -- half
-      // strength came out a quarter, and anywhere a ring was faint the colour
-      // switched the picture off.
-      paint.colorFilter = ui.ColorFilter.mode(icon.tint, BlendMode.srcIn);
-    }
-    // Kept in proportion and fitted to a square of the wanted size, which is
-    // what makes two icons of different shapes look like the same size.
-    var scale = side / math.max(natural.width, natural.height);
-
-    canvas.save();
-    canvas.translate(at.dx, at.dy);
-    if (turn != 0) canvas.rotate(turn);
-    canvas.scale(scale);
-    canvas.translate(-natural.width / 2, -natural.height / 2);
-    if (vector != null) {
-      // A drawing has its own colours and its own transparency, so the
-      // strength and the tint are applied to the layer it is drawn into.
-      canvas.saveLayer(
-          Rect.fromLTWH(0, 0, natural.width, natural.height), paint);
-      canvas.drawPicture(vector.picture);
-      canvas.restore();
-    } else {
-      canvas.drawImage(bitmap!, Offset.zero, paint);
-    }
-    canvas.restore();
+        alpha);
   }
 }
 
