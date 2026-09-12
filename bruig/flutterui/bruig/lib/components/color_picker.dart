@@ -246,26 +246,45 @@ const double _pickerColumn = 300;
 
 /// _Spot is one of the five colours in the palette mode.
 class _Spot {
+  /// hue and sat are where the colour sits on the wheel -- a turn and a
+  /// distance out -- and third is its place on whatever axis the notation in
+  /// hand has no room for on the wheel.
+  ///
+  /// Not a colour: what these three mean is the notation's business, so a
+  /// palette in LAB is five places on the a-b plane rather than five HSV
+  /// colours that happen to have been drawn there.
   final double hue;
   final double sat;
-  final double val;
-  const _Spot({required this.hue, required this.sat, required this.val});
-
-  Color get color => HSVColor.fromAHSV(1, hue, sat, val).toColor();
+  final double third;
+  const _Spot({required this.hue, required this.sat, required this.third});
 }
 
 class _AppColorPickerState extends State<AppColorPicker> {
-  // Hue, saturation, value and alpha rather than a Color.
+  /// _rgb is the colour the picker is answering with, without its
+  /// transparency -- which is held beside it, because a colour that has been
+  /// made see-through has no way to say how see-through it was meant to be
+  /// once it is fully so.
+  Color _rgb = const Color(0xFF000000);
+  double _alpha = 1;
+
+  /// _opened is the colour the picker was given to start with, which is what
+  /// reset goes back to. Not widget.color: every caller feeds what the picker
+  /// says back into it, so by the time reset is pressed that is whatever was
+  /// last chosen -- which is the thing being reset away from.
+  /// Read in initState rather than lazily: a late final that is first
+  /// touched when reset is pressed would be initialised from whatever the
+  /// colour is by then, which is the opposite of what it is for.
+  late final Color _opened;
+
+  // Where the handle sits on the wheel: a turn and a distance out.
   //
-  // The colour is what comes *out* of these. Held the other way round -- the
-  // colour kept and the three numbers worked out from it on every build --
-  // black has no hue and no saturation to work out, so dragging the hue
-  // slider on a black gave black back, the slider snapped home, and the
-  // picker looked broken until something colourful was chosen by hand.
+  // Held rather than worked out from the colour, because a colour does not
+  // always say where it was picked from -- a black is every hue, and in LAB
+  // or CMYK the wheel's own coordinates are not the colour's saturation at
+  // all. Worked out on every build, the handle creeps as it is dragged and
+  // the hue slider does nothing on a black.
   double _hue = 0;
   double _sat = 0;
-  double _val = 0;
-  double _alpha = 1;
 
   ColorPickerMode _mode = ColorPickerMode.sliders;
   ColorFormat _format = ColorFormat.hex;
@@ -281,6 +300,12 @@ class _AppColorPickerState extends State<AppColorPicker> {
   double _leadVal = 1;
   List<_Spot> _spots = const [];
   int _picked = 0;
+
+  /// _locked is which of the five are being kept while the rest are worked
+  /// on. A locked colour is not moved by a change of harmony, by the handle
+  /// on the rim, or by the brightness under it -- which is what makes a
+  /// palette something that can be arrived at one colour at a time.
+  List<bool> _locked = List.filled(5, false);
 
   /// _grabbed is which handle a drag on the palette wheel has hold of, or -1
   /// for the one outside the disc that moves them all.
@@ -299,12 +324,23 @@ class _AppColorPickerState extends State<AppColorPicker> {
   double _fz = 0;
   double _fw = 0;
 
+  /// _third is the axis the wheel and the palette have no room for, in
+  /// whatever the notation in hand calls it: brightness in hex, lightness in
+  /// HSL, how much black ink in CMYK, L in LAB, and the level itself in a
+  /// greyscale.
+  ///
+  /// Held for the same reason the field's numbers are: a wheel says which
+  /// colour and how much of it, and the third number has to live somewhere
+  /// that a drag round the wheel does not disturb.
+  double _third = 1;
+
   final TextEditingController _text = TextEditingController();
   final FocusNode _textFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
+    _opened = widget.color;
     _take(widget.color);
     _readField();
     _leadFromCurrent();
@@ -336,7 +372,9 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   /// _take reads a colour in from outside, keeping what it cannot say.
   void _take(Color color) {
-    var hsv = HSVColor.fromColor(Color(color.toARGB32()).withAlpha(255));
+    _rgb = Color(color.toARGB32()).withAlpha(255);
+    _alpha = color.a;
+    var hsv = HSVColor.fromColor(_rgb);
     // A colour with no saturation or no brightness cannot say what hue it is,
     // and a black cannot say how saturated it is: those come back as nought
     // from the conversion whatever the slider was pointing at. Keeping the
@@ -344,33 +382,140 @@ class _AppColorPickerState extends State<AppColorPicker> {
     // until a colour had been picked out of the square.
     if (hsv.saturation > 0 && hsv.value > 0) _hue = hsv.hue;
     if (hsv.value > 0) _sat = hsv.saturation;
-    _val = hsv.value;
-    _alpha = color.a;
     _write();
   }
 
   /// _tookFromOutside is _take followed by re-reading where that colour sits
-  /// in the field, for every way a colour can arrive that is not a drag on
-  /// the field itself.
+  /// on every surface the picker draws, for each of the ways a colour can
+  /// arrive that is not a drag on one of them.
   void _tookFromOutside(Color color) {
     _take(color);
+    _readWheel();
+    _readThird();
     _readField();
   }
 
-  Color get _current =>
-      HSVColor.fromAHSV(_alpha.clamp(0, 1), _hue, _sat, _val).toColor();
-
-  /// _shown is a colour as this picker draws it: itself, or its brightness
-  /// alone where the notation in hand is a greyscale.
-  Color _shown(Color color) {
-    if (_format != ColorFormat.grey) return color;
-    var level = greyOf(color).round().clamp(0, 255);
-    return Color.fromARGB(255, level, level, level);
+  /// _readWheel works out where the colour in hand sits on the wheel of the
+  /// notation in hand: the two are the same question only where the wheel is
+  /// an HSV wheel.
+  void _readWheel() {
+    var (hue, sat) = _wheelOf(_current);
+    _hue = hue;
+    _sat = sat;
   }
+
+  /// _wheelOf is where a colour sits on the wheel of the notation in hand.
+  /// The hue it gives back is the one already held where the colour has none
+  /// of its own -- a black, a grey, anything with no chroma in it.
+  (double, double) _wheelOf(Color colour) {
+    var hue = _hue;
+    var sat = _sat;
+    switch (_format) {
+      case ColorFormat.hex:
+      case ColorFormat.cmyk:
+        var hsv = HSVColor.fromColor(colour);
+        if (hsv.saturation > 0 && hsv.value > 0) hue = hsv.hue;
+        if (hsv.value > 0) sat = hsv.saturation;
+      case ColorFormat.hsl:
+        var hsl = HSLColor.fromColor(colour);
+        if (hsl.saturation > 0) hue = hsl.hue;
+        sat = hsl.saturation;
+      case ColorFormat.lab:
+        var (_, a, b) = toLab(colour);
+        var chroma = math.sqrt(a * a + b * b);
+        if (chroma > 0.5) {
+          hue = (math.atan2(b, a) * 180 / math.pi + 360) % 360;
+        }
+        sat = (chroma / 110).clamp(0.0, 1.0);
+      case ColorFormat.grey:
+        sat = 0;
+    }
+    return (hue, sat);
+  }
+
+  Color get _current => _rgb.withValues(alpha: _alpha.clamp(0, 1));
+
+  /// _val is how bright the colour in hand is, for the places that want the
+  /// number rather than the colour.
+  double get _val => HSVColor.fromColor(_rgb).value;
 
   /// _pure is the colour at this hue, at full saturation and brightness: what
   /// the shade square is painted with and what the sliders point at.
   Color get _pure => HSVColor.fromAHSV(1, _hue, 1, 1).toColor();
+
+  /// _colorAt is the colour a turn of the wheel and a distance out from its
+  /// middle stand for, at a given third axis -- in the space the notation in
+  /// hand works in.
+  ///
+  /// The wheel is painted with this and read with it, so what is picked is
+  /// what was shown. Told to work in LAB, the wheel really is the a-b plane
+  /// at a lightness; in CMYK the distance out is how much ink and the third
+  /// axis is the black; in a greyscale there is no colour on it at all.
+  Color _colorAt(double hue, double sat, double third) {
+    switch (_format) {
+      case ColorFormat.hex:
+        return HSVColor.fromAHSV(1, hue, sat, third).toColor();
+      case ColorFormat.hsl:
+        return HSLColor.fromAHSL(1, hue, sat, third).toColor();
+      case ColorFormat.cmyk:
+        // The inks of the colour at this turn, with the black from the
+        // third axis: what a printer would mix to reach it.
+        var (c, m, y, _) = toCmyk(HSVColor.fromAHSV(1, hue, sat, 1).toColor());
+        return fromCmyk(c, m, y, 1 - third);
+      case ColorFormat.lab:
+        var angle = hue * math.pi / 180;
+        var chroma = sat * 110;
+        return fromLab(
+            third * 100, math.cos(angle) * chroma, math.sin(angle) * chroma);
+      case ColorFormat.grey:
+        var level = (third * 255).round().clamp(0, 255);
+        return Color.fromARGB(255, level, level, level);
+    }
+  }
+
+  /// _wheelColor is that colour at whatever the third axis is set to now.
+  Color _wheelColor(double hue, double sat) => _colorAt(hue, sat, _third);
+
+  /// _thirdName is what this notation calls its third axis, for the slider
+  /// that sets it.
+  String get _thirdName => switch (_format) {
+        ColorFormat.hex => "Brightness",
+        ColorFormat.hsl => "Lightness",
+        ColorFormat.cmyk => "Ink",
+        ColorFormat.lab => "Lightness",
+        ColorFormat.grey => "Level",
+      };
+
+  /// _readThird works out where the third axis stands for the colour in
+  /// hand, so that a notation opens where the last one left off.
+  void _readThird() => _third = _thirdOf(_current);
+
+  /// _thirdOf is where a colour sits on the axis the wheel has no room for.
+  double _thirdOf(Color colour) {
+    return switch (_format) {
+      ColorFormat.hex => HSVColor.fromColor(colour).value,
+      ColorFormat.hsl => HSLColor.fromColor(colour).lightness,
+      ColorFormat.cmyk => 1 - toCmyk(colour).$4,
+      ColorFormat.lab => (toLab(colour).$1 / 100).clamp(0.0, 1.0),
+      ColorFormat.grey => (greyOf(colour) / 255).clamp(0.0, 1.0),
+    };
+  }
+
+  /// _fromWheel takes the colour the wheel is showing at a turn and a
+  /// distance out, and keeps those two as where the handle is.
+  ///
+  /// The wheel's own coordinates are the truth here, not the colour they
+  /// make: in LAB and CMYK the colour cannot be asked where it came from
+  /// exactly, so a handle placed from it would walk as it was dragged.
+  void _fromWheel(double hue, double sat) {
+    setState(() {
+      _hue = hue;
+      _sat = sat;
+      _rgb = _wheelColor(hue, sat);
+      _readField();
+      _say();
+    });
+  }
 
   void _say() {
     _write();
@@ -383,29 +528,44 @@ class _AppColorPickerState extends State<AppColorPicker> {
   void _leadFromCurrent() {
     _leadHue = _hue;
     _leadSat = _sat <= 0 ? 0.8 : _sat;
-    _leadVal = _val <= 0 ? 0.9 : _val;
+    _leadVal = _third <= 0 ? 0.9 : _third;
+    _locked = List.filled(5, false);
     _spread();
     _picked = 0;
   }
 
-  /// _spread lays the five out from the colour they are led by.
+  /// _spread lays the five out from the colour they are led by, leaving
+  /// alone any that have been locked.
   void _spread() {
+    var was = _spots;
     _spots = [
-      for (var (turn, sat, val) in _harmony.places)
-        _Spot(
-          hue: (_leadHue + turn) % 360,
-          sat: (_leadSat * sat).clamp(0.0, 1.0),
-          val: (_leadVal * val).clamp(0.0, 1.0),
-        ),
+      for (var (i, (turn, sat, val)) in _harmony.places.indexed)
+        if (i < was.length && i < _locked.length && _locked[i])
+          was[i]
+        else
+          _Spot(
+            hue: (_leadHue + turn) % 360,
+            sat: (_leadSat * sat).clamp(0.0, 1.0),
+            third: (_leadVal * val).clamp(0.0, 1.0),
+          ),
     ];
   }
+
+  /// _spotColor is what one of the five looks like, in the notation in hand.
+  Color _spotColor(_Spot spot) => _colorAt(spot.hue, spot.sat, spot.third);
 
   /// _lead re-lays the set from one of its handles: a harmony is a shape, and
   /// moving one corner of it moves the shape.
   void _lead(int index, double hue, double sat) {
+    // A locked colour stays where it is, whichever way it is pulled: it is
+    // being kept while the rest of the set is worked out around it.
+    if (index < _locked.length && _locked[index]) {
+      setState(() => _pick(index));
+      return;
+    }
     if (_harmony == ColorHarmony.custom) {
       var next = [..._spots];
-      next[index] = _Spot(hue: hue, sat: sat, val: _spots[index].val);
+      next[index] = _Spot(hue: hue, sat: sat, third: _spots[index].third);
       setState(() {
         _spots = next;
         _pick(index);
@@ -422,21 +582,43 @@ class _AppColorPickerState extends State<AppColorPicker> {
     });
   }
 
+  /// _setSpot puts a colour into one of the five, by hand.
+  ///
+  /// What that means depends on which one: a locked colour, or any colour in
+  /// a custom set, is simply set; one of an arrangement re-lays the
+  /// arrangement around itself, exactly as dragging its handle does. Typing a
+  /// hex into the second of a triad and having the other two stay where they
+  /// were would not be a triad any more.
+  void _setSpot(int index, Color colour) {
+    if (index < 0 || index >= _spots.length) return;
+    var (hue, sat) = _wheelOf(colour);
+    var third = _thirdOf(colour);
+    setState(() {
+      if (_harmony == ColorHarmony.custom ||
+          (index < _locked.length && _locked[index])) {
+        var next = [..._spots];
+        next[index] = _Spot(hue: hue, sat: sat, third: third);
+        _spots = next;
+        _pick(index);
+        return;
+      }
+      var (turn, satOf, valOf) = _harmony.places[index];
+      var led = (hue - turn) % 360;
+      _leadHue = led < 0 ? led + 360 : led;
+      if (satOf > 0) _leadSat = (sat / satOf).clamp(0.0, 1.0);
+      if (valOf > 0) _leadVal = (third / valOf).clamp(0.0, 1.0);
+      _spread();
+      _pick(index);
+    });
+  }
+
   /// _pick answers with one of the five.
   void _pick(int index) {
     _picked = index.clamp(0, _spots.length - 1);
     var spot = _spots[_picked];
-    if (_format == ColorFormat.grey) {
-      // Working in greys, a palette is five brightnesses: the arrangement
-      // still decides them, and what comes out is how bright each one is.
-      _hue = spot.hue;
-      _sat = 0;
-      _val = (greyOf(spot.color) / 255).clamp(0.0, 1.0);
-    } else {
-      _hue = spot.hue;
-      _sat = spot.sat;
-      _val = spot.val;
-    }
+    _hue = spot.hue;
+    _sat = spot.sat;
+    _rgb = _colorAt(spot.hue, spot.sat, spot.third);
     _readField();
     _say();
   }
@@ -563,9 +745,44 @@ class _AppColorPickerState extends State<AppColorPicker> {
                   ),
                 ),
               ),
+            // Everything back to how the picker opened: the colour it was
+            // given, hex, the harmony it starts on, nothing locked. Three
+            // ways of choosing and five notations is a lot of state to have
+            // fiddled with, and the way out of a tangle should not be closing
+            // the dialog and opening it again.
+            InkWell(
+              key: const ValueKey("colorReset"),
+              borderRadius: BorderRadius.circular(4),
+              onTap: _reset,
+              child: Tooltip(
+                message: "Put every mode back to how it started",
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: theme.outlineVariant),
+                  ),
+                  child: Icon(Icons.restart_alt,
+                      size: 14, color: theme.onSurfaceVariant),
+                ),
+              ),
+            ),
           ],
         ),
       );
+
+  /// _reset puts the picker back to how it opened.
+  void _reset() {
+    setState(() {
+      _format = ColorFormat.hex;
+      _harmony = ColorHarmony.analogous;
+      _locked = List.filled(5, false);
+      _tookFromOutside(_opened);
+      _leadFromCurrent();
+      widget.onChanged(_current);
+    });
+  }
 
   /// _slidersMode is the field and the bars under it.
   ///
@@ -627,9 +844,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
               // handle is whatever the field now says there. The handle
               // itself does not move: a hue slider changes the colour, not
               // where in the square it was picked from.
-              var hsv = HSVColor.fromColor(_fieldColor(_fx, _fy));
-              if (hsv.value > 0) _sat = hsv.saturation;
-              _val = hsv.value;
+              _rgb = _fieldColor(_fx, _fy);
+              _readThird();
               _say();
             }),
             theme: theme,
@@ -703,28 +919,15 @@ class _AppColorPickerState extends State<AppColorPicker> {
       children: [
         Center(
           child: _Draggable(
-            onAt: (local, box, _) => setState(() {
+            onAt: (local, box, _) {
               var (hue, sat) = _wheelAt(local, box);
-              if (_format == ColorFormat.grey) {
-                // The wheel is drawn in greys, so what is picked off it is
-                // the grey that was under the pointer -- not the colour the
-                // wheel would have shown in another notation.
-                var under = HSVColor.fromAHSV(1, hue, sat, _val).toColor();
-                _sat = 0;
-                _val = (greyOf(under) / 255).clamp(0.0, 1.0);
-              } else {
-                _hue = hue;
-                _sat = sat;
-              }
-              _readField();
-              _say();
-            }),
+              _fromWheel(hue, sat);
+            },
             child: CustomPaint(
               key: const ValueKey("colorWheel"),
               size: Size(size, size),
               painter: _WheelPainter(
-                value: _val,
-                grey: _format == ColorFormat.grey,
+                at: _wheelColor,
                 marks: [(_hue, _sat, _current, true)],
               ),
             ),
@@ -733,13 +936,18 @@ class _AppColorPickerState extends State<AppColorPicker> {
         const SizedBox(height: 12),
         _labelledBar(
           theme: theme,
-          label: "Brightness",
+          label: _thirdName,
           key: "colorValue",
           width: width,
-          colors: [Colors.black, HSVColor.fromAHSV(1, _hue, _sat, 1).toColor()],
-          at: _val,
+          colors: [
+            _colorAt(_hue, _sat, 0),
+            _colorAt(_hue, _sat, 1),
+          ],
+          at: _third,
           onAt: (f) => setState(() {
-            _val = f;
+            _third = f;
+            _rgb = _wheelColor(_hue, _sat);
+            _readField();
             _say();
           }),
         ),
@@ -765,7 +973,10 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   /// _paletteMode is five colours at once.
   Widget _paletteMode(ColorScheme theme, double width) {
-    var size = math.min(width, 260.0);
+    // The disc itself the same size as the wheel mode's: the box is bigger by
+    // the margin the handle on the rim runs in, rather than the wheel being
+    // smaller by it.
+    var size = math.min(width, 260.0 + _wheelMargin * 2);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -794,15 +1005,18 @@ class _AppColorPickerState extends State<AppColorPicker> {
               key: const ValueKey("colorPaletteWheel"),
               size: Size(size, size),
               painter: _WheelPainter(
-                value: _leadVal,
-                grey: _format == ColorFormat.grey,
+                at: _wheelColor,
+                locked: {
+                  for (var i = 0; i < _locked.length; i++)
+                    if (_locked[i]) i,
+                },
                 ring: _leadHue,
                 marks: [
                   for (var i = 0; i < _spots.length; i++)
                     (
                       _spots[i].hue,
                       _spots[i].sat,
-                      _spots[i].color,
+                      _spotColor(_spots[i]),
                       i == _picked
                     ),
                 ],
@@ -842,31 +1056,61 @@ class _AppColorPickerState extends State<AppColorPicker> {
         ]),
         const SizedBox(height: 6),
         // The five, with the one being answered with ringed. Pressing one is
-        // how the picker is pointed at it.
+        // how the picker is pointed at it, and the padlock under it is how a
+        // colour is kept while the rest are still being worked on.
         Row(
           children: [
             for (var i = 0; i < _spots.length; i++)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 4),
-                  child: InkWell(
-                    key: ValueKey("paletteSpot$i"),
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: () => setState(() => _pick(i)),
-                    child: Container(
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color:
-                            _shown(_spots[i].color).withValues(alpha: _alpha),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        key: ValueKey("paletteSpot$i"),
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: i == _picked
-                              ? theme.primary
-                              : theme.outlineVariant,
-                          width: i == _picked ? 2 : 1,
+                        onTap: () => setState(() => _pick(i)),
+                        child: Container(
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color:
+                                _spotColor(_spots[i]).withValues(alpha: _alpha),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: i == _picked
+                                  ? theme.primary
+                                  : theme.outlineVariant,
+                              width: i == _picked ? 2 : 1,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      InkWell(
+                        key: ValueKey("paletteLock$i"),
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () => setState(() => _locked[i] = !_locked[i]),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Icon(
+                            _locked[i] ? Icons.lock : Icons.lock_open,
+                            size: 13,
+                            color: _locked[i]
+                                ? theme.primary
+                                : theme.onSurfaceVariant.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      // The colour itself, typed. A palette usually starts
+                      // from a colour somebody already has -- a brand, a
+                      // photograph, a page being matched -- and the way that
+                      // colour arrives is as six characters.
+                      _SpotHex(
+                        key: ValueKey("paletteHex$i"),
+                        color: _spotColor(_spots[i]),
+                        onChanged: (c) => _setSpot(i, c),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -875,12 +1119,12 @@ class _AppColorPickerState extends State<AppColorPicker> {
         const SizedBox(height: 10),
         _labelledBar(
           theme: theme,
-          label: "Brightness",
+          label: _thirdName,
           key: "paletteValue",
           width: width,
           colors: [
-            Colors.black,
-            HSVColor.fromAHSV(1, _leadHue, _leadSat, 1).toColor()
+            _colorAt(_leadHue, _leadSat, 0),
+            _colorAt(_leadHue, _leadSat, 1),
           ],
           at: _leadVal,
           onAt: (f) => setState(() {
@@ -1083,9 +1327,12 @@ class _AppColorPickerState extends State<AppColorPicker> {
                 // instead turns a dark red into a light grey, because
                 // brightness in HSV is not brightness to an eye.
                 if (_format == ColorFormat.grey) {
-                  _val = (greyOf(_current) / 255).clamp(0.0, 1.0);
+                  var level = greyOf(_current).round().clamp(0, 255);
+                  _rgb = Color.fromARGB(255, level, level, level);
                   _sat = 0;
                 }
+                _readWheel();
+                _readThird();
                 _readField();
                 _write();
                 widget.onChanged(_current);
@@ -1187,11 +1434,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
       // The field is the truth here, so the colour is read out of it rather
       // than the other way round -- and the handle stays exactly where it was
       // put even where the notation cannot express the colour precisely.
-      var colour = _fieldColor(_fx, _fy);
-      var hsv = HSVColor.fromColor(colour);
-      if (hsv.saturation > 0 && hsv.value > 0) _hue = hsv.hue;
-      if (hsv.value > 0) _sat = hsv.saturation;
-      _val = hsv.value;
+      _rgb = _fieldColor(_fx, _fy);
+      _readThird();
       _say();
     });
   }
@@ -1509,6 +1753,89 @@ class _Swatch extends StatelessWidget {
 /// drift apart and the caption stops sitting over what it names.
 const double _channelWidth = 46;
 
+/// _SpotHex is the hex of one of the palette's five, which can be typed over.
+///
+/// Six characters and no alpha: a palette is about which colours, and how
+/// see-through they are is one setting for the set rather than five.
+class _SpotHex extends StatefulWidget {
+  final Color color;
+  final ValueChanged<Color> onChanged;
+
+  const _SpotHex({required this.color, required this.onChanged, super.key});
+
+  @override
+  State<_SpotHex> createState() => _SpotHexState();
+}
+
+class _SpotHexState extends State<_SpotHex> {
+  late final TextEditingController _text =
+      TextEditingController(text: _hexOf(widget.color));
+  final FocusNode _focus = FocusNode();
+
+  static String _hexOf(Color color) =>
+      (color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, "0");
+
+  @override
+  void initState() {
+    super.initState();
+    // What is half-typed goes back to the colour when the field is left, so a
+    // box holding "3f" does not sit there looking like a colour.
+    _focus.addListener(() {
+      if (!_focus.hasFocus) setState(() => _text.text = _hexOf(widget.color));
+    });
+  }
+
+  @override
+  void didUpdateWidget(_SpotHex old) {
+    super.didUpdateWidget(old);
+    // Not while it is being typed into: at that moment the field is the one
+    // place the colour is coming *from*.
+    if (!_focus.hasFocus && widget.color != old.color) {
+      _text.text = _hexOf(widget.color);
+    }
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _read(String typed) {
+    var clean = typed.replaceAll("#", "").trim();
+    if (clean.length != 6) return;
+    var value = int.tryParse(clean, radix: 16);
+    if (value == null) return;
+    widget.onChanged(Color(0xFF000000 | value));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 22,
+      child: TextField(
+        controller: _text,
+        focusNode: _focus,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 9.5, color: theme.onSurfaceVariant),
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 1, vertical: 4),
+          border: OutlineInputBorder(),
+        ),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F]")),
+          LengthLimitingTextInputFormatter(6),
+        ],
+        onChanged: _read,
+        onSubmitted: _read,
+      ),
+    );
+  }
+}
+
 /// _ChannelField is one channel: a caption that scrubs and a box that types.
 class _ChannelField extends StatefulWidget {
   final String label;
@@ -1675,17 +2002,6 @@ class _Draggable extends StatelessWidget {
       );
 }
 
-/// greyFilter turns whatever is drawn through it into greys, weighted the
-/// way an eye sees brightness rather than as a flat average of the three
-/// channels -- the same weighting greyOf uses, so a colour and its swatch
-/// agree about how bright it is.
-const ColorFilter greyFilter = ColorFilter.matrix(<double>[
-  0.299, 0.587, 0.114, 0, 0, //
-  0.299, 0.587, 0.114, 0, 0, //
-  0.299, 0.587, 0.114, 0, 0, //
-  0, 0, 0, 1, 0, //
-]);
-
 /// _wheelMargin is the ring of room outside the disc that the move-all
 /// handle runs in.
 const double _wheelMargin = 22;
@@ -1704,20 +2020,16 @@ double wheelRadius(Size size, {required bool ringed}) =>
 /// middle, the shade between -- and a shader is one draw call where a loop
 /// over sixty thousand pixels is sixty thousand.
 class _WheelPainter extends CustomPainter {
-  /// value is how bright the wheel is drawn, so a dark colour is picked out
-  /// of a dark wheel rather than a bright one that lies about it.
-  final double value;
+  /// at is the colour a turn of the wheel and a distance out from its middle
+  /// stand for. The wheel is painted with the same function the picking uses,
+  /// so what is picked is what was shown -- which is what lets one wheel be
+  /// an HSV wheel, an HSL one, the a-b plane of LAB, a page of inks, or a
+  /// greyscale, depending only on what is asked of it.
+  final Color Function(double hue, double sat) at;
 
-  /// marks are the handles: hue, saturation, what to fill them with, and
-  /// whether each is the one being answered with.
+  /// marks are the handles: hue, saturation, the colour to fill them with,
+  /// and whether each is the one being answered with.
   final List<(double, double, Color, bool)> marks;
-
-  /// grey is whether the wheel is drawn without its colour, for a picker
-  /// working in greyscale: the same wheel, every colour on it flattened to
-  /// how bright it is. A wheel that went on showing colours while the picker
-  /// could only answer in greys would be an invitation to pick something it
-  /// could not give.
-  final bool grey;
 
   /// ring is where the handle that moves the whole set sits, as a turn of
   /// the wheel -- or null where there is no such handle. It rides in the
@@ -1725,59 +2037,61 @@ class _WheelPainter extends CustomPainter {
   /// never mistaken for one of them.
   final double? ring;
 
+  /// locked are the handles drawn as being kept: the ones a change of
+  /// harmony or a turn of the ring leaves where they are.
+  final Set<int> locked;
+
   const _WheelPainter({
-    required this.value,
+    required this.at,
     required this.marks,
     this.ring,
-    this.grey = false,
+    this.locked = const {},
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     var radius = wheelRadius(size, ringed: ring != null);
-    // Everything the disc is made of goes through one layer, so that
-    // flattening it to greys is a filter over that layer rather than a
-    // second set of colours to keep in step with the first.
-    if (grey) {
-      canvas.saveLayer(Offset.zero & size, Paint()..colorFilter = greyFilter);
-    }
     var centre = Offset(size.width / 2, size.height / 2);
-    var box = Rect.fromCircle(center: centre, radius: radius);
 
-    canvas.drawCircle(
-        centre,
-        radius,
-        Paint()
-          ..shader = const SweepGradient(colors: [
-            Color(0xFFFF0000),
-            Color(0xFFFFFF00),
-            Color(0xFF00FF00),
-            Color(0xFF00FFFF),
-            Color(0xFF0000FF),
-            Color(0xFFFF00FF),
-            Color(0xFFFF0000),
-          ]).createShader(box));
-    // White out of the middle: saturation is how far from the centre a colour
-    // sits.
-    canvas.drawCircle(
-        centre,
-        radius,
-        Paint()
-          ..shader = RadialGradient(
-            colors: [Colors.white, Colors.white.withValues(alpha: 0)],
-          ).createShader(box));
-    // And the whole thing dimmed to the brightness being worked at.
-    if (value < 1) {
-      canvas.drawCircle(centre, radius,
-          Paint()..color = Colors.black.withValues(alpha: 1 - value));
+    // Drawn as a grid clipped to the disc rather than as a sweep with white
+    // faded over it. A sweep is two draws and is only ever an HSV wheel; this
+    // is a few thousand small rectangles and is whatever the notation says.
+    canvas.save();
+    canvas.clipPath(
+        Path()..addOval(Rect.fromCircle(center: centre, radius: radius)));
+    var across = 72;
+    var step = radius * 2 / across;
+    for (var x = 0; x < across; x++) {
+      for (var y = 0; y < across; y++) {
+        var away = Offset((x + 0.5) * step - radius, (y + 0.5) * step - radius);
+        var out = away.distance / radius;
+        if (out > 1.02) continue;
+        var hue = (math.atan2(away.dy, away.dx) * 180 / math.pi + 360) % 360;
+        canvas.drawRect(
+            Rect.fromLTWH(centre.dx - radius + x * step,
+                centre.dy - radius + y * step, step + 1, step + 1),
+            Paint()..color = at(hue, out.clamp(0.0, 1.0)));
+      }
     }
-    if (grey) canvas.restore();
+    canvas.restore();
 
-    for (var (hue, sat, color, chosen) in marks) {
+    for (var (i, (hue, sat, color, chosen)) in marks.indexed) {
       var angle = hue * math.pi / 180;
-      var at =
+      var spot =
           centre + Offset(math.cos(angle), math.sin(angle)) * (sat * radius);
-      _handle(canvas, at, color, chosen ? 10 : 8, chosen);
+      _handle(canvas, spot, color, chosen ? 10 : 8, chosen);
+      if (locked.contains(i)) {
+        // A dot in the middle of a handle that is being kept: the same mark
+        // the swatch under it carries.
+        canvas.drawCircle(spot, 2.5, Paint()..color = Colors.white);
+        canvas.drawCircle(
+            spot,
+            2.5,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1
+              ..color = Colors.black87);
+      }
     }
 
     if (ring != null) {
@@ -1792,10 +2106,10 @@ class _WheelPainter extends CustomPainter {
             ..strokeWidth = _wheelMargin - 4
             ..color = Colors.white.withValues(alpha: 0.12));
       var angle = ring! * math.pi / 180;
-      var at = centre + Offset(math.cos(angle), math.sin(angle)) * track;
-      canvas.drawCircle(at, 7, Paint()..color = Colors.white);
+      var spot = centre + Offset(math.cos(angle), math.sin(angle)) * track;
+      canvas.drawCircle(spot, 7, Paint()..color = Colors.white);
       canvas.drawCircle(
-          at,
+          spot,
           7,
           Paint()
             ..style = PaintingStyle.stroke
@@ -1805,7 +2119,7 @@ class _WheelPainter extends CustomPainter {
       // way to tell this handle from the five at a glance.
       for (var i = -1; i <= 1; i++) {
         canvas.drawCircle(
-            at + Offset(0, i * 2.6), 0.8, Paint()..color = Colors.black54);
+            spot + Offset(0, i * 2.6), 0.8, Paint()..color = Colors.black54);
       }
     }
   }
@@ -1833,10 +2147,13 @@ class _WheelPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WheelPainter old) =>
-      old.value != value ||
-      old.grey != grey ||
       old.ring != ring ||
-      old.marks.toString() != marks.toString();
+      old.locked.length != locked.length ||
+      old.marks.toString() != marks.toString() ||
+      // Two samples of the wheel itself, which is how a change of notation or
+      // of the axis it is drawn at reaches the picture.
+      old.at(30, 0.8) != at(30, 0.8) ||
+      old.at(210, 0.4) != at(210, 0.4);
 }
 
 /// _FieldPainter is a two-dimensional colour field: whatever colour the

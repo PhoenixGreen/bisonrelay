@@ -19,6 +19,14 @@ Future<_Answer> pump(WidgetTester tester,
     bool allowAlpha = true,
     double width = 320}) async {
   var answer = _Answer(start);
+  // Room enough for the tallest of the three modes. The palette is a wheel, a
+  // harmony, five swatches with a lock and a hex under each, and two sliders
+  // -- which is taller than the eight hundred pixels a test view has by
+  // default, and a menu that opens off the bottom of the screen cannot be
+  // tapped.
+  tester.view.physicalSize = const Size(1400, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
   // No provider around it: the picker takes its colours from Material's own
   // scheme, so it works wherever there is a Theme -- which is every panel,
   // every dialog and every test that pumps one.
@@ -399,5 +407,153 @@ void main() {
     // And HSL is back to a hue slider, over a different square.
     await choose("HSL");
     expect(find.byKey(const ValueKey("colorHue")), findsOneWidget);
+  });
+
+  testWidgets("the wheel is in the notation's own space", (tester) async {
+    // The notations used to reach only the sliders mode, so a wheel in LAB
+    // was an HSV wheel with a LAB reading under it -- and the slider beside
+    // it said Brightness whatever was chosen.
+    var answer = await pump(tester, start: const Color(0xFF3A7BD5), width: 360);
+    await tester.tap(find.byKey(const ValueKey("colorModewheel")));
+    await tester.pumpAndSettle();
+
+    Future<void> choose(String name) async {
+      await tester.tap(find.byKey(const ValueKey("colorFormat")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    await choose("LAB");
+    expect(find.text("Lightness"), findsOneWidget,
+        reason: "LAB's third axis is its lightness, not a brightness");
+
+    await choose("CMYK");
+    expect(find.text("Ink"), findsOneWidget);
+
+    // And what comes off the wheel in greyscale is a grey, wherever on it the
+    // press lands.
+    await choose("Greyscale");
+    var wheel = tester.getRect(find.byKey(const ValueKey("colorWheel")));
+    await tester
+        .tapAt(Offset(wheel.center.dx + wheel.width * 0.3, wheel.center.dy));
+    await tester.pumpAndSettle();
+    expect((answer.color.r * 255).round(), (answer.color.g * 255).round());
+    expect((answer.color.g * 255).round(), (answer.color.b * 255).round());
+  });
+
+  testWidgets("a locked colour stays while the rest are worked on",
+      (tester) async {
+    var answer = await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    Color spot(int i) => (tester
+            .widget<Container>(find.descendant(
+                of: find.byKey(ValueKey("paletteSpot$i")),
+                matching: find.byType(Container)))
+            .decoration as BoxDecoration)
+        .color!;
+
+    var kept = spot(1);
+    await tester.tap(find.byKey(const ValueKey("paletteLock1")));
+    await tester.pumpAndSettle();
+
+    // A different harmony re-lays the set -- except the one being kept.
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Triad").last);
+    await tester.pumpAndSettle();
+
+    expect(spot(1).toARGB32(), kept.toARGB32(),
+        reason: "the locked colour was re-laid with the rest");
+    expect(spot(2).toARGB32(), isNot(kept.toARGB32()),
+        reason: "and the unlocked ones did move");
+
+    // Unlocked again, it goes where the harmony says.
+    await tester.tap(find.byKey(const ValueKey("paletteLock1")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Square").last);
+    await tester.pumpAndSettle();
+    expect(spot(1).toARGB32(), isNot(kept.toARGB32()));
+    expect(answer.color, isNotNull);
+  });
+
+  testWidgets("reset puts every mode back to how it started", (tester) async {
+    var answer = await pump(tester, start: const Color(0xFF3366CC), width: 380);
+
+    // Wander: another mode, another notation, a different harmony, a lock,
+    // and a colour that is none of the above.
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("paletteLock2")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorHarmony")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Triad").last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("paletteSpot3")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("colorFormat")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("CMYK").last);
+    await tester.pumpAndSettle();
+    expect(answer.color.toARGB32(), isNot(0xFF3366CC));
+
+    await tester.tap(find.byKey(const ValueKey("colorReset")));
+    await tester.pumpAndSettle();
+
+    expect(answer.color.toARGB32(), 0xFF3366CC,
+        reason: "the colour it opened on");
+    expect(find.text("Hex"), findsOneWidget, reason: "and hex with it");
+    // The lock is off, which is what makes the palette safe to fiddle with.
+    var lock = tester.widget<Icon>(find.descendant(
+        of: find.byKey(const ValueKey("paletteLock2")),
+        matching: find.byType(Icon)));
+    expect(lock.icon, Icons.lock_open);
+  });
+
+  testWidgets("a palette colour can be typed in", (tester) async {
+    // Where a palette usually starts: a colour somebody already has, arriving
+    // as six characters.
+    var answer = await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    Color spot(int i) => (tester
+            .widget<Container>(find.descendant(
+                of: find.byKey(ValueKey("paletteSpot$i")),
+                matching: find.byType(Container)))
+            .decoration as BoxDecoration)
+        .color!;
+
+    await tester.enterText(find.byKey(const ValueKey("paletteHex0")), "cc4400");
+    await tester.pumpAndSettle();
+
+    // Near enough: the set is laid out in the notation's own space, and a
+    // colour typed into it comes back through that space.
+    var first = spot(0);
+    expect((first.r * 255).round(), closeTo(0xcc, 4));
+    expect((first.g * 255).round(), closeTo(0x44, 4));
+    expect((first.b * 255).round(), closeTo(0x00, 4));
+    expect((answer.color.r * 255).round(), closeTo(0xcc, 4),
+        reason: "and the picker answers with what was typed");
+
+    // The arrangement follows it, as it does when its handle is dragged: the
+    // others are still the same distance round the wheel from it.
+    expect(spot(2).toARGB32(), isNot(first.toARGB32()));
+
+    // A locked colour is set where it stands and takes nothing with it.
+    await tester.tap(find.byKey(const ValueKey("paletteLock3")));
+    await tester.pumpAndSettle();
+    var others = [spot(0), spot(1), spot(2), spot(4)];
+    await tester.enterText(find.byKey(const ValueKey("paletteHex3")), "119933");
+    await tester.pumpAndSettle();
+    expect((spot(3).g * 255).round(), closeTo(0x99, 4));
+    expect([spot(0), spot(1), spot(2), spot(4)].map((c) => c.toARGB32()),
+        others.map((c) => c.toARGB32()),
+        reason: "typing into a locked colour moved the rest of the set");
   });
 }
