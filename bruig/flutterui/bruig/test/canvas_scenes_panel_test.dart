@@ -446,6 +446,65 @@ void main() {
     expect(controller.document.backgroundOf(1).spec.background, isNot(pink));
   });
 
+  testWidgets("the panel edits the shared backdrop when that is the one shown",
+      (tester) async {
+    // The same fault one level up, and the one that made the whole Background
+    // panel look dead: a backdrop on the shared canvas is drawn in front of
+    // every scene's, and the panel went on showing and writing the scene's --
+    // so every setting changed a background nobody could see.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a"),
+      const CanvasScene(id: "b"),
+    ]).copyWith(
+        master: const CanvasScene(
+            id: "master",
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.starfield))),
+        masterOn: true));
+    addTearDown(controller.dispose);
+
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+            body: SizedBox(
+                width: 320, child: CanvasDesignPanel(controller: controller))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    ProceduralSettings settings() =>
+        tester.widget<ProceduralSettings>(find.byType(ProceduralSettings));
+
+    expect(settings().spec.style, ProceduralStyle.starfield,
+        reason: "the panel was showing a background nobody could see");
+
+    const pink = Color(0xFFFF69B4);
+    settings().onChanged(settings().spec.copyWith(background: pink));
+    await tester.pumpAndSettle();
+
+    expect(controller.document.drawnBackground.spec.background, pink,
+        reason: "the edit went somewhere nobody can see");
+    expect(settings().spec.background, pink,
+        reason: "and the panel says what was just set");
+    expect(controller.document.scene.background, isNull,
+        reason: "it belongs to the shared canvas, not to this scene");
+
+    // And it says whose it is, because changing it changes every scene.
+    expect(find.byKey(const ValueKey("sharedBackdropNote")), findsOneWidget);
+    expect(find.textContaining("shared canvas"), findsWidgets);
+  });
+
   testWidgets("the shared backdrop's switch answers at once", (tester) async {
     // It answered a scene later: the layers list is drawn from a summary of
     // what it shows, and the background row's own state was not in that

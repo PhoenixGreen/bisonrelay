@@ -39,14 +39,14 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
 
   if (selected == null) {
     var document = controller.document;
-    // The backdrop this canvas owns -- see CanvasDocument.ownBackground. Read
-    // from the document's instead, as it was, the panel showed the values of
-    // a background nobody was looking at and every edit was built from those:
-    // a scene given a new colour went on reporting the old one, and the next
-    // edit undid the last.
-    var showing = document.ownBackground;
+    // The backdrop that is on screen -- see CanvasDocument.editedBackground.
+    // Read from anything else, the panel shows the values of a background
+    // nobody is looking at and every edit is built from those: a scene given
+    // a new colour went on reporting the old one and the next edit undid the
+    // last, and with a backdrop on the shared canvas nothing moved at all.
+    var showing = document.editedBackground;
 
-    return ProceduralSettings(
+    var settings = ProceduralSettings(
       // How long the canvas is, for the button that makes one run of a
       // movement fit it.
       canvasFrames: document.frames,
@@ -61,6 +61,28 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
         controller.beginInteraction();
         controller.setBackground(showing.copyWith(spec: spec), transient: true);
       },
+    );
+
+    // Whose backdrop this is, where it is not this canvas's. One on the
+    // shared canvas is drawn in front of every scene's, so these settings are
+    // the master's and changing them changes every scene -- which is worth
+    // saying before somebody does it, and worth a great deal more than the
+    // silence it replaces.
+    if (!document.sharedBackdrop) return settings;
+    return Column(
+      key: const ValueKey("sharedBackdropNote"),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Txt.S(
+            "This is the shared canvas's backdrop, so it is behind every "
+            "scene and these settings change all of them.",
+            color: TextColor.onSurfaceVariant,
+          ),
+        ),
+        settings,
+      ],
     );
   }
 

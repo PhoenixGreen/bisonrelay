@@ -318,16 +318,36 @@ class CanvasDocument {
       ? (master!.background ?? background)
       : (masterScene?.sharedBackground ?? scene.background ?? background);
 
-  /// ownBackground is the backdrop the canvas being edited owns: its own
-  /// where it has been given one, and the document's until then.
+  /// ownBackground is the backdrop this canvas owns: its own where it has
+  /// been given one, and the document's until then.
   ///
-  /// What the settings panel shows and edits. Not [drawnBackground], which
-  /// answers what is *on screen* -- while the shared canvas has a backdrop
-  /// that is the master's, and a panel that showed it would be offering to
-  /// edit one canvas's settings from another canvas's panel.
+  /// What the layers list names, because that row answers "what is on this
+  /// canvas" -- a scene with a dot grid of its own has one whether or not the
+  /// shared canvas is covering it today. What the settings panel edits is
+  /// [editedBackground], which is a different question.
   CanvasBackground get ownBackground => editingMaster
       ? (master!.background ?? background)
       : (scene.background ?? background);
+
+  /// editedBackground is the backdrop the settings panel shows and changes,
+  /// which is [drawnBackground]: the one that is actually on screen.
+  ///
+  /// It used to be [ownBackground], leaving the shared canvas's out on the
+  /// grounds that a panel should not offer to edit one canvas's settings from
+  /// another canvas's panel. That is a real objection and it cost more than
+  /// it saved: a backdrop on the shared canvas is drawn in front of every
+  /// scene's, so with one switched on the whole Background panel went dead --
+  /// it showed a background nobody could see, every setting changed that one,
+  /// and the screen never moved. Editing what is in front of you and saying
+  /// whose it is beats editing something invisible in silence. The panel says
+  /// so; see [sharedBackdrop].
+  CanvasBackground get editedBackground => drawnBackground;
+
+  /// sharedBackdrop is whether what is on screen behind this canvas belongs
+  /// to the shared canvas rather than to this one -- which is what the
+  /// settings panel says out loud before offering to change it.
+  bool get sharedBackdrop =>
+      !editingMaster && masterScene?.sharedBackground != null;
 
   /// backgroundOf is the backdrop of one scene, for the painter that draws
   /// the whole run rather than the canvas in front of the reader.

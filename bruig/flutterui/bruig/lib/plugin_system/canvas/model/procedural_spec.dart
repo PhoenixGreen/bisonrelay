@@ -354,9 +354,9 @@ class ProceduralSpec {
         passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
         // A movement that was written before there were runs said so with a
         // switch: not looping is one run and then hold, which is one time.
-        loopTimes: jsonInt(json["loopTimes"],
-                jsonBool(json["loop"], true) ? 0 : 1)
-            .clamp(0, 100000),
+        loopTimes:
+            jsonInt(json["loopTimes"], jsonBool(json["loop"], true) ? 0 : 1)
+                .clamp(0, 100000),
         loopGap: jsonInt(json["loopGap"], 0).clamp(0, 100000),
         pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
         pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),

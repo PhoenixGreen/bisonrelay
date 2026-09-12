@@ -328,8 +328,7 @@ class RingIcon {
         driftWhere: RingDrift.fromJson(json["driftWhere"]),
         driftSize: RingDrift.fromJson(json["driftSize"]),
         driftTurn: RingDrift.fromJson(json["driftTurn"]),
-        driftFade:
-            RingDrift.fromJson(json["fadeShare"], rest: 1).within(0, 1),
+        driftFade: RingDrift.fromJson(json["fadeShare"], rest: 1).within(0, 1),
         also: [
           for (var pick in (json["also"] as List?) ?? [])
             if (pick is Map<String, dynamic>) RingPick.fromJson(pick),
@@ -529,8 +528,7 @@ class RingSpec {
   ///
   /// [arriving] and [leaving] are there for a picture a ring carries that has
   /// been told to keep one of the two ends: see RingIcon.holdIn.
-  double alphaAt(double through,
-      {bool arriving = true, bool leaving = true}) {
+  double alphaAt(double through, {bool arriving = true, bool leaving = true}) {
     // Both ends, and the weaker of the two wins.
     //
     // Written as two ifs, the second one overruled the first: a ring set to
@@ -539,7 +537,8 @@ class RingSpec {
     // and nothing at death -- no fade in at all. Turning the fade in up to
     // one was the surest way to switch it off, which is what "fade in does
     // not work" was.
-    var came = arriving && fadeIn > 0 ? (through / fadeIn).clamp(0.0, 1.0) : 1.0;
+    var came =
+        arriving && fadeIn > 0 ? (through / fadeIn).clamp(0.0, 1.0) : 1.0;
     var goes = leaving && fadeOut > 0
         ? ((1 - through) / fadeOut).clamp(0.0, 1.0)
         : 1.0;

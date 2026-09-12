@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_scenes_test.dart is a document that is more than one canvas.
@@ -421,6 +422,72 @@ void main() {
       expect(it.sceneIndexNamed("b"), 1);
       expect(it.sceneIndexNamed("Opening"), 0);
       expect(it.sceneIndexNamed("nothing like it"), -1);
+    });
+  });
+
+  group("the shared canvas's backdrop", () {
+    // A backdrop on the shared canvas is drawn in front of every scene's. The
+    // settings panel used to show and edit the scene's anyway, so with one
+    // switched on the whole Background panel went dead: it reported a
+    // background nobody could see, every setting changed that one, and the
+    // screen never moved. That is what "the background settings do not work"
+    // was.
+    CanvasDocument withShared() => const CanvasDocument()
+        .withScenes([
+          const CanvasScene(id: "a", frames: 10),
+          const CanvasScene(id: "b", frames: 10),
+        ])
+        .withMaster(const CanvasScene(
+            id: "m",
+            frames: 10,
+            background: CanvasBackground(
+                spec: ProceduralSpec(style: ProceduralStyle.starfield))))
+        .copyWith(masterOn: true);
+
+    test("is what the panel shows", () {
+      var doc = withShared();
+      expect(doc.drawnBackground.spec.style, ProceduralStyle.starfield);
+      expect(doc.editedBackground.spec.style, doc.drawnBackground.spec.style,
+          reason: "the panel was showing a background nobody could see");
+      expect(doc.ownBackground.spec.style, ProceduralStyle.plain,
+          reason: "the layers list still names what this canvas owns");
+      expect(doc.sharedBackdrop, isTrue);
+
+      // And it is this canvas's own again the moment the shared one is off.
+      expect(doc.copyWith(masterOn: false).sharedBackdrop, isFalse);
+      var quiet = doc.withMaster(doc.master!.copyWith(backgroundOff: true));
+      expect(quiet.sharedBackdrop, isFalse,
+          reason: "a backdrop switched off is not in front of anything");
+    });
+
+    test("is what an edit from the panel changes", () {
+      var controller = CanvasController(withShared());
+      addTearDown(controller.dispose);
+
+      controller.setBackground(controller.document.editedBackground.copyWith(
+          spec: controller.document.editedBackground.spec
+              .copyWith(style: ProceduralStyle.rings)));
+
+      expect(
+          controller.document.drawnBackground.spec.style, ProceduralStyle.rings,
+          reason: "the edit went somewhere nobody can see");
+      expect(controller.document.master!.background!.spec.style,
+          ProceduralStyle.rings,
+          reason: "it belongs to the shared canvas, which is whose it is");
+      // The scene is left alone: it has not been given one of its own.
+      expect(controller.document.scene.background, isNull);
+
+      // And with the shared one switched off, the scene's own is back and an
+      // edit lands there.
+      var off = controller.document.copyWith(masterOn: false);
+      controller.apply(off);
+      controller.setBackground(controller.document.editedBackground
+          .copyWith(spec: const ProceduralSpec(style: ProceduralStyle.bokeh)));
+      expect(controller.document.scene.background?.spec.style,
+          ProceduralStyle.bokeh);
+      expect(controller.document.master!.background!.spec.style,
+          ProceduralStyle.rings,
+          reason: "the shared canvas's was changed from a scene's panel");
     });
   });
 }

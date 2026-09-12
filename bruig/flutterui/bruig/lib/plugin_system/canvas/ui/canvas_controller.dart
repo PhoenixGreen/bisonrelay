@@ -1455,6 +1455,15 @@ class CanvasController extends ChangeNotifier {
           transient: transient);
       return;
     }
+    // The shared canvas's own, where that is the one on screen. A backdrop on
+    // the master is drawn in front of every scene's, so writing the scene's
+    // from here would change nothing anybody can see -- which is what a dead
+    // Background panel was. See CanvasDocument.ownBackground.
+    if (document.sharedBackdrop) {
+      apply(document.withMaster(document.master!.copyWith(background: next)),
+          transient: transient);
+      return;
+    }
     // A scene's own, where there are scenes. They share the document's until
     // one of them is given a backdrop of its own -- and writing that shared
     // one is how changing scene one's background changed scene two's. What
