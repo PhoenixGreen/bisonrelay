@@ -21,10 +21,11 @@ const Rect _page = Rect.fromLTWH(0, 0, 400, 300);
 
 /// _ink renders the background and counts the pixels that are not the
 /// backdrop, by row and in total.
-Future<(int, List<int>)> _ink(ProceduralSpec spec, double time) async {
+Future<(int, List<int>)> _ink(ProceduralSpec spec, double time,
+    {double rate = 0}) async {
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
-  paintProcedural(canvas, _page, spec, time: time);
+  paintProcedural(canvas, _page, spec, time: time, frameRate: rate);
   var picture = recorder.endRecording();
   var image = await picture.toImage(400, 300);
   var bytes = (await image.toByteData())!;
@@ -462,13 +463,23 @@ void main() {
 
     // Loop sits beside Animate, and is offered for every style that moves.
     expect(find.byKey(const ValueKey("loop")), findsOneWidget);
-    // At the foot of a long panel, so it has to be scrolled to before it can
-    // be pressed.
+
+    // Turning the loop off swaps Speed for the number of frames the run
+    // takes: a movement that goes round for ever has a speed, and one that
+    // runs once is timed against whatever it is under.
+    expect(find.byKey(const ValueKey("speed")), findsOneWidget);
+    expect(find.byKey(const ValueKey("passFrames")), findsNothing);
     await tester.ensureVisible(find.byKey(const ValueKey("loop")));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("loop")));
     await tester.pumpAndSettle();
     expect(spec.loop, isFalse);
+    expect(find.byKey(const ValueKey("speed")), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey("passFrames")));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey("passFrames")), "90");
+    await tester.pumpAndSettle();
+    expect(spec.passFrames, 90);
 
     // And the two shared controls the rings say in their own words are not
     // offered twice: Size and Variation did nothing at all on this style.
@@ -525,28 +536,52 @@ void main() {
             "$soft against $hard");
   });
 
-  testWidgets("a background that does not loop runs once and holds",
+  testWidgets("a background that does not loop runs once and stops",
       (tester) async {
-    late int during;
-    late int after;
-    late int muchLater;
-    late int looping;
+    // Told not to loop, the movement runs once in the number of frames it was
+    // given and then holds -- and for rings, finished means finished: every
+    // ring born, travelled and dissolved, with nothing left on the page.
+    late int early;
+    late int middling;
+    late int atTheEnd;
+    late int afterTheEnd;
     await tester.runAsync(() async {
-      var once = _spec(rings: const RingSpec(count: 6)).copyWith(loop: false);
-      // Half way through the pass, at the end of it, and long after.
-      (during, _) = await _ink(once, proceduralPass * 0.5);
-      (after, _) = await _ink(once, proceduralPass);
-      // Not a whole number of passes: a looping pattern at four lives is
-      // exactly where it was at one, which would prove nothing.
-      (muchLater, _) = await _ink(once, proceduralPass * 3.4);
-      (looping, _) = await _ink(
-          _spec(rings: const RingSpec(count: 6)), proceduralPass * 3.4);
+      var once = _spec(rings: const RingSpec(count: 6))
+          .copyWith(loop: false, passFrames: 100);
+      // A frame is a frame: the run takes a hundred of them at twenty-five a
+      // second, so four seconds.
+      Future<int> at(int frame) async {
+        var (ink, _) = await _ink(once, frame / 25, rate: 25);
+        return ink;
+      }
+
+      early = await at(20);
+      middling = await at(50);
+      atTheEnd = await at(100);
+      afterTheEnd = await at(400);
     });
 
-    expect(after, muchLater,
-        reason: "it went on moving after its one pass was over");
-    expect(during, isNot(after), reason: "it was not moving during the pass");
-    expect(looping, isNot(muchLater),
-        reason: "looping and not looping came to the same picture");
+    expect(early, greaterThan(0), reason: "nothing happened at all");
+    expect(middling, greaterThan(0));
+    expect(atTheEnd, 0,
+        reason: "the run was over and there were still rings on the page");
+    expect(afterTheEnd, 0, reason: "and it started again afterwards");
+  });
+
+  testWidgets("the frames it is given are the frames it takes", (tester) async {
+    // The same run, told to take twice as long: half way through the short
+    // one and a quarter of the way through the long one are the same moment
+    // of the same movement.
+    late int quick;
+    late int slow;
+    await tester.runAsync(() async {
+      var rings = const RingSpec(count: 6);
+      var short = _spec(rings: rings).copyWith(loop: false, passFrames: 50);
+      var long = _spec(rings: rings).copyWith(loop: false, passFrames: 100);
+      (quick, _) = await _ink(short, 25 / 25, rate: 25);
+      (slow, _) = await _ink(long, 50 / 25, rate: 25);
+    });
+    expect(quick, slow,
+        reason: "$quick against $slow: the same moment of the same run");
   });
 }

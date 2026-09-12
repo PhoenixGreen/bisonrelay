@@ -30,21 +30,36 @@ import 'package:flutter/painting.dart';
 // control somebody will drag while wondering why nothing happens, so each of
 // them is written to make all five do *something* wherever it can.
 
-/// proceduralPass is how long one pass of a pattern lasts, in its own time.
+/// proceduralPass is one turn of a pattern's own clock, in seconds.
 ///
 /// One number for every style, because "how long until this has been round
 /// once" is not a question most of them can answer -- a rain falls, a flow
-/// flows, and neither has a length. What it really means is how long the
-/// movement runs for before it holds, and six and two thirds seconds is one
-/// ring's life, which is the one style that does have a cycle.
+/// flows, and neither has a length. Six and two thirds seconds is one ring's
+/// life, which is the one style that does have a cycle.
 const double proceduralPass = 1 / 0.15;
+
+/// proceduralRunSeconds is how long a complete run of [spec] takes in the
+/// pattern's own time: from the first thing happening to the last thing
+/// being over.
+///
+/// For rings that is every ring born, travelled and dissolved, with nothing
+/// left on the page. Building up, the last ring is born very nearly a life
+/// after the first and then has its own life to live, so the run is close to
+/// two of them; opening on a full set instead, the set drains inside one.
+double proceduralRunSeconds(ProceduralSpec spec) {
+  if (spec.style != ProceduralStyle.rings) return proceduralPass;
+  var many = spec.rings.count.clamp(1, 200);
+  var last = (many - 1) / many;
+  return proceduralPass *
+      (spec.rings.buildUp ? 1 + last : math.max(last, 0.01));
+}
 
 /// paintProcedural draws [spec] into [rect].
 ///
 /// [time] is in seconds and is what animation advances. Passing zero is a
 /// still, which is what an unanimated background and the first frame both are.
 void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
-    {double time = 0}) {
+    {double time = 0, double frameRate = 0}) {
   if (rect.width <= 0 || rect.height <= 0) return;
   var spec = input;
 
@@ -57,11 +72,16 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
   // corners, so turning it does not sweep an empty wedge into view. The clip
   // above keeps the overspill off the canvas.
   var t = spec.animated ? time * spec.speed : 0.0;
-  // One pass and then hold, where the movement is not meant to go round for
-  // ever. Held rather than stopped dead at nothing: what a background under a
-  // title card usually wants is for the movement to draw the eye while the
-  // words arrive and then stop pulling at it.
-  if (spec.animated && !spec.loop) t = math.min(t, proceduralPass);
+  if (spec.animated && !spec.loop) {
+    // One pass, in the number of frames it was told to take, and then hold.
+    // Speed says nothing here: a movement that runs once is timed against the
+    // thing it is under, which is counted in frames rather than in how fast
+    // it goes.
+    var run = proceduralRunSeconds(spec);
+    var frames = spec.passFrames.clamp(1, 100000);
+    var through = frameRate > 0 ? (time * frameRate) / frames : time / frames;
+    t = math.min(through, 1.0) * run;
+  }
   var area = rect;
   if (spec.rotation != 0) {
     canvas.translate(rect.center.dx, rect.center.dy);
@@ -839,11 +859,12 @@ void _rings(
     // whole set used to be spread across its life already, so a canvas
     // opened -- and looped -- on rings that were simply there. See
     // RingSpec.buildUp.
-    if (ring.buildUp &&
-        spec.animated &&
-        ring.ageOf(i, moving, jitter: jitter) < 0) {
-      continue;
-    }
+    var age = ring.ageOf(i, moving, jitter: jitter);
+    if (ring.buildUp && spec.animated && age < 0) continue;
+    // And dead stays dead where the movement runs once: a ring that has
+    // finished its life is not born again, so the end of a run is an empty
+    // page rather than the set going round one more time.
+    if (spec.animated && !spec.loop && age > 1) continue;
     var through = ring.spread(i, moving, jitter: jitter);
 
     // Bunched towards one end or the other. A half is even.

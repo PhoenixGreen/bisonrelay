@@ -594,8 +594,13 @@ class ProceduralSettings extends StatelessWidget {
                 value: spec.loop,
                 onChanged: (v) => _setNow(spec.copyWith(loop: v)),
               ),
-            if (spec.animated)
+            // How fast, or how long: they are the same question asked of two
+            // different things. A movement that goes round for ever has a
+            // speed; one that runs once is timed against whatever it is
+            // under, and that is counted in frames.
+            if (spec.animated && spec.loop)
               CanvasNumberField(
+                key: const ValueKey("speed"),
                 label: "Speed",
                 decimals: 2,
                 width: 62,
@@ -608,6 +613,26 @@ class ProceduralSettings extends StatelessWidget {
                 },
                 onCommit: onCommit,
               ),
+            if (spec.animated && !spec.loop) ...[
+              CanvasNumberField(
+                key: const ValueKey("passFrames"),
+                label: "Frames",
+                width: 62,
+                value: spec.passFrames.toDouble(),
+                min: 1,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(passFrames: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              const CanvasHint(
+                  "How many frames the movement takes from start to finish, "
+                  "after which it holds. Finished means finished: for rings, "
+                  "every ring born, travelled and gone, with nothing left on "
+                  "the page."),
+            ],
           ]),
       ];
 }

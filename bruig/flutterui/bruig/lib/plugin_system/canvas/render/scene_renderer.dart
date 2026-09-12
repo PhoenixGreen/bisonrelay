@@ -115,7 +115,8 @@ void paintCanvasDocument(
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
 
-  _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds);
+  _paintDocumentBackground(
+      canvas, rect, doc, time, images, backgrounds, doc.frameRate.toDouble());
 
   // The shared canvas, under every scene. Under rather than over: what goes
   // on a master is a backdrop, a frame, a watermark -- the things a scene is
@@ -179,8 +180,14 @@ void _paintScene(
   }
 }
 
-void _paintDocumentBackground(ui.Canvas canvas, Rect rect, CanvasDocument doc,
-    double time, CanvasImageSource? images, ProceduralCache? backgrounds) {
+void _paintDocumentBackground(
+    ui.Canvas canvas,
+    Rect rect,
+    CanvasDocument doc,
+    double time,
+    CanvasImageSource? images,
+    ProceduralCache? backgrounds,
+    double frameRate) {
   // The master's own where the shared canvas is switched on and has one.
   // See CanvasDocument.drawnBackground.
   var bg = doc.drawnBackground;
@@ -207,7 +214,10 @@ void _paintDocumentBackground(ui.Canvas canvas, Rect rect, CanvasDocument doc,
         Paint()..filterQuality = FilterQuality.low);
     return;
   }
-  paintProcedural(canvas, rect, bg.spec, time: time);
+  // The rate as well as the moment: a movement that runs once is told how
+  // many frames it has, and frames are not seconds until somebody says how
+  // many there are in one. See ProceduralSpec.passFrames.
+  paintProcedural(canvas, rect, bg.spec, time: time, frameRate: frameRate);
 }
 
 /// paintElement draws one element, with its animation pose applied.
@@ -306,7 +316,7 @@ void paintElement(
     case ButtonElement e:
       _paintButton(canvas, bounds, e, hovered);
     case BackgroundElement e:
-      _paintBackgroundElement(canvas, bounds, e, time);
+      _paintBackgroundElement(canvas, bounds, e, time, frameRate.toDouble());
     case PathElement e:
       _paintPath(canvas, bounds, e, editing);
     case TeamElement e:
@@ -1417,14 +1427,14 @@ void _paintButton(
   paintTextInBox(canvas, spec.textCase.apply(e.label), spec, inner, clip: true);
 }
 
-void _paintBackgroundElement(
-    ui.Canvas canvas, Rect bounds, BackgroundElement e, double time) {
+void _paintBackgroundElement(ui.Canvas canvas, Rect bounds, BackgroundElement e,
+    double time, double frameRate) {
   if (e.cornerRadius > 0) {
     canvas.save();
     canvas.clipRRect(
         RRect.fromRectAndRadius(bounds, Radius.circular(e.cornerRadius)));
   }
-  paintProcedural(canvas, bounds, e.spec, time: time);
+  paintProcedural(canvas, bounds, e.spec, time: time, frameRate: frameRate);
   if (e.cornerRadius > 0) canvas.restore();
 }
 

@@ -172,9 +172,18 @@ class ProceduralSpec {
   /// is what a background under a title card usually wants: the movement
   /// draws the eye while the words arrive, and then stops pulling at it.
   ///
-  /// One pass is [proceduralPass] of the pattern's own time, so a faster
-  /// speed reaches the end of it sooner.
+  /// How long that one pass takes is [passFrames] rather than [speed]: a
+  /// movement that runs once is timed against the thing it is under -- the
+  /// title, the scene, the whole canvas -- and that is counted in frames.
   final bool loop;
+
+  /// passFrames is how many frames one pass takes, start to finish, for a
+  /// movement that does not loop.
+  ///
+  /// Finished means finished: for rings, every ring born, travelled and
+  /// dissolved, with nothing left on the page. See proceduralRunSeconds,
+  /// which is what a pattern's own idea of a complete run is.
+  final int passFrames;
 
   /// sport is read only by [ProceduralStyle.pitch].
   final PitchSport sport;
@@ -208,6 +217,7 @@ class ProceduralSpec {
     this.animated = false,
     this.speed = 1,
     this.loop = true,
+    this.passFrames = 120,
     this.sport = PitchSport.football,
     this.rings = const RingSpec(),
     this.vignette = 0.25,
@@ -231,6 +241,7 @@ class ProceduralSpec {
     bool? animated,
     double? speed,
     bool? loop,
+    int? passFrames,
     PitchSport? sport,
     RingSpec? rings,
     double? vignette,
@@ -253,6 +264,7 @@ class ProceduralSpec {
         animated: animated ?? this.animated,
         speed: speed ?? this.speed,
         loop: loop ?? this.loop,
+        passFrames: passFrames ?? this.passFrames,
         sport: sport ?? this.sport,
         rings: rings ?? this.rings,
         vignette: vignette ?? this.vignette,
@@ -281,6 +293,7 @@ class ProceduralSpec {
         if (animated) "animated": true,
         if (animated) "speed": speed,
         if (animated && !loop) "loop": false,
+        if (animated && !loop) "passFrames": passFrames,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
         if (style == ProceduralStyle.rings) "rings": rings.toJson(),
         "vignette": vignette,
@@ -304,6 +317,7 @@ class ProceduralSpec {
         animated: jsonBool(json["animated"], false),
         speed: jsonDouble(json["speed"], 1),
         loop: jsonBool(json["loop"], true),
+        passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
         sport: PitchSport.fromName(json["sport"] as String?),
         rings: json["rings"] is Map
             ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())
