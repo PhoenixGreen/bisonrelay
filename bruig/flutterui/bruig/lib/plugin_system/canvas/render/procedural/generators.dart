@@ -124,16 +124,28 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
   }
 
   var t = spec.animated ? moment * spec.speed : 0.0;
-  if (spec.animated && !spec.loop) {
-    // One pass, in the number of frames it was told to take, and then hold.
-    // Speed says nothing here: a movement that runs once is timed against the
-    // thing it is under, which is counted in frames rather than in how fast
-    // it goes.
+  if (spec.inRuns) {
+    // Counted in runs rather than simply going round. Speed says nothing
+    // here: a movement measured in runs is timed against the thing it is
+    // under, which is counted in frames rather than in how fast it goes.
     var run = proceduralRunSeconds(spec);
-    var frames = spec.passFrames.clamp(1, 100000);
-    var through =
-        frameRate > 0 ? (moment * frameRate) / frames : moment / frames;
-    t = math.min(through, 1.0) * run;
+    var frames = spec.passFrames.clamp(1, 100000).toDouble();
+    var at = frameRate > 0 ? moment * frameRate : moment;
+
+    if (!spec.loop) {
+      // One run, and then hold where it finished.
+      t = math.min(at / frames, 1.0) * run;
+    } else {
+      // Runs with a rest between them: one run of `frames`, then `loopGap`
+      // frames of the finished picture, then the next run from the start.
+      var cycle = frames + spec.loopGap.clamp(0, 100000);
+      var round = (at / cycle).floor();
+      var done = spec.loopTimes > 0 && round >= spec.loopTimes;
+      // Held at the end once the last run is over, and held at the end
+      // through each gap -- which for rings is an empty page.
+      var within = done ? frames : at - round * cycle;
+      t = math.min(within / frames, 1.0) * run;
+    }
   }
   var area = rect;
   if (spec.rotation != 0) {
@@ -914,10 +926,10 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     // RingSpec.buildUp.
     var age = ring.ageOf(i, moving, jitter: jitter);
     if (ring.buildUp && spec.animated && age < 0) continue;
-    // And dead stays dead where the movement runs once: a ring that has
-    // finished its life is not born again, so the end of a run is an empty
-    // page rather than the set going round one more time.
-    if (spec.animated && !spec.loop && age > 1) continue;
+    // And dead stays dead within a run: a ring that has finished its life is
+    // not born again, so the end of a run is an empty page rather than the
+    // set going round one more time.
+    if (spec.inRuns && age > 1) continue;
     var through = ring.spread(i, moving, jitter: jitter);
 
     // Bunched towards one end or the other. A half is even.

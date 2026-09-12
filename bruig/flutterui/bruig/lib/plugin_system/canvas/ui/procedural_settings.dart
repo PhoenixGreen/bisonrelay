@@ -30,6 +30,11 @@ class ProceduralSettings extends StatelessWidget {
   /// something for that to mean. Null leaves the button out.
   final VoidCallback? onReset;
 
+  /// canvasFrames is how long the canvas is, for the button that makes one
+  /// run of the movement fit it. Null where the caller has no such thing to
+  /// offer.
+  final int? canvasFrames;
+
   /// label names the group.
   ///
   /// Empty by default, and empty is what both callers want: the panel's own
@@ -44,6 +49,7 @@ class ProceduralSettings extends StatelessWidget {
     required this.onBegin,
     required this.onCommit,
     this.onReset,
+    this.canvasFrames,
     this.label = "",
     super.key,
   });
@@ -758,7 +764,39 @@ class ProceduralSettings extends StatelessWidget {
             // different things. A movement that goes round for ever has a
             // speed; one that runs once is timed against whatever it is
             // under, and that is counted in frames.
-            if (spec.animated && spec.loop)
+            // How many runs, and how long a rest between them. Either of
+            // them makes the movement a thing that is counted rather than
+            // one that simply goes round, which is why Frames takes over
+            // from Speed as soon as one is set.
+            if (spec.animated && spec.loop) ...[
+              CanvasNumberField(
+                key: const ValueKey("loopTimes"),
+                label: "Times",
+                width: 54,
+                value: spec.loopTimes.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopTimes: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("loopGap"),
+                label: "Gap",
+                width: 54,
+                value: spec.loopGap.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopGap: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+            ],
+            if (spec.animated && !spec.inRuns)
               CanvasNumberField(
                 key: const ValueKey("speed"),
                 label: "Speed",
@@ -773,7 +811,7 @@ class ProceduralSettings extends StatelessWidget {
                 },
                 onCommit: onCommit,
               ),
-            if (spec.animated && !spec.loop) ...[
+            if (spec.inRuns) ...[
               CanvasNumberField(
                 key: const ValueKey("passFrames"),
                 label: "Frames",
@@ -787,11 +825,28 @@ class ProceduralSettings extends StatelessWidget {
                 },
                 onCommit: onCommit,
               ),
-              const CanvasHint(
-                  "How many frames the movement takes from start to finish, "
-                  "after which it holds. Finished means finished: for rings, "
-                  "every ring born, travelled and gone, with nothing left on "
-                  "the page."),
+              // The run made to fit what it is under, which is the answer
+              // nearly everybody wants and is otherwise a sum: a movement
+              // that finishes after the last frame is a movement nobody ever
+              // sees the end of.
+              if (canvasFrames != null)
+                CanvasIconButton(
+                  key: const ValueKey("passFramesFit"),
+                  icon: Icons.fit_screen_outlined,
+                  tooltip: "Make one run the length of the canvas "
+                      "($canvasFrames frames)",
+                  onPressed: () =>
+                      _setNow(spec.copyWith(passFrames: canvasFrames)),
+                ),
+              CanvasHint(spec.loop
+                  ? "How many frames one run takes, start to finish. Times is "
+                      "how many runs there are -- nought is for ever -- and "
+                      "Gap is how many frames of stillness sit between one "
+                      "and the next."
+                  : "How many frames the movement takes from start to "
+                      "finish, after which it holds. Finished means "
+                      "finished: for rings, every ring born, travelled and "
+                      "gone, with nothing left on the page."),
             ],
             // A rest in the middle of it: which frame it stops on, how long
             // it stays stopped, and how long it takes to slow down into the

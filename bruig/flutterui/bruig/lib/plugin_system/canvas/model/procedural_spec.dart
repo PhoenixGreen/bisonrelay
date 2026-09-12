@@ -185,6 +185,17 @@ class ProceduralSpec {
   /// which is what a pattern's own idea of a complete run is.
   final int passFrames;
 
+  /// loopTimes is how many runs there are before the movement holds, and
+  /// loopGap is how many frames of stillness sit between one run and the
+  /// next.
+  ///
+  /// Nought times is for ever. Either of them says the movement is counted
+  /// in runs rather than simply going round, which is what [inRuns] answers
+  /// -- and what makes [passFrames] the setting that matters rather than
+  /// [speed].
+  final int loopTimes;
+  final int loopGap;
+
   /// pauseAt, pauseFor and pauseEase are a rest in the middle of the
   /// movement: which frame it stops on, how many frames it stays stopped,
   /// and how many it spends slowing down into the stop and speeding up out
@@ -230,6 +241,8 @@ class ProceduralSpec {
     this.speed = 1,
     this.loop = true,
     this.passFrames = 120,
+    this.loopTimes = 0,
+    this.loopGap = 0,
     this.pauseAt = 0,
     this.pauseFor = 0,
     this.pauseEase = 6,
@@ -237,6 +250,11 @@ class ProceduralSpec {
     this.rings = const RingSpec(),
     this.vignette = 0.25,
   });
+
+  /// inRuns is whether the movement is counted in runs rather than going
+  /// round for ever: one run that then holds, a set number of them, or runs
+  /// with a gap between. All three are timed in frames.
+  bool get inRuns => animated && (!loop || loopTimes > 0 || loopGap > 0);
 
   ProceduralSpec copyWith({
     ProceduralStyle? style,
@@ -257,6 +275,8 @@ class ProceduralSpec {
     double? speed,
     bool? loop,
     int? passFrames,
+    int? loopTimes,
+    int? loopGap,
     int? pauseAt,
     int? pauseFor,
     int? pauseEase,
@@ -283,6 +303,8 @@ class ProceduralSpec {
         speed: speed ?? this.speed,
         loop: loop ?? this.loop,
         passFrames: passFrames ?? this.passFrames,
+        loopTimes: loopTimes ?? this.loopTimes,
+        loopGap: loopGap ?? this.loopGap,
         pauseAt: pauseAt ?? this.pauseAt,
         pauseFor: pauseFor ?? this.pauseFor,
         pauseEase: pauseEase ?? this.pauseEase,
@@ -314,7 +336,9 @@ class ProceduralSpec {
         if (animated) "animated": true,
         if (animated) "speed": speed,
         if (animated && !loop) "loop": false,
-        if (animated && !loop) "passFrames": passFrames,
+        if (animated && inRuns) "passFrames": passFrames,
+        if (animated && loopTimes > 0) "loopTimes": loopTimes,
+        if (animated && loopGap > 0) "loopGap": loopGap,
         if (animated && pauseFor > 0) "pauseAt": pauseAt,
         if (animated && pauseFor > 0) "pauseFor": pauseFor,
         if (animated && pauseFor > 0) "pauseEase": pauseEase,
@@ -342,6 +366,8 @@ class ProceduralSpec {
         speed: jsonDouble(json["speed"], 1),
         loop: jsonBool(json["loop"], true),
         passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
+        loopTimes: jsonInt(json["loopTimes"], 0).clamp(0, 100000),
+        loopGap: jsonInt(json["loopGap"], 0).clamp(0, 100000),
         pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
         pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),
         pauseEase: jsonInt(json["pauseEase"], 6).clamp(0, 1000),

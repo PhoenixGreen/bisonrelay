@@ -855,4 +855,89 @@ void main() {
         id: "m", frames: 10, background: CanvasBackground(spec: spec)));
     expect(master.assetIds, contains("badge"));
   });
+
+  testWidgets("runs with a gap between them", (tester) async {
+    late int firstRun;
+    late int inTheGap;
+    late int secondRun;
+    late int afterTheLast;
+    await tester.runAsync(() async {
+      // Two runs of forty frames, with twenty frames of stillness between
+      // them, at twenty-five frames a second.
+      var spec = _spec(rings: const RingSpec(count: 6))
+          .copyWith(passFrames: 40, loopTimes: 2, loopGap: 20);
+      Future<int> at(int frame) async {
+        var (ink, _) = await _ink(spec, frame / 25, rate: 25);
+        return ink;
+      }
+
+      firstRun = await at(20);
+      inTheGap = await at(50);
+      secondRun = await at(80);
+      afterTheLast = await at(200);
+    });
+
+    expect(firstRun, greaterThan(0), reason: "the first run drew nothing");
+    expect(inTheGap, 0, reason: "the gap is stillness after a finished run");
+    expect(secondRun, greaterThan(0), reason: "the second run never started");
+    expect(afterTheLast, 0,
+        reason: "it went on running after the last of its runs");
+  });
+
+  testWidgets("a movement counted in runs is timed in frames, not speed",
+      (tester) async {
+    var plain = _spec(rings: const RingSpec());
+    expect(plain.inRuns, isFalse, reason: "going round for ever");
+    expect(plain.copyWith(loop: false).inRuns, isTrue);
+    expect(plain.copyWith(loopTimes: 3).inRuns, isTrue);
+    expect(plain.copyWith(loopGap: 10).inRuns, isTrue);
+    // And a still background is not a movement at all.
+    expect(plain.copyWith(animated: false, loop: false).inRuns, isFalse);
+
+    // The settings say the same: Speed while it goes round, Frames once it
+    // is counted.
+    var spec = _spec(rings: const RingSpec());
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => CanvasControlScope(
+                maxWidth: 240,
+                child: ProceduralSettings(
+                  spec: spec,
+                  canvasFrames: 250,
+                  onBegin: () {},
+                  onCommit: () {},
+                  onChanged: (next) => setState(() => spec = next),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey("speed")), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey("loopGap")));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey("loopGap")), "15");
+    await tester.pumpAndSettle();
+    expect(spec.loopGap, 15);
+    expect(find.byKey(const ValueKey("speed")), findsNothing,
+        reason: "speed still asked for, on a movement that is counted");
+    expect(find.byKey(const ValueKey("passFrames")), findsOneWidget);
+
+    // And the run can be made to fit the canvas, which is otherwise a sum.
+    await tester.ensureVisible(find.byKey(const ValueKey("passFramesFit")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("passFramesFit")));
+    await tester.pumpAndSettle();
+    expect(spec.passFrames, 250);
+  });
 }

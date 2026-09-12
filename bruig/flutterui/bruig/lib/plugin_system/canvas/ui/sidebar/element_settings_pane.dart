@@ -47,6 +47,9 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var showing = document.ownBackground;
 
     return ProceduralSettings(
+      // How long the canvas is, for the button that makes one run of a
+      // movement fit it.
+      canvasFrames: document.frames,
       // No caption: the panel's header already says these are the
       // background's, and this is what it shows whenever nothing is selected
       // -- so the repetition would be the commonest thing on the panel.
