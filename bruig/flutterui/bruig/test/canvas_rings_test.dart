@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
@@ -76,6 +77,12 @@ Future<int> _runs(ProceduralSpec spec, List<int> rows) async {
 /// _Pictures is a picture store with one drawing in it: a filled square,
 /// which is easy to count and easy to see grow.
 class _Pictures extends CanvasImageSource {
+  _Pictures();
+
+  /// empty is a store with nothing in it: what things look like while a file
+  /// is still being read.
+  factory _Pictures.empty() = _NoPictures;
+
   final CanvasVector _square = () {
     var recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 100, 100),
@@ -117,6 +124,12 @@ Future<int> _inkWith(ProceduralSpec spec, double time,
   image.dispose();
   picture.dispose();
   return ink;
+}
+
+/// _NoPictures has read nothing yet.
+class _NoPictures extends _Pictures {
+  @override
+  CanvasVector? resolveVector(String assetId) => null;
 }
 
 ProceduralSpec _spec(
@@ -753,5 +766,62 @@ void main() {
 
     // And a rings background with no icons says nothing about them.
     expect(_spec().toJson()["rings"], isNot(contains("icons")));
+  });
+
+  testWidgets("a still background draws its icons too", (tester) async {
+    // The bug an SVG icon ran into. A background that does not move is drawn
+    // once into a picture and that picture is what gets used from then on --
+    // and the cache was rendering it without the pictures, so an icon was
+    // missing from every still design. Worse, a file arrives late: the first
+    // drawing is made before it has been read, so the answer that was kept
+    // was the one without it.
+    late ProceduralCache cache;
+    late ui.Image? first;
+    late ui.Image? second;
+    var pictures = _Pictures();
+    var spec = _spec(
+        animated: false,
+        // A set of six and the icon on the second of them: the first ring
+        // of a still is at the very start of its life, where a ring is
+        // nothing at all, so what it carries is nothing either.
+        rings: const RingSpec(count: 6, from: 0.3).copyWith(
+            icons: [const RingIcon(asset: "badge", ring: 2, size: 0.9)]));
+
+    await tester.runAsync(() async {
+      cache = ProceduralCache();
+      // Asking starts it; the answer comes back a moment later.
+      expect(cache.imageFor(spec, _page.size, 0, pictures), isNull);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      first = cache.imageFor(spec, _page.size, 0, pictures);
+
+      // And what is kept is keyed on which pictures had arrived, so the
+      // drawing made before the file was read is not the drawing that is
+      // kept afterwards.
+      expect(ProceduralCache.keyFor(spec, _page.size, 0, pictures),
+          isNot(ProceduralCache.keyFor(spec, _page.size, 0, _Pictures.empty())),
+          reason: "a design draws the same whether its pictures are there "
+              "or not");
+      second = cache.imageFor(spec, _page.size, 0, pictures);
+    });
+
+    expect(first, isNotNull, reason: "nothing was ever drawn");
+    // And the icon is in it: a solid square at the middle of a page that
+    // otherwise holds one hairline ring.
+    late int lit;
+    await tester.runAsync(() async {
+      var bytes = (await first!.toByteData())!;
+      lit = 0;
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        var at = i ~/ 4;
+        var away = (Offset((at % 400).toDouble(), (at ~/ 400).toDouble()) -
+                _page.center)
+            .distance;
+        if (away < 40 && ((bytes.getUint32(i) >> 24) & 0xFF) > 20) lit++;
+      }
+    });
+    expect(lit, greaterThan(100),
+        reason: "the picture that was kept has no icon in it");
+    expect(second, isNotNull);
+    cache.dispose();
   });
 }

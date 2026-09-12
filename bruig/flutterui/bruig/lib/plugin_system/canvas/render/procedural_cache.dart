@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:flutter/foundation.dart';
@@ -37,10 +39,33 @@ class ProceduralCache extends ChangeNotifier {
   bool _disposed = false;
 
   /// keyFor is what makes two requests the same request: the design, the size
-  /// it is wanted at, and -- for a background that moves -- the moment.
-  static String keyFor(ProceduralSpec spec, ui.Size size, double time) =>
+  /// it is wanted at, -- for a background that moves -- the moment, and which
+  /// of the pictures it uses have arrived.
+  ///
+  /// The pictures matter because they arrive late: a design that carries an
+  /// icon is first drawn without it, while the file is still being read, and
+  /// the drawing that comes back a moment later is a different picture of the
+  /// same design. Left out of the key, the first answer was kept and the icon
+  /// never appeared at all.
+  static String keyFor(ProceduralSpec spec, ui.Size size, double time,
+          [CanvasImageSource? images]) =>
       "${spec.toJson()}|${size.width.round()}x${size.height.round()}"
-      "|${spec.animated ? time.toStringAsFixed(3) : ""}";
+      "|${spec.animated ? time.toStringAsFixed(3) : ""}"
+      "|${_ready(spec, images)}";
+
+  /// _ready is which of a design's pictures can be drawn right now.
+  static String _ready(ProceduralSpec spec, CanvasImageSource? images) {
+    if (images == null) return "";
+    var icons = spec.rings.icons;
+    if (icons.isEmpty) return "";
+    return [
+      for (var icon in icons)
+        images.resolveVector(icon.asset) != null ||
+                images.resolve(icon.asset, const BackgroundRemoval()) != null
+            ? "1"
+            : "0",
+    ].join();
+  }
 
   /// imageFor is the picture to draw, or null when there is not one yet.
   ///
@@ -48,26 +73,28 @@ class ProceduralCache extends ChangeNotifier {
   /// caller draws the background the slow way this once. That is the right
   /// way round: a frame that is late is worse than a frame that cost what it
   /// used to cost.
-  ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time) {
+  ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time,
+      [CanvasImageSource? images]) {
     // A background that moves is a different picture every frame, so caching
     // it would be a raster per frame plus the drawing -- worse than simply
     // drawing it.
     if (spec.animated) return null;
     if (size.width < 1 || size.height < 1) return null;
 
-    var key = keyFor(spec, size, time);
+    var key = keyFor(spec, size, time, images);
     if (key == _for) return _image;
-    if (key != _making) _make(spec, size, time, key);
+    if (key != _making) _make(spec, size, time, key, images);
     return null;
   }
 
-  Future<void> _make(
-      ProceduralSpec spec, ui.Size size, double time, String key) async {
+  Future<void> _make(ProceduralSpec spec, ui.Size size, double time, String key,
+      CanvasImageSource? images) async {
     _making = key;
     try {
       var recorder = ui.PictureRecorder();
       var canvas = ui.Canvas(recorder);
-      paintProcedural(canvas, ui.Offset.zero & size, spec, time: time);
+      paintProcedural(canvas, ui.Offset.zero & size, spec,
+          time: time, images: images);
       var picture = recorder.endRecording();
       ui.Image image;
       try {

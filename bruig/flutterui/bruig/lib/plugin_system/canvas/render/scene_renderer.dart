@@ -205,7 +205,7 @@ void _paintDocumentBackground(
   // The one drawn last time, where it is the same background at the same
   // size. Generating one is the most expensive thing on a canvas and the
   // editor repaints for everything -- see ProceduralCache.
-  var ready = backgrounds?.imageFor(bg.spec, rect.size, time);
+  var ready = backgrounds?.imageFor(bg.spec, rect.size, time, images);
   if (ready != null) {
     canvas.drawImageRect(
         ready,
