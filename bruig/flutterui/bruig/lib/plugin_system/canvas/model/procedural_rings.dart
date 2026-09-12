@@ -65,6 +65,19 @@ class RingSpec {
   /// than the main one. Nought is never.
   final int accentEvery;
 
+  /// buildUp starts the animation with an empty screen and lets the rings
+  /// arrive one at a time, rather than opening on a set that is already
+  /// there.
+  ///
+  /// Which is what "fade in" meant and did not do. Every ring fades in as it
+  /// is born -- that was always true -- but at the first frame the whole set
+  /// was spread across its life already, so what anybody saw when the canvas
+  /// started, and again every time it looped, was nine rings simply being
+  /// there. Read only when the background is animated: a still has one
+  /// moment, and the moment to show is the set at work rather than an empty
+  /// page.
+  final bool buildUp;
+
   /// fadeIn and fadeOut are how much of a ring's travel is spent arriving
   /// and leaving, as fractions of it. edge is whether that happens as a roll
   /// or as a switch.
@@ -105,6 +118,7 @@ class RingSpec {
     this.widthJitter = 0,
     this.colorJitter = 0,
     this.accentEvery = 5,
+    this.buildUp = true,
     this.fadeIn = 0.35,
     this.fadeOut = 0.35,
     this.edge = RingEdge.soft,
@@ -127,6 +141,7 @@ class RingSpec {
     double? widthJitter,
     double? colorJitter,
     int? accentEvery,
+    bool? buildUp,
     double? fadeIn,
     double? fadeOut,
     RingEdge? edge,
@@ -148,6 +163,7 @@ class RingSpec {
         widthJitter: widthJitter ?? this.widthJitter,
         colorJitter: colorJitter ?? this.colorJitter,
         accentEvery: accentEvery ?? this.accentEvery,
+        buildUp: buildUp ?? this.buildUp,
         fadeIn: fadeIn ?? this.fadeIn,
         fadeOut: fadeOut ?? this.fadeOut,
         edge: edge ?? this.edge,
@@ -157,18 +173,23 @@ class RingSpec {
         grunge: grunge ?? this.grunge,
       );
 
-  /// spread is where ring [index] of [count] sits in its travel at [t], from
-  /// nought at its birth to one where it dies.
+  /// ageOf is how far through its life ring [index] is at [t], in lives --
+  /// negative for a ring that has not been born yet, which happens only while
+  /// the set is still building up at the start.
   ///
-  /// The rings are evenly spread through one life and all of them move
-  /// together, so what is seen is a steady procession rather than the whole
-  /// set jumping back to the start. The old one shifted every ring by up to
-  /// one gap and wrapped, which is what "they expand a little and reset"
-  /// was.
-  double spread(int index, double t, {double jitter = 0}) {
+  /// The rings are one life apart divided between them, so they arrive in
+  /// order and the picture is a steady procession rather than the whole set
+  /// jumping back to the start. The first one shifted every ring by up to one
+  /// gap and wrapped, which is what "they expand a little and reset" was.
+  double ageOf(int index, double t, {double jitter = 0}) {
     var many = count <= 0 ? 1 : count;
-    var at = (index + jitter) / many + t;
-    var wrapped = at % 1;
+    return t - (index + jitter) / many;
+  }
+
+  /// spread is where ring [index] sits in its travel: nought at its birth and
+  /// one where it dies, whatever life it is on.
+  double spread(int index, double t, {double jitter = 0}) {
+    var wrapped = ageOf(index, t, jitter: jitter) % 1;
     return wrapped < 0 ? wrapped + 1 : wrapped;
   }
 
@@ -197,6 +218,7 @@ class RingSpec {
         if (widthJitter != 0) "widthJitter": widthJitter,
         if (colorJitter != 0) "colorJitter": colorJitter,
         "accentEvery": accentEvery,
+        if (!buildUp) "buildUp": false,
         "fadeIn": fadeIn,
         "fadeOut": fadeOut,
         "edge": edge.name,
@@ -219,6 +241,7 @@ class RingSpec {
         widthJitter: jsonDouble(json["widthJitter"], 0).clamp(0.0, 1.0),
         colorJitter: jsonDouble(json["colorJitter"], 0).clamp(0.0, 1.0),
         accentEvery: jsonInt(json["accentEvery"], 5).clamp(0, 50),
+        buildUp: jsonBool(json["buildUp"], true),
         fadeIn: jsonDouble(json["fadeIn"], 0.35).clamp(0.0, 1.0),
         fadeOut: jsonDouble(json["fadeOut"], 0.35).clamp(0.0, 1.0),
         edge: RingEdge.fromName(json["edge"] as String?),

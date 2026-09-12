@@ -408,6 +408,12 @@ class ProceduralSettings extends StatelessWidget {
                     label: "Arriving and leaving",
                     hideCaption: true,
                     children: [
+                      CanvasToggle(
+                        key: const ValueKey("ringBuildUp"),
+                        label: "Build up",
+                        value: rings.buildUp,
+                        onChanged: (v) => _ringsNow(rings.copyWith(buildUp: v)),
+                      ),
                       CanvasNumberField(
                         key: const ValueKey("ringFadeIn"),
                         label: "Fade in",
@@ -444,6 +450,12 @@ class ProceduralSettings extends StatelessWidget {
                         options: [for (var e in RingEdge.values) (e, e.label)],
                         onChanged: (v) => _ringsNow(rings.copyWith(edge: v)),
                       ),
+                      const CanvasHint(
+                          "Fade in and out are what happens at the two ends "
+                          "of one ring's life. Build up is what happens at "
+                          "the start of the animation: the page begins empty "
+                          "and the rings arrive one at a time, rather than "
+                          "opening on a set that is already there."),
                     ]),
               ]),
           CanvasExpander(

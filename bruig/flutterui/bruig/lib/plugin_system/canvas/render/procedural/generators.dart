@@ -820,6 +820,16 @@ void _rings(
     // shrinking is a ring born at the outside that dies in the middle, not a
     // life played backwards. Running the clock back as well as the journey
     // left the two the same picture.
+    //
+    // Not yet born is a ring the set has not reached: at the first frame the
+    // whole set used to be spread across its life already, so a canvas
+    // opened -- and looped -- on rings that were simply there. See
+    // RingSpec.buildUp.
+    if (ring.buildUp &&
+        spec.animated &&
+        ring.ageOf(i, moving, jitter: jitter) < 0) {
+      continue;
+    }
     var through = ring.spread(i, moving, jitter: jitter);
 
     // Bunched towards one end or the other. A half is even.

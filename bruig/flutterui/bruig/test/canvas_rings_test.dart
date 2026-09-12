@@ -90,16 +90,37 @@ void main() {
 
   test("a ring's travel runs from its start to its end and starts again", () {
     const ring = RingSpec(count: 4);
-    // Four rings evenly through one life, and each of them a quarter of a
-    // life behind the last.
-    expect(ring.spread(0, 0), 0);
-    expect(ring.spread(1, 0), 0.25);
-    expect(ring.spread(3, 0), 0.75);
+    // Four rings, each a quarter of a life behind the last: the first is born
+    // when the animation starts and the rest follow it in.
+    expect(ring.ageOf(0, 0), 0);
+    expect(ring.ageOf(1, 0), -0.25, reason: "not born yet");
+    expect(ring.ageOf(1, 0.25), 0);
+    expect(ring.ageOf(3, 0.75), 0);
+
     // And time carries them: the one that was at the start is a tenth of the
     // way out, not back where it began.
     expect(ring.spread(0, 0.1), closeTo(0.1, 0.0001));
-    expect(ring.spread(3, 0.3), closeTo(0.05, 0.0001),
+    expect(ring.spread(0, 1.05), closeTo(0.05, 0.0001),
         reason: "the one that ran off the end came back at the start");
+  });
+
+  test("the set builds up rather than opening on itself", () {
+    // Every ring fades in as it is born, and that was always true. What was
+    // not is the start: at the first frame the whole set was spread across
+    // its life already, so a canvas opened -- and looped -- on nine rings
+    // simply being there, which is what "the fade in does not work" was.
+    const ring = RingSpec(count: 4);
+    expect(ring.buildUp, isTrue);
+    var bornAtTheStart = [
+      for (var i = 0; i < ring.count; i++)
+        if (ring.ageOf(i, 0) >= 0) i,
+    ];
+    expect(bornAtTheStart, [0]);
+    var halfWay = [
+      for (var i = 0; i < ring.count; i++)
+        if (ring.ageOf(i, 0.5) >= 0) i,
+    ];
+    expect(halfWay, [0, 1, 2]);
   });
 
   test("the edges say how a ring arrives and leaves", () {
@@ -161,6 +182,45 @@ void main() {
         reason: "a young ring is still around the middle");
     expect(topmost(later), lessThan(topmost(early)),
         reason: "an older ring has grown out towards the edge");
+  });
+
+  testWidgets("an animated background starts on an empty page", (tester) async {
+    // Measured off the picture: a line from the middle out to the right, and
+    // how many separate rings it crosses.
+    Future<int> ringsAcross(double time, {bool buildUp = true}) async {
+      var spec = _spec(rings: RingSpec(buildUp: buildUp));
+      var recorder = ui.PictureRecorder();
+      paintProcedural(ui.Canvas(recorder), _page, spec, time: time);
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 300);
+      var bytes = (await image.toByteData())!;
+      var crossed = 0;
+      var was = false;
+      for (var x = 200; x < 400; x++) {
+        var pixel = bytes.getUint32((150 * 400 + x) * 4);
+        var on = ((pixel >> 24) & 0xFF) / 255 > 0.02;
+        if (on && !was) crossed++;
+        was = on;
+      }
+      image.dispose();
+      picture.dispose();
+      return crossed;
+    }
+
+    late int atTheStart;
+    late int later;
+    late int withoutBuildUp;
+    await tester.runAsync(() async {
+      atTheStart = await ringsAcross(0);
+      later = await ringsAcross(5);
+      withoutBuildUp = await ringsAcross(0, buildUp: false);
+    });
+
+    expect(atTheStart, lessThanOrEqualTo(1),
+        reason: "the animation opened on a set that was already there");
+    expect(later, greaterThan(3), reason: "and it never filled up");
+    expect(withoutBuildUp, greaterThan(3),
+        reason: "turning it off should give back the set as it was");
   });
 
   testWidgets("shrinking is a ring born at the outside", (tester) async {
@@ -366,6 +426,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("ringInward")));
     await tester.pumpAndSettle();
     expect(spec.rings.inward, isTrue);
+
+    // The build-up switch is in the fade section, and reaches the rings.
+    await tester.tap(find.text("ARRIVING AND LEAVING"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("ringBuildUp")));
+    await tester.pumpAndSettle();
+    expect(spec.rings.buildUp, isFalse);
 
     await tester.tap(find.text("TEXTURE"));
     await tester.pumpAndSettle();
