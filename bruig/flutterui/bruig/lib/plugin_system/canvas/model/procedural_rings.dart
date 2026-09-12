@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // procedural_rings.dart is everything the Rings background can be told.
@@ -195,10 +197,17 @@ class RingSpec {
 
   /// alphaAt is how strongly a ring shows at a point in its travel.
   double alphaAt(double through) {
-    var on = 1.0;
-    if (fadeIn > 0 && through < fadeIn) on = through / fadeIn;
-    if (fadeOut > 0 && through > 1 - fadeOut) on = (1 - through) / fadeOut;
-    on = on.clamp(0.0, 1.0);
+    // Both ends, and the weaker of the two wins.
+    //
+    // Written as two ifs, the second one overruled the first: a ring set to
+    // fade in over the whole of its life *and* out over the whole of its
+    // life was drawn at one minus its age, which is full strength at birth
+    // and nothing at death -- no fade in at all. Turning the fade in up to
+    // one was the surest way to switch it off, which is what "fade in does
+    // not work" was.
+    var arriving = fadeIn > 0 ? (through / fadeIn).clamp(0.0, 1.0) : 1.0;
+    var leaving = fadeOut > 0 ? ((1 - through) / fadeOut).clamp(0.0, 1.0) : 1.0;
+    var on = math.min(arriving, leaving);
     if (edge == RingEdge.hard) return on <= 0 ? 0 : 1;
     // Smoothed at both ends, so a ring arrives and leaves rather than
     // switching on and then dimming at an even rate.

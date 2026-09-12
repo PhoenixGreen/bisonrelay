@@ -123,6 +123,26 @@ void main() {
     expect(halfWay, [0, 1, 2]);
   });
 
+  test("a long fade in is still a fade in", () {
+    // The two ends were written as two ifs, and the second overruled the
+    // first: a ring set to fade in over the whole of its life *and* out over
+    // the whole of it was drawn at one minus its age -- full strength at
+    // birth and nothing at death, which is no fade in at all. Turning the
+    // fade in up to one was the surest way to switch it off.
+    const both = RingSpec(fadeIn: 1, fadeOut: 1);
+    expect(both.alphaAt(0), 0, reason: "a ring is born out of nothing");
+    expect(both.alphaAt(0.1), lessThan(0.15));
+    expect(both.alphaAt(0.5), greaterThan(0.4),
+        reason: "and is at its strongest in the middle of its life");
+    expect(both.alphaAt(0.9), lessThan(0.15));
+    expect(both.alphaAt(1), 0);
+
+    // The same colour at the same age whichever way round the two are.
+    const one = RingSpec(fadeIn: 0.8, fadeOut: 0.3);
+    const other = RingSpec(fadeIn: 0.3, fadeOut: 0.8);
+    expect(one.alphaAt(0.15), closeTo(other.alphaAt(0.85), 0.0001));
+  });
+
   test("the edges say how a ring arrives and leaves", () {
     const soft = RingSpec(fadeIn: 0.2, fadeOut: 0.2);
     expect(soft.alphaAt(0), 0);
