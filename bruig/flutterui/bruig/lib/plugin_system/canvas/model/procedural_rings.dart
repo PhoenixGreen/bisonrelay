@@ -68,6 +68,13 @@ class RingSpec {
   /// fadeIn and fadeOut are how much of a ring's travel is spent arriving
   /// and leaving, as fractions of it. edge is whether that happens as a roll
   /// or as a switch.
+  ///
+  /// A third of the travel each by default, which sounds like a lot and is
+  /// the least that reads as a fade. A ring spends the start of its life
+  /// small and near the middle, where a few per cent of its travel is a few
+  /// pixels of radius: over a tenth of the travel, as it was, a ring was
+  /// already at three quarters of its strength by the time it was big enough
+  /// to notice, and what anybody saw was a ring appearing.
   final double fadeIn;
   final double fadeOut;
   final RingEdge edge;
@@ -98,8 +105,8 @@ class RingSpec {
     this.widthJitter = 0,
     this.colorJitter = 0,
     this.accentEvery = 5,
-    this.fadeIn = 0.12,
-    this.fadeOut = 0.25,
+    this.fadeIn = 0.35,
+    this.fadeOut = 0.35,
     this.edge = RingEdge.soft,
     this.noise = 0,
     this.glitch = 0,
@@ -212,8 +219,8 @@ class RingSpec {
         widthJitter: jsonDouble(json["widthJitter"], 0).clamp(0.0, 1.0),
         colorJitter: jsonDouble(json["colorJitter"], 0).clamp(0.0, 1.0),
         accentEvery: jsonInt(json["accentEvery"], 5).clamp(0, 50),
-        fadeIn: jsonDouble(json["fadeIn"], 0.12).clamp(0.0, 1.0),
-        fadeOut: jsonDouble(json["fadeOut"], 0.25).clamp(0.0, 1.0),
+        fadeIn: jsonDouble(json["fadeIn"], 0.35).clamp(0.0, 1.0),
+        fadeOut: jsonDouble(json["fadeOut"], 0.35).clamp(0.0, 1.0),
         edge: RingEdge.fromName(json["edge"] as String?),
         noise: jsonDouble(json["noise"], 0).clamp(0.0, 1.0),
         glitch: jsonDouble(json["glitch"], 0).clamp(0.0, 1.0),

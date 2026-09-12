@@ -115,6 +115,25 @@ void main() {
     expect(hard.alphaAt(0), 0);
   });
 
+  test("a new ring arrives faintly rather than appearing", () {
+    // A ring spends the start of its life small and near the middle, where a
+    // few per cent of its travel is a few pixels of radius. Fading in over a
+    // tenth of the travel, it was already at three quarters of its strength
+    // by the time it was big enough to notice, and what anybody saw was a
+    // ring appearing rather than arriving.
+    const ring = RingSpec();
+    var born = ring.spread(0, 0);
+    expect(ring.alphaAt(born), 0);
+
+    // By the time the next one is born behind it -- one twelfth of a life --
+    // the first is still faint.
+    expect(ring.alphaAt(1 / ring.count), lessThan(0.3),
+        reason: "a ring is at ${(ring.alphaAt(1 / ring.count) * 100).round()}"
+            "% by the time the next one starts");
+    // And it is at its full strength well before it leaves.
+    expect(ring.alphaAt(0.5), 1);
+  });
+
   testWidgets("the rings reach the edge of the page and leave it",
       (tester) async {
     // The bug this was written for: the rings expanded a little and snapped
@@ -331,6 +350,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(spec.rings.count, 24);
 
+    // The four sections after the first are shut until they are wanted, and
+    // what is shut is not built: seventeen number fields is seventeen text
+    // fields with their own state, and building them all is forty
+    // milliseconds of every build of this panel.
+    expect(find.byKey(const ValueKey("ringTo")), findsNothing);
+    expect(find.byKey(const ValueKey("ringGrunge")), findsNothing);
+
+    await tester.tap(find.text("WHERE THEY RUN"));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("ringTo")), "1.5");
     await tester.pumpAndSettle();
     expect(spec.rings.to, 1.5);
@@ -339,9 +367,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(spec.rings.inward, isTrue);
 
+    await tester.tap(find.text("TEXTURE"));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("ringGrunge")), "0.6");
     await tester.pumpAndSettle();
     expect(spec.rings.grunge, 0.6);
+
+    // And the two shared controls the rings say in their own words are not
+    // offered twice: Size and Variation did nothing at all on this style.
+    expect(find.text("Size"), findsNothing);
+    expect(find.text("Variation"), findsNothing);
 
     // And they are not offered for a style that has no rings in it.
     spec = spec.copyWith(style: ProceduralStyle.bokeh);
