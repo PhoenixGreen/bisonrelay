@@ -43,6 +43,44 @@ enum RingIconPlace {
       values.firstWhere((p) => p.name == name, orElse: () => middle);
 }
 
+/// RingDrift is a range one icon's own number is taken from.
+///
+/// Icons spaced around a ring are otherwise identical beads on a wire: same
+/// size, same moment, same distance from the middle, and the eye reads the
+/// whole set as one drawn shape rather than as things sitting on a ring.
+/// Each of these says how far one of them is allowed to differ, and every
+/// icon takes its own place in the range -- so they scatter rather than all
+/// moving together.
+///
+/// Nought to nought is no scatter at all, which is why both ends default to
+/// it: a setting nobody has touched changes nothing.
+class RingDrift {
+  /// least and most are the two ends of the range. Either may be negative,
+  /// and they may be given the other way round -- the pair is a range, not
+  /// an order.
+  final double least;
+  final double most;
+
+  const RingDrift({this.least = 0, this.most = 0});
+
+  bool get none => least == 0 && most == 0;
+
+  /// at is the number for one icon, given its own roll of nought to one.
+  double at(double roll) => least + (most - least) * roll.clamp(0.0, 1.0);
+
+  RingDrift copyWith({double? least, double? most}) =>
+      RingDrift(least: least ?? this.least, most: most ?? this.most);
+
+  List<double> toJson() => [least, most];
+
+  factory RingDrift.fromJson(dynamic json) => json is List && json.length >= 2
+      ? RingDrift(
+          least: jsonDouble(json[0], 0),
+          most: jsonDouble(json[1], 0),
+        )
+      : const RingDrift();
+}
+
 /// RingIcon is a picture carried by one of the rings.
 ///
 /// It inherits the ring: where it is, how big it has grown, and how far
@@ -78,6 +116,21 @@ class RingIcon {
   /// already turned to face out of it.
   final double turn;
 
+  /// How far each icon around a ring is allowed to differ from the rest.
+  /// See RingDrift: every icon takes its own place in each range.
+  ///
+  /// driftWhen is measured in the ring's life, so an icon moved through it
+  /// sits off the line -- ahead of the ring or behind it -- and arrives and
+  /// leaves at its own moment. driftWhere is measured in the gap between one
+  /// icon and the next, so a half is halfway to its neighbour. driftSize and
+  /// driftFade are added to one: a half is half as big again, and minus a
+  /// half is half the strength. driftTurn is in degrees.
+  final RingDrift driftWhen;
+  final RingDrift driftWhere;
+  final RingDrift driftSize;
+  final RingDrift driftTurn;
+  final RingDrift driftFade;
+
   const RingIcon({
     this.asset = "",
     this.ring = 1,
@@ -87,6 +140,11 @@ class RingIcon {
     this.tinted = false,
     this.tint = const Color(0xFFFFFFFF),
     this.turn = 0,
+    this.driftWhen = const RingDrift(),
+    this.driftWhere = const RingDrift(),
+    this.driftSize = const RingDrift(),
+    this.driftTurn = const RingDrift(),
+    this.driftFade = const RingDrift(),
   });
 
   RingIcon copyWith({
@@ -98,6 +156,11 @@ class RingIcon {
     bool? tinted,
     Color? tint,
     double? turn,
+    RingDrift? driftWhen,
+    RingDrift? driftWhere,
+    RingDrift? driftSize,
+    RingDrift? driftTurn,
+    RingDrift? driftFade,
   }) =>
       RingIcon(
         asset: asset ?? this.asset,
@@ -108,6 +171,11 @@ class RingIcon {
         tinted: tinted ?? this.tinted,
         tint: tint ?? this.tint,
         turn: turn ?? this.turn,
+        driftWhen: driftWhen ?? this.driftWhen,
+        driftWhere: driftWhere ?? this.driftWhere,
+        driftSize: driftSize ?? this.driftSize,
+        driftTurn: driftTurn ?? this.driftTurn,
+        driftFade: driftFade ?? this.driftFade,
       );
 
   Map<String, dynamic> toJson() => {
@@ -119,6 +187,11 @@ class RingIcon {
         if (tinted) "tinted": true,
         if (tinted) "tint": colorToJson(tint),
         if (turn != 0) "turn": turn,
+        if (!driftWhen.none) "driftWhen": driftWhen.toJson(),
+        if (!driftWhere.none) "driftWhere": driftWhere.toJson(),
+        if (!driftSize.none) "driftSize": driftSize.toJson(),
+        if (!driftTurn.none) "driftTurn": driftTurn.toJson(),
+        if (!driftFade.none) "driftFade": driftFade.toJson(),
       };
 
   factory RingIcon.fromJson(Map<String, dynamic> json) => RingIcon(
@@ -130,6 +203,11 @@ class RingIcon {
         tinted: jsonBool(json["tinted"], false),
         tint: colorFromJson(json["tint"], const Color(0xFFFFFFFF)),
         turn: jsonDouble(json["turn"], 0),
+        driftWhen: RingDrift.fromJson(json["driftWhen"]),
+        driftWhere: RingDrift.fromJson(json["driftWhere"]),
+        driftSize: RingDrift.fromJson(json["driftSize"]),
+        driftTurn: RingDrift.fromJson(json["driftTurn"]),
+        driftFade: RingDrift.fromJson(json["driftFade"]),
       );
 }
 

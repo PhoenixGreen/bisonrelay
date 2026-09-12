@@ -935,12 +935,18 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     if (spec.inRuns && age > 1) continue;
     var through = ring.spread(i, moving, jitter: jitter);
 
-    // Bunched towards one end or the other. A half is even.
+    // Bunched towards one end or the other. A half is even. Written as a
+    // function of how far through a life something is, because an icon
+    // carried by this ring may be a little ahead of it or behind it -- see
+    // RingIcon.driftWhen -- and has to be placed by the same journey.
     var bias = ring.spacing.clamp(0.05, 0.95);
-    var eased = math.pow(through, bias <= 0 ? 1 : (0.5 / bias)).toDouble();
-    // Where it sits between its two ends. Shrinking starts it at the far one
-    // and walks it back.
-    var place = ring.inward ? 1 - eased : eased;
+    double radiusAt(double at) {
+      var eased = math.pow(at, bias <= 0 ? 1 : (0.5 / bias)).toDouble();
+      // Where it sits between its two ends. Shrinking starts it at the far
+      // one and walks it back.
+      var place = ring.inward ? 1 - eased : eased;
+      return reach * (ring.from + (ring.to - ring.from) * place);
+    }
 
     // The fade is about the life rather than the place: a ring fades in when
     // it is born and out when it dies, wherever on the page that happens.
@@ -949,7 +955,7 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     if (alpha <= 0.004) continue;
     if (hash(spec.seed, i, 3) > spec.density * 1.6) continue;
 
-    var radius = reach * (ring.from + (ring.to - ring.from) * place);
+    var radius = radiusAt(through);
     if (radius <= 0.5) continue;
 
     var width = math.max(
@@ -986,7 +992,8 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
     // arrives, swells and dissolves with the ring around it.
     for (var icon in ring.icons) {
       if (icon.ring - 1 != i || icon.asset.isEmpty) continue;
-      _drawRingIcons(canvas, images, icon, centre, radius, alpha);
+      _drawRingIcons(canvas, images, icon, spec, ring, i, centre, through,
+          radiusAt, spec.intensity.clamp(0.0, 1.0));
     }
   }
 }
@@ -997,35 +1004,18 @@ void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
 /// against the ring that carries it -- so it grows as that ring grows.
 /// Around, it is several spaced along the ring itself, each turned to face
 /// out of it.
-void _drawRingIcons(ui.Canvas canvas, CanvasImageSource? images, RingIcon icon,
-    Offset centre, double radius, double alpha) {
-  if (images == null || alpha <= 0.004 || radius <= 0) return;
-  var side = radius * icon.size.clamp(0.01, 4.0);
-  if (side < 1) return;
-
-  var places = <(Offset, double)>[];
-  if (icon.place == RingIconPlace.middle) {
-    places.add((centre, icon.turn * math.pi / 180));
-  } else {
-    var many = icon.count.clamp(1, 60);
-    for (var n = 0; n < many; n++) {
-      var angle = n / many * 2 * math.pi;
-      places.add((
-        centre + Offset(math.cos(angle), math.sin(angle)) * radius,
-        angle + math.pi / 2 + icon.turn * math.pi / 180,
-      ));
-    }
-  }
-
-  // One colour rather than its own, where that has been asked for: a line
-  // drawing carried by a ring usually wants to be the colour of the ring
-  // rather than whatever it was drawn in. srcIn keeps the picture's shape
-  // and replaces everything inside it.
-  var paint = Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
-  if (icon.tinted) {
-    paint.colorFilter = ui.ColorFilter.mode(
-        icon.tint.withValues(alpha: icon.tint.a * alpha), BlendMode.srcIn);
-  }
+void _drawRingIcons(
+    ui.Canvas canvas,
+    CanvasImageSource? images,
+    RingIcon icon,
+    ProceduralSpec spec,
+    RingSpec ring,
+    int index,
+    Offset centre,
+    double through,
+    double Function(double) radiusAt,
+    double strength) {
+  if (images == null || strength <= 0.004) return;
 
   var vector = images.resolveVector(icon.asset);
   var bitmap = vector == null
@@ -1036,11 +1026,75 @@ void _drawRingIcons(ui.Canvas canvas, CanvasImageSource? images, RingIcon icon,
   var natural =
       vector?.size ?? Size(bitmap!.width.toDouble(), bitmap.height.toDouble());
   if (natural.width <= 0 || natural.height <= 0) return;
-  // Kept in proportion and fitted to a square of the wanted size, which is
-  // what makes two icons of different shapes look like the same size.
-  var scale = side / math.max(natural.width, natural.height);
 
-  for (var (at, turn) in places) {
+  // Where each one is, how big, how turned and how strong. One entry per
+  // picture drawn, because around a ring they no longer share any of it:
+  // see RingIcon.driftWhen and the rest.
+  var each = <(Offset, double, double, double)>[];
+  if (icon.place == RingIconPlace.middle) {
+    each.add((
+      centre,
+      icon.turn * math.pi / 180,
+      radiusAt(through) * icon.size.clamp(0.01, 4.0),
+      ring.alphaAt(through) * strength,
+    ));
+  } else {
+    var many = icon.count.clamp(1, 60);
+    for (var n = 0; n < many; n++) {
+      // Its own roll for each of them, and a different one per icon: rolled
+      // once for the set, every picture would move together, which is the
+      // thing being fixed rather than a cheaper way of doing it.
+      double roll(int of) => hash(spec.seed + 23 + of, index, n);
+
+      // Ahead of its ring or behind it, which is what takes an icon off the
+      // line: it is placed by the ring's own journey at its own moment, so
+      // it sits at the radius the ring had then -- and arrives and leaves at
+      // that moment too.
+      var mine = (through + icon.driftWhen.at(roll(0))).clamp(0.0, 1.0);
+      var radius = radiusAt(mine);
+      if (radius <= 0.5) continue;
+
+      // Round from where it would have sat, in gaps between one and the
+      // next, so the scatter is the same whatever the count.
+      var gap = 2 * math.pi / many;
+      var angle = n * gap + icon.driftWhere.at(roll(1)) * gap;
+
+      var side = radius *
+          (icon.size * (1 + icon.driftSize.at(roll(2)))).clamp(0.01, 4.0);
+      if (side < 1) continue;
+
+      var alpha =
+          (ring.alphaAt(mine) * strength * (1 + icon.driftFade.at(roll(4))))
+              .clamp(0.0, 1.0);
+      if (alpha <= 0.004) continue;
+
+      each.add((
+        centre + Offset(math.cos(angle), math.sin(angle)) * radius,
+        angle +
+            math.pi / 2 +
+            (icon.turn + icon.driftTurn.at(roll(3))) * math.pi / 180,
+        side,
+        alpha,
+      ));
+    }
+  }
+
+  for (var (at, turn, side, alpha) in each) {
+    if (side < 1 || alpha <= 0.004) continue;
+    // One colour rather than its own, where that has been asked for: a line
+    // drawing carried by a ring usually wants to be the colour of the ring
+    // rather than whatever it was drawn in. srcIn keeps the picture's shape
+    // and replaces everything inside it.
+    var paint = Paint()
+      ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
+    if (icon.tinted) {
+      paint.colorFilter = ui.ColorFilter.mode(
+          icon.tint.withValues(alpha: icon.tint.a * alpha), BlendMode.srcIn);
+    }
+    // Kept in proportion and fitted to a square of the wanted size, which is
+    // what makes two icons of different shapes look like the same size.
+    var scale = side / math.max(natural.width, natural.height);
+
     canvas.save();
     canvas.translate(at.dx, at.dy);
     if (turn != 0) canvas.rotate(turn);

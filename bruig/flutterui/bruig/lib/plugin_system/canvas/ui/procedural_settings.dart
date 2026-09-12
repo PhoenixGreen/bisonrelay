@@ -67,6 +67,45 @@ class ProceduralSettings extends StatelessWidget {
       ]));
   void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
 
+  /// _drift is the two ends of one of an icon's scatter ranges.
+  ///
+  /// A pair rather than one number, because the useful thing to say is
+  /// usually lopsided: a little smaller and a lot bigger, late but never
+  /// early. See RingDrift.
+  List<Widget> _drift(
+    int at,
+    RingIcon icon,
+    String name,
+    String label,
+    RingDrift value,
+    RingIcon Function(RingDrift) put, {
+    double limit = 1,
+    int decimals = 2,
+    String suffix = "",
+  }) =>
+      [
+        for (var (which, end) in [("Least", value.least), ("Most", value.most)])
+          CanvasNumberField(
+            key: ValueKey("ringIcon$name$which$at"),
+            label: which == "Least" ? "$label from" : "to",
+            decimals: decimals,
+            width: 54,
+            suffix: suffix,
+            value: end,
+            min: -limit,
+            max: limit,
+            onChanged: (v) {
+              onBegin();
+              _icon(
+                  at,
+                  put(which == "Least"
+                      ? value.copyWith(least: v)
+                      : value.copyWith(most: v)));
+            },
+            onCommit: onCommit,
+          ),
+      ];
+
   void _setNow(ProceduralSpec next) {
     onBegin();
     onChanged(next);
@@ -304,6 +343,11 @@ class ProceduralSettings extends StatelessWidget {
               label: "Width",
               decimals: 4,
               width: 66,
+              // A thousandth a pixel rather than the ten-thousandth the
+              // digits imply: the whole range is a fifth of the page, and at
+              // the last digit dragging across it is two thousand pixels.
+              // Shift still gives the ten-thousandths for the last nudge.
+              step: 0.001,
               value: rings.width,
               min: 0.0005,
               max: 0.2,
@@ -346,34 +390,44 @@ class ProceduralSettings extends StatelessWidget {
                     label: "Where they run",
                     hideCaption: true,
                     children: [
-                      CanvasNumberField(
-                        key: const ValueKey("ringFrom"),
-                        label: "Starts at",
-                        decimals: 2,
-                        width: 62,
-                        value: rings.from,
-                        min: 0,
-                        max: 2,
-                        onChanged: (v) {
-                          onBegin();
-                          _rings(rings.copyWith(from: v));
-                        },
-                        onCommit: onCommit,
-                      ),
-                      CanvasNumberField(
-                        key: const ValueKey("ringTo"),
-                        label: "Ends at",
-                        decimals: 2,
-                        width: 62,
-                        value: rings.to,
-                        min: 0,
-                        max: 2,
-                        onChanged: (v) {
-                          onBegin();
-                          _rings(rings.copyWith(to: v));
-                        },
-                        onCommit: onCommit,
-                      ),
+                      // The near end and the far end, captioned by which of
+                      // them a ring sets off from. Shrinking runs the journey
+                      // the other way, so the near end is where a ring
+                      // arrives -- and a field labelled "starts at" that is
+                      // in fact where the ring stops is how a set nobody can
+                      // see gets built: rings told to begin at the far corner
+                      // begin off the page.
+                      for (var near in [!rings.inward, rings.inward])
+                        if (near)
+                          CanvasNumberField(
+                            key: const ValueKey("ringFrom"),
+                            label: rings.inward ? "Ends at" : "Starts at",
+                            decimals: 2,
+                            width: 62,
+                            value: rings.from,
+                            min: 0,
+                            max: 2,
+                            onChanged: (v) {
+                              onBegin();
+                              _rings(rings.copyWith(from: v));
+                            },
+                            onCommit: onCommit,
+                          )
+                        else
+                          CanvasNumberField(
+                            key: const ValueKey("ringTo"),
+                            label: rings.inward ? "Starts at" : "Ends at",
+                            decimals: 2,
+                            width: 62,
+                            value: rings.to,
+                            min: 0,
+                            max: 2,
+                            onChanged: (v) {
+                              onBegin();
+                              _rings(rings.copyWith(to: v));
+                            },
+                            onCommit: onCommit,
+                          ),
                       CanvasNumberField(
                         key: const ValueKey("ringCentreX"),
                         label: "From across",
@@ -713,6 +767,38 @@ class ProceduralSettings extends StatelessWidget {
                           color: icon.tint,
                           onChanged: (c) => _icon(i, icon.copyWith(tint: c)),
                         ),
+                      // How far each one is allowed to differ from the rest,
+                      // which is the difference between pictures threaded on
+                      // a wire and pictures that happen to be near a ring.
+                      // Only around a ring: one in the middle has nothing to
+                      // differ from.
+                      if (icon.place == RingIconPlace.around) ...[
+                        const CanvasLineBreak(),
+                        ..._drift(i, icon, "When", "Time", icon.driftWhen,
+                            (d) => icon.copyWith(driftWhen: d)),
+                        ..._drift(i, icon, "Where", "Position", icon.driftWhere,
+                            (d) => icon.copyWith(driftWhere: d)),
+                        ..._drift(i, icon, "Size", "Size", icon.driftSize,
+                            (d) => icon.copyWith(driftSize: d),
+                            limit: 4),
+                        ..._drift(i, icon, "Turn", "Turn", icon.driftTurn,
+                            (d) => icon.copyWith(driftTurn: d),
+                            limit: 360, decimals: 0, suffix: "°"),
+                        ..._drift(i, icon, "Fade", "Fade", icon.driftFade,
+                            (d) => icon.copyWith(driftFade: d)),
+                        const CanvasHint(
+                            "How far each of these pictures is allowed to "
+                            "differ from the rest, and every one of them "
+                            "takes its own place in the range. Time is "
+                            "measured in the ring's life, so a picture moved "
+                            "through it sits off the line -- ahead of the "
+                            "ring or behind it -- and arrives and leaves at "
+                            "its own moment. Position is measured in the gap "
+                            "to the next picture. Size and Fade are added to "
+                            "one: a half is half as big again, and minus a "
+                            "half is half the strength."),
+                        const CanvasLineBreak(),
+                      ],
                       CanvasIconButton(
                         key: ValueKey("ringIconRemove$i"),
                         icon: Icons.close,

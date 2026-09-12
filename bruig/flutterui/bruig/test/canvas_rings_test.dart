@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -133,6 +134,49 @@ class _NoPictures extends _Pictures {
   @override
   CanvasVector? resolveVector(String assetId) => null;
 }
+
+/// _marks is every pixel an icon drew, as how far it is from the middle of
+/// the page, which way round it is, and how strongly it was drawn.
+///
+/// Rings themselves are kept out of it by giving them no width worth
+/// counting -- what is being measured here is the pictures they carry.
+Future<List<(double, double, int)>> _marks(ProceduralSpec spec,
+    {double time = 3}) async {
+  var recorder = ui.PictureRecorder();
+  paintProcedural(ui.Canvas(recorder), _page, spec,
+      time: time, images: _Pictures());
+  var picture = recorder.endRecording();
+  var image = await picture.toImage(400, 300);
+  var bytes = (await image.toByteData())!;
+  var found = <(double, double, int)>[];
+  for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+    var alpha = (bytes.getUint32(i) >> 8) & 0xFF;
+    if (alpha <= 10) continue;
+    var at = i ~/ 4;
+    var away =
+        Offset((at % 400).toDouble(), (at ~/ 400).toDouble()) - _page.center;
+    found.add((away.distance, math.atan2(away.dy, away.dx), alpha));
+  }
+  image.dispose();
+  picture.dispose();
+  return found;
+}
+
+/// _beads is a ring carrying [many] pictures spaced around it, still, so that
+/// what moves in a test is only the scatter being asked about.
+ProceduralSpec _beads(RingIcon icon, {int many = 6}) => _spec(
+      rings: RingSpec(
+        count: 1,
+        width: 0.0005,
+        from: 0.2,
+        to: 0.6,
+        fadeIn: 0,
+        fadeOut: 0,
+        edge: RingEdge.hard,
+        icons: [icon.copyWith(place: RingIconPlace.around, count: many)],
+      ),
+      animated: false,
+    );
 
 ProceduralSpec _spec(
         {RingSpec rings = const RingSpec(), bool animated = true}) =>
@@ -1021,6 +1065,161 @@ void main() {
       "loopTimes": 3,
     });
     expect(counted.loopTimes, 3);
+  });
+
+  testWidgets("the width drags at a thousandth, and shrink says which end",
+      (tester) async {
+    var spec = _spec(rings: const RingSpec(width: 0.05));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => CanvasControlScope(
+                maxWidth: 240,
+                child: ProceduralSettings(
+                  spec: spec,
+                  onBegin: () {},
+                  onCommit: () {},
+                  onChanged: (next) => setState(() => spec = next),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // A width is shown in ten-thousandths, but it runs to a fifth of the
+    // page: at the last digit a pixel, dragging the caption across the whole
+    // range is two thousand pixels of travel.
+    var caption = find.descendant(
+        of: find.byKey(const ValueKey("ringWidth")),
+        matching: find.text("Width"));
+    await tester.ensureVisible(caption);
+    await tester.pumpAndSettle();
+    await tester.drag(caption, const Offset(50, 0));
+    await tester.pumpAndSettle();
+    expect(spec.rings.width, closeTo(0.1, 0.0005),
+        reason: "fifty pixels should be fifty thousandths");
+
+    // And the two ends of the journey are captioned by which of them a ring
+    // sets off from, which shrinking swaps: a field that says "starts at"
+    // and is in fact where the ring stops is how a set nobody can see gets
+    // built.
+    // Opened only if it is shut: the sections remember whether they were,
+    // so a test that always taps closes one another test left open.
+    if (find.byKey(const ValueKey("ringTo")).evaluate().isEmpty) {
+      await tester.ensureVisible(find.text("WHERE THEY RUN"));
+      await tester.tap(find.text("WHERE THEY RUN"));
+      await tester.pumpAndSettle();
+    }
+    Finder captionOf(String key, String text) => find.descendant(
+        of: find.byKey(ValueKey(key)), matching: find.text(text));
+    expect(captionOf("ringFrom", "Starts at"), findsOneWidget);
+    expect(captionOf("ringTo", "Ends at"), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey("ringInward")));
+    await tester.tap(find.byKey(const ValueKey("ringInward")));
+    await tester.pumpAndSettle();
+    expect(spec.rings.inward, isTrue);
+    expect(captionOf("ringTo", "Starts at"), findsOneWidget,
+        reason: "shrinking sets off from the far end");
+    expect(captionOf("ringFrom", "Ends at"), findsOneWidget);
+    // And the one it starts from is shown first.
+    expect(tester.getTopLeft(find.byKey(const ValueKey("ringTo"))).dx,
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey("ringFrom"))).dx));
+  });
+
+  testWidgets("pictures around a ring scatter rather than sit on the line",
+      (tester) async {
+    // Beads on a wire is what they were: same moment, same distance out, same
+    // size, same strength, evenly spaced. Each of these says how far one is
+    // allowed to differ, and every picture takes its own place in the range.
+    late List<(double, double, int)> tidy;
+    late List<(double, double, int)> moved;
+    late List<(double, double, int)> shifted;
+    late List<(double, double, int)> bigger;
+    late List<(double, double, int)> turned;
+    late List<(double, double, int)> dimmer;
+    late List<double> sizes;
+    await tester.runAsync(() async {
+      const icon = RingIcon(asset: "badge", ring: 1, size: 0.25);
+      tidy = await _marks(_beads(icon));
+
+      // Moved through the ring's life: a picture placed at the radius its
+      // ring had at another moment is a picture off the line.
+      moved = await _marks(_beads(
+          icon.copyWith(driftWhen: const RingDrift(least: -0.3, most: 0.3))));
+
+      // Round from where it would have sat. Half a gap, exactly, for every
+      // one of them: that lands each picture midway between two of the tidy
+      // ones, where there was nothing at all before.
+      shifted = await _marks(_beads(
+          icon.copyWith(driftWhere: const RingDrift(least: 0.5, most: 0.5))));
+
+      // Half as big again, all of them, which is a quarter more ink across
+      // the set and then some.
+      bigger = await _marks(_beads(
+          icon.copyWith(driftSize: const RingDrift(least: 0.5, most: 0.5))));
+
+      turned = await _marks(_beads(
+          icon.copyWith(driftTurn: const RingDrift(least: 45, most: 45))));
+
+      dimmer = await _marks(_beads(
+          icon.copyWith(driftFade: const RingDrift(least: -0.6, most: -0.6))));
+
+      // And one picture is not another: asked for a range of sizes, the six
+      // of them come out six different sizes rather than all at one end of
+      // it. Measured as how much ink each sixth of the page holds.
+      var mixed = await _marks(_beads(
+          icon.copyWith(driftSize: const RingDrift(least: -0.5, most: 1))));
+      sizes = [
+        for (var n = 0; n < 6; n++)
+          mixed
+              .where((m) =>
+                  (m.$2 + math.pi * 2) % (math.pi * 2) >= n * math.pi / 3 &&
+                  (m.$2 + math.pi * 2) % (math.pi * 2) < (n + 1) * math.pi / 3)
+              .length
+              .toDouble(),
+      ];
+    });
+
+    double spread(List<(double, double, int)> marks) =>
+        marks.map((m) => m.$1).reduce(math.max) -
+        marks.map((m) => m.$1).reduce(math.min);
+
+    expect(tidy, isNotEmpty, reason: "the pictures were not drawn at all");
+    // All at one distance out, give or take the width of a picture.
+    expect(spread(tidy), lessThan(60));
+    expect(spread(moved), greaterThan(spread(tidy) * 1.5),
+        reason: "moving them through the ring's life left them on the line");
+
+    // Where the tidy set has nothing -- midway between two of them -- the
+    // shifted set has pictures, and the other way about.
+    bool near(List<(double, double, int)> marks, double angle) =>
+        marks.any((m) => (m.$2 - angle).abs() < 0.12 && (m.$1 - 50).abs() < 25);
+    expect(near(tidy, 0), isTrue);
+    expect(near(shifted, 0), isFalse,
+        reason: "half a gap round is not where they started");
+    expect(near(shifted, math.pi / 6), isTrue);
+
+    expect(bigger.length, greaterThan(tidy.length * 1.5));
+    expect(dimmer.map((m) => m.$3).reduce(math.max),
+        lessThan(tidy.map((m) => m.$3).reduce(math.max) * 0.8),
+        reason: "they were drawn at the same strength");
+    expect(turned.map((m) => (m.$1, m.$2)).toSet(),
+        isNot(tidy.map((m) => (m.$1, m.$2)).toSet()),
+        reason: "turning them drew the same picture");
+
+    // Six pictures, six different sizes.
+    expect(sizes.toSet().length, greaterThan(4),
+        reason: "they all took the same place in the range: $sizes");
   });
 
   test("a run lasts until the ring at the back has died", () {

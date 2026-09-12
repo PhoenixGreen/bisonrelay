@@ -306,6 +306,15 @@ class CanvasNumberField extends StatefulWidget {
   final int decimals;
   final double width;
   final String suffix;
+
+  /// step is how far one pixel of a drag on the label moves the number.
+  /// Null is the field's own last digit, which is right wherever the digits
+  /// are the scale -- and wrong where a field is precise but wide, such as a
+  /// ring width in ten-thousandths that runs to a fifth of the page: dragging
+  /// that across at a ten-thousandth a pixel is two thousand pixels of
+  /// travel.
+  final double? step;
+
   final ValueChanged<double> onChanged;
 
   /// onCommit is called when the field is done being edited, and is where a
@@ -321,6 +330,7 @@ class CanvasNumberField extends StatefulWidget {
     this.decimals = 0,
     this.width = 62,
     this.suffix = "",
+    this.step,
     this.onCommit,
     super.key,
   });
@@ -376,6 +386,7 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         min: widget.min,
         max: widget.max,
         decimals: widget.decimals,
+        step: widget.step,
         onChanged: widget.onChanged,
         onCommit: widget.onCommit,
       ),
@@ -927,8 +938,12 @@ class _ScrubLabel extends StatefulWidget {
   final double min;
   final double max;
 
-  /// decimals is how precise the field is, and so what one step means.
+  /// decimals is how precise the field is, and so what one step means unless
+  /// [step] says otherwise.
   final int decimals;
+
+  /// step is how far one pixel moves the number. Null is the last digit.
+  final double? step;
 
   final ValueChanged<double> onChanged;
   final VoidCallback? onCommit;
@@ -940,6 +955,7 @@ class _ScrubLabel extends StatefulWidget {
     required this.max,
     required this.decimals,
     required this.onChanged,
+    this.step,
     this.onCommit,
   });
 
@@ -967,7 +983,7 @@ class _ScrubLabelState extends State<_ScrubLabel> {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
 
-    var step = math.pow(10, -widget.decimals).toDouble();
+    var step = widget.step ?? math.pow(10, -widget.decimals).toDouble();
 
     return MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
