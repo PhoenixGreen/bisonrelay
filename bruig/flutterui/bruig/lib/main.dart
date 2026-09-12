@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:developer' as developer;
 
+import 'package:bruig/components/nav_bar_width.dart';
 import 'package:bruig/components/app_frame.dart';
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/components/route_error.dart';
@@ -125,6 +126,11 @@ void main(List<String> args) async {
 
     // Set the internal plugin flags around notification.
     await StorageManager.setupDefaults();
+
+    // How wide the main navigation was left. Read here rather than by the
+    // bar itself, so that the bar is built at that width rather than told to
+    // change to it -- see nav_bar_width.dart.
+    await loadNavBarWidth();
     bool fgService = Platform.isAndroid &&
         (await StorageManager.readData(StorageManager.ntfnFgSvcKey) as bool? ??
             false);

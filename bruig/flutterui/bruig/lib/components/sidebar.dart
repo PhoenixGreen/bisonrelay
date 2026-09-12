@@ -36,10 +36,13 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> with WindowListener {
   ClientModel get client => widget.client;
   MainMenuModel get mainMenu => widget.mainMenu;
+  // Built at the width it was left at rather than told afterwards. See
+  // navBarStartsWide, and the note in nav_bar_width.dart on why being told
+  // afterwards leaves the bar wide with its labels hidden.
   SidebarXController ctrl =
-      SidebarXController(selectedIndex: 0, extended: true);
+      SidebarXController(selectedIndex: 0, extended: navBarStartsWide);
 
-  /// _width keeps the bar at whatever width it was left at. See NavBarWidth.
+  /// _width writes the width down whenever it changes. See NavBarWidth.
   late final NavBarWidth _width = NavBarWidth(ctrl);
   FeedModel get feed => widget.feed;
   bool hasUnreadMsgs = false;
@@ -145,7 +148,9 @@ class _SidebarState extends State<Sidebar> with WindowListener {
     mainMenu.addListener(menuUpdated);
     client.hasUnreadChats.addListener(hasUnreadMsgsChanged);
     windowManager.addListener(this);
-    _width.restore();
+    // Touched so that it exists and is listening: a late final is not built
+    // until something asks for it.
+    _width.controller;
   }
 
   @override
