@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,11 @@ class ProceduralSettings extends StatelessWidget {
 
   void _set(ProceduralSpec next) => onChanged(next);
 
+  /// _rings and _ringsNow are _set and _setNow for the Rings style's own
+  /// settings, which live in a spec of their own. See RingSpec.
+  void _rings(RingSpec next) => _set(spec.copyWith(rings: next));
+  void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
+
   void _setNow(ProceduralSpec next) {
     onBegin();
     onChanged(next);
@@ -64,6 +70,8 @@ class ProceduralSettings extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: groups);
   }
+
+  RingSpec get rings => spec.rings;
 
   List<Widget> _groups() => [
         CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
@@ -247,6 +255,270 @@ class ProceduralSettings extends StatelessWidget {
               onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
             ),
           ]),
+        // The Rings style's own settings. Its own group rather than more of
+        // the shared five, because what a set of rings raises -- where each
+        // one starts, where it ends, and what happens to it on the way -- is
+        // not a question any other style has.
+        if (spec.style == ProceduralStyle.rings) ...[
+          CanvasControlGroup(label: "Rings", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringCount"),
+              label: "How many",
+              value: rings.count.toDouble(),
+              min: 1,
+              max: 200,
+              width: 54,
+              onChanged: (v) => _rings(rings.copyWith(count: v.round())),
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringWidth"),
+              label: "Width",
+              decimals: 4,
+              width: 66,
+              value: rings.width,
+              min: 0.0005,
+              max: 0.2,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(width: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringAccentEvery"),
+              label: "Accent every",
+              value: rings.accentEvery.toDouble(),
+              min: 0,
+              max: 50,
+              width: 54,
+              onChanged: (v) => _rings(rings.copyWith(accentEvery: v.round())),
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringSpacing"),
+              label: "Spacing",
+              decimals: 2,
+              width: 62,
+              value: rings.spacing,
+              min: 0.05,
+              max: 0.95,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(spacing: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+          CanvasControlGroup(label: "Where they run", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringFrom"),
+              label: "Starts at",
+              decimals: 2,
+              width: 62,
+              value: rings.from,
+              min: 0,
+              max: 2,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(from: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringTo"),
+              label: "Ends at",
+              decimals: 2,
+              width: 62,
+              value: rings.to,
+              min: 0,
+              max: 2,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(to: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringCentreX"),
+              label: "From across",
+              decimals: 2,
+              width: 62,
+              value: rings.centreX,
+              min: -0.5,
+              max: 1.5,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(centreX: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringCentreY"),
+              label: "From down",
+              decimals: 2,
+              width: 62,
+              value: rings.centreY,
+              min: -0.5,
+              max: 1.5,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(centreY: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasToggle(
+              key: const ValueKey("ringInward"),
+              label: "Shrink",
+              value: rings.inward,
+              onChanged: (v) => _ringsNow(rings.copyWith(inward: v)),
+            ),
+            const CanvasHint(
+                "Nought is the middle of the page and one is its furthest "
+                "corner, so a ring that ends at one has left the picture. "
+                "Shrink runs the same journey backwards."),
+          ]),
+          CanvasControlGroup(label: "Arriving and leaving", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringFadeIn"),
+              label: "Fade in",
+              decimals: 2,
+              width: 62,
+              value: rings.fadeIn,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(fadeIn: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringFadeOut"),
+              label: "Fade out",
+              decimals: 2,
+              width: 62,
+              value: rings.fadeOut,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(fadeOut: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasDropdown<RingEdge>(
+              key: const ValueKey("ringEdge"),
+              label: "Edge",
+              value: rings.edge,
+              width: 92,
+              options: [for (var e in RingEdge.values) (e, e.label)],
+              onChanged: (v) => _ringsNow(rings.copyWith(edge: v)),
+            ),
+          ]),
+          CanvasControlGroup(label: "How much they differ", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringSpacingJitter"),
+              label: "Spacing",
+              decimals: 2,
+              width: 62,
+              value: rings.spacingJitter,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(spacingJitter: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringWidthJitter"),
+              label: "Width",
+              decimals: 2,
+              width: 62,
+              value: rings.widthJitter,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(widthJitter: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringColorJitter"),
+              label: "Colour",
+              decimals: 2,
+              width: 62,
+              value: rings.colorJitter,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(colorJitter: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+          CanvasControlGroup(label: "Texture", children: [
+            CanvasNumberField(
+              key: const ValueKey("ringNoise"),
+              label: "Noise",
+              decimals: 2,
+              width: 62,
+              value: rings.noise,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(noise: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringGlitch"),
+              label: "Glitch",
+              decimals: 2,
+              width: 62,
+              value: rings.glitch,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(glitch: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringDistortion"),
+              label: "Distortion",
+              decimals: 2,
+              width: 62,
+              value: rings.distortion,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(distortion: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("ringGrunge"),
+              label: "Grunge",
+              decimals: 2,
+              width: 62,
+              value: rings.grunge,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                onBegin();
+                _rings(rings.copyWith(grunge: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+        ],
         if (spec.style.canAnimate)
           CanvasControlGroup(label: "Movement", children: [
             CanvasToggle(

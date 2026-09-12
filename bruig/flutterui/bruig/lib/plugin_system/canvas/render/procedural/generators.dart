@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
@@ -33,9 +34,10 @@ import 'package:flutter/painting.dart';
 ///
 /// [time] is in seconds and is what animation advances. Passing zero is a
 /// still, which is what an unanimated background and the first frame both are.
-void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
+void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     {double time = 0}) {
   if (rect.width <= 0 || rect.height <= 0) return;
+  var spec = input;
 
   canvas.save();
   canvas.clipRect(rect);
@@ -51,8 +53,20 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     canvas.translate(rect.center.dx, rect.center.dy);
     canvas.rotate(spec.rotation * math.pi / 180);
     canvas.translate(-rect.center.dx, -rect.center.dy);
-    var grow = (rect.width + rect.height) / 2;
-    area = rect.inflate(grow);
+    // Grown until its own shorter side is the page's diagonal, which is the
+    // least that covers every corner at every angle. Half the width plus
+    // half the height, as it was, is several times that.
+    var diagonal =
+        math.sqrt(rect.width * rect.width + rect.height * rect.height);
+    area = rect.inflate((diagonal - math.min(rect.width, rect.height)) / 2);
+    // And the pattern's unit held to what it was. Every generator sizes its
+    // cell, its glyph or its disc as a fraction of the shorter side of what
+    // it is given -- so growing that rectangle to make room for the turn
+    // scaled the whole pattern up with it, and turning a background by a
+    // degree zoomed into it.
+    var grown =
+        math.min(area.width, area.height) / math.min(rect.width, rect.height);
+    if (grown > 0) spec = spec.copyWith(scale: spec.scale / grown);
   }
 
   switch (spec.style) {
@@ -83,7 +97,7 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     case ProceduralStyle.symbolField:
       _symbolField(canvas, area, spec, t);
     case ProceduralStyle.rings:
-      _rings(canvas, area, spec, t);
+      _rings(canvas, area, rect, spec, t);
     case ProceduralStyle.halftone:
       _halftone(canvas, area, spec, t);
     case ProceduralStyle.speedLines:
@@ -759,33 +773,189 @@ void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   }
 }
 
-/// _rings is concentric circles radiating from an off-centre point.
-void _rings(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var rnd = SeededRandom(spec.seed);
-  var origin = Offset(
-    rect.left + rect.width * rnd.range(0.2, 0.8),
-    rect.top + rect.height * rnd.range(0.2, 0.8),
+/// _rings is concentric rings travelling out of -- or into -- a point.
+///
+/// Rewritten from a set of circles whose radii were shifted by up to one gap
+/// and wrapped, which is why they expanded a little and snapped back: every
+/// ring was drawn at the same handful of radii on every frame, and the only
+/// thing that moved was the offset between them.
+///
+/// Each ring now has a life of its own: it is born where [RingSpec.from]
+/// says, travels to where [RingSpec.to] says -- one being the far corner of
+/// the page, so a ring that goes there has left it -- and another takes its
+/// place behind it. The set is evenly spread through that life, so what is
+/// seen is a procession rather than a flicker.
+///
+/// [page] is the canvas itself rather than the area being painted. The two
+/// differ when the pattern is turned, and rings measured against the turned
+/// area grew with it: a ring "at the edge of the page" has to mean the page.
+void _rings(
+    ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec, double t) {
+  var ring = spec.rings;
+  var count = ring.count.clamp(1, 200);
+  var centre = Offset(
+    page.left + page.width * ring.centreX,
+    page.top + page.height * ring.centreY,
   );
-  var maxR = math.max(rect.width, rect.height) * 1.2;
-  var gap = _unit(rect, spec) * 1.4;
-  var count = (maxR / gap).ceil();
-  var offset = spec.animated ? (t * gap * 0.6) % gap : 0.0;
+  // The far corner from wherever the middle is: what "off the page" means
+  // depends on which corner is furthest away, or a ring set going from one
+  // corner would stop before it had crossed.
+  var reach = [
+    (centre - page.topLeft).distance,
+    (centre - page.topRight).distance,
+    (centre - page.bottomLeft).distance,
+    (centre - page.bottomRight).distance,
+  ].reduce(math.max);
+  var unit = math.min(page.width, page.height);
+  // One life every six or seven seconds at the default speed, which is a
+  // ring crossing the page rather than a pulse.
+  var moving = spec.animated ? t * 0.15 : 0.0;
 
   for (var i = 0; i < count; i++) {
-    var r = i * gap + offset;
-    if (r <= 0) continue;
-    var frac = r / maxR;
-    if (hash(spec.seed, i, 0) > spec.density * 1.6) continue;
-    canvas.drawCircle(
-        origin,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(0.6,
-              gap * 0.08 * (1 + hash(spec.seed + 3, i, 1) * spec.variation * 4))
-          ..color = _fade(i % 5 == 0 ? spec.accent : spec.foreground,
-              spec.intensity * (1 - frac).clamp(0.0, 1.0)));
+    // Its own numbers, from the seed and its place in the set, so a ring
+    // keeps its width and its colour as it travels rather than flickering
+    // through everybody else's.
+    var jitter = (hash(spec.seed + 11, i, 0) - 0.5) * ring.spacingJitter;
+    // How far through its life this ring is, which always runs forwards:
+    // shrinking is a ring born at the outside that dies in the middle, not a
+    // life played backwards. Running the clock back as well as the journey
+    // left the two the same picture.
+    var through = ring.spread(i, moving, jitter: jitter);
+
+    // Bunched towards one end or the other. A half is even.
+    var bias = ring.spacing.clamp(0.05, 0.95);
+    var eased = math.pow(through, bias <= 0 ? 1 : (0.5 / bias)).toDouble();
+    // Where it sits between its two ends. Shrinking starts it at the far one
+    // and walks it back.
+    var place = ring.inward ? 1 - eased : eased;
+
+    // The fade is about the life rather than the place: a ring fades in when
+    // it is born and out when it dies, wherever on the page that happens.
+    var alpha = ring.alphaAt(through) * spec.intensity.clamp(0.0, 1.0);
+    if (alpha <= 0.004) continue;
+    if (hash(spec.seed, i, 3) > spec.density * 1.6) continue;
+
+    var radius = reach * (ring.from + (ring.to - ring.from) * place);
+    if (radius <= 0.5) continue;
+
+    var width = math.max(
+        0.4,
+        unit *
+            ring.width *
+            (1 + (hash(spec.seed + 3, i, 1) - 0.5) * 2 * ring.widthJitter));
+
+    // Which of the two colours, and how far towards the other one. Every
+    // fifth ring in the accent by default, because a set of rings all one
+    // colour is a target and the thing that stops it being one is a rhythm.
+    var accent = ring.accentEvery > 0 && i % ring.accentEvery == 0;
+    var mix = hash(spec.seed + 7, i, 2) * ring.colorJitter;
+    var color = Color.lerp(accent ? spec.accent : spec.foreground,
+        accent ? spec.foreground : spec.accent, mix)!;
+
+    var paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..color = _fade(color, alpha);
+
+    _drawRing(canvas, centre, radius, spec, ring, i, paint, area);
   }
+}
+
+/// _drawRing puts one ring on the page, with whatever has been done to it.
+///
+/// A plain ring is one call; a ring with any of noise, distortion, glitch or
+/// grunge on it is walked round in steps, because all four of them are ways
+/// of saying that the radius, the centre or the ink is not the same all the
+/// way round.
+void _drawRing(ui.Canvas canvas, Offset centre, double radius,
+    ProceduralSpec spec, RingSpec ring, int index, Paint paint, Rect area) {
+  var wobbly = ring.noise > 0 || ring.grunge > 0;
+  var broken = ring.glitch > 0;
+
+  if (!wobbly && !broken) {
+    if (ring.distortion <= 0) {
+      canvas.drawCircle(centre, radius, paint);
+      return;
+    }
+    // Squashed and leaned over: an ellipse is the whole of what distortion
+    // does to a ring that is otherwise clean, and an oval is one call.
+    canvas.save();
+    canvas.translate(centre.dx, centre.dy);
+    canvas.rotate(hash(spec.seed + 5, index, 4) * math.pi);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset.zero,
+            width: radius * 2 * (1 - ring.distortion * 0.5),
+            height: radius * 2 * (1 + ring.distortion * 0.35)),
+        paint);
+    canvas.restore();
+    return;
+  }
+
+  // Enough steps that the wobble reads as a wobble rather than as a polygon,
+  // and not so many that a page of rings costs a frame.
+  var steps = (36 + radius * 0.35).clamp(36, 220).round();
+  var lean = hash(spec.seed + 5, index, 4) * math.pi;
+  var squashX = 1 - ring.distortion * 0.5;
+  var squashY = 1 + ring.distortion * 0.35;
+  var full = paint.strokeWidth;
+
+  Offset at(double turn, double wobble) {
+    var x = math.cos(turn) * radius * squashX * wobble;
+    var y = math.sin(turn) * radius * squashY * wobble;
+    // Leaned over about the middle, which is what turns a squashed ring from
+    // a ring drawn wide into one lying at an angle.
+    return centre +
+        Offset(x * math.cos(lean) - y * math.sin(lean),
+            x * math.sin(lean) + y * math.cos(lean));
+  }
+
+  var path = ui.Path();
+  var open = false;
+  for (var s = 0; s <= steps; s++) {
+    var f = s / steps;
+    var turn = f * 2 * math.pi;
+
+    // The outline's own wander: two turns of it round the ring, so it reads
+    // as a hand rather than as a ripple.
+    var wobble = 1 +
+        (hash(spec.seed + 13, index, s % 17) - 0.5) * ring.noise * 0.12 +
+        math.sin(turn * 3 + index) * ring.noise * 0.03;
+
+    // Slices knocked sideways. A glitch is not a wobble: it is a piece of the
+    // ring in the wrong place, with the pieces either side of it where they
+    // were.
+    if (broken) {
+      var slice = (f * 12).floor();
+      if (hash(spec.seed + 17, index, slice) < ring.glitch * 0.5) {
+        wobble += (hash(spec.seed + 19, index, slice) - 0.5) * ring.glitch;
+      }
+    }
+
+    var gone =
+        ring.grunge > 0 && hash(spec.seed + 23, index, s) < ring.grunge * 0.45;
+    if (gone) {
+      open = false;
+      continue;
+    }
+
+    var spot = at(turn, wobble);
+    if (!open) {
+      path.moveTo(spot.dx, spot.dy);
+      open = true;
+    } else {
+      path.lineTo(spot.dx, spot.dy);
+    }
+  }
+
+  if (ring.grunge > 0) {
+    // Where the ink ran out it also ran thin, which is the difference
+    // between a broken line and a dotted one.
+    paint.strokeWidth = math.max(0.4, full * (1 - ring.grunge * 0.35));
+  }
+  canvas.drawPath(path, paint);
+  paint.strokeWidth = full;
 }
 
 // --------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 
 // procedural_spec.dart is the recipe for a generated background: which
 // algorithm, which colours, how dense, and which seed.
@@ -168,6 +169,12 @@ class ProceduralSpec {
   /// sport is read only by [ProceduralStyle.pitch].
   final PitchSport sport;
 
+  /// rings is read only by [ProceduralStyle.rings]. Its own object rather
+  /// than a dozen more fields here: what a set of rings can be told is a
+  /// question about rings, and the styles that are not rings should not have
+  /// to carry the answer.
+  final RingSpec rings;
+
   /// vignette darkens the edges. Its own field rather than part of intensity
   /// because it is what makes almost all of these read as a background rather
   /// than as a pattern -- it puts the middle of the canvas forward.
@@ -191,6 +198,7 @@ class ProceduralSpec {
     this.animated = false,
     this.speed = 1,
     this.sport = PitchSport.football,
+    this.rings = const RingSpec(),
     this.vignette = 0.25,
   });
 
@@ -212,6 +220,7 @@ class ProceduralSpec {
     bool? animated,
     double? speed,
     PitchSport? sport,
+    RingSpec? rings,
     double? vignette,
   }) =>
       ProceduralSpec(
@@ -232,6 +241,7 @@ class ProceduralSpec {
         animated: animated ?? this.animated,
         speed: speed ?? this.speed,
         sport: sport ?? this.sport,
+        rings: rings ?? this.rings,
         vignette: vignette ?? this.vignette,
       );
 
@@ -258,6 +268,7 @@ class ProceduralSpec {
         if (animated) "animated": true,
         if (animated) "speed": speed,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
+        if (style == ProceduralStyle.rings) "rings": rings.toJson(),
         "vignette": vignette,
       };
 
@@ -279,6 +290,9 @@ class ProceduralSpec {
         animated: jsonBool(json["animated"], false),
         speed: jsonDouble(json["speed"], 1),
         sport: PitchSport.fromName(json["sport"] as String?),
+        rings: json["rings"] is Map
+            ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())
+            : const RingSpec(),
         vignette: jsonDouble(json["vignette"], 0.25).clamp(0.0, 1.0),
       );
 }
