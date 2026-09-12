@@ -373,12 +373,53 @@ class CanvasDocument {
 
   /// assetIds is every stored picture this document refers to.
   ///
-  /// What a sweep of the picture store measures against: anything not named by
-  /// some saved document is a picture nothing can ever show again.
-  Set<String> get assetIds => {
-        for (var e in elements) ...e.assetIds,
-        if (background.imageAssetId.isNotEmpty) background.imageAssetId,
-      };
+  /// What a sweep of the picture store measures against: anything not named
+  /// by some saved document is a picture nothing can ever show again, and is
+  /// deleted. So anything missed here is a picture that quietly disappears
+  /// between one session and the next.
+  ///
+  /// Which is what happened twice over. It read `elements`, and that is the
+  /// scene being edited rather than all of them, so every picture in every
+  /// other scene -- and on the shared canvas -- was fair game while scene one
+  /// was open. And it knew about a background's own picture but not about the
+  /// ones its rings carry, so an icon vanished on the next restart.
+  Set<String> get assetIds {
+    var ids = <String>{};
+
+    void fromBackground(CanvasBackground? bg) {
+      if (bg == null) return;
+      if (bg.imageAssetId.isNotEmpty) ids.add(bg.imageAssetId);
+      for (var icon in bg.spec.rings.icons) {
+        if (icon.asset.isNotEmpty) ids.add(icon.asset);
+      }
+    }
+
+    void fromElements(List<CanvasElement> list) {
+      for (var e in list) {
+        ids.addAll(e.assetIds);
+        // A background *element* carries a design of its own, and that design
+        // can carry pictures too.
+        if (e is BackgroundElement) {
+          for (var icon in e.spec.rings.icons) {
+            if (icon.asset.isNotEmpty) ids.add(icon.asset);
+          }
+        }
+      }
+    }
+
+    fromBackground(background);
+    // Every scene, not the one being looked at -- allScenes answers with the
+    // document's own single canvas where there are no scenes.
+    for (var one in allScenes) {
+      fromElements(one.elements);
+      fromBackground(one.background);
+    }
+    if (master != null) {
+      fromElements(master!.elements);
+      fromBackground(master!.background);
+    }
+    return ids;
+  }
 
   /// hasKeyframes is whether anything in this document moves.
   ///

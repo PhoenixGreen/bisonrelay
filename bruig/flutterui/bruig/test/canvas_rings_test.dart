@@ -1,6 +1,8 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
@@ -823,5 +825,34 @@ void main() {
         reason: "the picture that was kept has no icon in it");
     expect(second, isNotNull);
     cache.dispose();
+  });
+
+  test("a picture on a ring counts as a picture the document uses", () {
+    // The sweep of the picture store deletes anything no saved document names
+    // -- so a picture missed here is one that quietly disappears between one
+    // session and the next, which is what happened to every ring icon.
+    var spec = const ProceduralSpec(style: ProceduralStyle.rings).copyWith(
+        rings: const RingSpec()
+            .copyWith(icons: [const RingIcon(asset: "badge", ring: 2)]));
+    var doc = CanvasDocument(background: CanvasBackground(spec: spec));
+    expect(doc.assetIds, contains("badge"));
+
+    // And on a scene that is not the one being edited, which was the other
+    // half of it: assetIds read the scene in hand rather than all of them.
+    var scenes = const CanvasDocument().withScenes([
+      const CanvasScene(id: "a", frames: 10),
+      CanvasScene(
+          id: "b", frames: 10, background: CanvasBackground(spec: spec)),
+    ]);
+    expect(scenes.at, 0, reason: "the first scene is the one being edited");
+    expect(scenes.assetIds, contains("badge"),
+        reason: "a picture in another scene was not counted as used");
+
+    // The shared canvas as well.
+    var master = const CanvasDocument().withScenes([
+      const CanvasScene(id: "a", frames: 10),
+    ]).withMaster(CanvasScene(
+        id: "m", frames: 10, background: CanvasBackground(spec: spec)));
+    expect(master.assetIds, contains("badge"));
   });
 }
