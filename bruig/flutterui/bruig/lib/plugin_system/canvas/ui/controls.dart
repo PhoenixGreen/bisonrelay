@@ -1,8 +1,8 @@
+import 'package:bruig/components/color_picker.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -683,11 +683,8 @@ class CanvasColorButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(4),
           onTap: () async {
-            var picked = await showDialog<Color>(
-              context: context,
-              builder: (context) =>
-                  _ColorDialog(initial: color, allowAlpha: allowAlpha),
-            );
+            var picked = await pickColor(context,
+                initial: color, allowAlpha: allowAlpha);
             if (picked != null) onChanged(picked);
           },
           child: Container(
@@ -735,43 +732,6 @@ class _SwatchPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SwatchPainter old) => old.color != color;
-}
-
-class _ColorDialog extends StatefulWidget {
-  final Color initial;
-  final bool allowAlpha;
-  const _ColorDialog({required this.initial, required this.allowAlpha});
-
-  @override
-  State<_ColorDialog> createState() => _ColorDialogState();
-}
-
-class _ColorDialogState extends State<_ColorDialog> {
-  late Color _color = widget.initial;
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text("Colour"),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: _color,
-            enableAlpha: widget.allowAlpha,
-            displayThumbColor: true,
-            hexInputBar: true,
-            onColorChanged: (c) => setState(() => _color = c),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(_color),
-            child: const Text("Select"),
-          ),
-        ],
-      );
 }
 
 /// CanvasToggle is a switch with a label, for the many booleans.

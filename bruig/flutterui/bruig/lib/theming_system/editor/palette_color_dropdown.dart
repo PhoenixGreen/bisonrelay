@@ -1,7 +1,7 @@
+import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 // PaletteColorDropdown lets the user pick one of the active palette's colors
 // (plus, optionally, "None", and always a free-form "Custom color...") for a
@@ -256,12 +256,9 @@ class _CustomColorDialogState extends State<_CustomColorDialog> {
         ),
       ]),
       content: SingleChildScrollView(
-        child: ColorPicker(
-          pickerColor: _color,
-          enableAlpha: true,
-          displayThumbColor: true,
-          hexInputBar: true,
-          onColorChanged: (c) => setState(() => _color = c),
+        child: AppColorPicker(
+          color: _color,
+          onChanged: (c) => setState(() => _color = c),
         ),
       ),
       actions: [

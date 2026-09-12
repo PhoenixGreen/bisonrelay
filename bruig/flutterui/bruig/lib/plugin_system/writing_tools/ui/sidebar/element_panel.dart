@@ -1,8 +1,8 @@
+import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 // element_panel.dart is the Pages and store panel: the blocks a page is
 // built from, what each can be told, and what it does when told nothing.
@@ -87,14 +87,11 @@ Future<String?> pickHexColour(BuildContext context, Color start,
     builder: (context) => AlertDialog(
       title: Text(title),
       content: SingleChildScrollView(
-        child: ColorPicker(
-          pickerColor: start,
+        child: AppColorPicker(
           // Alpha, because a panel behind a banner's writing is usually
           // meant to be seen through -- that is what #rrggbbaa is for.
-          enableAlpha: true,
-          displayThumbColor: true,
-          hexInputBar: true,
-          onColorChanged: (c) => chosen = c,
+          color: start,
+          onChanged: (c) => chosen = c,
         ),
       ),
       actions: [
@@ -171,17 +168,14 @@ Future<String?> pickGradient(
                 ),
             ]),
             const SizedBox(height: 8),
-            ColorPicker(
+            AppColorPicker(
               // Keyed on which one is being edited, so the picker resets to
               // that colour when the other is chosen. Without it the wheel
               // keeps the position it had and the swatch it shows is not
               // the colour it is about to change.
               key: ValueKey(editingFirst),
-              pickerColor: editingFirst ? from : to,
-              enableAlpha: true,
-              displayThumbColor: true,
-              hexInputBar: true,
-              onColorChanged: (c) => setState(() {
+              color: editingFirst ? from : to,
+              onChanged: (c) => setState(() {
                 if (editingFirst) {
                   from = c;
                 } else {

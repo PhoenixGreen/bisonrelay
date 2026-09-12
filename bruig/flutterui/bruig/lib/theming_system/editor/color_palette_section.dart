@@ -1,3 +1,4 @@
+import 'package:bruig/components/color_picker.dart';
 import 'dart:io';
 import 'package:bruig/components/eyedropper.dart';
 import 'package:bruig/components/snackbars.dart';
@@ -9,7 +10,6 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/theming_system/theme_preset.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
 
 // color_palette_section.dart is the "Color Palette" section of Settings >
@@ -631,15 +631,13 @@ class _PaletteSectionState extends State<PaletteSection> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(children: [
-            ColorPicker(
-              pickerColor: draftColor ?? fullPalette[editing],
+            AppColorPicker(
+              color: draftColor ?? fullPalette[editing],
               // Lets a palette color blend into whatever it's painted over
               // (e.g. a semi-transparent divider or overlay) instead of
               // always being fully opaque.
-              enableAlpha: true,
-              displayThumbColor: true,
-              hexInputBar: true,
-              onColorChanged: (c) => setState(() => draftColor = c),
+              allowAlpha: true,
+              onChanged: (c) => setState(() => draftColor = c),
             ),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               IconButton(
