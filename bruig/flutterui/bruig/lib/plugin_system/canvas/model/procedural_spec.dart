@@ -166,6 +166,16 @@ class ProceduralSpec {
   /// speed multiplies how far the pattern advances per frame.
   final double speed;
 
+  /// loop is whether the movement starts again when it has been round once.
+  ///
+  /// Off, the pattern runs one pass and then holds where it finished, which
+  /// is what a background under a title card usually wants: the movement
+  /// draws the eye while the words arrive, and then stops pulling at it.
+  ///
+  /// One pass is [proceduralPass] of the pattern's own time, so a faster
+  /// speed reaches the end of it sooner.
+  final bool loop;
+
   /// sport is read only by [ProceduralStyle.pitch].
   final PitchSport sport;
 
@@ -197,6 +207,7 @@ class ProceduralSpec {
     this.glyphs = defaultGlyphs,
     this.animated = false,
     this.speed = 1,
+    this.loop = true,
     this.sport = PitchSport.football,
     this.rings = const RingSpec(),
     this.vignette = 0.25,
@@ -219,6 +230,7 @@ class ProceduralSpec {
     String? glyphs,
     bool? animated,
     double? speed,
+    bool? loop,
     PitchSport? sport,
     RingSpec? rings,
     double? vignette,
@@ -240,6 +252,7 @@ class ProceduralSpec {
         glyphs: glyphs ?? this.glyphs,
         animated: animated ?? this.animated,
         speed: speed ?? this.speed,
+        loop: loop ?? this.loop,
         sport: sport ?? this.sport,
         rings: rings ?? this.rings,
         vignette: vignette ?? this.vignette,
@@ -267,6 +280,7 @@ class ProceduralSpec {
         if (glyphs != defaultGlyphs) "glyphs": glyphs,
         if (animated) "animated": true,
         if (animated) "speed": speed,
+        if (animated && !loop) "loop": false,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
         if (style == ProceduralStyle.rings) "rings": rings.toJson(),
         "vignette": vignette,
@@ -289,6 +303,7 @@ class ProceduralSpec {
         glyphs: jsonString(json["glyphs"], defaultGlyphs),
         animated: jsonBool(json["animated"], false),
         speed: jsonDouble(json["speed"], 1),
+        loop: jsonBool(json["loop"], true),
         sport: PitchSport.fromName(json["sport"] as String?),
         rings: json["rings"] is Map
             ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())

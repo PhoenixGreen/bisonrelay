@@ -440,6 +440,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(spec.rings.grunge, 0.6);
 
+    // Loop sits beside Animate, and is offered for every style that moves.
+    expect(find.byKey(const ValueKey("loop")), findsOneWidget);
+    // At the foot of a long panel, so it has to be scrolled to before it can
+    // be pressed.
+    await tester.ensureVisible(find.byKey(const ValueKey("loop")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey("loop")));
+    await tester.pumpAndSettle();
+    expect(spec.loop, isFalse);
+
     // And the two shared controls the rings say in their own words are not
     // offered twice: Size and Variation did nothing at all on this style.
     expect(find.text("Size"), findsNothing);
@@ -470,5 +480,53 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("ringCount")), findsNothing);
+  });
+
+  testWidgets("a soft edge rolls the line in, not just its strength",
+      (tester) async {
+    // A ring is a hairline -- four thousandths of the page, a pixel or two --
+    // and a hairline drawn at a fifth of its strength looks very much like a
+    // hairline drawn at half of it: what the screen shows either way is one
+    // faint line. Rolling the width with the fade is what makes an arrival
+    // read as one, and it is what "soft" means as against "hard".
+    late int soft;
+    late int hard;
+    await tester.runAsync(() async {
+      // A wide ring, so that what is measured is the width rather than the
+      // edges of a hairline, and a moment early in its life.
+      const born =
+          RingSpec(count: 1, width: 0.05, fadeIn: 0.8, fadeOut: 0.1, from: 0.2);
+      (soft, _) = await _ink(_spec(rings: born), 0.6);
+      (hard, _) =
+          await _ink(_spec(rings: born.copyWith(edge: RingEdge.hard)), 0.6);
+    });
+    expect(soft, lessThan(hard * 0.9),
+        reason: "a soft ring arriving is thinner than a hard one: "
+            "$soft against $hard");
+  });
+
+  testWidgets("a background that does not loop runs once and holds",
+      (tester) async {
+    late int during;
+    late int after;
+    late int muchLater;
+    late int looping;
+    await tester.runAsync(() async {
+      var once = _spec(rings: const RingSpec(count: 6)).copyWith(loop: false);
+      // Half way through the pass, at the end of it, and long after.
+      (during, _) = await _ink(once, proceduralPass * 0.5);
+      (after, _) = await _ink(once, proceduralPass);
+      // Not a whole number of passes: a looping pattern at four lives is
+      // exactly where it was at one, which would prove nothing.
+      (muchLater, _) = await _ink(once, proceduralPass * 3.4);
+      (looping, _) = await _ink(
+          _spec(rings: const RingSpec(count: 6)), proceduralPass * 3.4);
+    });
+
+    expect(after, muchLater,
+        reason: "it went on moving after its one pass was over");
+    expect(during, isNot(after), reason: "it was not moving during the pass");
+    expect(looping, isNot(muchLater),
+        reason: "looping and not looping came to the same picture");
   });
 }

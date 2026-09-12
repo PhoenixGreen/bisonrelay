@@ -580,10 +580,20 @@ class ProceduralSettings extends StatelessWidget {
         if (spec.style.canAnimate)
           CanvasControlGroup(label: "Movement", children: [
             CanvasToggle(
+              key: const ValueKey("animate"),
               label: "Animate",
               value: spec.animated,
               onChanged: (v) => _setNow(spec.copyWith(animated: v)),
             ),
+            // Beside Animate, because it is the second half of the same
+            // question: whether it moves, and whether it goes on moving.
+            if (spec.animated)
+              CanvasToggle(
+                key: const ValueKey("loop"),
+                label: "Loop",
+                value: spec.loop,
+                onChanged: (v) => _setNow(spec.copyWith(loop: v)),
+              ),
             if (spec.animated)
               CanvasNumberField(
                 label: "Speed",

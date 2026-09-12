@@ -30,6 +30,15 @@ import 'package:flutter/painting.dart';
 // control somebody will drag while wondering why nothing happens, so each of
 // them is written to make all five do *something* wherever it can.
 
+/// proceduralPass is how long one pass of a pattern lasts, in its own time.
+///
+/// One number for every style, because "how long until this has been round
+/// once" is not a question most of them can answer -- a rain falls, a flow
+/// flows, and neither has a length. What it really means is how long the
+/// movement runs for before it holds, and six and two thirds seconds is one
+/// ring's life, which is the one style that does have a cycle.
+const double proceduralPass = 1 / 0.15;
+
 /// paintProcedural draws [spec] into [rect].
 ///
 /// [time] is in seconds and is what animation advances. Passing zero is a
@@ -48,6 +57,11 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
   // corners, so turning it does not sweep an empty wedge into view. The clip
   // above keeps the overspill off the canvas.
   var t = spec.animated ? time * spec.speed : 0.0;
+  // One pass and then hold, where the movement is not meant to go round for
+  // ever. Held rather than stopped dead at nothing: what a background under a
+  // title card usually wants is for the movement to draw the eye while the
+  // words arrive and then stop pulling at it.
+  if (spec.animated && !spec.loop) t = math.min(t, proceduralPass);
   var area = rect;
   if (spec.rotation != 0) {
     canvas.translate(rect.center.dx, rect.center.dy);
@@ -841,7 +855,8 @@ void _rings(
 
     // The fade is about the life rather than the place: a ring fades in when
     // it is born and out when it dies, wherever on the page that happens.
-    var alpha = ring.alphaAt(through) * spec.intensity.clamp(0.0, 1.0);
+    var fade = ring.alphaAt(through);
+    var alpha = fade * spec.intensity.clamp(0.0, 1.0);
     if (alpha <= 0.004) continue;
     if (hash(spec.seed, i, 3) > spec.density * 1.6) continue;
 
@@ -853,6 +868,13 @@ void _rings(
         unit *
             ring.width *
             (1 + (hash(spec.seed + 3, i, 1) - 0.5) * 2 * ring.widthJitter));
+    // A soft edge rolls the line in as well as up. A ring is a hairline --
+    // four thousandths of the page, which is a pixel or two -- and a hairline
+    // drawn at a fifth of its strength looks very much like a hairline drawn
+    // at half of it, because what the screen shows either way is one faint
+    // line. Rolling the width with it is what makes the arrival read as an
+    // arrival, and it is what "soft" means as against "hard".
+    if (ring.edge == RingEdge.soft) width *= 0.25 + 0.75 * fade;
 
     // Which of the two colours, and how far towards the other one. Every
     // fifth ring in the accent by default, because a set of rings all one
