@@ -72,6 +72,14 @@ class RingDrift {
   /// at is the number for one icon, given its own roll of nought to one.
   double at(double roll) => least + (most - least) * roll.clamp(0.0, 1.0);
 
+  /// within is this range held inside two limits, for reading a number back
+  /// that has to mean something: a share of nothing to nothing is a picture
+  /// nobody can see and no way of finding out why.
+  RingDrift within(double lowest, double highest) => RingDrift(
+        least: least.clamp(lowest, highest),
+        most: most.clamp(lowest, highest),
+      );
+
   RingDrift copyWith({double? least, double? most}) =>
       RingDrift(least: least ?? this.least, most: most ?? this.most);
 
@@ -286,7 +294,12 @@ class RingIcon {
         if (!driftWhere.none) "driftWhere": driftWhere.toJson(),
         if (!driftSize.none) "driftSize": driftSize.toJson(),
         if (!driftTurn.none) "driftTurn": driftTurn.toJson(),
-        if (!driftFade.resting(1)) "driftFade": driftFade.toJson(),
+        // Under its own name, because it used to be something else. It was
+        // an offset added to one, and the same pair of numbers read as a
+        // share is a different setting entirely -- "a fifth less" becomes
+        // "a fifth of nothing", which is a picture that never appears again
+        // whatever else is done to it.
+        if (!driftFade.resting(1)) "fadeShare": driftFade.toJson(),
         if (also.isNotEmpty) "also": [for (var pick in also) pick.toJson()],
         if (weight != 1) "weight": weight,
         if (opacity != null) "opacity": opacity,
@@ -310,7 +323,8 @@ class RingIcon {
         driftWhere: RingDrift.fromJson(json["driftWhere"]),
         driftSize: RingDrift.fromJson(json["driftSize"]),
         driftTurn: RingDrift.fromJson(json["driftTurn"]),
-        driftFade: RingDrift.fromJson(json["driftFade"], rest: 1),
+        driftFade:
+            RingDrift.fromJson(json["fadeShare"], rest: 1).within(0, 1),
         also: [
           for (var pick in (json["also"] as List?) ?? [])
             if (pick is Map<String, dynamic>) RingPick.fromJson(pick),

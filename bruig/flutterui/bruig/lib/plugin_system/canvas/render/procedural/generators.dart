@@ -1160,8 +1160,12 @@ void _drawRingIcons(
     var paint = Paint()
       ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
     if (icon.tinted) {
-      paint.colorFilter = ui.ColorFilter.mode(
-          icon.tint.withValues(alpha: icon.tint.a * alpha), BlendMode.srcIn);
+      // The colour at its own strength, not at the picture's. Both the filter
+      // and the paint carry an alpha, and they multiply: putting the fade in
+      // the filter as well drew a tinted picture at the square of it -- half
+      // strength came out a quarter, and anywhere a ring was faint the colour
+      // switched the picture off.
+      paint.colorFilter = ui.ColorFilter.mode(icon.tint, BlendMode.srcIn);
     }
     // Kept in proportion and fitted to a square of the wanted size, which is
     // what makes two icons of different shapes look like the same size.

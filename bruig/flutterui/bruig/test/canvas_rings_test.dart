@@ -1462,6 +1462,134 @@ void main() {
     expect(laterRun, 0, reason: "it was said again on the second run");
   });
 
+  testWidgets("a picture told nothing fades with the ring carrying it",
+      (tester) async {
+    // Nothing overridden: no opacity of its own, neither fade held, no
+    // scatter. What it does is what the ring does.
+    late List<int> around;
+    late List<int> middle;
+    await tester.runAsync(() async {
+      Future<List<int>> over(RingIconPlace place) async {
+        var spec = _spec(
+                rings: RingSpec(
+                  count: 1,
+                  width: 0.0005,
+                  from: 0.4,
+                  to: 0.4,
+                  fadeIn: 0.4,
+                  fadeOut: 0.4,
+                  icons: [
+                    RingIcon(asset: "badge", ring: 1, size: 0.3, place: place)
+                  ],
+                ),
+                animated: true)
+            .copyWith(
+                foreground: const Color(0xFF000000),
+                accent: const Color(0xFF000000));
+        return [
+          for (var through in [0.02, 0.5, 0.98])
+            await () async {
+              var marks = await _marks(spec, time: proceduralPass * through);
+              return marks.isEmpty
+                  ? 0
+                  : marks.map((m) => m.$3).reduce(math.max);
+            }(),
+        ];
+      }
+
+      around = await over(RingIconPlace.around);
+      middle = await over(RingIconPlace.middle);
+    });
+
+    for (var (what, seen) in [("around", around), ("in the middle", middle)]) {
+      expect(seen[1], greaterThan(200),
+          reason: "a picture $what was faint in the middle of its life");
+      expect(seen[0], lessThan(seen[1] ~/ 2),
+          reason: "a picture $what did not fade in: $seen");
+      expect(seen[2], lessThan(seen[1] ~/ 2),
+          reason: "a picture $what did not fade out: $seen");
+    }
+  });
+
+  test("a fade that was an offset is not read back as a share", () {
+    // It used to be added to one, and the same pair read as a share is a
+    // different setting: minus a fifth becomes a fifth of nothing, and the
+    // picture never appears again whatever else is done to it.
+    var old = RingIcon.fromJson({
+      "asset": "badge",
+      "ring": 1,
+      "driftFade": [-0.5, 0],
+    });
+    expect(old.driftFade.least, 1);
+    expect(old.driftFade.most, 1, reason: "an old fade blanked the picture");
+
+    // And what is written now comes back as it was written.
+    var set = const RingIcon(asset: "badge")
+        .copyWith(driftFade: const RingDrift(least: 0.2, most: 0.8));
+    var back = RingIcon.fromJson(set.toJson());
+    expect(back.driftFade.least, 0.2);
+    expect(back.driftFade.most, 0.8);
+
+    // Nothing read back can blank a picture outright: a share below nothing
+    // is not a share.
+    var wild = RingIcon.fromJson({
+      "asset": "badge",
+      "fadeShare": [-2, 4],
+    });
+    expect(wild.driftFade.least, 0);
+    expect(wild.driftFade.most, 1);
+  });
+
+  testWidgets("a colour on a picture is drawn at the picture's strength",
+      (tester) async {
+    // The tint and the fade are two alphas, and they multiply. With the fade
+    // in both of them, a picture at half strength came out a quarter -- and
+    // anywhere its ring was faint, colouring a picture switched it off.
+    late int plain;
+    late int coloured;
+    late int fully;
+    await tester.runAsync(() async {
+      ProceduralSpec at(bool tinted, double opacity) => _spec(
+              rings: RingSpec(
+            count: 1,
+            width: 0.0005,
+            from: 0.4,
+            to: 0.4,
+            fadeIn: 0,
+            fadeOut: 0,
+            icons: [
+              RingIcon(
+                asset: "badge",
+                ring: 1,
+                size: 0.3,
+                place: RingIconPlace.around,
+                count: 3,
+                tinted: tinted,
+                tint: const Color(0xFFFFFFFF),
+                opacity: opacity,
+              )
+            ],
+          )).copyWith(
+              foreground: const Color(0xFF000000),
+              accent: const Color(0xFF000000));
+
+      Future<int> strongest(ProceduralSpec spec) async {
+        var marks = await _marks(spec);
+        return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
+      }
+
+      plain = await strongest(at(false, 0.5));
+      coloured = await strongest(at(true, 0.5));
+      fully = await strongest(at(true, 1));
+    });
+
+    expect(plain, greaterThan(100), reason: "nothing was drawn at all");
+    expect(coloured, closeTo(plain, 8),
+        reason: "colouring a picture changed how strongly it was drawn");
+    expect(fully, greaterThan(coloured + 60),
+        reason: "a coloured picture no longer answers to its strength");
+  });
+
   test("a run lasts until the ring at the back has died", () {
     // Whether or not the set builds up, the ring at the back is born very
     // nearly a life after the first and then has its own life to live. A run
