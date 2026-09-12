@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
@@ -24,6 +25,112 @@ enum RingEdge {
 
   static RingEdge fromName(String? name) =>
       values.firstWhere((e) => e.name == name, orElse: () => soft);
+}
+
+/// RingIconPlace is where an icon sits on the ring it belongs to.
+enum RingIconPlace {
+  /// middle puts one in the middle of the rings, sized against the ring it
+  /// is tied to -- so it grows and fades with that ring.
+  middle("In the middle"),
+
+  /// around spaces several of them along the ring itself, like beads on it.
+  around("Around the ring");
+
+  final String label;
+  const RingIconPlace(this.label);
+
+  static RingIconPlace fromName(String? name) =>
+      values.firstWhere((p) => p.name == name, orElse: () => middle);
+}
+
+/// RingIcon is a picture carried by one of the rings.
+///
+/// It inherits the ring: where it is, how big it has grown, and how far
+/// through its fade it is. That is the whole point of tying it to a ring
+/// rather than placing it on the canvas -- an icon that arrives, swells and
+/// dissolves with the ring around it belongs to the picture, and one that
+/// merely sits on top of it does not.
+class RingIcon {
+  /// asset is a picture in the canvas's own store: a drawing or a bitmap.
+  final String asset;
+
+  /// ring is which of them carries it, counted the way people count -- one
+  /// is the first ring. Beyond the last, it is carried by no ring and drawn
+  /// by nothing.
+  final int ring;
+
+  final RingIconPlace place;
+
+  /// count is how many are spaced around the ring, for the placing that goes
+  /// around it.
+  final int count;
+
+  /// size is how big it is drawn, as a fraction of its ring's radius. So it
+  /// grows with the ring, which is what "scales with it" means.
+  final double size;
+
+  /// tinted paints it in one colour rather than its own, which is what a
+  /// line drawing usually wants; tint is that colour.
+  final bool tinted;
+  final Color tint;
+
+  /// turn is an extra rotation in degrees. Around the ring, each icon is
+  /// already turned to face out of it.
+  final double turn;
+
+  const RingIcon({
+    this.asset = "",
+    this.ring = 1,
+    this.place = RingIconPlace.middle,
+    this.count = 6,
+    this.size = 0.5,
+    this.tinted = false,
+    this.tint = const Color(0xFFFFFFFF),
+    this.turn = 0,
+  });
+
+  RingIcon copyWith({
+    String? asset,
+    int? ring,
+    RingIconPlace? place,
+    int? count,
+    double? size,
+    bool? tinted,
+    Color? tint,
+    double? turn,
+  }) =>
+      RingIcon(
+        asset: asset ?? this.asset,
+        ring: ring ?? this.ring,
+        place: place ?? this.place,
+        count: count ?? this.count,
+        size: size ?? this.size,
+        tinted: tinted ?? this.tinted,
+        tint: tint ?? this.tint,
+        turn: turn ?? this.turn,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "asset": asset,
+        "ring": ring,
+        "place": place.name,
+        "count": count,
+        "size": size,
+        if (tinted) "tinted": true,
+        if (tinted) "tint": colorToJson(tint),
+        if (turn != 0) "turn": turn,
+      };
+
+  factory RingIcon.fromJson(Map<String, dynamic> json) => RingIcon(
+        asset: jsonString(json["asset"], ""),
+        ring: jsonInt(json["ring"], 1).clamp(1, 200),
+        place: RingIconPlace.fromName(json["place"] as String?),
+        count: jsonInt(json["count"], 6).clamp(1, 60),
+        size: jsonDouble(json["size"], 0.5).clamp(0.01, 4),
+        tinted: jsonBool(json["tinted"], false),
+        tint: colorFromJson(json["tint"], const Color(0xFFFFFFFF)),
+        turn: jsonDouble(json["turn"], 0),
+      );
 }
 
 /// RingSpec is the Rings style's own settings.
@@ -107,6 +214,9 @@ class RingSpec {
   /// the ink ran out.
   final double grunge;
 
+  /// icons are the pictures the rings carry. See RingIcon.
+  final List<RingIcon> icons;
+
   const RingSpec({
     this.count = 12,
     this.width = 0.004,
@@ -128,6 +238,7 @@ class RingSpec {
     this.glitch = 0,
     this.distortion = 0,
     this.grunge = 0,
+    this.icons = const [],
   });
 
   RingSpec copyWith({
@@ -151,6 +262,7 @@ class RingSpec {
     double? glitch,
     double? distortion,
     double? grunge,
+    List<RingIcon>? icons,
   }) =>
       RingSpec(
         count: count ?? this.count,
@@ -173,6 +285,7 @@ class RingSpec {
         glitch: glitch ?? this.glitch,
         distortion: distortion ?? this.distortion,
         grunge: grunge ?? this.grunge,
+        icons: icons ?? this.icons,
       );
 
   /// ageOf is how far through its life ring [index] is at [t], in lives --
@@ -235,6 +348,7 @@ class RingSpec {
         if (glitch != 0) "glitch": glitch,
         if (distortion != 0) "distortion": distortion,
         if (grunge != 0) "grunge": grunge,
+        if (icons.isNotEmpty) "icons": [for (var icon in icons) icon.toJson()],
       };
 
   factory RingSpec.fromJson(Map<String, dynamic> json) => RingSpec(
@@ -258,5 +372,9 @@ class RingSpec {
         glitch: jsonDouble(json["glitch"], 0).clamp(0.0, 1.0),
         distortion: jsonDouble(json["distortion"], 0).clamp(0.0, 1.0),
         grunge: jsonDouble(json["grunge"], 0).clamp(0.0, 1.0),
+        icons: [
+          for (var one in (json["icons"] as List?) ?? const [])
+            if (one is Map) RingIcon.fromJson(one.cast<String, dynamic>()),
+        ],
       );
 }

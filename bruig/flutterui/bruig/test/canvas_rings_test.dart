@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -69,6 +71,52 @@ Future<int> _runs(ProceduralSpec spec, List<int> rows) async {
   image.dispose();
   picture.dispose();
   return runs;
+}
+
+/// _Pictures is a picture store with one drawing in it: a filled square,
+/// which is easy to count and easy to see grow.
+class _Pictures extends CanvasImageSource {
+  final CanvasVector _square = () {
+    var recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 100, 100),
+        Paint()..color = const Color(0xFFFFFFFF));
+    return CanvasVector(recorder.endRecording(), const Size(100, 100));
+  }();
+
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) => null;
+
+  @override
+  CanvasVector? resolveVector(String assetId) =>
+      assetId.isEmpty ? null : _square;
+}
+
+/// _inkWith paints with that store and counts the ink within [within] of the
+/// middle of the page.
+///
+/// Near the middle, because that is where only an icon can be: the rings are
+/// circles of at least their starting radius, so nothing they draw lands
+/// there.
+Future<int> _inkWith(ProceduralSpec spec, double time,
+    {double within = 24}) async {
+  var recorder = ui.PictureRecorder();
+  paintProcedural(ui.Canvas(recorder), _page, spec,
+      time: time, images: _Pictures());
+  var picture = recorder.endRecording();
+  var image = await picture.toImage(400, 300);
+  var bytes = (await image.toByteData())!;
+  var ink = 0;
+  for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+    var at = i ~/ 4;
+    var away =
+        (Offset((at % 400).toDouble(), (at ~/ 400).toDouble()) - _page.center)
+            .distance;
+    if (away > within) continue;
+    if (((bytes.getUint32(i) >> 24) & 0xFF) > 20) ink++;
+  }
+  image.dispose();
+  picture.dispose();
+  return ink;
 }
 
 ProceduralSpec _spec(
@@ -583,5 +631,127 @@ void main() {
     });
     expect(quick, slow,
         reason: "$quick against $slow: the same moment of the same run");
+  });
+
+  test("a pause holds the pattern's clock while the document's runs on", () {
+    const spec = ProceduralSpec(
+        style: ProceduralStyle.rings,
+        animated: true,
+        pauseAt: 24,
+        pauseFor: 10,
+        pauseEase: 6);
+
+    // Before it, frame for frame.
+    expect(pausedFrame(0, spec), 0);
+    expect(pausedFrame(10, spec), 10);
+    expect(pausedFrame(18, spec), 18);
+
+    // Slowing into it: still moving, but not as far as the frames it is
+    // spending.
+    var slowing = pausedFrame(21, spec);
+    expect(slowing, greaterThan(18));
+    expect(slowing, lessThan(21));
+
+    // Still, for the frames it was told.
+    var atRest = pausedFrame(24, spec);
+    expect(pausedFrame(28, spec), atRest);
+    expect(pausedFrame(34, spec), atRest);
+
+    // Then moving again, and afterwards running exactly as it would have
+    // done -- later by everything the rest cost, which is the pause and the
+    // slowing down.
+    expect(pausedFrame(37, spec), greaterThan(atRest));
+    expect(pausedFrame(60, spec), closeTo(60 - 10 - 6, 0.001));
+    expect(pausedFrame(120, spec), closeTo(120 - 10 - 6, 0.001));
+
+    // And nothing anywhere goes backwards: a rest is a rest, not a rewind.
+    var was = -1.0;
+    for (var f = 0.0; f < 80; f += 0.5) {
+      var now = pausedFrame(f, spec);
+      expect(now, greaterThanOrEqualTo(was), reason: "went backwards at $f");
+      was = now;
+    }
+  });
+
+  test("no pause asked for is no pause taken", () {
+    const none = ProceduralSpec(style: ProceduralStyle.rings, animated: true);
+    for (var f = 0.0; f < 50; f += 7) {
+      expect(pausedFrame(f, none), f);
+    }
+  });
+
+  testWidgets("the pause reaches the picture", (tester) async {
+    late int during;
+    late int later;
+    late int without;
+    await tester.runAsync(() async {
+      var paused = _spec(rings: const RingSpec(count: 6))
+          .copyWith(pauseAt: 24, pauseFor: 25, pauseEase: 0);
+      // Two moments inside the rest: the same picture, because the pattern's
+      // own clock is not running.
+      (during, _) = await _ink(paused, 30 / 25, rate: 25);
+      (later, _) = await _ink(paused, 45 / 25, rate: 25);
+      (without, _) =
+          await _ink(_spec(rings: const RingSpec(count: 6)), 45 / 25, rate: 25);
+    });
+    expect(during, later, reason: "the pattern moved during its rest");
+    expect(without, isNot(later),
+        reason: "the rest made no difference to the picture");
+  });
+
+  testWidgets("a ring carries its icon, and the icon fades with it",
+      (tester) async {
+    // The whole point of tying a picture to a ring rather than placing it on
+    // the canvas: it arrives, swells and dissolves with the ring around it.
+    late int early;
+    late int later;
+    late int none;
+    await tester.runAsync(() async {
+      var icon = const RingIcon(asset: "badge", ring: 1, size: 0.9);
+      var rings =
+          const RingSpec(count: 1, from: 0.2, to: 0.9).copyWith(icons: [icon]);
+      var spec = _spec(rings: rings);
+      // Early in the ring's life it is small and faint; later it is bigger
+      // and stronger, and the picture it carries follows both.
+      // A window at the middle of the page: an icon tied to a growing ring
+      // grows, so how much of that window it covers says how big it has got.
+      early = await _inkWith(spec, proceduralPass * 0.15, within: 60);
+      later = await _inkWith(spec, proceduralPass * 0.5, within: 60);
+      none = await _inkWith(
+          _spec(rings: const RingSpec(count: 1)), proceduralPass * 0.5,
+          within: 60);
+    });
+
+    expect(early, greaterThan(0), reason: "the icon was not drawn at all");
+    expect(later, greaterThan(early),
+        reason: "the icon did not grow with its ring: $early then $later");
+    expect(none, 0, reason: "something was drawn for a ring with no icon");
+  });
+
+  test("the icons survive being saved", () {
+    var spec = _spec(
+        rings: const RingSpec().copyWith(icons: [
+      const RingIcon(
+          asset: "one",
+          ring: 5,
+          place: RingIconPlace.around,
+          count: 8,
+          size: 0.3,
+          tinted: true,
+          tint: Color(0xFF00FF00),
+          turn: 45),
+    ]));
+    var back = ProceduralSpec.fromJson(spec.toJson()).rings.icons;
+    expect(back, hasLength(1));
+    expect(back.first.asset, "one");
+    expect(back.first.ring, 5);
+    expect(back.first.place, RingIconPlace.around);
+    expect(back.first.count, 8);
+    expect(back.first.tinted, isTrue);
+    expect(back.first.tint.toARGB32(), 0xFF00FF00);
+    expect(back.first.turn, 45);
+
+    // And a rings background with no icons says nothing about them.
+    expect(_spec().toJson()["rings"], isNot(contains("icons")));
   });
 }

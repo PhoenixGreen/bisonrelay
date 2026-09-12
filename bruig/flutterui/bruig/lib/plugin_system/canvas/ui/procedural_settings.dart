@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
@@ -51,6 +52,12 @@ class ProceduralSettings extends StatelessWidget {
   /// _rings and _ringsNow are _set and _setNow for the Rings style's own
   /// settings, which live in a spec of their own. See RingSpec.
   void _rings(RingSpec next) => _set(spec.copyWith(rings: next));
+
+  /// _icon replaces one of the pictures the rings carry.
+  void _icon(int index, RingIcon next) => _ringsNow(spec.rings.copyWith(icons: [
+        for (var (i, icon) in spec.rings.icons.indexed)
+          if (i == index) next else icon,
+      ]));
   void _ringsNow(RingSpec next) => _setNow(spec.copyWith(rings: next));
 
   void _setNow(ProceduralSpec next) {
@@ -61,7 +68,7 @@ class ProceduralSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var groups = _groups();
+    var groups = _groups(context);
     // Down the column like every other element's settings. A Row of five
     // groups in a 280px sidebar is a thousand pixels of overflow, and it does
     // not shrink -- the groups are sized to their controls.
@@ -73,7 +80,7 @@ class ProceduralSettings extends StatelessWidget {
 
   RingSpec get rings => spec.rings;
 
-  List<Widget> _groups() => [
+  List<Widget> _groups(BuildContext context) => [
         CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
           CanvasDropdown<ProceduralStyle>(
             label: "Style",
@@ -576,6 +583,138 @@ class ProceduralSettings extends StatelessWidget {
                       ),
                     ]),
               ]),
+          // What the rings are carrying. Its own heading, and shut until it
+          // is wanted, like the rest of them.
+          CanvasExpander(
+            label: "Icons",
+            remember: "rings.icons",
+            trailing: rings.icons.isEmpty ? null : "${rings.icons.length}",
+            children: [
+              CanvasControlGroup(
+                label: "Icons",
+                hideCaption: true,
+                children: [
+                  for (var (i, icon) in rings.icons.indexed) ...[
+                    CanvasIconButton(
+                      key: ValueKey("ringIconPick$i"),
+                      icon: icon.asset.isEmpty
+                          ? Icons.add_photo_alternate
+                          : Icons.image_outlined,
+                      tooltip: icon.asset.isEmpty
+                          ? "Choose a picture"
+                          : "Choose a different picture",
+                      onPressed: () async {
+                        var id = await pickCanvasImage(context);
+                        if (id == null) return;
+                        _icon(i, icon.copyWith(asset: id));
+                      },
+                    ),
+                    CanvasNumberField(
+                      key: ValueKey("ringIconRing$i"),
+                      label: "On ring",
+                      width: 54,
+                      value: icon.ring.toDouble(),
+                      min: 1,
+                      max: 200,
+                      onChanged: (v) =>
+                          _icon(i, icon.copyWith(ring: v.round())),
+                      onCommit: onCommit,
+                    ),
+                    CanvasDropdown<RingIconPlace>(
+                      key: ValueKey("ringIconPlace$i"),
+                      label: "Where",
+                      value: icon.place,
+                      width: 128,
+                      options: [
+                        for (var p in RingIconPlace.values) (p, p.label)
+                      ],
+                      onChanged: (v) => _icon(i, icon.copyWith(place: v)),
+                    ),
+                    if (icon.place == RingIconPlace.around)
+                      CanvasNumberField(
+                        key: ValueKey("ringIconCount$i"),
+                        label: "How many",
+                        width: 54,
+                        value: icon.count.toDouble(),
+                        min: 1,
+                        max: 60,
+                        onChanged: (v) =>
+                            _icon(i, icon.copyWith(count: v.round())),
+                        onCommit: onCommit,
+                      ),
+                    CanvasNumberField(
+                      key: ValueKey("ringIconSize$i"),
+                      label: "Size",
+                      decimals: 2,
+                      width: 58,
+                      value: icon.size,
+                      min: 0.01,
+                      max: 4,
+                      onChanged: (v) {
+                        onBegin();
+                        _icon(i, icon.copyWith(size: v));
+                      },
+                      onCommit: onCommit,
+                    ),
+                    CanvasNumberField(
+                      key: ValueKey("ringIconTurn$i"),
+                      label: "Turn",
+                      width: 54,
+                      suffix: "°",
+                      value: icon.turn,
+                      min: -360,
+                      max: 360,
+                      onChanged: (v) {
+                        onBegin();
+                        _icon(i, icon.copyWith(turn: v));
+                      },
+                      onCommit: onCommit,
+                    ),
+                    // One colour rather than its own, which is what a line
+                    // drawing usually wants: an SVG carried by a ring should
+                    // be the colour of the design rather than whatever it
+                    // was drawn in.
+                    CanvasToggle(
+                      key: ValueKey("ringIconTinted$i"),
+                      label: "Colour it",
+                      value: icon.tinted,
+                      onChanged: (v) => _icon(i, icon.copyWith(tinted: v)),
+                    ),
+                    if (icon.tinted)
+                      CanvasColorButton(
+                        key: ValueKey("ringIconTint$i"),
+                        label: "Colour",
+                        color: icon.tint,
+                        onChanged: (c) => _icon(i, icon.copyWith(tint: c)),
+                      ),
+                    CanvasIconButton(
+                      key: ValueKey("ringIconRemove$i"),
+                      icon: Icons.close,
+                      tooltip: "Take this icon off the rings",
+                      onPressed: () => _ringsNow(rings.copyWith(icons: [
+                        for (var (n, other) in rings.icons.indexed)
+                          if (n != i) other,
+                      ])),
+                    ),
+                    const CanvasLineBreak(),
+                  ],
+                  CanvasIconButton(
+                    key: const ValueKey("ringIconAdd"),
+                    icon: Icons.add,
+                    tooltip: "Put a picture on a ring",
+                    onPressed: () => _ringsNow(rings
+                        .copyWith(icons: [...rings.icons, const RingIcon()])),
+                  ),
+                  if (rings.icons.isEmpty)
+                    const CanvasHint(
+                        "A picture tied to a ring arrives, swells and "
+                        "dissolves with it: in the middle of the rings, "
+                        "sized against the one it is tied to, or spaced "
+                        "around that ring like beads on it."),
+                ],
+              ),
+            ],
+          ),
         ],
         if (spec.style.canAnimate)
           CanvasControlGroup(label: "Movement", children: [
@@ -632,6 +771,53 @@ class ProceduralSettings extends StatelessWidget {
                   "after which it holds. Finished means finished: for rings, "
                   "every ring born, travelled and gone, with nothing left on "
                   "the page."),
+            ],
+            // A rest in the middle of it: which frame it stops on, how long
+            // it stays stopped, and how long it takes to slow down into the
+            // stop and speed up out of it. The pattern's own clock is held
+            // still while the document's goes on, so everything picks up
+            // exactly where it left off.
+            if (spec.animated) ...[
+              CanvasNumberField(
+                key: const ValueKey("pauseAt"),
+                label: "Pause at",
+                width: 58,
+                value: spec.pauseAt.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(pauseAt: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("pauseFor"),
+                label: "Paused for",
+                width: 58,
+                value: spec.pauseFor.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(pauseFor: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              if (spec.pauseFor > 0)
+                CanvasNumberField(
+                  key: const ValueKey("pauseEase"),
+                  label: "Easing",
+                  width: 58,
+                  value: spec.pauseEase.toDouble(),
+                  min: 0,
+                  max: 1000,
+                  onChanged: (v) {
+                    onBegin();
+                    _set(spec.copyWith(pauseEase: v.round()));
+                  },
+                  onCommit: onCommit,
+                ),
             ],
           ]),
       ];

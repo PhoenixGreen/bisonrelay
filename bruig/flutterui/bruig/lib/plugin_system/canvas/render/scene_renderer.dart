@@ -217,7 +217,8 @@ void _paintDocumentBackground(
   // The rate as well as the moment: a movement that runs once is told how
   // many frames it has, and frames are not seconds until somebody says how
   // many there are in one. See ProceduralSpec.passFrames.
-  paintProcedural(canvas, rect, bg.spec, time: time, frameRate: frameRate);
+  paintProcedural(canvas, rect, bg.spec,
+      time: time, frameRate: frameRate, images: images);
 }
 
 /// paintElement draws one element, with its animation pose applied.
@@ -316,7 +317,8 @@ void paintElement(
     case ButtonElement e:
       _paintButton(canvas, bounds, e, hovered);
     case BackgroundElement e:
-      _paintBackgroundElement(canvas, bounds, e, time, frameRate.toDouble());
+      _paintBackgroundElement(
+          canvas, bounds, e, time, frameRate.toDouble(), images);
     case PathElement e:
       _paintPath(canvas, bounds, e, editing);
     case TeamElement e:
@@ -1428,13 +1430,14 @@ void _paintButton(
 }
 
 void _paintBackgroundElement(ui.Canvas canvas, Rect bounds, BackgroundElement e,
-    double time, double frameRate) {
+    double time, double frameRate, CanvasImageSource? images) {
   if (e.cornerRadius > 0) {
     canvas.save();
     canvas.clipRRect(
         RRect.fromRectAndRadius(bounds, Radius.circular(e.cornerRadius)));
   }
-  paintProcedural(canvas, bounds, e.spec, time: time, frameRate: frameRate);
+  paintProcedural(canvas, bounds, e.spec,
+      time: time, frameRate: frameRate, images: images);
   if (e.cornerRadius > 0) canvas.restore();
 }
 

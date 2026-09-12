@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
@@ -54,12 +56,53 @@ double proceduralRunSeconds(ProceduralSpec spec) {
       (spec.rings.buildUp ? 1 + last : math.max(last, 0.01));
 }
 
+/// pausedFrame is the frame the pattern is showing, given the frame the
+/// document is on and a rest in the middle of the movement.
+///
+/// The pattern's own clock is held still while the document's goes on, so
+/// what comes after the rest is exactly what would have come next: nothing
+/// is skipped and nothing repeats. The easing either side is a slowing down
+/// and a speeding up rather than a stop: over the frames it is given, the
+/// movement covers half the ground it would have, which is what the integral
+/// of a smooth step comes to.
+double pausedFrame(double frame, ProceduralSpec spec) {
+  var hold = spec.pauseFor.toDouble();
+  if (hold <= 0) return frame;
+  var ease = spec.pauseEase.toDouble().clamp(0.0, hold * 4);
+  var stops = spec.pauseAt.toDouble();
+
+  // The four moments: begins slowing, is still, begins moving, is up to
+  // speed again.
+  var slowing = stops - ease;
+  var still = stops;
+  var going = stops + hold;
+  var upToSpeed = going + ease;
+
+  // How far the pattern has moved through a ramp of length one, where the
+  // speed runs smoothly from one to nought: x minus the integral of the
+  // smooth step, which is x cubed less a quarter of x to the fourth.
+  double slowed(double x) => x - (x * x * x - x * x * x * x / 2);
+  double sped(double x) => x * x * x - x * x * x * x / 2;
+
+  if (frame <= slowing) return frame;
+  if (frame <= still) {
+    return slowing + ease * slowed((frame - slowing) / (ease <= 0 ? 1 : ease));
+  }
+  var atRest = slowing + ease * 0.5;
+  if (frame <= going) return atRest;
+  if (frame <= upToSpeed) {
+    return atRest + ease * sped((frame - going) / (ease <= 0 ? 1 : ease));
+  }
+  // And afterwards, running as before, later by everything the rest cost.
+  return frame - hold - ease;
+}
+
 /// paintProcedural draws [spec] into [rect].
 ///
 /// [time] is in seconds and is what animation advances. Passing zero is a
 /// still, which is what an unanimated background and the first frame both are.
 void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
-    {double time = 0, double frameRate = 0}) {
+    {double time = 0, double frameRate = 0, CanvasImageSource? images}) {
   if (rect.width <= 0 || rect.height <= 0) return;
   var spec = input;
 
@@ -71,7 +114,16 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
   // The pattern is drawn rotated inside a rectangle grown to cover the
   // corners, so turning it does not sweep an empty wedge into view. The clip
   // above keeps the overspill off the canvas.
-  var t = spec.animated ? time * spec.speed : 0.0;
+  // A rest in the middle of the movement, if it has been asked for. Taken
+  // before anything else, so that everything after it -- how fast, how many
+  // frames a single pass takes -- is measured in the pattern's own time
+  // rather than the document's.
+  var moment = time;
+  if (spec.animated && spec.pauseFor > 0 && frameRate > 0) {
+    moment = pausedFrame(time * frameRate, spec) / frameRate;
+  }
+
+  var t = spec.animated ? moment * spec.speed : 0.0;
   if (spec.animated && !spec.loop) {
     // One pass, in the number of frames it was told to take, and then hold.
     // Speed says nothing here: a movement that runs once is timed against the
@@ -79,7 +131,8 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     // it goes.
     var run = proceduralRunSeconds(spec);
     var frames = spec.passFrames.clamp(1, 100000);
-    var through = frameRate > 0 ? (time * frameRate) / frames : time / frames;
+    var through =
+        frameRate > 0 ? (moment * frameRate) / frames : moment / frames;
     t = math.min(through, 1.0) * run;
   }
   var area = rect;
@@ -131,7 +184,7 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     case ProceduralStyle.symbolField:
       _symbolField(canvas, area, spec, t);
     case ProceduralStyle.rings:
-      _rings(canvas, area, rect, spec, t);
+      _rings(canvas, area, rect, spec, t, images);
     case ProceduralStyle.halftone:
       _halftone(canvas, area, spec, t);
     case ProceduralStyle.speedLines:
@@ -823,8 +876,8 @@ void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// [page] is the canvas itself rather than the area being painted. The two
 /// differ when the pattern is turned, and rings measured against the turned
 /// area grew with it: a ring "at the edge of the page" has to mean the page.
-void _rings(
-    ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec, double t) {
+void _rings(ui.Canvas canvas, Rect area, Rect page, ProceduralSpec spec,
+    double t, CanvasImageSource? images) {
   var ring = spec.rings;
   var count = ring.count.clamp(1, 200);
   var centre = Offset(
@@ -912,6 +965,83 @@ void _rings(
       ..color = _fade(color, alpha);
 
     _drawRing(canvas, centre, radius, spec, ring, i, paint, area);
+
+    // And whatever this ring is carrying. Drawn after it, so an icon sits on
+    // the line rather than under it, and at the ring's own strength, so it
+    // arrives, swells and dissolves with the ring around it.
+    for (var icon in ring.icons) {
+      if (icon.ring - 1 != i || icon.asset.isEmpty) continue;
+      _drawRingIcons(canvas, images, icon, centre, radius, alpha);
+    }
+  }
+}
+
+/// _drawRingIcons puts one icon setting's pictures on a ring.
+///
+/// In the middle, it is one picture at the middle of the rings, sized
+/// against the ring that carries it -- so it grows as that ring grows.
+/// Around, it is several spaced along the ring itself, each turned to face
+/// out of it.
+void _drawRingIcons(ui.Canvas canvas, CanvasImageSource? images, RingIcon icon,
+    Offset centre, double radius, double alpha) {
+  if (images == null || alpha <= 0.004 || radius <= 0) return;
+  var side = radius * icon.size.clamp(0.01, 4.0);
+  if (side < 1) return;
+
+  var places = <(Offset, double)>[];
+  if (icon.place == RingIconPlace.middle) {
+    places.add((centre, icon.turn * math.pi / 180));
+  } else {
+    var many = icon.count.clamp(1, 60);
+    for (var n = 0; n < many; n++) {
+      var angle = n / many * 2 * math.pi;
+      places.add((
+        centre + Offset(math.cos(angle), math.sin(angle)) * radius,
+        angle + math.pi / 2 + icon.turn * math.pi / 180,
+      ));
+    }
+  }
+
+  // One colour rather than its own, where that has been asked for: a line
+  // drawing carried by a ring usually wants to be the colour of the ring
+  // rather than whatever it was drawn in. srcIn keeps the picture's shape
+  // and replaces everything inside it.
+  var paint = Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha);
+  if (icon.tinted) {
+    paint.colorFilter = ui.ColorFilter.mode(
+        icon.tint.withValues(alpha: icon.tint.a * alpha), BlendMode.srcIn);
+  }
+
+  var vector = images.resolveVector(icon.asset);
+  var bitmap = vector == null
+      ? images.resolve(icon.asset, const BackgroundRemoval())
+      : null;
+  if (vector == null && bitmap == null) return;
+
+  var natural =
+      vector?.size ?? Size(bitmap!.width.toDouble(), bitmap.height.toDouble());
+  if (natural.width <= 0 || natural.height <= 0) return;
+  // Kept in proportion and fitted to a square of the wanted size, which is
+  // what makes two icons of different shapes look like the same size.
+  var scale = side / math.max(natural.width, natural.height);
+
+  for (var (at, turn) in places) {
+    canvas.save();
+    canvas.translate(at.dx, at.dy);
+    if (turn != 0) canvas.rotate(turn);
+    canvas.scale(scale);
+    canvas.translate(-natural.width / 2, -natural.height / 2);
+    if (vector != null) {
+      // A drawing has its own colours and its own transparency, so the
+      // strength and the tint are applied to the layer it is drawn into.
+      canvas.saveLayer(
+          Rect.fromLTWH(0, 0, natural.width, natural.height), paint);
+      canvas.drawPicture(vector.picture);
+      canvas.restore();
+    } else {
+      canvas.drawImage(bitmap!, Offset.zero, paint);
+    }
+    canvas.restore();
   }
 }
 

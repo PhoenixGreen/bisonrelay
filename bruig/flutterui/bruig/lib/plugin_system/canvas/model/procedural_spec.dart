@@ -185,6 +185,18 @@ class ProceduralSpec {
   /// which is what a pattern's own idea of a complete run is.
   final int passFrames;
 
+  /// pauseAt, pauseFor and pauseEase are a rest in the middle of the
+  /// movement: which frame it stops on, how many frames it stays stopped,
+  /// and how many it spends slowing down into the stop and speeding up out
+  /// of it.
+  ///
+  /// A rest rather than a stop and a restart: the pattern's own clock is
+  /// held still while the document's goes on, so everything picks up exactly
+  /// where it left off. Nought frames is no pause at all.
+  final int pauseAt;
+  final int pauseFor;
+  final int pauseEase;
+
   /// sport is read only by [ProceduralStyle.pitch].
   final PitchSport sport;
 
@@ -218,6 +230,9 @@ class ProceduralSpec {
     this.speed = 1,
     this.loop = true,
     this.passFrames = 120,
+    this.pauseAt = 0,
+    this.pauseFor = 0,
+    this.pauseEase = 6,
     this.sport = PitchSport.football,
     this.rings = const RingSpec(),
     this.vignette = 0.25,
@@ -242,6 +257,9 @@ class ProceduralSpec {
     double? speed,
     bool? loop,
     int? passFrames,
+    int? pauseAt,
+    int? pauseFor,
+    int? pauseEase,
     PitchSport? sport,
     RingSpec? rings,
     double? vignette,
@@ -265,6 +283,9 @@ class ProceduralSpec {
         speed: speed ?? this.speed,
         loop: loop ?? this.loop,
         passFrames: passFrames ?? this.passFrames,
+        pauseAt: pauseAt ?? this.pauseAt,
+        pauseFor: pauseFor ?? this.pauseFor,
+        pauseEase: pauseEase ?? this.pauseEase,
         sport: sport ?? this.sport,
         rings: rings ?? this.rings,
         vignette: vignette ?? this.vignette,
@@ -294,6 +315,9 @@ class ProceduralSpec {
         if (animated) "speed": speed,
         if (animated && !loop) "loop": false,
         if (animated && !loop) "passFrames": passFrames,
+        if (animated && pauseFor > 0) "pauseAt": pauseAt,
+        if (animated && pauseFor > 0) "pauseFor": pauseFor,
+        if (animated && pauseFor > 0) "pauseEase": pauseEase,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
         if (style == ProceduralStyle.rings) "rings": rings.toJson(),
         "vignette": vignette,
@@ -318,6 +342,9 @@ class ProceduralSpec {
         speed: jsonDouble(json["speed"], 1),
         loop: jsonBool(json["loop"], true),
         passFrames: jsonInt(json["passFrames"], 120).clamp(1, 100000),
+        pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
+        pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),
+        pauseEase: jsonInt(json["pauseEase"], 6).clamp(0, 1000),
         sport: PitchSport.fromName(json["sport"] as String?),
         rings: json["rings"] is Map
             ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())
