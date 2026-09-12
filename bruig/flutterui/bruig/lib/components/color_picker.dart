@@ -345,10 +345,19 @@ class _AppColorPickerState extends State<AppColorPicker> {
     _readField();
     _leadFromCurrent();
     _textFocus.addListener(() {
-      // Whatever is half-typed goes back to the real colour when the field is
-      // left, so a field holding "#ff" does not sit there looking like a
-      // colour the picker is showing.
-      if (!_textFocus.hasFocus) setState(_write);
+      // Selected the moment it is reached, so that a pasted colour replaces
+      // what is there. A full field and a caret would make a paste twice as
+      // long as the notation allows, and the half thrown away is the half
+      // that was pasted.
+      if (_textFocus.hasFocus) {
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        return;
+      }
+      // And whatever is half-typed goes back to the real colour when the
+      // field is left, so a field holding "#ff" does not sit there looking
+      // like a colour the picker is showing.
+      setState(_write);
     });
     SavedColors.instance.load();
   }
@@ -1005,7 +1014,12 @@ class _AppColorPickerState extends State<AppColorPicker> {
               key: const ValueKey("colorPaletteWheel"),
               size: Size(size, size),
               painter: _WheelPainter(
-                at: _wheelColor,
+                // At the palette's own brightness, not the wheel mode's: the
+                // slider under this wheel sets how bright the *set* is, so
+                // the disc it is picked out of has to be showing that. Drawn
+                // at the other one, the only things that moved when the
+                // slider moved were the five dots.
+                at: (hue, sat) => _colorAt(hue, sat, _leadVal),
                 locked: {
                   for (var i = 0; i < _locked.length; i++)
                     if (_locked[i]) i,
@@ -1778,10 +1792,21 @@ class _SpotHexState extends State<_SpotHex> {
   @override
   void initState() {
     super.initState();
-    // What is half-typed goes back to the colour when the field is left, so a
-    // box holding "3f" does not sit there looking like a colour.
     _focus.addListener(() {
-      if (!_focus.hasFocus) setState(() => _text.text = _hexOf(widget.color));
+      if (_focus.hasFocus) {
+        // The whole of it, selected, the moment it is reached. A hex box is
+        // always full -- six characters of six -- so anything pasted into it
+        // with the caret merely sitting somewhere would be twelve characters
+        // long, and the limit would throw away the half that was pasted.
+        // Selected, a paste replaces it, which is the only thing anybody
+        // pastes a colour in order to do.
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+        return;
+      }
+      // And what is half-typed goes back to the colour when the field is
+      // left, so a box holding "3f" does not sit there looking like a colour.
+      setState(() => _text.text = _hexOf(widget.color));
     });
   }
 
@@ -1856,6 +1881,19 @@ class _ChannelFieldState extends State<_ChannelField> {
   late final TextEditingController _text =
       TextEditingController(text: widget.value.round().toString());
   final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Selected on arrival, for the same reason the hex boxes are: a channel
+    // reading 255 is three characters of three, and typing or pasting into
+    // it with a caret is three characters that go nowhere.
+    _focus.addListener(() {
+      if (!_focus.hasFocus) return;
+      _text.selection =
+          TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+    });
+  }
 
   /// _from and _startX are where a drag began. Measured from the start rather
   /// than accumulated, so a slow drag and a quick one over the same distance

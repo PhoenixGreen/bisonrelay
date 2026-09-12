@@ -556,4 +556,70 @@ void main() {
         others.map((c) => c.toARGB32()),
         reason: "typing into a locked colour moved the rest of the set");
   });
+
+  testWidgets("a full field selects itself, so a colour can be pasted in",
+      (tester) async {
+    // Every box here is exactly full -- six characters of six, or three of
+    // three -- so a paste that merely arrives at the caret is twice as long
+    // as the box allows and the limit throws away the half that was pasted.
+    // Nothing appears to happen, which is what "I can't paste into it" is.
+    await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    var field = find.descendant(
+        of: find.byKey(const ValueKey("paletteHex0")),
+        matching: find.byType(TextField));
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+
+    var controller = tester.widget<TextField>(field).controller!;
+    expect(controller.text.length, 6);
+    expect(controller.selection.start, 0);
+    expect(controller.selection.end, controller.text.length,
+        reason: "the box was not selected, so a paste would be truncated");
+
+    // The picker's own notation field, and a channel, the same.
+    await tester.tap(find.byKey(const ValueKey("colorModesliders")));
+    await tester.pumpAndSettle();
+    var hex = find.byKey(const ValueKey("colorPickerHex"));
+    await tester.tap(hex);
+    await tester.pumpAndSettle();
+    var hexText = tester.widget<TextField>(hex).controller!;
+    expect(hexText.selection.end, hexText.text.length);
+  });
+
+  testWidgets("the palette's brightness is the wheel's brightness",
+      (tester) async {
+    // The slider under the palette sets how bright the set is, so the disc it
+    // is picked out of has to be showing that. Drawn at the wheel mode's own
+    // axis instead, the only things that moved when the slider moved were
+    // the five dots on top of it.
+    await pump(tester, start: const Color(0xFF3366CC), width: 380);
+    await tester.tap(find.byKey(const ValueKey("colorModepalette")));
+    await tester.pumpAndSettle();
+
+    // The function the wheel is painted with, asked what it draws half way
+    // out at a red.
+    Color wheelAt() {
+      var painter = tester
+          .widget<CustomPaint>(find.byKey(const ValueKey("colorPaletteWheel")))
+          .painter;
+      return ((painter as dynamic).at as Color Function(double, double))(
+          20, 0.7);
+    }
+
+    var before = wheelAt();
+    var slider = tester.getRect(find.byKey(const ValueKey("paletteValue")));
+    await tester
+        .tapAt(Offset(slider.left + slider.width * 0.2, slider.center.dy));
+    await tester.pumpAndSettle();
+    var after = wheelAt();
+
+    expect(
+        after.r + after.g + after.b, lessThan(before.r + before.g + before.b),
+        reason: "the wheel itself did not darken: "
+            "${before.toARGB32().toRadixString(16)} to "
+            "${after.toARGB32().toRadixString(16)}");
+  });
 }
