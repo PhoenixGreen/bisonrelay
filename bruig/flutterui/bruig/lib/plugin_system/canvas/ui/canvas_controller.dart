@@ -1458,18 +1458,25 @@ class CanvasController extends ChangeNotifier {
     // The shared canvas's own, where that is the one on screen. A backdrop on
     // the master is drawn in front of every scene's, so writing the scene's
     // from here would change nothing anybody can see -- which is what a dead
-    // Background panel was. See CanvasDocument.ownBackground.
+    // Background panel was. See CanvasDocument.editedBackground.
     if (document.sharedBackdrop) {
       apply(document.withMaster(document.master!.copyWith(background: next)),
           transient: transient);
       return;
     }
-    // A scene's own, where there are scenes. They share the document's until
-    // one of them is given a backdrop of its own -- and writing that shared
-    // one is how changing scene one's background changed scene two's. What
-    // an edit is built *from* is CanvasDocument.ownBackground, which is the
-    // same answer read the other way round.
-    if (document.hasScenes) {
+    // This scene's own, where it has one -- that is what is drawn, and the
+    // document's underneath it is not -- or where there are several scenes,
+    // so that an edit does not leak onto all of them. Writing the shared one
+    // is how changing scene one's background changed scene two's.
+    //
+    // Owning it rather than counting scenes, because a scene can own one
+    // while being the only scene left: two scenes, an edit -- which the scene
+    // then owns -- and the second scene deleted, and every edit after that
+    // went to the document's background underneath a scene background that
+    // was still the one on screen. The panel died on removing a scene.
+    // A document with no scenes at all cannot answer yes to either: the scene
+    // it reports is one it makes up on the spot, and that one owns nothing.
+    if (document.scene.background != null || document.hasScenes) {
       apply(
           document.withScene(
               document.at, document.scene.copyWith(background: next)),

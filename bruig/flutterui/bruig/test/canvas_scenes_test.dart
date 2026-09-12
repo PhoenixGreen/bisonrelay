@@ -425,6 +425,55 @@ void main() {
     });
   });
 
+  test("a scene that owns its backdrop keeps it when it is the only one", () {
+    // The reported fault, and a nasty one because it needs a history: with
+    // two scenes an edit lands on the scene's own, and the scene goes on
+    // owning it when the other is deleted. Writing the document's from then
+    // on -- which is what "are there several scenes" decided -- put every
+    // edit underneath a background that was still the one on screen, so the
+    // panel died the moment a scene was removed.
+    var controller = CanvasController(const CanvasDocument().withScenes([
+      const CanvasScene(id: "a", frames: 10),
+      const CanvasScene(id: "b", frames: 10),
+    ]));
+    addTearDown(controller.dispose);
+
+    controller.setBackground(controller.document.editedBackground
+        .copyWith(spec: const ProceduralSpec(style: ProceduralStyle.rings)));
+    expect(controller.document.scene.background, isNotNull,
+        reason: "an edit with two scenes belongs to the scene");
+
+    controller.removeScene(1);
+    expect(controller.document.hasScenes, isFalse);
+    expect(
+        controller.document.drawnBackground.spec.style, ProceduralStyle.rings,
+        reason: "the scene kept what it owns");
+
+    controller.setBackground(controller.document.editedBackground
+        .copyWith(spec: const ProceduralSpec(style: ProceduralStyle.bokeh)));
+    expect(
+        controller.document.drawnBackground.spec.style, ProceduralStyle.bokeh,
+        reason: "the edit went under the backdrop that is on screen");
+    expect(
+        controller.document.editedBackground.spec.style, ProceduralStyle.bokeh,
+        reason: "and the panel would report the old one");
+  });
+
+  test("a canvas with no scene of its own writes the document's", () {
+    // The other side of it: nothing owns a backdrop here, so the document's
+    // is what is drawn and what an edit belongs to. A scene background
+    // conjured for a single canvas would be a scene where there was none.
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+
+    controller.setBackground(controller.document.editedBackground
+        .copyWith(spec: const ProceduralSpec(style: ProceduralStyle.rings)));
+    expect(controller.document.background.spec.style, ProceduralStyle.rings);
+    expect(controller.document.scenes, isEmpty);
+    expect(
+        controller.document.drawnBackground.spec.style, ProceduralStyle.rings);
+  });
+
   group("the shared canvas's backdrop", () {
     // A backdrop on the shared canvas is drawn in front of every scene's. The
     // settings panel used to show and edit the scene's anyway, so with one
