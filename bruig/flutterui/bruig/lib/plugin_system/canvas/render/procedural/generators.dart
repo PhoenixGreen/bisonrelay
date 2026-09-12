@@ -45,15 +45,16 @@ const double proceduralPass = 1 / 0.15;
 /// being over.
 ///
 /// For rings that is every ring born, travelled and dissolved, with nothing
-/// left on the page. Building up, the last ring is born very nearly a life
-/// after the first and then has its own life to live, so the run is close to
-/// two of them; opening on a full set instead, the set drains inside one.
+/// left on the page: the last of the set is born very nearly a life after the
+/// first and then has its own life to live, so the run is close to two of
+/// them. That holds whether or not the set builds up -- a set that opens full
+/// is only spread across its lives at the first frame; the one at the back
+/// still dies last.
 double proceduralRunSeconds(ProceduralSpec spec) {
   if (spec.style != ProceduralStyle.rings) return proceduralPass;
   var many = spec.rings.count.clamp(1, 200);
   var last = (many - 1) / many;
-  return proceduralPass *
-      (spec.rings.buildUp ? 1 + last : math.max(last, 0.01));
+  return proceduralPass * (1 + last);
 }
 
 /// pausedFrame is the frame the pattern is showing, given the frame the
@@ -134,7 +135,8 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
 
     if (!spec.loop) {
       // One run, and then hold where it finished.
-      t = math.min(at / frames, 1.0) * run;
+      var through = at / frames;
+      t = through.clamp(0.0, 1.0) * run;
     } else {
       // Runs with a rest between them: one run of `frames`, then `loopGap`
       // frames of the finished picture, then the next run from the start.
@@ -144,7 +146,8 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
       // Held at the end once the last run is over, and held at the end
       // through each gap -- which for rings is an empty page.
       var within = done ? frames : at - round * cycle;
-      t = math.min(within / frames, 1.0) * run;
+      var through = within / frames;
+      t = through.clamp(0.0, 1.0) * run;
     }
   }
   var area = rect;

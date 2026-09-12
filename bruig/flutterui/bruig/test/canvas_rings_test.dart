@@ -107,10 +107,10 @@ class _Pictures extends CanvasImageSource {
 /// circles of at least their starting radius, so nothing they draw lands
 /// there.
 Future<int> _inkWith(ProceduralSpec spec, double time,
-    {double within = 24}) async {
+    {double within = 24, double rate = 0}) async {
   var recorder = ui.PictureRecorder();
   paintProcedural(ui.Canvas(recorder), _page, spec,
-      time: time, images: _Pictures());
+      time: time, frameRate: rate, images: _Pictures());
   var picture = recorder.endRecording();
   var image = await picture.toImage(400, 300);
   var bytes = (await image.toByteData())!;
@@ -939,5 +939,56 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("passFramesFit")));
     await tester.pumpAndSettle();
     expect(spec.passFrames, 250);
+  });
+
+  testWidgets("a hard-edged run ends with an empty page", (tester) async {
+    // The clearest way to see whether a run has really finished. A hard edge
+    // is full strength until the instant a ring dies, so holding the clock
+    // exactly at the end of the run left the last ring -- and whatever it
+    // was carrying -- on the page for the rest of the canvas.
+    late int atTheEnd;
+    late int afterwards;
+    late int wayAfterwards;
+    late int carried;
+    await tester.runAsync(() async {
+      var hard = _spec(
+              rings: const RingSpec(
+                  count: 6, edge: RingEdge.hard, fadeIn: 1, buildUp: false))
+          .copyWith(loop: false, passFrames: 150);
+      Future<int> at(int frame) async {
+        var (ink, _) = await _ink(hard, frame / 24, rate: 24);
+        return ink;
+      }
+
+      atTheEnd = await at(150);
+      afterwards = await at(188);
+      wayAfterwards = await at(2000);
+
+      // And the picture a ring carries goes with it.
+      var withIcon = _spec(
+              rings: const RingSpec(count: 6, edge: RingEdge.hard).copyWith(
+                  icons: [const RingIcon(asset: "badge", ring: 6, size: 2)]))
+          .copyWith(loop: false, passFrames: 150);
+      carried = await _inkWith(withIcon, 188 / 24, within: 80, rate: 24);
+    });
+
+    expect(atTheEnd, 0, reason: "the run was over and the page was not empty");
+    expect(afterwards, 0, reason: "and it stayed on the page afterwards");
+    expect(wayAfterwards, 0);
+    expect(carried, 0, reason: "the icon outlived the ring that carried it");
+  });
+
+  test("a run lasts until the ring at the back has died", () {
+    // Whether or not the set builds up, the ring at the back is born very
+    // nearly a life after the first and then has its own life to live. A run
+    // that allowed only for the spread ended with it still going.
+    var building = const ProceduralSpec(style: ProceduralStyle.rings)
+        .copyWith(rings: const RingSpec(count: 6));
+    var full =
+        building.copyWith(rings: const RingSpec(count: 6, buildUp: false));
+    expect(proceduralRunSeconds(building),
+        closeTo(proceduralPass * (1 + 5 / 6), 0.001));
+    expect(proceduralRunSeconds(full),
+        closeTo(proceduralPass * (1 + 5 / 6), 0.001));
   });
 }
