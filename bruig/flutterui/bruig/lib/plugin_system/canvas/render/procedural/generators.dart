@@ -1116,7 +1116,13 @@ void _drawRingIcons(
       // line: it is placed by the ring's own journey at its own moment, so
       // it sits at the radius the ring had then -- and arrives and leaves at
       // that moment too.
-      var mine = (through + icon.driftWhen.at(roll(0))).clamp(0.0, 1.0);
+      var mine = through + icon.driftWhen.at(roll(0));
+      // Outside the ring's life is not yet born, or already gone. Held at the
+      // two ends instead -- which is what clamping it did -- a picture moved
+      // earlier sat at the first instant of the life for as long as the
+      // offset lasted, at whatever strength that instant has: with no fade
+      // at that end, a picture that never arrived and never left.
+      if (mine < 0 || mine > 1) continue;
       var radius = radiusAt(mine);
       if (radius <= 0.5) continue;
 

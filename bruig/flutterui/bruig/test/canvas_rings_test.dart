@@ -1190,13 +1190,15 @@ void main() {
         lessThan(tester.getTopLeft(find.byKey(const ValueKey("ringFrom"))).dx));
   });
 
-  testWidgets("two icons' settings are told apart", (tester) async {
-    // With only a line break between them, one icon's settings ran straight
-    // into the next and the pair read as one icon with a great many.
+  testWidgets("there are two icons, and they are told apart", (tester) async {
+    // Two of them and no more: one in the middle and one set going round.
+    // It was a list anybody could add to, which asked a question nobody was
+    // asking -- and with only a line break between two of them, the pair read
+    // as one icon with a great many settings.
     var spec = _spec(
         rings: const RingSpec(icons: [
       RingIcon(asset: "badge", ring: 1),
-      RingIcon(asset: "crest", ring: 2),
+      RingIcon(asset: "crest", ring: 2, place: RingIconPlace.around),
     ]));
     await tester.pumpWidget(MultiProvider(
       providers: [
@@ -1206,13 +1208,15 @@ void main() {
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: CanvasControlScope(
-              maxWidth: 240,
-              child: ProceduralSettings(
-                spec: spec,
-                onBegin: () {},
-                onCommit: () {},
-                onChanged: (next) => spec = next,
+            child: StatefulBuilder(
+              builder: (context, setState) => CanvasControlScope(
+                maxWidth: 240,
+                child: ProceduralSettings(
+                  spec: spec,
+                  onBegin: () {},
+                  onCommit: () {},
+                  onChanged: (next) => setState(() => spec = next),
+                ),
               ),
             ),
           ),
@@ -1220,23 +1224,49 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    if (find.byKey(const ValueKey("ringIconRing0")).evaluate().isEmpty) {
+    if (find.byKey(const ValueKey("ringIconRing-middle")).evaluate().isEmpty) {
       await tester.ensureVisible(find.text("ICONS"));
       await tester.tap(find.text("ICONS"));
       await tester.pumpAndSettle();
     }
 
-    // One rule, between the two of them, rather than one before each.
+    // No way to ask for a third.
+    expect(find.byKey(const ValueKey("ringIconAdd")), findsNothing);
+
+    // One rule, between the two of them.
     expect(find.byType(CanvasSeparator), findsOneWidget);
     var rule = tester.getTopLeft(find.byType(CanvasSeparator)).dy;
     expect(
         rule,
-        greaterThan(
-            tester.getTopLeft(find.byKey(const ValueKey("ringIconRing0"))).dy));
+        greaterThan(tester
+            .getTopLeft(find.byKey(const ValueKey("ringIconRing-middle")))
+            .dy));
     expect(
         rule,
-        lessThan(
-            tester.getTopLeft(find.byKey(const ValueKey("ringIconRing1"))).dy));
+        lessThan(tester
+            .getTopLeft(find.byKey(const ValueKey("ringIconRing-around")))
+            .dy));
+
+    // The scatter ranges belong to the set going round; the picture in the
+    // middle has nothing to differ from, and what it has instead are the
+    // things it may be told rather than inheriting.
+    expect(
+        find.byKey(const ValueKey("ringIconWhenLeast-around")), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey("ringIconWhenLeast-middle")), findsNothing);
+    expect(
+        find.byKey(const ValueKey("ringIconOwnFade-middle")), findsOneWidget);
+    expect(find.byKey(const ValueKey("ringIconOwnFade-around")), findsNothing);
+
+    // Taking one away leaves the other where it was, and leaves a way to put
+    // a picture back.
+    await tester
+        .ensureVisible(find.byKey(const ValueKey("ringIconRemove-middle")));
+    await tester.tap(find.byKey(const ValueKey("ringIconRemove-middle")));
+    await tester.pumpAndSettle();
+    expect(spec.rings.icons.length, 1);
+    expect(spec.rings.icons.single.place, RingIconPlace.around);
+    expect(find.byKey(const ValueKey("ringIconPick-middle")), findsOneWidget);
   });
 
   testWidgets("pictures around a ring scatter rather than sit on the line",
@@ -1588,6 +1618,67 @@ void main() {
         reason: "colouring a picture changed how strongly it was drawn");
     expect(fully, greaterThan(coloured + 60),
         reason: "a coloured picture no longer answers to its strength");
+  });
+
+  testWidgets("a picture moved through a ring's life still arrives and leaves",
+      (tester) async {
+    // Held at the two ends of the life instead -- which is what clamping the
+    // moment did -- a picture moved earlier sat at the first instant of it
+    // for as long as the offset lasted, at whatever strength that instant
+    // has. With no fade at that end it is a picture that never arrives: on
+    // from the first frame at full strength, however far back it was moved.
+    late List<int> ink;
+    late List<int> strength;
+    await tester.runAsync(() async {
+      ProceduralSpec at(double fadeIn, double fadeOut) => _spec(
+              rings: RingSpec(
+                count: 1,
+                width: 0.0005,
+                from: 0.4,
+                to: 0.4,
+                fadeIn: fadeIn,
+                fadeOut: fadeOut,
+                icons: const [
+                  RingIcon(
+                    asset: "badge",
+                    ring: 1,
+                    size: 0.3,
+                    place: RingIconPlace.around,
+                    count: 8,
+                    driftWhen: RingDrift(least: -1, most: -0.1),
+                  )
+                ],
+              ),
+              animated: true)
+          .copyWith(
+              foreground: const Color(0xFF000000),
+              accent: const Color(0xFF000000));
+
+      // Nothing to fade in with, so what is on the page at the first instant
+      // is whatever has been born by then -- which is almost nothing.
+      var blunt = at(0, 0.4);
+      ink = [
+        for (var through in [0.02, 0.5])
+          (await _marks(blunt, time: proceduralPass * through)).length,
+      ];
+      // And with a fade, the ones that are alive are still fading.
+      var soft = at(0.4, 0.4);
+      strength = [
+        for (var through in [0.5, 0.99])
+          await () async {
+            var marks = await _marks(soft, time: proceduralPass * through);
+            return marks.isEmpty ? 0 : marks.map((m) => m.$3).reduce(math.max);
+          }(),
+      ];
+    });
+
+    expect(ink[1], greaterThan(400),
+        reason: "nothing was drawn in the middle of the life: $ink");
+    expect(ink[0], lessThan(ink[1] ~/ 4),
+        reason: "pictures moved back before the start were drawn anyway: $ink");
+    expect(strength[0], greaterThan(150));
+    expect(strength[1], lessThan(strength[0] ~/ 2),
+        reason: "they were still at full strength at the end: $strength");
   });
 
   test("a run lasts until the ring at the back has died", () {
