@@ -134,6 +134,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Returning to a page that was left on Design counts as having used it:
     // the reader chose that tab, even if it was last time.
     _designUsed = _panel == CanvasPanel.design;
+    // The one it opens on is the only one worth building to begin with.
+    _seen.add(_panel);
     _timelineOpen = prefs.timeline;
     // Only on the very first visit of the session. After that the controller
     // already holds whatever was being worked on, and reopening the last saved
@@ -233,7 +235,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   void _setPanel(CanvasPanel panel) {
     if (panel == CanvasPanel.design) _designUsed = true;
-    setState(() => _panel = panel);
+    setState(() {
+      _panel = panel;
+      // Built from here on, and kept built. See _seen.
+      _seen.add(panel);
+    });
     Provider.of<CanvasPreferences>(context, listen: false).panel = panel.index;
   }
 
@@ -365,7 +371,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
       panel: _panel,
       onPanelChanged: _setPanel,
       onHide: () => setState(() => _sidebarVisible = false),
-      // All three kept, and only the chosen one shown.
+      // Every panel that has been looked at is kept, and only the chosen one
+      // is shown.
       //
       // Offstage rather than a switch that builds one and throws the others
       // away. Building the design column from cold is a hundred and thirty
@@ -375,31 +382,37 @@ class _CanvasScreenState extends State<CanvasScreen> {
       // and forth. Offstage keeps the state and skips the layout and the
       // painting, so a hidden panel costs nothing per frame and comes back
       // instantly.
+      //
+      // Kept, but not built before it is wanted: offstage skips the layout
+      // and the painting and not the building, so opening the page at all
+      // paid for all three columns -- four hundred milliseconds of text
+      // fields, most of them for panels nobody had asked for. See _seen.
       child: Stack(
         children: [
           for (var panel in CanvasPanel.values)
-            Offstage(
-              offstage: _panel != panel,
-              child: TickerMode(
-                // Nothing hidden should be animating: an offstage panel with
-                // a spinner in it would go on scheduling frames for something
-                // nobody can see.
-                enabled: _panel == panel,
-                child: switch (panel) {
-                  CanvasPanel.files => CanvasFilesPanel(
-                      controller: _controller,
-                      onOpen: _open,
-                      onPublish: _publishSaved,
-                      onNew: _newCanvas,
-                      showing: _panel == CanvasPanel.files,
-                    ),
-                  CanvasPanel.presets =>
-                    CanvasPresetsPanel(onChoose: _openPreset),
-                  CanvasPanel.design =>
-                    CanvasDesignPanel(controller: _controller),
-                },
+            if (_seen.contains(panel))
+              Offstage(
+                offstage: _panel != panel,
+                child: TickerMode(
+                  // Nothing hidden should be animating: an offstage panel with
+                  // a spinner in it would go on scheduling frames for something
+                  // nobody can see.
+                  enabled: _panel == panel,
+                  child: switch (panel) {
+                    CanvasPanel.files => CanvasFilesPanel(
+                        controller: _controller,
+                        onOpen: _open,
+                        onPublish: _publishSaved,
+                        onNew: _newCanvas,
+                        showing: _panel == CanvasPanel.files,
+                      ),
+                    CanvasPanel.presets =>
+                      CanvasPresetsPanel(onChoose: _openPreset),
+                    CanvasPanel.design =>
+                      CanvasDesignPanel(controller: _controller),
+                  },
+                ),
               ),
-            ),
         ],
       ),
     );
@@ -527,6 +540,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
             ),
         ]),
       );
+
+  /// _seen is which panels have been looked at, and so which of them are
+  /// worth keeping built.
+  ///
+  /// A panel is added the first time it is chosen and never removed: the
+  /// point of keeping them is that going back to one is instant, and what
+  /// that costs is one column's worth of controls for each panel somebody
+  /// has actually used.
+  final Set<CanvasPanel> _seen = {};
 
   /// _publish opens the publish sheet for whatever is in the editor.
   ///
