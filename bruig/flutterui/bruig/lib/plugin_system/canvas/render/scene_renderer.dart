@@ -20,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
@@ -299,11 +300,13 @@ void paintElement(
       _paintText(canvas, bounds, e, document,
           pose: pose, frame: frame, images: images);
     case ShapeElement e:
-      _paintShape(canvas, bounds, e);
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => _paintShape(canvas, bounds, e));
     case LineElement e:
       _paintLine(canvas, _bowed(e, pose));
     case ImageElement e:
-      _paintImage(canvas, bounds, e, images);
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => _paintImage(canvas, bounds, e, images));
     case ChartElement e:
       // How much of it has arrived. A chart with no animation on it has no
       // keyframe pinning this and gets 1, which is all of it.
@@ -362,7 +365,7 @@ void _paintText(
   }
 
   paintBox(canvas, bounds, e.box);
-  var inner = bounds.deflate(e.box.padding);
+  var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
   // An icon takes its room out of the box before the words are laid out in
@@ -372,7 +375,6 @@ void _paintText(
   var spec = drawnTextSpec(e, bounds);
   var (iconBox, room) =
       iconLayout(inner, e.icon, e.displayText, spec, columns: e.columns.count);
-  paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
   inner = room;
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -391,6 +393,13 @@ void _paintText(
   // of element identically. See TextAnimation.
   var (animation, reveal) = _arrival(e, pose);
   var timings = _partTimings(e, frame, pose);
+
+  // The icon goes on before the words, and travels with them: it is a bullet
+  // or a logo that belongs to the sentence, so a sentence that slides in
+  // takes it along. See TextIcon.animate. Drawn first either way, so a
+  // negative gap puts the words across it rather than under it.
+  _paintIcon(canvas, iconBox, e, spec, flow.text, inner, images,
+      animation: animation, reveal: reveal);
   // On the way out the paragraph goes as one: a part has a moment of its own
   // arriving, and there is no second leaving animation for it to have.
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
@@ -417,8 +426,16 @@ void _paintText(
     // The marks and the arrival still apply, as a block: the words are set a
     // line at a time here, so there are no pieces for a per-letter motion to
     // move. A whole-paragraph preset reads the same either way.
-    var wrapped =
-        layoutWrapped(words, spec, inner, blocked, e.wrap, parts: drawn);
+    //
+    // The outline and the fill apply too, and used not to: wrapped text was
+    // laid out and painted straight, so Outline and Painted with stopped
+    // meaning anything the moment Wrap around things was turned on. Both are
+    // asked for the same way as everywhere else -- see outlineSpecFor and
+    // paintThroughText.
+    var wrapped = layoutWrapped(words, spec, inner, blocked, e.wrap,
+        parts: drawn,
+        outlineSpec: outlineSpecFor(spec,
+            parts: drawn, animation: animation, reveal: reveal));
     var frameOf = animation.on && (reveal < 1 || animation.keeps)
         ? applyMotion(
             canvas, inner, animation.preset, animation.progressAt(reveal, 0, 1),
@@ -429,7 +446,33 @@ void _paintText(
         canvas.saveLayer(inner.inflate(inner.height),
             Paint()..color = Color.fromRGBO(0, 0, 0, frameOf.alpha));
       }
-      paintWrapped(canvas, wrapped, spec);
+      // The stroke drawn onto words that are already there, where that is
+      // the preset. The motion itself leaves the opacity alone -- see
+      // applyMotion -- so without this Draw the outline drew the finished
+      // paragraph from its first frame here too.
+      var p = animation.progressAt(reveal, 0, 1);
+      var stroke = animation.on &&
+          animation.preset.motion == TextMotion.strokeOn &&
+          reveal < 1;
+      var written = stroke ? p : null;
+      var fillAlpha =
+          stroke && animation.draw.start == TextDrawStart.fadeText ? p : null;
+      if (!spec.fill.on) {
+        paintWrapped(canvas, wrapped, spec,
+            written: written, fillAlpha: fillAlpha);
+      } else {
+        paintWrapped(canvas, wrapped, spec,
+            phase: TextDrawPhase.behind, written: written);
+        paintThroughText(
+            canvas,
+            inner,
+            spec.fill,
+            images,
+            () => paintWrapped(canvas, wrapped, spec,
+                phase: TextDrawPhase.letters,
+                written: written,
+                fillAlpha: fillAlpha));
+      }
       if (frameOf.alpha < 1) canvas.restore();
     }
     for (var r = 0; r < frameOf.depth; r++) {
@@ -472,6 +515,57 @@ void _paintText(
       timings: timings,
       asOne: leaving,
       images: images);
+}
+
+/// _paintIcon draws a text element's icon, carried along by whatever the
+/// words are doing.
+///
+/// The motion is applied to the paragraph's own rectangle rather than to the
+/// icon's, because that is the rectangle the words move by: a slide is a
+/// fraction of the piece that is sliding, so an icon moved by a fraction of
+/// its own little square would travel a fifth as far and come apart from the
+/// sentence it belongs to. [textArea] is the room the words were given, which
+/// is the block's rectangle when they are in columns.
+///
+/// Only the motions that are a transform and an opacity -- see
+/// wholeBlockMotion. An echo's copies or a drawn underline belong to the
+/// words themselves and there is nothing sensible to do to a picture with
+/// them, so the icon simply stays where it is.
+void _paintIcon(ui.Canvas canvas, Rect iconBox, TextElement e, TextSpec spec,
+    String words, Rect textArea, CanvasImageSource? images,
+    {required TextAnimation animation, required double reveal}) {
+  if (!e.icon.on) return;
+  var moving = animation.on && (reveal < 1 || animation.keeps);
+  if (!e.icon.animate || !moving || !movesAsOneBlock(animation)) {
+    paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
+    return;
+  }
+
+  var p = animation.progressAt(reveal, 0, 1);
+  // Not there yet: the icon arrives with the words rather than waiting on the
+  // page for them.
+  if (p <= 0) return;
+
+  var carried = e.columns.isSingle && words.isNotEmpty
+      ? () {
+          var painter = layoutText(words, spec,
+              maxWidth: textArea.width, fillWidth: true);
+          return textOffsetIn(textArea, painter, spec) & painter.size;
+        }()
+      : textArea;
+  var motion = applyMotion(canvas, carried, animation.preset, p,
+      from: animation.scaleFor(animation.preset));
+  if (motion.alpha > 0) {
+    if (motion.alpha < 1) {
+      canvas.saveLayer(iconBox.inflate(iconBox.longestSide),
+          Paint()..color = Color.fromRGBO(0, 0, 0, motion.alpha));
+    }
+    paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
+    if (motion.alpha < 1) canvas.restore();
+  }
+  for (var r = 0; r < motion.depth; r++) {
+    canvas.restore();
+  }
 }
 
 /// _arrival is the animation a text element is playing on this frame, and how
@@ -548,7 +642,7 @@ TextSpec drawnTextSpec(TextElement e, Rect bounds) {
   var spec = e.textSpec;
   if (!e.autoSize) return spec;
 
-  var inner = iconRoom(bounds.deflate(e.box.padding), e.icon).$2;
+  var inner = iconRoom(e.box.inner(bounds), e.icon).$2;
   if (inner.width <= 0 || inner.height <= 0) return spec;
 
   // Measured against one column's *width*, since that is the width a line
@@ -757,6 +851,7 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
       points: e.points,
       inner: e.innerRatio,
       cornerRadius: e.cornerRadius,
+      corners: e.corners,
       bubble: e.bubble);
 
   if (e.fill.a > 0) canvas.drawPath(path, Paint()..color = e.fill);
@@ -777,27 +872,43 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
     // solving for the inscribed rectangle of an arbitrary path.
     // A bubble's words go in its body, which is the box less whatever the tail
     // took -- so a tail on the left does not push the text off to the right.
-    if (e.shape == ShapeKind.speechBubble) {
-      var body = bubbleBodyRect(rect, e.bubble);
-      var margin = e.bubble.body == BubbleBody.burst ? 0.22 : 0.1;
-      paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec,
-          body.deflate(body.shortestSide * margin));
-      return;
-    }
-
-    var inset = switch (e.shape) {
-      ShapeKind.circle || ShapeKind.ellipse => 0.15,
-      ShapeKind.triangle => 0.24,
-      ShapeKind.diamond || ShapeKind.star => 0.26,
-      ShapeKind.pentagon || ShapeKind.hexagon => 0.16,
-      _ => 0.06,
-    };
-    var box = rect.deflate(rect.shortestSide * inset);
-    if (e.shape == ShapeKind.triangle) {
-      box = box.translate(0, rect.height * 0.1);
-    }
-    paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec, box);
+    paintTextInBox(canvas, e.textSpec.textCase.apply(e.text), e.textSpec,
+        labelRoom(e, rect));
   }
+}
+
+/// labelRoom is where a shape's label is set: the padding it has been given,
+/// or the shape's own sensible inset where it has been given none.
+///
+/// The fractions are crude on purpose -- the alternative is solving for the
+/// inscribed rectangle of an arbitrary path -- and they are what makes a
+/// label in a circle or a triangle stay off the edge without anybody setting
+/// anything. Asking for padding replaces them, side by side, which is the
+/// point of asking.
+Rect labelRoom(ShapeElement e, Rect rect) {
+  // A bubble's words go in its body, which is the box less whatever the tail
+  // took -- so a tail on the left does not push the text off to the right.
+  if (e.shape == ShapeKind.speechBubble) {
+    var body = bubbleBodyRect(rect, e.bubble);
+    if (e.padded) return e.pad.inner(body);
+    var margin = e.bubble.body == BubbleBody.burst ? 0.22 : 0.1;
+    return body.deflate(body.shortestSide * margin);
+  }
+  if (e.padded) return e.pad.inner(rect);
+
+  var inset = switch (e.shape) {
+    ShapeKind.circle || ShapeKind.ellipse => 0.15,
+    ShapeKind.triangle => 0.24,
+    ShapeKind.diamond || ShapeKind.star => 0.26,
+    ShapeKind.pentagon || ShapeKind.hexagon => 0.16,
+    _ => 0.06,
+  };
+  var box = rect.deflate(rect.shortestSide * inset);
+  // A triangle's room is not centred in its box: the top is a point.
+  if (e.shape == ShapeKind.triangle) {
+    box = box.translate(0, rect.height * 0.1);
+  }
+  return box;
 }
 
 /// lineControlPoint is the control point of the quadratic a bowed line is
@@ -977,7 +1088,7 @@ void _paintLineEnd(
 void _paintImage(
     ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images) {
   paintBox(canvas, bounds, e.box);
-  var inner = bounds.deflate(e.box.padding);
+  var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
   var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
@@ -992,9 +1103,10 @@ void _paintImage(
   if (e.frame != null) {
     canvas
         .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
-  } else if (e.box.borderRadius > 0) {
-    canvas.clipRRect(RRect.fromRectAndRadius(inner,
-        Radius.circular(math.max(0, e.box.borderRadius - e.box.padding))));
+  } else if (e.box.isRounded) {
+    // The picture's corners follow the box's, pulled in by the padding so a
+    // rounded frame stays concentric with the border drawn round it.
+    canvas.clipRRect(e.box.insetRounded(inner));
   } else {
     // Room for an outline to be outside something. A picture that fills its
     // box -- which is what "Fill the box" does, and it is the default -- has
@@ -1424,7 +1536,7 @@ void _paintButton(
   if (hovered && e.hoverTextColor.a > 0) {
     spec = spec.copyWith(color: e.hoverTextColor);
   }
-  var inner = bounds.deflate(e.box.padding);
+  var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
   paintTextInBox(canvas, spec.textCase.apply(e.label), spec, inner, clip: true);
 }

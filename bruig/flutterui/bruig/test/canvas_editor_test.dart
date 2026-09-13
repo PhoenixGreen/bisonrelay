@@ -5715,13 +5715,21 @@ void main() {
 
       expect(find.text("No blank first line"), findsOneWidget,
           reason: "one column, and still the box the words belong to");
+      // On to begin with -- a column top that starts with a blank line is a
+      // fault every time, so the switch is there to turn the tidying off --
+      // and pressing it turns it off.
+      expect(
+          (controller.document.elementById("head") as TextElement)
+              .columns
+              .noBlankStart,
+          isTrue);
       await tester.tap(find.text("No blank first line"));
       await tester.pumpAndSettle();
       expect(
           (controller.document.elementById("head") as TextElement)
               .columns
               .noBlankStart,
-          isTrue);
+          isFalse);
 
       controller.selectOnly("tail");
       await tester.pumpAndSettle();

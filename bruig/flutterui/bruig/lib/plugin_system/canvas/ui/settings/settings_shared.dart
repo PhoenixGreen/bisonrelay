@@ -1,6 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -499,18 +502,83 @@ List<Widget> typeGroups(
             commit();
           },
         ),
+        // Where the light is, not where the shadow goes: one light for a
+        // scene, and the same two numbers on every element in it.
+        CanvasNumberField(
+          key: const ValueKey("textShadowAngle"),
+          label: "Direction",
+          value: spec.shadowAngle,
+          min: 0,
+          max: 360,
+          width: 60,
+          onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("textShadowDistance"),
+          label: "Distance",
+          value: spec.shadowDistance,
+          min: 0,
+          max: 400,
+          decimals: 1,
+          width: 60,
+          onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("textGlow"),
+          label: "Glow",
+          value: spec.glowBlur,
+          min: 0,
+          max: 200,
+          width: 54,
+          onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
+          onCommit: commit,
+        ),
+        CanvasColorButton(
+          label: "Light",
+          color: spec.glowColor,
+          onChanged: (c) {
+            begin();
+            onChanged(spec.copyWith(glowColor: c));
+            commit();
+          },
+        ),
+        if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
+          const CanvasHint(
+              "Direction is where the light is, read like a compass: 0 is "
+              "straight up, 90 to the right. The shadow falls the other way, "
+              "Distance away from the words. At a distance of 0 it sits "
+              "directly underneath them, which is a shadow that reads as a "
+              "glow in its own colour."),
+        if (spec.glowBlur > 0)
+          const CanvasHint(
+              "Glow is light all round the letters, in its own colour, and it "
+              "is drawn behind them — so a picture or a pattern showing "
+              "through the words cannot cut it up, and an outline sits over "
+              "it rather than under it."),
       ]),
     ];
 
-/// boxGroup is the shared frame controls: fill, border and padding.
-
-/// boxGroup is the shared frame controls: fill, border and padding.
+/// boxGroup is the shared frame controls: the background, the border, the
+/// corners and the room inside.
+///
+/// [fillLabel] names the background swatch. "Fill" is right for a box drawn
+/// round words; a picture's is the colour that shows *behind* the picture,
+/// and calling that a fill had somebody asking for a background colour that
+/// was already there.
+/// [onPadding] is where a change to the room inside goes, for an element that
+/// wants to do something besides store it -- a picture grows its own box
+/// rather than shrinking the picture inside a box that stays put. Left out,
+/// padding is written like everything else.
 Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         VoidCallback begin, VoidCallback commit,
-        {String label = "Box"}) =>
+        {String label = "Box",
+        String fillLabel = "Fill",
+        ValueChanged<BoxSpec>? onPadding}) =>
     CanvasControlGroup(label: label, children: [
       CanvasColorButton(
-        label: "Fill",
+        label: fillLabel,
         color: box.fill,
         onChanged: (c) {
           begin();
@@ -537,24 +605,20 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
           commit();
         },
       ),
-      CanvasNumberField(
-        label: "Radius",
-        value: box.borderRadius,
-        min: 0,
-        max: 400,
-        width: 54,
-        onChanged: (v) => onChanged(box.copyWith(borderRadius: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Padding",
-        value: box.padding,
-        min: 0,
-        max: 400,
-        width: 54,
-        onChanged: (v) => onChanged(box.copyWith(padding: v)),
-        onCommit: commit,
-      ),
+      // A line each for the corners and for the sides. Nine fields wrapped
+      // into whatever room the panel had put a corner at the end of the
+      // border's line and the rest underneath, which reads as one row of
+      // unrelated numbers.
+      const CanvasLineBreak(),
+      ...cornerFields(
+          box.corners, (c) => onChanged(box.withCorners(c)), commit),
+      const CanvasLineBreak(),
+      ...roomFields(
+          box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit),
+      const CanvasHint(
+          "Radius and Padding set all four corners and all four sides at "
+          "once; the fields beside them set one each. They show blank when "
+          "the four no longer agree."),
     ]);
 
 /// valueDot is the diamond beside one animatable property.
@@ -766,11 +830,361 @@ List<Widget> _fillBits(
         onCommit: commit,
       ),
     if (fill.on)
+      CanvasToggle(
+        key: const ValueKey("textFillLocked"),
+        label: "Lock to the words",
+        value: fill.locked,
+        onChanged: (v) => now(fill.copyWith(locked: v)),
+      ),
+    if (fill.on)
       const CanvasHint(
           "Whatever is chosen is drawn across the whole line and then cut to "
           "the shape of the letters — so a flame or a splatter runs through "
           "the words rather than restarting inside each one. Zoom sizes it "
           "against them: 1 fits it across the words, 2 shows a quarter of it "
           "at twice the size."),
+    if (fill.on && fill.locked)
+      const CanvasHint(
+          "Locked, the picture travels with the words while they arrive, so "
+          "the same bit of it shows through the same letter from the first "
+          "frame to the last. Unlocked it stays pinned to the box and the "
+          "words sweep across it. It follows a whole-paragraph arrival; "
+          "letter by letter there is no single movement to follow."),
   ];
 }
+
+/// elementAnimationSection is how a shape or a picture arrives and leaves.
+///
+/// The text element's animation section for the kinds that have no words. One
+/// function shared by both panels rather than one each, because they are the
+/// same question with the same answers: a shape flying in and a photograph
+/// flying in are the same animation, and two sections would be two places for
+/// a preset to go missing.
+///
+/// [write] is only for the settings that are not the preset itself. Choosing a
+/// preset goes through the controller, because it lays keyframes as well as
+/// setting a name -- see CanvasController.applyElementAnimation.
+Widget elementAnimationSection(
+  CanvasController controller,
+  CanvasElement element,
+  ElementAnimation animation,
+  void Function(ElementAnimation) write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  void now(ElementAnimation next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return CanvasExpander(
+    label: "Animation",
+    remember: "elementAnimation",
+    trailing: animation.on
+        ? (animation.closes
+            ? "${animation.preset.label} · ${animation.exit.label}"
+            : animation.preset.label)
+        : (animation.closes ? animation.exit.label : null),
+    children: [
+      const CanvasHint(
+          "Choosing one brings the element on over two seconds and puts a "
+          "keyframe at each end of it on the timeline. Drag those to decide "
+          "how long it takes and when it happens — the same two keyframes a "
+          "chart and a headline use, so everything on the canvas can arrive "
+          "together."),
+      CanvasControlGroup(label: "Arriving", children: [
+        CanvasDropdown<ElementAnimationFamily?>(
+          key: const ValueKey("elementAnimationFamily"),
+          label: "Kind",
+          value: animation.on ? animation.preset.family : null,
+          width: 132,
+          options: [
+            (null, "None"),
+            for (var family in ElementAnimationFamily.values)
+              (family, family.label),
+          ],
+          onChanged: (family) => controller.applyElementAnimation(
+              element,
+              family == null
+                  ? ElementAnimationPreset.none
+                  : ElementAnimationPreset.inFamily(family).first),
+        ),
+        if (animation.on)
+          CanvasDropdown<ElementAnimationPreset>(
+            key: const ValueKey("elementAnimationPreset"),
+            label: "Which",
+            value: animation.preset,
+            width: 168,
+            options: [
+              for (var preset
+                  in ElementAnimationPreset.inFamily(animation.preset.family))
+                (preset, preset.label),
+            ],
+            onChanged: (v) => controller.applyElementAnimation(element, v),
+          ),
+      ]),
+      if (animation.on || animation.closes)
+        CanvasControlGroup(label: "Leaving", children: [
+          CanvasDropdown<ElementAnimationFamily?>(
+            key: const ValueKey("elementAnimationExitFamily"),
+            label: "Kind",
+            value: animation.closes ? animation.exit.family : null,
+            width: 132,
+            options: [
+              (null, "None"),
+              for (var family in ElementAnimationFamily.values)
+                (family, family.label),
+            ],
+            onChanged: (family) => controller.applyElementExit(
+                element,
+                family == null
+                    ? ElementAnimationPreset.none
+                    : ElementAnimationPreset.inFamily(family).first),
+          ),
+          if (animation.closes)
+            CanvasDropdown<ElementAnimationPreset>(
+              key: const ValueKey("elementAnimationExit"),
+              label: "Which",
+              value: animation.exit,
+              width: 168,
+              options: [
+                for (var preset
+                    in ElementAnimationPreset.inFamily(animation.exit.family))
+                  (preset, "${preset.label}, reversed"),
+              ],
+              onChanged: (v) => controller.applyElementExit(element, v),
+            ),
+        ]),
+      // A destruction is an exit, and somebody looking for one will be
+      // looking in the arrival list. Said here rather than left to be found:
+      // the exits are the arrivals played backwards, so the pieces of Build
+      // up run the other way are a thing coming apart.
+      if (animation.cuts)
+        const CanvasHint(
+            "Break apart and Build up are the same cut run in opposite "
+            "directions. Set one of them as the way *out* and the element "
+            "comes apart and leaves; set it as the way in and it assembles."),
+      if (animation.cuts)
+        ...effectBits(
+            animation.effect,
+            animation.scatters,
+            (next) => now(animation.copyWith(effect: next)),
+            begin,
+            commit, live: (next) {
+          begin();
+          write(animation.copyWith(effect: next));
+        }),
+      if (animation.on || animation.closes)
+        CanvasControlGroup(label: "Timing", children: [
+          CanvasNumberField(
+            key: const ValueKey("elementAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 3600,
+            decimals: 0,
+            width: 62,
+            value: (animation.length > 0
+                    ? animation.length
+                    : controller.defaultAnimationFrames)
+                .toDouble(),
+            onChanged: (v) {
+              begin();
+              write(animation.copyWith(length: v.round()));
+            },
+            onCommit: commit,
+          ),
+          CanvasDropdown<ChartEase>(
+            key: const ValueKey("elementAnimationEase"),
+            label: "Curve",
+            value: animation.ease,
+            width: 120,
+            options: [for (var e in ChartEase.values) (e, e.label)],
+            onChanged: (v) => now(animation.copyWith(ease: v)),
+          ),
+          if (animation.scales)
+            CanvasNumberField(
+              key: const ValueKey("elementAnimationScale"),
+              label: "From",
+              min: 0,
+              max: 8,
+              decimals: 2,
+              width: 62,
+              value:
+                  animation.scale > 0 ? animation.scale : animation.preset.from,
+              onChanged: (v) {
+                begin();
+                write(animation.copyWith(scale: v));
+              },
+              onCommit: commit,
+            ),
+          const CanvasHint(
+              "How many frames a new arrival or exit is laid down with. Once "
+              "it is on the timeline the keyframes are where it is: changing "
+              "this does not move them, and neither does trying another "
+              "preset."),
+        ]),
+    ],
+  );
+}
+
+/// effectBits are the settings a cutting preset has: how many pieces, how far
+/// they are thrown, how much they turn.
+///
+/// Shared by the element's animation section and the text element's, because
+/// a mosaic over a photograph and a mosaic over a headline are cut by the
+/// same numbers. [scatters] is false for the ones whose pieces stay where
+/// they are -- a mosaic's blocks and a glitch's slices -- so the two
+/// throwing settings are not offered where they would do nothing.
+List<Widget> effectBits(
+  EffectSpec effect,
+  bool scatters,
+  void Function(EffectSpec) now,
+  VoidCallback begin,
+  VoidCallback commit, {
+  required void Function(EffectSpec) live,
+}) =>
+    [
+      CanvasControlGroup(label: "The pieces", children: [
+        CanvasNumberField(
+          key: const ValueKey("effectPieces"),
+          label: "Across",
+          min: 1,
+          max: 64,
+          decimals: 0,
+          width: 62,
+          value: effect.pieces.toDouble(),
+          onChanged: (v) => live(effect.copyWith(pieces: v.round())),
+          onCommit: commit,
+        ),
+        if (scatters) ...[
+          CanvasNumberField(
+            key: const ValueKey("effectScatter"),
+            label: "Thrown",
+            min: 0,
+            max: 8,
+            decimals: 2,
+            width: 62,
+            value: effect.scatter,
+            onChanged: (v) => live(effect.copyWith(scatter: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("effectSpin"),
+            label: "Turn",
+            min: -4,
+            max: 4,
+            decimals: 2,
+            width: 62,
+            value: effect.spin,
+            onChanged: (v) => live(effect.copyWith(spin: v)),
+            onCommit: commit,
+          ),
+        ],
+        CanvasNumberField(
+          key: const ValueKey("effectStagger"),
+          label: "Spread",
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          value: effect.stagger,
+          onChanged: (v) => live(effect.copyWith(stagger: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("effectSeed"),
+          label: "Shuffle",
+          min: 1,
+          max: 9999,
+          decimals: 0,
+          width: 62,
+          value: effect.seed.toDouble(),
+          onChanged: (v) => live(effect.copyWith(seed: v.round())),
+          onCommit: commit,
+        ),
+        CanvasHint(scatters
+            ? "Across is how many pieces the element is cut into along its "
+                "width; the rows follow, so a piece stays roughly square. "
+                "Thrown is how far a piece travels to get to its place, as a "
+                "fraction of the element — 0 leaves every piece where it "
+                "belongs and the effect becomes a fade in tiles. Spread is "
+                "how much later the last piece moves than the first: 0 moves "
+                "them all together."
+            : "Across is how coarse the cut is: the blocks of a mosaic, the "
+                "slices of a glitch. Spread is how much later the last one "
+                "settles than the first."),
+      ]),
+    ];
+
+/// cornerFields is the "all corners" number and the four corners beside it.
+///
+/// Its own function because two things have corners -- the frame round an
+/// element and a rectangle shape -- and the controls for them had better be
+/// the same controls. The "all" field shows blank once they differ, so it
+/// never claims a number that is not true of every corner.
+List<Widget> cornerFields(
+        Corners corners, ValueChanged<Corners> onChanged, VoidCallback commit,
+        {String label = "Radius", String prefix = "box"}) =>
+    [
+      CanvasNumberField(
+        key: ValueKey("${prefix}Radius"),
+        label: label,
+        value: corners.even ?? 0,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) => onChanged(corners.withEven(v)),
+        onCommit: commit,
+      ),
+      for (var (name, at, set) in <(String, double, Corners Function(double))>[
+        ("↖", corners.topLeft, (v) => corners.copyWith(tl: v)),
+        ("↗", corners.topRight, (v) => corners.copyWith(tr: v)),
+        ("↘", corners.bottomRight, (v) => corners.copyWith(br: v)),
+        ("↙", corners.bottomLeft, (v) => corners.copyWith(bl: v)),
+      ])
+        CanvasNumberField(
+          key: ValueKey("${prefix}Radius$name"),
+          label: name,
+          value: at,
+          min: 0,
+          max: 400,
+          width: 50,
+          onChanged: (v) => onChanged(set(v)),
+          onCommit: commit,
+        ),
+    ];
+
+/// roomFields is the "all sides" number and the four sides beside it. See
+/// cornerFields, which is the same idea for the corners.
+List<Widget> roomFields(
+        Room room, ValueChanged<Room> onChanged, VoidCallback commit,
+        {String label = "Padding", String prefix = "box"}) =>
+    [
+      CanvasNumberField(
+        key: ValueKey("${prefix}Padding"),
+        label: label,
+        value: room.even ?? 0,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) => onChanged(room.withEven(v)),
+        onCommit: commit,
+      ),
+      for (var (name, at, set) in <(String, double, Room Function(double))>[
+        ("Left", room.left, (v) => room.copyWith(l: v)),
+        ("Top", room.top, (v) => room.copyWith(t: v)),
+        ("Right", room.right, (v) => room.copyWith(r: v)),
+        ("Bottom", room.bottom, (v) => room.copyWith(b: v)),
+      ])
+        CanvasNumberField(
+          key: ValueKey("${prefix}Pad$name"),
+          label: name,
+          value: at,
+          min: 0,
+          max: 400,
+          width: 56,
+          onChanged: (v) => onChanged(set(v)),
+          onCommit: commit,
+        ),
+    ];

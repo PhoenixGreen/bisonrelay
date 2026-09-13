@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -19,6 +20,38 @@ import 'package:flutter/painting.dart';
 // here is one loop over the pieces and one switch over the motions -- not
 // thirty animations. A new name in the list is a row in that table; it is
 // only a new mechanism that reaches this file.
+
+/// TextDrawPhase is which half of an animated paragraph a pass draws.
+///
+/// A paragraph with a picture or a pattern showing through it cannot be drawn
+/// in one pass: the letters are cut out of a layer the fill is composited
+/// into, and the outline and the drawn marks must stay *outside* that layer
+/// or the picture would cover them -- an outlined headline with no outline,
+/// and a highlighter band in the colour of the pattern rather than its own.
+///
+/// So it is drawn twice, and this says which half each pass is for. Before
+/// there was such a thing, the second pass was the whole animation run again
+/// with the outline handed in as though it were the words -- which is why
+/// Draw the outline did nothing at all over a pattern (each pass had only one
+/// paragraph, and the preset needs both), why the outline it invents appeared
+/// at full strength for the whole animation, and why a highlight band ended
+/// up with the pattern painted over it.
+enum TextDrawPhase {
+  /// all is one pass: the outline behind the letters, the marks, the words.
+  /// Everything painted with a plain colour.
+  all,
+
+  /// behind is what is drawn outside the layer a fill is cut to: the outline
+  /// in its own colour and the marks in theirs.
+  behind,
+
+  /// letters is the words alone, which is what the fill is cut to.
+  letters;
+
+  bool get drawsOutline => this != TextDrawPhase.letters;
+  bool get drawsMarks => this != TextDrawPhase.letters;
+  bool get drawsLetters => this != TextDrawPhase.behind;
+}
 
 /// TextPiece is one thing that moves on its own: where it is, and where it
 /// sits in the order.
@@ -189,6 +222,10 @@ List<Rect> _boxesOf(TextPainter painter, (int, int) range, Offset offset) => [
 /// preset and its own progress. That is what lets a line arrive and one word
 /// in it land two frames later -- and it is why the cut-out is done with a
 /// clip rather than by drawing the rest of the sentence twice.
+/// [soft] is the shadow and the glow, laid out as a paragraph of their own.
+/// It travels with the words like the outline does, and unlike the outline it
+/// is never written on by a pen: what falls behind the letters is there
+/// because the letters are, from the first frame.
 /// [keep] draws only some of the pieces, which is what a column is: the same
 /// paragraph, drawn a few lines at a time at different places, with the
 /// stagger still counted across the whole of it.
@@ -202,9 +239,14 @@ void paintAnimatedText(
   double reveal, {
   double maxWidth = 0,
   TextPainter? outline,
+  TextPainter? soft,
   List<TextPart> parts = const [],
   List<PartTiming> timings = const [],
   bool Function(TextPiece)? keep,
+
+  /// phase is which half of the drawing this pass is for -- see
+  /// TextDrawPhase. Everything but a paragraph with a fill draws all of it.
+  TextDrawPhase phase = TextDrawPhase.all,
 
   /// asOne draws the paragraph without layers, however many of its parts
   /// arrive on their own account.
@@ -223,14 +265,20 @@ void paintAnimatedText(
 
   _paintBase(canvas, painter, text, spec, offset, animation, reveal,
       outline: outline,
+      soft: soft,
       maxWidth: maxWidth,
       holes: holes,
       layers: layers,
-      keep: keep);
+      keep: keep,
+      phase: phase);
 
   for (var layer in layers) {
     _paintLayer(canvas, painter, text, spec, offset, layer,
-        outline: outline, maxWidth: maxWidth, keep: keep);
+        outline: outline,
+        soft: soft,
+        maxWidth: maxWidth,
+        keep: keep,
+        phase: phase);
   }
 }
 
@@ -245,21 +293,28 @@ void _paintBase(
   TextAnimation animation,
   double reveal, {
   TextPainter? outline,
+  TextPainter? soft,
   double maxWidth = 0,
   List<Rect> holes = const [],
   List<_Layer> layers = const [],
   bool Function(TextPiece)? keep,
+  TextDrawPhase phase = TextDrawPhase.all,
 }) {
   var preset = animation.preset;
 
   /// still draws the paragraph as it stands, minus the holes.
-  void still() {
+  ///
+  /// [withOutline] is false for the one frame before a stroke has begun to be
+  /// drawn: the words are there from the start -- that is the whole of what a
+  /// mark drawn on them means -- but the stroke has not been written yet.
+  void still({bool withOutline = true}) {
     canvas.save();
     for (var hole in holes) {
       canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
     }
-    outline?.paint(canvas, offset);
-    painter.paint(canvas, offset);
+    if (phase.drawsOutline) soft?.paint(canvas, offset);
+    if (withOutline && phase.drawsOutline) outline?.paint(canvas, offset);
+    if (phase.drawsLetters) painter.paint(canvas, offset);
     canvas.restore();
   }
 
@@ -280,7 +335,7 @@ void _paintBase(
   // headline until the first frame was over.
   if (reveal <= 0) {
     if (animation.keeps && animation.draw.start == TextDrawStart.showText) {
-      still();
+      still(withOutline: preset.motion != TextMotion.strokeOn);
     }
     return;
   }
@@ -288,6 +343,10 @@ void _paintBase(
   // Scramble is the one motion that changes the letters rather than moving
   // them, so it is drawn from its own text rather than from the paragraph.
   if (preset.motion == TextMotion.scramble) {
+    // The letters it invents are the words themselves, so there is nothing
+    // for the outline pass to draw: a scrambled paragraph is not outlined
+    // while it settles.
+    if (!phase.drawsLetters) return;
     canvas.save();
     for (var hole in holes) {
       canvas.clipRect(hole, clipOp: ui.ClipOp.difference);
@@ -318,7 +377,7 @@ void _paintBase(
 
   paintAnimatedPieces(
       canvas, painter, offset, pieces, mine, spec, animation, reveal,
-      outline: outline, holes: holes);
+      outline: outline, soft: soft, holes: holes, phase: phase);
 }
 
 /// _paintLayer draws one part of the text arriving on its own account.
@@ -330,8 +389,10 @@ void _paintLayer(
   Offset offset,
   _Layer layer, {
   TextPainter? outline,
+  TextPainter? soft,
   double maxWidth = 0,
   bool Function(TextPiece)? keep,
+  TextDrawPhase phase = TextDrawPhase.all,
 }) {
   var animation = layer.animation;
   var preset = animation.preset;
@@ -358,12 +419,14 @@ void _paintLayer(
   if (layer.reveal >= 1 && !animation.keeps) {
     // Arrived: drawn as it stands, in the hole the base left for it.
     inside(() {
-      outline?.paint(canvas, offset);
-      painter.paint(canvas, offset);
+      if (phase.drawsOutline) soft?.paint(canvas, offset);
+      if (phase.drawsOutline) outline?.paint(canvas, offset);
+      if (phase.drawsLetters) painter.paint(canvas, offset);
     });
     return;
   }
 
+  if (preset.motion == TextMotion.scramble && !phase.drawsLetters) return;
   if (preset.motion == TextMotion.scramble) {
     inside(() => _paintScramble(
         canvas, text, spec, offset, animation, layer.reveal,
@@ -379,7 +442,91 @@ void _paintLayer(
   ];
   paintAnimatedPieces(
       canvas, painter, offset, pieces, mine, spec, animation, layer.reveal,
-      outline: outline, restricted: true);
+      outline: outline, soft: soft, restricted: true, phase: phase);
+}
+
+/// wholeBlockMotion is whether [motion] is one that applyMotion carries out
+/// on its own, with nothing left for the caller to draw.
+///
+/// The six it is not are the ones that draw something besides the words --
+/// the copies of an echo or a trail, the outline a strokeOn fills in, the
+/// mark an underline or a highlight leaves, the letters a scramble invents.
+/// Those have to go through _paintPiece, which has the paragraph in its hand.
+/// The rest are a transform and an opacity, which means they can be applied
+/// once to a whole group -- a paragraph in columns, an icon beside the words
+/// -- instead of piece by piece. See paintTextInColumns.
+bool wholeBlockMotion(TextMotion motion) =>
+    // A cutting motion draws the thing a tile at a time, so there is nothing
+    // applyMotion can do around a group on its behalf.
+    !motion.cuts &&
+    motion != TextMotion.echo &&
+    motion != TextMotion.trail &&
+    motion != TextMotion.strokeOn &&
+    motion != TextMotion.underline &&
+    motion != TextMotion.highlight &&
+    motion != TextMotion.scramble;
+
+/// movesAsOneBlock is whether [animation] can be applied to a group of things
+/// as a single transform: the whole paragraph moves together, and the motion
+/// has nothing of its own to draw.
+bool movesAsOneBlock(TextAnimation animation) =>
+    animation.on &&
+    animation.preset.scope == TextAnimationScope.block &&
+    wholeBlockMotion(animation.preset.motion);
+
+/// motionRoom is the rectangle a piece of text can be in while [animation]
+/// plays, given that it rests in [box].
+///
+/// Anything that has to cover the words has to cover them where they are on
+/// the way in, not only where they stop: a paragraph sliding in from the
+/// right spends the animation outside its own box, and a picture drawn across
+/// the box alone left the letters out there hollow -- an outline round
+/// nothing -- until they arrived. Generous on purpose: it sizes a layer, so
+/// too much costs a little memory and too little cuts the drawing.
+Rect motionRoom(Rect box, TextAnimation animation) {
+  if (!animation.on || box.isEmpty) return box;
+  var preset = animation.preset;
+
+  // Where it comes in from, both ways: the same preset is played backwards on
+  // the way out.
+  var dx = box.width * preset.dx.abs();
+  var dy = box.height * preset.dy.abs();
+
+  // And how far the copies of an echo or a trail are strung out.
+  if (preset.motion == TextMotion.echo || preset.motion == TextMotion.trail) {
+    var spread =
+        animation.echo.copies * animation.echo.spacing * box.height * 3;
+    dx += preset.dx.abs() * spread;
+    dy += preset.dy == 0 ? spread : preset.dy.abs() * spread;
+  }
+
+  var room = Rect.fromLTRB(
+      box.left - dx, box.top - dy, box.right + dx, box.bottom + dy);
+
+  // A piece that arrives too large and settles is at its largest on the first
+  // frame, which is the frame that needs the room.
+  if (preset.motion == TextMotion.grow) {
+    var scale = math.max(1.0, animation.scaleFor(preset));
+    room = Rect.fromCenter(
+        center: box.center,
+        width: room.width * scale,
+        height: room.height * scale);
+  }
+
+  // Tiles thrown out of the box need room where they are thrown to, which is
+  // as far as the scatter allows.
+  if (preset.motion == TextMotion.pieces) {
+    var thrown = box.shortestSide * animation.effect.scatter;
+    room = room.inflate(thrown + box.shortestSide * 0.1);
+  }
+
+  // A turning rectangle sweeps out its own diagonal.
+  if (preset.motion == TextMotion.spin && preset.turns != 0) {
+    var reach = math.sqrt(room.width * room.width + room.height * room.height);
+    room = Rect.fromCenter(center: room.center, width: reach, height: reach);
+  }
+
+  return room;
 }
 
 /// MotionFrame is what applyMotion did: how opaque to draw, how many saves
@@ -408,6 +555,19 @@ MotionFrame applyMotion(
   ui.Canvas canvas,
   Rect box,
   TextAnimationPreset preset,
+  double p, {
+  double? from,
+  int seed = 0,
+}) =>
+    applyMotionSpec(canvas, box, preset.spec, p, from: from, seed: seed);
+
+/// applyMotionSpec is [applyMotion] for something that is not a text preset:
+/// a shape or a picture arriving, which has a motion and its numbers and no
+/// paragraph at all. See MotionSpec.
+MotionFrame applyMotionSpec(
+  ui.Canvas canvas,
+  Rect box,
+  MotionSpec preset,
   double p, {
   double? from,
   int seed = 0,
@@ -509,6 +669,14 @@ MotionFrame applyMotion(
 
     case TextMotion.scramble:
       break;
+
+    case TextMotion.mosaic:
+    case TextMotion.glitch:
+    case TextMotion.pieces:
+      // Drawn by the caller, which can draw the thing again and again -- a
+      // tile at a time, a slice at a time. See paintCutEffect. Here it is
+      // only "leave the opacity alone", or every tile would be faded twice.
+      alpha = 1;
   }
 
   return MotionFrame(alpha, depth, clipped);
@@ -534,6 +702,7 @@ void paintAnimatedPieces(
   TextAnimation animation,
   double reveal, {
   TextPainter? outline,
+  TextPainter? soft,
 
   /// restricted says the pieces are some of the words rather than all of
   /// them, so even a whole-paragraph motion has to be clipped to its piece.
@@ -543,6 +712,9 @@ void paintAnimatedPieces(
   /// holes are the words some other layer is drawing, cut out of these so
   /// nothing is drawn twice.
   List<Rect> holes = const [],
+
+  /// phase is which half of the drawing this pass is for. See TextDrawPhase.
+  TextDrawPhase phase = TextDrawPhase.all,
 }) {
   for (var i in which) {
     if (i < 0 || i >= all.length) continue;
@@ -550,11 +722,14 @@ void paintAnimatedPieces(
     if (p <= 0) continue;
     _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
         outline: outline,
+        soft: soft,
+        effect: animation.effect,
         from: animation.scaleFor(animation.preset),
         draw: animation.draw,
         echo: animation.echo,
         restricted: restricted,
-        holes: holes);
+        holes: holes,
+        phase: phase);
   }
 }
 
@@ -565,11 +740,15 @@ void paintAnimatedPieces(
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
     {TextPainter? outline,
+    TextPainter? soft,
     double? from,
     TextDrawSpec? draw,
     TextEchoSpec? echo,
+    EffectSpec? effect,
     bool restricted = false,
-    List<Rect> holes = const []}) {
+    List<Rect> holes = const [],
+    TextDrawPhase phase = TextDrawPhase.all}) {
+  var start = (draw ?? const TextDrawSpec()).start;
   var box = piece.box.shift(offset);
   var centre = box.center;
 
@@ -675,7 +854,12 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
             Paint()
               ..color = Color.fromRGBO(
                   0, 0, 0, (strength * arrived).clamp(0.0, 1.0)));
-        painter.paint(canvas, offset);
+        // The copies carry the outline too: a copy of an outlined headline
+        // without its outline is a copy of a different headline. The same
+        // goes for what falls behind them.
+        if (phase.drawsOutline) soft?.paint(canvas, offset);
+        if (phase.drawsOutline) outline?.paint(canvas, offset);
+        if (phase.drawsLetters) painter.paint(canvas, offset);
         canvas.restore();
         canvas.restore();
       }
@@ -691,7 +875,7 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   // the clip is the letters' box and the padding at the two ends was cut
   // straight off -- which is why the left and right padding appeared to do
   // nothing while the top and bottom worked.
-  if (preset.motion == TextMotion.highlight) {
+  if (preset.motion == TextMotion.highlight && phase.drawsMarks) {
     // Padded, because a band tight around the letters reads as a mistake
     // where one with a little air reads as a highlighter.
     var band = Rect.fromLTRB(
@@ -700,32 +884,81 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
       box.left - mark.padLeft + (box.width + mark.padLeft + mark.padRight) * p,
       box.bottom + mark.padBottom,
     );
-    canvas.drawRect(band, Paint()..color = markColor);
+    var paint = Paint()..color = markColor;
+    if (mark.radius <= 0) {
+      canvas.drawRect(band, paint);
+    } else {
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(band, Radius.circular(mark.radius)), paint);
+    }
   }
 
   canvas.save();
   if (clipped) canvas.clipRect(pieceClip());
-  if (preset.motion == TextMotion.strokeOn && outline != null) {
-    // Written in outline first, then filled in: the outline arrives over the
-    // first half and the fill fades up inside it over the second. Without
-    // this the preset was an ordinary fade with a different name.
-    _fade(canvas, box, (p * 2).clamp(0.0, 1.0),
-        () => outline.paint(canvas, offset));
-    _fade(canvas, box, (p * 2 - 1).clamp(0.0, 1.0),
-        () => painter.paint(canvas, offset));
+  if (preset.cuts) {
+    // Cut up rather than moved: the tiles, the slices, the blocks. Drawn
+    // here, where the paragraph can be drawn over and over, which is the one
+    // thing applyMotion cannot do for it. The outline goes with the letters
+    // -- a tile of an outlined headline without its outline is a tile of a
+    // different headline -- and what falls behind them goes with them too.
+    paintCutEffect(canvas, box, preset.motion, effect ?? const EffectSpec(), p,
+        () {
+      if (phase.drawsOutline) soft?.paint(canvas, offset);
+      if (phase.drawsOutline) outline?.paint(canvas, offset);
+      if (phase.drawsLetters) painter.paint(canvas, offset);
+    });
+  } else if (preset.motion == TextMotion.strokeOn) {
+    // The pen. Where the type has an outline, it is written along the words
+    // over the first half and the letters fill in behind it over the second;
+    // where it has none there is no stroke to write, so the letters
+    // themselves are what is written -- over the whole of it, once, with
+    // nothing invented to draw first. Every colour that could be invented
+    // for that stroke came from somewhere else and read as an Outline
+    // setting that had turned itself on. See outlineSpecFor.
+    //
+    // Each pass draws its own half. Handled as one branch that needed both
+    // paragraphs, the preset fell through to the plain draw below whenever a
+    // pass had only one of them -- which is every paragraph with a picture or
+    // a pattern showing through it, and which is why it did nothing there:
+    // the motion leaves the opacity alone, so everything was drawn solid from
+    // the first frame.
+    // The words are already there and the stroke is drawn onto them, which
+    // is what a mark drawn on words means and what every other drawn preset
+    // does. Hiding them and writing them on -- as this did -- turned the
+    // whole element into a wipe: the words, and the marks under them, and
+    // the box behind them, all uncovering together, which is not an outline
+    // being drawn on anything.
+    //
+    // Unless they have been told to arrive with it, which is the other half
+    // of TextDrawStart and the same choice an underline offers.
+    // What falls behind the words is there because the words are: drawn
+    // whole, whatever the pen has got to.
+    if (phase.drawsOutline) soft?.paint(canvas, offset);
+    if (phase.drawsLetters) {
+      if (start == TextDrawStart.fadeText) {
+        _fade(canvas, box, p, () => painter.paint(canvas, offset));
+      } else {
+        painter.paint(canvas, offset);
+      }
+    }
+    if (phase.drawsOutline && outline != null) {
+      _writeOutline(canvas, painter, outline, offset, box, p, restricted);
+    }
   } else if (alpha >= 1) {
-    outline?.paint(canvas, offset);
-    painter.paint(canvas, offset);
+    if (phase.drawsOutline) soft?.paint(canvas, offset);
+    if (phase.drawsOutline) outline?.paint(canvas, offset);
+    if (phase.drawsLetters) painter.paint(canvas, offset);
   } else {
     canvas.saveLayer(box.inflate(box.height * 2),
         Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
-    outline?.paint(canvas, offset);
-    painter.paint(canvas, offset);
+    if (phase.drawsOutline) soft?.paint(canvas, offset);
+    if (phase.drawsOutline) outline?.paint(canvas, offset);
+    if (phase.drawsLetters) painter.paint(canvas, offset);
     canvas.restore();
   }
   canvas.restore();
 
-  if (preset.motion == TextMotion.underline) {
+  if (preset.motion == TextMotion.underline && phase.drawsMarks) {
     // The bottom padding pushes the line away from the letters; the two ends
     // shorten or lengthen it.
     var y = box.bottom - box.height * 0.08 + mark.padBottom;
@@ -739,6 +972,68 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   }
 
   for (var i = 0; i < frame.depth; i++) {
+    canvas.restore();
+  }
+}
+
+/// _writeOutline draws as much of [ink] as has been written: line by line,
+/// left to right, like a pen going along them.
+///
+/// A fade was not "drawing" anything -- the whole stroke simply appeared,
+/// quietly, which is the same thing every other fade preset does. What reads
+/// as writing is the stroke arriving *along* the words, and a moving clip is
+/// the way to have that without glyph outlines: Flutter will not hand out the
+/// path of a letter, so the stroke cannot be traced, but it can be uncovered.
+///
+/// The lines come from the paragraph's own metrics and each gets its share of
+/// the time, so a second line starts when the first is finished rather than
+/// every line being written at once. Each line's clip stops half way to its
+/// neighbour, so the sweep never uncovers a piece of the line below.
+/// [restricted] is a piece that is some of the words rather than a whole
+/// paragraph -- a rectangle round a few letters, with no lines of its own --
+/// which is written as one sweep.
+void _writeOutline(ui.Canvas canvas, TextPainter painter, TextPainter ink,
+    Offset offset, Rect box, double at, bool restricted) {
+  if (at <= 0) return;
+  if (at >= 1) {
+    ink.paint(canvas, offset);
+    return;
+  }
+
+  var rows = <Rect>[];
+  if (!restricted) {
+    for (var line in painter.computeLineMetrics()) {
+      var top = offset.dy + line.baseline - line.ascent;
+      var row = Rect.fromLTWH(offset.dx + line.left, top,
+          math.max(1, line.width), math.max(1, line.height));
+      // Only the lines this piece actually holds, which is what makes a
+      // column write its own lines rather than all of them.
+      if (row.bottom < box.top - 0.5 || row.top > box.bottom + 0.5) continue;
+      rows.add(row);
+    }
+  }
+  if (rows.isEmpty) rows.add(box);
+
+  for (var (i, row) in rows.indexed) {
+    var written = (at * rows.length - i).clamp(0.0, 1.0);
+    if (written <= 0) continue;
+    // Room above and below for what the stroke does outside the line's own
+    // box, but never past half way to the next line: the outline painter
+    // holds the whole paragraph, so a clip that reached into its neighbour
+    // would uncover a slice of a line that has not been written yet.
+    var above = i == 0
+        ? row.height * 0.4
+        : math.max(0.0, (row.top - rows[i - 1].bottom) / 2);
+    var below = i == rows.length - 1
+        ? row.height * 0.4
+        : math.max(0.0, (rows[i + 1].top - row.bottom) / 2);
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(
+        row.left - row.height * 0.5,
+        row.top - above,
+        row.left + (row.width + row.height * 0.3) * written,
+        row.bottom + below));
+    ink.paint(canvas, offset);
     canvas.restore();
   }
 }

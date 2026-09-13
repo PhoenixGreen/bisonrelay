@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
@@ -622,6 +623,9 @@ class ImageElement extends CanvasElement {
 
   final OverlayBlend blend;
 
+  /// animation is how the picture arrives and leaves. See ElementAnimation.
+  final ElementAnimation animation;
+
   const ImageElement(
     super.base, {
     this.assetId = "",
@@ -638,6 +642,7 @@ class ImageElement extends CanvasElement {
     this.outline = const ImageOutline(),
     this.overlay = const Color(0x00000000),
     this.blend = OverlayBlend.none,
+    this.animation = const ElementAnimation(),
   });
 
   @override
@@ -666,7 +671,8 @@ class ImageElement extends CanvasElement {
       filter: filter,
       outline: outline,
       overlay: overlay,
-      blend: blend);
+      blend: blend,
+      animation: animation);
 
   ImageElement copyWith({
     String? assetId,
@@ -684,6 +690,7 @@ class ImageElement extends CanvasElement {
     ImageOutline? outline,
     Color? overlay,
     OverlayBlend? blend,
+    ElementAnimation? animation,
   }) =>
       ImageElement(base,
           assetId: assetId ?? this.assetId,
@@ -699,7 +706,8 @@ class ImageElement extends CanvasElement {
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
           overlay: overlay ?? this.overlay,
-          blend: blend ?? this.blend);
+          blend: blend ?? this.blend,
+          animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
@@ -717,6 +725,7 @@ class ImageElement extends CanvasElement {
         if (outline.on) "outline": outline.toJson(),
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (blend != OverlayBlend.none) "blend": blend.name,
+        if (animation.on || animation.closes) "anim": animation.toJson(),
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -748,7 +757,9 @@ class ImageElement extends CanvasElement {
           outline: jsonSpec(
               json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
-          blend: OverlayBlend.fromName(json["blend"] as String?));
+          blend: OverlayBlend.fromName(json["blend"] as String?),
+          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
+              const ElementAnimation()));
 }
 
 /// fitToPicture gives an element the proportions of the picture in it.

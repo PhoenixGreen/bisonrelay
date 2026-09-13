@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -496,6 +497,289 @@ void main() {
     });
   });
 
+  group("Draw the outline", () {
+    /// _lit is how many pixels a headline puts on the picture, and how many
+    /// of those are in the middle of the letters rather than round their
+    /// edges.
+    Future<int> lit(double reveal, {double outlineWidth = 0}) async {
+      var element = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+        text: "Draw",
+        textSpec: TextSpec(
+            fontSize: 60,
+            color: const Color(0xFFFFFFFF),
+            outlineWidth: outlineWidth,
+            outlineColor: const Color(0xFF00FF00)),
+        animation: const TextAnimation(
+            preset: TextAnimationPreset.strokeOn, ease: ChartEase.linear),
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+          Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 120);
+      var bytes = (await image.toByteData())!;
+      var on = 0;
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        if (bytes.getUint32(i) != 0x000000FF) on++;
+      }
+      image.dispose();
+      picture.dispose();
+      return on;
+    }
+
+    testWidgets("draws onto words that are already there", (tester) async {
+      // It is a mark drawn on the words, like an underline: they are there
+      // from the first frame and the stroke arrives over them. Hiding them
+      // and writing them on -- as this did -- turned the whole element into a
+      // wipe, which is not an outline being drawn on anything.
+      late int atStart;
+      late int early;
+      late int whole;
+      await tester.runAsync(() async {
+        atStart = await lit(0.02, outlineWidth: 4);
+        early = await lit(0.5, outlineWidth: 4);
+        whole = await lit(1, outlineWidth: 4);
+      });
+      expect(atStart, greaterThan(200),
+          reason: "the words are on the page before anything is drawn");
+      expect(early, greaterThan(atStart),
+          reason: "the stroke is arriving over them: $atStart then $early");
+      expect(whole, greaterThan(early),
+          reason: "and finishes: $early then $whole");
+    });
+
+    testWidgets("and invents no outline for type that has none",
+        (tester) async {
+      // Every colour that could be made up for that stroke came from
+      // somewhere else -- the Text colour, which is not on the canvas at all
+      // once a pattern has been chosen; the pattern's ink; the pattern cut
+      // into a stroke, which over a dark background is invisible -- and all
+      // of them read from the outside as an Outline setting that had turned
+      // itself on. So there is no stroke: the pen writes the words.
+      //
+      // Pinned by where the ink is rather than by what it is: an outline sits
+      // *outside* the letterform, so it lights pixels the finished words
+      // never light. Nothing half way through may be outside them.
+      Future<Set<int>> where(double reveal) async {
+        var element = TextElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+          text: "Draw",
+          textSpec: const TextSpec(fontSize: 60, color: Color(0xFF3060FF)),
+          animation: const TextAnimation(
+              preset: TextAnimationPreset.strokeOn, ease: ChartEase.linear),
+        ).withBase(
+          track: ElementTrack([
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+          ]),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+            Paint()..color = const Color(0xFF000000));
+        paintElement(canvas, element, 0,
+            document: CanvasDocument(elements: [element]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(400, 120);
+        var bytes = (await image.toByteData())!;
+        var on = <int>{};
+        for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+          if (bytes.getUint32(i) != 0x000000FF) on.add(i ~/ 4);
+        }
+        image.dispose();
+        picture.dispose();
+        return on;
+      }
+
+      late Set<int> rest;
+      late Set<int> half;
+      await tester.runAsync(() async {
+        rest = await where(1);
+        half = await where(0.6);
+      });
+      expect(rest.length, greaterThan(200), reason: "the words are drawn");
+      expect(half.length, greaterThan(100),
+          reason: "and some of them are down half way through");
+      expect(half.difference(rest).length, lessThan(30),
+          reason: "nothing is drawn outside the letters: "
+              "${half.difference(rest).length} pixels were");
+    });
+
+    testWidgets("is written along the words, not faded up", (tester) async {
+      // A stroke that simply appears is a fade with another name. What reads
+      // as drawing is the outline arriving *along* the line, so half way
+      // through there should be ink at the start of the word and none at the
+      // end of it.
+      Future<(int, int)> ends(double reveal) async {
+        var element = TextElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+          text: "Draw",
+          textSpec: const TextSpec(
+              fontSize: 50,
+              color: Color(0xFF000000),
+              outlineWidth: 4,
+              outlineColor: Color(0xFF00FF00)),
+          animation: const TextAnimation(
+              preset: TextAnimationPreset.strokeOn, ease: ChartEase.linear),
+        ).withBase(
+          track: ElementTrack([
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+          ]),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+            Paint()..color = const Color(0xFF000000));
+        paintElement(canvas, element, 0,
+            document: CanvasDocument(elements: [element]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(400, 120);
+        var bytes = (await image.toByteData())!;
+        var first = 0, last = 0;
+        for (var y = 0; y < 120; y++) {
+          for (var x = 0; x < 400; x++) {
+            var pixel = bytes.getUint32(((y * 400) + x) * 4);
+            var r = (pixel >> 24) & 0xFF, g = (pixel >> 16) & 0xFF;
+            var b = (pixel >> 8) & 0xFF;
+            if (!(g > 0x40 && g > r && g > b)) continue;
+            // The word is centred, so it lies between x 100 and x 300.
+            if (x < 160) first++;
+            if (x > 240) last++;
+          }
+        }
+        image.dispose();
+        picture.dispose();
+        return (first, last);
+      }
+
+      late (int, int) half;
+      late (int, int) whole;
+      await tester.runAsync(() async {
+        half = await ends(0.25);
+        whole = await ends(0.95);
+      });
+      expect(half.$1, greaterThan(50),
+          reason: "the pen has started at the beginning of the line");
+      expect(half.$2, 0, reason: "and has not reached the end of it");
+      expect(whole.$2, greaterThan(50),
+          reason: "and by the end of it has got there");
+    });
+
+    testWidgets("over a pattern as well as over a colour", (tester) async {
+      // A paragraph with a picture or a pattern showing through it is drawn
+      // in two passes, and the preset needs both paragraphs at once -- so
+      // each pass had only half of what it needed, fell through to the plain
+      // draw, and the motion leaves the opacity alone: the finished words
+      // appeared on the first frame with the outline it invents sitting over
+      // them at full strength for the whole animation. Which read as "the
+      // outline setting turning itself on".
+      Future<(int, int)> shot(double reveal) async {
+        var element = TextElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+          text: "Draw",
+          textSpec: const TextSpec(
+            fontSize: 60,
+            color: Color(0xFF0000FF),
+            fill: TextFill(
+              kind: TextFillKind.pattern,
+              pattern: ProceduralSpec(
+                style: ProceduralStyle.halftone,
+                background: Color(0xFFFF0000),
+                foreground: Color(0xFFFF0000),
+                accent: Color(0xFFFF0000),
+              ),
+            ),
+          ),
+          animation: const TextAnimation(
+              preset: TextAnimationPreset.strokeOn, ease: ChartEase.linear),
+        ).withBase(
+          track: ElementTrack([
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+          ]),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+            Paint()..color = const Color(0xFF000000));
+        paintElement(canvas, element, 0,
+            document: CanvasDocument(elements: [element]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(400, 120);
+        var bytes = (await image.toByteData())!;
+        var blue = 0, red = 0;
+        for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+          var pixel = bytes.getUint32(i);
+          var r = (pixel >> 24) & 0xFF, g = (pixel >> 16) & 0xFF;
+          var b = (pixel >> 8) & 0xFF;
+          if (b > 0x40 && b > r && b > g) blue++;
+          if (r > 0x40 && r > g && r > b) red++;
+        }
+        image.dispose();
+        picture.dispose();
+        return (blue, red);
+      }
+
+      late (int, int) early;
+      late (int, int) late_;
+      await tester.runAsync(() async {
+        early = await shot(0.3);
+        late_ = await shot(0.95);
+      });
+
+      // The words are painted with the pattern from the first frame -- they
+      // are there, and the stroke is what arrives -- so what is on the page
+      // hardly changes between the two.
+      expect(early.$2, greaterThan(200),
+          reason: "the words are there, in the pattern");
+      expect(late_.$2, greaterThan(200));
+      // And the Text colour is on the page nowhere. Taking it for an invented
+      // stroke meant writing the word in a colour that is not on the canvas
+      // at all once a pattern has been chosen, which read as the Outline
+      // setting turning itself on. See outlineSpecFor.
+      expect(early.$1, 0, reason: "no colour appears that was not asked for");
+      expect(late_.$1, 0);
+    });
+
+    testWidgets("and leaves nothing behind when it is over", (tester) async {
+      // Kept, the outline it invented would sit there for good and a headline
+      // with no outline set would be permanently fatter than the one beside
+      // it.
+      late int arrived;
+      late int never;
+      await tester.runAsync(() async {
+        arrived = await lit(1);
+        var plain = TextElement(
+          const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+          text: "Draw",
+          textSpec: const TextSpec(fontSize: 60, color: Color(0xFFFFFFFF)),
+        );
+        var recorder = ui.PictureRecorder();
+        var canvas = ui.Canvas(recorder);
+        canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+            Paint()..color = const Color(0xFF000000));
+        paintElement(canvas, plain, 0,
+            document: CanvasDocument(elements: [plain]));
+        var picture = recorder.endRecording();
+        var image = await picture.toImage(400, 120);
+        var bytes = (await image.toByteData())!;
+        never = 0;
+        for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+          if (bytes.getUint32(i) != 0x000000FF) never++;
+        }
+        image.dispose();
+        picture.dispose();
+      });
+      expect(arrived, never);
+    });
+  });
+
   group("a paragraph in columns", () {
     /// bands is how much is drawn in each vertical strip of the picture,
     /// which is how "has the third column arrived yet" is asked.
@@ -790,6 +1074,88 @@ void main() {
               .toJson()
               .containsKey("draw"),
           isFalse);
+    });
+  });
+
+  group("the cutting effects", () {
+    // The same four a shape and a picture have, over words. One
+    // implementation, because a photograph breaking into tiles and a headline
+    // breaking into tiles are the same effect -- see element_effects.dart.
+    Future<Set<int>> lit(TextAnimationPreset preset, double reveal) async {
+      var element = TextElement(
+        const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 120),
+        text: "Effect",
+        textSpec: const TextSpec(fontSize: 60, color: Color(0xFFFFFFFF)),
+        animation: TextAnimation(
+            preset: preset,
+            ease: ChartEase.linear,
+            effect: preset.effect ?? const EffectSpec()),
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 120),
+          Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 120);
+      var bytes = (await image.toByteData())!;
+      var on = <int>{};
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        if (bytes.getUint32(i) != 0x000000FF) on.add(i ~/ 4);
+      }
+      image.dispose();
+      picture.dispose();
+      return on;
+    }
+
+    testWidgets("leave the words exactly as they were at the end",
+        (tester) async {
+      late Map<TextAnimationPreset, Set<int>> ends;
+      late Set<int> plain;
+      await tester.runAsync(() async {
+        plain = await lit(TextAnimationPreset.none, 1);
+        ends = {
+          for (var preset in [
+            TextAnimationPreset.mosaic,
+            TextAnimationPreset.glitch,
+            TextAnimationPreset.assemble,
+            TextAnimationPreset.shatter,
+          ])
+            preset: await lit(preset, 1),
+        };
+      });
+      for (var entry in ends.entries) {
+        expect(entry.value.length, plain.length,
+            reason: "${entry.key.label} ends as the words themselves");
+      }
+    });
+
+    testWidgets("and are on their way part of the way through", (tester) async {
+      // Something is drawn, and it is not the finished paragraph: a preset
+      // whose pieces never moved would pass the test above and still do
+      // nothing at all.
+      for (var preset in [
+        TextAnimationPreset.mosaic,
+        TextAnimationPreset.glitch,
+        TextAnimationPreset.assemble,
+        TextAnimationPreset.shatter,
+      ]) {
+        late Set<int> early;
+        late Set<int> done;
+        await tester.runAsync(() async {
+          early = await lit(preset, 0.35);
+          done = await lit(preset, 1);
+        });
+        expect(early, isNotEmpty, reason: "${preset.label} draws something");
+        expect(early.length == done.length && early.difference(done).isEmpty,
+            isFalse,
+            reason: "${preset.label} is part way through, not finished");
+      }
     });
   });
 }

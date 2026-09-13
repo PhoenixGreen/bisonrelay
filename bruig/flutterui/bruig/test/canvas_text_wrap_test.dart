@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -482,6 +483,91 @@ void main() {
       var openText =
           layoutWrapped(_words, spec, room, const [], const TextWrap(on: true));
       expect(wrappedText.consumed, lessThan(openText.consumed));
+    });
+  });
+
+  group("wrapped words are set like any others", () {
+    /// _lit is how many pixels of a given kind a document puts down.
+    Future<Map<int, int>> ink(CanvasDocument document) async {
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 400, 200),
+          Paint()..color = const Color(0xFF000000));
+      for (var element in document.elements) {
+        if (element is ShapeElement) continue;
+        paintElement(canvas, element, 0, document: document);
+      }
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 200);
+      var bytes = (await image.toByteData())!;
+      var counts = <int, int>{};
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        var pixel = bytes.getUint32(i);
+        counts[pixel] = (counts[pixel] ?? 0) + 1;
+      }
+      image.dispose();
+      picture.dispose();
+      return counts;
+    }
+
+    CanvasDocument around(TextSpec spec) => CanvasDocument(elements: [
+          TextElement(
+            const ElementBase(id: "t", x: 0, y: 0, width: 400, height: 200),
+            text: _words,
+            box: const BoxSpec(padding: 0),
+            textSpec: spec,
+            wrap: const TextWrap(on: true, gap: 8),
+          ),
+          _blocker(x: 240, width: 160),
+        ]);
+
+    testWidgets("with their outline", (tester) async {
+      // Wrapped text was laid out and painted straight, so the Outline
+      // setting stopped meaning anything the moment Wrap around things was
+      // turned on -- which is the sort of thing nobody thinks to check,
+      // because it is a setting in another section.
+      late int green;
+      await tester.runAsync(() async {
+        var ink2 = await ink(around(const TextSpec(
+            fontSize: 14,
+            color: Color(0xFF000080),
+            outlineWidth: 3,
+            outlineColor: Color(0xFF00FF00))));
+        green = 0;
+        for (var e in ink2.entries) {
+          var r = (e.key >> 24) & 0xFF, g = (e.key >> 16) & 0xFF;
+          var b = (e.key >> 8) & 0xFF;
+          if (g > 0x40 && g > r && g > b) green += e.value;
+        }
+      });
+      expect(green, greaterThan(200));
+    });
+
+    testWidgets("and with a pattern showing through them", (tester) async {
+      // The same for Painted with: a wrapped paragraph was drawn in the flat
+      // colour whatever the fill said.
+      late int patterned;
+      await tester.runAsync(() async {
+        var ink2 = await ink(around(const TextSpec(
+            fontSize: 14,
+            color: Color(0xFF000080),
+            fill: TextFill(
+              kind: TextFillKind.pattern,
+              pattern: ProceduralSpec(
+                style: ProceduralStyle.halftone,
+                background: Color(0xFFFF0000),
+                foreground: Color(0xFFFF0000),
+                accent: Color(0xFFFF0000),
+              ),
+            ))));
+        patterned = 0;
+        for (var e in ink2.entries) {
+          var r = (e.key >> 24) & 0xFF, g = (e.key >> 16) & 0xFF;
+          var b = (e.key >> 8) & 0xFF;
+          if (r > 0x40 && r > g && r > b) patterned += e.value;
+        }
+      });
+      expect(patterned, greaterThan(200));
     });
   });
 }

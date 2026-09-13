@@ -194,7 +194,7 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
 /// _roomOf is where a box's words go: its bounds, less its padding and
 /// whatever its icon has taken.
 Rect _roomOf(TextElement e) {
-  var inner = e.bounds.deflate(e.box.padding);
+  var inner = e.box.inner(e.bounds);
   return iconRoom(inner, e.icon).$2;
 }
 

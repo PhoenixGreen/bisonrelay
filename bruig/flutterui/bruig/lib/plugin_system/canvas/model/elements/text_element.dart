@@ -106,12 +106,15 @@ class TextColumns {
   /// setting rather than as a paragraph break. The line is not moved, it is
   /// dropped: it is a space, and a space at the top of a column is the thing
   /// being complained about.
+  ///
+  /// On by default: the ragged column top is a fault every time it appears,
+  /// so the setting exists to turn the tidying off, not to ask for it.
   final bool noBlankStart;
 
   const TextColumns({
     this.count = 1,
     this.gap = 24,
-    this.noBlankStart = false,
+    this.noBlankStart = true,
     this.ruleStyle = ColumnRuleStyle.none,
     this.ruleWidth = 1,
     this.ruleColor = const Color(0x66FFFFFF),
@@ -122,7 +125,7 @@ class TextColumns {
   /// says is whether this has anything to record. A single column with
   /// nothing else set is what every text element starts with, and writing it
   /// out would be a line of noise in every saved file.
-  bool get says => !isSingle || noBlankStart;
+  bool get says => !isSingle || !noBlankStart;
 
   /// columnWidth is how wide each column is inside a box [total] wide.
   double columnWidth(double total) {
@@ -150,7 +153,7 @@ class TextColumns {
 
   Map<String, dynamic> toJson() => {
         "count": count,
-        if (noBlankStart) "noBlankStart": true,
+        "noBlankStart": noBlankStart,
         "gap": gap,
         if (ruleStyle != ColumnRuleStyle.none) "ruleStyle": ruleStyle.name,
         if (ruleStyle != ColumnRuleStyle.none) "ruleWidth": ruleWidth,
@@ -159,7 +162,7 @@ class TextColumns {
       };
 
   factory TextColumns.fromJson(Map<String, dynamic> json) => TextColumns(
-        noBlankStart: jsonBool(json["noBlankStart"], false),
+        noBlankStart: jsonBool(json["noBlankStart"], true),
         count: jsonInt(json["count"], 1),
         gap: jsonDouble(json["gap"], 24),
         ruleStyle: ColumnRuleStyle.fromName(json["ruleStyle"] as String?),
@@ -459,8 +462,8 @@ class TextElement extends CanvasElement {
         // Written whenever it says anything, not only when there is more
         // than one column: No blank first line is asked of a box with one
         // column too -- a chain of boxes is the same question asked of boxes
-        // -- so a one-column box that had it set saved nothing at all and
-        // opened with it off again.
+        // -- so a one-column box that had it turned off saved nothing at all
+        // and opened with it on again.
         if (columns.says) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],

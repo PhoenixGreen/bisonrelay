@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -35,7 +36,23 @@ class WrappedLine {
   final int to;
   final Rect box;
   final TextPainter painter;
-  const WrappedLine(this.from, this.to, this.box, this.painter);
+
+  /// outline is the same line laid out as an outline, where the type has one.
+  ///
+  /// Laid out here rather than at drawing time because a line's styled runs
+  /// are worked out from how many words came before it, which is a fact about
+  /// the setting and not about the painting -- and because wrapped text had
+  /// no outline at all until this existed: the Outline setting simply stopped
+  /// meaning anything the moment Wrap around things was turned on.
+  final TextPainter? outline;
+
+  /// soft is the shadow and the glow for this line, laid out on their own.
+  /// Drawn behind everything else and never written on by the pen: what
+  /// falls behind the words is there because the words are. See softFor.
+  final TextPainter? soft;
+
+  const WrappedLine(this.from, this.to, this.box, this.painter,
+      {this.outline, this.soft});
 }
 
 /// WrappedText is a paragraph set around its obstacles.
@@ -207,7 +224,10 @@ WrapShape _pictureShape(
 Path? _outlineOf(CanvasElement e, Rect at) {
   if (e is! ShapeElement) return null;
   var path = shapePath(e.shape, at,
-      points: e.points, cornerRadius: e.cornerRadius, bubble: e.bubble);
+      points: e.points,
+      cornerRadius: e.cornerRadius,
+      corners: e.corners,
+      bubble: e.bubble);
   if (e.rotationRadians == 0) return path;
 
   // Turned about its own centre, the way it is drawn. Written out rather
@@ -323,6 +343,11 @@ WrappedText layoutWrapped(
   TextWrap wrap, {
   List<TextPart> parts = const [],
   double scale = 1,
+
+  /// outlineSpec is the type the outline is drawn in, or null where there is
+  /// none to draw. See outlineSpecFor, which is what decides it -- the type's
+  /// own outline, a part's, or the one Draw the outline invents.
+  TextSpec? outlineSpec,
 }) {
   if (text.isEmpty || box.width <= 0 || box.height <= 0) {
     return const WrappedText([], 0, 0);
@@ -377,7 +402,16 @@ WrappedText layoutWrapped(
       }
 
       lines.add(WrappedLine(
-          at, end, Rect.fromLTWH(run.$1, y, width, lineHeight), painter));
+          at, end, Rect.fromLTWH(run.$1, y, width, lineHeight), painter,
+          outline: outlineSpec == null
+              ? null
+              : _line(text.substring(at, end).trimRight(), outlineSpec, parts,
+                  words, scale, outline: true),
+          soft: !spec.softPasses
+              ? null
+              : _line(text.substring(at, end).trimRight(), spec, parts, words,
+                  scale,
+                  soft: true)));
       words += wordsIn(text.substring(at, end));
       at = end;
       placedOnLine = true;
@@ -447,10 +481,13 @@ WrappedText layoutWrapped(
 
 /// _line lays one line out, with whatever styled runs fall inside it.
 TextPainter _line(String text, TextSpec spec, List<TextPart> parts,
-        int wordsBefore, double scale) =>
+        int wordsBefore, double scale,
+        {bool outline = false, bool soft = false}) =>
     layoutText(text, spec,
         maxWidth: double.infinity,
         scale: scale,
+        outline: outline,
+        soft: soft,
         parts: parts.isEmpty ? const [] : partsFrom(parts, wordsBefore));
 
 /// paintWrapped draws what layoutWrapped worked out.
@@ -458,8 +495,34 @@ TextPainter _line(String text, TextSpec spec, List<TextPart> parts,
 /// [align] is the element's own, applied inside each run: a centred paragraph
 /// beside a picture is centred in the room it actually has, which is the only
 /// reading of "centred" that means anything here.
-void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec) {
-  for (var line in wrapped.lines) {
+/// [phase] is which half of the drawing this pass is for, which is how a
+/// paragraph with a picture or a pattern showing through it is drawn: the
+/// outline outside the layer the fill is cut to, the letters inside it. See
+/// TextDrawPhase.
+/// [written] is how much of the pen's work has been done, line by line and
+/// left to right, and [fillAlpha] how far up the letters have come behind it
+/// -- which together are Draw the outline. The pen writes the outline where
+/// the type has one and the words themselves where it has not, so [written]
+/// applies to whichever of the two is on the page. Null for both, which is
+/// every other preset.
+void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec,
+    {TextDrawPhase phase = TextDrawPhase.all,
+    double? written,
+    double? fillAlpha}) {
+  /// half draws one of the two at its own opacity, through a layer where it
+  /// needs one.
+  void half(Rect room, double alpha, void Function() what) {
+    if (alpha <= 0) return;
+    if (alpha >= 1) {
+      what();
+      return;
+    }
+    canvas.saveLayer(room, Paint()..color = Color.fromRGBO(0, 0, 0, alpha));
+    what();
+    canvas.restore();
+  }
+
+  for (var (i, line) in wrapped.lines.indexed) {
     var room = line.box.width - line.painter.width;
     var dx = switch (spec.align) {
       TextAlignSpec.left => 0.0,
@@ -467,6 +530,48 @@ void paintWrapped(ui.Canvas canvas, WrappedText wrapped, TextSpec spec) {
       TextAlignSpec.center => math.max(0.0, room / 2),
       TextAlignSpec.right => math.max(0.0, room),
     };
-    line.painter.paint(canvas, Offset(line.box.left + dx, line.box.top));
+    var at = Offset(line.box.left + dx, line.box.top);
+    var layerRoom = line.box.inflate(line.box.height);
+
+    /// pen clips to how much of this line has been written.
+    bool pen(double go) {
+      if (go >= 1) return true;
+      var share = (go * wrapped.lines.length - i).clamp(0.0, 1.0).toDouble();
+      if (share <= 0) return false;
+      canvas.clipRect(Rect.fromLTRB(
+          layerRoom.left,
+          layerRoom.top,
+          at.dx + (line.painter.width + line.box.height) * share,
+          layerRoom.bottom));
+      return true;
+    }
+
+    /// stroke draws the outline, or as much of it as has been written.
+    ///
+    /// Written along the line rather than faded up: each line gets its share
+    /// of the time and is uncovered left to right, which is the pen. Here it
+    /// can be done with a clip and nothing else, since every line is laid out
+    /// as its own paragraph.
+    void stroke() {
+      if (!phase.drawsOutline || line.outline == null) return;
+      var go = written ?? 1;
+      if (go <= 0) return;
+      canvas.save();
+      if (pen(go)) line.outline!.paint(canvas, at);
+      canvas.restore();
+    }
+
+    // Behind the letters when it is simply the type's outline -- a stroke
+    // centred on the letterform with the fill over it, so it takes nothing
+    // out of the shape of the type, see layoutText -- and on top of them
+    // while it is being drawn on, since that is the thing being watched.
+    if (phase.drawsOutline) line.soft?.paint(canvas, at);
+    if (written == null) stroke();
+    if (phase.drawsLetters) {
+      // The words stay where they are while the stroke is drawn onto them,
+      // unless they have been told to arrive with it. See TextDrawStart.
+      half(layerRoom, fillAlpha ?? 1, () => line.painter.paint(canvas, at));
+    }
+    if (written != null) stroke();
   }
 }

@@ -705,6 +705,12 @@ class TextIcon {
   final Color? color;
 
   /// gap is the room between the icon and the words.
+  ///
+  /// Negative overlaps them: the words start back inside the icon's own
+  /// square, which is how a letter sits inside a badge or a headline runs
+  /// across a mark behind it. The overlap stops at the icon's far edge --
+  /// past that the words would be outside the box they belong to -- so the
+  /// useful range is from minus the icon's size upwards. See iconRoom.
   final double gap;
 
   /// align is where the icon sits along the edge it is on: the left, the
@@ -724,6 +730,17 @@ class TextIcon {
   /// carries. Null for none.
   final PartUnderline? underline;
 
+  /// animate carries the icon along with the words when the text element
+  /// arrives.
+  ///
+  /// On, because that is what an icon in a text element is for: a bullet or a
+  /// logo that belongs to the sentence. Left behind while the sentence slid
+  /// in, it read as a second element that had been parked next to one -- the
+  /// exact thing this exists to avoid. Off is for the mark that is part of
+  /// the furniture rather than part of the arrival: a corner logo on a title
+  /// card that should stay put while the words land on it.
+  final bool animate;
+
   const TextIcon({
     this.assetId = "",
     this.place = IconPlace.start,
@@ -735,6 +752,7 @@ class TextIcon {
     this.outlineColor = const Color(0xFF000000),
     this.box = const BoxSpec(padding: 0),
     this.underline,
+    this.animate = true,
   });
 
   bool get on => assetId.isNotEmpty;
@@ -752,6 +770,7 @@ class TextIcon {
     BoxSpec? box,
     PartUnderline? underline,
     bool clearUnderline = false,
+    bool? animate,
   }) =>
       TextIcon(
         assetId: assetId ?? this.assetId,
@@ -764,6 +783,7 @@ class TextIcon {
         outlineColor: outlineColor ?? this.outlineColor,
         box: box ?? this.box,
         underline: clearUnderline ? null : (underline ?? this.underline),
+        animate: animate ?? this.animate,
       );
 
   Map<String, dynamic> toJson() => {
@@ -777,6 +797,9 @@ class TextIcon {
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
         "box": box.toJson(),
         if (underline != null) "underline": underline!.toJson(),
+        // Written either way, since the default is on: an icon somebody had
+        // told to stay put would have saved nothing and come back moving.
+        "animate": animate,
       };
 
   factory TextIcon.fromJson(Map<String, dynamic> json) => TextIcon(
@@ -786,7 +809,7 @@ class TextIcon {
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
-        gap: jsonDouble(json["gap"], 12),
+        gap: jsonDouble(json["gap"], 12).clamp(-4000, 4000),
         align: TextIconAlign.fromName(json["align"] as String?),
         outlineWidth: jsonDouble(json["ow"], 0).clamp(0, 200),
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
@@ -796,6 +819,7 @@ class TextIcon {
         underline: json["underline"] is Map<String, dynamic>
             ? PartUnderline.fromJson(json["underline"] as Map<String, dynamic>)
             : null,
+        animate: jsonBool(json["animate"], true),
       );
 }
 

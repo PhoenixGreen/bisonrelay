@@ -1,12 +1,18 @@
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // shape settings.dart is a shape's settings.
 
-List<Widget> shapeSettings(ShapeElement e, SettingsWrite write,
-        VoidCallback begin, VoidCallback commit) =>
+List<Widget> shapeSettings(
+        BuildContext context,
+        CanvasController controller,
+        ShapeElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit) =>
     [
       // No caption: the panel header says "Shape settings" already, and a
       // group called Shape directly under it was the word twice.
@@ -50,15 +56,24 @@ List<Widget> shapeSettings(ShapeElement e, SettingsWrite write,
             commit();
           },
         ),
-        CanvasNumberField(
-          label: "Radius",
-          value: e.cornerRadius,
-          min: 0,
-          max: 400,
-          width: 54,
-          onChanged: (v) => write(e.copyWith(cornerRadius: v)),
-          onCommit: commit,
-        ),
+        // A line of its own for the corners, the same four the frame round a
+        // picture has and the same controls. Only for the shapes that have
+        // corners: a circle has none, and a field that does nothing is worse
+        // than no field.
+        if (e.shape.hasCorners) ...[
+          const CanvasLineBreak(),
+          ...cornerFields(
+              e.corners,
+              (c) => write(e.copyWith(
+                  cornerRadius: c.all,
+                  radTL: c.tl,
+                  radTR: c.tr,
+                  radBR: c.br,
+                  radBL: c.bl,
+                  clearCorners: true)),
+              commit,
+              prefix: "shape"),
+        ],
         if (e.shape.hasPoints) ...[
           CanvasNumberField(
             label: "Points",
@@ -181,8 +196,33 @@ List<Widget> shapeSettings(ShapeElement e, SettingsWrite write,
           ],
         ]),
       // The label's type, and only when there is a label to set.
-      if (e.text.isNotEmpty)
+      if (e.text.isNotEmpty) ...[
+        CanvasControlGroup(label: "Label room", children: [
+          ...roomFields(
+              e.pad,
+              (r) => write(e.copyWith(
+                  padding: r.all,
+                  padL: r.l,
+                  padT: r.t,
+                  padR: r.r,
+                  padB: r.b,
+                  clearRoom: true)),
+              commit,
+              prefix: "shape"),
+          CanvasHint("How far the label is kept from the shape's edge. At 0 "
+              "the shape decides for itself — ${e.shape.label.toLowerCase()} "
+              "needs more room than a rectangle does, and those are the "
+              "numbers nobody should have to set. Any of them set replaces "
+              "that."),
+        ]),
         ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
             begin, commit,
             label: "Label type"),
+      ],
+      // How it arrives, in a section of its own like a headline's: a handful
+      // of choices made once and then left alone.
+      boxed(
+          context,
+          elementAnimationSection(controller, e, e.animation,
+              (a) => write(e.copyWith(animation: a)), begin, commit)),
     ];

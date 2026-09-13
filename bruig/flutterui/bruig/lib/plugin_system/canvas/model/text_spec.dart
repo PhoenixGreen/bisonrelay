@@ -1,4 +1,7 @@
+import 'dart:math' as math;
 import 'dart:ui';
+
+import 'package:flutter/painting.dart' show EdgeInsets;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -140,12 +143,28 @@ class TextFill {
   /// tile repeats a picture instead of covering the words with one copy.
   final bool tile;
 
+  /// locked carries what shows through the words along with them while they
+  /// are arriving, instead of leaving it pinned to the box.
+  ///
+  /// The fill is cut to the letters at the moment they are drawn, so words
+  /// sliding or growing through a fill that stays put sweep across it: the
+  /// flame or the photograph inside the letters changes all the way through
+  /// the animation, which is not what somebody who chose a picture for the
+  /// word wanted. Locked, the picture travels with the words -- the same bit
+  /// of it shows through the same letter from the first frame to the last.
+  ///
+  /// It applies to a whole-paragraph arrival, which is the one that moves the
+  /// words as a block. Letter by letter there is no single movement to lock
+  /// to, and the fill stays where it is.
+  final bool locked;
+
   const TextFill({
     this.kind = TextFillKind.color,
     this.assetId = "",
     this.pattern = const ProceduralSpec(),
     this.zoom = 1,
     this.tile = false,
+    this.locked = false,
   });
 
   /// on is whether anything but the plain colour is being used -- and, for a
@@ -160,6 +179,7 @@ class TextFill {
     ProceduralSpec? pattern,
     double? zoom,
     bool? tile,
+    bool? locked,
   }) =>
       TextFill(
         kind: kind ?? this.kind,
@@ -167,6 +187,7 @@ class TextFill {
         pattern: pattern ?? this.pattern,
         zoom: zoom ?? this.zoom,
         tile: tile ?? this.tile,
+        locked: locked ?? this.locked,
       );
 
   Map<String, dynamic> toJson() => {
@@ -175,6 +196,7 @@ class TextFill {
         if (kind == TextFillKind.pattern) "pattern": pattern.toJson(),
         if (zoom != 1) "zoom": zoom,
         if (tile) "tile": true,
+        if (locked) "locked": true,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
@@ -185,7 +207,16 @@ class TextFill {
             : const ProceduralSpec(),
         zoom: jsonDouble(json["zoom"], 1).clamp(0.05, 20),
         tile: jsonBool(json["tile"], false),
+        locked: jsonBool(json["locked"], false),
       );
+}
+
+/// _angleOf is the light's direction that throws a shadow at [dx], [dy] --
+/// the inverse of TextSpec.shadowOffset, for reading an older document.
+double _angleOf(double dx, double dy) {
+  if (dx == 0 && dy == 0) return 315;
+  var degrees = math.atan2(-dx, dy) * 180 / math.pi;
+  return degrees < 0 ? degrees + 360 : degrees;
 }
 
 class TextSpec {
@@ -221,7 +252,32 @@ class TextSpec {
 
   final double shadowBlur;
   final Color shadowColor;
-  final Offset shadowOffset;
+
+  /// shadowAngle is the direction the light comes *from*, in degrees, the way
+  /// a compass is read: 0 is straight up, 90 to the right, 180 down. The
+  /// shadow falls the opposite way, which is the thing being set -- somebody
+  /// placing a shadow is placing a light.
+  ///
+  /// Kept as an angle and a distance rather than as an offset because that is
+  /// how it is thought about: a scene has one light, and every element in it
+  /// should agree about where it is. Two numbers that can be copied between
+  /// elements do that; a dx and a dy have to be worked out again for every
+  /// distance.
+  final double shadowAngle;
+
+  /// shadowDistance is how far the shadow is thrown, in design units. Zero
+  /// leaves it directly underneath, which is a glow in the shadow's colour.
+  final double shadowDistance;
+
+  /// glowBlur is a soft light all round the letters, in [glowColor]. Zero is
+  /// off.
+  ///
+  /// A shadow with no distance is nearly the same drawing, but not the same
+  /// setting: a glow is light and a shadow is dark, and wanting both at once
+  /// -- lit type that still sits above its background -- is ordinary. Kept
+  /// apart so neither has to be spent to have the other.
+  final double glowBlur;
+  final Color glowColor;
 
   const TextSpec({
     this.fontFamily = "Inter",
@@ -240,8 +296,27 @@ class TextSpec {
     this.outlineColor = const Color(0xFF000000),
     this.shadowBlur = 0,
     this.shadowColor = const Color(0x80000000),
-    this.shadowOffset = Offset.zero,
+    this.shadowAngle = 315,
+    this.shadowDistance = 0,
+    this.glowBlur = 0,
+    this.glowColor = const Color(0xFFFFFFFF),
   });
+
+  /// shadowOffset is where the shadow lands: [shadowDistance] away from the
+  /// letters, in the direction opposite the light.
+  ///
+  /// Screen coordinates have y going down, and the angle is read off a
+  /// compass -- so up is -y, and the shadow is thrown the other way.
+  Offset get shadowOffset {
+    if (shadowDistance == 0) return Offset.zero;
+    var radians = shadowAngle * math.pi / 180;
+    return Offset(-math.sin(radians) * shadowDistance,
+        math.cos(radians) * shadowDistance);
+  }
+
+  /// softPasses is whether anything is drawn behind the letters: a shadow, a
+  /// glow, or both. See softFor, which lays them out.
+  bool get softPasses => shadowBlur > 0 || glowBlur > 0 || shadowDistance > 0;
 
   TextSpec copyWith({
     String? fontFamily,
@@ -260,7 +335,10 @@ class TextSpec {
     Color? outlineColor,
     double? shadowBlur,
     Color? shadowColor,
-    Offset? shadowOffset,
+    double? shadowAngle,
+    double? shadowDistance,
+    double? glowBlur,
+    Color? glowColor,
   }) =>
       TextSpec(
         fontFamily: fontFamily ?? this.fontFamily,
@@ -279,7 +357,10 @@ class TextSpec {
         outlineColor: outlineColor ?? this.outlineColor,
         shadowBlur: shadowBlur ?? this.shadowBlur,
         shadowColor: shadowColor ?? this.shadowColor,
-        shadowOffset: shadowOffset ?? this.shadowOffset,
+        shadowAngle: shadowAngle ?? this.shadowAngle,
+        shadowDistance: shadowDistance ?? this.shadowDistance,
+        glowBlur: glowBlur ?? this.glowBlur,
+        glowColor: glowColor ?? this.glowColor,
       );
 
   /// fontWeight is [weight] as Flutter says it. Clamped and rounded to the
@@ -303,10 +384,13 @@ class TextSpec {
         if (fill.toJson().isNotEmpty) "fill": fill.toJson(),
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
-        if (shadowBlur > 0) "sb": shadowBlur,
-        if (shadowBlur > 0) "sc": colorToJson(shadowColor),
-        if (shadowOffset != Offset.zero) "sx": shadowOffset.dx,
-        if (shadowOffset != Offset.zero) "sy": shadowOffset.dy,
+        if (shadowBlur > 0 || shadowDistance > 0) "sb": shadowBlur,
+        if (shadowBlur > 0 || shadowDistance > 0)
+          "sc": colorToJson(shadowColor),
+        if (shadowDistance > 0) "sa": shadowAngle,
+        if (shadowDistance > 0) "sd": shadowDistance,
+        if (glowBlur > 0) "gb": glowBlur,
+        if (glowBlur > 0) "gc": colorToJson(glowColor),
       };
 
   factory TextSpec.fromJson(Map<String, dynamic> json) => TextSpec(
@@ -328,8 +412,18 @@ class TextSpec {
         outlineColor: colorFromJson(json["oc"], const Color(0xFF000000)),
         shadowBlur: jsonDouble(json["sb"], 0),
         shadowColor: colorFromJson(json["sc"], const Color(0x80000000)),
-        shadowOffset:
-            Offset(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0)),
+        // An older document wrote the shadow as a dx and a dy. Read back as
+        // the angle and the distance they describe, so a scene saved before
+        // the light had a direction opens with its shadows where they were.
+        shadowAngle: json["sa"] != null
+            ? jsonDouble(json["sa"], 315)
+            : _angleOf(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0)),
+        shadowDistance: json["sd"] != null
+            ? jsonDouble(json["sd"], 0)
+            : Offset(jsonDouble(json["sx"], 0), jsonDouble(json["sy"], 0))
+                .distance,
+        glowBlur: jsonDouble(json["gb"], 0),
+        glowColor: colorFromJson(json["gc"], const Color(0xFFFFFFFF)),
       );
 
   /// Two specs are the same when every decision in them is.
@@ -358,7 +452,10 @@ class TextSpec {
           other.outlineColor == outlineColor &&
           other.shadowBlur == shadowBlur &&
           other.shadowColor == shadowColor &&
-          other.shadowOffset == shadowOffset;
+          other.shadowAngle == shadowAngle &&
+          other.shadowDistance == shadowDistance &&
+          other.glowBlur == glowBlur &&
+          other.glowColor == glowColor;
 
   @override
   int get hashCode => Object.hash(
@@ -377,7 +474,10 @@ class TextSpec {
         outlineColor,
         shadowBlur,
         shadowColor,
-        shadowOffset,
+        shadowAngle,
+        shadowDistance,
+        glowBlur,
+        glowColor,
       );
 }
 
@@ -387,12 +487,205 @@ class TextSpec {
 /// and an image all want a rounded rectangle behind them with an outline on
 /// it, and there is nothing about any of them that makes their version of it
 /// different.
+/// Corners is four corner radii with one number answering for whichever of
+/// them has not been given its own.
+///
+/// Its own type because two things have corners -- the frame round an element
+/// and a rectangle shape -- and they had better round them the same way. One
+/// number and four overrides rather than four numbers: a box is almost always
+/// even, that is how somebody wants to say it, and every document ever saved
+/// has the one number in it.
+class Corners {
+  /// all is every corner that has not been given its own.
+  final double all;
+
+  /// tl, tr, br and bl are the corners that have, or null.
+  final double? tl;
+  final double? tr;
+  final double? br;
+  final double? bl;
+
+  const Corners({this.all = 0, this.tl, this.tr, this.br, this.bl});
+
+  double get topLeft => tl ?? all;
+  double get topRight => tr ?? all;
+  double get bottomRight => br ?? all;
+  double get bottomLeft => bl ?? all;
+
+  bool get isRounded =>
+      topLeft > 0 || topRight > 0 || bottomRight > 0 || bottomLeft > 0;
+
+  /// even is the one number all four share, or null where they differ --
+  /// which is what the "all corners" field shows.
+  double? get even => topLeft == topRight &&
+          topRight == bottomRight &&
+          bottomRight == bottomLeft
+      ? topLeft
+      : null;
+
+  /// withEven sets all four at once, forgetting whatever they had.
+  Corners withEven(double radius) => Corners(all: radius);
+
+  Corners copyWith(
+          {double? all, double? tl, double? tr, double? br, double? bl}) =>
+      Corners(
+        all: all ?? this.all,
+        tl: tl ?? this.tl,
+        tr: tr ?? this.tr,
+        br: br ?? this.br,
+        bl: bl ?? this.bl,
+      );
+
+  /// rrect is [rect] with these corners, inset by [by] all round -- which is
+  /// how a border draws itself inside a fill without the two drifting out of
+  /// step.
+  RRect rrect(Rect rect, {double by = 0}) => RRect.fromRectAndCorners(
+        by == 0 ? rect : rect.deflate(by),
+        topLeft: Radius.circular(math.max(0, topLeft - by)),
+        topRight: Radius.circular(math.max(0, topRight - by)),
+        bottomRight: Radius.circular(math.max(0, bottomRight - by)),
+        bottomLeft: Radius.circular(math.max(0, bottomLeft - by)),
+      );
+
+  /// inside is [inner] -- a rectangle some padding has already been taken off
+  /// -- with corners that stay concentric with these.
+  ///
+  /// Each corner is pulled in by the wider of the two sides that meet there.
+  /// With even padding that is the plain arithmetic; with uneven padding
+  /// there is no single right answer, and the wider of the two is the one
+  /// that keeps the curve inside the room it has.
+  RRect inside(Rect inner, Room room) => RRect.fromRectAndCorners(
+        inner,
+        topLeft: Radius.circular(
+            math.max(0, topLeft - math.max(room.left, room.top))),
+        topRight: Radius.circular(
+            math.max(0, topRight - math.max(room.right, room.top))),
+        bottomRight: Radius.circular(
+            math.max(0, bottomRight - math.max(room.right, room.bottom))),
+        bottomLeft: Radius.circular(
+            math.max(0, bottomLeft - math.max(room.left, room.bottom))),
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (all != 0) "r": all,
+        if (tl != null) "tl": tl,
+        if (tr != null) "tr": tr,
+        if (br != null) "br": br,
+        if (bl != null) "bl": bl,
+      };
+
+  factory Corners.fromJson(Map<String, dynamic> json) => Corners(
+        all: jsonDouble(json["r"], 0),
+        tl: json["tl"] == null ? null : jsonDouble(json["tl"], 0),
+        tr: json["tr"] == null ? null : jsonDouble(json["tr"], 0),
+        br: json["br"] == null ? null : jsonDouble(json["br"], 0),
+        bl: json["bl"] == null ? null : jsonDouble(json["bl"], 0),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Corners &&
+          other.topLeft == topLeft &&
+          other.topRight == topRight &&
+          other.bottomRight == bottomRight &&
+          other.bottomLeft == bottomLeft;
+
+  @override
+  int get hashCode => Object.hash(topLeft, topRight, bottomRight, bottomLeft);
+}
+
+/// Room is the space kept on the four sides, with one number answering for
+/// whichever side has not been given its own. See Corners, which is the same
+/// idea for the corners.
+class Room {
+  final double all;
+  final double? l;
+  final double? t;
+  final double? r;
+  final double? b;
+
+  const Room({this.all = 0, this.l, this.t, this.r, this.b});
+
+  double get left => l ?? all;
+  double get top => t ?? all;
+  double get right => r ?? all;
+  double get bottom => b ?? all;
+
+  EdgeInsets get insets => EdgeInsets.fromLTRB(left, top, right, bottom);
+
+  /// inner is [rect] with this room taken off it.
+  Rect inner(Rect rect) => insets.deflateRect(rect);
+
+  double? get even =>
+      left == top && top == right && right == bottom ? left : null;
+
+  Room withEven(double pad) => Room(all: pad);
+
+  Room copyWith({double? all, double? l, double? t, double? r, double? b}) =>
+      Room(
+        all: all ?? this.all,
+        l: l ?? this.l,
+        t: t ?? this.t,
+        r: r ?? this.r,
+        b: b ?? this.b,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "all": all,
+        if (l != null) "l": l,
+        if (t != null) "t": t,
+        if (r != null) "r": r,
+        if (b != null) "b": b,
+      };
+
+  factory Room.fromJson(Map<String, dynamic> json) => Room(
+        all: jsonDouble(json["all"], 0),
+        l: json["l"] == null ? null : jsonDouble(json["l"], 0),
+        t: json["t"] == null ? null : jsonDouble(json["t"], 0),
+        r: json["r"] == null ? null : jsonDouble(json["r"], 0),
+        b: json["b"] == null ? null : jsonDouble(json["b"], 0),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Room &&
+          other.left == left &&
+          other.top == top &&
+          other.right == right &&
+          other.bottom == bottom;
+
+  @override
+  int get hashCode => Object.hash(left, top, right, bottom);
+}
+
 class BoxSpec {
+  /// fill is what is painted behind whatever the box holds: the background.
   final Color fill;
   final double borderWidth;
   final Color borderColor;
+
+  /// borderRadius is every corner that has not been given its own, and
+  /// [padding] is every side that has not been given its own; padL..radBL are
+  /// the ones that have.
+  ///
+  /// Stored flat rather than as the [Corners] and [Room] they describe,
+  /// because a const constructor cannot build an object out of its own
+  /// parameters -- and every BoxSpec in the codebase is written as a const.
+  /// The *behaviour* is not duplicated: [corners] and [pad] hand back the two
+  /// of them and everything below is asked of those, so a rectangle shape and
+  /// a box round a picture round their corners by the same code.
   final double borderRadius;
   final double padding;
+  final double? padL;
+  final double? padT;
+  final double? padR;
+  final double? padB;
+  final double? radTL;
+  final double? radTR;
+  final double? radBR;
+  final double? radBL;
 
   const BoxSpec({
     this.fill = const Color(0x00000000),
@@ -400,7 +693,95 @@ class BoxSpec {
     this.borderColor = const Color(0xFFFFFFFF),
     this.borderRadius = 0,
     this.padding = 8,
+    this.padL,
+    this.padT,
+    this.padR,
+    this.padB,
+    this.radTL,
+    this.radTR,
+    this.radBR,
+    this.radBL,
   });
+
+  Corners get corners =>
+      Corners(all: borderRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
+  Room get pad => Room(all: padding, l: padL, t: padT, r: padR, b: padB);
+
+  double get padLeft => pad.left;
+  double get padTop => pad.top;
+  double get padRight => pad.right;
+  double get padBottom => pad.bottom;
+
+  double get topLeft => corners.topLeft;
+  double get topRight => corners.topRight;
+  double get bottomRight => corners.bottomRight;
+  double get bottomLeft => corners.bottomLeft;
+
+  /// insets is the room the box keeps for itself on every side.
+  EdgeInsets get insets => pad.insets;
+
+  /// inner is [rect] with the padding taken off it.
+  Rect inner(Rect rect) => pad.inner(rect);
+
+  /// evenPad is the one number the four sides share, or null where they
+  /// differ -- which is what the "all sides" field shows.
+  double? get evenPad => pad.even;
+
+  /// evenRadius is the same question for the corners.
+  double? get evenRadius => corners.even;
+
+  bool get isRounded => corners.isRounded;
+
+  /// rounded is [rect] with this box's corners, inset by [by] all round.
+  RRect rounded(Rect rect, {double by = 0}) => corners.rrect(rect, by: by);
+
+  /// insetRounded is a rectangle the padding has already been taken off, with
+  /// corners that stay concentric with the box's own.
+  RRect insetRounded(Rect within) => corners.inside(within, pad);
+
+  /// withCorners and withRoom replace the whole of one of them, overrides
+  /// and all.
+  ///
+  /// Not copyWith: that fills a null with what was there before, which is
+  /// right for "change this one field" and wrong here -- setting all four
+  /// corners to one number means forgetting the three that had their own, and
+  /// through copyWith they would have survived it.
+  BoxSpec withCorners(Corners corners) => BoxSpec(
+      fill: fill,
+      borderWidth: borderWidth,
+      borderColor: borderColor,
+      borderRadius: corners.all,
+      radTL: corners.tl,
+      radTR: corners.tr,
+      radBR: corners.br,
+      radBL: corners.bl,
+      padding: padding,
+      padL: padL,
+      padT: padT,
+      padR: padR,
+      padB: padB);
+
+  BoxSpec withRoom(Room room) => BoxSpec(
+      fill: fill,
+      borderWidth: borderWidth,
+      borderColor: borderColor,
+      borderRadius: borderRadius,
+      radTL: radTL,
+      radTR: radTR,
+      radBR: radBR,
+      radBL: radBL,
+      padding: room.all,
+      padL: room.l,
+      padT: room.t,
+      padR: room.r,
+      padB: room.b);
+
+  /// withEvenPad sets all four sides at once, forgetting whatever they had.
+  BoxSpec withEvenPad(double padding) => withRoom(pad.withEven(padding));
+
+  /// withEvenRadius does the same for the corners.
+  BoxSpec withEvenRadius(double radius) =>
+      withCorners(corners.withEven(radius));
 
   BoxSpec copyWith({
     Color? fill,
@@ -408,6 +789,14 @@ class BoxSpec {
     Color? borderColor,
     double? borderRadius,
     double? padding,
+    double? padL,
+    double? padT,
+    double? padR,
+    double? padB,
+    double? radTL,
+    double? radTR,
+    double? radBR,
+    double? radBL,
   }) =>
       BoxSpec(
         fill: fill ?? this.fill,
@@ -415,6 +804,14 @@ class BoxSpec {
         borderColor: borderColor ?? this.borderColor,
         borderRadius: borderRadius ?? this.borderRadius,
         padding: padding ?? this.padding,
+        padL: padL ?? this.padL,
+        padT: padT ?? this.padT,
+        padR: padR ?? this.padR,
+        padB: padB ?? this.padB,
+        radTL: radTL ?? this.radTL,
+        radTR: radTR ?? this.radTR,
+        radBR: radBR ?? this.radBR,
+        radBL: radBL ?? this.radBL,
       );
 
   Map<String, dynamic> toJson() => {
@@ -423,6 +820,16 @@ class BoxSpec {
         if (borderWidth > 0) "bc": colorToJson(borderColor),
         if (borderRadius > 0) "br": borderRadius,
         "pad": padding,
+        // Only the sides and corners somebody has actually singled out, so a
+        // box that is simply even saves exactly what it always saved.
+        if (padL != null) "padL": padL,
+        if (padT != null) "padT": padT,
+        if (padR != null) "padR": padR,
+        if (padB != null) "padB": padB,
+        if (radTL != null) "rTL": radTL,
+        if (radTR != null) "rTR": radTR,
+        if (radBR != null) "rBR": radBR,
+        if (radBL != null) "rBL": radBL,
       };
 
   factory BoxSpec.fromJson(Map<String, dynamic> json) => BoxSpec(
@@ -431,5 +838,26 @@ class BoxSpec {
         borderColor: colorFromJson(json["bc"]),
         borderRadius: jsonDouble(json["br"], 0),
         padding: jsonDouble(json["pad"], 8),
+        padL: json["padL"] == null ? null : jsonDouble(json["padL"], 0),
+        padT: json["padT"] == null ? null : jsonDouble(json["padT"], 0),
+        padR: json["padR"] == null ? null : jsonDouble(json["padR"], 0),
+        padB: json["padB"] == null ? null : jsonDouble(json["padB"], 0),
+        radTL: json["rTL"] == null ? null : jsonDouble(json["rTL"], 0),
+        radTR: json["rTR"] == null ? null : jsonDouble(json["rTR"], 0),
+        radBR: json["rBR"] == null ? null : jsonDouble(json["rBR"], 0),
+        radBL: json["rBL"] == null ? null : jsonDouble(json["rBL"], 0),
       );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BoxSpec &&
+          other.fill == fill &&
+          other.borderWidth == borderWidth &&
+          other.borderColor == borderColor &&
+          other.corners == corners &&
+          other.pad == pad;
+
+  @override
+  int get hashCode => Object.hash(fill, borderWidth, borderColor, corners, pad);
 }

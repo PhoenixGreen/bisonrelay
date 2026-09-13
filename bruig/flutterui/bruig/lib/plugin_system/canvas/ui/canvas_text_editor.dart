@@ -102,20 +102,26 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   /// _room is the padding that puts the editor where the words are drawn:
   /// the element's own, plus whatever its icon has taken. See iconRoom.
   EdgeInsets _room(TextElement e, double scale) {
-    var pad = e.box.padding * scale;
-    if (!e.icon.on) return EdgeInsets.all(pad);
+    var box = e.box;
+    if (!e.icon.on) {
+      return EdgeInsets.fromLTRB(box.padLeft * scale, box.padTop * scale,
+          box.padRight * scale, box.padBottom * scale);
+    }
     var inner = Offset.zero & e.bounds.size;
     // The same placement the painter uses, alignment and all -- see
     // iconLayout. Typing into a centred headline whose editor left the icon's
     // room at the wrong end would move the words while it was open.
-    var (icon, left) = iconLayout(inner.deflate(e.box.padding), e.icon,
-        e.displayText, drawnTextSpec(e, e.bounds),
+    var (icon, left) = iconLayout(
+        e.box.inner(inner), e.icon, e.displayText, drawnTextSpec(e, e.bounds),
         columns: e.columns.count);
+    // Each side is the box's own room plus whatever the icon has taken out
+    // of that side, so an uneven box and an icon add up rather than one of
+    // them winning.
     return EdgeInsets.fromLTRB(
-      pad + (left.left - inner.left - e.box.padding) * scale,
-      pad + (left.top - inner.top - e.box.padding) * scale,
-      pad + (inner.right - e.box.padding - left.right) * scale,
-      pad + (inner.bottom - e.box.padding - left.bottom) * scale,
+      (box.padLeft + (left.left - inner.left - box.padLeft)) * scale,
+      (box.padTop + (left.top - inner.top - box.padTop)) * scale,
+      (box.padRight + (inner.right - box.padRight - left.right)) * scale,
+      (box.padBottom + (inner.bottom - box.padBottom - left.bottom)) * scale,
     );
   }
 

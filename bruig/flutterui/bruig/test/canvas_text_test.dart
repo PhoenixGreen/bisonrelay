@@ -495,7 +495,10 @@ void main() {
         spec.copyWith(outlineColor: const Color(0xFF00FF00)),
         spec.copyWith(shadowBlur: 4),
         spec.copyWith(shadowColor: const Color(0xFF00FF00)),
-        spec.copyWith(shadowOffset: const Offset(1, 1)),
+        spec.copyWith(shadowAngle: 90),
+        spec.copyWith(shadowDistance: 4),
+        spec.copyWith(glowBlur: 4),
+        spec.copyWith(glowColor: const Color(0xFF00FF00)),
       ];
       for (var other in others) {
         expect(other, isNot(equals(spec)));

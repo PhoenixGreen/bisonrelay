@@ -1053,6 +1053,31 @@ List<Widget> _animationBits(
   }
 
   return [
+    // A destruction is an exit. Said here for the same reason it is said in
+    // a shape's panel: somebody looking for one will be looking in the
+    // arrival list, and the two are one cut run in opposite directions.
+    if (a.cuts)
+      const CanvasHint(
+          "Break apart and Build up are the same cut run in opposite "
+          "directions. Set one as the way *out* and the words come apart and "
+          "leave; set it as the way in and they assemble."),
+    if (a.cuts)
+      ...effectBits(a.effect, a.scatters,
+          (next) => now(a.copyWith(effect: next)), done, done,
+          live: (next) => live(a.copyWith(effect: next))),
+    // Draw the outline writes what is on the page and makes nothing up, so
+    // it is worth saying what it will write: a stroke where the type has one,
+    // and the words themselves where it has not. Without this the preset
+    // looks broken on type with no outline -- it does something, but not the
+    // thing the name led somebody to expect.
+    if (a.preset == TextAnimationPreset.strokeOn ||
+        a.exit == TextAnimationPreset.strokeOn)
+      const CanvasHint(
+          "Draw the outline draws a stroke onto words that are already "
+          "there, line by line, the way a pen would. It draws the type's own "
+          "Outline where it has one; where it has not, give the mark a "
+          "colour below and it draws one in that. With neither there is "
+          "nothing for it to draw."),
     // What a drawn mark looks like: an underline's line, a highlight's
     // band. Only where something is drawn -- on a fade there is no mark to
     // colour.
@@ -1072,45 +1097,66 @@ List<Widget> _animationBits(
           onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
         ),
         const CanvasLineBreak(),
-        // One field for all four sides, and the four on their own under it.
-        // A band tight around the letters reads as a mistake; one with a
-        // little air reads as a highlighter.
-        CanvasNumberField(
-          label: "Padding",
-          value: a.draw.evenPad ?? 0,
-          min: 0,
-          max: 200,
-          decimals: 0,
-          width: 62,
-          onChanged: (v) {
-            live(a.copyWith(draw: a.draw.withEvenPad(v)));
-          },
-          onCommit: done,
-        ),
-        for (var (name, at, set)
-            in <(String, double, TextDrawSpec Function(double))>[
-          ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
-          ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
-          ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
-          ("Bottom", a.draw.padBottom, (v) => a.draw.copyWith(padBottom: v)),
-        ])
+        // The room round the words is a band's and a line's; a stroke follows
+        // the letterform and has nowhere to put it.
+        if (a.preset != TextAnimationPreset.strokeOn) ...[
+          // One field for all four sides, and the four on their own under it.
+          // A band tight around the letters reads as a mistake; one with a
+          // little air reads as a highlighter.
           CanvasNumberField(
-            label: name,
-            value: at,
+            label: "Padding",
+            value: a.draw.evenPad ?? 0,
             min: 0,
             max: 200,
             decimals: 0,
-            width: 56,
+            width: 62,
             onChanged: (v) {
-              live(a.copyWith(draw: set(v)));
+              live(a.copyWith(draw: a.draw.withEvenPad(v)));
             },
             onCommit: done,
           ),
-        const CanvasHint(
-            "Padding is the room around the words the mark takes in: none "
-            "of it for an underline tight under the letters, a few pixels "
-            "for a highlighter. The one field sets all four sides; the four "
-            "under it set one each."),
+          for (var (name, at, set)
+              in <(String, double, TextDrawSpec Function(double))>[
+            ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
+            ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
+            ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
+            ("Bottom", a.draw.padBottom, (v) => a.draw.copyWith(padBottom: v)),
+          ])
+            CanvasNumberField(
+              label: name,
+              value: at,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 56,
+              onChanged: (v) {
+                live(a.copyWith(draw: set(v)));
+              },
+              onCommit: done,
+            ),
+          // A band's corners, the same setting a part's own highlight has.
+          // Drawn square while the other one could be rounded, the same mark
+          // looked like two different marks.
+          if (a.preset == TextAnimationPreset.highlight)
+            CanvasNumberField(
+              key: const ValueKey("textMarkRadius"),
+              label: "Corners",
+              value: a.draw.radius,
+              min: 0,
+              max: 200,
+              decimals: 0,
+              width: 62,
+              onChanged: (v) {
+                live(a.copyWith(draw: a.draw.copyWith(radius: v)));
+              },
+              onCommit: done,
+            ),
+          const CanvasHint(
+              "Padding is the room around the words the mark takes in: none "
+              "of it for an underline tight under the letters, a few pixels "
+              "for a highlighter. The one field sets all four sides; the four "
+              "under it set one each."),
+        ],
       ]),
     // How the copies of an echo are arranged: how many, how far apart, how
     // much quieter each one is, and whether they shrink away.
@@ -1471,13 +1517,27 @@ Widget _iconSection(BuildContext context, TextElement e, SettingsWrite write,
           CanvasNumberField(
             label: "Gap",
             value: icon.gap,
-            min: 0,
+            // Below zero the words move back over the icon, which is how a
+            // letter sits inside a badge. It stops overlapping at the icon's
+            // far edge — see TextIcon.gap — so a number past that changes
+            // nothing rather than pushing the words off the box.
+            min: -500,
             max: 500,
             decimals: 0,
             width: 58,
             onChanged: (v) => live(icon.copyWith(gap: v)),
             onCommit: commit,
           ),
+          CanvasToggle(
+            label: "Animate with the text",
+            value: icon.animate,
+            onChanged: (v) => now(icon.copyWith(animate: v)),
+          ),
+          if (icon.gap < 0)
+            const CanvasHint(
+                "A negative gap overlaps the two: the words start back inside "
+                "the icon's own square, and the icon is drawn first so they "
+                "sit over it."),
         ]),
         CanvasControlGroup(label: "Colour", children: [
           CanvasToggle(

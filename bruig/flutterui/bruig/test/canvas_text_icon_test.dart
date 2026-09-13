@@ -1,6 +1,9 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -241,6 +244,67 @@ void main() {
       expect(columned.$2.width, 320);
     });
 
+    test("a negative gap puts the words over it", () {
+      // The overlay: the words start back inside the icon's own square
+      // instead of after it. Room is taken from the gap, not from the box, so
+      // the words have *more* width than they had -- which is what an
+      // overlapping badge behind a headline needs.
+      const inner = Rect.fromLTWH(0, 0, 400, 120);
+      const icon = TextIcon(assetId: "a", size: 60);
+      var apart = iconRoom(inner, icon).$2;
+      var over = iconRoom(inner, icon.copyWith(gap: -40)).$2;
+      expect(over.width, greaterThan(apart.width));
+      expect(over.left, lessThan(apart.left));
+
+      // And it stops at the icon's far edge: the words sit right across it
+      // and no further, rather than starting outside the box they belong to.
+      var far = iconRoom(inner, icon.copyWith(gap: -500)).$2;
+      expect(far.left, inner.left);
+      expect(far.width, inner.width);
+    });
+
+    testWidgets("travels with the words, unless it is told not to",
+        (tester) async {
+      // An icon is a bullet or a logo that belongs to the sentence, so a
+      // sentence sliding in takes it along. Left behind, it read as a second
+      // element somebody had parked next to one.
+      const leftHalf = Rect.fromLTWH(0, 0, 200, 200);
+      TextElement sliding(TextIcon icon) => TextElement(
+            const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 120),
+            text: "Headline",
+            textSpec: const TextSpec(fontSize: 30, color: Color(0xFFFFFFFF)),
+            icon: icon,
+            animation: const TextAnimation(
+                preset: TextAnimationPreset.slideRight, ease: ChartEase.linear),
+          ).withBase(
+            track: ElementTrack([
+              const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0.25}),
+            ]),
+          ) as TextElement;
+
+      late int moved;
+      late int stayed;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        moved = (await _ink(
+                sliding(const TextIcon(assetId: "a", size: 60)), pictures,
+                within: leftHalf))[red] ??
+            0;
+        stayed = (await _ink(
+                sliding(const TextIcon(assetId: "a", size: 60, animate: false)),
+                pictures,
+                within: leftHalf))[red] ??
+            0;
+      });
+
+      // Coming in from the right, a quarter of the way through: the icon that
+      // travels with the words is still out to the right of where it rests.
+      expect(stayed, greaterThan(2000),
+          reason: "told to stay put, it is where it will end up");
+      expect(moved, lessThan(stayed),
+          reason: "it should be travelling with the sentence");
+    });
+
     test("it survives being saved", () {
       var element = _headline(
           icon: const TextIcon(
@@ -251,6 +315,7 @@ void main() {
         gap: 4,
         align: TextIconAlign.end,
         outlineWidth: 3,
+        animate: false,
         underline: PartUnderline(style: PartLineStyle.marker),
       ));
       var back = elementFromJson(element.toJson()) as TextElement;
@@ -260,6 +325,11 @@ void main() {
       expect(back.icon.color, const Color(0xFF00FF00));
       expect(back.icon.align, TextIconAlign.end);
       expect(back.icon.outlineWidth, 3);
+      expect(back.icon.gap, 4);
+      // Written either way, since it is on by default: an icon told to stay
+      // put would otherwise have saved nothing and come back moving.
+      expect(back.icon.animate, isFalse);
+      expect(const TextIcon(assetId: "a").animate, isTrue);
       expect(back.icon.underline!.style, PartLineStyle.marker);
 
       // And an element with no icon writes none.

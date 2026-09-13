@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -1928,11 +1930,14 @@ class CanvasController extends ChangeNotifier {
         .copyWith(
             animation: element.animation.copyWith(
                 preset: preset,
-                // The curve the preset was designed around, and only where
-                // the preset is actually changing: re-laying the keyframes
-                // for some other reason must not quietly undo a curve
-                // somebody chose. See TextAnimationPreset.wants.
-                ease: preset == element.animation.preset ? null : preset.wants))
+                // The curve the preset was designed around, and the way it
+                // cuts where it cuts -- and only where the preset is actually
+                // changing: re-laying the keyframes for some other reason
+                // must not quietly undo numbers somebody chose. See
+                // TextAnimationPreset.wants and its effect.
+                ease: preset == element.animation.preset ? null : preset.wants,
+                effect:
+                    preset == element.animation.preset ? null : preset.effect))
         .withBase(track: track)));
     endInteraction();
   }
@@ -1961,6 +1966,178 @@ class CanvasController extends ChangeNotifier {
   /// has said: the same two seconds a chart's uses.
   int get defaultAnimationFrames =>
       math.max(2, (_document.frameRate * chartAnimationSeconds).round());
+
+  /// elementAnimationOf is [element]'s own arrival, for the kinds that have
+  /// one, or an empty animation for the kinds that do not.
+  ///
+  /// A switch rather than an interface on CanvasElement: two kinds have this
+  /// and nine do not, and a getter on the base class would be a promise that
+  /// every element can be animated this way -- which a line, a background or
+  /// a chart cannot, each for its own reason.
+  static ElementAnimation elementAnimationOf(CanvasElement element) =>
+      switch (element) {
+        ShapeElement e => e.animation,
+        ImageElement e => e.animation,
+        _ => const ElementAnimation(),
+      };
+
+  /// animates is whether [element] is one of the kinds this applies to.
+  static bool animates(CanvasElement element) =>
+      element is ShapeElement || element is ImageElement;
+
+  static CanvasElement _withElementAnimation(
+          CanvasElement element, ElementAnimation animation) =>
+      switch (element) {
+        ShapeElement e => e.copyWith(animation: animation),
+        ImageElement e => e.copyWith(animation: animation),
+        _ => element,
+      };
+
+  /// applyElementAnimation puts an arrival on a shape or a picture and lays
+  /// the pair of keyframes that runs it.
+  ///
+  /// The text element's [applyTextAnimation], for the kinds that have no
+  /// words -- deliberately the same rules, because they are the same
+  /// keyframes on the same timeline: whatever is already laid down wins, the
+  /// Length setting is for laying a new one down, and choosing None takes the
+  /// keyframes away with it.
+  void applyElementAnimation(
+      CanvasElement element, ElementAnimationPreset preset,
+      {int? length}) {
+    if (!animates(element)) return;
+    beginInteraction();
+    var was = elementAnimationOf(element);
+
+    if (preset == ElementAnimationPreset.none) {
+      var track = element.track;
+      var without = track == null
+          ? null
+          : ElementTrack([
+              for (var key in track.keys)
+                if (!key.values.containsKey(KeyframeChannel.reveal)) key,
+            ]);
+      replaceElement(
+          _withElementAnimation(element, was.copyWith(preset: preset)).withBase(
+              track: without == null || without.keys.isEmpty ? null : without,
+              clearTrack: without == null || without.keys.isEmpty));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds));
+    }
+
+    var (wasAt, wasFor) = elementAnimationSpan(element);
+    var from = wasAt ?? _frame.clamp(0, document.frames - 2);
+    var span = wasFor ??
+        length ??
+        (was.length > 0 ? was.length : defaultAnimationFrames);
+    span = math.max(1, span == 0 ? defaultAnimationFrames : span);
+    if (document.frames - 1 < from + span) {
+      document = document.copyWith(frames: from + span + 1);
+    }
+    var to = from + span;
+    if (to <= from) {
+      from = 0;
+      to = document.frames - 1;
+    }
+
+    var track = element.track ?? ElementTrack.empty;
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.reveal)) {
+        track = track.withoutFrame(key.frame);
+      }
+    }
+    track = track
+        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
+        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+
+    // The preset's own curve and its own way of cutting, and only where the
+    // preset is actually changing -- re-laying the keyframes for some other
+    // reason must not quietly undo numbers somebody has set. Build up and
+    // Break apart are the same motion and differ only in these, so a preset
+    // that did not carry them would be a name with nothing behind it.
+    var changing = preset != was.preset;
+    apply(document.withElement(_withElementAnimation(
+            element,
+            was.copyWith(
+                preset: preset,
+                ease: changing ? preset.wants : null,
+                effect: changing ? preset.effect : null))
+        .withBase(track: track)));
+    endInteraction();
+  }
+
+  /// elementAnimationSpan is where [element]'s arrival sits on the timeline:
+  /// the frame it starts on and how many frames it takes. See
+  /// textAnimationSpan, which reads the same channel for the same reasons.
+  (int?, int?) elementAnimationSpan(CanvasElement element) {
+    int? from;
+    int? to;
+    for (var key in element.track?.keys ?? const <Keyframe>[]) {
+      if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+      from = from == null ? key.frame : math.min(from, key.frame);
+      to = to == null ? key.frame : math.max(to, key.frame);
+    }
+    if (from == null || to == null || to <= from) return (from, null);
+    return (from, to - from);
+  }
+
+  /// applyElementExit is the way out for a shape or a picture, on its own
+  /// pair of keyframes at the end of the timeline. See applyTextExit.
+  void applyElementExit(CanvasElement element, ElementAnimationPreset preset) {
+    if (!animates(element)) return;
+    beginInteraction();
+    var was = elementAnimationOf(element);
+
+    var track = element.track ?? ElementTrack.empty;
+    if (preset == ElementAnimationPreset.none) {
+      var without = track;
+      for (var key in track.keys) {
+        if (key.values.containsKey(KeyframeChannel.close)) {
+          without = without.withoutFrame(key.frame);
+        }
+      }
+      replaceElement(_withElementAnimation(element, was.copyWith(exit: preset))
+          .withBase(
+              track: without.keys.isEmpty ? null : without,
+              clearTrack: without.keys.isEmpty));
+      endInteraction();
+      return;
+    }
+
+    var document = _document;
+    if (!document.isAnimated) {
+      document = document.copyWith(
+          frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
+    }
+
+    int? wasFrom;
+    int? wasTo;
+    for (var key in track.keys) {
+      if (!key.values.containsKey(KeyframeChannel.close)) continue;
+      wasFrom = wasFrom == null ? key.frame : math.min(wasFrom, key.frame);
+      wasTo = wasTo == null ? key.frame : math.max(wasTo, key.frame);
+    }
+
+    var span = was.length > 0 ? was.length : defaultAnimationFrames;
+    var to = wasTo ?? document.frames - 1;
+    var entranceEnds = _afterEntrance(track);
+    var from = wasFrom != null && wasTo != null && wasTo > wasFrom
+        ? wasFrom
+        : math.max(entranceEnds + 1, to - span);
+    if (from >= to) from = math.max(0, to - 1);
+
+    track = _withClosingBand(track, from, to);
+
+    apply(document.withElement(
+        _withElementAnimation(element, was.copyWith(exit: preset))
+            .withBase(track: track)));
+    endInteraction();
+  }
 
   /// applyTextExit is the way out, on its own pair of keyframes at the end of
   /// the timeline. See applyChartExit.

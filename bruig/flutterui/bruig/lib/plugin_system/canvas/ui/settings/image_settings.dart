@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
@@ -600,10 +601,49 @@ List<Widget> imageSettings(
       ]),
     // "Border", not "Frame". Frame is now the shape the picture is cut to,
     // and one word for the outline round a rectangle and for the rectangle
-    // being a circle is a word doing two jobs.
+    // being a circle is a word doing two jobs. The background is the colour
+    // behind the picture -- what shows through where the picture does not
+    // reach, which is wherever there is padding or the fit is not a cover.
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        label: "Border"),
+        label: "Background and Border",
+        fillLabel: "Background",
+        onPadding: (box) => write(grownForPadding(e, box))),
+    // How it arrives, in a section of its own like a headline's.
+    boxed(
+        context,
+        elementAnimationSection(controller, e, e.animation,
+            (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
+}
+
+/// grownForPadding gives [e] its new padding and grows its box to match, so the room
+/// is added *around* the picture rather than taken out of it.
+///
+/// Padding that shrinks the drawing area is right for words -- a box with
+/// room round the type is what padding means there, and the words reflow. A
+/// picture cannot reflow: told to cover a box that has become shorter, it
+/// keeps its proportions and crops, so asking for a little room along the
+/// bottom quietly cut the top and bottom off the photograph. What somebody
+/// asking for padding on a picture wants is a mount around it.
+///
+/// Worked out from where the picture is drawn now rather than from the change
+/// in the numbers, so it does not matter how many times this is called while
+/// a field is dragged: the picture's own rectangle is what stays put, and the
+/// box is whatever surrounds it.
+ImageElement grownForPadding(ImageElement e, BoxSpec box) {
+  var inner = e.box.inner(e.bounds);
+  if (inner.width <= 0 || inner.height <= 0) return e.copyWith(box: box);
+  var grown = Rect.fromLTRB(
+    inner.left - box.padLeft,
+    inner.top - box.padTop,
+    inner.right + box.padRight,
+    inner.bottom + box.padBottom,
+  );
+  return e.copyWith(box: box).withBase(
+      x: grown.left,
+      y: grown.top,
+      width: grown.width,
+      height: grown.height) as ImageElement;
 }
 
 /// boxed draws a rule around a section and leaves a gap after it.

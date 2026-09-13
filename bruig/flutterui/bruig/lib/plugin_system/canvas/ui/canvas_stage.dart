@@ -717,7 +717,7 @@ class CanvasStageState extends State<CanvasStage> {
     var bounds = _selectionBounds;
     if (bounds == null) return null;
 
-    var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
+    var inner = iconRoom(e.box.inner(e.bounds), e.icon).$2;
     var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
         frame: controller.frame, images: controller.images);
 
@@ -768,7 +768,7 @@ class CanvasStageState extends State<CanvasStage> {
           controller.selection.contains(into.id);
       if (!shown) continue;
 
-      var inner = iconRoom(e.bounds.deflate(e.box.padding), e.icon).$2;
+      var inner = iconRoom(e.box.inner(e.bounds), e.icon).$2;
       var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
           frame: controller.frame);
       out.add(FlowLine(
@@ -1278,7 +1278,7 @@ class CanvasStageState extends State<CanvasStage> {
     var image = controller.images.original(picture.assetId);
     if (image == null) return;
 
-    var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
+    var inner = picture.box.inner(picture.boundsAt(controller.frame));
     var size = Size(image.width.toDouble(), image.height.toDouble());
     var placement = placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);
@@ -1316,7 +1316,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// _framingPlacement is where the picture is drawn right now, asked of the
   /// same code that draws it.
   ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
-    var inner = e.boundsAt(controller.frame).deflate(e.box.padding);
+    var inner = e.box.inner(e.boundsAt(controller.frame));
     if (inner.width <= 0 || inner.height <= 0) return null;
     return placeImage(
         Size(image.width.toDouble(), image.height.toDouble()), inner, e.fit,
@@ -1344,7 +1344,7 @@ class CanvasStageState extends State<CanvasStage> {
           image,
           whole,
           dst,
-          e.boundsAt(controller.frame).deflate(e.box.padding),
+          e.box.inner(e.boundsAt(controller.frame)),
           e.rotationAt(controller.frame) * math.pi / 180);
     }
     return null;
@@ -1509,7 +1509,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (id == null || _preview == null) return null;
     var picture = document.elementById(id);
     if (picture is! ImageElement) return null;
-    var inner = picture.boundsAt(controller.frame).deflate(picture.box.padding);
+    var inner = picture.box.inner(picture.boundsAt(controller.frame));
     var size = Size(_preview!.width.toDouble(), _preview!.height.toDouble());
     return placeImage(size, inner, picture.fit,
         crop: picture.crop, framing: picture.framing);

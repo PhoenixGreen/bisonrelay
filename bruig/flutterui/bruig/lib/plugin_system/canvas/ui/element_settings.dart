@@ -71,7 +71,8 @@ List<Widget> elementSettings(
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),
-      ShapeElement e => shapeSettings(e, write, begin, commit),
+      ShapeElement e =>
+        shapeSettings(context, controller, e, write, begin, commit),
       LineElement e => lineSettings(controller, e, write, begin, commit),
       ImageElement e =>
         imageSettings(context, controller, e, write, begin, commit),

@@ -175,6 +175,122 @@ void main() {
     });
   });
 
+  group("a highlight band", () {
+    /// _band is the rectangle the highlight covers, read off the pixels: a
+    /// band in a colour nothing else on the canvas uses.
+    Future<(Rect?, Set<int>)> bandInk(TextAlignSpec align,
+        {double radius = 0}) async {
+      const size = Size(400, 120);
+      var element = TextElement(
+        const ElementBase(id: "t", x: 50, y: 20, width: 300, height: 80),
+        text: "Marked",
+        textSpec: TextSpec(
+            fontSize: 26, color: const Color(0xFFFFFFFF), align: align),
+        parts: [
+          TextPart(
+            from: 1,
+            to: 1,
+            highlight: PartHighlight(
+                color: const Color(0xFF0040FF),
+                padLeft: 20,
+                padRight: 20,
+                padTop: 8,
+                padBottom: 8,
+                radius: radius),
+          ),
+        ],
+      );
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(400, 120);
+      var bytes = (await image.toByteData())!;
+      Rect? found;
+      var on = <int>{};
+      for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+        var p = bytes.getUint32(i);
+        var r = (p >> 24) & 0xFF, g = (p >> 16) & 0xFF, b = (p >> 8) & 0xFF;
+        if (!(b > 0x80 && b > r + 0x40 && b > g + 0x40)) continue;
+        var at = i ~/ 4;
+        on.add(at);
+        var point =
+            Rect.fromLTWH((at % 400).toDouble(), (at ~/ 400).toDouble(), 1, 1);
+        found = found == null ? point : found.expandToInclude(point);
+      }
+      image.dispose();
+      picture.dispose();
+      return (found, on);
+    }
+
+    Future<Rect?> band(TextAlignSpec align, {double radius = 0}) async =>
+        (await bandInk(align, radius: radius)).$1;
+
+    testWidgets("keeps its padding whichever way the words are aligned",
+        (tester) async {
+      // The box clips what does not fit in it, and on a left-aligned line the
+      // words start at the box's own edge -- so the band's left padding was
+      // clipped away and its rounded corners came out square. Centred there
+      // is slack either side and the band was whole, which is why this read
+      // as an alignment bug.
+      late Rect? left;
+      late Rect? centre;
+      late Rect? right;
+      await tester.runAsync(() async {
+        left = await band(TextAlignSpec.left);
+        centre = await band(TextAlignSpec.center);
+        right = await band(TextAlignSpec.right);
+      });
+      expect(left, isNotNull);
+      expect(centre, isNotNull);
+      expect(right, isNotNull);
+      // The element runs from 50 to 350 with the box's own 8 of padding
+      // inside that, so the words run from 58 to 342. The band's padding is
+      // 20, so a band that has kept it reaches 38 and 362 -- outside the
+      // box, which is where padding on the outside of the letters has to go.
+      var l = left!, c = centre!, r = right!;
+      expect(l.left, closeTo(38, 2),
+          reason: "the left padding reaches past the box's own edge");
+      expect(r.right, closeTo(362, 2),
+          reason: "and the right padding does at the other end");
+      // The same band wherever it is: the padding does not depend on which
+      // way the line is aligned.
+      expect(l.width, closeTo(c.width, 2));
+      expect(r.width, closeTo(c.width, 2));
+    });
+
+    testWidgets("and its corners are rounded, not cut off", (tester) async {
+      late (Rect?, Set<int>) square;
+      late (Rect?, Set<int>) rounded;
+      await tester.runAsync(() async {
+        square = await bandInk(TextAlignSpec.left);
+        rounded = await bandInk(TextAlignSpec.left, radius: 20);
+      });
+      // The same ground either way: a radius takes the corners out of the
+      // band, it does not take the padding off it.
+      var flat = square.$1!, round = rounded.$1!;
+      expect(round.width, closeTo(flat.width, 2));
+      expect(round.height, closeTo(flat.height, 2));
+
+      /// at is whether the band covers a point, counted in whole pixels.
+      bool at((Rect?, Set<int>) ink, double x, double y) =>
+          ink.$2.contains((y.round() * 400) + x.round());
+
+      // The left corner is the one that was being cut square by the box's
+      // own clip: a band pushed up against the edge had nowhere to round
+      // into. Rounded, that corner is empty; square, it is filled.
+      expect(at(square, flat.left + 1, flat.top + 1), isTrue,
+          reason: "a square band fills its corner");
+      expect(at(rounded, round.left + 1, round.top + 1), isFalse,
+          reason: "a rounded one does not");
+      expect(at(rounded, round.left + 1, round.center.dy), isTrue,
+          reason: "but it still reaches the edge between the corners");
+    });
+  });
+
   group("the echo", () {
     Future<int> ink(TextAnimation animation) async {
       const size = Size(400, 200);

@@ -362,26 +362,36 @@ void main() {
           reason: "the letters outside the part are exactly as they were");
     });
 
-    testWidgets("draw the outline writes the outline before the fill",
+    testWidgets("draw the outline leaves the words where they are",
         (tester) async {
-      // It was an ordinary fade with a different name: the motion did
-      // nothing at all, so an outline preset on text with no outline of its
-      // own had nothing to draw.
+      // It is a mark drawn *on* the words, like an underline: they are there
+      // from the first frame and the stroke arrives over them. Hiding them
+      // and writing them on turned the whole element into a wipe.
+      //
+      // The stroke is the mark's own colour here, since this type has no
+      // outline of its own -- see outlineSpecFor, which invents neither the
+      // colour nor the stroke.
       late int early;
       late int done;
+      late int noColour;
       await tester.runAsync(() async {
-        Future<int> at(int frame) async => _lit(await _ink(
+        Future<int> at(int frame, {Color? mark}) async => _lit(await _ink(
             _headline(
-                animation: const TextAnimation(
+                animation: TextAnimation(
                     preset: TextAnimationPreset.strokeOn,
-                    ease: ChartEase.linear)),
+                    ease: ChartEase.linear,
+                    draw: TextDrawSpec(color: mark))),
             frame));
-        early = await at(3);
-        done = await at(10);
+        early = await at(3, mark: const Color(0xFF00FF00));
+        done = await at(10, mark: const Color(0xFF00FF00));
+        noColour = await at(3);
       });
-      expect(early, greaterThan(0), reason: "the outline is drawn first");
+      expect(early, greaterThan(0), reason: "the words are already there");
       expect(done, greaterThan(early),
-          reason: "and filled in after: $early then $done");
+          reason: "and the stroke arrives over them: $early then $done");
+      // And with no colour given for it there is no stroke: the words, and
+      // nothing else.
+      expect(noColour, lessThan(early));
     });
 
     testWidgets("an outline draws on text that has parts", (tester) async {

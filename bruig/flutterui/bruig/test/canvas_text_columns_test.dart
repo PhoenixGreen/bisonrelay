@@ -1,6 +1,9 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -84,18 +87,26 @@ void main() {
       }
     });
 
+    test("and the tidying is on to begin with", () {
+      // A column top that begins with a blank line is a fault every time it
+      // happens, so the setting is there to turn the tidying off rather than
+      // to ask for it.
+      expect(const TextColumns().noBlankStart, isTrue);
+    });
+
     test("and the setting survives being saved on a one-column box", () {
       // It is asked of a box with one column too -- a chain of boxes is the
       // same question asked of boxes -- and the columns were only written out
       // when there was more than one of them, so it was forgotten every time
-      // the canvas was opened.
+      // the canvas was opened. Turned *off* now, since on is the default and
+      // off is the thing that would be forgotten.
       var element = TextElement(
         const ElementBase(id: "t", width: 400, height: 200),
         text: "Words",
-        columns: const TextColumns(noBlankStart: true),
+        columns: const TextColumns(noBlankStart: false),
       );
       var back = elementFromJson(element.toJson()) as TextElement;
-      expect(back.columns.noBlankStart, isTrue);
+      expect(back.columns.noBlankStart, isFalse);
       expect(back.columns.count, 1);
 
       // And a box with nothing to say still writes nothing.
@@ -336,6 +347,65 @@ void main() {
       // but not another row past it.
       expect(rule - text, lessThan(fontSize * 1.3),
           reason: "the rule ended at $rule and the text at $text");
+    });
+  });
+
+  group("a paragraph in columns arriving", () {
+    /// spread is how far the ink reaches outside the element's own box.
+    Future<int> spread(double reveal) async {
+      const size = Size(800, 600);
+      const box = Rect.fromLTWH(200, 250, 400, 100);
+      var element = TextElement(
+        const ElementBase(id: "t", x: 200, y: 250, width: 400, height: 100),
+        text: "One two three four five six seven eight nine ten",
+        textSpec: const TextSpec(fontSize: 20, color: Color(0xFFFFFFFF)),
+        columns: const TextColumns(count: 3, gap: 16),
+        animation: const TextAnimation(
+            preset: TextAnimationPreset.punch, ease: ChartEase.linear),
+      ).withBase(
+        track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]),
+      );
+
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.drawRect(
+          Offset.zero & size, Paint()..color = const Color(0xFF000000));
+      paintElement(canvas, element, 0,
+          document: CanvasDocument(elements: [element]));
+      var picture = recorder.endRecording();
+      var image = await picture.toImage(800, 600);
+      var bytes = (await image.toByteData())!;
+      var outside = 0;
+      for (var y = 0; y < 600; y++) {
+        for (var x = 0; x < 800; x++) {
+          if (bytes.getUint32(((y * 800) + x) * 4) == 0x000000FF) continue;
+          if (!box.contains(Offset(x.toDouble(), y.toDouble()))) outside++;
+        }
+      }
+      image.dispose();
+      picture.dispose();
+      return outside;
+    }
+
+    testWidgets("is not cut off at the edge of its column", (tester) async {
+      // Each column is clipped to the lines it holds, because every column
+      // draws the same paragraph at a different offset and the clip is what
+      // makes it show its own share. Animated inside that clip, the clip
+      // stayed where the finished text will be while the words moved through
+      // it -- so a punch, a slam or a rotate was cut off at the column edge,
+      // which a one-column box was not. The motion goes round the columns
+      // now, so the clips travel with it.
+      late int early;
+      late int rest;
+      await tester.runAsync(() async {
+        early = await spread(0.2);
+        rest = await spread(1);
+      });
+      expect(rest, 0, reason: "at rest the words are inside their box");
+      expect(early, greaterThan(1000),
+          reason: "twice the size, a fifth of the way through a punch");
     });
   });
 }
