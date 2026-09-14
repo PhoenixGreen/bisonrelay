@@ -3,6 +3,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -143,6 +145,12 @@ List<Widget> chartSettings(
         remember: "chartData",
         trailing: "${e.data.categories.length} rows, "
             "${e.data.series.length} series",
+        // The same Refresh the Data source section carries. This is where
+        // somebody is standing when they want the numbers again -- looking at
+        // them -- and sending them to another section to press it is asking
+        // them to know which section owns the wire.
+        action:
+            sourceRefreshButton(context, controller, e, write, begin, commit),
         initiallyOpen: true,
         children: [
           // The type first. What the numbers are drawn as is the first
@@ -185,6 +193,31 @@ List<Widget> chartSettings(
               writeData(data);
             },
             onCommit: commit,
+            // Where each series comes from, said against the series rather
+            // than in the Data source section: the grid is where somebody is
+            // looking when they wonder. Only the columns the mapping already
+            // has -- reaching a field it has not is a bigger question and
+            // belongs where the mapping is.
+            // What the source has, where the chart's rows are what it is
+            // asked for: typing a coin offers the coins.
+            names: e.source.fromRows
+                ? CanvasRowNames.suggestionsFor(presetById(e.source.preset))
+                : const [],
+            sourceColumns: e.source.on ? e.source.columns : const [],
+            boundTo: e.fromSource.valueColumns,
+            // What the preset says a record carries, so the list is the whole
+            // of what the source has rather than the handful somebody has
+            // mapped -- a coin comparison maps five columns out of twenty
+            // fields. A refresh can only add to it; see _fieldNames.
+            sourceFields: e.source.on
+                ? presetById(e.source.preset)?.fields ?? const []
+                : const [],
+            onBind: (series, column) {
+              begin();
+              write(boundSeries(e, series, column,
+                  presetById(e.source.preset)?.fields ?? const []));
+              commit();
+            },
           ),
           // And how it looks, at the foot of the section that decides what it
           // is: the colours and the weights are about this drawing of these
@@ -287,6 +320,17 @@ List<Widget> chartSettings(
                 onChanged: (v) => write(e.copyWith(xAxisLabel: v)),
                 onCommit: commit,
               ),
+              // Beside the words it shows. A switch rather than emptying the
+              // field, so a chart can be shown without its axis titles and
+              // have them back without anybody typing them again. The tick
+              // values are Axes labels' business, below.
+              if (e.xAxisLabel.isNotEmpty)
+                CanvasToggle(
+                  key: const ValueKey("chartShowXTitle"),
+                  label: "Show",
+                  value: e.showXTitle,
+                  onChanged: (v) => now(e.copyWith(showXTitle: v)),
+                ),
               CanvasTextField(
                 label: "Y label",
                 value: e.yAxisLabel,
@@ -294,6 +338,13 @@ List<Widget> chartSettings(
                 onChanged: (v) => write(e.copyWith(yAxisLabel: v)),
                 onCommit: commit,
               ),
+              if (e.yAxisLabel.isNotEmpty)
+                CanvasToggle(
+                  key: const ValueKey("chartShowYTitle"),
+                  label: "Show",
+                  value: e.showYTitle,
+                  onChanged: (v) => now(e.copyWith(showYTitle: v)),
+                ),
               // The two words naming the axes have their own size and their
               // own distance from the plot. Their own size, because making
               // the figures up the side smaller used to shrink the words with
@@ -350,6 +401,34 @@ List<Widget> chartSettings(
                 value: e.logScale,
                 onChanged: (v) => now(e.copyWith(logScale: v)),
               ),
+              // How finely the value axis is ruled. Zero is the chart's own
+              // judgement, which is right until somebody wants the gridlines
+              // closer together or a taller chart ruled less often.
+              CanvasNumberField(
+                key: const ValueKey("chartAxisSteps"),
+                label: "Lines",
+                value: e.axisSteps.toDouble(),
+                min: 0,
+                max: 40,
+                decimals: 0,
+                width: 54,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(axisSteps: v.round()));
+                },
+                onCommit: commit,
+              ),
+              CanvasHint(e.axisSteps == 0
+                  ? "Lines is how many gridlines rule the value axis. 0 lets "
+                      "the chart decide, which is about five."
+                  : e.logs
+                      ? "On a log axis the lines are powers of ten, so this "
+                          "is how many of them are worth labelling — there "
+                          "is nothing between two decades to move."
+                      : "Near enough, not exactly: the lines have to land on "
+                          "numbers somebody can read, so a chart that cannot "
+                          "give you seven round ones gives six or eight "
+                          "rather than seven awkward ones."),
             ],
             CanvasToggle(
               label: "Values",
@@ -663,44 +742,56 @@ List<Widget> chartSettings(
                 : e.animation.preset.label)
             : (e.animation.closes ? e.animation.exit.label : null),
         children: [
-          CanvasControlGroup(label: "Preset", children: [
-            const CanvasHint(
-                "Choosing one draws the chart on over two seconds and puts a "
-                "keyframe at each end of it on the timeline. Drag those to "
-                "decide how long it takes and when it happens."),
-            const CanvasLineBreak(),
-            for (var preset in ChartAnimationPreset.values)
-              if (e.type.isCircular
-                  ? preset.suitsCircular
-                  : preset.suitsCartesian)
-                CanvasToggle(
-                  label: preset.label,
-                  value: e.animation.preset == preset,
-                  // A press applies it and lays the keyframes together: a
-                  // preset with nothing pinning the reveal channel draws
-                  // exactly what a still chart draws.
-                  onChanged: (_) => controller.applyChartAnimation(e, preset),
-                ),
+          const CanvasHint(
+              "Choosing one draws the chart on over two seconds and puts a "
+              "keyframe at each end of it on the timeline. Drag those to "
+              "decide how long it takes and when it happens — the same two "
+              "keyframes a headline uses, so a chart and the words above it "
+              "can arrive together."),
+          // A dropdown rather than a row of switches, which is what this was.
+          // Switches say "any number of these", and only one of them can be
+          // on; the one that is on is also the hardest to find, since it
+          // looks like the seven that are not. It is one choice out of a
+          // list, which is what a dropdown is for -- and it now reads the
+          // same as every other element's animation section.
+          CanvasControlGroup(label: "Arriving", children: [
+            CanvasDropdown<ChartAnimationPreset>(
+              key: const ValueKey("chartAnimationPreset"),
+              label: "Draws on",
+              value: e.animation.preset,
+              width: 168,
+              options: [
+                for (var preset in ChartAnimationPreset.values)
+                  if (preset == ChartAnimationPreset.none ||
+                      (e.type.isCircular
+                          ? preset.suitsCircular
+                          : preset.suitsCartesian))
+                    (
+                      preset,
+                      preset == ChartAnimationPreset.none
+                          ? "None"
+                          : preset.label
+                    ),
+              ],
+              // Choosing applies it and lays the keyframes together: a preset
+              // with nothing pinning the reveal channel draws exactly what a
+              // still chart draws.
+              onChanged: (preset) => controller.applyChartAnimation(e, preset),
+            ),
           ]),
           // The way out, using the same presets played backwards. A second
           // list of "fade out, shrink away, unwipe" would be this list
           // reversed and two lists to keep in step.
-          CanvasControlGroup(label: "Closing", children: [
-            const CanvasHint(
-                "The same presets, in reverse, on a second pair of keyframes "
-                "at the end of the timeline — so the chart arrives, sits "
-                "there, and leaves. The two ends of each pair are joined on "
-                "the strip below: drag the bar to move both, or either mark "
-                "to change how long it takes."),
-            const CanvasLineBreak(),
-            // A list rather than the row of switches above it. The same eight
-            // labels twice on one panel is a panel where "Grow" means two
-            // different things depending on which half of it you are looking
-            // at.
+          // Always offered, unlike the text element's, which hides this until
+          // something arrives. A chart that is there from the first frame and
+          // leaves at the end is an ordinary thing to want, and it was
+          // possible here before.
+          CanvasControlGroup(label: "Leaving", children: [
             CanvasDropdown<ChartAnimationPreset>(
-              label: "On the way out",
+              key: const ValueKey("chartAnimationExit"),
+              label: "Goes off",
               value: e.animation.exit,
-              width: 148,
+              width: 168,
               options: [
                 for (var preset in ChartAnimationPreset.values)
                   if (preset == ChartAnimationPreset.none ||
@@ -727,20 +818,55 @@ List<Widget> chartSettings(
                 onChanged: (v) => now(e.copyWith(
                     animation: e.animation.copyWith(exitInOrder: v))),
               ),
+            if (e.animation.closes)
+              const CanvasHint(
+                  "A second pair of keyframes at the end of the timeline, "
+                  "so the chart arrives, sits there, and leaves. The two "
+                  "ends of each pair are joined on the strip below: drag "
+                  "the bar to move both, or either mark to change how long "
+                  "it takes."),
             if (e.animation.closes && e.animation.exit.staggers)
               CanvasHint(e.animation.exitInOrder
-                  ? "The first bar goes first and the last goes last, so the "
-                      "chart empties the way it filled."
+                  ? "The first bar goes first and the last goes last, so "
+                      "the chart empties the way it filled."
                   : "The last bar goes first, which is the entrance played "
                       "backwards — the chart unwinds. Switch it on above to "
                       "empty it from the front instead."),
           ]),
           if (e.animation.on || e.animation.closes)
             CanvasControlGroup(label: "Timing", children: [
+              CanvasNumberField(
+                key: const ValueKey("chartAnimationLength"),
+                label: "Length",
+                min: 1,
+                max: 3600,
+                decimals: 0,
+                width: 62,
+                value: (e.animation.length > 0
+                        ? e.animation.length
+                        : controller.defaultAnimationFrames)
+                    .toDouble(),
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(
+                      animation: e.animation.copyWith(length: v.round())));
+                },
+                onCommit: commit,
+              ),
+              CanvasDropdown<ChartEase>(
+                key: const ValueKey("chartAnimationEase"),
+                label: "Curve",
+                value: e.animation.ease,
+                width: 118,
+                options: [for (var c in ChartEase.values) (c, c.label)],
+                onChanged: (v) =>
+                    now(e.copyWith(animation: e.animation.copyWith(ease: v))),
+              ),
               // Only where there is more than one thing to space out. A wipe
               // and a sweep are one edge crossing everything at once.
               if (e.animation.preset.staggers || e.animation.exit.staggers)
                 CanvasNumberField(
+                  key: const ValueKey("chartAnimationGap"),
                   label: "Gap",
                   min: 0,
                   max: 4,
@@ -753,24 +879,18 @@ List<Widget> chartSettings(
                   },
                   onCommit: commit,
                 ),
+              const CanvasHint(
+                  "Length is how many frames a new arrival or exit is laid "
+                  "down with. Once it is on the timeline the keyframes are "
+                  "where it is: changing this does not move them, and neither "
+                  "does trying another preset."),
               if (e.animation.preset.staggers || e.animation.exit.staggers)
                 const CanvasHint(
-                    "How long after one starts before the next does, as a "
-                    "share of one item's own movement. 1 is strictly one "
-                    "after another; below 1 they overlap; above 1 leaves a "
-                    "pause between them. It is shared by the way in and the "
-                    "way out."),
-              CanvasDropdown<ChartEase>(
-                label: "End curve",
-                value: e.animation.ease,
-                width: 118,
-                options: [for (var c in ChartEase.values) (c, c.label)],
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(animation: e.animation.copyWith(ease: v)));
-                  commit();
-                },
-              ),
+                    "Gap is how long after one bar starts before the next "
+                    "does, as a share of one bar's own movement. 1 is "
+                    "strictly one after another; below 1 they overlap; above "
+                    "1 leaves a pause between them. It is shared by the way "
+                    "in and the way out."),
             ]),
         ],
       ),

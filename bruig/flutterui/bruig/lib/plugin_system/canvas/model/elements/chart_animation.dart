@@ -239,6 +239,17 @@ class ChartAnimation {
 
   final ChartEase ease;
 
+  /// length is how many frames a new arrival or exit is laid down with, or 0
+  /// for the usual two seconds.
+  ///
+  /// A setting rather than a reading: the keyframes on the timeline are where
+  /// the animation actually is, and this is what a new one is laid down with.
+  /// Dragging those keyframes does not write back here -- the number somebody
+  /// typed is what they asked for, and a field that changed itself every time
+  /// the timeline was nudged would be a setting that could not be relied on.
+  /// See TextAnimation.length, which this is deliberately identical to.
+  final int length;
+
   const ChartAnimation({
     this.preset = ChartAnimationPreset.none,
     this.exit = ChartAnimationPreset.none,
@@ -246,6 +257,7 @@ class ChartAnimation {
     this.flipOrder = false,
     this.gap = 0.55,
     this.ease = ChartEase.easeOut,
+    this.length = 0,
   });
 
   bool get on => preset != ChartAnimationPreset.none;
@@ -269,6 +281,7 @@ class ChartAnimation {
     bool? flipOrder,
     double? gap,
     ChartEase? ease,
+    int? length,
   }) =>
       ChartAnimation(
         preset: preset ?? this.preset,
@@ -277,6 +290,7 @@ class ChartAnimation {
         flipOrder: flipOrder ?? this.flipOrder,
         gap: gap ?? this.gap,
         ease: ease ?? this.ease,
+        length: length ?? this.length,
       );
 
   /// progressAt is how far item [index] of [count] has got when the whole
@@ -336,6 +350,7 @@ class ChartAnimation {
         if (closes && exitInOrder) "exitOrder": true,
         "gap": gap,
         "ease": ease.name,
+        if (length > 0) "length": length,
       };
 
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
@@ -344,5 +359,6 @@ class ChartAnimation {
         exitInOrder: jsonBool(json["exitOrder"], false),
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
         ease: ChartEase.fromName(json["ease"] as String?),
+        length: jsonInt(json["length"], 0).clamp(0, 100000),
       );
 }

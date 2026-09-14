@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 
 // chart_data.dart is the numbers a chart is drawn from: the series, the
@@ -127,11 +128,22 @@ class ChartSeries {
   /// nothing to overlay on it.
   final ChartType? type;
 
+  /// numbers writes this series' values differently from the rest of the
+  /// chart, or null to write them the way the chart does.
+  ///
+  /// An override for the same reason [type] is one. A chart of a price beside
+  /// a market cap is two series whose figures are four orders of magnitude
+  /// apart, and one style across both writes either "0.0B" against the price
+  /// or "18,400,000,000" against the cap. The axis keeps the chart's own
+  /// style, since there is one axis and it cannot be two things.
+  final ChartNumbers? numbers;
+
   const ChartSeries({
     required this.name,
     required this.color,
     required this.values,
     this.type,
+    this.numbers,
   });
 
   /// typeIn is how this series is actually drawn on a chart of [chartType].
@@ -142,13 +154,16 @@ class ChartSeries {
     Color? color,
     List<double>? values,
     ChartType? type,
+    ChartNumbers? numbers,
     bool followChart = false,
+    bool writtenLikeChart = false,
   }) =>
       ChartSeries(
         name: name ?? this.name,
         color: color ?? this.color,
         values: values ?? this.values,
         type: followChart ? null : (type ?? this.type),
+        numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
       );
 
   Map<String, dynamic> toJson() => {
@@ -156,6 +171,7 @@ class ChartSeries {
         "color": colorToJson(color),
         "values": values,
         if (type != null) "type": type!.name,
+        if (numbers != null) "numbers": numbers!.toJson(),
       };
 
   factory ChartSeries.fromJson(Map<String, dynamic> json, int index) {
@@ -166,6 +182,9 @@ class ChartSeries {
           json["color"], chartPalette[index % chartPalette.length]),
       type: json["type"] is String
           ? ChartType.fromName(json["type"] as String?)
+          : null,
+      numbers: json["numbers"] is Map<String, dynamic>
+          ? ChartNumbers.fromJson(json["numbers"] as Map<String, dynamic>)
           : null,
       values: raw is List
           ? [for (var v in raw) v is num ? v.toDouble() : 0.0]

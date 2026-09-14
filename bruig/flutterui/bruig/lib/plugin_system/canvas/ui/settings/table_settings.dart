@@ -1,5 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
@@ -26,10 +28,22 @@ List<Widget> tableSettings(
           label: "Table",
           remember: "tableCells",
           trailing: "${e.rows.length} rows, ${e.columnCount} columns",
+          // The same Refresh the Data section carries. This is where somebody
+          // is standing when they want the numbers again -- looking at the
+          // cells -- and sending them to another section to press it is
+          // asking them to know which section owns the wire.
+          action:
+              sourceRefreshButton(context, controller, e, write, begin, commit),
           initiallyOpen: true,
           children: [
             TableDataEditor(
               rows: e.rows,
+              // What the source has, where its rows are what it is asked
+              // for: typing a coin offers the coins. See DataPreset.rowNames.
+              names: e.source.fromRows
+                  ? CanvasRowNames.suggestionsFor(presetById(e.source.preset))
+                  : const [],
+              namesColumn: e.source.matchColumn < 0 ? 0 : e.source.matchColumn,
               onChanged: (rows) {
                 begin();
                 write(e.copyWith(rows: rows));
@@ -334,6 +348,11 @@ List<Widget> tableSettings(
           ],
         ),
       ),
+      // How it arrives, in a section of its own like a headline's.
+      boxed(
+          context,
+          elementAnimationSection(controller, e, e.animation,
+              (a) => write(e.copyWith(animation: a)), begin, commit)),
     ];
 
 /// _tableRuleName says what a rule picks out, for its own heading and for the

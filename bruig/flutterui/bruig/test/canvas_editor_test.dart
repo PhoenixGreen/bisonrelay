@@ -2684,6 +2684,73 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets("Refresh is on the Table section as well as the Data one",
+        (tester) async {
+      // Where somebody is standing when they want the numbers again: looking
+      // at the cells. Sending them to another section to press the same
+      // button is asking them to know which section owns the wire.
+      var controller = await panel(tester);
+      // Nothing to read yet, so no button: a heading does not carry one that
+      // could never do anything.
+      expect(find.byTooltip("Read the data and put it in the table"),
+          findsNothing);
+
+      controller.replaceElement(tableIn(controller).copyWith(
+          source: const DataSource(kind: DataKind.file)
+              .copyWith(where: "/nowhere/none.json")));
+      await tester.pumpAndSettle();
+
+      // One on the Table section and one on the Data section, both saying
+      // the same thing.
+      expect(find.byTooltip("Read the data and put it in the table"),
+          findsNWidgets(2));
+    });
+
+    testWidgets("typing a coin offers the coins", (tester) async {
+      // Only where the rows are what the source is asked for, and only in the
+      // column that names one: a suggestion against a column of numbers is a
+      // list nobody wants over their typing.
+      var controller = await panel(tester);
+      controller.replaceElement(tableIn(controller).copyWith(
+        rows: const [
+          ["Coin", "Price"],
+          ["", "0"],
+        ],
+        source: coinGeckoMarkets
+            .applyTo(const DataSource(), coinGeckoMarkets.choices.first.$1)
+            .copyWith(fromRows: true),
+      ));
+      await tester.pumpAndSettle();
+
+      var toGrid = find.byTooltip("Edit the cells in a grid");
+      if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
+
+      // The empty cell under the Coin heading.
+      var cells = find.byType(CanvasGridCell);
+      expect(cells, findsWidgets);
+      var named = tester
+          .widgetList<CanvasGridCell>(cells)
+          .where((cell) => cell.suggestions.isNotEmpty)
+          .toList();
+      expect(named, isNotEmpty, reason: "the column that names a row");
+      expect(named.first.suggestions, contains("Decred"));
+      expect(named.length, 1,
+          reason: "one cell: the body of the match column, not its heading "
+              "and not the column of prices");
+    });
+
+    testWidgets("and a table of typed numbers offers none", (tester) async {
+      var controller = await panel(tester);
+      await tester.pumpAndSettle();
+      var toGrid = find.byTooltip("Edit the cells in a grid");
+      if (toGrid.evaluate().isNotEmpty) await press(tester, toGrid);
+      for (var cell
+          in tester.widgetList<CanvasGridCell>(find.byType(CanvasGridCell))) {
+        expect(cell.suggestions, isEmpty);
+      }
+      expect(controller.document.elements, hasLength(1));
+    });
+
     testWidgets("a row and a column can be moved", (tester) async {
       // Buttons rather than dragging: a row added at the end and wanted
       // second is one press away either way, and a drag inside a grid of text
@@ -2774,8 +2841,17 @@ void main() {
       await panel(tester);
       // Presets first of all: start from a design somebody already made, or
       // start from nothing.
-      expect(sections(tester),
-          ["Presets", "Table", "Data", "Order", "Special cells", "Style"]);
+      expect(sections(tester), [
+        "Presets",
+        "Table",
+        "Data",
+        "Order",
+        "Special cells",
+        "Style",
+        // And last, how it arrives -- a handful of choices made once and
+        // then left alone, like a headline's.
+        "Animation",
+      ]);
     });
 
     testWidgets("the two sets of type controls fold away inside Style",
@@ -3741,7 +3817,7 @@ void main() {
     /// -- so a test cannot assume it starts closed and cannot simply tap the
     /// heading, which would shut one a previous test left open.
     Future<void> openAnimation(WidgetTester tester) async {
-      if (find.text("PRESET").evaluate().isNotEmpty) return;
+      if (find.text("ARRIVING").evaluate().isNotEmpty) return;
       var heading = find.text("ANIMATION");
       await tester.ensureVisible(heading);
       await tester.pumpAndSettle();
@@ -3806,6 +3882,51 @@ void main() {
           reason: "rather than jumping the playhead back to the start");
     });
 
+    test("and keeps a pose that was put there by hand", () {
+      // Choosing None used to clear the whole track. A chart that had been
+      // moved or faded by keyframe lost all of that for choosing a word on a
+      // dropdown, which is not what None means: it means no arrival.
+      var (controller, chart) = build(frames: 60);
+      addTearDown(controller.dispose);
+      controller.replaceElement(chart.withBase(
+          track: ElementTrack([
+        const Keyframe(frame: 0, dx: -40),
+        const Keyframe(frame: 30),
+      ])));
+
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.grow);
+      var withBoth = chartIn(controller).track!.keys;
+      expect(withBoth.where((k) => k.values.containsKey("reveal")).length, 2,
+          reason: "the arrival is laid beside the pose, not over it");
+      expect(withBoth.first.dx, -40,
+          reason: "and a keyframe that holds both holds both");
+
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.none);
+      var left = chartIn(controller).track!.keys;
+      expect(left.where((k) => k.values.containsKey("reveal")), isEmpty,
+          reason: "only the arrival is taken away");
+      expect(left.first.dx, -40, reason: "the pose is untouched");
+    });
+
+    test("trying another preset leaves the timing where it was put", () {
+      // The Length setting is for laying a new one down. Once it is on the
+      // timeline the keyframes are where somebody has put them, and trying
+      // the next preset in the list must not shove them about.
+      var (controller, chart) = build(frames: 60);
+      addTearDown(controller.dispose);
+
+      controller.applyChartAnimation(chart, ChartAnimationPreset.grow,
+          length: 12);
+      var (from, span) = controller.elementAnimationSpan(chartIn(controller));
+      expect(span, 12);
+
+      controller.applyChartAnimation(
+          chartIn(controller), ChartAnimationPreset.wipe);
+      expect(controller.elementAnimationSpan(chartIn(controller)), (from, 12));
+    });
+
     test("choosing None takes the keyframes away with it", () {
       var (controller, chart) = build(frames: 24);
       addTearDown(controller.dispose);
@@ -3841,17 +3962,30 @@ void main() {
 
       await openAnimation(tester);
 
-      expect(find.text("Grow"), findsOneWidget);
-      expect(find.text("Wipe across"), findsOneWidget);
-      expect(find.text("Sweep round"), findsNothing,
+      // Read off the control rather than off an open menu, the same way the
+      // text element's presets are checked: a dropdown builds the items it
+      // can see.
+      List<String> offered() => [
+            for (var (_, text) in tester
+                .widget<CanvasDropdown<ChartAnimationPreset>>(
+                    find.byKey(const ValueKey("chartAnimationPreset")))
+                .options)
+              text,
+          ];
+
+      expect(offered().first, "None",
+          reason: "the way to have none of it comes first");
+      expect(offered(), contains("Grow"));
+      expect(offered(), contains("Wipe across"));
+      expect(offered(), isNot(contains("Sweep round")),
           reason: "not on a bar chart");
 
       controller.replaceElement(
           (controller.document.elements.single as ChartElement)
               .copyWith(type: ChartType.pie));
       await tester.pumpAndSettle();
-      expect(find.text("Sweep round"), findsOneWidget);
-      expect(find.text("Wipe across"), findsNothing,
+      expect(offered(), contains("Sweep round"));
+      expect(offered(), isNot(contains("Wipe across")),
           reason: "nor a wipe across a circle");
     });
 
@@ -3868,14 +4002,16 @@ void main() {
       controller.applyChartAnimation(chart, ChartAnimationPreset.grow);
       await tester.pumpAndSettle();
       expect(find.text("Gap"), findsOneWidget);
-      expect(find.text("End curve"), findsOneWidget);
+      expect(find.text("Curve"), findsOneWidget);
+      expect(find.text("Length"), findsOneWidget,
+          reason: "and how long it takes, as every other element has");
 
       controller.applyChartAnimation(
           chartIn(controller), ChartAnimationPreset.wipe);
       await tester.pumpAndSettle();
       expect(find.text("Gap"), findsNothing,
           reason: "one edge crossing everything has nothing to space out");
-      expect(find.text("End curve"), findsOneWidget);
+      expect(find.text("Curve"), findsOneWidget);
     });
   });
 
@@ -4818,7 +4954,7 @@ void main() {
       // end it starts from" are different questions, and the list is long
       // enough already.
       var controller = await panel(tester);
-      await open(tester, "ANIMATION", "On the way out");
+      await open(tester, "ANIMATION", "Goes off");
       expect(find.text("In the same order"), findsNothing,
           reason: "there is no way out to order yet");
 
@@ -4957,10 +5093,13 @@ void main() {
       );
       expect(chartIn(controller).data.isEmpty, isTrue);
 
-      await tester.ensureVisible(
-          find.byTooltip("Read the data and put it in the chart"));
+      // Two of them now: the Data source section's and the one on the Table
+      // section, which is where somebody looking at the numbers is standing.
+      var refresh =
+          find.byTooltip("Read the data and put it in the chart").first;
+      await tester.ensureVisible(refresh);
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Read the data and put it in the chart"));
+      await tester.tap(refresh);
       await idle(tester);
 
       var data = chartIn(controller).data;
@@ -4995,23 +5134,33 @@ void main() {
         map: const ChartSourceMap(valueColumns: [1]),
       );
 
-      await tester.ensureVisible(
-          find.byTooltip("Read the data and put it in the chart"));
+      // Two of them now: the Data source section's and the one on the Table
+      // section, which is where somebody looking at the numbers is standing.
+      // This presses the Table section's, which is the one that is *not*
+      // inside the data panel -- so what follows also pins that a refresh
+      // from there leaves the mapping controls able to redraw.
+      var refresh =
+          find.byTooltip("Read the data and put it in the chart").first;
+      await tester.ensureVisible(refresh);
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip("Read the data and put it in the chart"));
+      await tester.tap(refresh);
       await idle(tester);
       expect(chartIn(controller).data.series.single.name, "Supply");
 
-      // Adding the second column redraws from the rows already in hand.
+      // Adding a second series redraws from the rows already in hand. It is a
+      // row per series now rather than a switch per column, so the gesture is
+      // "add one" and it lands on the first column not already drawn.
       await open(tester, "DATA SOURCE");
-      await tester.ensureVisible(find.text("Transactions").first);
+      var add = find.byKey(const ValueKey("chartSeriesAdd"));
+      await tester.ensureVisible(add);
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Transactions").first);
+      await tester.tap(add);
       await tester.pumpAndSettle();
 
       var data = chartIn(controller).data;
       expect([for (var s in data.series) s.name], ["Supply", "Transactions"]);
       expect(data.series[1].values, [7, 9]);
+      expect(chartIn(controller).fromSource.valueColumns, [1, 2]);
     });
   });
 

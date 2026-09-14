@@ -303,7 +303,8 @@ void paintElement(
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintShape(canvas, bounds, e));
     case LineElement e:
-      _paintLine(canvas, _bowed(e, pose));
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => _paintLine(canvas, _bowed(e, pose)));
     case ImageElement e:
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintImage(canvas, bounds, e, images));
@@ -316,14 +317,16 @@ void paintElement(
           // keyframes and is zero for every chart that has none.
           close: pose.values[KeyframeChannel.close] ?? 0);
     case TableElement e:
-      paintTable(canvas, bounds, e, images: images);
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => paintTable(canvas, bounds, e, images: images));
     case ButtonElement e:
       _paintButton(canvas, bounds, e, hovered);
     case BackgroundElement e:
       _paintBackgroundElement(
           canvas, bounds, e, time, frameRate.toDouble(), images);
     case PathElement e:
-      _paintPath(canvas, bounds, e, editing);
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => _paintPath(canvas, bounds, e, editing));
     case TeamElement e:
       _paintTeam(canvas, bounds, e, frame);
     default:

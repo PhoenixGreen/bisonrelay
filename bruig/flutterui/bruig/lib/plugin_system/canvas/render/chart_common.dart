@@ -75,6 +75,19 @@ bool colouredByValue(ChartType type) =>
 /// agree with each other. See ChartNumbers.
 String formatTick(ChartElement e, double v) => e.numbers.format(v);
 
+/// formatSeries prints a value belonging to series [s], which may write its
+/// numbers differently from the rest of the chart.
+///
+/// A price beside a market cap is two series four orders of magnitude apart,
+/// and one style across both writes either "0.0B" against the price or eleven
+/// digits against the cap. Where a series says nothing, it is the chart's own
+/// style -- which is every series on almost every chart. See
+/// ChartSeries.numbers.
+String formatSeries(ChartElement e, int s, double v) {
+  var series = s >= 0 && s < e.data.series.length ? e.data.series[s] : null;
+  return (series?.numbers ?? e.numbers).format(v);
+}
+
 /// formatAxis prints a figure up the side.
 ///
 /// Its own function because it is its own setting, or rather it is the same

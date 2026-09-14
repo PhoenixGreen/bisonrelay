@@ -14,8 +14,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 /// every player of every team, because "which player runs this" is the
 /// question this feature exists to answer and making it a two-step choice --
 /// pick a team, then pick a row -- would be two dropdowns for one decision.
-List<Widget> pathSettings(CanvasController controller, PathElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+List<Widget> pathSettings(
+    BuildContext context,
+    CanvasController controller,
+    PathElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   void now(PathElement next) {
     begin();
     write(next);
@@ -148,6 +153,13 @@ List<Widget> pathSettings(CanvasController controller, PathElement e,
       ),
     ]),
     _pathNodeList(controller, e, relink),
+    // How it arrives, in a section of its own like a headline's. A path that
+    // carries a follower still carries it: this is the line itself coming on,
+    // not the thing travelling along it.
+    boxed(
+        context,
+        elementAnimationSection(controller, e, e.animation,
+            (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }
 

@@ -271,6 +271,19 @@ class ChartElement extends CanvasElement {
   /// switching them off is for is a small chart in a corner that is a shape
   /// rather than a reading.
   final bool showAxisLabels;
+
+  /// showXTitle and showYTitle show or hide the two words naming the axes --
+  /// [xAxisLabel] and [yAxisLabel] -- one at a time.
+  ///
+  /// A switch rather than emptying the field, so the words can be taken off a
+  /// chart and put back without being typed again.
+  ///
+  /// The tick values and the category names are a different question and are
+  /// [showAxisLabels]'s. "The labels on the axes" means those; "the X label"
+  /// means the word underneath them, which is this.
+  final bool showXTitle;
+  final bool showYTitle;
+
   final bool showLegend;
 
   /// showValues prints each number on its own bar or point, which is what
@@ -314,6 +327,19 @@ class ChartElement extends CanvasElement {
   /// is a scale and wants to be round -- so 2.049M on the bar against 2.0M up
   /// the side is a deliberate and useful pairing rather than a mistake.
   final ChartNumbers? axisNumbers;
+
+  /// axisSteps is roughly how many divisions the value axis is ruled into,
+  /// or zero to let the chart decide.
+  ///
+  /// Roughly, because the numbers on an axis have to be round ones: asking
+  /// for seven on a range of 0 to 100 gives eight lines twelve and a half
+  /// apart or five lines twenty apart, and the second is the one anybody can
+  /// read a value off. So this moves the answer rather than fixing it -- ask
+  /// for more and the lines come closer, ask for fewer and they spread out.
+  ///
+  /// On a log axis it means the same thing in decades: how many powers of ten
+  /// are worth labelling before the writing becomes a solid band.
+  final int axisSteps;
 
   /// logScale draws the value axis by decades rather than evenly.
   ///
@@ -380,12 +406,15 @@ class ChartElement extends CanvasElement {
     this.showGrid = true,
     this.showAxes = true,
     this.showAxisLabels = true,
+    this.showXTitle = true,
+    this.showYTitle = true,
     this.showLegend = false,
     this.showValues = false,
     this.gridColor = const Color(0x33FFFFFF),
     this.axisColor = const Color(0x99FFFFFF),
     this.riseColor = const Color(0xFF2FD3A0),
     this.fallColor = const Color(0xFFE85D75),
+    this.axisSteps = 0,
     this.logScale = false,
     this.numbers = const ChartNumbers(),
     this.axisNumbers,
@@ -440,14 +469,32 @@ class ChartElement extends CanvasElement {
   /// just switched it on is looking.
   bool get logs => logScale && type.isCartesian && positiveOnly;
 
-  /// positiveOnly is whether every number in the chart is above zero, which
-  /// is the whole of what a log axis asks of the data.
+  /// showsXTitle and showsYTitle are whether each axis title is actually
+  /// drawn: asked for, not switched off, and with something to say.
+  ///
+  /// Under showAxisLabels, because that switch is "no writing on the axes at
+  /// all" and a title is writing on an axis.
+  bool get showsXTitle => showAxisLabels && showXTitle && xAxisLabel.isNotEmpty;
+  bool get showsYTitle => showAxisLabels && showYTitle && yAxisLabel.isNotEmpty;
+
+  /// positiveOnly is whether a log axis can describe this chart's numbers:
+  /// nothing below zero, and something above it.
+  ///
+  /// A zero is allowed and a negative is not, which is not the same rule
+  /// twice. A negative number is a reading a log axis genuinely cannot show,
+  /// and drawing one anyway would be a chart that lies. A zero is almost
+  /// always a cell nobody has filled in yet -- adding a row to a chart puts
+  /// one in every series, which is what the row *is* until the numbers
+  /// arrive -- and turning the whole scale off for it meant a log chart
+  /// stopped being one the moment a row was added, and came back only after
+  /// every series had been typed into. The zero sits at the bottom of the
+  /// axis, which is where a reading of nothing belongs.
   bool get positiveOnly {
     var any = false;
     for (var series in data.series) {
       for (var v in series.values) {
-        if (v <= 0) return false;
-        any = true;
+        if (v < 0) return false;
+        if (v > 0) any = true;
       }
     }
     // A chart with no numbers in it has nothing to scale, and answering yes
@@ -482,12 +529,15 @@ class ChartElement extends CanvasElement {
     bool? showGrid,
     bool? showAxes,
     bool? showAxisLabels,
+    bool? showXTitle,
+    bool? showYTitle,
     bool? showLegend,
     bool? showValues,
     Color? gridColor,
     Color? axisColor,
     Color? riseColor,
     Color? fallColor,
+    int? axisSteps,
     bool? logScale,
     ChartNumbers? numbers,
     ChartNumbers? axisNumbers,
@@ -525,12 +575,15 @@ class ChartElement extends CanvasElement {
           showGrid: showGrid,
           showAxes: showAxes,
           showAxisLabels: showAxisLabels,
+          showXTitle: showXTitle,
+          showYTitle: showYTitle,
           showLegend: showLegend,
           showValues: showValues,
           gridColor: gridColor,
           axisColor: axisColor,
           riseColor: riseColor,
           fallColor: fallColor,
+          axisSteps: axisSteps,
           logScale: logScale,
           numbers: numbers,
           axisNumbers: axisNumbers,
@@ -572,12 +625,15 @@ class ChartElement extends CanvasElement {
     bool? showGrid,
     bool? showAxes,
     bool? showAxisLabels,
+    bool? showXTitle,
+    bool? showYTitle,
     bool? showLegend,
     bool? showValues,
     Color? gridColor,
     Color? axisColor,
     Color? riseColor,
     Color? fallColor,
+    int? axisSteps,
     bool? logScale,
     ChartNumbers? numbers,
     ChartNumbers? axisNumbers,
@@ -615,12 +671,15 @@ class ChartElement extends CanvasElement {
           showGrid: showGrid ?? this.showGrid,
           showAxes: showAxes ?? this.showAxes,
           showAxisLabels: showAxisLabels ?? this.showAxisLabels,
+          showXTitle: showXTitle ?? this.showXTitle,
+          showYTitle: showYTitle ?? this.showYTitle,
           showLegend: showLegend ?? this.showLegend,
           showValues: showValues ?? this.showValues,
           gridColor: gridColor ?? this.gridColor,
           axisColor: axisColor ?? this.axisColor,
           riseColor: riseColor ?? this.riseColor,
           fallColor: fallColor ?? this.fallColor,
+          axisSteps: axisSteps ?? this.axisSteps,
           logScale: logScale ?? this.logScale,
           numbers: numbers ?? this.numbers,
           // The flag rather than a null, because null is the value being set:
@@ -667,10 +726,13 @@ class ChartElement extends CanvasElement {
         "grid": showGrid,
         "axes": showAxes,
         if (!showAxisLabels) "noAxisLabels": true,
+        if (!showXTitle) "noXTitle": true,
+        if (!showYTitle) "noYTitle": true,
         "legend": showLegend,
         "values": showValues,
         "gridColor": colorToJson(gridColor),
         "axisColor": colorToJson(axisColor),
+        if (axisSteps > 0) "axisSteps": axisSteps,
         if (logScale) "log": true,
         if (numbers.toJson().isNotEmpty) "numbers": numbers.toJson(),
         if (axisNumbers != null) "axisNumbers": axisNumbers!.toJson(),
@@ -720,9 +782,12 @@ class ChartElement extends CanvasElement {
           showGrid: jsonBool(json["grid"], true),
           showAxes: jsonBool(json["axes"], true),
           showAxisLabels: !jsonBool(json["noAxisLabels"], false),
+          showXTitle: !jsonBool(json["noXTitle"], false),
+          showYTitle: !jsonBool(json["noYTitle"], false),
           showLegend: jsonBool(json["legend"], false),
           showValues: jsonBool(json["values"], false),
           gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
+          axisSteps: jsonInt(json["axisSteps"], 0).clamp(0, 40),
           logScale: jsonBool(json["log"], false),
           numbers: jsonSpec(
               json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
@@ -869,6 +934,20 @@ ChartData chartDataFromRows(
   bool headerRow = true,
   String Function(int column)? nameOf,
   List<DateTime?>? when,
+
+  /// keeping is the series as they stand, so what has been decided about how
+  /// each one *looks* survives the numbers being read again.
+  ///
+  /// A refresh brings new values; it is not somebody asking for their colours
+  /// back. Built without this, every refresh put the palette's own colour
+  /// back, forgot a series told to draw as a line over the bars, and forgot
+  /// how its figures were to be written -- so three settings quietly undid
+  /// themselves twice a week, which reads as the settings not working.
+  ///
+  /// Carried by position, which is what a series is here: the i-th of
+  /// [ChartSourceMap.valueColumns]. The name is *not* carried -- it comes
+  /// from the column, and that is the point of mapping one.
+  List<ChartSeries> keeping = const [],
 }) {
   if (map.valueColumns.isEmpty || rows.isEmpty) return const ChartData();
   var body = headerRow ? rows.skip(1).toList() : rows;
@@ -922,8 +1001,12 @@ ChartData chartDataFromRows(
       for (var (i, column) in map.valueColumns.indexed)
         ChartSeries(
           name: header(column),
-          color: chartPalette[i % chartPalette.length],
+          color: i < keeping.length
+              ? keeping[i].color
+              : chartPalette[i % chartPalette.length],
           values: [for (var (_, made) in points) valueIn(made, column)],
+          type: i < keeping.length ? keeping[i].type : null,
+          numbers: i < keeping.length ? keeping[i].numbers : null,
         ),
     ],
   );
@@ -971,7 +1054,8 @@ List<List<String>> thinTo(List<List<String>> rows, int most) {
 /// numbers count as zero rather than stopping the whole thing -- a league
 /// table has a crest column and a form column in it, and picking the wrong one
 /// should give a flat chart that is obviously wrong, not an error.
-ChartData chartDataFromTable(TableElement table, TableLink link) {
+ChartData chartDataFromTable(TableElement table, TableLink link,
+    {List<ChartSeries> keeping = const []}) {
   if (!link.on) return const ChartData();
   return chartDataFromRows(
     table.rows,
@@ -982,5 +1066,6 @@ ChartData chartDataFromTable(TableElement table, TableLink link) {
     // cell: a hidden heading still has a name, and that is what the series
     // should be called.
     nameOf: table.columnName,
+    keeping: keeping,
   );
 }

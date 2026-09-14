@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -5,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_cartesian.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -301,14 +303,115 @@ void main() {
         );
 
     test("it is refused where it cannot mean anything", () {
-      // There is no place on a log axis for zero or a negative number, so
-      // rather than drawing nothing the chart is drawn evenly and the
-      // settings say why.
+      // A negative number is a reading a log axis genuinely cannot show, so
+      // rather than drawing a chart that lies it is drawn evenly and the
+      // settings say why. A zero is different -- see below.
       expect(lineOf([1, 10, 100]).logs, isTrue);
-      expect(lineOf([0, 10, 100]).logs, isFalse, reason: "a zero");
       expect(lineOf([-1, 10]).logs, isFalse, reason: "a negative");
       expect(lineOf([1, 10], log: false).logs, isFalse);
       expect(lineOf(const []).logs, isFalse, reason: "nothing to scale");
+      expect(lineOf([0, 0]).logs, isFalse, reason: "nothing above zero");
+    });
+
+    test("a zero is a row nobody has filled in, not a reason to give up", () {
+      // Adding a row puts a zero in every series. Refusing the scale for it
+      // meant a log chart stopped being one the moment a row was added, and
+      // came back only once every series had been typed into.
+      expect(lineOf([0, 10, 100]).logs, isTrue);
+    });
+
+    test("and the decades still rule the axis with one in the data", () async {
+      // The range has to be taken from the numbers it can describe. Seeded
+      // with the zero it falls back to a linear range, and the scale quietly
+      // stops being a log scale while still calling itself one.
+      var rows = await _pointRows(lineOf([0, 1, 10, 100, 1000]));
+      // The zero sits on the floor; the four decades above it are evenly
+      // spaced, which is what a log axis is.
+      var decades = rows.sublist(1);
+      var gaps = [
+        for (var i = 1; i < decades.length; i++) decades[i - 1] - decades[i],
+      ];
+      for (var gap in gaps) {
+        expect(gap, closeTo(gaps.first, gaps.first.abs() * 0.2),
+            reason: "each decade is the same distance as the last: $rows");
+      }
+    });
+
+    test("how many lines rule it can be asked for", () {
+      var byDefault = axisTicksForTest(0, 100);
+      var few = axisTicksForTest(0, 100, want: 2);
+      var many = axisTicksForTest(0, 100, want: 20);
+      expect(few.length, lessThan(byDefault.length));
+      expect(many.length, greaterThan(byDefault.length));
+
+      // And still round: every line is a whole multiple of the step, which
+      // is what anybody reads a value off.
+      var step = many[1] - many[0];
+      for (var i = 1; i < many.length; i++) {
+        expect(many[i] - many[i - 1], closeTo(step, step * 0.001));
+      }
+    });
+
+    test("and every number typed into it does something", () {
+      // Reported: typing 4, 6, 7, 8 or 9 changed nothing. Rounding the step
+      // to the nearest 1, 2, 2.5 or 5 times a power of ten answers "make the
+      // numbers round" and ignores "give me this many" -- over 0 to 100,
+      // five lines, six, seven, eight and nine all came out as the same six.
+      var counts = [
+        for (var want = 2; want <= 12; want++)
+          axisTicksForTest(0, 100, want: want).length,
+      ];
+      // Never fewer for asking for more.
+      for (var i = 1; i < counts.length; i++) {
+        expect(counts[i], greaterThanOrEqualTo(counts[i - 1]),
+            reason: "asking for more lines gave fewer: $counts");
+      }
+      // And it actually moves: the middle of that range used to be one
+      // answer repeated five times.
+      expect(counts.toSet().length, greaterThan(6),
+          reason: "eleven numbers should not give five answers: $counts");
+      // Most of them land exactly on what was asked for.
+      var exact = 0;
+      for (var want = 2; want <= 12; want++) {
+        if (counts[want - 2] == want) exact++;
+      }
+      expect(exact, greaterThan(5), reason: "$counts");
+    });
+
+    test("without running the axis past the numbers to get there", () {
+      // A big step can always hit a small count by ruling a range of a
+      // hundred up to a thousand. That answers the question and ruins the
+      // chart, so the room it wastes counts against it.
+      for (var want = 2; want <= 12; want++) {
+        var ticks = axisTicksForTest(0, 100, want: want);
+        expect(ticks.last, lessThanOrEqualTo(140),
+            reason: "asked for $want lines and ruled up to ${ticks.last}");
+        expect(ticks.first, 0);
+      }
+    });
+
+    test("and it works on ranges that are not one to a hundred", () {
+      for (var (lo, hi) in [(0.0, 37.0), (0.0, 1.0), (0.0, 2.4e9)]) {
+        var counts = [
+          for (var want = 2; want <= 10; want++)
+            axisTicksForTest(lo, hi, want: want).length,
+        ];
+        expect(counts.toSet().length, greaterThan(4),
+            reason: "$lo..$hi gave $counts");
+        expect(counts.first, lessThan(counts.last));
+      }
+    });
+
+    test("and on a log axis it is how many decades are labelled", () {
+      var all = axisTicksForTest(1, 1e12, want: 20, log: true);
+      var some = axisTicksForTest(1, 1e12, want: 3, log: true);
+      expect(all.length, greaterThan(some.length),
+          reason: "asking for more lines labels more of the decades");
+      // Still powers of ten: there is nothing between two decades to move.
+      for (var tick in some) {
+        var power = math.log(tick) / math.ln10;
+        expect(power, closeTo(power.roundToDouble(), 0.001));
+      }
     });
 
     test("a pie is not drawn on one", () {

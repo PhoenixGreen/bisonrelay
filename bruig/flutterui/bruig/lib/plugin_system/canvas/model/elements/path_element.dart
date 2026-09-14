@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 
 // path_element.dart is a bezier curve, and optionally the route something
@@ -176,6 +177,11 @@ class PathElement extends CanvasElement {
 
   final PathFollow? follow;
 
+  /// animation is how it arrives and leaves. See ElementAnimation -- the same
+  /// two keyframes a chart and a headline use, so everything on the canvas can
+  /// be dragged to arrive together.
+  final ElementAnimation animation;
+
   const PathElement(
     super.base, {
     this.nodes = const [],
@@ -189,6 +195,7 @@ class PathElement extends CanvasElement {
     this.closed = false,
     this.guide = false,
     this.follow,
+    this.animation = const ElementAnimation(),
   });
 
   @override
@@ -494,7 +501,8 @@ class PathElement extends CanvasElement {
       dash: dash,
       closed: closed,
       guide: guide,
-      follow: follow);
+      follow: follow,
+      animation: animation);
 
   PathElement copyWith({
     List<PathNode>? nodes,
@@ -509,6 +517,7 @@ class PathElement extends CanvasElement {
     bool? guide,
     PathFollow? follow,
     bool clearFollow = false,
+    ElementAnimation? animation,
   }) =>
       PathElement(base,
           nodes: nodes ?? this.nodes,
@@ -521,7 +530,8 @@ class PathElement extends CanvasElement {
           dash: dash ?? this.dash,
           closed: closed ?? this.closed,
           guide: guide ?? this.guide,
-          follow: clearFollow ? null : (follow ?? this.follow));
+          follow: clearFollow ? null : (follow ?? this.follow),
+          animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
@@ -536,6 +546,7 @@ class PathElement extends CanvasElement {
         if (closed) "closed": true,
         if (guide) "guide": true,
         if (follow != null) "follow": follow!.toJson(),
+        if (animation.on || animation.closes) "anim": animation.toJson(),
       };
 
   factory PathElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -565,7 +576,9 @@ class PathElement extends CanvasElement {
         guide: jsonBool(json["guide"], false),
         follow: followJson is Map<String, dynamic>
             ? PathFollow.fromJson(followJson)
-            : null);
+            : null,
+        animation: jsonSpec(
+            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }
 
   /// defaultNodes is the curve a freshly added path starts as: a shallow arc

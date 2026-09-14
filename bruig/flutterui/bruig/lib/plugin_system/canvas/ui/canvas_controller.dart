@@ -9,7 +9,9 @@ import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -161,15 +163,59 @@ int _afterEntrance(ElementTrack track) {
 /// an element and the one that puts it on a chart -- and they had a copy
 /// each of the loop that clears the old keys and the two that write the new
 /// ones.
+/// _without is [track] with [channel] unpinned everywhere, and with any
+/// keyframe that held nothing else dropped.
+///
+/// Taking the *keyframe* away instead threw out whatever else stood on that
+/// frame: a chart moved by hand at frame 0 and then given an arrival had its
+/// move deleted by choosing None, which is not what None means. It means no
+/// arrival.
+ElementTrack? _without(ElementTrack? track, String channel) {
+  if (track == null) return null;
+  var kept = <Keyframe>[
+    for (var key in track.keys)
+      if (key.values.containsKey(channel)) key.withoutValue(channel) else key,
+  ]..removeWhere((key) => !key.posesElement && key.values.isEmpty);
+  return kept.isEmpty ? null : ElementTrack(kept);
+}
+
 ElementTrack _withClosingBand(ElementTrack track, int from, int to) {
   for (var key in track.keys) {
     if (key.values.containsKey(KeyframeChannel.close)) {
       track = track.withoutFrame(key.frame);
     }
   }
-  return track
-      .withKey(Keyframe(frame: from).withValue(KeyframeChannel.close, 0))
-      .withKey(Keyframe(frame: to).withValue(KeyframeChannel.close, 1));
+  return _pinning(_pinning(track, from, KeyframeChannel.close, 0), to,
+      KeyframeChannel.close, 1);
+}
+
+/// _pinning is [track] with [channel] pinned to [value] at [frame], keeping
+/// whatever else that frame already holds.
+///
+/// A keyframe is a pose *and* whatever channels are pinned there, and laying
+/// an animation down writes one key at each end of it. Written as a fresh
+/// keyframe, those two ends flattened any pose that happened to be standing
+/// on the same frame -- so animating an element that had been moved by hand
+/// at the frame the playhead was on silently threw the move away.
+ElementTrack _pinning(
+        ElementTrack track, int frame, String channel, double value) =>
+    track.withKey((track.keyAt(frame) ?? Keyframe(frame: frame))
+        .withValue(channel, value));
+
+/// FetchedRows is what one element's last refresh in this sitting returned.
+///
+/// Kept so the mapping controls can change their mind -- which column is the
+/// axis, which one a series is drawn from -- without asking the source again.
+class FetchedRows {
+  /// fields is every path that led to a value in the first record.
+  final List<String> fields;
+
+  /// rows is the mapped table, and raw the same rows with the dates still in
+  /// them, for a chart choosing its points by date.
+  final List<List<String>> rows;
+  final List<List<String>> raw;
+
+  const FetchedRows(this.fields, this.rows, this.raw);
 }
 
 class CanvasController extends ChangeNotifier {
@@ -177,6 +223,21 @@ class CanvasController extends ChangeNotifier {
 
   CanvasDocument _document;
   CanvasDocument get document => _document;
+
+  /// lastFetched is what each element's last refresh returned, by element id.
+  ///
+  /// Here rather than in the settings panel that runs the refresh, because
+  /// two buttons run one -- the Data source section's and the one on the
+  /// Table section, which is not inside that panel -- and a refresh from the
+  /// second left the mapping controls with no rows in hand. Here rather than
+  /// in a global, because a global outlives the document it describes: rows
+  /// from a canvas that has been closed, filed under an element id another
+  /// canvas may well use.
+  ///
+  /// Not in the document, deliberately: four thousand rows saved into every
+  /// canvas so that a dropdown need not ask again is not a trade worth
+  /// making. It is a fact about this sitting.
+  final Map<String, FetchedRows> lastFetched = {};
 
   final CanvasImageStore images = CanvasImageStore();
 
@@ -1808,13 +1869,25 @@ class CanvasController extends ChangeNotifier {
   ///
   /// A still document is given a second's worth of frames first. An animation
   /// on a one-frame canvas is an animation nobody can watch.
-  void applyChartAnimation(ChartElement element, ChartAnimationPreset preset) {
+  /// [length] is how many frames it takes, and overrules everything else.
+  /// Left out, the length comes from the animation's own Length setting where
+  /// one has been asked for, and otherwise from wherever the keyframes already
+  /// are -- so trying one preset after another to see how they look leaves the
+  /// timing alone instead of resetting it every time. See
+  /// applyTextAnimation, whose rules these now are.
+  void applyChartAnimation(ChartElement element, ChartAnimationPreset preset,
+      {int? length}) {
     beginInteraction();
 
     if (preset == ChartAnimationPreset.none) {
+      // The reveal keyframes go with it and nothing else does. Clearing the
+      // whole track took the chart's *pose* with it: a chart that had been
+      // moved or faded by hand lost all of that for choosing None on a
+      // dropdown, which is not what the word means.
+      var without = _without(element.track, KeyframeChannel.reveal);
       replaceElement(element
           .copyWith(animation: element.animation.copyWith(preset: preset))
-          .withBase(clearTrack: true));
+          .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -1825,20 +1898,34 @@ class CanvasController extends ChangeNotifier {
           frames: math.max(2, document.frameRate * chartAnimationSeconds));
     }
 
-    // From this frame, so a chart animated while scrubbed to the middle starts
-    // where the reader is looking rather than jumping the playhead.
-    var from = _frame.clamp(0, document.frames - 2);
-    var span =
-        math.max(2, (document.frameRate * chartAnimationSeconds).round());
-    var to = math.min(document.frames - 1, from + span);
+    // Where it already is, if it is anywhere. From this frame otherwise, so a
+    // chart animated while scrubbed to the middle starts where the reader is
+    // looking rather than jumping the playhead.
+    var (was, wasFor) = elementAnimationSpan(element);
+    var from = was ?? _frame.clamp(0, document.frames - 2);
+    var span = wasFor ??
+        length ??
+        (element.animation.length > 0
+            ? element.animation.length
+            : defaultAnimationFrames);
+    span = math.max(1, span);
+    if (document.frames - 1 < from + span) {
+      document = document.copyWith(frames: from + span + 1);
+    }
+    var to = from + span;
     if (to <= from) {
       from = 0;
       to = document.frames - 1;
     }
 
-    var track = ElementTrack.empty
-        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
-        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+    var track = element.track ?? ElementTrack.empty;
+    for (var key in track.keys) {
+      if (key.values.containsKey(KeyframeChannel.reveal)) {
+        track = track.withoutFrame(key.frame);
+      }
+    }
+    track = _pinning(_pinning(track, from, KeyframeChannel.reveal, 0), to,
+        KeyframeChannel.reveal, 1);
 
     var next = element
         .copyWith(animation: element.animation.copyWith(preset: preset))
@@ -1868,18 +1955,10 @@ class CanvasController extends ChangeNotifier {
     beginInteraction();
 
     if (preset == TextAnimationPreset.none) {
-      var track = element.track;
-      var without = track == null
-          ? null
-          : ElementTrack([
-              for (var key in track.keys)
-                if (!key.values.containsKey(KeyframeChannel.reveal)) key,
-            ]);
+      var without = _without(element.track, KeyframeChannel.reveal);
       replaceElement(element
           .copyWith(animation: element.animation.copyWith(preset: preset))
-          .withBase(
-              track: without == null || without.keys.isEmpty ? null : without,
-              clearTrack: without == null || without.keys.isEmpty));
+          .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -1922,9 +2001,8 @@ class CanvasController extends ChangeNotifier {
         track = track.withoutFrame(key.frame);
       }
     }
-    track = track
-        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
-        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+    track = _pinning(_pinning(track, from, KeyframeChannel.reveal, 0), to,
+        KeyframeChannel.reveal, 1);
 
     apply(document.withElement(element
         .copyWith(
@@ -1978,18 +2056,33 @@ class CanvasController extends ChangeNotifier {
       switch (element) {
         ShapeElement e => e.animation,
         ImageElement e => e.animation,
+        LineElement e => e.animation,
+        PathElement e => e.animation,
+        TableElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
   /// animates is whether [element] is one of the kinds this applies to.
+  ///
+  /// Not a chart, which has an animation of its own that knows what a bar and
+  /// a slice are -- see applyChartAnimation -- and not a text element, whose
+  /// presets are scoped to words and letters. Everything else on the canvas
+  /// is a thing in a box, and a thing in a box arrives the same way.
   static bool animates(CanvasElement element) =>
-      element is ShapeElement || element is ImageElement;
+      element is ShapeElement ||
+      element is ImageElement ||
+      element is LineElement ||
+      element is PathElement ||
+      element is TableElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
       switch (element) {
         ShapeElement e => e.copyWith(animation: animation),
         ImageElement e => e.copyWith(animation: animation),
+        LineElement e => e.copyWith(animation: animation),
+        PathElement e => e.copyWith(animation: animation),
+        TableElement e => e.copyWith(animation: animation),
         _ => element,
       };
 
@@ -2009,17 +2102,10 @@ class CanvasController extends ChangeNotifier {
     var was = elementAnimationOf(element);
 
     if (preset == ElementAnimationPreset.none) {
-      var track = element.track;
-      var without = track == null
-          ? null
-          : ElementTrack([
-              for (var key in track.keys)
-                if (!key.values.containsKey(KeyframeChannel.reveal)) key,
-            ]);
+      var without = _without(element.track, KeyframeChannel.reveal);
       replaceElement(
-          _withElementAnimation(element, was.copyWith(preset: preset)).withBase(
-              track: without == null || without.keys.isEmpty ? null : without,
-              clearTrack: without == null || without.keys.isEmpty));
+          _withElementAnimation(element, was.copyWith(preset: preset))
+              .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -2051,9 +2137,8 @@ class CanvasController extends ChangeNotifier {
         track = track.withoutFrame(key.frame);
       }
     }
-    track = track
-        .withKey(Keyframe(frame: from).withValue(KeyframeChannel.reveal, 0))
-        .withKey(Keyframe(frame: to).withValue(KeyframeChannel.reveal, 1));
+    track = _pinning(_pinning(track, from, KeyframeChannel.reveal, 0), to,
+        KeyframeChannel.reveal, 1);
 
     // The preset's own curve and its own way of cutting, and only where the
     // preset is actually changing -- re-laying the keyframes for some other
@@ -2095,16 +2180,9 @@ class CanvasController extends ChangeNotifier {
 
     var track = element.track ?? ElementTrack.empty;
     if (preset == ElementAnimationPreset.none) {
-      var without = track;
-      for (var key in track.keys) {
-        if (key.values.containsKey(KeyframeChannel.close)) {
-          without = without.withoutFrame(key.frame);
-        }
-      }
+      var without = _without(track, KeyframeChannel.close);
       replaceElement(_withElementAnimation(element, was.copyWith(exit: preset))
-          .withBase(
-              track: without.keys.isEmpty ? null : without,
-              clearTrack: without.keys.isEmpty));
+          .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -2146,17 +2224,10 @@ class CanvasController extends ChangeNotifier {
 
     var track = element.track ?? ElementTrack.empty;
     if (preset == TextAnimationPreset.none) {
-      var without = track;
-      for (var key in track.keys) {
-        if (key.values.containsKey(KeyframeChannel.close)) {
-          without = without.withoutFrame(key.frame);
-        }
-      }
+      var without = _without(track, KeyframeChannel.close);
       replaceElement(element
           .copyWith(animation: element.animation.copyWith(exit: preset))
-          .withBase(
-              track: without.keys.isEmpty ? null : without,
-              clearTrack: without.keys.isEmpty));
+          .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -2217,17 +2288,10 @@ class CanvasController extends ChangeNotifier {
       // The keys go with it. A chart with no closing animation and a pair of
       // close keyframes still on its track would be pinned at "gone" for the
       // end of the timeline.
-      var without = track;
-      for (var key in track.keys) {
-        if (key.values.containsKey(KeyframeChannel.close)) {
-          without = without.withoutFrame(key.frame);
-        }
-      }
+      var without = _without(track, KeyframeChannel.close);
       replaceElement(element
           .copyWith(animation: element.animation.copyWith(exit: preset))
-          .withBase(
-              track: without.keys.isEmpty ? null : without,
-              clearTrack: without.keys.isEmpty));
+          .withBase(track: without, clearTrack: without == null));
       endInteraction();
       return;
     }
@@ -2238,8 +2302,9 @@ class CanvasController extends ChangeNotifier {
           frames: math.max(2, document.frameRate * chartAnimationSeconds * 2));
     }
 
-    var span =
-        math.max(2, (document.frameRate * chartAnimationSeconds).round());
+    var span = element.animation.length > 0
+        ? element.animation.length
+        : defaultAnimationFrames;
     var to = document.frames - 1;
     // Clear of the entrance, which is whatever the reveal channel already
     // reaches.

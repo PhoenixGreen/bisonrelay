@@ -6,9 +6,11 @@ import 'package:bruig/plugin_system/canvas/model/chart_interval.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_api_keys.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -47,6 +49,72 @@ Widget dataSourceSection(
       target: _TableTarget(e, controller, write, begin, commit),
       key: ValueKey("source-${e.id}"),
     );
+
+/// sourceRefreshButton is the Refresh button on its own, for a section that
+/// is not the data source's.
+///
+/// The Table section has one because that is where somebody is standing when
+/// they want the numbers again: they are looking at the cells. Sending them
+/// to another section to press the same button is asking them to know which
+/// section owns the wire rather than which one shows the thing.
+///
+/// It is the same refresh -- see _runRefresh -- so the coin list, the derived
+/// form guide and the message about what could not be found all behave the
+/// same way from either button. Null where there is no source to read, so a
+/// heading does not carry a button that could never do anything.
+Widget? sourceRefreshButton(
+    BuildContext context,
+    CanvasController controller,
+    CanvasElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var target = switch (e) {
+    TableElement table => _TableTarget(table, controller, write, begin, commit),
+    ChartElement chart => _ChartTarget(chart, controller, write, begin, commit),
+    _ => null,
+  };
+  if (target == null || !target.source.on) return null;
+  return _RefreshButton(target: target, key: ValueKey("refresh-${e.id}"));
+}
+
+class _RefreshButton extends StatefulWidget {
+  final _Target target;
+
+  const _RefreshButton({required this.target, super.key});
+
+  @override
+  State<_RefreshButton> createState() => _RefreshButtonState();
+}
+
+class _RefreshButtonState extends State<_RefreshButton> {
+  /// _busy is a refresh in progress. A second press would make a second
+  /// request and race the first one into the document.
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    var source = widget.target.source;
+    return CanvasIconButton(
+      icon: _busy ? Icons.hourglass_empty : Icons.refresh,
+      tooltip: source.fetchedAt == null
+          ? "Read the data and put it in the ${widget.target.noun}"
+          : "Read the data again — last updated "
+              "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
+      onPressed: _busy
+          ? null
+          : () async {
+              var allowed = context.read<CanvasPreferences>().allowFetching;
+              setState(() => _busy = true);
+              try {
+                await _runRefresh(context, widget.target, allowed);
+              } finally {
+                if (mounted) setState(() => _busy = false);
+              }
+            },
+    );
+  }
+}
 
 /// chartSourceSection is the same panel on a chart.
 ///
@@ -117,7 +185,11 @@ abstract class _Target {
 
   /// choosePreset applies a whole recipe, including whatever else about the
   /// element it implies.
-  void choosePreset(DataPreset preset, String choice);
+  /// [fromRows] is written along with the recipe where it is given, so that
+  /// turning it off and choosing a basket is one change rather than two --
+  /// see the Coins dropdown. Two writes read the *old* element for the
+  /// second of them, and the flag came straight back on.
+  void choosePreset(DataPreset preset, String choice, {bool? fromRows});
 
   /// receive puts what came back into the element, and says what happened.
   ///
@@ -127,6 +199,18 @@ abstract class _Target {
       {required bool allowed,
       required bool proxied,
       List<List<String>> raw = const []});
+
+  /// rowKeys is what the element already has a row for, in its own order:
+  /// the cells of the match column.
+  ///
+  /// What DataSource.fromRows reads. A table's are its cells, a chart's are
+  /// the labels along its axis -- which for a coin comparison is the coins,
+  /// and is exactly the list to ask the API for.
+  List<String> get rowKeys => const [];
+
+  /// rowsFor is the element's own rows for the keys in [keys], as they stand
+  /// now -- what a refresh puts back for a row the source did not send.
+  List<List<String>> rowsFor(List<String> keys) => const [];
 
   /// picturesMatter is whether a column can hold a picture, and whether one
   /// can be kept across a refresh.
@@ -152,7 +236,8 @@ abstract class _Target {
   /// four thousand rows saved into every canvas, so that one dropdown can
   /// change its mind without asking again, is not a trade worth making.
   List<Widget> extras(List<List<String>> lastRows,
-          [List<List<String>> lastRaw = const []]) =>
+          [List<List<String>> lastRaw = const [],
+          List<String> fields = const []]) =>
       const [];
 }
 
@@ -184,14 +269,35 @@ class _TableTarget extends _Target {
   CanvasElement withSource(DataSource next) => element.copyWith(source: next);
 
   @override
-  void choosePreset(DataPreset preset, String choice) {
+  List<String> get rowKeys {
+    var at = source.matchColumn < 0 ? 0 : source.matchColumn;
+    return [
+      for (var (i, row) in element.rows.indexed)
+        if (!(element.headerRow && i == 0) && at < row.length)
+          if (row[at].trim().isNotEmpty) row[at],
+    ];
+  }
+
+  @override
+  List<List<String>> rowsFor(List<String> keys) {
+    var at = source.matchColumn < 0 ? 0 : source.matchColumn;
+    var want = keys.toSet();
+    return [
+      for (var (i, row) in element.rows.indexed)
+        if (!(element.headerRow && i == 0) && at < row.length)
+          if (want.contains(_keyOf(source, row[at]))) row,
+    ];
+  }
+
+  @override
+  void choosePreset(DataPreset preset, String choice, {bool? fromRows}) {
     // A preset brings its hidden headings with it. Its badge and position
     // columns are named so the mapping can refer to them and are not drawn,
     // and making the reader switch those off by hand after choosing a preset
     // would be a preset that half worked.
     begin();
     write(element.copyWith(
-      source: preset.applyTo(source, choice),
+      source: preset.applyTo(source, choice).copyWith(fromRows: fromRows),
       hiddenHeaders: preset.hiddenHeaders,
     ));
     commit();
@@ -279,7 +385,9 @@ class _TableTarget extends _Target {
     for (var other in controller.document.elements) {
       if (other is ChartElement && other.fromTable.tableId == table.id) {
         controller.replaceElement(
-            other.copyWith(data: chartDataFromTable(table, other.fromTable)),
+            other.copyWith(
+                data: chartDataFromTable(table, other.fromTable,
+                    keeping: other.data.series)),
             transient: true);
         followers++;
       }
@@ -305,6 +413,27 @@ class _ChartTarget extends _Target {
 
   @override
   bool get chart => true;
+
+  @override
+  List<String> get rowKeys => [
+        for (var name in element.data.categories)
+          if (name.trim().isNotEmpty) name,
+      ];
+
+  @override
+  List<List<String>> rowsFor(List<String> keys) {
+    // A chart has no cells, only a label and its values -- so the row put
+    // back is the label with nothing against it, which draws as a gap and is
+    // the truth: nothing came back for it.
+    var want = keys.toSet();
+    var at = source.matchColumn < 0 ? 0 : source.matchColumn;
+    var width = source.columns.isEmpty ? at + 1 : source.columns.length;
+    return [
+      for (var name in element.data.categories)
+        if (want.contains(_keyOf(source, name)))
+          [for (var c = 0; c < width; c++) c == at ? name : ""],
+    ];
+  }
 
   @override
   String get remember => "chartSource";
@@ -342,14 +471,14 @@ class _ChartTarget extends _Target {
   }
 
   @override
-  void choosePreset(DataPreset preset, String choice) {
+  void choosePreset(DataPreset preset, String choice, {bool? fromRows}) {
     // A chart preset brings its mapping with it: which column is the axis,
     // which are the series, and how many points are worth drawing. Without
     // that, choosing "Coin supply" leaves a chart that has fetched four
     // thousand rows and drawn none of them.
     begin();
     write(element.copyWith(
-      source: preset.applyTo(source, choice),
+      source: preset.applyTo(source, choice).copyWith(fromRows: fromRows),
       fromSource: ChartSourceMap(
         categoryColumn: preset.chartCategory,
         valueColumns: preset.chartValues,
@@ -368,8 +497,11 @@ class _ChartTarget extends _Target {
       {required bool allowed,
       required bool proxied,
       List<List<String>> raw = const []}) async {
+    // Keeping what has been decided about how each series looks: a refresh
+    // brings new values, it is not somebody asking for their colours back.
     var data = chartDataFromRows(rows, element.fromSource,
-        when: datesIn(raw, element.fromSource.categoryColumn));
+        when: datesIn(raw, element.fromSource.categoryColumn),
+        keeping: element.data.series);
     begin();
     // The numbers land in the chart's own data, which is what every other
     // setting works on: once fetched they are edited, coloured and animated
@@ -384,7 +516,7 @@ class _ChartTarget extends _Target {
 
   @override
   List<Widget> extras(List<List<String>> lastRows,
-      [List<List<String>> lastRaw = const []]) {
+      [List<List<String>> lastRaw = const [], List<String> fields = const []]) {
     var columns = element.source.columns;
     var link = element.fromTable;
     var tables = [
@@ -476,7 +608,8 @@ class _ChartTarget extends _Target {
                   ? () {
                       begin();
                       write(element.copyWith(
-                          data: chartDataFromTable(table, link)));
+                          data: chartDataFromTable(table, link,
+                              keeping: element.data.series)));
                       commit();
                     }
                   : null,
@@ -486,30 +619,87 @@ class _ChartTarget extends _Target {
           ]),
         ],
       ],
-      CanvasControlGroup(label: "What is drawn", children: [
+      // A row per series, each saying where it comes from. This was a switch
+      // per mapped column, which asked the question the wrong way round:
+      // switches say "any number of these", the series were numbered
+      // somewhere else, and nothing could be drawn that the mapping had not
+      // already been given a column for. Now the chart's series are the list,
+      // and every field the source turned out to hold is on offer against
+      // each one -- picking a field that has no column yet adds it.
+      CanvasControlGroup(label: "Series data", children: [
         CanvasDropdown<int>(
+          key: const ValueKey("chartAxisColumn"),
           label: _axisLabel(element.type),
           value: map.categoryColumn,
-          width: 150,
+          width: 168,
           options: [for (var c = 0; c < columns.length; c++) named(c)],
           onChanged: (v) =>
               _setMap(map.copyWith(categoryColumn: v), lastRows, lastRaw),
         ),
-        for (var c = 0; c < columns.length; c++)
-          if (c != map.categoryColumn)
-            CanvasToggle(
-              label: columns[c].header.isEmpty
-                  ? "Column ${c + 1}"
-                  : columns[c].header,
-              value: map.valueColumns.contains(c),
-              onChanged: (v) => _setMap(
-                  map.copyWith(valueColumns: [
-                    for (var i = 0; i < columns.length; i++)
-                      if (i == c ? v : map.valueColumns.contains(i)) i,
-                  ]),
-                  lastRows,
-                  lastRaw),
-            ),
+        for (var (i, c) in map.valueColumns.indexed) ...[
+          const CanvasLineBreak(),
+          // Narrow enough that the two of them and the button stay on one
+          // line down a 240-pixel sidebar. Wrapped, a series was three lines
+          // and four series were a wall: the row *is* the series, and it
+          // reads as one when it is one line.
+          seriesPicker(
+            index: i,
+            column: c,
+            columns: columns,
+            fields: fields,
+            width: 94,
+            onChanged: (next) =>
+                _bindSeries(i, next, lastRows, lastRaw, fields),
+          ),
+          // How this series' figures are written, on the row that says where
+          // they come from. Against the series rather than over the grid: a
+          // dropdown per series along the top of the numbers was a third row
+          // of controls above a table that already had two.
+          CanvasDropdown<NumberStyle?>(
+            key: ValueKey("chartSeriesNumbers$i"),
+            label: "Shown as",
+            value: i < element.data.series.length
+                ? element.data.series[i].numbers?.style
+                : null,
+            width: 94,
+            // The name alone, without the example beside it: at this width
+            // "Millions — 1.0M" is "Millions…", which is the name with a
+            // promise of something after it that can never be read.
+            options: [
+              (null, "As the chart"),
+              for (var style in NumberStyle.values) (style, style.label),
+            ],
+            onChanged: (style) => _writeSeriesStyle(i, style),
+          ),
+          CanvasIconButton(
+            key: ValueKey("chartSeriesRemove$i"),
+            icon: Icons.close,
+            tooltip: "Take this series off the chart",
+            onPressed: map.valueColumns.length <= 1
+                ? null
+                : () => _setMap(
+                    map.copyWith(valueColumns: [
+                      for (var (j, v) in map.valueColumns.indexed)
+                        if (j != i) v,
+                    ]),
+                    lastRows,
+                    lastRaw),
+          ),
+        ],
+        const CanvasLineBreak(),
+        CanvasIconButton(
+          key: const ValueKey("chartSeriesAdd"),
+          icon: Icons.add,
+          tooltip: "Draw another of the source's columns as a second series",
+          onPressed: () => _bindSeries(map.valueColumns.length,
+              _nextFree(map, columns), lastRows, lastRaw, fields),
+        ),
+        CanvasHint("One row per series. Each says which of the source's "
+            "columns it is drawn from, and the column's name is the series' "
+            "name — so a chart of Market cap is labelled Market cap without "
+            "typing it. Anything the last refresh turned out to hold is "
+            "offered even where the mapping has no column for it yet; "
+            "choosing one adds the column."),
         const CanvasLineBreak(),
         // Readings on the dates asked for, rather than one point in every so
         // many. Only where the axis is a date: on a column of team names it
@@ -658,6 +848,55 @@ class _ChartTarget extends _Target {
     ];
   }
 
+  /// _bindSeries points series [index] at [column], adding the series where
+  /// there is not one there yet.
+  ///
+  /// [column] may be past the end of the mapping, which is what choosing a
+  /// field the source has but the mapping has no column for means: the column
+  /// is added first -- see seriesPicker, which offers those fields and hands
+  /// back where the new column will be.
+  void _bindSeries(int index, int column, List<List<String>> rows,
+      [List<List<String>> raw = const [], List<String> fields = const []]) {
+    var next = boundSeries(element, index, column, fields);
+    begin();
+    write(rows.isEmpty
+        ? next
+        : next.copyWith(
+            data: chartDataFromRows(rows, next.fromSource,
+                when: datesIn(raw, next.fromSource.categoryColumn),
+                keeping: element.data.series)));
+    commit();
+  }
+
+  /// _writeSeriesStyle writes one series' own way of showing a figure, or
+  /// takes it back to the chart's.
+  ///
+  /// The chart's own decimals and grouping come with the style, so choosing
+  /// one is choosing a style rather than inheriting nothing. Null forgets it
+  /// altogether -- see ChartSeries.copyWith's writtenLikeChart, since the
+  /// ordinary copyWith fills a null with what was there before.
+  void _writeSeriesStyle(int index, NumberStyle? style) {
+    if (index >= element.data.series.length) return;
+    var out = [...element.data.series];
+    out[index] = out[index].copyWith(
+        numbers: style == null ? null : element.numbers.copyWith(style: style),
+        writtenLikeChart: style == null);
+    begin();
+    write(element.copyWith(
+        data: ChartData(categories: element.data.categories, series: out)));
+    commit();
+  }
+
+  /// _nextFree is a column not already drawn, for a series being added. The
+  /// first one is better than none: a new series pointed at a column that is
+  /// already drawn is a second copy of a line somebody has to go and change.
+  int _nextFree(ChartSourceMap map, List<SourceColumn> columns) {
+    for (var c = 0; c < columns.length; c++) {
+      if (c != map.categoryColumn && !map.valueColumns.contains(c)) return c;
+    }
+    return columns.isEmpty ? 0 : columns.length - 1;
+  }
+
   /// _setMap changes what is drawn, and redraws it where it can.
   ///
   /// With the rows from this sitting's refresh in hand, changing which column
@@ -673,7 +912,8 @@ class _ChartTarget extends _Target {
         : element.copyWith(
             fromSource: next,
             data: chartDataFromRows(rows, next,
-                when: datesIn(raw, next.categoryColumn))));
+                when: datesIn(raw, next.categoryColumn),
+                keeping: element.data.series)));
     commit();
   }
 }
@@ -684,6 +924,90 @@ String _summary(DataSource source) {
   var name = preset?.label ?? source.kind.label;
   if (source.fetchedAt == null) return name;
   return "$name · ${DateFormat("d MMM, HH:mm").format(source.fetchedAt!.toLocal())}";
+}
+
+/// _runRefresh is the whole point of the panel: go and get it, map it, and
+/// hand it to whatever asked for it.
+///
+/// A function rather than a method, because two things run it -- the button
+/// in the Data section's heading and the one in the Table section's, which is
+/// where somebody looking at the cells is when they want them again. Two
+/// copies of this would be two things to keep in step, and the second copy is
+/// exactly where the coin list or the derived form guide would get forgotten.
+///
+/// Returns null where nothing came back, having already said why.
+Future<FetchedRows?> _runRefresh(
+    BuildContext context, _Target target, bool allowed) async {
+  var snackbar = SnackBarModel.of(context);
+  var source = target.source;
+
+  // What to ask for, where the element's own rows are what decides. Worked
+  // out here rather than written into the address when the option was
+  // chosen: the rows change, and an address saved from the rows as they were
+  // that morning is an address that answers yesterday's question.
+  var asking = source;
+  var wanted = <String>[];
+  var preset = presetById(source.preset);
+  if (source.fromRows && preset != null && preset.choiceFromRows) {
+    // What the source files each row under, which is not always what the row
+    // says: XRP is filed as ripple. See CanvasRowNames.idFor.
+    wanted = [
+      for (var cell in target.rowKeys)
+        if (CanvasRowNames.idFor(preset, cell).isNotEmpty)
+          CanvasRowNames.idFor(preset, cell),
+    ];
+    if (wanted.isEmpty) {
+      snackbar.error("There are no rows to ask about. Put a "
+          "${preset.choiceLabel.toLowerCase()} in the first column first, "
+          "one per row.");
+      return null;
+    }
+    asking = source.copyWith(where: preset.address(wanted.join(",")));
+  }
+
+  var proxied = source.kind == DataKind.url ? await networkIsProxied() : false;
+  var result = await loadData(asking, allowFetching: allowed, proxied: proxied);
+  if (!context.mounted) return null;
+  if (!result.worked) {
+    snackbar.error(result.problem!);
+    return null;
+  }
+
+  var rows = result.rows!;
+
+  // A second look, for a source that cannot say everything in one answer.
+  // The football preset works its form guide out from the fixtures, because
+  // the plan that sends it as a field is a paid one and the results are free.
+  if (preset?.derive != null) {
+    rows = await preset!.derive!(rows, asking,
+        (url) => fetchJsonAt(url, allowFetching: allowed, proxied: proxied));
+    if (!context.mounted) return null;
+  }
+
+  // A row asked for and not sent back is kept rather than dropped. It is
+  // almost always a name spelled some other way -- BNB is filed as
+  // binancecoin -- and the row is where somebody would go to correct it. Cut
+  // out of the table by the refresh, the typing goes with it and there is
+  // nothing left to fix: the way to add a coin becomes the way to lose one.
+  // Matched through the same mapping the request was built with, or a row
+  // that came back as "XRP" would look like the ripple that was asked for
+  // never arriving.
+  var missing = rowsMissingFrom(wanted, rows, asking.matchColumn,
+      idOf:
+          preset == null ? null : (cell) => CanvasRowNames.idFor(preset, cell));
+  if (missing.isNotEmpty) {
+    rows = [...rows, ...target.rowsFor(missing)];
+  }
+
+  var said = await target.receive(
+      rows, asking.copyWith(fetchedAt: DateTime.now()),
+      allowed: allowed, proxied: proxied, raw: result.raw);
+  if (!context.mounted) return null;
+  snackbar.success(
+      missing.isEmpty ? said : "$said Not found: ${missing.join(", ")}.");
+  var got = FetchedRows(result.fields, rows, result.raw);
+  target.controller.lastFetched[target.element.id] = got;
+  return got;
 }
 
 class _DataSourcePanel extends StatefulWidget {
@@ -712,7 +1036,8 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
   /// came back this morning and not about the design. It is empty until a
   /// refresh has happened, which is honest -- there is nothing to know about
   /// a source nobody has read yet.
-  List<String> _fields = const [];
+  List<String> get _fields =>
+      target.controller.lastFetched[target.element.id]?.fields ?? const [];
 
   /// _hasKey is whether a key has been saved for this address's host. The key
   /// itself is never read back into the interface -- there is nothing anybody
@@ -725,14 +1050,16 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   /// _rawRows is the same rows with the dates still in them, for a chart
   /// choosing its points by date. Empty unless a column is a date.
-  List<List<String>> _rawRows = const [];
+  List<List<String>> get _rawRows =>
+      target.controller.lastFetched[target.element.id]?.raw ?? const [];
 
   /// _rows is what the last refresh in this sitting returned.
   ///
-  /// Kept for the same reason [_fields] is: it is a fact about what came back
-  /// a minute ago rather than about the design, and it lets a chart change
-  /// which column it draws without asking the server again.
-  List<List<String>> _rows = const [];
+  /// Read from the controller rather than kept here, so a refresh run from the
+  /// Table section's button -- which is not inside this panel -- leaves the
+  /// mapping controls able to redraw from the rows it brought back.
+  List<List<String>> get _rows =>
+      target.controller.lastFetched[target.element.id]?.rows ?? const [];
 
   @override
   void initState() {
@@ -759,49 +1086,17 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
   void _set(DataSource next) => target.setSource(next);
 
-  /// _refresh is the whole point of the panel: go and get it, map it, and
-  /// hand it to whatever asked for it.
+  /// _refresh reads the source and remembers what it turned out to hold, so
+  /// the mapping controls can change their mind without asking again.
   Future<void> _refresh() async {
-    var snackbar = SnackBarModel.of(context);
     var allowed = context.read<CanvasPreferences>().allowFetching;
     setState(() => _busy = true);
     try {
-      var proxied =
-          source.kind == DataKind.url ? await networkIsProxied() : false;
-      var result =
-          await loadData(source, allowFetching: allowed, proxied: proxied);
+      await _runRefresh(context, target, allowed);
       if (!mounted) return;
-      if (!result.worked) {
-        snackbar.error(result.problem!);
-        return;
-      }
-
-      var rows = result.rows!;
-
-      // A second look, for a source that cannot say everything in one answer.
-      // The football preset works its form guide out from the fixtures,
-      // because the plan that sends it as a field is a paid one and the
-      // results are free.
-      var preset = presetById(source.preset);
-      if (preset?.derive != null) {
-        rows = await preset!.derive!(
-            rows,
-            source,
-            (url) =>
-                fetchJsonAt(url, allowFetching: allowed, proxied: proxied));
-        if (!mounted) return;
-      }
-
-      var said = await target.receive(
-          rows, source.copyWith(fetchedAt: DateTime.now()),
-          allowed: allowed, proxied: proxied, raw: result.raw);
-      if (!mounted) return;
-      setState(() {
-        _fields = result.fields;
-        _rows = rows;
-        _rawRows = result.raw;
-      });
-      snackbar.success(said);
+      // _runRefresh has already put what came back on the controller, which
+      // is where the mapping controls read it from. This only has to redraw.
+      setState(() {});
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -915,14 +1210,62 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         if (preset != null)
           CanvasDropdown<String>(
             label: preset.choiceLabel,
-            value: _choiceOf(preset, source),
-            width: 148,
-            options: preset.choices,
+            value: source.fromRows && preset.choiceFromRows
+                ? _fromRows
+                : _choiceOf(preset, source),
+            width: 168,
+            options: [
+              ...preset.choices,
+              // Whatever the element already has rows for, however many that
+              // is. The three baskets above are somebody else's idea of an
+              // interesting set; this one is the reader's own.
+              if (preset.choiceFromRows)
+                (
+                  _fromRows,
+                  "Choose ${preset.choiceLabel.toLowerCase()} "
+                      "for the ${target.noun}"
+                ),
+            ],
             // Through the preset rather than the source, because the choice
             // decides the mapping as well as the address: dcrdata keeps every
             // series in an array named after itself.
-            onChanged: (code) => target.choosePreset(preset, code),
+            onChanged: (code) {
+              if (code == _fromRows) {
+                // The address is left as it is until a refresh, which is when
+                // the rows are read. Written now it would go stale the moment
+                // a row was added.
+                _set(source.copyWith(fromRows: true));
+                return;
+              }
+              // One write, not two: choosePreset reads the element as it
+              // stands, so setting the flag first and then choosing left it
+              // reading the element from before and turning the flag back on.
+              target.choosePreset(preset, code, fromRows: false);
+            },
           ),
+        // Said where the choice is made, because renaming a row only changes
+        // what is fetched when this is on -- and somebody who renames one and
+        // refreshes, and gets the old name back, has no way of telling why.
+        if (preset != null && !source.fromRows && preset.choiceFromRows)
+          CanvasHint(
+              "The ${preset.choiceLabel.toLowerCase()} above are fixed lists: "
+              "a refresh asks for those, whatever the ${target.noun} says. To "
+              "choose your own, pick “Whatever is in the ${target.noun}” — "
+              "then the rows decide, and renaming one changes what is asked "
+              "for."),
+        // Ask the source what it has. The built-in list is short and was
+        // written by hand, so it is both incomplete and occasionally wrong --
+        // CoinGecko files Firo under "zcoin". One request replaces it with
+        // the source's own answer, kept for next time.
+        if (preset != null && preset.namesAddress.isNotEmpty && source.fromRows)
+          _LookUpNames(preset: preset, noun: preset.choiceLabel.toLowerCase()),
+        if (preset != null && source.fromRows && preset.choiceFromRows)
+          CanvasHint(
+              "The ${target.noun} says what to ask for: one ${preset.choiceLabel.toLowerCase().replaceAll(RegExp(r"s\$"), "")} per row, read from the "
+              "first column. Add a row and refresh to add one, delete a row "
+              "to drop it. Names are matched loosely — “Bitcoin Cash” finds "
+              "bitcoin-cash — and anything that cannot be found is named "
+              "rather than quietly left out."),
         CanvasDropdown<DataKind>(
           label: "From",
           value: source.kind,
@@ -935,7 +1278,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
 
       // What this element does with what arrives. Empty for a table, which
       // takes the rows as they are.
-      ...target.extras(_rows, _rawRows),
+      ...target.extras(_rows, _rawRows, _fieldNames(preset)),
 
       if (source.kind == DataKind.file)
         CanvasControlGroup(label: "File", children: [
@@ -1321,6 +1664,48 @@ String _intervalWords(ChartInterval interval) {
   return "One reading $how$on";
 }
 
+/// rowsMissingFrom is which of the things asked for did not come back.
+///
+/// Matched on the same loose key the request was built from, so "Bitcoin
+/// Cash" asked for as bitcoin-cash is found in a row that came back saying
+/// "Bitcoin Cash". Empty where nothing was asked for by name.
+///
+/// Two things want the answer: the message, which names them rather than
+/// leaving somebody to notice, and the refresh itself, which keeps their rows
+/// instead of cutting them out -- the row is where the spelling would be
+/// corrected, and a refresh that deletes it makes the way to add a coin the
+/// way to lose one.
+List<String> rowsMissingFrom(
+    List<String> wanted, List<List<String>> rows, int matchColumn,
+    {String Function(String)? idOf}) {
+  if (wanted.isEmpty) return const [];
+  var at = matchColumn < 0 ? 0 : matchColumn;
+  var key = idOf ?? asRowKey;
+  var came = <String>{
+    for (var row in rows)
+      if (at < row.length) key(row[at]),
+  };
+  // The rows that come back name the coin, and the key asked for is the id --
+  // which for almost every coin is the same word. Where a source names things
+  // differently from the way it files them, this says so too, which is the
+  // honest answer: what came back is not what was asked for.
+  return [
+    for (var key in wanted)
+      if (!came.contains(key)) key,
+  ];
+}
+
+/// _keyOf is what the source files a cell under, for matching a row that came
+/// back against one that was asked for.
+String _keyOf(DataSource source, String cell) {
+  var preset = presetById(source.preset);
+  return preset == null ? asRowKey(cell) : CanvasRowNames.idFor(preset, cell);
+}
+
+/// _fromRows is the choice that means "ask for whatever the element already
+/// has rows for". Not a real choice code, so it can never collide with one.
+const String _fromRows = "\u0000rows";
+
 /// _choiceOf works out which of a preset's choices the current address is, so
 /// the dropdown shows what is actually set rather than always the first one.
 String _choiceOf(DataPreset preset, DataSource source) {
@@ -1433,3 +1818,167 @@ bool _isCustom(SourceColumn column, DataPreset? preset) =>
     column.template.isNotEmpty ||
     column.spread > 0 ||
     (preset?.derived.contains(column.path) ?? false);
+
+/// boundSeries is [element] with series [index] drawn from [column].
+///
+/// One definition, because two controls ask for it -- the row per series in
+/// the Data source settings and the picker on the grid's own headers -- and
+/// two answers about which field "the third spare one" is would bind a series
+/// to the wrong numbers.
+///
+/// [column] past the end of the mapping is one of [fields] that has no column
+/// yet: it gets one, named after itself, and the series is bound to that. So
+/// a field is offered and chosen in one gesture rather than "add a column,
+/// then come back and draw it". Below zero means typed in -- the series stays
+/// and simply stops being filled from the source.
+ChartElement boundSeries(
+    ChartElement element, int index, int column, List<String> fields) {
+  var map = element.fromSource;
+  var source = element.source;
+
+  var at = column;
+  if (at >= source.columns.length) {
+    var spare = spareFields(source.columns, fields);
+    var which = at - source.columns.length;
+    if (which < 0 || which >= spare.length) return element;
+    var path = spare[which];
+    at = source.columns.length;
+    source = source.copyWith(
+        columns: [...source.columns, SourceColumn(header: path, path: path)]);
+  }
+
+  var next = <int>[
+    for (var (i, c) in map.valueColumns.indexed) i == index ? at : c,
+    if (index >= map.valueColumns.length) at,
+  ]..removeWhere((c) => c < 0);
+  return element.copyWith(
+      source: source, fromSource: map.copyWith(valueColumns: next));
+}
+
+/// spareFields are the paths a refresh found that the mapping has no column
+/// for, in the order they are offered.
+///
+/// One definition, because two things have to agree about it: the list a
+/// series can be pointed at, and the arithmetic that turns "the third spare
+/// one" back into a column. Two orders would bind a series to the wrong
+/// field, which is the kind of mistake nobody would look for.
+List<String> spareFields(List<SourceColumn> columns, List<String> fields) => [
+      for (var field in fields)
+        if (!columns.any((c) => c.path == field || c.template == field)) field,
+    ];
+
+/// seriesPicker is one series and where its numbers come from.
+///
+/// Shared by the chart's Data settings and by the header of its own grid,
+/// because "which of the source's columns is this series" is one question and
+/// answering it in two places with two controls is two answers to keep in
+/// step. [fields] are the paths the last refresh turned out to hold: offered
+/// alongside the mapped columns, and choosing one adds a column for it, so
+/// the list is everything the source has rather than everything somebody has
+/// already mapped.
+Widget seriesPicker({
+  required int index,
+  required int column,
+  required List<SourceColumn> columns,
+  required List<String> fields,
+  required void Function(int column) onChanged,
+  String? label,
+  double width = 168,
+}) {
+  var spare = spareFields(columns, fields);
+  return CanvasDropdown<int>(
+    key: ValueKey("chartSeriesColumn$index"),
+    label: label ?? "Series ${index + 1}",
+    // A field that has no column yet is numbered past the end of the mapping,
+    // in the order they are listed -- so the value handed back says both
+    // "this field" and "the column it will become".
+    value: column,
+    width: width,
+    options: [
+      for (var (c, source) in columns.indexed)
+        (c, source.header.isEmpty ? "Column ${c + 1}" : source.header),
+      for (var (i, field) in spare.indexed) (columns.length + i, field),
+    ],
+    onChanged: onChanged,
+  );
+}
+
+/// _LookUpNames asks a source for everything it has, once.
+///
+/// Its own widget for the reason the Refresh button is: it owns whether a
+/// request is already running, and a second press would make a second one.
+class _LookUpNames extends StatefulWidget {
+  final DataPreset preset;
+  final String noun;
+
+  const _LookUpNames({required this.preset, required this.noun});
+
+  @override
+  State<_LookUpNames> createState() => _LookUpNamesState();
+}
+
+class _LookUpNamesState extends State<_LookUpNames> {
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Whatever was fetched in some earlier sitting, so the list is there
+    // without anybody pressing anything twice.
+    CanvasRowNames.load(widget.preset.id).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var known = CanvasRowNames.known(widget.preset.id)?.length ?? 0;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      CanvasIconButton(
+        key: const ValueKey("lookUpNames"),
+        icon: _busy ? Icons.hourglass_empty : Icons.travel_explore_outlined,
+        tooltip: known > 0
+            ? "Look up the ${widget.noun} again — $known known"
+            : "Look up every one of the ${widget.noun} this source has",
+        onPressed: _busy ? null : _look,
+      ),
+      CanvasHint(known > 0
+          ? "$known ${widget.noun} known, so typing one offers it and asks "
+              "for it by the name the source files it under."
+          : "Until this is pressed, typing a row offers a short built-in "
+              "list. Pressing it asks the source for everything it has — one "
+              "request, kept for next time — after which every name it knows "
+              "is offered and spelled the way it files it."),
+    ]);
+  }
+
+  Future<void> _look() async {
+    var snackbar = SnackBarModel.of(context);
+    var allowed = context.read<CanvasPreferences>().allowFetching;
+    if (!allowed) {
+      snackbar.error("Fetching is switched off. Turn it on in Settings > "
+          "Plugins > Canvas.");
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      var proxied = await networkIsProxied();
+      if (proxied) {
+        if (!mounted) return;
+        snackbar.error("This app is set to reach the network through a "
+            "proxy, which a fetch from the canvas cannot use.");
+        return;
+      }
+      var found = await CanvasRowNames.fetch(widget.preset,
+          (url) => fetchJsonAt(url, allowFetching: allowed, proxied: proxied));
+      if (!mounted) return;
+      if (found == null) {
+        snackbar.error("The list of ${widget.noun} could not be read.");
+        return;
+      }
+      snackbar.success("$found ${widget.noun} known.");
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}

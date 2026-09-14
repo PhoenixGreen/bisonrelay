@@ -230,7 +230,7 @@ void _paintPieces(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
       // like something breaking rather than drifting one way.
       var away = centre - box.center;
       var reach = math.max(1.0, away.distance);
-      var throwBy = box.shortestSide * effect.scatter * (1 - at);
+      var throwBy = _throwFrom(box) * effect.scatter * (1 - at);
       var jitter = _noise(effect.seed + 7, i) - 0.5;
       canvas.translate(away.dx / reach * throwBy + jitter * throwBy * 0.6,
           away.dy / reach * throwBy + (1 - at) * (1 - at) * tall * 2 * jitter);
@@ -253,6 +253,16 @@ void _paintPieces(ui.Canvas canvas, Rect box, EffectSpec effect, double p,
     canvas.restore();
   }
 }
+
+/// _throwFrom is the distance a scatter of 1 throws a piece.
+///
+/// The short side, except on something long and thin, where the short side is
+/// a couple of units and every piece would stay exactly where it was: a line
+/// coming apart looked like a line dissolving. A quarter of the long side is
+/// what a line has instead, and on anything squarer the short side is still
+/// the larger of the two and nothing changes.
+double _throwFrom(Rect box) =>
+    math.max(box.shortestSide, box.longestSide * 0.25);
 
 /// _stagger is how far piece [slot] of [count] has got when the whole thing is
 /// [p] through, with [spread] of the time given over to the stagger.
@@ -301,8 +311,17 @@ Float64List _about(double x, double y, double by) => Float64List.fromList([
 /// on the way in and close on the way out -- so an element with no keyframes
 /// gets 1 and 0, which is "all of it, and not leaving", and is drawn exactly
 /// as it was before any of this existed.
-void paintArriving(ui.Canvas canvas, Rect bounds, ElementAnimation animation,
+void paintArriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
     Keyframe pose, void Function() what) {
+  // A line drawn flat has a box with no height at all, and every motion here
+  // is a fraction of the box: a slide would travel nothing and a grid of
+  // tiles would have no rows. Given some, they behave like anything else.
+  var bounds = box.width < 1 || box.height < 1
+      ? Rect.fromCenter(
+          center: box.center,
+          width: math.max(box.width, 1),
+          height: math.max(box.height, 1))
+      : box;
   var closing = (pose.values[KeyframeChannel.close] ?? 0) > 0;
   if (!animation.on && !(closing && animation.closes)) {
     what();
@@ -330,9 +349,12 @@ void paintArriving(ui.Canvas canvas, Rect bounds, ElementAnimation animation,
   if (at <= 0) return;
   var p = playing.progressAt(at.clamp(0.0, 1.0).toDouble());
 
-  if (playing.preset.cuts) {
-    paintCutEffect(
-        canvas, bounds, playing.preset.motion, playing.effect, p, what);
+  // Cut up where the preset cuts, unless there is nothing to cut -- in which
+  // case it falls through and arrives as an ordinary fade rather than not
+  // arriving at all.
+  if (playing.preset.cuts &&
+      paintCutEffect(
+          canvas, bounds, playing.preset.motion, playing.effect, p, what)) {
     return;
   }
 

@@ -6,6 +6,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -38,6 +41,30 @@ ShapeElement _shape(ElementAnimation animation,
       if (close != null) KeyframeChannel.close: close,
     }),
   ])) as ShapeElement;
+}
+
+/// _light is how much light the element puts on the canvas altogether.
+///
+/// What a fade changes: the same pixels are lit part way through and at the
+/// end, and only the amount is different -- so counting pixels says a fade
+/// does nothing.
+Future<int> _light(CanvasElement element) async {
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.drawRect(const Rect.fromLTWH(0, 0, _size, _size),
+      Paint()..color = const Color(0xFF000000));
+  paintElement(canvas, element, 0,
+      document: CanvasDocument(elements: [element]));
+  var image =
+      await recorder.endRecording().toImage(_size.toInt(), _size.toInt());
+  var bytes = (await image.toByteData())!;
+  var total = 0;
+  for (var i = 0; i < bytes.lengthInBytes; i += 4) {
+    var p = bytes.getUint32(i);
+    total += ((p >> 24) & 0xFF) + ((p >> 16) & 0xFF) + ((p >> 8) & 0xFF);
+  }
+  image.dispose();
+  return total;
 }
 
 /// _ink is every pixel the element lights, by where it is.
@@ -361,6 +388,103 @@ void main() {
           reason: "and some of it has been torn away");
       expect(torn.difference(whole), isEmpty,
           reason: "with nothing thrown outside the element");
+    });
+  });
+
+  group("every kind that is a thing in a box", () {
+    // A shape, a picture, a line, a route and a table. Not a chart, which has
+    // an animation of its own that knows what a bar and a slice are, and not
+    // a text element, whose presets are scoped to words and letters.
+    CanvasElement posed(CanvasElement e, double reveal) => e.withBase(
+            track: ElementTrack([
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: reveal}),
+        ]));
+
+    var kinds = <String, CanvasElement>{
+      "a shape": _shape(const ElementAnimation(
+          preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear)),
+      "a picture": ImageElement(
+        const ElementBase(id: "i", x: 40, y: 40, width: 160, height: 160),
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
+      ),
+      "a line": LineElement(
+        const ElementBase(id: "l", x: 20, y: 100, width: 200, height: 1),
+        strokeWidth: 6,
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
+      ),
+      "a route": PathElement(
+        const ElementBase(id: "p", x: 20, y: 20, width: 200, height: 160),
+        nodes: PathElement.defaultNodes(),
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
+      ),
+      "a table": TableElement(
+        const ElementBase(id: "b", x: 20, y: 20, width: 200, height: 120),
+        rows: const [
+          ["Team", "Pts"],
+          ["Red", "12"],
+        ],
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
+      ),
+    };
+
+    for (var entry in kinds.entries) {
+      testWidgets("${entry.key} arrives and ends up itself", (tester) async {
+        late Set<int> before;
+        late int half;
+        late int after;
+        late int still;
+        await tester.runAsync(() async {
+          before = await _ink(posed(entry.value, 0));
+          half = await _light(posed(entry.value, 0.5));
+          after = await _light(posed(entry.value, 1));
+          still = await _light(entry.value);
+        });
+        expect(before, isEmpty, reason: "nothing has arrived yet");
+        expect(half, greaterThan(0), reason: "it is on its way");
+        expect(half, lessThan(after),
+            reason: "and half way through there is less of it than at the end");
+        expect(after, still,
+            reason: "which is exactly the element with no animation at all");
+      });
+
+      test("${entry.key} carries an animation the controller can reach", () {
+        expect(CanvasController.animates(entry.value), isTrue);
+        expect(CanvasController.elementAnimationOf(entry.value).preset,
+            ElementAnimationPreset.fadeIn);
+      });
+
+      test("${entry.key} keeps it when it is saved", () {
+        var back = elementFromJson(entry.value.toJson());
+        expect(CanvasController.elementAnimationOf(back),
+            CanvasController.elementAnimationOf(entry.value));
+      });
+    }
+
+    testWidgets("and a line's pieces are thrown by its length, not its width",
+        (tester) async {
+      // A line is a couple of units tall, and the scatter is a fraction of
+      // the element: measured off the short side every piece stayed exactly
+      // where it was and a line coming apart looked like one dissolving.
+      var line = LineElement(
+        const ElementBase(id: "l", x: 20, y: 100, width: 200, height: 1),
+        strokeWidth: 6,
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.shatter,
+            ease: ChartEase.linear,
+            effect: EffectSpec(pieces: 10, scatter: 1, stagger: 0)),
+      );
+      late Set<int> early;
+      await tester.runAsync(() async {
+        early = await _ink(posed(line, 0.3));
+      });
+      var xs = early.map((at) => at % _size.toInt());
+      expect(xs, isNotEmpty);
+      expect(xs.reduce((a, b) => a < b ? a : b), lessThan(18),
+          reason: "pieces are thrown clear of where the line sits");
     });
   });
 

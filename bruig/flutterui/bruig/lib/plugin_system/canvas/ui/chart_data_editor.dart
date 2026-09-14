@@ -1,5 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/data_source.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/data_editor_shell.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -25,16 +27,51 @@ class ChartDataEditor extends StatefulWidget {
   final ValueChanged<ChartData> onChanged;
   final VoidCallback onCommit;
 
+  /// sourceColumns are the columns a fetched source maps, where the chart has
+  /// one, and [boundTo] is which of them each series is drawn from.
+  ///
+  /// Given so that the grid can say it: the series live here, and having to
+  /// go to the Data source section to find out which column feeds series two
+  /// is having the answer in a different room from the question. Empty for a
+  /// chart whose numbers are typed, which is most of them.
+  final List<SourceColumn> sourceColumns;
+  final List<int> boundTo;
+
+  /// sourceFields is everything the source is known to carry, mapped or not.
+  ///
+  /// Offered alongside the columns, so the answer to "what can this series
+  /// be" is everything the source has rather than everything somebody has
+  /// already mapped -- a coin comparison maps five columns out of twenty
+  /// fields. Choosing one adds the column; see boundSeries.
+  final List<String> sourceFields;
+
+  /// names are what a category is likely to be, offered as somebody types
+  /// one -- the coins a comparison can ask for. Empty unless the chart's rows
+  /// are what its source is asked for. See DataPreset.rowNames.
+  final List<String> names;
+
+  /// onBind points one series at one of those columns.
+  final void Function(int series, int column)? onBind;
+
   const ChartDataEditor({
     required this.data,
     required this.onChanged,
     required this.onCommit,
+    this.sourceColumns = const [],
+    this.boundTo = const [],
+    this.sourceFields = const [],
+    this.names = const [],
+    this.onBind,
     super.key,
   });
 
   @override
   State<ChartDataEditor> createState() => _ChartDataEditorState();
 }
+
+/// _typedIn is the choice that means this series is not drawn from the
+/// source at all: whatever is in the grid is what it is.
+const int _typedIn = -1;
 
 class _ChartDataEditorState extends State<ChartDataEditor> {
   ChartData get data => widget.data;
@@ -113,6 +150,9 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
 
   @override
   Widget build(BuildContext context) => CanvasDataEditorShell(
+        // The rows, plus the two header rows a chart's grid carries: the
+        // series names and where each one comes from.
+        wanted: (data.categories.length + 2) * 32 + 48,
         remember: "canvasChartData",
         gridTooltip: "Edit the numbers in a table",
         textTooltip: "Edit the numbers as pasted text",
@@ -263,12 +303,52 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
             ),
         ]);
 
+    /// bindings is a row of "where does this series come from", under the
+    /// names. Only for a chart with a fetched source: a chart of typed
+    /// numbers has nowhere for a series to come from but the grid itself.
+    Widget bindings() => Row(children: [
+          const SizedBox(width: nameWidth + 4),
+          for (var s = 0; s < data.series.length; s++)
+            Padding(
+              padding: const EdgeInsets.only(right: 4, bottom: 4),
+              child: SizedBox(
+                width: valueWidth + 30,
+                child: CanvasDropdown<int>(
+                  key: ValueKey("chartGridSeries$s"),
+                  label: "From",
+                  value:
+                      s < widget.boundTo.length ? widget.boundTo[s] : _typedIn,
+                  width: valueWidth + 30,
+                  options: [
+                    (_typedIn, "Typed in"),
+                    for (var (c, column) in widget.sourceColumns.indexed)
+                      (
+                        c,
+                        column.header.isEmpty
+                            ? "Column ${c + 1}"
+                            : column.header
+                      ),
+                    // The fields with no column yet, numbered past the end of
+                    // the mapping exactly as the Data source panel numbers
+                    // them -- see spareFields, which both ask.
+                    for (var (i, field) in spareFields(
+                            widget.sourceColumns, widget.sourceFields)
+                        .indexed)
+                      (widget.sourceColumns.length + i, field),
+                  ],
+                  onChanged: (c) => widget.onBind!(s, c),
+                ),
+              ),
+            ),
+        ]);
+
     Widget row(int i) => Row(children: [
           SizedBox(
             width: nameWidth,
             child: CanvasGridCell(
               value: data.categories[i],
               dense: true,
+              suggestions: widget.names,
               onChanged: (v) {
                 var out = [...data.categories];
                 out[i] = v;
@@ -310,6 +390,8 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           mainAxisSize: MainAxisSize.min,
           children: [
             header(),
+            if (widget.onBind != null && widget.sourceColumns.isNotEmpty)
+              bindings(),
             for (var i = 0; i < data.categories.length; i++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 3),

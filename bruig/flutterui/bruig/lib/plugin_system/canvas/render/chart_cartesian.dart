@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
+import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:flutter/painting.dart';
 
@@ -48,13 +49,66 @@ class _ValueRange {
   }
 }
 
+/// _stepFor is the roundest step that rules [lo]..[hi] into about [want]
+/// lines.
+///
+/// Searched rather than worked out, because the two requirements pull against
+/// each other: the lines have to land on numbers somebody can read, and there
+/// has to be about the number of them that was asked for. Rounding the step
+/// to the nearest 1, 2, 2.5 or 5 answers the first and ignores the second --
+/// half the numbers anybody types give back the answer they already had. This
+/// tries every round step near the right size and keeps whichever comes
+/// closest to the count, preferring the larger where two are equally close:
+/// given a choice, fewer and rounder.
+double _stepFor(double lo, double hi, int want) {
+  var span = hi - lo;
+  if (span <= 0 || !span.isFinite) return 1;
+  var lines = want.clamp(2, 40);
+  var mag =
+      math.pow(10, (math.log(span / lines) / math.ln10).floor()).toDouble();
+
+  // More multiples than the walk allows, because 3, 4 and 6 are perfectly
+  // readable steps -- 0, 30, 60, 90 is an axis anybody can read -- and
+  // without them there is nothing between 2.5 and 5.
+  const nice = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0];
+  double? best;
+  var bestScore = double.infinity;
+  for (var scale in [mag / 10, mag, mag * 10]) {
+    for (var m in nice) {
+      var step = m * scale;
+      if (step <= 0 || !step.isFinite) continue;
+      var min = (lo / step).floor() * step;
+      var max = (hi / step).ceil() * step;
+      var count = ((max - min) / step).round() + 1;
+      if (count < 2 || count > 200) continue;
+      // Nearest to what was asked, *and* fitting the numbers. A big step can
+      // always hit a small count by running the axis far past the data --
+      // two lines over a range of a hundred by ruling it to a thousand --
+      // which answers the question asked and ruins the chart. The room it
+      // wastes counts against it heavily enough that an axis which fits
+      // beats one that is nearer the number.
+      var waste = (max - min) / span - 1;
+      var score = (count - lines).abs() + math.max(0.0, waste) * 6;
+      // A tie goes to the finer step: asked for more lines than the round
+      // numbers can give exactly, somebody would rather have one too many
+      // than one too few.
+      if (score < bestScore ||
+          (score == bestScore && step < (best ?? double.infinity))) {
+        best = step;
+        bestScore = score;
+      }
+    }
+  }
+  return best ?? span / lines;
+}
+
 /// _logRange picks an axis by decades: 1, 10, 100, 1000.
 ///
 /// The ends are pushed out to whole powers of ten, which is what makes the
 /// labels readable and the gridlines mean something -- each line is ten times
 /// the one below it. Within a single decade that would be one gridline, so a
 /// narrow range is ruled at 1, 2 and 5 of each instead.
-_ValueRange _logRange(double lo, double hi) {
+_ValueRange _logRange(double lo, double hi, {int want = 0}) {
   if (!lo.isFinite || !hi.isFinite || lo <= 0 || hi <= 0) {
     return _niceRange(lo, hi);
   }
@@ -66,7 +120,12 @@ _ValueRange _logRange(double lo, double hi) {
   var ticks = <double>[];
   // Every decade below four of them; every second, then every fifth, above
   // that, so a chart spanning eight decades is not a solid band of writing.
-  var every = decades <= 6 ? 1 : (decades <= 12 ? 2 : 5);
+  // Asked for a number of divisions, every so many decades is the closest a
+  // log axis can come to it: the lines are powers of ten and there is nothing
+  // between them to move. Nought is the chart's own judgement.
+  var every = want > 0
+      ? math.max(1, (decades / math.max(1, want)).round())
+      : (decades <= 6 ? 1 : (decades <= 12 ? 2 : 5));
   for (var i = 0; i <= decades; i++) {
     if (i % every != 0 && i != decades) continue;
     var at = low * math.pow(10, i);
@@ -85,6 +144,20 @@ _ValueRange _logRange(double lo, double hi) {
   return _ValueRange(low, high, ticks, log: true);
 }
 
+/// axisTicksForTest is the value axis a chart would be ruled with: the
+/// numbers the gridlines are drawn at.
+///
+/// A seam, like legendEntriesForTest. What is being asked is arithmetic --
+/// how many lines, and at what round numbers -- and reading it off a picture
+/// would be counting rows of pixels to check a division.
+@visibleForTesting
+List<double> axisTicksForTest(double lo, double hi,
+        {int want = 0, bool log = false, bool fromZero = true}) =>
+    (log
+            ? _logRange(lo, hi, want: want)
+            : _niceRange(lo, hi, fromZero: fromZero, want: want))
+        .ticks;
+
 /// _niceRange picks an axis that ends on round numbers.
 ///
 /// The standard "nice numbers" walk: take the rough step the data implies,
@@ -99,7 +172,7 @@ _ValueRange _logRange(double lo, double hi) {
 /// zero is a flat line along the top with the whole month in a tenth of the
 /// plot.
 _ValueRange _niceRange(double lo, double hi,
-    {int target = 5, bool fromZero = true}) {
+    {int target = 5, int want = 0, bool fromZero = true}) {
   if (!lo.isFinite || !hi.isFinite || lo == hi) {
     var base = lo.isFinite ? lo : 0.0;
     lo = fromZero ? math.min(0, base) : base * 0.9;
@@ -129,6 +202,12 @@ _ValueRange _niceRange(double lo, double hi,
                       ? 5
                       : 10) *
       mag;
+
+  // Asked for a particular number of lines, the walk above is too coarse to
+  // answer with: it rounds the step to 1, 2, 2.5 or 5 times a power of ten,
+  // and over 0 to 100 that means five lines, six, seven, eight and nine all
+  // come out as the same six. Asked, it searches instead -- see _stepFor.
+  if (want > 0) step = _stepFor(lo, hi, want);
 
   var min = (lo / step).floor() * step;
   var max = (hi / step).ceil() * step;
@@ -171,6 +250,12 @@ void paintCartesian(
   } else {
     for (var s in data.series) {
       for (var v in s.values) {
+        // A log axis takes its bottom from the smallest number it can
+        // describe. Seeded with a zero -- which a row nobody has filled in
+        // yet puts in every series -- the range falls back to a linear one
+        // and the scale quietly stops being a log scale. The zeros are still
+        // drawn; they sit on the floor. See _ValueRange.fraction.
+        if (e.logs && v <= 0) continue;
         lo = math.min(lo, v);
         hi = math.max(hi, v);
       }
@@ -178,8 +263,9 @@ void paintCartesian(
   }
   if (!e.yMin.isNaN) lo = e.yMin;
   if (!e.yMax.isNaN) hi = e.yMax;
-  var range =
-      e.logs ? _logRange(lo, hi) : _niceRange(lo, hi, fromZero: fromZero);
+  var range = e.logs
+      ? _logRange(lo, hi, want: e.axisSteps)
+      : _niceRange(lo, hi, fromZero: fromZero, want: e.axisSteps);
   if (!e.yMin.isNaN || !e.yMax.isNaN) {
     range = _ValueRange(e.yMin.isNaN ? range.min : e.yMin,
         e.yMax.isNaN ? range.max : e.yMax, range.ticks,
@@ -210,13 +296,16 @@ void paintCartesian(
   var axisTitleGutter =
       e.showAxisLabels ? axisSpec.fontSize * 1.5 + math.max(0, e.axisGap) : 0.0;
 
+  // No writing, no gutter. Room kept for labels that are switched off is a
+  // margin of nothing down one side, which looks like a chart that has been
+  // pushed off centre.
   var left = area.left +
       (horizontal
           ? _widestCategory(data.categories, labelSpec, area)
           : valueGutter) +
-      (e.yAxisLabel.isNotEmpty ? axisTitleGutter : 0);
+      (e.showsYTitle ? axisTitleGutter : 0);
   var bottom = area.bottom -
-      (horizontal ? categoryGutter : categoryGutter) -
+      categoryGutter -
       (e.xAxisLabel.isNotEmpty ? axisTitleGutter : 0);
   var plot = Rect.fromLTRB(left, area.top + labelSpec.fontSize * 0.6,
       area.right - labelSpec.fontSize * 0.5, bottom);
@@ -383,7 +472,7 @@ void _axisLabels(
   // making the writing on the axes smaller does not shrink the words naming
   // them with it.
   var titleSpec = e.axisText;
-  if (e.xAxisLabel.isNotEmpty) {
+  if (e.showsXTitle) {
     paintTextInBox(
         canvas,
         e.xAxisLabel,
@@ -394,7 +483,7 @@ void _axisLabels(
         Rect.fromLTRB(
             plot.left, area.bottom - axisTitleGutter, plot.right, area.bottom));
   }
-  if (e.yAxisLabel.isNotEmpty) {
+  if (e.showsYTitle) {
     // Turned on its side against the axis, which is where a value-axis title
     // belongs and the only way it fits without eating a third of the plot.
     canvas.save();
@@ -496,7 +585,7 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // wall of digits; the close is the one a price chart is read for.
       paintTextInBox(
           canvas,
-          formatTick(e, ohlc.close),
+          formatSeries(e, 0, ohlc.close),
           e.valueSpec.copyWith(
               align: TextAlignSpec.center,
               verticalAlign: VerticalAlignSpec.bottom),
@@ -774,7 +863,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
               : 1.0;
           paintTextInBox(
               canvas,
-              formatTick(e, data.valueAt(s, i) * shown),
+              formatSeries(e, s, data.valueAt(s, i) * shown),
               e.valueSpec.copyWith(
                   align: TextAlignSpec.center,
                   verticalAlign: VerticalAlignSpec.bottom),

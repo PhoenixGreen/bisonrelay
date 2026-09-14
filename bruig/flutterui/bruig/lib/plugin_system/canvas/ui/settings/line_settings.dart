@@ -7,8 +7,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // line settings.dart is a line's settings.
 
-List<Widget> lineSettings(CanvasController controller, LineElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+List<Widget> lineSettings(
+    BuildContext context,
+    CanvasController controller,
+    LineElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   void now(LineElement next) {
     begin();
     write(next);
@@ -91,6 +96,11 @@ List<Widget> lineSettings(CanvasController controller, LineElement e,
         },
       ),
     ]),
+    // How it arrives, in a section of its own like a headline's.
+    boxed(
+        context,
+        elementAnimationSection(controller, e, e.animation,
+            (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }
 

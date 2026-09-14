@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
 /// LineCapStyle is what a line's ends used to be: the stroke's cap and its
 /// decoration in one enum.
@@ -138,6 +139,11 @@ class LineElement extends CanvasElement {
   /// top-left to bottom-right.
   final bool flipped;
 
+  /// animation is how it arrives and leaves. See ElementAnimation -- the same
+  /// two keyframes a chart and a headline use, so everything on the canvas can
+  /// be dragged to arrive together.
+  final ElementAnimation animation;
+
   const LineElement(
     super.base, {
     this.color = const Color(0xFFFFFFFF),
@@ -149,6 +155,7 @@ class LineElement extends CanvasElement {
     this.dash = 0,
     this.curvature = 0,
     this.flipped = false,
+    this.animation = const ElementAnimation(),
   });
 
   @override
@@ -168,7 +175,8 @@ class LineElement extends CanvasElement {
       endSize: endSize,
       dash: dash,
       curvature: curvature,
-      flipped: flipped);
+      flipped: flipped,
+      animation: animation);
 
   LineElement copyWith({
     Color? color,
@@ -180,6 +188,7 @@ class LineElement extends CanvasElement {
     double? dash,
     double? curvature,
     bool? flipped,
+    ElementAnimation? animation,
   }) =>
       LineElement(base,
           color: color ?? this.color,
@@ -190,7 +199,8 @@ class LineElement extends CanvasElement {
           endSize: endSize ?? this.endSize,
           dash: dash ?? this.dash,
           curvature: curvature ?? this.curvature,
-          flipped: flipped ?? this.flipped);
+          flipped: flipped ?? this.flipped,
+          animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
@@ -203,6 +213,7 @@ class LineElement extends CanvasElement {
         if (dash > 0) "dash": dash,
         if (curvature != 0) "curve": curvature,
         if (flipped) "flipped": true,
+        if (animation.on || animation.closes) "anim": animation.toJson(),
       };
 
   factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -238,6 +249,8 @@ class LineElement extends CanvasElement {
         endSize: jsonDouble(json["endSize"], 1),
         dash: jsonDouble(json["dash"], 0),
         curvature: jsonDouble(json["curve"], 0),
-        flipped: jsonBool(json["flipped"], false));
+        flipped: jsonBool(json["flipped"], false),
+        animation: jsonSpec(
+            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }
 }

@@ -73,7 +73,8 @@ List<Widget> elementSettings(
         textSettings(context, controller, e, write, begin, commit),
       ShapeElement e =>
         shapeSettings(context, controller, e, write, begin, commit),
-      LineElement e => lineSettings(controller, e, write, begin, commit),
+      LineElement e =>
+        lineSettings(context, controller, e, write, begin, commit),
       ImageElement e =>
         imageSettings(context, controller, e, write, begin, commit),
       ChartElement e =>
@@ -100,7 +101,8 @@ List<Widget> elementSettings(
           ]),
         ],
       TeamElement e => teamSettings(e, write, begin, commit),
-      PathElement e => pathSettings(controller, e, write, begin, commit),
+      PathElement e =>
+        pathSettings(context, controller, e, write, begin, commit),
       _ => const <Widget>[],
     },
   ];

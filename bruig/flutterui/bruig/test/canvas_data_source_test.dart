@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_data.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_picture_cache.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -150,6 +151,170 @@ void main() {
           7);
       expect(valueAtPath({"a": []}, "a.3.b"), isNull);
       expect(valueAtPath({"a": 1}, "a.b"), isNull);
+    });
+  });
+
+  group("the rows saying what to ask for", () {
+    // The coin comparison offers three fixed baskets, and what somebody wants
+    // is their own coins. Turned on, a refresh reads the match column and
+    // asks for those -- so adding a row is how a coin is added and deleting
+    // one is how it goes, which is the same gesture as editing any table.
+
+    test("a cell becomes something an address can ask for", () {
+      expect(asRowKey("Decred"), "decred");
+      expect(asRowKey("  Bitcoin  "), "bitcoin");
+      expect(asRowKey("Bitcoin Cash"), "bitcoin-cash");
+      expect(asRowKey("Avalanche"), "avalanche");
+      // Punctuation goes, and nothing is left dangling on the end.
+      expect(asRowKey("USD Coin (USDC)"), "usd-coin-usdc");
+      expect(asRowKey(""), "");
+      expect(asRowKey("   "), "");
+    });
+
+    test("and the preset builds an address out of them", () {
+      var wanted = ["Decred", "Solana", "Monero"].map(asRowKey).join(",");
+      var address = coinGeckoMarkets.address(wanted);
+      expect(address, contains("ids=decred,solana,monero"));
+    });
+
+    test("only where the choice is a list of rows", () {
+      // A competition is one thing and a chain's series is one thing: there
+      // is no list in the table to read either off.
+      expect(coinGeckoMarkets.choiceFromRows, isTrue);
+      expect(footballData.choiceFromRows, isFalse);
+    });
+
+    test("and a source remembers that it is the rows that decide", () {
+      var source = coinGeckoMarkets
+          .applyTo(const DataSource(), coinGeckoMarkets.choices.first.$1)
+          .copyWith(fromRows: true);
+      expect(DataSource.fromJson(source.toJson()).fromRows, isTrue);
+      // Off by default, so every document saved until now opens as it was.
+      expect(const DataSource().fromRows, isFalse);
+      expect(const DataSource().toJson().containsKey("fromRows"), isFalse);
+    });
+  });
+
+  group("a row the source did not send", () {
+    // Kept, not cut out. It is almost always a name spelled some other way --
+    // BNB is filed as binancecoin -- and the row is where somebody would go
+    // to correct it. Deleted by the refresh, the typing goes with it and
+    // there is nothing left to fix: the way to add a coin becomes the way to
+    // lose one.
+    test("is the one that was asked for and did not come back", () {
+      var came = [
+        ["Coin", "Price"],
+        ["Decred", "18.4"],
+        ["Bitcoin", "67000"],
+      ];
+      expect(rowsMissingFrom(const ["decred", "bitcoin", "blahcoin"], came, 0),
+          ["blahcoin"]);
+      expect(rowsMissingFrom(const ["decred", "bitcoin"], came, 0), isEmpty);
+    });
+
+    test("and is matched the same loose way it was asked for", () {
+      // Asked for as bitcoin-cash and sent back as "Bitcoin Cash", which is
+      // the same coin: the key is what both are put through.
+      var came = [
+        ["Coin"],
+        ["Bitcoin Cash"],
+      ];
+      expect(rowsMissingFrom(const ["bitcoin-cash"], came, 0), isEmpty);
+    });
+
+    test("nothing is missing where nothing was asked for by name", () {
+      // Every source but the ones whose rows say what to fetch: there is no
+      // list of names to check against.
+      expect(
+          rowsMissingFrom(const [], const [
+            ["Coin"]
+          ], 0),
+          isEmpty);
+    });
+
+    test("and the match column is the one the source uses", () {
+      var came = [
+        ["Pos", "Coin"],
+        ["1", "Decred"],
+      ];
+      expect(rowsMissingFrom(const ["decred"], came, 1), isEmpty);
+      expect(rowsMissingFrom(const ["decred"], came, 0), ["decred"],
+          reason: "looking in the wrong column finds nothing, as it should");
+    });
+  });
+
+  group("the names a source knows", () {
+    // Offered as somebody types a row, so connecting to a source is not a
+    // guessing game about spelling. Not every name there is -- CoinGecko has
+    // thousands, and a list of thousands is a worse way to find one than
+    // typing it -- so anything off the list can still be typed.
+    test("a preset with rows for choices carries them", () {
+      expect(coinGeckoMarkets.rowNames, isNotEmpty);
+      expect(coinGeckoMarkets.rowNames, contains("Decred"));
+      expect(coinGeckoMarkets.rowNames, contains("Bitcoin Cash"));
+    });
+
+    test("and every one of them is a name the refresh can ask for", () {
+      // The row holds the name somebody reads; the address wants the
+      // identifier the source files it under. Checking only that the name
+      // keys to *something* was not enough: XRP keyed to xrp, which
+      // CoinGecko has never heard of -- it files that coin as ripple. So
+      // every suggested name must map to an id the source actually has.
+      var known = {for (var (id, _) in geckoCoinsForTest) id};
+      for (var name in coinGeckoMarkets.rowNames) {
+        var id = coinGeckoMarkets.idFor(name);
+        expect(id, isNotEmpty, reason: name);
+        expect(known, contains(id),
+            reason: "$name would be asked for as \"$id\"");
+      }
+    });
+
+    test("and the built-in list is only what is offered before asking", () {
+      // It is short and it was written by hand, so it is both incomplete and
+      // occasionally wrong -- Firo is filed under the name it had before it
+      // was Firo. The source's own list replaces it; see CanvasRowNames.
+      expect(coinGeckoMarkets.namesAddress, isNotEmpty,
+          reason: "there is somewhere to ask");
+      expect(coinGeckoMarkets.idFor("Firo"), "zcoin");
+      expect(coinGeckoMarkets.idFor("Horizen"), "zencash");
+    });
+
+    test("the awkward ones are asked for by their identifier", () {
+      // The whole reason the mapping exists. Typed by hand these come back
+      // empty; chosen from the list they are asked for correctly.
+      expect(coinGeckoMarkets.idFor("XRP"), "ripple");
+      expect(coinGeckoMarkets.idFor("BNB"), "binancecoin");
+      expect(coinGeckoMarkets.idFor("Avalanche"), "avalanche-2");
+      // And the many that need no mapping are still just their name.
+      expect(coinGeckoMarkets.idFor("Decred"), "decred");
+      expect(coinGeckoMarkets.idFor("DigiByte"), "digibyte");
+      expect(coinGeckoMarkets.idFor("Bitcoin Cash"), "bitcoin-cash");
+      // Anything off the list is taken as typed, which is what lets somebody
+      // ask for a coin the list has never heard of.
+      expect(coinGeckoMarkets.idFor("Something Else"), "something-else");
+    });
+
+    test("a row that came back is matched through the same mapping", () {
+      // Asked for as ripple and sent back as "XRP": without the mapping on
+      // both sides it would look like the coin never arrived, and be
+      // reported missing beside a row that is plainly there.
+      var came = [
+        ["Coin"],
+        ["XRP"],
+      ];
+      expect(
+          rowsMissingFrom(const ["ripple"], came, 0,
+              idOf: coinGeckoMarkets.idFor),
+          isEmpty);
+      expect(rowsMissingFrom(const ["ripple"], came, 0), ["ripple"],
+          reason: "and without it, it looks missing");
+    });
+
+    test("a source with no list of rows offers none", () {
+      // A competition is one thing, not a list of rows, so there is nothing
+      // to suggest while typing one.
+      expect(footballData.rowNames, isEmpty);
+      expect(coinGeckoPrice.rowNames, isEmpty);
     });
   });
 
@@ -614,6 +779,68 @@ void main() {
           if (key.startsWith("canvasPicture:")) prefs.getString(key),
       ];
       expect(saved, [id]);
+    });
+  });
+
+  group("a chart's series", () {
+    // A switch per mapped column asked the question the wrong way round: the
+    // series were numbered somewhere else, and nothing could be drawn that
+    // the mapping had not already been given a column for. The list is now
+    // the chart's series, and every field the refresh found is on offer
+    // against each one.
+    const mapped = [
+      SourceColumn(header: "Coin", path: "name"),
+      SourceColumn(header: "Price (USD)", path: "current_price"),
+      SourceColumn(header: "Market cap", path: "market_cap"),
+    ];
+
+    test("offers every field, not only the columns already mapped", () {
+      var spare = spareFields(mapped,
+          const ["name", "current_price", "market_cap", "ath", "total_volume"]);
+      expect(spare, ["ath", "total_volume"],
+          reason: "the ones with no column yet, in the order they are shown");
+    });
+
+    test("and numbers them past the end of the mapping", () {
+      // Which is what says both "this field" and "the column it will become",
+      // so one dropdown can offer both without two kinds of value in it.
+      var spare = spareFields(mapped, const ["ath", "total_volume"]);
+      expect(mapped.length + spare.indexOf("total_volume"), 4);
+    });
+
+    test("the whole of what the source carries, before any refresh", () {
+      // The preset says what a record holds, so the list is everything the
+      // endpoint has rather than the handful mapped as columns -- and it is
+      // there the moment the preset is chosen, with nothing fetched yet.
+      var mappedPaths = [for (var c in coinGeckoMarkets.columns) c.path];
+      expect(mappedPaths.length, lessThan(coinGeckoMarkets.fields.length));
+      for (var path in mappedPaths) {
+        expect(coinGeckoMarkets.fields, contains(path),
+            reason: "every mapped column is one of the known fields");
+      }
+      // The figures somebody actually asks a comparison for.
+      for (var field in [
+        "ath",
+        "atl",
+        "max_supply",
+        "fully_diluted_valuation",
+        "market_cap_change_percentage_24h",
+      ]) {
+        expect(coinGeckoMarkets.fields, contains(field));
+      }
+      expect(spareFields(coinGeckoMarkets.columns, coinGeckoMarkets.fields),
+          contains("ath"),
+          reason: "and the unmapped ones are what a series can be pointed at");
+    });
+
+    test("a field already mapped is not offered twice", () {
+      expect(spareFields(mapped, const ["current_price"]), isEmpty);
+      // Matched on the path rather than the header, since a column can be
+      // renamed and still be the same field.
+      expect(
+          spareFields(const [SourceColumn(header: "Anything", path: "ath")],
+              const ["ath"]),
+          isEmpty);
     });
   });
 

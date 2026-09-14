@@ -4,7 +4,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_chart_source_test.dart is a chart fetching its own numbers.
@@ -176,6 +179,56 @@ void main() {
       ];
       var data = chartDataFromRows(rows, const ChartSourceMap());
       expect(data.series.single.values, [0]);
+    });
+
+    test("a refresh keeps what was decided about how a series looks", () {
+      // A refresh brings new values; it is not somebody asking for their
+      // colours back. Built from the rows alone, every refresh put the
+      // palette's colour back, forgot a series told to draw as a line over
+      // the bars, and forgot how its figures were written -- three settings
+      // quietly undoing themselves twice a week.
+      var rows = [
+        ["Coin", "Price", "Market cap"],
+        ["Decred", "16", "230"],
+      ];
+      var was = [
+        const ChartSeries(name: "Price", color: Color(0xFFAA0000), values: [1]),
+        const ChartSeries(
+            name: "Market cap",
+            color: Color(0xFF00AA00),
+            values: [2],
+            type: ChartType.line,
+            numbers: ChartNumbers(style: NumberStyle.millions)),
+      ];
+
+      var data = chartDataFromRows(
+          rows, const ChartSourceMap(valueColumns: [1, 2]),
+          keeping: was);
+
+      expect(data.series[0].color, const Color(0xFFAA0000));
+      expect(data.series[1].type, ChartType.line,
+          reason: "the line over the bars is still a line");
+      expect(data.series[1].numbers?.style, NumberStyle.millions);
+      // The values are the new ones, and the name still comes from the
+      // column -- which is the whole point of mapping one.
+      expect(data.series[1].values, [230]);
+      expect(data.series[1].name, "Market cap");
+    });
+
+    test("and a series that was not there yet takes the palette's colour", () {
+      var rows = [
+        ["Coin", "Price", "Market cap"],
+        ["Decred", "16", "230"],
+      ];
+      var data = chartDataFromRows(
+          rows, const ChartSourceMap(valueColumns: [1, 2]),
+          keeping: [
+            const ChartSeries(
+                name: "Price", color: Color(0xFFAA0000), values: [1]),
+          ]);
+      expect(data.series[0].color, const Color(0xFFAA0000));
+      expect(data.series[1].color, chartPalette[1]);
+      expect(data.series[1].type, isNull);
     });
 
     test("nothing chosen is no chart, not an empty one with axes", () {

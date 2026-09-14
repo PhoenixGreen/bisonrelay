@@ -26,10 +26,18 @@ class TableDataEditor extends StatefulWidget {
   final ValueChanged<List<List<String>>> onChanged;
   final VoidCallback onCommit;
 
+  /// names are what the cells of [namesColumn] are likely to hold, offered as
+  /// somebody types one -- the coins a comparison can ask for, say. Empty for
+  /// a table of free text, which is most of them.
+  final List<String> names;
+  final int namesColumn;
+
   const TableDataEditor({
     required this.rows,
     required this.onChanged,
     required this.onCommit,
+    this.names = const [],
+    this.namesColumn = 0,
     super.key,
   });
 
@@ -119,6 +127,11 @@ class _TableDataEditorState extends State<TableDataEditor> {
   @override
   Widget build(BuildContext context) => CanvasDataEditorShell(
         remember: "canvasTableData",
+        // Tall enough for the rows there are, with room to spare: a cell and
+        // the gap under it is about thirty, and the buttons along the foot
+        // are another forty. Erring high on purpose -- a little slack at the
+        // bottom is nothing, and a little short is the scrollbar back.
+        wanted: widget.rows.length * 32 + 48,
         gridTooltip: "Edit the cells in a grid",
         textTooltip: "Edit the cells as pasted text",
         toolbar: [
@@ -204,6 +217,11 @@ class _TableDataEditorState extends State<TableDataEditor> {
                         child: CanvasGridCell(
                           value: grid[r][c],
                           dense: true,
+                          // Only the column that names a row, and not its
+                          // heading: the heading is the column's own name.
+                          suggestions: c == widget.namesColumn && r > 0
+                              ? widget.names
+                              : const [],
                           onChanged: (v) => _withCell(r, c, v),
                           onCommit: widget.onCommit,
                         ),

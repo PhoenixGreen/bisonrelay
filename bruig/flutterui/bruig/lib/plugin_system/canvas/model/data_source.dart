@@ -243,6 +243,22 @@ class DataSource {
   /// or a season ago.
   final DateTime? fetchedAt;
 
+  /// fromRows asks the source for whatever the element already has rows for,
+  /// instead of a fixed list chosen from a dropdown.
+  ///
+  /// The coin comparison is the case it was written for. Its choices are
+  /// three fixed baskets -- a spread, the large ones, privacy coins -- and
+  /// what somebody actually wants is *their* coins: the ones already in the
+  /// table, however many of them there are. Turned on, a refresh reads the
+  /// match column, asks for those, and brings back a row for each. Adding a
+  /// row and refreshing is then how a coin is added, and deleting one is how
+  /// it goes, which is the same gesture as editing any other table.
+  ///
+  /// Only for a preset whose choice is a list of things that become rows --
+  /// see DataPreset.choiceFromRows. A competition or a chain's series is one
+  /// thing, and there is no list in the table to read it off.
+  final bool fromRows;
+
   const DataSource({
     this.kind = DataKind.typed,
     this.where = "",
@@ -252,6 +268,7 @@ class DataSource {
     this.shape = DataShape.records,
     this.preset = "",
     this.fetchedAt,
+    this.fromRows = false,
   });
 
   bool get on => kind != DataKind.typed && where.isNotEmpty;
@@ -269,6 +286,7 @@ class DataSource {
     DataShape? shape,
     String? preset,
     DateTime? fetchedAt,
+    bool? fromRows,
   }) =>
       DataSource(
         kind: kind ?? this.kind,
@@ -279,6 +297,7 @@ class DataSource {
         shape: shape ?? this.shape,
         preset: preset ?? this.preset,
         fetchedAt: fetchedAt ?? this.fetchedAt,
+        fromRows: fromRows ?? this.fromRows,
       );
 
   /// withColumnMoved is this source with one column shifted along the row.
@@ -321,6 +340,7 @@ class DataSource {
         if (shape != DataShape.records) "shape": shape.name,
         if (preset.isNotEmpty) "preset": preset,
         if (fetchedAt != null) "at": fetchedAt!.toIso8601String(),
+        if (fromRows) "fromRows": true,
       };
 
   factory DataSource.fromJson(Map<String, dynamic> json) => DataSource(
@@ -337,7 +357,30 @@ class DataSource {
         shape: DataShape.fromName(jsonString(json["shape"], "")),
         preset: jsonString(json["preset"], ""),
         fetchedAt: DateTime.tryParse(jsonString(json["at"], "")),
+        fromRows: jsonBool(json["fromRows"], false),
       );
+}
+
+/// asRowKey turns what is written in a cell into something an address can ask
+/// for: lower case, hyphens for spaces, nothing else.
+///
+/// "Decred" becomes decred and "Bitcoin Cash" becomes bitcoin-cash, which is
+/// what CoinGecko calls them. It is a guess, and a good one for almost every
+/// coin -- the few it cannot get (BNB is filed as binancecoin, XRP as ripple)
+/// come back missing rather than wrong, and the refresh says which. That is
+/// the trade: somebody types the name they can see instead of looking up an
+/// identifier, and is told plainly on the rare occasion the name is not it.
+String asRowKey(String cell) {
+  var out = StringBuffer();
+  for (var rune in cell.trim().toLowerCase().runes) {
+    var c = String.fromCharCode(rune);
+    if (RegExp(r"[a-z0-9]").hasMatch(c)) {
+      out.write(c);
+    } else if (c == " " || c == "-" || c == "_" || c == ".") {
+      if (out.isNotEmpty && !out.toString().endsWith("-")) out.write("-");
+    }
+  }
+  return out.toString().replaceAll(RegExp(r"-+\$"), "");
 }
 
 /// movedIndex is where the thing at [index] ends up when the column at

@@ -17,6 +17,17 @@ enum NumberStyle {
   /// the default -- and it is wrong exactly when somebody has an opinion,
   /// which is what the rest of these are for.
   automatic("Automatic", "1000000, 12.5"),
+
+  /// compact shortens every number by its own size: a thousand is 1.0K and a
+  /// trillion is 1.0T, on the same axis.
+  ///
+  /// The fixed styles below scale everything by one amount, which is right
+  /// when the numbers are of one size and wrong the moment they are not: a
+  /// chart in millions writes a billion as 1000.0M and a thousand as 0.0M.
+  /// This picks the unit per number, so an axis that climbs through four
+  /// orders of magnitude is readable the whole way up -- which is what a log
+  /// axis is usually for, and what somebody asking for K, M, B, T means.
+  compact("Shortened", "1.2K, 3.4M, 5.6B"),
   plain("In full", "1,000,000"),
   thousands("Thousands", "1,000K"),
   millions("Millions", "1.0M"),
@@ -34,9 +45,10 @@ enum NumberStyle {
   static NumberStyle fromName(String? name) =>
       values.firstWhere((s) => s.name == name, orElse: () => automatic);
 
-  /// by is what a number is divided by before it is written.
+  /// by is what a number is divided by before it is written. Meaningless for
+  /// [compact], which picks per number -- see compactUnit.
   double get by => switch (this) {
-        automatic || plain => 1,
+        automatic || compact || plain => 1,
         thousands => 1e3,
         millions => 1e6,
         billions => 1e9,
@@ -44,7 +56,7 @@ enum NumberStyle {
 
   /// suffix is the letter after it.
   String get suffix => switch (this) {
-        automatic || plain => "",
+        automatic || compact || plain => "",
         thousands => "K",
         millions => "M",
         billions => "B",
@@ -84,14 +96,17 @@ class ChartNumbers {
     if (!v.isFinite) return "";
     if (style == NumberStyle.automatic) return automaticNumber(v);
 
-    var scaled = v / style.by;
+    var (by, suffix) = style == NumberStyle.compact
+        ? compactUnit(v)
+        : (style.by, style.suffix);
+    var scaled = v / by;
     var places = decimals.clamp(0, 6);
     var text = scaled.toStringAsFixed(places);
     // toStringAsFixed(0) rounds to a whole number and leaves no point, which
     // is what zero decimals means; everything else keeps what it was given,
     // trailing noughts included. "1.50M" asked for two places and two places
     // is what it says.
-    return "${separators ? _grouped(text) : text}${style.suffix}";
+    return "${separators ? _grouped(text) : text}$suffix";
   }
 
   /// _grouped puts the separators into the whole part and leaves the rest
@@ -131,6 +146,22 @@ class ChartNumbers {
 /// chart did before the styles above existed and is what they all still do
 /// until somebody says otherwise -- which is why it is a function rather than
 /// a branch inside one: it is the answer, not a case.
+/// compactUnit is what to divide [v] by and what letter to put after it: the
+/// largest unit it reaches.
+///
+/// Quadrillion is the last one. Past that the units stop being ones anybody
+/// reads at a glance -- a quintillion written Qi is a puzzle, not a label --
+/// and a number that large on a canvas is a number that wants its own words.
+(double, String) compactUnit(double v) {
+  var size = v.abs();
+  if (size >= 1e15) return (1e15, "Q");
+  if (size >= 1e12) return (1e12, "T");
+  if (size >= 1e9) return (1e9, "B");
+  if (size >= 1e6) return (1e6, "M");
+  if (size >= 1e3) return (1e3, "K");
+  return (1, "");
+}
+
 String automaticNumber(double v) {
   if (v == v.roundToDouble() && v.abs() < 1e15) {
     var n = v.round();

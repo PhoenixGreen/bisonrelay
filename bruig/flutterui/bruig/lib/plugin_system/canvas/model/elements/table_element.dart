@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
@@ -653,6 +654,11 @@ class TableElement extends CanvasElement {
   /// [TableRule].
   final List<TableRule> rules;
 
+  /// animation is how it arrives and leaves. See ElementAnimation -- the same
+  /// two keyframes a chart and a headline use, so everything on the canvas can
+  /// be dragged to arrive together.
+  final ElementAnimation animation;
+
   const TableElement(
     super.base, {
     this.rows = const [],
@@ -679,6 +685,7 @@ class TableElement extends CanvasElement {
     this.sort = const TableSort(),
     this.source = const DataSource(),
     this.hiddenHeaders = const [],
+    this.animation = const ElementAnimation(),
   });
 
   @override
@@ -878,6 +885,7 @@ class TableElement extends CanvasElement {
     TableSort? sort,
     DataSource? source,
     List<int>? hiddenHeaders,
+    ElementAnimation? animation,
   }) =>
       _copy(base,
           rows: rows,
@@ -901,7 +909,8 @@ class TableElement extends CanvasElement {
           rules: rules,
           sort: sort,
           source: source,
-          hiddenHeaders: hiddenHeaders);
+          hiddenHeaders: hiddenHeaders,
+          animation: animation);
 
   TableElement _copy(
     ElementBase newBase, {
@@ -927,6 +936,7 @@ class TableElement extends CanvasElement {
     TableSort? sort,
     DataSource? source,
     List<int>? hiddenHeaders,
+    ElementAnimation? animation,
   }) =>
       TableElement(newBase,
           rows: rows ?? this.rows,
@@ -950,7 +960,8 @@ class TableElement extends CanvasElement {
           rules: rules ?? this.rules,
           sort: sort ?? this.sort,
           source: source ?? this.source,
-          hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders);
+          hiddenHeaders: hiddenHeaders ?? this.hiddenHeaders,
+          animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
@@ -976,6 +987,7 @@ class TableElement extends CanvasElement {
         if (sort.on || !sort.pinFirstColumn) "sort": sort.toJson(),
         if (source.on) "source": source.toJson(),
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
+        if (animation.on || animation.closes) "anim": animation.toJson(),
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -1027,7 +1039,9 @@ class TableElement extends CanvasElement {
           if (json["hiddenHeaders"] case List raw)
             for (var c in raw)
               if (c is num) c.toInt(),
-        ]);
+        ],
+        animation: jsonSpec(
+            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }
 
   /// sorted is this table with its rows in the order [sort] asks for.

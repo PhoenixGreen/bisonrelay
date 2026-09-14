@@ -516,8 +516,9 @@ Rect motionRoom(Rect box, TextAnimation animation) {
   // Tiles thrown out of the box need room where they are thrown to, which is
   // as far as the scatter allows.
   if (preset.motion == TextMotion.pieces) {
-    var thrown = box.shortestSide * animation.effect.scatter;
-    room = room.inflate(thrown + box.shortestSide * 0.1);
+    var reach = math.max(box.shortestSide, box.longestSide * 0.25);
+    var thrown = reach * animation.effect.scatter;
+    room = room.inflate(thrown + reach * 0.1);
   }
 
   // A turning rectangle sweeps out its own diagonal.

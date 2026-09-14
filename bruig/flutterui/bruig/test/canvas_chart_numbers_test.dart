@@ -90,6 +90,42 @@ void main() {
     });
   });
 
+  group("shortened", () {
+    // Every number by its own size, on one axis. The fixed styles scale
+    // everything by one amount, which is right when the numbers are of one
+    // size and wrong the moment they are not: a chart in millions writes a
+    // billion as 1000.0M and a thousand as 0.0M.
+    const shortened = ChartNumbers(style: NumberStyle.compact);
+
+    test("picks the unit each number reaches", () {
+      expect(shortened.format(950), "950.0");
+      expect(shortened.format(1500), "1.5K");
+      expect(shortened.format(2400000), "2.4M");
+      expect(shortened.format(3.2e9), "3.2B");
+      expect(shortened.format(1.8e12), "1.8T");
+      expect(shortened.format(4e15), "4.0Q");
+    });
+
+    test("and the decimals and grouping are still the chart's", () {
+      const round = ChartNumbers(style: NumberStyle.compact, decimals: 0);
+      expect(round.format(2400000), "2M");
+      // Grouping still applies where a number is large enough to need it --
+      // a chart in the shortened style can still reach 1,000K.
+      const many = ChartNumbers(style: NumberStyle.compact, decimals: 1);
+      expect(many.format(-2400000), "-2.4M");
+    });
+
+    test("below a thousand it is the number itself", () {
+      expect(shortened.format(0), "0.0");
+      expect(shortened.format(-12.5), "-12.5");
+    });
+
+    test("it survives being saved", () {
+      var back = ChartNumbers.fromJson(shortened.toJson());
+      expect(back.style, NumberStyle.compact);
+    });
+  });
+
   group("automatic", () {
     test("is what a chart did before any of this existed", () {
       // The default has to keep every chart already drawn exactly as it was.
@@ -180,6 +216,58 @@ void main() {
                   1)
               .map((k) => k.$2),
           ["One: 1.00M", "Two: 2.50M"]);
+    });
+  });
+
+  group("the words naming an axis", () {
+    // The X label and the Y label are the words under and beside the plot --
+    // "Coin", "Price" -- and each can be taken off on its own. The tick
+    // values and the category names are a different question and belong to
+    // Axes labels: "the labels on the axes" means those, "the X label" means
+    // the word underneath them.
+    ChartElement titled({bool x = true, bool y = true, bool all = true}) =>
+        ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          xAxisLabel: "Coin",
+          yAxisLabel: "Price",
+          showAxisLabels: all,
+          showXTitle: x,
+          showYTitle: y,
+        );
+
+    test("each one is shown on its own", () {
+      expect(titled().showsXTitle, isTrue);
+      expect(titled(x: false).showsXTitle, isFalse);
+      expect(titled(x: false).showsYTitle, isTrue,
+          reason: "taking one off leaves the other");
+    });
+
+    test("and a title with nothing in it is not drawn either way", () {
+      var blank = titled().copyWith(xAxisLabel: "");
+      expect(blank.showsXTitle, isFalse);
+      expect(blank.showsYTitle, isTrue);
+    });
+
+    test("switching off every label takes the titles with it", () {
+      // They are writing on the axes, and that switch means no writing on
+      // the axes at all.
+      expect(titled(all: false).showsXTitle, isFalse);
+      expect(titled(all: false).showsYTitle, isFalse);
+    });
+
+    test("a chart saved before they existed shows both", () {
+      var old =
+          ChartElement.fromJson(const {"id": "c"}, const ElementBase(id: "c"));
+      expect(old.showXTitle, isTrue);
+      expect(old.showYTitle, isTrue);
+      expect(old.toJson().containsKey("noXTitle"), isFalse);
+    });
+
+    test("and one switched off survives being saved", () {
+      var off = titled(x: false);
+      var back = ChartElement.fromJson(off.toJson(), off.base);
+      expect(back.showXTitle, isFalse);
+      expect(back.showYTitle, isTrue);
     });
   });
 
@@ -333,6 +421,41 @@ void main() {
     });
   });
 
+  group("a log scale and a row nobody has filled in", () {
+    // Adding a row puts a zero in every series -- that is what the row *is*
+    // until the numbers arrive. Refusing the whole scale for it meant a log
+    // chart stopped being one the moment a row was added and came back only
+    // after every series had been typed into, which reads as the switch
+    // being broken.
+    ChartElement charting(List<double> values) => ChartElement(
+          const ElementBase(id: "c", width: 400, height: 300),
+          logScale: true,
+          data: ChartData(categories: const [
+            "a",
+            "b"
+          ], series: [
+            ChartSeries(
+                name: "s", color: const Color(0xFF112233), values: values),
+          ]),
+        );
+
+    test("a zero does not switch it off", () {
+      expect(charting([10, 0]).logs, isTrue);
+      expect(charting([10, 100]).logs, isTrue);
+    });
+
+    test("but a negative does", () {
+      // A reading below zero is one a log axis genuinely cannot show, and
+      // drawing it anyway would be a chart that lies.
+      expect(charting([10, -1]).logs, isFalse);
+    });
+
+    test("and nothing above zero is nothing to scale", () {
+      expect(charting([0, 0]).logs, isFalse);
+      expect(charting([]).logs, isFalse);
+    });
+  });
+
   group("which numbers go where", () {
     test("the axis is asked separately from the values", () {
       // The two functions the painter calls: one for a reading, one for a
@@ -346,6 +469,65 @@ void main() {
       );
       expect(formatTick(e, 2049000), "2.049M");
       expect(formatAxis(e, 2049000), "2.0M");
+    });
+
+    test("and a series can be written its own way", () {
+      // A price beside a market cap is two series four orders of magnitude
+      // apart: one style across both writes either "0.0B" against the price
+      // or eleven digits against the cap.
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        numbers: const ChartNumbers(style: NumberStyle.plain, decimals: 2),
+        data: ChartData(categories: const [
+          "Decred"
+        ], series: [
+          const ChartSeries(
+              name: "Price", color: Color(0xFF000000), values: [18.4]),
+          ChartSeries(
+              name: "Market cap",
+              color: const Color(0xFF000000),
+              values: const [290000000],
+              numbers: const ChartNumbers(style: NumberStyle.millions)),
+        ]),
+      );
+      expect(formatSeries(e, 0, 18.4), "18.40",
+          reason: "a series that says nothing is written the chart's way");
+      expect(formatSeries(e, 1, 290000000), "290.0M");
+      // The axis keeps the chart's own: there is one of it, and it cannot be
+      // two things at once.
+      expect(formatAxis(e, 290000000), formatAxis(e, 290000000));
+      expect(formatTick(e, 290000000), "290,000,000.00");
+    });
+
+    test("a series' own style survives being saved", () {
+      var series = const ChartSeries(
+          name: "Cap",
+          color: Color(0xFF112233),
+          values: [1],
+          numbers: ChartNumbers(style: NumberStyle.billions, decimals: 2));
+      var back = ChartSeries.fromJson(series.toJson(), 0);
+      expect(back.numbers?.style, NumberStyle.billions);
+      expect(back.numbers?.decimals, 2);
+
+      // And a series with nothing of its own saves nothing, so every chart
+      // written until now reads back exactly as it was.
+      const plain =
+          ChartSeries(name: "A", color: Color(0xFF112233), values: [1]);
+      expect(plain.toJson().containsKey("numbers"), isFalse);
+      expect(ChartSeries.fromJson(plain.toJson(), 0).numbers, isNull);
+    });
+
+    test("and going back to the chart's way forgets it", () {
+      // copyWith fills a null with what was there before, which is right for
+      // "change this field" and wrong for "follow the chart again" -- the
+      // same trap the type override has, and the same flag out of it.
+      var own = const ChartSeries(
+          name: "Cap",
+          color: Color(0xFF112233),
+          values: [1],
+          numbers: ChartNumbers(style: NumberStyle.billions));
+      expect(own.copyWith(name: "Cap!").numbers, isNotNull);
+      expect(own.copyWith(writtenLikeChart: true).numbers, isNull);
     });
   });
 }

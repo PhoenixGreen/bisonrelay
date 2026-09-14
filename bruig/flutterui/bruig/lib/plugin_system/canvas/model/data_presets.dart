@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:flutter/foundation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_data.dart';
 import 'package:bruig/plugin_system/canvas/model/football_form.dart';
 
@@ -23,6 +24,55 @@ class DataPreset {
   /// note says what the reader has to do for themselves, which for every one
   /// of these is "get a key".
   final String note;
+
+  /// rowNames are the things this source has, offered while somebody types a
+  /// row -- the coins, the competitions, whatever the rows *are*.
+  ///
+  /// A list of names rather than of identifiers, because the name is what
+  /// goes in the cell and what a refresh is matched on; see asRowKey. Not
+  /// every one there is: CoinGecko has thousands, and a list of thousands is
+  /// a worse way to find one than typing it. These are the ones somebody
+  /// building a canvas here is likely to want, and anything not on it can
+  /// still be typed.
+  final List<String> rowNames;
+
+  /// namesAddress is where the source's own list of rows can be had: every
+  /// coin it knows, with the identifier it files each under.
+  ///
+  /// Because [rowNames] and [rowIds] cannot be right. Written out by hand,
+  /// every identifier is a chance to be wrong, and wrong is invisible until
+  /// somebody types a name and the refresh comes back without it -- CoinGecko
+  /// files Firo under "zcoin", because Firo used to be called Zcoin. Asked
+  /// for, the list is the source's own answer and stays right as the source
+  /// changes. Empty for a preset that has no such list.
+  ///
+  /// Fetched on a button rather than on a timer or at startup: it is a
+  /// request to the internet, and this app does not make those unasked. See
+  /// CanvasRowNames.
+  final String namesAddress;
+
+  /// namesId and namesName are where the identifier and the name sit in each
+  /// record of that list.
+  final String namesId;
+  final String namesName;
+
+  /// rowIds is what to ask for when a row says one of those names, for the
+  /// ones where the two differ. Keyed by asRowKey of the name.
+  ///
+  /// A row holds the name somebody reads; an address wants the identifier the
+  /// source files it under. They are the same word often enough that the key
+  /// alone works -- decred is Decred -- and different often enough to matter:
+  /// XRP is ripple. Without this the list would offer names that come back
+  /// empty, which is worse than not offering them.
+  final Map<String, String> rowIds;
+
+  /// choiceFromRows is whether the choice is a list of things that each
+  /// become a row, so the element's own rows can say what to ask for.
+  ///
+  /// True of the coin comparison and nothing else here: a competition is one
+  /// thing and a chain's series is one thing, and there is no list in the
+  /// table to read either off. See DataSource.fromRows.
+  final bool choiceFromRows;
 
   /// choices are the interchangeable part of the address -- which competition,
   /// which season -- as a code and a name.
@@ -124,6 +174,12 @@ class DataPreset {
     required this.rowsPath,
     required this.columns,
     this.matchColumn = -1,
+    this.choiceFromRows = false,
+    this.rowNames = const [],
+    this.rowIds = const {},
+    this.namesAddress = "",
+    this.namesId = "id",
+    this.namesName = "name",
     this.shape = DataShape.records,
     this.columnsFor,
     this.tables = true,
@@ -137,6 +193,14 @@ class DataPreset {
     this.derived = const [],
     this.derive,
   });
+
+  /// idFor is what to ask the source for when a row says [cell]: the
+  /// identifier where the name differs from it, and the name's own key
+  /// otherwise. See [rowIds].
+  String idFor(String cell) {
+    var key = asRowKey(cell);
+    return rowIds[key] ?? key;
+  }
 
   /// columnsIn is the mapping for one choice. See [columnsFor].
   List<SourceColumn> columnsIn(String choice) =>
@@ -364,7 +428,144 @@ const List<(String, String)> _geckoCoins = [
   ("zcash", "Zcash"),
   ("dash", "Dash"),
   ("solana", "Solana"),
+  ("cardano", "Cardano"),
+  ("polkadot", "Polkadot"),
+  ("chainlink", "Chainlink"),
+  ("avalanche-2", "Avalanche"),
+  ("cosmos", "Cosmos Hub"),
+  ("algorand", "Algorand"),
+  ("tezos", "Tezos"),
+  ("filecoin", "Filecoin"),
+  ("stellar", "Stellar"),
+  ("bitcoin-cash", "Bitcoin Cash"),
+  ("ethereum-classic", "Ethereum Classic"),
+  ("dogecoin", "Dogecoin"),
+  ("ripple", "XRP"),
+  ("binancecoin", "BNB"),
+  ("tron", "TRON"),
+  ("near", "NEAR Protocol"),
+  ("aptos", "Aptos"),
+  ("arbitrum", "Arbitrum"),
+  ("optimism", "Optimism"),
+  ("uniswap", "Uniswap"),
+  ("aave", "Aave"),
+  ("maker", "Maker"),
+  ("the-graph", "The Graph"),
+  ("tether", "Tether"),
+  ("usd-coin", "USDC"),
+  ("digibyte", "DigiByte"),
+  ("ravencoin", "Ravencoin"),
+  ("siacoin", "Siacoin"),
+  // Horizen used to be ZenCash, likewise.
+  ("zencash", "Horizen"),
+  // Firo used to be Zcoin, and CoinGecko still files it that way.
+  ("zcoin", "Firo"),
+  ("beam", "Beam"),
+  ("grin", "Grin"),
+  ("nervos-network", "Nervos Network"),
+  ("kadena", "Kadena"),
+  ("handshake", "Handshake"),
+  ("vertcoin", "Vertcoin"),
+  ("groestlcoin", "Groestlcoin"),
+  ("nano", "Nano"),
+  ("iota", "IOTA"),
+  ("vechain", "VeChain"),
+  ("theta-token", "Theta Network"),
+  ("elrond-erd-2", "MultiversX"),
+  ("hedera-hashgraph", "Hedera"),
+  ("eos", "EOS"),
+  ("neo", "NEO"),
+  ("waves", "Waves"),
+  ("qtum", "Qtum"),
+  ("icon", "ICON"),
+  ("zilliqa", "Zilliqa"),
+  ("ontology", "Ontology"),
+  ("kusama", "Kusama"),
+  ("internet-computer", "Internet Computer"),
+  ("flow", "Flow"),
+  ("chiliz", "Chiliz"),
+  ("enjincoin", "Enjin Coin"),
+  ("decentraland", "Decentraland"),
+  ("the-sandbox", "The Sandbox"),
+  ("axie-infinity", "Axie Infinity"),
+  ("gala", "GALA"),
+  ("immutable-x", "Immutable"),
+  ("injective-protocol", "Injective"),
+  ("sei-network", "Sei"),
+  ("sui", "Sui"),
+  ("celestia", "Celestia"),
+  ("render-token", "Render"),
+  ("thorchain", "THORChain"),
+  ("fantom", "Fantom"),
+  ("polygon-ecosystem-token", "POL"),
+  ("matic-network", "Polygon"),
+  ("shiba-inu", "Shiba Inu"),
+  ("pepe", "Pepe"),
+  ("bonk", "Bonk"),
+  ("dogwifcoin", "dogwifhat"),
+  ("floki", "FLOKI"),
+  ("curve-dao-token", "Curve DAO"),
+  ("lido-dao", "Lido DAO"),
+  ("compound-governance-token", "Compound"),
+  ("synthetix-network-token", "Synthetix"),
+  ("1inch", "1inch"),
+  ("sushi", "Sushi"),
+  ("pancakeswap-token", "PancakeSwap"),
+  ("havven", "Synthetix Network"),
+  ("basic-attention-token", "Basic Attention"),
+  ("0x", "0x Protocol"),
+  ("loopring", "Loopring"),
+  ("stacks", "Stacks"),
+  ("mina-protocol", "Mina Protocol"),
+  ("helium", "Helium"),
+  ("arweave", "Arweave"),
+  ("oasis-network", "Oasis"),
+  ("astar", "Astar"),
+  ("moonbeam", "Moonbeam"),
+  ("kava", "Kava"),
+  ("osmosis", "Osmosis"),
+  ("akash-network", "Akash Network"),
+  ("secret", "Secret"),
+  ("terra-luna-2", "Terra"),
+  ("blockstack", "Stacks Token"),
+  ("wrapped-bitcoin", "Wrapped Bitcoin"),
+  ("staked-ether", "Lido Staked Ether"),
+  ("dai", "Dai"),
+  ("first-digital-usd", "First Digital USD"),
+  ("blur", "Blur"),
+  ("worldcoin-wld", "Worldcoin"),
+  ("jupiter-exchange-solana", "Jupiter"),
+  ("ethena", "Ethena"),
+  ("ondo-finance", "Ondo"),
+  ("bittensor", "Bittensor"),
+  ("toncoin", "Toncoin"),
+  ("leo-token", "LEO Token"),
+  ("okb", "OKB"),
+  ("cronos", "Cronos"),
+  ("bitcoin-cash-sv", "Bitcoin SV"),
+  ("bitcoin-gold", "Bitcoin Gold"),
 ];
+
+/// geckoCoinsForTest is the list itself, so a test can check that every name
+/// offered maps to an identifier the list actually has.
+@visibleForTesting
+List<(String, String)> get geckoCoinsForTest => _geckoCoins;
+
+/// geckoCoinNames is the same list as the names alone, for the cell that
+/// names a row. See DataPreset.rowNames.
+final List<String> geckoCoinNames = [for (var (_, name) in _geckoCoins) name];
+
+/// geckoCoinIds is what each of those names is filed under.
+///
+/// Built from the one list rather than written out again, so a name and its
+/// identifier cannot drift apart. Most are the name in lower case with
+/// hyphens -- which is what asRowKey makes of them anyway -- and the handful
+/// that are not is the whole reason this exists: XRP is filed as ripple, BNB
+/// as binancecoin, Avalanche as avalanche-2. Suggesting those names without
+/// this would be suggesting coins that cannot be fetched.
+final Map<String, String> geckoCoinIds = {
+  for (var (id, name) in _geckoCoins) asRowKey(name): id,
+};
 
 /// coinGeckoPrice is a coin's price history.
 ///
@@ -406,6 +607,15 @@ final DataPreset coinGeckoPrice = DataPreset(
 final DataPreset coinGeckoMarkets = DataPreset(
   id: "coingecko.markets",
   label: "Coin comparison (CoinGecko)",
+  // The one preset whose choice is a list of rows, so the table can say which
+  // coins it wants instead of picking one of three baskets.
+  choiceFromRows: true,
+  // What a row of this source is, for the cell that names one.
+  rowNames: geckoCoinNames,
+  rowIds: geckoCoinIds,
+  // Every coin CoinGecko knows, with the identifier it files each under. No
+  // key needed, and it is the only way to be right about the awkward ones.
+  namesAddress: "https://api.coingecko.com/api/v3/coins/list",
   shortLabel: "CoinGecko",
   note: "No key needed. One row per coin, as they stand at the moment it is "
       "refreshed.",
@@ -423,6 +633,10 @@ final DataPreset coinGeckoMarkets = DataPreset(
   matchColumn: 0,
   chartCategory: 0,
   chartValues: const [1],
+  // Everything a markets record carries, so a series can be drawn from any of
+  // it without waiting for a refresh to discover the name. Five of them are
+  // mapped as columns because five is a table somebody would keep; the rest
+  // are one choice away in the series picker.
   fields: const [
     "id",
     "symbol",
@@ -431,13 +645,24 @@ final DataPreset coinGeckoMarkets = DataPreset(
     "current_price",
     "market_cap",
     "market_cap_rank",
+    "fully_diluted_valuation",
     "total_volume",
     "high_24h",
     "low_24h",
+    "price_change_24h",
     "price_change_percentage_24h",
+    "market_cap_change_24h",
+    "market_cap_change_percentage_24h",
     "circulating_supply",
     "total_supply",
+    "max_supply",
     "ath",
+    "ath_change_percentage",
+    "ath_date",
+    "atl",
+    "atl_change_percentage",
+    "atl_date",
+    "last_updated",
   ],
   columns: const [
     SourceColumn(header: "Coin", path: "name"),

@@ -1403,6 +1403,16 @@ class CanvasGridCell extends StatefulWidget {
   final bool dense;
   final String hint;
 
+  /// suggestions are what this cell is likely to hold, offered as soon as
+  /// somebody starts typing.
+  ///
+  /// For a cell whose content is a *name the source knows* rather than free
+  /// text: the coins a comparison can ask for, and whatever the next source
+  /// with a list of rows turns out to have. Typing is still typing -- the
+  /// list narrows what is shown and refuses nothing -- because the list is
+  /// never every name there is. See DataPreset.rowNames.
+  final List<String> suggestions;
+
   const CanvasGridCell({
     required this.value,
     required this.onChanged,
@@ -1410,6 +1420,7 @@ class CanvasGridCell extends StatefulWidget {
     this.multiline = false,
     this.dense = false,
     this.hint = "",
+    this.suggestions = const [],
     super.key,
   });
 
@@ -1448,7 +1459,68 @@ class CanvasGridCellState extends State<CanvasGridCell> {
   }
 
   @override
-  Widget build(BuildContext context) => TextField(
+  Widget build(BuildContext context) {
+    if (widget.suggestions.isEmpty) return _field(context);
+    var theme = ThemeNotifier.of(context);
+    // RawAutocomplete rather than Autocomplete, so the cell keeps its own
+    // controller and focus node: those are what make it stop rewriting itself
+    // under the cursor and commit when it loses focus, and an Autocomplete
+    // would bring a second pair of its own.
+    return RawAutocomplete<String>(
+      textEditingController: _text,
+      focusNode: _focus,
+      optionsBuilder: (value) {
+        var typed = value.text.trim().toLowerCase();
+        if (typed.isEmpty) return const Iterable<String>.empty();
+        // What is being typed, wherever it appears in the name: "cash" finds
+        // Bitcoin Cash. An exact match offers nothing -- the answer is
+        // already in the cell.
+        var found = [
+          for (var name in widget.suggestions)
+            if (name.toLowerCase().contains(typed)) name,
+        ];
+        if (found.length == 1 && found.first.toLowerCase() == typed) {
+          return const Iterable<String>.empty();
+        }
+        return found.take(8);
+      },
+      onSelected: (name) {
+        widget.onChanged(name);
+        widget.onCommit();
+      },
+      fieldViewBuilder: (context, controller, focus, submit) => _field(context),
+      optionsViewBuilder: (context, select, options) => Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          elevation: 4,
+          color: theme.colors.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(4),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180, maxWidth: 220),
+            child: ListView(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              children: [
+                for (var name in options)
+                  InkWell(
+                    onTap: () => select(name),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: Text(name,
+                          style: TextStyle(
+                              fontSize: 11, color: theme.colors.onSurface)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(BuildContext context) => TextField(
         controller: _text,
         focusNode: _focus,
         expands: widget.multiline,

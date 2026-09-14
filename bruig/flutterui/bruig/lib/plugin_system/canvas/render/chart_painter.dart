@@ -286,7 +286,7 @@ String _legendName(ChartElement e, int i, double value, SliceProgress slice) {
   if (!e.legend.values) return name;
   // Counting with its ring, like every other number on an animating chart.
   return "$name${e.legend.separator}"
-      "${formatTick(e, value * slice.size.clamp(0.0, 1.0))}";
+      "${formatSeries(e, 0, value * slice.size.clamp(0.0, 1.0))}";
 }
 
 /// legendEntriesForTest is [_legendEntries], which decides what a legend says
