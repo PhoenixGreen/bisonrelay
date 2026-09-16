@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -56,6 +57,15 @@ typedef _LayoutKey = (
   bool,
   bool,
   bool,
+  // The size of the box a fading colour is run across.
+  //
+  // The size and not the place: a shader on a paragraph is in the
+  // paragraph's own coordinates, so where the box sits on the canvas makes no
+  // difference to what is painted. The *height* does, and the height is not
+  // in this key otherwise -- maxWidth carries the width and nothing carries
+  // the height, so two boxes of one width and two heights would be one layout
+  // and one shader.
+  Size?,
   // The parts, as the text of their own settings: two paragraphs of the
   // same words with a different word coloured are two paragraphs.
   String,
@@ -101,6 +111,10 @@ TextPainter layoutText(
   /// parts are the runs of the text that are drawn differently -- a word in
   /// another colour, a phrase in bold. Empty for almost every paragraph.
   List<TextPart> parts = const [],
+
+  /// over is the box the words are drawn in, for a colour that fades. See
+  /// textStyleOf.
+  Rect? over,
 }) {
   var key = (
     text,
@@ -111,6 +125,9 @@ TextPainter layoutText(
     outline,
     soft,
     fillWidth,
+    // Part of what makes a layout what it is, because the gradient is baked
+    // into the style. The size alone: see _LayoutKey.
+    over?.size,
     // The parts are part of what makes a layout what it is: two paragraphs
     // of the same words with a different word coloured are two paragraphs.
     parts.isEmpty ? "" : [for (var p in parts) p.toJson()].toString(),
@@ -124,7 +141,8 @@ TextPainter layoutText(
       outline: outline,
       soft: soft,
       fillWidth: fillWidth,
-      parts: parts);
+      parts: parts,
+      over: over);
   if (_layouts.length >= _layoutCap) {
     _layouts.remove(_layouts.keys.first);
   }
@@ -136,6 +154,7 @@ TextPainter _layoutText(
   String text,
   TextSpec spec, {
   required double maxWidth,
+  Rect? over,
   double scale = 1,
   Color? colorOverride,
   bool outline = false,
@@ -154,7 +173,11 @@ TextPainter _layoutText(
   text = spec.textCase.apply(text);
 
   var style = textStyleOf(spec,
-      scale: scale, colorOverride: colorOverride, outline: outline, soft: soft);
+      scale: scale,
+      colorOverride: colorOverride,
+      outline: outline,
+      soft: soft,
+      over: over);
 
   var painter = TextPainter(
     text: parts.isEmpty
@@ -666,7 +689,11 @@ void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark) {
     box.right + mark.padRight,
     box.bottom + mark.padBottom,
   );
-  var paint = Paint()..color = mark.color;
+  var paint = Paint()
+    ..color = mark.color
+    // Across the band, so a highlighter that fades fades along the words it
+    // is behind rather than restarting on each one.
+    ..shader = PaintSpec(mark.color, gradient: mark.fade).shaderFor(band);
   if (mark.radius <= 0) {
     canvas.drawRect(band, paint);
     return;
@@ -679,8 +706,12 @@ void _paintPartUnderline(
     ui.Canvas canvas, Rect box, PartUnderline mark, Color fallback) {
   var width = math.max(0.1, mark.width);
   var y = box.bottom + mark.away;
+  var line = Rect.fromLTRB(box.left, y - width / 2, box.right, y + width / 2);
   var paint = Paint()
     ..color = mark.color ?? fallback
+    // Along the line, so a fade runs its length rather than its thickness.
+    ..shader =
+        PaintSpec(mark.color ?? fallback, gradient: mark.fade).shaderFor(line)
     ..style = PaintingStyle.stroke
     ..strokeWidth = width
     ..strokeCap = StrokeCap.round
@@ -967,7 +998,9 @@ double paintTextInBox(
       scale: scale,
       colorOverride: colorOverride,
       fillWidth: true,
-      parts: parts);
+      parts: parts,
+      // The box, so a fade runs across what the words are drawn in.
+      over: box);
 
   var offset = textOffsetIn(box, painter, spec);
 
@@ -1186,21 +1219,65 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box) {
   if (rect.width <= 0 || rect.height <= 0) return;
   if (box.fill.a > 0) {
-    canvas.drawRRect(box.rounded(rect), Paint()..color = box.fill);
+    canvas.drawRRect(
+        box.rounded(rect),
+        Paint()
+          ..color = box.fill
+          ..shader =
+              PaintSpec(box.fill, gradient: box.fillFade).shaderFor(rect));
   }
-  if (box.borderWidth > 0 && box.borderColor.a > 0) {
+  if (!box.hasBorder) return;
+
+  var paint = Paint()
+    ..color = box.borderColor
+    ..shader =
+        PaintSpec(box.borderColor, gradient: box.borderFade).shaderFor(rect);
+
+  var even = box.evenBorder;
+  if (even != null) {
     // Inset by half the stroke so the border sits inside the element's
     // bounds. Drawn centred, a thick border on a full-bleed element is half
     // cut off by the edge of the canvas -- and it is exactly the elements
     // pushed against an edge that get thick borders.
-    var inset = box.borderWidth / 2;
     canvas.drawRRect(
-      box.rounded(rect, by: inset),
-      Paint()
+      box.rounded(rect, by: even / 2),
+      paint
         ..style = PaintingStyle.stroke
-        ..strokeWidth = box.borderWidth
-        ..color = box.borderColor,
+        ..strokeWidth = even,
     );
+    return;
+  }
+
+  // Four sides of their own, drawn as four strips inside the bounds rather
+  // than as one stroked outline -- a rule under a heading, a bar down the
+  // left of a quote, a box open on one side.
+  //
+  // Square where they meet, and the corner radius is left to the fill. Two
+  // different widths meeting at a rounded corner is not a shape anybody has
+  // agreed on: the outer curve and the inner curve are no longer concentric
+  // and the join has to be mitred into a wedge. A box asking for sides of
+  // different weights is asking for rules, and rules have ends.
+  var sides = box.borders;
+  paint.style = PaintingStyle.fill;
+  if (sides.top > 0) {
+    canvas.drawRect(
+        Rect.fromLTWH(rect.left, rect.top, rect.width, sides.top), paint);
+  }
+  if (sides.bottom > 0) {
+    canvas.drawRect(
+        Rect.fromLTWH(
+            rect.left, rect.bottom - sides.bottom, rect.width, sides.bottom),
+        paint);
+  }
+  if (sides.left > 0) {
+    canvas.drawRect(
+        Rect.fromLTWH(rect.left, rect.top, sides.left, rect.height), paint);
+  }
+  if (sides.right > 0) {
+    canvas.drawRect(
+        Rect.fromLTWH(
+            rect.right - sides.right, rect.top, sides.right, rect.height),
+        paint);
   }
 }
 
@@ -2568,11 +2645,28 @@ Rect? textRunBox(String text, TextSpec spec, Rect box, int start, int end) {
 /// Its own function because a paragraph of differently styled stretches needs
 /// it once per stretch -- see paintRunsInBox -- and a second copy of this
 /// list would be a second place for a setting to be forgotten.
+/// _fades is whether the letters are painted with a gradient rather than one
+/// colour: one is set, there is a box to run it across, and nothing else has
+/// already claimed how they are painted.
+bool _fades(TextSpec spec, Color? colorOverride, Rect? over) =>
+    spec.fade != null && colorOverride == null && over != null && !over.isEmpty;
+
 TextStyle textStyleOf(
   TextSpec spec, {
   double scale = 1,
   Color? colorOverride,
   bool outline = false,
+
+  /// over is the box the words are drawn in, for a colour that fades.
+  ///
+  /// Given rather than measured: a TextStyle is built before the text is laid
+  /// out, so the letters have no bounds yet. Running the fade across the box
+  /// instead is also what anybody means by it -- a gradient that restarted on
+  /// every line, or ended early because the last line is short, is not a fade
+  /// across a heading.
+  ///
+  /// Null everywhere that has no box to offer, and then the colour is flat.
+  Rect? over,
 
   /// soft draws the shadow and the glow and nothing else: the glyphs
   /// themselves are clear, so what is left is what falls behind them.
@@ -2596,16 +2690,32 @@ TextStyle textStyleOf(
       decorationColor: colorOverride ?? spec.color,
       letterSpacing: spec.letterSpacing * scale,
       height: spec.lineHeight,
+      // A fade is a shader, and a shader is a foreground paint -- which is
+      // the same slot the outline uses. So the outline wins where both are
+      // asked for: it already decides what the letters are painted with, and
+      // an outlined letter has no fill to fade.
+      //
+      // A colour handed down from outside wins too: that is one part of the
+      // text being given its own colour, and it is a colour rather than a
+      // fade.
       color: soft
           ? const Color(0x00000000)
-          : (outline ? null : (colorOverride ?? spec.color)),
-      foreground: outline && !soft
-          ? (Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeJoin = StrokeJoin.round
-            ..strokeWidth = spec.outlineWidth * 2 * scale
-            ..color = spec.outlineColor)
-          : null,
+          : (outline || _fades(spec, colorOverride, over)
+              ? null
+              : (colorOverride ?? spec.color)),
+      foreground: soft
+          ? null
+          : outline
+              ? (Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeJoin = StrokeJoin.round
+                ..strokeWidth = spec.outlineWidth * 2 * scale
+                ..color = spec.outlineColor)
+              : _fades(spec, colorOverride, over)
+                  ? (Paint()
+                    ..shader = PaintSpec(spec.color, gradient: spec.fade)
+                        .shaderFor(over!))
+                  : null,
       shadows: soft ? softShadows(spec, scale) : null,
     );
 

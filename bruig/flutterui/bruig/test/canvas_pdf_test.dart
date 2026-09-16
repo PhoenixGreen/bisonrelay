@@ -204,8 +204,54 @@ void main() {
 
   test("a picture that does not match its size is refused", () {
     expect(
-        () =>
-            writePdf(Uint8List(10), width: 100, height: 100, page: PdfPage.a4),
+        () => writePdf([PdfPicture(Uint8List(10), width: 100, height: 100)],
+            page: PdfPage.a4),
         throwsArgumentError);
+  });
+
+  test("and a PDF of no pages is not a PDF", () {
+    expect(() => writePdf(const [], page: PdfPage.a4), throwsArgumentError);
+  });
+
+  // A document of several canvases is several pages. That is what anybody
+  // asking for a PDF of it meant, and what the one-page writer could not give
+  // them however the scene range was set.
+  group("several pages", () {
+    PdfPicture solid(int size, int r) {
+      var rgba = Uint8List(size * size * 4);
+      for (var i = 0; i < size * size; i++) {
+        rgba[i * 4] = r;
+        rgba[i * 4 + 3] = 255;
+      }
+      return PdfPicture(rgba, width: size, height: size);
+    }
+
+    test("the page tree names every one of them", () {
+      var bytes = writePdf([solid(8, 10), solid(8, 120), solid(8, 240)],
+          page: PdfPage.a4);
+      var text = latin1.decode(bytes, allowInvalid: true);
+      expect(text, contains("/Count 3"));
+      expect("/Type /Page ".allMatches(text).length, 3);
+    });
+
+    test("one page is still one page", () {
+      var text = latin1.decode(writePdf([solid(8, 10)], page: PdfPage.a4),
+          allowInvalid: true);
+      expect(text, contains("/Count 1"));
+    });
+
+    test("every page names its own image", () {
+      // Object numbers are handed out per page; a page drawing another page's
+      // image is the mistake this guards.
+      var text = latin1.decode(
+          writePdf([solid(8, 10), solid(8, 200)], page: PdfPage.a4),
+          allowInvalid: true);
+      var refs = RegExp(r"/XObject << /Im0 (\d+) 0 R >>")
+          .allMatches(text)
+          .map((m) => m.group(1))
+          .toList();
+      expect(refs.length, 2);
+      expect(refs.toSet().length, 2, reason: "two pages, two images");
+    });
   });
 }

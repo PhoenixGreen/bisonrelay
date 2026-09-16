@@ -2187,7 +2187,8 @@ void _chartTests() {
       var e = _two(ChartType.groupedBar);
 
       Future<int> plotLeft(bool labels) async {
-        var pixels = await _chartPixels(e.copyWith(showAxisLabels: labels));
+        var pixels = await _chartPixels(
+            e.copyWith(showXLabels: labels, showYLabels: labels));
         for (var x = 0; x < 400; x++) {
           for (var y = 0; y < 300; y++) {
             var i = (y * 400 + x) * 4;

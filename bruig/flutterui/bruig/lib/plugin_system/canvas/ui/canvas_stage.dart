@@ -677,7 +677,17 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   /// _hitHandle is which grip is under a stage-space point, if any.
-  StageHandle? _hitHandle(Offset stage) {
+  StageHandle? _hitHandle(Offset stage) => _nearestHandle(stage)?.$1;
+
+  /// _nearestHandle is the closest grip within reach, and how far away it is.
+  ///
+  /// The closest rather than the first one found. Two handles' targets overlap
+  /// on anything small -- a box forty pixels high has its corner and its
+  /// middle handle thirteen pixels apart with a thirteen-pixel allowance on
+  /// each -- and taking whichever came first in the list meant the corner
+  /// always won. The distance comes back with it because the flow grips sit
+  /// on the same outline and have to know whether they are the nearer thing.
+  (StageHandle, double)? _nearestHandle(Offset stage) {
     // Nothing to grab on something whose size and angle are a line's.
     if (!_selectionHasOwnGeometry) return null;
     var bounds = _selectionBounds;
@@ -688,15 +698,21 @@ class CanvasStageState extends State<CanvasStage> {
     // CanvasController.showHelpers.
     if (!controller.showHelpers) return null;
 
+    StageHandle? best;
+    var away = double.infinity;
     for (var handle in StageHandle.values) {
       var at = _handlePosition(handle, bounds);
       // Clipped out of sight means clipped out of reach. A handle that can be
       // grabbed where nothing is drawn is a click that appears to do nothing
       // and then moves something.
       if (!_viewRect.inflate(reach).contains(at)) continue;
-      if ((stage - at).distance <= reach) return handle;
+      var d = (stage - at).distance;
+      if (d <= reach && d < away) {
+        best = handle;
+        away = d;
+      }
     }
-    return null;
+    return best == null ? null : (best, away);
   }
 
   /// _selectedText is the one text element selected on its own, which is the
@@ -808,14 +824,22 @@ class CanvasStageState extends State<CanvasStage> {
   /// there, and the incoming grip picks up the link that arrives -- which is
   /// how a box that is being flowed into gets disconnected without going to
   /// find the box in front of it first.
-  ({bool out})? _hitFlowGrip(Offset stage) {
+  /// [beat] is how close the nearest resize handle is: a grip only answers
+  /// when it is nearer than that. The two sit on the same outline, and on a
+  /// short box they sit on top of each other -- the grips are half way
+  /// between the corner and the middle handle, which on a box forty pixels
+  /// high is ten pixels from both. The handle is what somebody reaching for
+  /// the edge of a box means, so ties go to the handle.
+  ({bool out})? _hitFlowGrip(Offset stage, {double beat = double.infinity}) {
     var grips = _flowGrips();
     if (grips == null) return null;
-    var reach = flowGripSize / 2 + handleHitSlop;
-    if ((stage - grips.outAt).distance <= reach) return (out: true);
-    if (grips.receiving && (stage - grips.inAt).distance <= reach) {
-      return (out: false);
+    var reach = flowGripSize / 2 + flowGripHitSlop;
+    var out = (stage - grips.outAt).distance;
+    var into = (stage - grips.inAt).distance;
+    if (out <= reach && out < beat && (!grips.receiving || out <= into)) {
+      return (out: true);
     }
+    if (grips.receiving && into <= reach && into < beat) return (out: false);
     return null;
   }
 
@@ -977,9 +1001,12 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A flow grip, before the resize handles: they sit on the same outline
-    // and these are the smaller targets.
-    if (_hitFlowGrip(stage) case var grip?) {
+    // A flow grip, before the resize handles -- but only where it is the
+    // nearer of the two. They sit on the same outline, and on a short box the
+    // grip lands on top of the middle handle.
+    var nearest = _nearestHandle(stage);
+    if (_hitFlowGrip(stage, beat: nearest?.$2 ?? double.infinity)
+        case var grip?) {
       var selected = document.elementById(controller.selection.first);
       // A locked connector still shows: it is how a chain is read. It simply
       // does not answer the pointer, which is what keeps four boxes' worth of
@@ -1003,7 +1030,7 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
 
-    var handle = _hitHandle(stage);
+    var handle = nearest?.$1;
     if (handle != null) {
       _beginTransform(
           handle == StageHandle.rotate ? _DragMode.rotate : _DragMode.resize,
@@ -1864,6 +1891,23 @@ class CanvasStageState extends State<CanvasStage> {
   /// edge lands on it is the whole of the feedback.
   SnapResult? _snappedTo;
 
+  /// _otherBounds is where everything that is *not* being dragged sits, for
+  /// the drag to line up against.
+  ///
+  /// The elements themselves rather than the guides alone: what anybody
+  /// actually wants is this heading over that picture, and no grid spacing
+  /// puts the two together unless both were already on it. Locked elements
+  /// count -- a thing pinned in place is exactly the thing to line up with.
+  List<Rect> _otherBounds() {
+    if (!document.guides.snapTo.objects) return const [];
+    var moving = _startPosed.keys.toSet();
+    return [
+      for (var element in document.elements)
+        if (!moving.contains(element.base.id) && element.base.visible)
+          element.bounds,
+    ];
+  }
+
   /// _startBoxOfSelection is where everything being dragged was when the drag
   /// began, as one rectangle.
   Rect? _startBoxOfSelection() {
@@ -1896,6 +1940,7 @@ class CanvasStageState extends State<CanvasStage> {
         document.guides,
         document.size.size,
         within: document.guides.snapWithin / _scale,
+        others: _otherBounds(),
       );
       delta = snapped.at - box.topLeft;
       _snappedTo = snapped;
@@ -2019,6 +2064,7 @@ class CanvasStageState extends State<CanvasStage> {
     var guides = document.guides;
     var within = guides.snapWithin / _scale;
     var canvas = document.size.size;
+    var others = _otherBounds();
     var dx = delta.dx;
     var dy = delta.dy;
     double? onVertical;
@@ -2026,7 +2072,8 @@ class CanvasStageState extends State<CanvasStage> {
 
     if (handle.movesLeft || handle.movesRight) {
       var at = (handle.movesLeft ? box.left : box.right) + dx;
-      var line = snapEdgeTo(at, guides, canvas, vertical: true, within: within);
+      var line = snapEdgeTo(at, guides, canvas,
+          vertical: true, within: within, others: others);
       if (line != null) {
         dx += line - at;
         onVertical = line;
@@ -2034,8 +2081,8 @@ class CanvasStageState extends State<CanvasStage> {
     }
     if (handle.movesTop || handle.movesBottom) {
       var at = (handle.movesTop ? box.top : box.bottom) + dy;
-      var line =
-          snapEdgeTo(at, guides, canvas, vertical: false, within: within);
+      var line = snapEdgeTo(at, guides, canvas,
+          vertical: false, within: within, others: others);
       if (line != null) {
         dy += line - at;
         onHorizontal = line;
@@ -2221,7 +2268,15 @@ class CanvasStageState extends State<CanvasStage> {
     // playback instead of typing a space.
     if (isTypingInAField()) return KeyEventResult.ignored;
     var keys = HardwareKeyboard.instance;
-    var nudging = keys.isAltPressed;
+    // Arrows move what is chosen, and walk the frames when nothing is.
+    //
+    // It used to be the other way about, with Alt held to move something --
+    // which is a shortcut nobody finds, and the arrow keys are the one thing
+    // everybody reaches for to shift a thing a pixel. Alt now asks for the
+    // other behaviour, so both are still there: with something chosen it
+    // steps the frame, and with nothing chosen it nudges nothing, which is
+    // what nudging nothing looks like anyway.
+    var nudging = controller.selection.isNotEmpty != keys.isAltPressed;
     var step = keys.isShiftPressed ? 10.0 : 1.0;
 
     // Cmd on a Mac, Control everywhere else. HardwareKeyboard reports both,

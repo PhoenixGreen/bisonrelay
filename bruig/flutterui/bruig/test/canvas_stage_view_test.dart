@@ -1107,10 +1107,10 @@ void main() {
       expect(controller.playing, isFalse);
     });
 
-    testWidgets("alt and the arrows still nudge", (tester) async {
-      // Nudging moved to Alt in all four directions rather than only the two
-      // the arrows gave up: a nudge that worked one way with a modifier and
-      // another way without would be worse than either.
+    testWidgets("the arrows nudge what is chosen", (tester) async {
+      // All four directions, with no modifier. Nudging was behind Alt, which
+      // is a shortcut nobody finds when the arrows are the one thing everybody
+      // reaches for to shift a thing a pixel.
       var document = const CanvasDocument(frames: 20);
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -1120,9 +1120,7 @@ void main() {
       controller.selectOnly(element.id);
 
       var before = controller.document.elements.single.x;
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pump();
 
       expect(controller.document.elements.single.x, before + 1);
@@ -1596,7 +1594,12 @@ void main() {
       expect(controller.frame, 10);
     });
 
-    testWidgets("alt and an arrow nudges the selection instead",
+    // The arrows move what is chosen and walk the frames when nothing is;
+    // Alt asks for the other one. It used to be the other way about, with Alt
+    // held to move something -- a shortcut nobody finds, when the arrows are
+    // the one thing everybody reaches for to shift a thing a pixel. See
+    // canvas_nudge_test.dart.
+    testWidgets("an arrow nudges the selection, and alt steps the frame",
         (tester) async {
       var document = const CanvasDocument(frames: 40);
       var element = (newElement(ElementKind.shape, document) as ShapeElement)
@@ -1607,14 +1610,19 @@ void main() {
       var stage = await pump(tester, controller);
       await tester.tapAt(stage.pageRect.center);
       await tester.pumpAndSettle();
+      controller.selectOnly(element.id);
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.x, element.x + 1);
+      expect(controller.frame, 0, reason: "and the playhead stayed put");
 
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pumpAndSettle();
-
-      expect(controller.document.elements.single.x, element.x + 1);
-      expect(controller.frame, 0, reason: "and the playhead stayed put");
+      expect(controller.frame, 1, reason: "alt asks for the other one");
     });
   });
 

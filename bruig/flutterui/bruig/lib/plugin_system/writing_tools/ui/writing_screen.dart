@@ -52,27 +52,6 @@ class WritingScreen extends StatefulWidget {
 }
 
 class _WritingScreenState extends State<WritingScreen> {
-  /// _writingPage is which of the writing tools' pages is showing.
-  ///
-  /// Held here rather than inside the sidebar, because in the collapsed
-  /// drawer that widget is rebuilt from a stored builder and would forget it
-  /// -- and because the drawer only redraws for things this screen tells it
-  /// changed, which it can only do for state it holds.
-  ///
-  /// It mirrors the one on WritingPreferences, which outlives this screen.
-  /// Kept as a field as well so the build path reads a plain value.
-  WritingSidebarPage _writingPage = WritingSidebarPage.mistakes;
-
-  @override
-  void initState() {
-    super.initState();
-    var prefs = Provider.of<WritingPreferences>(context, listen: false);
-    var at = prefs.sidebarPage;
-    _writingPage = at >= 0 && at < WritingSidebarPage.values.length
-        ? WritingSidebarPage.values[at]
-        : WritingSidebarPage.mistakes;
-  }
-
   @override
   Widget build(BuildContext context) {
     var client = Provider.of<ClientModel>(context);
@@ -96,14 +75,7 @@ class _WritingScreenState extends State<WritingScreen> {
       // it is built out of.
       panels: ComposerPanel.values,
       child: switch (composer.panel) {
-        ComposerPanel.writing => WritingSidebar(
-            controller: composer.editor,
-            page: _writingPage,
-            onPageChanged: (page) => setState(() {
-                  _writingPage = page;
-                  Provider.of<WritingPreferences>(context, listen: false)
-                      .sidebarPage = page.index;
-                })),
+        ComposerPanel.writing => WritingSidebar(controller: composer.editor),
         ComposerPanel.posts => PostSidebar(controller: composer.editor),
         ComposerPanel.formatting => FormattingSidebar(controller: composer),
       },
@@ -116,9 +88,13 @@ class _WritingScreenState extends State<WritingScreen> {
           list: sidebar,
           // The sidebar changes while it is open and the collapsed drawer
           // has no other way to know: its icons registered their taps and
-          // redrew nothing. The panel alone was not enough -- switching
-          // pages within the writing tools changes it just as much.
-          sidebarRevision: (composer.panel, _writingPage),
+          // redrew nothing.
+          //
+          // The panel is now the whole of it. The writing tools used to have
+          // a page within them that this had to watch as well; they are a
+          // column of panels now, and the column keeps its own arrangement
+          // and rebuilds itself.
+          sidebarRevision: composer.panel,
           content: content,
         ));
   }

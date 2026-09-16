@@ -68,7 +68,21 @@ enum StageHandle {
 /// Smaller than a resize grip, and deliberately: they are a second row of
 /// controls on the same outline, and the eight that resize the element are
 /// the ones somebody reaches for most.
-const double flowGripSize = 8;
+///
+/// About half what it was. It was a number nothing drew with -- the painter
+/// sized the dots off handleSize instead -- so the grips came out the size of
+/// the handles they are meant to defer to, and on a short box the pair of
+/// them sat over the middle-left and middle-right handles and took the drags
+/// meant for those.
+const double flowGripSize = 4;
+
+/// flowGripHitSlop grows a flow grip's target past what is drawn, as
+/// handleHitSlop does for a resize handle -- but less.
+///
+/// A resize handle can afford to be generous because it sits on the edge of
+/// the selection with nothing else nearby. A flow grip has a resize handle
+/// for a neighbour, and the handle is the one being reached for.
+const double flowGripHitSlop = 8;
 
 /// The flow grips sit half way between two resize handles rather than beside
 /// one of them: the incoming dot between the top-left and the middle-left,

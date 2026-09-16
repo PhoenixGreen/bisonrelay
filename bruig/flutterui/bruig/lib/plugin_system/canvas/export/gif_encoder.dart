@@ -77,9 +77,24 @@ Uint8List encodeGif(
     return false;
   });
 
-  var palette = _medianCut(frames, needsTransparency ? colors - 1 : colors);
-  var transparentIndex = needsTransparency ? palette.length ~/ 3 : -1;
-  if (needsTransparency) {
+  // Frames after the first carry only what changed, with everything else left
+  // transparent for the frame underneath to show through. A canvas is mostly
+  // still -- a chart drawing itself on, a word arriving -- so most of most
+  // frames is the frame before it, and writing it again is the whole of why a
+  // twenty-four frame animation of one moving shape came to a hundred and
+  // seventy kilobytes.
+  //
+  // Only where the art itself is opaque. Patching frames onto each other
+  // means each one stays until something is drawn over it, and a see-through
+  // element moving across that would leave a trail of itself. Where there is
+  // real transparency the old behaviour stands: every frame in full, thrown
+  // away before the next.
+  var differencing = frames.length > 1 && !needsTransparency;
+  var spare = needsTransparency || differencing;
+
+  var palette = _medianCut(frames, spare ? colors - 1 : colors);
+  var transparentIndex = spare ? palette.length ~/ 3 : -1;
+  if (spare) {
     palette = Uint8List.fromList([...palette, 0, 0, 0]);
   }
 
@@ -117,29 +132,76 @@ Uint8List encodeGif(
     out.addByte(0);
   }
 
+  // Only the frame before, never all of them: a two hundred frame animation
+  // at full size is four hundred megabytes of indices if they are all kept.
+  Uint8List? previous;
+
   for (var frame in frames) {
     var indices = _quantise(frame, lookup, transparentIndex, dither, palette);
+
+    // What to actually write: the whole frame, or the rectangle of it that
+    // differs from the frame before.
+    var left = 0;
+    var top = 0;
+    var width_ = frame.width;
+    var height_ = frame.height;
+    var payload = indices;
+
+    if (differencing && previous != null) {
+      var box = _changedBox(previous, indices, frame.width, frame.height);
+      if (box == null) {
+        // Nothing moved. One transparent pixel, and the frame underneath
+        // stays exactly as it is for another delay.
+        left = 0;
+        top = 0;
+        width_ = 1;
+        height_ = 1;
+        payload = Uint8List.fromList([transparentIndex]);
+      } else {
+        var (x0, y0, x1, y1) = box;
+        left = x0;
+        top = y0;
+        width_ = x1 - x0 + 1;
+        height_ = y1 - y0 + 1;
+        payload = Uint8List(width_ * height_);
+        for (var y = 0; y < height_; y++) {
+          var from = (y0 + y) * frame.width + x0;
+          var to = y * width_;
+          for (var x = 0; x < width_; x++) {
+            var value = indices[from + x];
+            // Unchanged pixels inside the rectangle are left see-through as
+            // well, so a diagonal move costs its line rather than its box.
+            payload[to + x] =
+                value == previous[from + x] ? transparentIndex : value;
+          }
+        }
+      }
+    }
 
     // Graphic control extension: the delay and the transparent index.
     out.addByte(0x21);
     out.addByte(0xF9);
     out.addByte(4);
-    // Disposal 2 (restore to background) when there is transparency, so a
-    // moving see-through element does not smear across the frames behind it.
-    out.addByte((transparentIndex >= 0 ? 0x09 : 0x04));
+    // Disposal 1 (leave in place) while patching frames onto each other, and
+    // 2 (restore to background) where every frame is written in full and
+    // there is transparency -- so a moving see-through element does not
+    // smear across the frames behind it.
+    var disposal = differencing ? 0x05 : (transparentIndex >= 0 ? 0x09 : 0x04);
+    out.addByte(disposal);
     out.addUint16((frame.delayMs / 10).round().clamp(1, 65535));
     out.addByte(transparentIndex >= 0 ? transparentIndex : 0);
     out.addByte(0);
 
-    // Image descriptor: the whole frame, no local table.
+    // Image descriptor: where this frame's pixels go, and no local table.
     out.addByte(0x2C);
-    out.addUint16(0);
-    out.addUint16(0);
-    out.addUint16(frame.width);
-    out.addUint16(frame.height);
+    out.addUint16(left);
+    out.addUint16(top);
+    out.addUint16(width_);
+    out.addUint16(height_);
     out.addByte(0);
 
-    _lzwCompress(out, indices, bits < 2 ? 2 : bits);
+    _lzwCompress(out, payload, bits < 2 ? 2 : bits);
+    if (differencing) previous = indices;
   }
 
   out.addByte(0x3B); // Trailer.
@@ -452,4 +514,31 @@ class _ByteSink {
   }
 
   Uint8List toBytes() => _builder.toBytes();
+}
+
+/// _changedBox is the rectangle two frames differ in, or null where they do
+/// not differ at all.
+///
+/// The bounding box rather than a list of runs: a GIF frame is a rectangle,
+/// so that is the shape the answer has to take. Pixels inside it that did not
+/// change are made see-through by the caller, which is what makes a diagonal
+/// move cost its line rather than its box.
+(int, int, int, int)? _changedBox(
+    Uint8List before, Uint8List after, int width, int height) {
+  var left = width;
+  var right = -1;
+  var top = height;
+  var bottom = -1;
+  for (var y = 0; y < height; y++) {
+    var row = y * width;
+    for (var x = 0; x < width; x++) {
+      if (before[row + x] == after[row + x]) continue;
+      if (x < left) left = x;
+      if (x > right) right = x;
+      if (y < top) top = y;
+      bottom = y;
+    }
+  }
+  if (right < 0) return null;
+  return (left, top, right, bottom);
 }

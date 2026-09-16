@@ -262,15 +262,34 @@ class ChartElement extends CanvasElement {
   final bool showGrid;
   final bool showAxes;
 
-  /// showAxisLabels is the writing along the axes: the tick values, the
-  /// category names and the two axis titles.
+  /// showXLabels and showYLabels are the writing along each axis: the tick
+  /// values on one, the category names on the other, and each axis' own title
+  /// under them.
   ///
-  /// One switch for all of it rather than three. They are read together or
-  /// not at all -- a chart with numbers up the side and no categories along
-  /// the bottom is not a simpler chart, it is a broken one -- and what
-  /// switching them off is for is a small chart in a corner that is a shape
-  /// rather than a reading.
-  final bool showAxisLabels;
+  /// By axis rather than by what is written there, because which of the two
+  /// an axis carries depends on which way the chart is drawn -- on horizontal
+  /// bars the categories run up the side and the values along the bottom.
+  /// "The X labels" means whatever is written along the bottom either way,
+  /// which is what somebody looking at the chart means by it.
+  ///
+  /// It was one switch for all of it, on the grounds that they are read
+  /// together or not at all. Often enough they are not: a bar chart named by
+  /// its categories does not always need the figures up the side as well, and
+  /// a chart of dates wants the dates and nothing else.
+  final bool showXLabels;
+  final bool showYLabels;
+
+  /// xLabelSize, xLabelColor and the two beside them are that axis' own type,
+  /// or null to be written the way [labelSpec] says.
+  ///
+  /// Only the size and the colour, which are the two things an axis wants
+  /// differently from its neighbour: the dates along the bottom set smaller
+  /// than the figures up the side, or one of the two greyed back so the other
+  /// is what gets read. The font and the weight are the chart's.
+  final double? xLabelSize;
+  final Color? xLabelColor;
+  final double? yLabelSize;
+  final Color? yLabelColor;
 
   /// showXTitle and showYTitle show or hide the two words naming the axes --
   /// [xAxisLabel] and [yAxisLabel] -- one at a time.
@@ -378,6 +397,24 @@ class ChartElement extends CanvasElement {
   /// innerRadius is the hole in a donut, as a fraction of the outer radius.
   final double innerRadius;
 
+  /// showPoints marks each reading on a line or an area.
+  ///
+  /// A line says the shape of a series and a dot says where a reading
+  /// actually is, which are different questions -- eleven points joined up
+  /// look like a hundred until the dots are on them. A scatter is all dots
+  /// whatever this says, and so is a chart writing its values, which has to
+  /// put them somewhere.
+  final bool showPoints;
+
+  /// pointSize is the radius of those dots, or 0 to take it from the line's
+  /// own weight as they always did.
+  final double pointSize;
+
+  /// pointColor is what they are drawn in, or nothing for the series' own
+  /// colour -- which is what a dot on a line is unless somebody says
+  /// otherwise.
+  final Color pointColor;
+
   /// strokeWidth is the line weight for the line, area and radar types.
   final double strokeWidth;
 
@@ -405,7 +442,12 @@ class ChartElement extends CanvasElement {
     this.yAxisLabel = "",
     this.showGrid = true,
     this.showAxes = true,
-    this.showAxisLabels = true,
+    this.showXLabels = true,
+    this.showYLabels = true,
+    this.xLabelSize,
+    this.xLabelColor,
+    this.yLabelSize,
+    this.yLabelColor,
     this.showXTitle = true,
     this.showYTitle = true,
     this.showLegend = false,
@@ -428,6 +470,9 @@ class ChartElement extends CanvasElement {
     this.barGap = 0.3,
     this.barRadius = 4,
     this.innerRadius = 0.55,
+    this.showPoints = false,
+    this.pointSize = 0,
+    this.pointColor = const Color(0x00000000),
     this.strokeWidth = 3,
     this.smooth = false,
   });
@@ -472,10 +517,26 @@ class ChartElement extends CanvasElement {
   /// showsXTitle and showsYTitle are whether each axis title is actually
   /// drawn: asked for, not switched off, and with something to say.
   ///
+  /// showAxisLabels is whether there is any writing on the axes at all, which
+  /// is what the gutters and the air round the plot are kept for.
+  bool get showAxisLabels => showXLabels || showYLabels;
+
+  /// xLabels and yLabels are the type each axis is actually written in: the
+  /// chart's own label type, with whatever that axis has been told instead.
+  TextSpec get xLabels => _axisLabelSpec(xLabelSize, xLabelColor);
+  TextSpec get yLabels => _axisLabelSpec(yLabelSize, yLabelColor);
+
+  TextSpec _axisLabelSpec(double? size, Color? color) {
+    var spec = labelSpec;
+    if (size != null) spec = spec.copyWith(fontSize: size);
+    if (color != null) spec = spec.copyWith(color: color);
+    return spec;
+  }
+
   /// Under showAxisLabels, because that switch is "no writing on the axes at
   /// all" and a title is writing on an axis.
-  bool get showsXTitle => showAxisLabels && showXTitle && xAxisLabel.isNotEmpty;
-  bool get showsYTitle => showAxisLabels && showYTitle && yAxisLabel.isNotEmpty;
+  bool get showsXTitle => showXLabels && showXTitle && xAxisLabel.isNotEmpty;
+  bool get showsYTitle => showYLabels && showYTitle && yAxisLabel.isNotEmpty;
 
   /// positiveOnly is whether a log axis can describe this chart's numbers:
   /// nothing below zero, and something above it.
@@ -528,7 +589,12 @@ class ChartElement extends CanvasElement {
     String? yAxisLabel,
     bool? showGrid,
     bool? showAxes,
-    bool? showAxisLabels,
+    bool? showXLabels,
+    bool? showYLabels,
+    double? xLabelSize,
+    Color? xLabelColor,
+    double? yLabelSize,
+    Color? yLabelColor,
     bool? showXTitle,
     bool? showYTitle,
     bool? showLegend,
@@ -552,6 +618,9 @@ class ChartElement extends CanvasElement {
     double? barGap,
     double? barRadius,
     double? innerRadius,
+    bool? showPoints,
+    double? pointSize,
+    Color? pointColor,
     double? strokeWidth,
     bool? smooth,
   }) =>
@@ -574,7 +643,12 @@ class ChartElement extends CanvasElement {
           yAxisLabel: yAxisLabel,
           showGrid: showGrid,
           showAxes: showAxes,
-          showAxisLabels: showAxisLabels,
+          showXLabels: showXLabels,
+          showYLabels: showYLabels,
+          xLabelSize: xLabelSize,
+          xLabelColor: xLabelColor,
+          yLabelSize: yLabelSize,
+          yLabelColor: yLabelColor,
           showXTitle: showXTitle,
           showYTitle: showYTitle,
           showLegend: showLegend,
@@ -598,6 +672,9 @@ class ChartElement extends CanvasElement {
           barGap: barGap,
           barRadius: barRadius,
           innerRadius: innerRadius,
+          showPoints: showPoints,
+          pointSize: pointSize,
+          pointColor: pointColor,
           strokeWidth: strokeWidth,
           smooth: smooth);
 
@@ -624,7 +701,12 @@ class ChartElement extends CanvasElement {
     String? yAxisLabel,
     bool? showGrid,
     bool? showAxes,
-    bool? showAxisLabels,
+    bool? showXLabels,
+    bool? showYLabels,
+    double? xLabelSize,
+    Color? xLabelColor,
+    double? yLabelSize,
+    Color? yLabelColor,
     bool? showXTitle,
     bool? showYTitle,
     bool? showLegend,
@@ -648,6 +730,9 @@ class ChartElement extends CanvasElement {
     double? barGap,
     double? barRadius,
     double? innerRadius,
+    bool? showPoints,
+    double? pointSize,
+    Color? pointColor,
     double? strokeWidth,
     bool? smooth,
   }) =>
@@ -670,7 +755,12 @@ class ChartElement extends CanvasElement {
           yAxisLabel: yAxisLabel ?? this.yAxisLabel,
           showGrid: showGrid ?? this.showGrid,
           showAxes: showAxes ?? this.showAxes,
-          showAxisLabels: showAxisLabels ?? this.showAxisLabels,
+          showXLabels: showXLabels ?? this.showXLabels,
+          showYLabels: showYLabels ?? this.showYLabels,
+          xLabelSize: xLabelSize ?? this.xLabelSize,
+          xLabelColor: xLabelColor ?? this.xLabelColor,
+          yLabelSize: yLabelSize ?? this.yLabelSize,
+          yLabelColor: yLabelColor ?? this.yLabelColor,
           showXTitle: showXTitle ?? this.showXTitle,
           showYTitle: showYTitle ?? this.showYTitle,
           showLegend: showLegend ?? this.showLegend,
@@ -697,6 +787,9 @@ class ChartElement extends CanvasElement {
           barGap: barGap ?? this.barGap,
           barRadius: barRadius ?? this.barRadius,
           innerRadius: innerRadius ?? this.innerRadius,
+          showPoints: showPoints ?? this.showPoints,
+          pointSize: pointSize ?? this.pointSize,
+          pointColor: pointColor ?? this.pointColor,
           strokeWidth: strokeWidth ?? this.strokeWidth,
           smooth: smooth ?? this.smooth);
 
@@ -725,7 +818,15 @@ class ChartElement extends CanvasElement {
         if (yAxisLabel.isNotEmpty) "ylabel": yAxisLabel,
         "grid": showGrid,
         "axes": showAxes,
-        if (!showAxisLabels) "noAxisLabels": true,
+        // The old key stays the old key while both axes agree, so a chart
+        // saved before the switch was split reads back the same either way.
+        if (!showXLabels && !showYLabels) "noAxisLabels": true,
+        if (!showXLabels && showYLabels) "noXLabels": true,
+        if (!showYLabels && showXLabels) "noYLabels": true,
+        if (xLabelSize != null) "xLabelSize": xLabelSize,
+        if (xLabelColor != null) "xLabelColor": colorToJson(xLabelColor!),
+        if (yLabelSize != null) "yLabelSize": yLabelSize,
+        if (yLabelColor != null) "yLabelColor": colorToJson(yLabelColor!),
         if (!showXTitle) "noXTitle": true,
         if (!showYTitle) "noYTitle": true,
         "legend": showLegend,
@@ -749,6 +850,9 @@ class ChartElement extends CanvasElement {
         "barRadius": barRadius,
         "inner": innerRadius,
         "sw": strokeWidth,
+        if (showPoints) "points": true,
+        if (pointSize > 0) "pointSize": pointSize,
+        if (pointColor.a > 0) "pointColor": colorToJson(pointColor),
         if (smooth) "smooth": true,
       };
 
@@ -781,7 +885,22 @@ class ChartElement extends CanvasElement {
           yAxisLabel: jsonString(json["ylabel"], ""),
           showGrid: jsonBool(json["grid"], true),
           showAxes: jsonBool(json["axes"], true),
-          showAxisLabels: !jsonBool(json["noAxisLabels"], false),
+          showXLabels: !jsonBool(json["noAxisLabels"], false) &&
+              !jsonBool(json["noXLabels"], false),
+          showYLabels: !jsonBool(json["noAxisLabels"], false) &&
+              !jsonBool(json["noYLabels"], false),
+          xLabelSize: json["xLabelSize"] is num
+              ? (json["xLabelSize"] as num).toDouble()
+              : null,
+          xLabelColor: json["xLabelColor"] == null
+              ? null
+              : colorFromJson(json["xLabelColor"]),
+          yLabelSize: json["yLabelSize"] is num
+              ? (json["yLabelSize"] as num).toDouble()
+              : null,
+          yLabelColor: json["yLabelColor"] == null
+              ? null
+              : colorFromJson(json["yLabelColor"]),
           showXTitle: !jsonBool(json["noXTitle"], false),
           showYTitle: !jsonBool(json["noYTitle"], false),
           showLegend: jsonBool(json["legend"], false),
@@ -817,6 +936,10 @@ class ChartElement extends CanvasElement {
           barRadius: jsonDouble(json["barRadius"], 4),
           innerRadius: jsonDouble(json["inner"], 0.55),
           strokeWidth: jsonDouble(json["sw"], 3),
+          showPoints: jsonBool(json["points"], false),
+          pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),
+          pointColor:
+              colorFromJson(json["pointColor"], const Color(0x00000000)),
           smooth: jsonBool(json["smooth"], false));
 }
 

@@ -37,9 +37,6 @@ class _Host extends StatefulWidget {
 
 class _HostState extends State<_Host> {
   // The page lives with the host, as it does on the real screen -- see
-  // WritingSidebar.page.
-  WritingSidebarPage _page = WritingSidebarPage.mistakes;
-
   bool get reshape => widget.reshape;
   bool get composing => widget.composing;
 
@@ -75,11 +72,7 @@ class _HostState extends State<_Host> {
       body: Row(children: [
         SizedBox(
           width: 220,
-          child: WritingSidebar(
-            controller: writing.editor,
-            page: _page,
-            onPageChanged: (page) => setState(() => _page = page),
-          ),
+          child: WritingSidebar(controller: writing.editor),
         ),
         Expanded(child: composer),
       ]),
@@ -176,13 +169,18 @@ Future<void> _pumpApp(WidgetTester tester, WritingPreferences prefs,
 }
 
 /// _open switches the sidebar to [page] the way a reader would.
+/// _open opens a panel that starts shut. The whole header band is the switch,
+/// so tapping it again would shut it -- this is for the two that are not
+/// already showing.
 Future<void> _open(WidgetTester tester, WritingSidebarPage page) async {
-  await tester.tap(find.byIcon(page.icon));
+  await tester.tap(find.text(page.short.toUpperCase()));
   await tester.pumpAndSettle();
 }
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  _stale();
 
   testWidgets("the button opens the sidebar", (tester) async {
     await _pumpApp(tester, WritingPreferences());
@@ -363,6 +361,10 @@ void main() {
     // Mistakes and suggestions are separated so the list of things actually
     // wrong stays short enough to work through.
     testWidgets("mistakes and phrasing are listed apart", (tester) async {
+      // Apart, but both on screen. They used to be two tabs, so reading one
+      // meant leaving the other; they are two panels in a column now, which
+      // is the whole reason for the change -- the two are wanted at the same
+      // moment.
       await _pumpApp(tester, WritingPreferences());
       await tester.tap(find.text("Writing Tools"));
       await tester.pumpAndSettle();
@@ -371,14 +373,18 @@ void main() {
       composer.controller.text = "the paymnt utilise";
       await tester.pumpAndSettle();
 
-      expect(find.text("paymnt"), findsOneWidget,
-          reason: "the misspelling belongs on the mistakes page");
-      expect(find.text("utilise"), findsNothing,
-          reason: "a suggestion must not pad the list of real errors");
-
-      await _open(tester, WritingSidebarPage.phrasing);
+      expect(find.text("paymnt"), findsOneWidget);
       expect(find.text("utilise"), findsOneWidget);
-      expect(find.text("paymnt"), findsNothing);
+
+      // Each under its own heading: the misspelling above the Suggestions
+      // band, the suggestion below it.
+      var suggestions = tester
+          .getRect(find.text(WritingSidebarPage.phrasing.short.toUpperCase()))
+          .top;
+      expect(tester.getRect(find.text("paymnt")).top, lessThan(suggestions),
+          reason: "the misspelling belongs on the mistakes panel");
+      expect(tester.getRect(find.text("utilise")).top, greaterThan(suggestions),
+          reason: "a suggestion must not pad the list of real errors");
     });
 
     testWidgets("the document page counts the text", (tester) async {
@@ -409,16 +415,24 @@ void main() {
           reason: "the counts do not depend on the checker being on");
     });
 
-    testWidgets("the nav shows how much is on each page", (tester) async {
+    testWidgets("a panel's heading says how much is behind it", (tester) async {
       await _pumpApp(tester, WritingPreferences());
       await tester.tap(find.text("Writing Tools"));
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip("Spelling & grammar (1)"), findsOneWidget,
-          reason: "a page with nothing on it should say so before it is "
-              "opened, not after");
-      expect(find.byTooltip("Suggestions and Checks"), findsOneWidget,
-          reason: "an empty page carries no count");
+      // On the heading rather than only inside the list, so a shut panel
+      // still says how much is behind it.
+      var spelling = tester
+          .getRect(find.text(WritingSidebarPage.mistakes.short.toUpperCase()));
+      var one = find.text("1");
+      expect(one, findsWidgets);
+      expect(tester.widgetList<Text>(one).isNotEmpty, isTrue);
+      expect(tester.getRect(one.first).top, closeTo(spelling.top, 12),
+          reason: "the count sits on the Spelling heading");
+
+      // And nothing rather than a nought: a panel headed 0 invites a look at
+      // a list with nothing in it.
+      expect(find.text("0"), findsNothing);
     });
   });
 
@@ -448,5 +462,30 @@ void main() {
     expect(find.text("NORMAL SIDEBAR"), findsOneWidget);
     expect(controller.visible, isTrue,
         reason: "returning to the editor should find them as they were left");
+  });
+}
+
+// Reported by the panels, not by anybody looking: the sidebar showed the post
+// as it was when it opened, and only caught up when something else happened to
+// rebuild it.
+//
+// _lastText and _lastSelection are what a rebuild is decided against, and they
+// were late fields -- worked out when first touched, which is inside the very
+// callback reporting the change. So the first change compared the new text
+// against itself and dropped the rebuild. Four tabs hid it, because tapping
+// one rebuilt the sidebar anyway.
+void _stale() {
+  testWidgets("the list catches the very first change to the text",
+      (tester) async {
+    await _pumpApp(tester, WritingPreferences());
+    await tester.tap(find.text("Writing Tools"));
+    await tester.pumpAndSettle();
+
+    var composer = tester.state<_ComposerState>(find.byType(_Composer));
+    composer.controller.text = "the paymnt utilise";
+    await tester.pumpAndSettle();
+
+    expect(find.text("utilise"), findsOneWidget,
+        reason: "the first change is a change like any other");
   });
 }

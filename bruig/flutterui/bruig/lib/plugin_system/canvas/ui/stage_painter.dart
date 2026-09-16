@@ -599,14 +599,16 @@ class StagePainter extends CustomPainter {
     }
 
     void dot(Offset at, Color colour, bool filled) {
-      canvas.drawCircle(
-          at, handleSize / 2 + 1, filled ? (Paint()..color = colour) : white);
+      // The grip's own size, not the resize handles'. Drawn off handleSize
+      // these were the same size as the controls they are meant to defer to.
+      var radius = flowGripSize / 2 + 1;
+      canvas.drawCircle(at, radius, filled ? (Paint()..color = colour) : white);
       canvas.drawCircle(
           at,
-          handleSize / 2 + 1,
+          radius,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.5
+            ..strokeWidth = 1.2
             ..color = colour);
       // An arrow inside the out grip, pointing the way the words go.
       if (!filled) return;

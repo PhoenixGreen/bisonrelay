@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -112,6 +113,10 @@ enum LineEnd {
 /// run either way across the same rectangle.
 class LineElement extends CanvasElement {
   final Color color;
+
+  /// fade is the second colour the stroke runs to, or null for a flat one.
+  /// Chosen in the picker beside [color] -- see GradientSpec.
+  final GradientSpec? fade;
   final double strokeWidth;
 
   /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
@@ -147,6 +152,7 @@ class LineElement extends CanvasElement {
   const LineElement(
     super.base, {
     this.color = const Color(0xFFFFFFFF),
+    this.fade,
     this.strokeWidth = 4,
     this.cap = LineStrokeCap.flat,
     this.startEnd = LineEnd.none,
@@ -168,6 +174,7 @@ class LineElement extends CanvasElement {
   @override
   CanvasElement rebase(ElementBase base) => LineElement(base,
       color: color,
+      fade: fade,
       strokeWidth: strokeWidth,
       cap: cap,
       startEnd: startEnd,
@@ -180,6 +187,8 @@ class LineElement extends CanvasElement {
 
   LineElement copyWith({
     Color? color,
+    GradientSpec? fade,
+    bool flat = false,
     double? strokeWidth,
     LineStrokeCap? cap,
     LineEnd? startEnd,
@@ -192,6 +201,7 @@ class LineElement extends CanvasElement {
   }) =>
       LineElement(base,
           color: color ?? this.color,
+          fade: flat ? null : (fade ?? this.fade),
           strokeWidth: strokeWidth ?? this.strokeWidth,
           cap: cap ?? this.cap,
           startEnd: startEnd ?? this.startEnd,
@@ -205,6 +215,7 @@ class LineElement extends CanvasElement {
   @override
   Map<String, dynamic> props() => {
         "color": colorToJson(color),
+        if (fade != null) "fade": fade!.toJson(),
         "sw": strokeWidth,
         "strokeCap": cap.name,
         if (startEnd != LineEnd.none) "startEnd": startEnd.name,
@@ -236,6 +247,10 @@ class LineElement extends CanvasElement {
 
     return LineElement(b,
         color: colorFromJson(json["color"]),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
         strokeWidth: jsonDouble(json["sw"], 4),
         cap: json["strokeCap"] is String
             ? LineStrokeCap.fromName(json["strokeCap"] as String?)

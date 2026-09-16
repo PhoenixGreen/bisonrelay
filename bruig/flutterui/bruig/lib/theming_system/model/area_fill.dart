@@ -12,53 +12,6 @@ import 'package:flutter/material.dart';
 // area where a border/padding is wanted but no background color at all.
 enum AreaBackgroundMode { token, none, solid, gradient, image }
 
-// GradientDirection is a small set of named, dropdown-friendly gradient
-// directions (rather than a free-form angle input, consistent with this
-// app's "dropdowns not fiddly custom controls" settings UX).
-enum GradientDirection {
-  topLeftToBottomRight,
-  topRightToBottomLeft,
-  leftToRight,
-  topToBottom,
-}
-
-const Map<GradientDirection, String> _gradientDirectionLabels = {
-  GradientDirection.topLeftToBottomRight: "Top-left → Bottom-right",
-  GradientDirection.topRightToBottomLeft: "Top-right → Bottom-left",
-  GradientDirection.leftToRight: "Left → Right",
-  GradientDirection.topToBottom: "Top → Bottom",
-};
-
-String gradientDirectionLabel(GradientDirection d) =>
-    _gradientDirectionLabels[d]!;
-
-const Map<GradientDirection, (Alignment, Alignment)>
-    _gradientDirectionAlignments = {
-  GradientDirection.topLeftToBottomRight: (
-    Alignment.topLeft,
-    Alignment.bottomRight
-  ),
-  GradientDirection.topRightToBottomLeft: (
-    Alignment.topRight,
-    Alignment.bottomLeft
-  ),
-  GradientDirection.leftToRight: (Alignment.centerLeft, Alignment.centerRight),
-  GradientDirection.topToBottom: (Alignment.topCenter, Alignment.bottomCenter),
-};
-
-(Alignment, Alignment) gradientDirectionAlignments(GradientDirection d) =>
-    _gradientDirectionAlignments[d]!;
-
-// gradientDirectionFor maps a stored begin/end alignment pair back to the
-// named direction that produced it, for the editor's dropdown.
-GradientDirection gradientDirectionFor(Alignment begin, Alignment end) {
-  for (var entry in _gradientDirectionAlignments.entries) {
-    var (b, e) = entry.value;
-    if (b == begin && e == end) return entry.key;
-  }
-  return GradientDirection.topLeftToBottomRight;
-}
-
 // _areaImagePresetAssets maps each built-in image preset to its asset. The
 // pattern-*.png ones are small (128x128, under 1.5KB) seamless tiles.
 const Map<AreaImagePreset, String> _areaImagePresetAssets = {

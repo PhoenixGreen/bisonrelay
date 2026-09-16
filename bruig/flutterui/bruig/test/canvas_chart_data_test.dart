@@ -44,6 +44,25 @@ void main() {
     expect(data.series.single.name, "Series 1");
   });
 
+  test("a figure written with separators is that figure", () {
+    // Typed or pasted the way people write numbers. Refused, 222,203 charted
+    // as a nought -- which looks like the chart being wrong rather than the
+    // typing. Tab separated, because a comma is the other thing a comma
+    // means here and a CSV must still split on it.
+    var data = ChartData.parse("\tSupply\nJan\t222,203\nFeb\t1,000,000");
+    expect(data.series.single.values, [222203.0, 1000000.0]);
+  });
+
+  test("and a first row of them is still data, not a header", () {
+    // The header is sniffed by whether the cells after the first look like
+    // numbers, and "1,000" has to look like one or a table of round figures
+    // loses its first row.
+    var data = ChartData.parse("Jan\t1,000\nFeb\t2,000");
+    expect(data.categories, ["Jan", "Feb"]);
+    expect(data.series.single.values, [1000.0, 2000.0]);
+    expect(data.series.single.name, "Series 1");
+  });
+
   test("percentages and blanks do not throw", () {
     var data = ChartData.parse("\tShare\nA\t40%\nB\t\nC\tnonsense");
     expect(data.series.single.values, [40.0, 0.0, 0.0]);

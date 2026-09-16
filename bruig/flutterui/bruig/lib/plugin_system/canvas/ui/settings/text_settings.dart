@@ -1325,7 +1325,11 @@ List<Widget> _markBits({
       CanvasColorButton(
         label: "Highlight",
         color: highlight.color,
+        gradient: highlight.fade,
         onChanged: (c) => setHighlight(highlight.copyWith(color: c)),
+        onGradientChanged: (g) => setHighlight(g == null
+            ? highlight.copyWith(flat: true)
+            : highlight.copyWith(fade: g)),
       ),
       // One field for all four sides, and the four on their own under
       // it -- the same shape the drawn mark's padding takes, because it
@@ -1391,7 +1395,11 @@ List<Widget> _markBits({
       CanvasColorButton(
         label: "Line colour",
         color: underline.color ?? textColor,
+        gradient: underline.fade,
         onChanged: (c) => setUnderline(underline.copyWith(color: c)),
+        onGradientChanged: (g) => setUnderline(g == null
+            ? underline.copyWith(flat: true)
+            : underline.copyWith(fade: g)),
       ),
       CanvasNumberField(
         label: "Width",
@@ -1602,8 +1610,13 @@ Widget _iconSection(BuildContext context, TextElement e, SettingsWrite write,
             CanvasColorButton(
               label: "Line colour",
               color: icon.underline!.color ?? icon.color ?? e.textSpec.color,
+              gradient: icon.underline!.fade,
               onChanged: (c) => now(
                   icon.copyWith(underline: icon.underline!.copyWith(color: c))),
+              onGradientChanged: (g) => now(icon.copyWith(
+                  underline: g == null
+                      ? icon.underline!.copyWith(flat: true)
+                      : icon.underline!.copyWith(fade: g))),
             ),
             CanvasNumberField(
               label: "Width",

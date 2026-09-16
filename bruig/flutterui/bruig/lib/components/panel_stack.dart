@@ -1,12 +1,16 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // panel_stack.dart is a column of panels that open, close, resize and change
 // places, and remembers all three.
+//
+// Shared rather than the canvas's own, which is where it was written. The
+// writing tools wanted the same shape and cannot import the canvas -- nothing
+// may, see test/plugin_system_layering_test.dart -- and a second copy of a
+// column that stores four things per panel is a second copy that drifts.
 //
 // It replaces a two-way split that could only ever be two things -- a list on
 // top and the settings under it, with one grip between them. Three panels was
@@ -18,7 +22,7 @@ import 'package:flutter/material.dart';
 // open, how tall each one is, what order they come in and which of them share
 // a place as tabs are all decisions somebody makes once about how they work,
 // so all of them are written down and come back next time -- see
-// [CanvasPanelStack.storageKey].
+// [PanelStack.storageKey].
 //
 // Two panels can share a place. Dropping one onto another's header tabs them
 // together: they take one panel's worth of room and one is showing at a time,
@@ -45,8 +49,8 @@ class PanelDrag {
   const PanelDrag(this.id);
 }
 
-/// CanvasStackPanel is one panel: what it is called, and what is in it.
-class CanvasStackPanel {
+/// StackPanel is one panel: what it is called, and what is in it.
+class StackPanel {
   /// id names this panel in storage and identifies it while it is being
   /// dragged. It must outlive a rename of the label.
   final String id;
@@ -79,7 +83,7 @@ class CanvasStackPanel {
   /// it shows changes rather than when its neighbour's heading does.
   final Widget body;
 
-  const CanvasStackPanel({
+  const StackPanel({
     required this.id,
     required this.label,
     required this.icon,
@@ -90,25 +94,25 @@ class CanvasStackPanel {
   });
 }
 
-/// CanvasPanelStack lays [panels] down a column, in the reader's own order.
-class CanvasPanelStack extends StatefulWidget {
-  final List<CanvasStackPanel> panels;
+/// PanelStack lays [panels] down a column, in the reader's own order.
+class PanelStack extends StatefulWidget {
+  final List<StackPanel> panels;
 
   /// storageKey is where this stack's arrangement is remembered. One stack,
   /// one key; the settings band and the sidebar would each want their own.
   final String storageKey;
 
-  const CanvasPanelStack({
+  const PanelStack({
     required this.panels,
     required this.storageKey,
     super.key,
   });
 
   @override
-  State<CanvasPanelStack> createState() => _CanvasPanelStackState();
+  State<PanelStack> createState() => _PanelStackState();
 }
 
-class _CanvasPanelStackState extends State<CanvasPanelStack> {
+class _PanelStackState extends State<PanelStack> {
   /// _headerHeight is what a shut panel costs. Its own constant because the
   /// arithmetic that shares out the rest has to subtract it for every panel,
   /// open or not.
@@ -185,7 +189,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   }
 
   @override
-  void didUpdateWidget(CanvasPanelStack old) {
+  void didUpdateWidget(PanelStack old) {
     super.didUpdateWidget(old);
     // A panel can come and go while the column is up: the transition settings
     // appear the moment there is a second scene to give way to. The
@@ -518,7 +522,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
     });
   }
 
-  Widget _body(CanvasStackPanel panel) => ClipRect(
+  Widget _body(StackPanel panel) => ClipRect(
         child: panel.body,
       );
 
@@ -528,7 +532,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// be. A boundary is the thing being moved, so the boundary is the thing to
   /// take hold of -- and an icon in the header was a second small target in a
   /// band that is otherwise one big one.
-  Widget _divider(ThemeNotifier theme, CanvasStackPanel below) => MouseRegion(
+  Widget _divider(ThemeNotifier theme, StackPanel below) => MouseRegion(
         // Named after the place below it, which is the one it belongs to and
         // is how a test takes hold of a boundary that is otherwise seven
         // pixels of nothing.
@@ -563,8 +567,8 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// it as a tab. The band says which as you hover -- a line at the edge it
   /// would go to, or the whole band lit for a tab -- because a drop that does
   /// one of three things without saying which is a drop nobody will risk.
-  Widget _header(ThemeNotifier theme, List<CanvasStackPanel> place,
-      CanvasStackPanel showing, int at) {
+  Widget _header(
+      ThemeNotifier theme, List<StackPanel> place, StackPanel showing, int at) {
     // A Builder, so the callbacks below measure against *this header* rather
     // than against the whole stack. Handed the stack's own context they
     // measured the pointer's position down the sidebar and called everything
@@ -576,7 +580,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   }
 
   Widget _headerTarget(BuildContext context, ThemeNotifier theme,
-      List<CanvasStackPanel> place, CanvasStackPanel showing, int at) {
+      List<StackPanel> place, StackPanel showing, int at) {
     return DragTarget<PanelDrag>(
       onWillAcceptWithDetails: (details) =>
           !(place.length == 1 && place.first.id == details.data.id),
@@ -642,7 +646,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
 
   /// _oneName is the band of a place holding a single panel: the name, and the
   /// grip that carries it.
-  Widget _oneName(ThemeNotifier theme, CanvasStackPanel panel) => InkWell(
+  Widget _oneName(ThemeNotifier theme, StackPanel panel) => InkWell(
         onTap: () => _toggle(panel.id),
         child: Row(children: [
           const SizedBox(width: 10),
@@ -685,7 +689,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
                   ),
                 ),
               ],
-              if (panel.hint != null) CanvasHint(panel.hint!),
+              if (panel.hint != null) PanelHint(panel.hint!),
             ]),
           ),
           _handle(theme, panel),
@@ -698,8 +702,8 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// The names go small and the counts go, because four tabs in a sidebar two
   /// hundred pixels wide is all the room there is. What a tab has to say is
   /// which panel it is.
-  Widget _tabs(ThemeNotifier theme, List<CanvasStackPanel> place,
-          CanvasStackPanel showing) =>
+  Widget _tabs(
+          ThemeNotifier theme, List<StackPanel> place, StackPanel showing) =>
       Row(
         children: [
           for (var (i, panel) in place.indexed)
@@ -718,7 +722,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   /// panel's band is. Pressing a different one shows that panel instead, and
   /// opens the place if it was shut, because asking for a panel and being
   /// given a closed box is not an answer.
-  Widget _tab(ThemeNotifier theme, CanvasStackPanel panel,
+  Widget _tab(ThemeNotifier theme, StackPanel panel,
       {required bool showing, required bool last}) {
     var lit = showing && _isOpen(panel.id);
     var body = Container(
@@ -820,7 +824,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
   }
 
   /// _carried is what a dragged panel looks like under the pointer.
-  Widget _carried(ThemeNotifier theme, CanvasStackPanel panel) => Material(
+  Widget _carried(ThemeNotifier theme, StackPanel panel) => Material(
         color: theme.colors.surfaceContainerHighest,
         elevation: 3,
         child: Padding(
@@ -831,7 +835,7 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
       );
 
   /// _handle is what a panel is carried by.
-  Widget _handle(ThemeNotifier theme, CanvasStackPanel panel) {
+  Widget _handle(ThemeNotifier theme, StackPanel panel) {
     var icon = SizedBox(
       width: 26,
       height: _headerHeight,
@@ -861,3 +865,35 @@ class _CanvasPanelStackState extends State<CanvasPanelStack> {
 
 /// _Drop is what would happen if the panel being carried were let go here.
 enum _Drop { above, below, tab }
+
+/// PanelHint is the question mark beside a panel's name.
+///
+/// Its own rather than the canvas's CanvasHint, which is what it was: this
+/// file is shared now and the canvas's controls are not. Same look, because
+/// the two sit in the same sidebar.
+class PanelHint extends StatelessWidget {
+  final String message;
+  const PanelHint(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: message,
+        triggerMode: TooltipTriggerMode.tap,
+        // Wider than the sidebar, because the sidebar is what it is too big
+        // for. A tooltip the width of the column it is explaining would be
+        // the paragraph again, in a box.
+        constraints: const BoxConstraints(maxWidth: 300),
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Icon(
+            Icons.help_outline,
+            size: 13,
+            color: ThemeNotifier.of(context)
+                .colors
+                .onSurfaceVariant
+                .withValues(alpha: 0.7),
+          ),
+        ),
+      );
+}

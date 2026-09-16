@@ -27,9 +27,15 @@ List<Widget> lineSettings(
       CanvasColorButton(
         label: "Colour",
         color: e.color,
+        gradient: e.fade,
         onChanged: (c) {
           begin();
           write(e.copyWith(color: c));
+          commit();
+        },
+        onGradientChanged: (g) {
+          begin();
+          write(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g));
           commit();
         },
       ),

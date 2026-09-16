@@ -1,3 +1,4 @@
+import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:bruig/plugin_system/writing_tools/engine/writing_issue.dart';
@@ -6,7 +7,6 @@ import 'package:bruig/plugin_system/writing_tools/ui/sidebar/composer_edits.dart
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/document_page.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/issue_list_page.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/sidebar_chips.dart';
-import 'package:bruig/plugin_system/writing_tools/ui/sidebar/sidebar_tabs.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/thesaurus_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,18 +19,22 @@ import 'package:provider/provider.dart';
 // competed with the text for vertical room and had to be capped; beside it, it
 // can simply be as long as it needs to be, and the post keeps its full height.
 //
-// It is four pages behind an icon bar rather than one long column, because the
-// four answer different questions and are wanted at different moments.
-// Mistakes are read while finishing a draft; phrasing is read when the draft is
-// already correct and could be better; the thesaurus is consulted a word at a
-// time while writing; and the counts are checked once, at the end. Put end to
-// end they made a column nobody would scroll to the bottom of, and the two that
-// live below the fold are the two anyone would have to go looking for.
+// The four are a column of panels that open, shut, resize and change places,
+// the same one the canvas's design sidebar is -- see PanelStack. They were a
+// row of four tabs, which is a shape with one thing wrong with it: the four
+// answer different questions and are wanted at different moments, but two of
+// them are wanted at the *same* moment. Mistakes are read while finishing a
+// draft and the thesaurus is consulted a word at a time while writing, and a
+// tab is a place you have to leave to reach another.
 //
-// This file is only the shell: it watches the composer, decides what each page
-// is handed, and draws the tab row. The pages themselves are the four files
-// beside it, and adding a fifth is a value on the enum below and one case in
-// _body.
+// Panels also mean the arrangement belongs to the reader. Somebody who never
+// looks at the counts shuts that panel once; somebody who lives in the
+// thesaurus drags it to the top. Which are open, how tall each is and what
+// order they come in are all written down and come back next time.
+//
+// This file is only the shell: it watches the composer and decides what each
+// panel is handed. The panels themselves are the four files beside it, and
+// adding a fifth is a value on the enum below and one entry in _panels.
 
 /// WritingSidebarPage is one of the sidebar's four views.
 enum WritingSidebarPage {
@@ -92,27 +96,7 @@ class WritingSidebar extends StatefulWidget {
   /// being rebuilt -- see ComposerSidebarController.visible.
   final TextEditingController? controller;
 
-  /// page is which of the four is showing, and onPageChanged asks for another.
-  ///
-  /// Held by the screen rather than in this widget's own State. In the
-  /// collapsed drawer the sidebar is built from a stored builder and rebuilt
-  /// from scratch whenever the drawer is told to redraw, so a selection kept
-  /// here would be a selection the drawer could forget -- and the drawer is
-  /// only ever told about things the screen knows it changed. Both problems go
-  /// away when the screen owns it.
-  final WritingSidebarPage page;
-  final ValueChanged<WritingSidebarPage> onPageChanged;
-
-  const WritingSidebar({
-    required this.controller,
-    this.page = WritingSidebarPage.mistakes,
-    this.onPageChanged = _ignorePage,
-    super.key,
-  });
-
-  /// A sidebar with nowhere to send the change simply does not move, which is
-  /// the right behaviour for a caller that only wants one page.
-  static void _ignorePage(WritingSidebarPage _) {}
+  const WritingSidebar({required this.controller, super.key});
 
   @override
   State<WritingSidebar> createState() => _WritingSidebarState();
@@ -127,14 +111,30 @@ class _WritingSidebarState extends State<WritingSidebar> {
   // tear it down. Selection changes still matter for the thesaurus page, so
   // they rebuild too, but they are compared separately so a repaint that
   // changed neither is dropped.
-  late String _lastText = _editor?.text ?? "";
-  late TextSelection _lastSelection =
-      _editor?.selection ?? const TextSelection.collapsed(offset: -1);
+  late String _lastText;
+  late TextSelection _lastSelection;
 
   @override
   void initState() {
     super.initState();
+    // Read here rather than as a late initialiser on the fields.
+    //
+    // A late field is worked out when it is first touched, and the only thing
+    // that touches these is _onChanged -- which runs *after* the text has
+    // changed. So the first change initialised them to the text it was
+    // reporting, compared it against itself, found no difference and dropped
+    // the rebuild: the sidebar showed the post as it was when it opened until
+    // something else happened to rebuild it. With four tabs, tapping one was
+    // enough to hide it.
+    _remember();
     _editor?.addListener(_onChanged);
+  }
+
+  /// _remember notes what the list was last built from.
+  void _remember() {
+    _lastText = _editor?.text ?? "";
+    _lastSelection =
+        _editor?.selection ?? const TextSelection.collapsed(offset: -1);
   }
 
   @override
@@ -145,9 +145,7 @@ class _WritingSidebarState extends State<WritingSidebar> {
     if (!identical(old.controller, widget.controller)) {
       old.controller?.removeListener(_onChanged);
       _editor?.addListener(_onChanged);
-      _lastText = _editor?.text ?? "";
-      _lastSelection =
-          _editor?.selection ?? const TextSelection.collapsed(offset: -1);
+      _remember();
     }
   }
 
@@ -181,51 +179,123 @@ class _WritingSidebarState extends State<WritingSidebar> {
     var mistakes = issues.where((i) => i.kind.isMistake).toList();
     var phrasing = issues.where((i) => !i.kind.isMistake).toList();
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SidebarTabs(
-        current: widget.page,
-        onChanged: widget.onPageChanged,
-        prefs: prefs,
-        counts: {
-          WritingSidebarPage.mistakes: mistakes.length,
-          WritingSidebarPage.phrasing: phrasing.length,
-        },
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _onOff(theme, prefs),
+      Divider(height: 1, color: theme.colors.outlineVariant),
+      Expanded(
+        child: PanelStack(
+          storageKey: "writingTools",
+          panels: _panels(theme, prefs, edits, mistakes, phrasing),
+        ),
       ),
-      const Divider(height: 1),
-      Expanded(child: _body(theme, prefs, edits, mistakes, phrasing)),
     ]);
   }
 
-  Widget _body(
+  /// _onOff is the whole feature's switch, on a line of its own above the
+  /// panels.
+  ///
+  /// It used to sit on the end of the tab row, which is gone. A line of its
+  /// own rather than a panel header's trailing corner: it governs all four
+  /// panels, and a control that lives on one of them looks like it belongs to
+  /// that one. Turning the tools off from here is the obvious move when the
+  /// marks are in the way, so it stays at the top where it was.
+  Widget _onOff(ThemeNotifier theme, WritingPreferences prefs) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              "Writing tools",
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 0.4,
+                fontWeight: FontWeight.w600,
+                color: theme.colors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Tooltip(
+            message: prefs.enabled ? "Turn writing tools off" : "Turn on",
+            child: Transform.scale(
+              // Material's switch is built for a settings row and is half
+              // again the height of the line it sits in here.
+              scale: 0.7,
+              child: Switch(
+                value: prefs.enabled,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onChanged: (v) => prefs.enabled = v,
+              ),
+            ),
+          ),
+        ]),
+      );
+
+  List<StackPanel> _panels(
     ThemeNotifier theme,
     WritingPreferences prefs,
     ComposerEdits edits,
     List<WritingIssue> mistakes,
     List<WritingIssue> phrasing,
   ) {
-    // The document page is the exception: counting words needs no provider and
-    // no rules, so it keeps working when everything else is switched off.
-    if (widget.page == WritingSidebarPage.document) {
-      return DocumentPage(text: edits.text);
-    }
-    if (!prefs.enabled) {
-      return sidebarNote(theme, "Writing tools are off for this session.");
-    }
-    switch (widget.page) {
-      case WritingSidebarPage.mistakes:
-        return IssueListPage(
+    /// off is what a panel shows when the writing tools are switched off for
+    /// the session. The counts are the exception -- counting words needs no
+    /// provider and no rules -- so they keep working.
+    Widget guarded(Widget page) => prefs.enabled
+        ? page
+        : sidebarNote(theme, "Writing tools are off for this session.");
+
+    // The count on the heading rather than only inside the list, so a shut
+    // panel still says how much is behind it. Nothing rather than a nought:
+    // a panel saying 0 invites a look at a list with nothing in it.
+    String? count(int n) => n == 0 ? null : "$n";
+
+    return [
+      StackPanel(
+        id: WritingSidebarPage.mistakes.name,
+        label: WritingSidebarPage.mistakes.short,
+        icon: WritingSidebarPage.mistakes.icon,
+        trailing: count(mistakes.length),
+        hint: "Misspellings and broken grammar: the things that are actually "
+            "wrong, kept apart from the things that could merely be better.",
+        body: guarded(IssueListPage(
             issues: mistakes,
             edits: edits,
-            empty: "Nothing to fix in this post.");
-      case WritingSidebarPage.phrasing:
-        return IssueListPage(
+            empty: "Nothing to fix in this post.")),
+      ),
+      StackPanel(
+        id: WritingSidebarPage.phrasing.name,
+        label: WritingSidebarPage.phrasing.short,
+        icon: WritingSidebarPage.phrasing.icon,
+        trailing: count(phrasing.length),
+        hint: "Wordiness, cliches, the passive voice, a word used four times "
+            "in a paragraph. Opinions, and a few things to check rather than "
+            "correct.",
+        body: guarded(IssueListPage(
             issues: phrasing,
             edits: edits,
-            empty: "Nothing to suggest for this post.");
-      case WritingSidebarPage.thesaurus:
-        return ThesaurusPage(edits: edits);
-      case WritingSidebarPage.document:
-        return DocumentPage(text: edits.text);
-    }
+            empty: "Nothing to suggest for this post.")),
+      ),
+      // Shut to begin with, both of them. The thesaurus has nothing to say
+      // until a word is selected and the counts are read once, at the end --
+      // so open they are two holes in a column the issue lists want the room
+      // from. Once either has been opened by hand that is what comes back.
+      StackPanel(
+        id: WritingSidebarPage.thesaurus.name,
+        label: WritingSidebarPage.thesaurus.short,
+        icon: WritingSidebarPage.thesaurus.icon,
+        hint: "What else could have been said. Select a word to look it up.",
+        startsOpen: false,
+        body: guarded(ThesaurusPage(edits: edits)),
+      ),
+      StackPanel(
+        id: WritingSidebarPage.document.name,
+        label: WritingSidebarPage.document.short,
+        icon: WritingSidebarPage.document.icon,
+        hint: "How much there is of it.",
+        startsOpen: false,
+        // Not guarded: counting words needs no provider and no rules, so it
+        // keeps working when everything else is switched off.
+        body: DocumentPage(text: edits.text),
+      ),
+    ];
   }
 }

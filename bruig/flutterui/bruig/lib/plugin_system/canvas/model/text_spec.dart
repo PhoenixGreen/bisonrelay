@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -241,6 +242,19 @@ class TextSpec {
 
   final Color color;
 
+  /// fade is the second colour the words run to, or null for one flat colour.
+  ///
+  /// Chosen in the picker beside [color] -- see GradientSpec. Run across the
+  /// box the text is drawn in rather than across the letters' own bounds: the
+  /// letters are not measured until they are laid out, and a gradient that
+  /// started again on every line is not what anybody means by a fade across a
+  /// heading.
+  ///
+  /// Ignored where the letters are outlined rather than filled, and where a
+  /// picture or a pattern is showing through them -- both of those already
+  /// decide what the letters are painted with. See textStyleOf.
+  final GradientSpec? fade;
+
   /// fill is a picture or a pattern showing through the letters, or nothing
   /// at all -- which is the usual answer and means [color].
   final TextFill fill;
@@ -291,6 +305,7 @@ class TextSpec {
     this.verticalAlign = VerticalAlignSpec.middle,
     this.textCase = TextCase.none,
     this.color = const Color(0xFFFFFFFF),
+    this.fade,
     this.fill = const TextFill(),
     this.outlineWidth = 0,
     this.outlineColor = const Color(0xFF000000),
@@ -330,6 +345,8 @@ class TextSpec {
     VerticalAlignSpec? verticalAlign,
     TextCase? textCase,
     Color? color,
+    GradientSpec? fade,
+    bool flatText = false,
     TextFill? fill,
     double? outlineWidth,
     Color? outlineColor,
@@ -352,6 +369,7 @@ class TextSpec {
         verticalAlign: verticalAlign ?? this.verticalAlign,
         textCase: textCase ?? this.textCase,
         color: color ?? this.color,
+        fade: flatText ? null : (fade ?? this.fade),
         fill: fill ?? this.fill,
         outlineWidth: outlineWidth ?? this.outlineWidth,
         outlineColor: outlineColor ?? this.outlineColor,
@@ -381,6 +399,7 @@ class TextSpec {
         "valign": verticalAlign.name,
         if (textCase != TextCase.none) "case": textCase.name,
         "color": colorToJson(color),
+        if (fade != null) "fade": fade!.toJson(),
         if (fill.toJson().isNotEmpty) "fill": fill.toJson(),
         if (outlineWidth > 0) "ow": outlineWidth,
         if (outlineWidth > 0) "oc": colorToJson(outlineColor),
@@ -405,6 +424,10 @@ class TextSpec {
         verticalAlign: VerticalAlignSpec.fromName(json["valign"] as String?),
         textCase: TextCase.fromName(json["case"] as String?),
         color: colorFromJson(json["color"]),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
         fill: json["fill"] is Map<String, dynamic>
             ? TextFill.fromJson(json["fill"] as Map<String, dynamic>)
             : const TextFill(),
@@ -448,6 +471,7 @@ class TextSpec {
           other.verticalAlign == verticalAlign &&
           other.textCase == textCase &&
           other.color == color &&
+          other.fade == fade &&
           other.outlineWidth == outlineWidth &&
           other.outlineColor == outlineColor &&
           other.shadowBlur == shadowBlur &&
@@ -666,6 +690,15 @@ class BoxSpec {
   final double borderWidth;
   final Color borderColor;
 
+  /// fillFade and borderFade are the second colours, where the fill or the
+  /// border fades to one. Null for the flat ones, which is most of them.
+  ///
+  /// Chosen in the picker beside the colour itself -- see GradientSpec -- so
+  /// there is no on/off flag and no row of gradient settings anywhere near
+  /// the swatch.
+  final GradientSpec? fillFade;
+  final GradientSpec? borderFade;
+
   /// borderRadius is every corner that has not been given its own, and
   /// [padding] is every side that has not been given its own; padL..radBL are
   /// the ones that have.
@@ -676,6 +709,16 @@ class BoxSpec {
   /// The *behaviour* is not duplicated: [corners] and [pad] hand back the two
   /// of them and everything below is asked of those, so a rectangle shape and
   /// a box round a picture round their corners by the same code.
+  /// bwL, bwT, bwR and bwB are one side's own border, or null to take
+  /// [borderWidth] -- the same shape as the padding above and for the same
+  /// reason: a rule under a heading, a bar down the left of a quote, a box
+  /// open on one side. All four even is what almost every box wants and is
+  /// the one field; the rest are there for the boxes that are not boxes.
+  final double? bwL;
+  final double? bwT;
+  final double? bwR;
+  final double? bwB;
+
   final double borderRadius;
   final double padding;
   final double? padL;
@@ -690,7 +733,13 @@ class BoxSpec {
   const BoxSpec({
     this.fill = const Color(0x00000000),
     this.borderWidth = 0,
+    this.bwL,
+    this.bwT,
+    this.bwR,
+    this.bwB,
     this.borderColor = const Color(0xFFFFFFFF),
+    this.fillFade,
+    this.borderFade,
     this.borderRadius = 0,
     this.padding = 8,
     this.padL,
@@ -706,6 +755,23 @@ class BoxSpec {
   Corners get corners =>
       Corners(all: borderRadius, tl: radTL, tr: radTR, br: radBR, bl: radBL);
   Room get pad => Room(all: padding, l: padL, t: padT, r: padR, b: padB);
+
+  /// borders is the four border widths, the same way [pad] is the four
+  /// paddings.
+  Room get borders => Room(all: borderWidth, l: bwL, t: bwT, r: bwR, b: bwB);
+
+  /// evenBorder is the one number the four sides share, or null where they
+  /// differ -- which is what the "all sides" field shows, and what decides
+  /// whether the border can be drawn as one rounded rectangle.
+  double? get evenBorder => borders.even;
+
+  /// hasBorder is whether any side is drawn at all.
+  bool get hasBorder =>
+      borderColor.a > 0 &&
+      (borders.left > 0 ||
+          borders.top > 0 ||
+          borders.right > 0 ||
+          borders.bottom > 0);
 
   double get padLeft => pad.left;
   double get padTop => pad.top;
@@ -749,7 +815,13 @@ class BoxSpec {
   BoxSpec withCorners(Corners corners) => BoxSpec(
       fill: fill,
       borderWidth: borderWidth,
+      bwL: bwL,
+      bwT: bwT,
+      bwR: bwR,
+      bwB: bwB,
       borderColor: borderColor,
+      fillFade: fillFade,
+      borderFade: borderFade,
       borderRadius: corners.all,
       radTL: corners.tl,
       radTR: corners.tr,
@@ -764,7 +836,13 @@ class BoxSpec {
   BoxSpec withRoom(Room room) => BoxSpec(
       fill: fill,
       borderWidth: borderWidth,
+      bwL: bwL,
+      bwT: bwT,
+      bwR: bwR,
+      bwB: bwB,
       borderColor: borderColor,
+      fillFade: fillFade,
+      borderFade: borderFade,
       borderRadius: borderRadius,
       radTL: radTL,
       radTR: radTR,
@@ -776,6 +854,30 @@ class BoxSpec {
       padR: room.r,
       padB: room.b);
 
+  /// withBorders replaces all four border widths, overrides and all -- see
+  /// [withRoom], which is the same thing for the padding and says why it is
+  /// not a copyWith.
+  BoxSpec withBorders(Room room) => BoxSpec(
+      fill: fill,
+      borderWidth: room.all,
+      bwL: room.l,
+      bwT: room.t,
+      bwR: room.r,
+      bwB: room.b,
+      borderColor: borderColor,
+      fillFade: fillFade,
+      borderFade: borderFade,
+      borderRadius: borderRadius,
+      radTL: radTL,
+      radTR: radTR,
+      radBR: radBR,
+      radBL: radBL,
+      padding: padding,
+      padL: padL,
+      padT: padT,
+      padR: padR,
+      padB: padB);
+
   /// withEvenPad sets all four sides at once, forgetting whatever they had.
   BoxSpec withEvenPad(double padding) => withRoom(pad.withEven(padding));
 
@@ -786,7 +888,15 @@ class BoxSpec {
   BoxSpec copyWith({
     Color? fill,
     double? borderWidth,
+    double? bwL,
+    double? bwT,
+    double? bwR,
+    double? bwB,
     Color? borderColor,
+    GradientSpec? fillFade,
+    GradientSpec? borderFade,
+    bool flatFill = false,
+    bool flatBorder = false,
     double? borderRadius,
     double? padding,
     double? padL,
@@ -801,7 +911,13 @@ class BoxSpec {
       BoxSpec(
         fill: fill ?? this.fill,
         borderWidth: borderWidth ?? this.borderWidth,
+        bwL: bwL ?? this.bwL,
+        bwT: bwT ?? this.bwT,
+        bwR: bwR ?? this.bwR,
+        bwB: bwB ?? this.bwB,
         borderColor: borderColor ?? this.borderColor,
+        fillFade: flatFill ? null : (fillFade ?? this.fillFade),
+        borderFade: flatBorder ? null : (borderFade ?? this.borderFade),
         borderRadius: borderRadius ?? this.borderRadius,
         padding: padding ?? this.padding,
         padL: padL ?? this.padL,
@@ -816,8 +932,16 @@ class BoxSpec {
 
   Map<String, dynamic> toJson() => {
         "fill": colorToJson(fill),
+        if (fillFade != null) "fillFade": fillFade!.toJson(),
+        if (borderFade != null) "borderFade": borderFade!.toJson(),
         if (borderWidth > 0) "bw": borderWidth,
-        if (borderWidth > 0) "bc": colorToJson(borderColor),
+        if (hasBorder) "bc": colorToJson(borderColor),
+        // Only the sides somebody has actually singled out, like the paddings
+        // and the corners below.
+        if (bwL != null) "bwL": bwL,
+        if (bwT != null) "bwT": bwT,
+        if (bwR != null) "bwR": bwR,
+        if (bwB != null) "bwB": bwB,
         if (borderRadius > 0) "br": borderRadius,
         "pad": padding,
         // Only the sides and corners somebody has actually singled out, so a
@@ -834,7 +958,19 @@ class BoxSpec {
 
   factory BoxSpec.fromJson(Map<String, dynamic> json) => BoxSpec(
         fill: colorFromJson(json["fill"], const Color(0x00000000)),
+        fillFade: json["fillFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fillFade"] as Map).cast<String, dynamic>())
+            : null,
+        borderFade: json["borderFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["borderFade"] as Map).cast<String, dynamic>())
+            : null,
         borderWidth: jsonDouble(json["bw"], 0),
+        bwL: json["bwL"] == null ? null : jsonDouble(json["bwL"], 0),
+        bwT: json["bwT"] == null ? null : jsonDouble(json["bwT"], 0),
+        bwR: json["bwR"] == null ? null : jsonDouble(json["bwR"], 0),
+        bwB: json["bwB"] == null ? null : jsonDouble(json["bwB"], 0),
         borderColor: colorFromJson(json["bc"]),
         borderRadius: jsonDouble(json["br"], 0),
         padding: jsonDouble(json["pad"], 8),
@@ -853,11 +989,18 @@ class BoxSpec {
       identical(this, other) ||
       other is BoxSpec &&
           other.fill == fill &&
+          other.fillFade == fillFade &&
+          other.borderFade == borderFade &&
           other.borderWidth == borderWidth &&
+          other.bwL == bwL &&
+          other.bwT == bwT &&
+          other.bwR == bwR &&
+          other.bwB == bwB &&
           other.borderColor == borderColor &&
           other.corners == corners &&
           other.pad == pad;
 
   @override
-  int get hashCode => Object.hash(fill, borderWidth, borderColor, corners, pad);
+  int get hashCode => Object.hash(fill, fillFade, borderFade, borderWidth,
+      borderColor, corners, pad, borders);
 }

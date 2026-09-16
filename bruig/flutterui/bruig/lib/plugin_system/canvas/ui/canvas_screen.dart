@@ -38,6 +38,20 @@ import 'package:url_launcher/url_launcher.dart';
 // across the bottom. Both belong to the canvas rather than to the sidebar,
 // which is why they are inside the content area and stop at its edges.
 
+/// startsWithSettingsOpen is whether a canvas just started should open with
+/// the canvas settings line already out.
+///
+/// A canvas with nothing on it yet: the shape of the page and the width it
+/// exports at are decided once, before anything is put on it, and having them
+/// already showing is the whole invitation to decide them. A preset arrives
+/// with its shape chosen on purpose and something drawn in it, so the line
+/// would only be covering the thing that was chosen.
+/// allScenes rather than scenes: a document with one scene keeps its elements
+/// on the document itself and leaves the list empty, which "every" would call
+/// empty however much is drawn on it.
+bool startsWithSettingsOpen(CanvasDocument document) =>
+    document.allScenes.every((scene) => scene.elements.isEmpty);
+
 /// CanvasScreenTitle is the page heading, which follows the menu: renaming the
 /// destination in Settings > Appearance > Menu renames the heading too.
 class CanvasScreenTitle extends StatelessWidget {
@@ -303,6 +317,23 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // Straight to the elements tab, as a preset does: the next thing anybody
     // does with an empty canvas is put something on it.
     _setPanel(CanvasPanel.design);
+    _openCanvasSettings();
+  }
+
+  /// _openCanvasSettings puts the canvas settings line out.
+  ///
+  /// For a canvas that is starting from nothing: the shape of the page and
+  /// the width it exports at are decided once, before anything is put on it,
+  /// and a blank canvas that opens with them already showing is the whole
+  /// invitation to decide them. On a canvas that has something on it they are
+  /// set, which is why the line is otherwise shut.
+  void _openCanvasSettings() {
+    if (!mounted) return;
+    setState(() {
+      _canvasSettingsOpen = true;
+      // The two lines open in the same place.
+      _guidesOpen = false;
+    });
   }
 
   /// _openPreset starts a new canvas from a preset.
@@ -318,6 +349,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
       // Straight to the elements tab, because the next thing anybody does
       // after choosing a starting point is add something to it.
       _setPanel(CanvasPanel.design);
+      // Only the empty preset, which is the same thing as New: every other
+      // preset arrives with its shape already chosen on purpose, and the
+      // line would be covering the thing it was chosen for.
+      if (startsWithSettingsOpen(document)) _openCanvasSettings();
     }
   }
 
@@ -463,6 +498,13 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 ? null
                 : () => setState(() => _sidebarVisible = true),
           ),
+          ...canvasSecondLine(
+            settings: _canvasSettingsOpen
+                ? CanvasSettingsPanel(controller: _controller)
+                : null,
+            guides:
+                _guidesOpen ? CanvasGuidesPanel(controller: _controller) : null,
+          ),
           Expanded(
             child: Stack(children: [
               Positioned.fill(
@@ -493,30 +535,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   ),
                 ),
               ),
-              // Over the top of the canvas rather than above it, so opening
-              // the settings does not move the design. It covers a strip of
-              // the canvas's top edge while it is open, which closing it gets
-              // back; pushing the canvas down is not recoverable in the same
-              // way -- the zoom changes under whatever was being looked at.
-              if (_canvasSettingsOpen)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: CanvasSettingsPanel(controller: _controller),
-                ),
-              // The same place, for the same reason -- and never both at once,
-              // which the two toggles see to.
-              if (_guidesOpen)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: CanvasGuidesPanel(controller: _controller),
-                ),
-              // The pose bar sits against the timeline, at the bottom of the
-              // canvas area, for the same reason the settings sit against the
-              // band at the top: over the design rather than pushing it.
+              // The pose bar still sits over the design rather than pushing
+              // it: it is opened while watching an animation, where a shift
+              // in the middle of playback is exactly what nobody wants, and
+              // it hangs off the bottom edge rather than the top -- which is
+              // not the edge anybody is working against.
               if (_keyframesOpen && !_controller.playing)
                 Positioned(
                   bottom: 0,
@@ -565,3 +588,27 @@ class _CanvasScreenState extends State<CanvasScreen> {
         name: _controller.name,
       );
 }
+
+/// canvasSecondLine is the strip that opens under the band: the canvas
+/// settings, or the grid and guides.
+///
+/// Above the canvas rather than over it, so it pushes the design down instead
+/// of covering the top of it.
+///
+/// It used to sit over the canvas, on the grounds that opening the settings
+/// should not move what is being looked at -- and in Fit whole the height is
+/// part of the scale, so the design does shift when this opens. That is the
+/// lesser cost: covering the top edge hides the part of the canvas most
+/// likely to be worked on while the settings that do the work are open. The
+/// timeline at the bottom of the same column has always pushed rather than
+/// covered.
+///
+/// A function of its own, and returning a list rather than a widget, so that
+/// where it sits in the column is a thing a test can look at -- which is the
+/// whole of what this decides.
+List<Widget> canvasSecondLine({Widget? settings, Widget? guides}) => [
+      if (settings != null) settings,
+      // Never both at once, which the two toggles see to; if one ever gets
+      // through, the settings win rather than two strips stacking.
+      if (settings == null && guides != null) guides,
+    ];

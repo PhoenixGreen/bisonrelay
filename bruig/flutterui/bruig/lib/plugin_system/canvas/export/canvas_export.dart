@@ -159,32 +159,50 @@ Future<CanvasExport?> renderPdf(
   PdfPaper paper = PdfPaper.canvas,
   PdfOrientation orientation = PdfOrientation.auto,
 }) async {
-  ui.Image? image;
   try {
-    image =
-        await renderFrame(document, frame: frame, scale: scale, images: images);
-    // Straight rather than premultiplied: a PDF keeps the colours and the
-    // transparency as two separate images, and separating them out of
-    // premultiplied pixels means dividing the colour back out of its own
-    // alpha, which loses a little of everyhalf-transparent pixel for nothing.
-    var raw =
-        await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
-    if (raw == null) return null;
+    // One page per canvas, in order. A document of several scenes is several
+    // pages -- which is what anybody asking for a PDF of it meant, and what
+    // the still formats cannot do however the scene range is set.
+    //
+    // Rendered and converted one at a time, so only one decoded image is
+    // alive at once: the obvious shape -- render them all, then write them --
+    // is what makes a long document run out of memory.
+    var starts = document.hasScenes
+        ? [
+            for (var i = 0; i < document.allScenes.length; i++)
+              document.startOfScene(i),
+          ]
+        : [frame];
+
+    var pictures = <PdfPicture>[];
+    for (var at in starts) {
+      ui.Image? image;
+      try {
+        image = await renderFrame(document,
+            frame: at, scale: scale, images: images);
+        // Straight rather than premultiplied: a PDF keeps the colours and the
+        // transparency as two separate images, and separating them out of
+        // premultiplied pixels means dividing the colour back out of its own
+        // alpha, which loses a little of every half-transparent pixel for
+        // nothing.
+        var raw =
+            await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+        if (raw == null) return null;
+        pictures.add(PdfPicture(raw.buffer.asUint8List(),
+            width: image.width, height: image.height));
+      } finally {
+        image?.dispose();
+      }
+    }
+    if (pictures.isEmpty) return null;
 
     var page = pageFor(paper, document.size.size, orientation: orientation);
-    var bytes = writePdf(
-      raw.buffer.asUint8List(),
-      width: image.width,
-      height: image.height,
-      page: page,
-    );
+    var bytes = writePdf(pictures, page: page);
     return CanvasExport(bytes, "application/pdf",
         width: page.width.round(), height: page.height.round());
   } catch (exception) {
     debugPrint("Unable to write the canvas as a PDF: $exception");
     return null;
-  } finally {
-    image?.dispose();
   }
 }
 
@@ -268,7 +286,9 @@ Future<CanvasExport?> renderGif(
 int estimateBytes(CanvasDocument document, CanvasEstimate spec,
     {double scale = 1}) {
   if (spec.format.moving) {
-    var frames = estimateAnimationBytes(document, scale: scale);
+    var frames = spec.format == EstimateAs.video
+        ? _oldAnimationBytes(document, scale: scale)
+        : estimateAnimationBytes(document, scale: scale);
     // A video is not a stack of pictures: it stores what changed, and what
     // changes between two frames of a chart drawing itself on is a fraction
     // of the frame. Measured against the GIFs and MP4s these presets export,
@@ -367,16 +387,38 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.rain ||
       ProceduralStyle.symbolField =>
         0.45,
+      // The worst case there is: a different value in every pixel, by design.
+      // Brushing is noise and rust is noise on top of it, and a filter has
+      // nothing to predict from.
+      ProceduralStyle.metal => 0.55,
     };
 
 /// estimateAnimationBytes is the same guess for a GIF.
 ///
-/// A GIF's later frames are far cheaper than its first, because most of a
-/// frame is usually identical to the one before it and LZW says so in very few
-/// bytes. The 0.35 is that, measured across the presets; a document where
-/// everything moves at once will beat it, and the line is marked as an
-/// estimate for exactly that reason.
+/// A GIF's later frames cost only the rectangle that changed -- see
+/// encodeGif, which writes each frame as a patch on the one before it and
+/// leaves the rest see-through. So the first frame is nearly all of a mostly
+/// still animation, and the rest is whatever moves.
+///
+/// The 0.12 is a guess at how much of a frame moves, and it is the number
+/// this whole line is least sure of: a canvas where one chart draws itself on
+/// will beat it comfortably and one where the whole background churns will
+/// not. It is marked as an estimate on screen for exactly that reason, and it
+/// is deliberately the high side of what the presets measure -- a size that
+/// turns out smaller than promised is a good surprise.
 int estimateAnimationBytes(CanvasDocument document, {double scale = 1}) {
+  var first = estimateStillBytes(document, scale: scale) * 0.7;
+  return (first + first * 0.12 * (document.playFrames - 1)).round();
+}
+
+/// _oldAnimationBytes is what a GIF weighed before its frames carried only
+/// what changed.
+///
+/// Kept for the video estimate alone, which was measured as a fraction of
+/// that and has no measurement of its own -- there is no encoder in the test
+/// suite to take one with. Moving it on the back of a change to the GIF would
+/// be changing a number nobody has checked.
+int _oldAnimationBytes(CanvasDocument document, {double scale = 1}) {
   var first = estimateStillBytes(document, scale: scale) * 0.7;
   return (first + first * 0.35 * (document.playFrames - 1)).round();
 }

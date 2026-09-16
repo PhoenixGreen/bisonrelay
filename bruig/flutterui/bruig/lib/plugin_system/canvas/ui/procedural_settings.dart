@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
@@ -515,6 +516,14 @@ class ProceduralSettings extends StatelessWidget {
   }
 
   RingSpec get rings => spec.rings;
+  LightSpec get light => spec.light;
+  MetalSpec get metal => spec.metal;
+
+  /// _light, _lightNow and _metalSet are _set and _setNow for the two specs
+  /// of their own, the way _rings is for the rings.
+  void _light(LightSpec next) => _set(spec.copyWith(light: next));
+  void _lightNow(LightSpec next) => _setNow(spec.copyWith(light: next));
+  void _metalSet(MetalSpec next) => _set(spec.copyWith(metal: next));
 
   List<Widget> _groups(BuildContext context) => [
         CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
@@ -564,10 +573,19 @@ class ProceduralSettings extends StatelessWidget {
             ),
         ]),
         CanvasControlGroup(label: "Colours", children: [
+          // The base colour, and the second one it fades to if it fades: both
+          // in the picker, which is where a gradient is set now. That is
+          // three controls out of this group -- a Gradient toggle, a To
+          // swatch and an Angle field -- for something most backgrounds do
+          // not do at all.
           CanvasColorButton(
             label: "Base",
             color: spec.background,
+            gradient: spec.gradient,
             onChanged: (c) => _setNow(spec.copyWith(background: c)),
+            onGradientChanged: (g) => _setNow(g == null
+                ? spec.copyWith(flatBackground: true)
+                : spec.copyWith(gradient: g)),
           ),
           CanvasColorButton(
             label: "Main",
@@ -579,28 +597,6 @@ class ProceduralSettings extends StatelessWidget {
             color: spec.accent,
             onChanged: (c) => _setNow(spec.copyWith(accent: c)),
           ),
-          CanvasToggle(
-            label: "Gradient",
-            value: spec.gradient,
-            onChanged: (v) => _setNow(spec.copyWith(gradient: v)),
-          ),
-          if (spec.gradient) ...[
-            CanvasColorButton(
-              label: "To",
-              color: spec.gradientTo,
-              onChanged: (c) => _setNow(spec.copyWith(gradientTo: c)),
-            ),
-            CanvasNumberField(
-              label: "Angle",
-              value: spec.gradientAngle,
-              min: -360,
-              max: 360,
-              width: 54,
-              suffix: "°",
-              onChanged: (v) => _set(spec.copyWith(gradientAngle: v)),
-              onCommit: onCommit,
-            ),
-          ],
         ]),
         CanvasControlGroup(label: "Amount", children: [
           CanvasNumberField(
@@ -704,6 +700,73 @@ class ProceduralSettings extends StatelessWidget {
               tooltip: "Back to the default characters",
               onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
             ),
+          ]),
+        // The Metal texture's own settings, for the same reason the Rings
+        // style has its own: "more" and "bigger" are not the questions
+        // anybody has about a sheet of metal. What the shared five would have
+        // to stand in for -- how coarse the brushing is, how far the rust has
+        // got -- has no sensible name among them.
+        if (spec.style == ProceduralStyle.metal)
+          CanvasControlGroup(label: "Metal", children: [
+            CanvasNumberField(
+              key: const ValueKey("metalRoughness"),
+              label: "Roughness",
+              value: metal.roughness,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) {
+                onBegin();
+                _metalSet(metal.copyWith(roughness: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("metalShine"),
+              label: "Shine",
+              value: metal.shine,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) {
+                onBegin();
+                _metalSet(metal.copyWith(shine: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("metalRust"),
+              label: "Rust",
+              value: metal.rust,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) {
+                onBegin();
+                _metalSet(metal.copyWith(rust: v));
+              },
+              onCommit: onCommit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("metalDamage"),
+              label: "Damage",
+              value: metal.damage,
+              min: 0,
+              max: 1,
+              decimals: 2,
+              width: 62,
+              onChanged: (v) {
+                onBegin();
+                _metalSet(metal.copyWith(damage: v));
+              },
+              onCommit: onCommit,
+            ),
+            const CanvasHint("The colours above are the sheet: Base is the "
+                "metal, Main is the sheen along the brushing, and Accent is "
+                "the rust. Shine is matt at nought and mirrored at one."),
           ]),
         // The Rings style's own settings. Its own group rather than more of
         // the shared five, because what a set of rings raises -- where each
@@ -1206,5 +1269,146 @@ class ProceduralSettings extends StatelessWidget {
                 ),
             ],
           ]),
+        // The light, which every style has. Behind a heading and shut until
+        // it is wanted, because most backgrounds are not lit and a switch
+        // plus seven numbers at the foot of the panel would be in the way of
+        // the ones that do the work.
+        CanvasExpander(
+          label: "Lights",
+          remember: "background.light",
+          trailing: light.on ? "Spotlight" : "None",
+          children: [
+            CanvasControlGroup(label: "Lights", hideCaption: true, children: [
+              CanvasToggle(
+                key: const ValueKey("lightOn"),
+                label: "Spotlight",
+                value: light.on,
+                onChanged: (v) => _lightNow(light.copyWith(on: v)),
+              ),
+              if (!light.on)
+                const CanvasHint("A single light thrown over the background, "
+                    "whichever one it is. A pattern lit from somewhere reads "
+                    "as a place rather than as wallpaper."),
+              if (light.on) ...[
+                CanvasColorButton(
+                  key: const ValueKey("lightColour"),
+                  label: "Colour",
+                  color: light.color,
+                  onChanged: (c) => _lightNow(light.copyWith(color: c)),
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightBrightness"),
+                  label: "Brightness",
+                  value: light.brightness,
+                  min: 0,
+                  max: 2,
+                  decimals: 2,
+                  width: 62,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(brightness: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightSize"),
+                  label: "Size",
+                  value: light.size,
+                  min: 0.02,
+                  max: 3,
+                  decimals: 2,
+                  width: 62,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(size: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightFalloff"),
+                  label: "Falloff",
+                  value: light.falloff,
+                  min: 0,
+                  max: 1,
+                  decimals: 2,
+                  width: 62,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(falloff: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                const CanvasLineBreak(),
+                // Where it is, as a fraction of the frame rather than in
+                // pixels, so a light set on the stage is in the same place in
+                // an export four times the width.
+                CanvasNumberField(
+                  key: const ValueKey("lightX"),
+                  label: "X",
+                  value: light.x,
+                  min: -1,
+                  max: 2,
+                  decimals: 2,
+                  width: 58,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(x: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightY"),
+                  label: "Y",
+                  value: light.y,
+                  min: -1,
+                  max: 2,
+                  decimals: 2,
+                  width: 58,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(y: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightDirection"),
+                  label: "Direction",
+                  value: light.direction,
+                  min: -360,
+                  max: 360,
+                  width: 58,
+                  suffix: "°",
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(direction: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("lightReach"),
+                  label: "Reach",
+                  value: light.reach,
+                  min: 0,
+                  max: 1,
+                  decimals: 2,
+                  width: 58,
+                  onChanged: (v) {
+                    onBegin();
+                    _light(light.copyWith(reach: v));
+                  },
+                  onCommit: onCommit,
+                ),
+                CanvasHint(light.reach > 0
+                    ? "Direction is which way the light is thrown, off a "
+                        "compass. Reach is how far it rakes across the "
+                        "surface, and the pool is thrown forward from X and "
+                        "Y rather than sitting in the middle of it."
+                    : "A light shone straight on lands as a circle whichever "
+                        "way it is pointed. Turn Reach up to rake it across "
+                        "the surface and the direction starts to show."),
+              ],
+            ]),
+          ],
+        ),
       ];
 }

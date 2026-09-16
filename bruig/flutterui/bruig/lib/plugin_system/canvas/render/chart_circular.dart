@@ -194,7 +194,7 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
             path,
             Paint()
               ..style = PaintingStyle.stroke
-              ..strokeWidth = e.strokeWidth
+              ..strokeWidth = data.series[s].widthOn(e.strokeWidth)
               ..color = colour);
       }
 

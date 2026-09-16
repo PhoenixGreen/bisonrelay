@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -149,6 +150,10 @@ class PathElement extends CanvasElement {
   final List<PathNode> nodes;
 
   final Color color;
+
+  /// fade is the second colour the stroke runs to, or null for a flat one.
+  /// Chosen in the picker beside [color] -- see GradientSpec.
+  final GradientSpec? fade;
   final double strokeWidth;
 
   /// cap is how the stroke finishes, and startEnd/endEnd are what is drawn at
@@ -186,6 +191,7 @@ class PathElement extends CanvasElement {
     super.base, {
     this.nodes = const [],
     this.color = const Color(0xFFFFD166),
+    this.fade,
     this.strokeWidth = 3,
     this.cap = LineStrokeCap.round,
     this.startEnd = LineEnd.none,
@@ -493,6 +499,7 @@ class PathElement extends CanvasElement {
   CanvasElement rebase(ElementBase base) => PathElement(base,
       nodes: nodes,
       color: color,
+      fade: fade,
       strokeWidth: strokeWidth,
       cap: cap,
       startEnd: startEnd,
@@ -507,6 +514,8 @@ class PathElement extends CanvasElement {
   PathElement copyWith({
     List<PathNode>? nodes,
     Color? color,
+    GradientSpec? fade,
+    bool flat = false,
     double? strokeWidth,
     LineStrokeCap? cap,
     LineEnd? startEnd,
@@ -522,6 +531,7 @@ class PathElement extends CanvasElement {
       PathElement(base,
           nodes: nodes ?? this.nodes,
           color: color ?? this.color,
+          fade: flat ? null : (fade ?? this.fade),
           strokeWidth: strokeWidth ?? this.strokeWidth,
           cap: cap ?? this.cap,
           startEnd: startEnd ?? this.startEnd,
@@ -537,6 +547,7 @@ class PathElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "nodes": [for (var n in nodes) n.toJson()],
         "color": colorToJson(color),
+        if (fade != null) "fade": fade!.toJson(),
         "sw": strokeWidth,
         "strokeCap": cap.name,
         if (startEnd != LineEnd.none) "startEnd": startEnd.name,
@@ -559,6 +570,10 @@ class PathElement extends CanvasElement {
               if (n is Map<String, dynamic>) PathNode.fromJson(n),
         ],
         color: colorFromJson(json["color"], const Color(0xFFFFD166)),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
         strokeWidth: jsonDouble(json["sw"], 3),
         // Documents saved before the stroke's cap and the ends' decorations
         // were separated carry one "cap" that meant both. See

@@ -140,6 +140,16 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
         onChanged: (v) =>
             set(guides.copyWith(snapTo: guides.snapTo.copyWith(centres: v))),
       ),
+      // The lines that matter most of the time, and the ones that were
+      // missing: a grid catches a design at regular intervals, and what
+      // anybody actually wants is this heading over that picture.
+      CanvasToggle(
+        key: const ValueKey("snapToObjects"),
+        label: "Elements",
+        value: guides.snapTo.objects,
+        onChanged: (v) =>
+            set(guides.copyWith(snapTo: guides.snapTo.copyWith(objects: v))),
+      ),
       CanvasNumberField(
         label: "Within",
         value: guides.snapWithin,
@@ -152,9 +162,51 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
       ),
       const CanvasHint(
           "How near, on screen, before it jumps — so it feels the same at "
-          "every zoom. The canvas's own edges and middle are always snapped "
-          "to. Hold Alt while dragging to put something exactly where the "
-          "grid does not want it."),
+          "every zoom. With Elements on, the sides and middles of everything "
+          "else on the canvas are lines too. The canvas's own edges and "
+          "middle are always snapped to. Hold Alt while dragging to put "
+          "something exactly where the grid does not want it."),
+    ]),
+    // Lining several things up with each other, which snapping cannot do:
+    // snapping catches one thing as it passes another, and these move
+    // everything chosen at once and exactly.
+    CanvasControlGroup(label: "Align", children: [
+      for (var align in CanvasAlign.values)
+        CanvasIconButton(
+          key: ValueKey("align${align.name}"),
+          icon: align.icon,
+          tooltip: align.label,
+          // Against the selection's own box, so one thing chosen is already
+          // aligned with itself and there is nothing to do.
+          onPressed: controller.selection.length < 2
+              ? null
+              : () => controller.alignSelected(align),
+        ),
+      // No line break before these: this group is drawn in the band over the
+      // canvas as well as in the sidebar, and the band is a strip of
+      // unbounded width -- a break that asks to be infinitely wide brings the
+      // whole layout down there.
+      CanvasIconButton(
+        key: const ValueKey("spreadAcross"),
+        icon: Icons.horizontal_distribute,
+        tooltip: "Even gaps across",
+        onPressed: controller.selection.length < 3
+            ? null
+            : () => controller.spreadSelected(true),
+      ),
+      CanvasIconButton(
+        key: const ValueKey("spreadDown"),
+        icon: Icons.vertical_distribute,
+        tooltip: "Even gaps down",
+        onPressed: controller.selection.length < 3
+            ? null
+            : () => controller.spreadSelected(false),
+      ),
+      CanvasHint(controller.selection.length < 2
+          ? "Choose two or more elements to line them up with each other. "
+              "Three or more to spread them evenly."
+          : "Lined up against the box the chosen elements make between them, "
+              "so the outermost ones stay where they are."),
     ]),
     CanvasControlGroup(label: "Rulers", children: [
       for (var (label, on, apply)

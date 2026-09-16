@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/writing_tools/ui/sidebar/document_page.dart';
+import 'package:bruig/plugin_system/writing_tools/ui/sidebar/thesaurus_page.dart';
 import 'package:bruig/plugin_system/plugin_system.dart';
 import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -9,21 +11,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'plugin_test_support.dart';
 
-// writing_nav_test.dart covers how the sidebar's four tabs are drawn.
+// writing_nav_test.dart covers how the sidebar's four parts are arranged.
 //
-// Reported: the tab row and the icon row above it looked like the same
-// control twice. They were -- both drew the selected item as a filled
-// secondaryContainer rectangle, so neither read as subordinate to the other.
-// The tabs now carry a line instead of a block, and the tests below are
-// mostly about that difference surviving, because it is the kind of thing a
-// later tidy-up reintroduces without noticing.
-
-WritingSidebarPage? _lastRequested;
+// They were four tabs in a row. Reported at the time: that row and the icon
+// row above it looked like the same control twice, because both drew the
+// selected item as a filled rectangle and neither read as subordinate to the
+// other. They are now four panels in a column that opens, shuts, resizes and
+// changes places -- the same PanelStack the canvas's design sidebar is -- so
+// the question the tab row could not answer is gone with it: two of the four
+// are wanted at the same moment, and a tab is a place you have to leave to
+// reach another.
+//
+// What is tested here is the writing tools' own wiring into that column. How
+// the column itself behaves -- dragging, tabbing two panels together,
+// remembering it all -- is canvas_editor_test's, and is not worth a second
+// copy.
 
 Future<void> _mount(
   WidgetTester tester, {
   double width = 900,
-  WritingSidebarPage page = WritingSidebarPage.mistakes,
+  String text = "the paymnt",
   WritingPreferences? prefs,
 }) async {
   var settings = prefs ?? WritingPreferences();
@@ -33,7 +40,6 @@ Future<void> _mount(
       prefs: settings);
   await spellcheck.update(FakePlugins({PluginCapability.spellcheckData}));
 
-  _lastRequested = null;
   await tester.pumpWidget(MultiProvider(
     providers: [
       ChangeNotifierProvider<ThemeNotifier>(
@@ -47,9 +53,7 @@ Future<void> _mount(
         body: SizedBox(
           width: width,
           child: WritingSidebar(
-            controller: TextEditingController(text: "the payment"),
-            page: page,
-            onPageChanged: (p) => _lastRequested = p,
+            controller: TextEditingController(text: text),
           ),
         ),
       ),
@@ -59,110 +63,80 @@ Future<void> _mount(
 }
 
 /// _tabDecoration is the box drawn behind one tab.
-BoxDecoration _tabDecoration(WidgetTester tester, WritingSidebarPage page) {
-  var container = tester.widget<Container>(find
-      .ancestor(of: find.byIcon(page.icon), matching: find.byType(Container))
-      .first);
-  return container.decoration as BoxDecoration;
-}
+
+/// _header finds a panel's heading. The stack sets its headings in capitals.
+Finder _header(WritingSidebarPage page) => find.text(page.short.toUpperCase());
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  // The complaint, stated as a test. A filled selected tab is what made the
-  // two rows indistinguishable.
-  testWidgets("the selected tab is not filled", (tester) async {
+  testWidgets("all four are headed, in one column", (tester) async {
     await _mount(tester);
-    expect(_tabDecoration(tester, WritingSidebarPage.mistakes).color, isNull,
-        reason: "a filled tab is the icon row's way of showing selection, and "
-            "using it here is what made the two look like one control");
+    for (var page in WritingSidebarPage.values) {
+      expect(_header(page), findsOneWidget, reason: page.short);
+    }
+
+    // A column, not a row: each heading is below the one before it. That is
+    // the whole difference from the tab row this replaced.
+    var tops = [
+      for (var page in WritingSidebarPage.values)
+        tester.getRect(_header(page)).top,
+    ];
+    for (var i = 1; i < tops.length; i++) {
+      expect(tops[i], greaterThan(tops[i - 1]));
+    }
   });
 
-  testWidgets("the selected tab carries an underline", (tester) async {
+  testWidgets("the two that count say how many on their heading",
+      (tester) async {
+    // The reason to look at a panel is usually to find out whether there is
+    // anything to look at, and a shut panel should say so before it is opened.
     await _mount(tester);
-    var accent = _tabDecoration(tester, WritingSidebarPage.mistakes)
-        .border!
-        .bottom
-        .color;
-    expect(accent, isNot(Colors.transparent));
-    expect(
-        _tabDecoration(tester, WritingSidebarPage.mistakes)
-            .border!
-            .bottom
-            .width,
-        2);
+    expect(find.text("1"), findsWidgets,
+        reason: "the misspelled word in the fixture is counted on the heading");
   });
 
-  // Present but invisible on the others: a border that appears only on the
-  // active tab changes the height of the rest, and the row twitches as the
-  // selection moves.
-  testWidgets("an unselected tab reserves the same underline", (tester) async {
+  testWidgets("and say nothing rather than nought", (tester) async {
+    // A panel headed 0 invites a look at a list with nothing in it.
+    await _mount(tester, text: "the payment");
+    expect(find.text("0"), findsNothing);
+  });
+
+  testWidgets("the thesaurus and the counts start shut", (tester) async {
+    // Two holes in a column the issue lists want the room from: the
+    // thesaurus has nothing to say until a word is selected, and the counts
+    // are read once, at the end.
     await _mount(tester);
-    var other =
-        _tabDecoration(tester, WritingSidebarPage.thesaurus).border!.bottom;
-    expect(other.color, Colors.transparent);
-    expect(other.width, 2);
-  });
+    expect(find.byType(ThesaurusPage), findsNothing);
+    expect(find.byType(DocumentPage), findsNothing);
 
-  testWidgets("the underline moves with the selection", (tester) async {
-    await _mount(tester, page: WritingSidebarPage.document);
-    expect(
-        _tabDecoration(tester, WritingSidebarPage.document)
-            .border!
-            .bottom
-            .color,
-        isNot(Colors.transparent));
-    expect(
-        _tabDecoration(tester, WritingSidebarPage.mistakes)
-            .border!
-            .bottom
-            .color,
-        Colors.transparent);
-  });
-
-  group("labels", () {
-    testWidgets("a wide panel names every tab", (tester) async {
-      await _mount(tester, width: 900);
-      for (var page in WritingSidebarPage.values) {
-        expect(find.text(page.short), findsOneWidget, reason: page.short);
-      }
-    });
-
-    // The panel is 260 wide by default, where four names and the switch do
-    // not fit. The icons carry it, and the underline still separates this
-    // row from the one above.
-    testWidgets("the default width falls back to icons", (tester) async {
-      await _mount(tester, width: 260);
-      expect(find.text(WritingSidebarPage.thesaurus.short), findsNothing);
-      for (var page in WritingSidebarPage.values) {
-        expect(find.byIcon(page.icon), findsOneWidget, reason: page.title);
-      }
-      expect(
-          _tabDecoration(tester, WritingSidebarPage.mistakes)
-              .border!
-              .bottom
-              .width,
-          2,
-          reason: "narrow is exactly where the two rows are easiest to "
-              "confuse, so the underline has to survive it");
-    });
-  });
-
-  testWidgets("tapping a tab asks for that page", (tester) async {
-    await _mount(tester);
-    await tester.tap(find.byIcon(WritingSidebarPage.thesaurus.icon));
+    await tester.tap(_header(WritingSidebarPage.thesaurus));
     await tester.pumpAndSettle();
-    expect(_lastRequested, WritingSidebarPage.thesaurus);
+    expect(find.byType(ThesaurusPage), findsOneWidget);
   });
 
-  // The switch stays in the row, so it has to stay working there.
-  testWidgets("the on/off switch is in the row and works", (tester) async {
+  testWidgets("the on/off switch is above them all, and works", (tester) async {
+    // It governs all four, so it is not on any one of them.
     var prefs = WritingPreferences();
     await _mount(tester, prefs: prefs);
     expect(find.byType(Switch), findsOneWidget);
+    expect(tester.getRect(find.byType(Switch)).top,
+        lessThan(tester.getRect(_header(WritingSidebarPage.mistakes)).top));
 
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(prefs.enabled, isFalse);
+  });
+
+  testWidgets("switched off, the panels say so -- except the counts",
+      (tester) async {
+    var prefs = WritingPreferences()..enabled = false;
+    await _mount(tester, prefs: prefs);
+    expect(find.text("Writing tools are off for this session."), findsWidgets);
+
+    // Counting words needs no provider and no rules, so it keeps working.
+    await tester.tap(_header(WritingSidebarPage.document));
+    await tester.pumpAndSettle();
+    expect(find.byType(DocumentPage), findsOneWidget);
   });
 }

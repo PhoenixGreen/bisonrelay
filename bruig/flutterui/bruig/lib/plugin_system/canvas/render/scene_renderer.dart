@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -857,7 +858,17 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
       corners: e.corners,
       bubble: e.bubble);
 
-  if (e.fill.a > 0) canvas.drawPath(path, Paint()..color = e.fill);
+  // Across the shape's own bounds, so a gradient runs the length of the thing
+  // it is filling rather than of whatever rectangle the caller happened to
+  // hand down.
+  var area = path.getBounds();
+  if (e.fill.a > 0) {
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = e.fill
+          ..shader = PaintSpec(e.fill, gradient: e.fillFade).shaderFor(area));
+  }
   if (e.strokeWidth > 0 && e.strokeColor.a > 0) {
     canvas.drawPath(
         path,
@@ -865,7 +876,9 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
           ..style = PaintingStyle.stroke
           ..strokeWidth = e.strokeWidth
           ..strokeJoin = StrokeJoin.round
-          ..color = e.strokeColor);
+          ..color = e.strokeColor
+          ..shader =
+              PaintSpec(e.strokeColor, gradient: e.strokeFade).shaderFor(area));
   }
 
   if (e.text.isNotEmpty) {
@@ -946,6 +959,9 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
     ..style = PaintingStyle.stroke
     ..strokeWidth = e.strokeWidth
     ..color = e.color
+    // Across the whole line, so a stroke that fades runs from one end of it
+    // to the other whichever way the line is pointing.
+    ..shader = PaintSpec(e.color, gradient: e.fade).shaderFor(path.getBounds())
     ..strokeCap = e.cap.flutter;
 
   // Measured rather than worked out by hand. A path metric gives the exact
@@ -1702,6 +1718,9 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
     ..style = PaintingStyle.stroke
     ..strokeWidth = e.strokeWidth
     ..color = e.color
+    // Across the whole path, so a stroke that fades fades along its length
+    // rather than each segment starting the gradient again.
+    ..shader = PaintSpec(e.color, gradient: e.fade).shaderFor(path.getBounds())
     ..strokeCap = e.cap.flutter;
 
   canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);

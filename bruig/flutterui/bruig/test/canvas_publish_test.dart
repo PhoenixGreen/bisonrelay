@@ -50,6 +50,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// pick chooses [option] from the dropdown that is currently showing
+  /// [showing]. Both are dropdowns now rather than rows of radio buttons, so
+  /// the option has to be opened before it can be tapped.
+  /// pick chooses [option] from the dropdown of type [T].
+  ///
+  /// Found by its type rather than by the text it is showing: a document with
+  /// frames opens the sheet on Animation rather than Image, so what the
+  /// button says depends on the fixture.
+  Future<void> pick<T>(WidgetTester tester, String option) async {
+    await tester.tap(find.byType(DropdownButton<T>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(option).last);
+    await tester.pumpAndSettle();
+  }
+
   group("with no encoder on the machine", () {
     setUp(() => useFfmpegForTest(null));
     tearDown(forgetFfmpegForTest);
@@ -57,8 +72,7 @@ void main() {
     testWidgets("choosing a video says why it cannot be published",
         (tester) async {
       await open(tester);
-      await tester.tap(find.text("Video"));
-      await tester.pumpAndSettle();
+      await pick<PublishAs>(tester, "Video");
 
       var warning = find.textContaining("needs ffmpeg");
       expect(warning, findsOneWidget);
@@ -80,8 +94,7 @@ void main() {
     testWidgets("and the button is dead rather than failing later",
         (tester) async {
       await open(tester);
-      await tester.tap(find.text("Video"));
-      await tester.pumpAndSettle();
+      await pick<PublishAs>(tester, "Video");
 
       var publish = tester.widget<FilledButton>(find.ancestor(
           of: find.text("Publish"), matching: find.byType(FilledButton)));
@@ -128,8 +141,7 @@ void main() {
 
     testWidgets("a video can be published like anything else", (tester) async {
       await open(tester);
-      await tester.tap(find.text("Video"));
-      await tester.pumpAndSettle();
+      await pick<PublishAs>(tester, "Video");
 
       expect(find.textContaining("needs ffmpeg"), findsNothing);
       var publish = tester.widget<FilledButton>(find.ancestor(
@@ -142,8 +154,7 @@ void main() {
       // The two differ in exactly the way somebody about to send a clip cares
       // about, and there is no way to find that out from the file afterwards.
       await open(tester);
-      await tester.tap(find.text("Video"));
-      await tester.pumpAndSettle();
+      await pick<PublishAs>(tester, "Video");
       expect(find.textContaining(VideoFormat.mp4.note), findsOneWidget);
 
       await tester.tap(find.text("MP4"));
@@ -202,15 +213,26 @@ void main() {
 
     test("an animation is priced by its frames", () {
       var still = estimateBytes(canvas, const CanvasEstimate());
-      var moving = estimateBytes(canvas.copyWith(frames: 48),
+      var one = estimateBytes(canvas.copyWith(frames: 1),
           const CanvasEstimate(format: EstimateAs.gif));
-      expect(moving, greaterThan(still * 5));
+      var many = estimateBytes(canvas.copyWith(frames: 48),
+          const CanvasEstimate(format: EstimateAs.gif));
+
+      // More frames is more bytes, and a good deal more -- but not forty-
+      // eight times more: a GIF's frames carry only the rectangle that
+      // changed, so the first one is most of a mostly still animation. That
+      // is why this is measured against a one-frame GIF rather than against
+      // the still, whose weight the coefficient no longer tracks.
+      expect(many, greaterThan(one * 4));
+      expect(many, lessThan(one * 48));
+      expect(still, greaterThan(0));
 
       // A video stores what changed rather than each frame whole, which is
       // most of why anybody publishes one.
       var video = estimateBytes(canvas.copyWith(frames: 48),
           const CanvasEstimate(format: EstimateAs.video, quality: 85));
-      expect(video, lessThan(moving));
+      expect(video, lessThan(many * 2),
+          reason: "a video is not dearer than the GIF of the same thing");
     });
 
     test("which formats suit what", () {
@@ -387,6 +409,108 @@ void main() {
 
       expect(second.width, first.width);
       expect(second.height, first.height);
+    });
+  });
+
+  // Publishing part of a document rather than all of it. The choice is made
+  // here and comes out as a shorter document -- see CanvasDocument.scenesFrom
+  // and canvas_publish_scenes_test.dart, which is the arithmetic. These are
+  // about the control existing, appearing when it should and saying what it
+  // will do.
+  group("choosing which scenes go", () {
+    CanvasDocument several() {
+      var document = const CanvasDocument(frames: 4);
+      for (var i = 1; i < 4; i++) {
+        document = document.addScene(name: "Scene ${i + 1}");
+      }
+      return document;
+    }
+
+    testWidgets("a document with one canvas is not asked", (tester) async {
+      // Three choices that all mean the same thing is a control somebody has
+      // to read before they can ignore it.
+      // Headings are set in capitals, like every other one in this sheet.
+      await open(tester);
+      expect(find.text("Scenes"), findsNothing);
+    });
+
+    testWidgets("a still asks which canvas the picture is of", (tester) async {
+      // A PNG is one picture and always will be, so the only question worth
+      // asking is which one -- not the three-way choice, two of whose answers
+      // it cannot honour. It used to be asked nothing and always publish the
+      // first, which is the wrong end of that.
+      await open(tester, document: several());
+      expect(find.text("Scenes"), findsNothing);
+      expect(find.text("Scene"), findsOneWidget);
+      expect(find.text("Which canvas the picture is of."), findsOneWidget);
+    });
+
+    testWidgets("and a still can be told to be a later one", (tester) async {
+      await open(tester, document: several());
+      expect(find.byType(DropdownButton<int>), findsOneWidget,
+          reason: "one dropdown: which canvas");
+
+      await tester.tap(find.byType(DropdownButton<int>));
+      await tester.pumpAndSettle();
+      // Named scenes are listed by their number and their name, so a
+      // document whose scenes are named does not make anybody count rows.
+      await tester.tap(find.textContaining("Scene 3").last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining("Scene 3"), findsOneWidget,
+          reason: "and the dropdown now shows it");
+    });
+
+    testWidgets(
+        "a document with several is, once it is making something "
+        "that can hold them", (tester) async {
+      await open(tester, document: several());
+      expect(find.text("Scenes"), findsNothing);
+      await pick<PublishAs>(tester, "Animation");
+      expect(find.text("Scenes"), findsOneWidget);
+      // The chosen one shows on the dropdown; the rest are behind it.
+      expect(find.text("All scenes"), findsOneWidget);
+    });
+
+    testWidgets("all of them, until something else is chosen", (tester) async {
+      await open(tester, document: several());
+      await pick<PublishAs>(tester, "Animation");
+      // No dropdown while it is the whole thing: there is nothing to pick.
+      expect(find.text("From"), findsNothing);
+      expect(find.text("Scene"), findsNothing);
+    });
+
+    testWidgets("one scene offers one dropdown", (tester) async {
+      await open(tester, document: several());
+      await pick<PublishAs>(tester, "Animation");
+      await pick<PublishScenes>(tester, "One scene");
+
+      expect(find.text("Scene"), findsOneWidget);
+      expect(find.text("To"), findsNothing, reason: "one scene has no far end");
+    });
+
+    testWidgets("a range offers both ends", (tester) async {
+      await open(tester, document: several());
+      await pick<PublishAs>(tester, "Animation");
+      await pick<PublishScenes>(tester, "A range");
+
+      expect(find.text("From"), findsOneWidget);
+      expect(find.text("To"), findsOneWidget);
+    });
+
+    testWidgets("and the run it reports gets shorter with it", (tester) async {
+      // The line under the animation settings says how long what is about to
+      // be published runs for. It has to be about the scenes chosen, or it is
+      // describing a different animation from the one the button will make.
+      await open(tester, document: several());
+      await pick<PublishAs>(tester, "Animation");
+      var whole = find.textContaining("frames at");
+      expect(whole, findsOneWidget);
+      var before = tester.widget<Text>(whole).data!;
+
+      await pick<PublishScenes>(tester, "One scene");
+      var after = tester.widget<Text>(find.textContaining("frames at")).data!;
+      expect(after, isNot(before),
+          reason: "one scene is shorter than four of them");
     });
   });
 }

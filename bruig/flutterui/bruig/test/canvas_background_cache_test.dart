@@ -64,13 +64,26 @@ void main() {
       expect(first, isNotNull);
 
       // Changed, so what is held is a picture of a design nobody is looking
-      // at any more.
+      // at any more -- but it is still handed back until the new one has been
+      // made. That is what keeps a canvas moving while somebody drags a
+      // slider: the alternative is the caller generating the new design
+      // itself on every frame of the drag, and the dearest generator in the
+      // list shades a point per pixel.
       var edited = spec.copyWith(seed: spec.seed + 1);
-      expect(cache.imageFor(edited, size, 0), isNull);
+      expect(cache.imageFor(edited, size, 0), same(first),
+          reason: "a raster behind, which is not something anybody can see");
+
       await settle(tester);
-      expect(cache.imageFor(edited, size, 0), isNotNull);
-      expect(cache.imageFor(spec, size, 0), isNull,
-          reason: "one canvas is open at a time, so one picture is kept");
+      var next = cache.imageFor(edited, size, 0);
+      expect(next, isNotNull);
+      expect(next, isNot(same(first)), reason: "and then it is the new one");
+
+      // One canvas is open at a time, so one picture is kept: going back to
+      // the design before it is a fresh raster, with the newest picture
+      // standing in while that is made.
+      expect(cache.imageFor(spec, size, 0), same(next));
+      await settle(tester);
+      expect(cache.imageFor(spec, size, 0), isNot(same(next)));
     });
 
     testWidgets("and so is a different size", (tester) async {

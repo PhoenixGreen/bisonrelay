@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -609,6 +610,16 @@ class TableElement extends CanvasElement {
   final Color headerFill;
   final Color cellFill;
 
+  /// headerFade and cellFade are the second colours those two fade to, or
+  /// null for flat ones. Chosen in the picker beside the colour -- see
+  /// GradientSpec.
+  ///
+  /// Both run across the whole table rather than across the band or the cell
+  /// they are filling, so a table that fades fades once from top to bottom
+  /// instead of restarting on every row.
+  final GradientSpec? headerFade;
+  final GradientSpec? cellFade;
+
   /// zebra tints alternate rows, and is the single most effective thing for
   /// making a wide table readable.
   final bool zebra;
@@ -627,7 +638,21 @@ class TableElement extends CanvasElement {
   final double gridWidth;
   final Color gridColor;
 
+  /// cellPadding is the room round the words in a cell, on every side that
+  /// has not been given a figure of its own.
   final double cellPadding;
+
+  /// padTop, padRight, padBottom and padLeft are those figures: one side's
+  /// own padding, or null to take [cellPadding].
+  ///
+  /// Null rather than a copy of it, so that a table set up with even padding
+  /// stays even when the padding is changed, and so that a saved file carries
+  /// four more numbers only where somebody actually asked for four.
+  final double? padTop;
+  final double? padRight;
+  final double? padBottom;
+  final double? padLeft;
+
   final double cornerRadius;
 
   /// pictureScale is how much of its cell a picture fills, on top of the
@@ -659,6 +684,24 @@ class TableElement extends CanvasElement {
   /// be dragged to arrive together.
   final ElementAnimation animation;
 
+  /// topPad and the three beside it are what each side actually gets.
+  double get topPad => padTop ?? cellPadding;
+  double get rightPad => padRight ?? cellPadding;
+  double get bottomPad => padBottom ?? cellPadding;
+  double get leftPad => padLeft ?? cellPadding;
+
+  /// evenPadding is whether every side is simply [cellPadding], which is what
+  /// the settings panel offers as one field rather than four.
+  bool get evenPadding =>
+      padTop == null &&
+      padRight == null &&
+      padBottom == null &&
+      padLeft == null;
+
+  /// evenColumns is whether the columns are sized by their contents rather
+  /// than by widths somebody has dragged. See [columnWidths].
+  bool get evenColumns => columnWidths.isEmpty;
+
   const TableElement(
     super.base, {
     this.rows = const [],
@@ -671,12 +714,18 @@ class TableElement extends CanvasElement {
         const TextSpec(fontSize: 18, weight: 700, align: TextAlignSpec.left),
     this.headerFill = const Color(0xFF1D2733),
     this.cellFill = const Color(0x00000000),
+    this.headerFade,
+    this.cellFade,
     this.zebra = true,
     this.zebraFill = const Color(0x0DFFFFFF),
     this.grid = TableGrid.horizontal,
     this.gridWidth = 1,
     this.gridColor = const Color(0x33FFFFFF),
     this.cellPadding = 10,
+    this.padTop,
+    this.padRight,
+    this.padBottom,
+    this.padLeft,
     this.cornerRadius = 6,
     this.pictureScale = 1,
     this.columnWidths = const [],
@@ -871,12 +920,21 @@ class TableElement extends CanvasElement {
     TextSpec? headerSpec,
     Color? headerFill,
     Color? cellFill,
+    GradientSpec? headerFade,
+    GradientSpec? cellFade,
+    bool flatHeader = false,
+    bool flatCells = false,
     bool? zebra,
     Color? zebraFill,
     TableGrid? grid,
     double? gridWidth,
     Color? gridColor,
     double? cellPadding,
+    double? padTop,
+    double? padRight,
+    double? padBottom,
+    double? padLeft,
+    bool evenPadding = false,
     double? cornerRadius,
     double? pictureScale,
     List<double>? columnWidths,
@@ -896,12 +954,21 @@ class TableElement extends CanvasElement {
           headerSpec: headerSpec,
           headerFill: headerFill,
           cellFill: cellFill,
+          headerFade: headerFade,
+          cellFade: cellFade,
+          flatHeader: flatHeader,
+          flatCells: flatCells,
           zebra: zebra,
           zebraFill: zebraFill,
           grid: grid,
           gridWidth: gridWidth,
           gridColor: gridColor,
           cellPadding: cellPadding,
+          padTop: padTop,
+          padRight: padRight,
+          padBottom: padBottom,
+          padLeft: padLeft,
+          evenPadding: evenPadding,
           cornerRadius: cornerRadius,
           pictureScale: pictureScale,
           columnWidths: columnWidths,
@@ -922,12 +989,21 @@ class TableElement extends CanvasElement {
     TextSpec? headerSpec,
     Color? headerFill,
     Color? cellFill,
+    GradientSpec? headerFade,
+    GradientSpec? cellFade,
+    bool flatHeader = false,
+    bool flatCells = false,
     bool? zebra,
     Color? zebraFill,
     TableGrid? grid,
     double? gridWidth,
     Color? gridColor,
     double? cellPadding,
+    double? padTop,
+    double? padRight,
+    double? padBottom,
+    double? padLeft,
+    bool evenPadding = false,
     double? cornerRadius,
     double? pictureScale,
     List<double>? columnWidths,
@@ -947,12 +1023,18 @@ class TableElement extends CanvasElement {
           headerSpec: headerSpec ?? this.headerSpec,
           headerFill: headerFill ?? this.headerFill,
           cellFill: cellFill ?? this.cellFill,
+          headerFade: flatHeader ? null : (headerFade ?? this.headerFade),
+          cellFade: flatCells ? null : (cellFade ?? this.cellFade),
           zebra: zebra ?? this.zebra,
           zebraFill: zebraFill ?? this.zebraFill,
           grid: grid ?? this.grid,
           gridWidth: gridWidth ?? this.gridWidth,
           gridColor: gridColor ?? this.gridColor,
           cellPadding: cellPadding ?? this.cellPadding,
+          padTop: evenPadding ? null : (padTop ?? this.padTop),
+          padRight: evenPadding ? null : (padRight ?? this.padRight),
+          padBottom: evenPadding ? null : (padBottom ?? this.padBottom),
+          padLeft: evenPadding ? null : (padLeft ?? this.padLeft),
           cornerRadius: cornerRadius ?? this.cornerRadius,
           pictureScale: pictureScale ?? this.pictureScale,
           columnWidths: columnWidths ?? this.columnWidths,
@@ -973,12 +1055,20 @@ class TableElement extends CanvasElement {
         "headerSpec": headerSpec.toJson(),
         "headerFill": colorToJson(headerFill),
         "cellFill": colorToJson(cellFill),
+        if (headerFade != null) "headerFade": headerFade!.toJson(),
+        if (cellFade != null) "cellFade": cellFade!.toJson(),
         "zebra": zebra,
         "zebraFill": colorToJson(zebraFill),
         "grid": grid.name,
         "gridWidth": gridWidth,
         "gridColor": colorToJson(gridColor),
         "pad": cellPadding,
+        // Only where a side was actually asked for: a table with even padding
+        // saves the one number it always did.
+        if (padTop != null) "padTop": padTop,
+        if (padRight != null) "padRight": padRight,
+        if (padBottom != null) "padBottom": padBottom,
+        if (padLeft != null) "padLeft": padLeft,
         "cr": cornerRadius,
         if (pictureScale != 1) "picScale": pictureScale,
         if (columnWidths.isNotEmpty) "cols": columnWidths,
@@ -1015,12 +1105,30 @@ class TableElement extends CanvasElement {
                 fontSize: 18, weight: 700, align: TextAlignSpec.left)),
         headerFill: colorFromJson(json["headerFill"], const Color(0xFF1D2733)),
         cellFill: colorFromJson(json["cellFill"], const Color(0x00000000)),
+        headerFade: json["headerFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["headerFade"] as Map).cast<String, dynamic>())
+            : null,
+        cellFade: json["cellFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["cellFade"] as Map).cast<String, dynamic>())
+            : null,
         zebra: jsonBool(json["zebra"], true),
         zebraFill: colorFromJson(json["zebraFill"], const Color(0x0DFFFFFF)),
         grid: TableGrid.fromName(json["grid"] as String?),
         gridWidth: jsonDouble(json["gridWidth"], 1),
         gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
         cellPadding: jsonDouble(json["pad"], 10),
+        padTop:
+            json["padTop"] is num ? (json["padTop"] as num).toDouble() : null,
+        padRight: json["padRight"] is num
+            ? (json["padRight"] as num).toDouble()
+            : null,
+        padBottom: json["padBottom"] is num
+            ? (json["padBottom"] as num).toDouble()
+            : null,
+        padLeft:
+            json["padLeft"] is num ? (json["padLeft"] as num).toDouble() : null,
         cornerRadius: jsonDouble(json["cr"], 6),
         pictureScale: jsonDouble(json["picScale"], 1).clamp(0.05, 1.0),
         columnWidths: cols is List

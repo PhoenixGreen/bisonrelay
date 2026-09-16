@@ -27,7 +27,8 @@ void main() {
       const ElementBase(id: "c", width: 400, height: 300),
       type: ChartType.candlestick,
       data: data,
-      showAxisLabels: false,
+      showXLabels: false,
+      showYLabels: false,
       showLegend: false,
     );
     return and == null ? e : and(e);
@@ -289,7 +290,8 @@ void main() {
           const ElementBase(id: "c", width: 400, height: 300),
           type: ChartType.scatter,
           logScale: log,
-          showAxisLabels: false,
+          showXLabels: false,
+          showYLabels: false,
           showLegend: false,
           data: ChartData(
             categories: [for (var i = 0; i < values.length; i++) "$i"],

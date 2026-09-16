@@ -1,7 +1,11 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/components/paint_spec.dart';
+
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -221,33 +225,458 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
       _flames(canvas, area, spec, t);
     case ProceduralStyle.pitch:
       paintPitch(canvas, area, spec);
+    case ProceduralStyle.metal:
+      _metal(canvas, area, spec);
   }
 
   canvas.restore();
 
+  // The light, then the vignette. The light is part of the scene -- something
+  // shining on the pattern -- and the vignette is the lens it is all being
+  // looked at through, so the lens goes last.
+  if (spec.light.on) paintLight(canvas, rect, spec.light);
+
   if (spec.vignette > 0) _vignette(canvas, rect, spec.vignette);
+}
+
+/// paintLight throws one light across the finished background.
+///
+/// Drawn over the pattern rather than known about by each generator, which is
+/// what makes it work on all twenty-odd of them and what means adding a style
+/// does not mean writing lighting code again.
+///
+/// Added rather than painted over: light is what a surface sends back on top
+/// of what it was already sending back, so a pool of it over a pattern lifts
+/// the pattern instead of hiding it. Painted over -- which is what a plain
+/// alpha blend does -- a bright light is a flat disc of colour with the
+/// pattern lost underneath it.
+void paintLight(ui.Canvas canvas, Rect rect, LightSpec light) {
+  if (rect.width <= 0 || rect.height <= 0 || light.brightness <= 0) return;
+
+  var radius = math.max(rect.width, rect.height) * light.size.clamp(0.01, 3.0);
+  if (radius <= 0) return;
+
+  // Past full, the light burns towards white rather than simply becoming more
+  // of its own colour, which is what an overexposed light does.
+  var over = (light.brightness - 1).clamp(0.0, 1.0);
+  var colour = Color.lerp(light.color, const Color(0xFFFFFFFF), over)!;
+  var alpha = (light.brightness.clamp(0.0, 1.0) * colour.a).clamp(0.0, 1.0);
+
+  // Where the light stops falling off. At nought it fades the whole way from
+  // the middle; at one it is a hard-edged circle with a thin edge left so it
+  // is not aliased into a saucer.
+  var hard = light.falloff.clamp(0.0, 1.0);
+
+  var centre = Offset(
+    rect.left + rect.width * light.x,
+    rect.top + rect.height * light.y,
+  );
+
+  canvas.save();
+  canvas.clipRect(rect);
+  canvas.translate(centre.dx, centre.dy);
+  // Off a compass, like every other direction in a canvas: 0 up the page.
+  canvas.rotate(light.direction * math.pi / 180);
+
+  // A raking light lands as a long pool rather than a round one, thrown
+  // forward from where the light is. Scaling the canvas rather than building
+  // an elliptical gradient keeps the falloff the same shape however far it
+  // is stretched.
+  var stretch = 1 + light.reach.clamp(0.0, 1.0) * 2.4;
+  canvas.scale(1, stretch);
+  // Forward, so that moving the light moves the near edge of the pool and not
+  // its middle: a light high on the page with a reach on it should look like
+  // it is coming in from off the page rather than hanging in the middle of
+  // its own glow.
+  var along = -radius * (stretch - 1) / stretch;
+
+  canvas.drawCircle(
+    Offset(0, along),
+    radius,
+    Paint()
+      ..blendMode = ui.BlendMode.plus
+      ..shader = ui.Gradient.radial(
+        Offset(0, along),
+        radius,
+        [
+          colour.withValues(alpha: alpha),
+          colour.withValues(alpha: alpha),
+          colour.withValues(alpha: 0),
+        ],
+        [0, hard * 0.92, 1.0],
+      ),
+  );
+  canvas.restore();
+}
+
+/// _metal draws a sheet of metal.
+///
+/// A surface rather than a pattern, which is the thing this list did not
+/// have: every other style is marks on a ground, and a title plate or a panel
+/// behind a logo wants the ground itself to be the thing.
+///
+/// It is built the way a surface is built rather than drawn the way a picture
+/// is drawn -- a height field, and then a light shone across it. That is the
+/// whole difference between this and what it replaced, which laid horizontal
+/// lines and little dark ellipses over a gradient and looked like exactly
+/// that. Nothing here draws a scratch; the scratches are low places in the
+/// field, and what makes them visible is that the surface tilts there.
+///
+/// Which is also what makes the shine behave. A highlight is the light coming
+/// back off a slope towards the eye, so it lands on the edges of the dents,
+/// along the ridges of the brushing and nowhere on the rust -- rust scatters
+/// -- without any of that being arranged. It could not be arranged with a
+/// gradient band across the sheet, which is what the shine setting used to be.
+///
+/// Three kinds of noise, because they make three different things:
+///   - the brushing is smooth noise, stretched along the sheet, so it is long
+///     one way and short the other. Roughness is how tight it is: sparse and
+///     nearly flat at nought, finely ground at one.
+///   - the dents are cellular noise -- the distance to the nearest of a set of
+///     scattered points -- which is the only one of the three that makes
+///     rounded things at random intervals.
+///   - the scratches are ridged noise, which is smooth noise folded at its
+///     middle so that every crossing comes to a crease. Thresholded high, what
+///     is left is long thin wandering lines.
+///
+/// The shared controls mean what they mean everywhere else: Size is how big
+/// the features are, Brightness is how hard the light is, Variation is how far
+/// the brushing is stretched, and Density is how deep the relief goes -- a
+/// sheet at nought density is a photograph of one, flat.
+void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
+  var m = spec.metal;
+  var short = math.min(rect.width, rect.height);
+  if (short <= 0) return;
+
+  // The lattice the surface is shaded on: a point per pixel, capped so that a
+  // wall-sized export does not shade half a million of them. A point per
+  // pixel and not one per two, because the lattice is a hard ceiling on how
+  // fine the brushing can be -- nothing smaller than two cells across can be
+  // represented at all, and brushing that cannot be fine is ripples.
+  var cols = rect.width.round().clamp(8, 448);
+  var rows = rect.height.round().clamp(8, 448);
+  var stepX = rect.width / cols, stepY = rect.height / rows;
+
+  // Everything below works in units of the shorter side, so the same spec is
+  // the same sheet on the stage at 400px and in an export at 2400.
+  // How big the features are, against the Size control's own middle. The
+  // floor is low enough to reach a blasted, granular finish -- grain a couple
+  // of pixels across -- rather than stopping at "finely brushed", which is
+  // where a floor of a quarter left it.
+  var size = math.max(0.06, spec.scale / 0.05);
+
+  // Nothing may repeat faster than the lattice can carry it. Past about two
+  // cells a feature is not fine, it is aliased -- which is what turning the
+  // Size right down used to do: the grain stopped getting finer at its own
+  // ceiling while the dents and the scratches ran straight past theirs, and a
+  // sheet asked for granular came back covered in pebbles.
+  var ceiling = math.min(cols, rows) / 2.2;
+  double carried(double frequency) => math.min(frequency, ceiling);
+
+  var brush = ValueNoise(spec.seed);
+  var crease = ValueNoise(spec.seed + 4099);
+  var crust = ValueNoise(spec.seed + 7717);
+  var patch = ValueNoise(spec.seed + 1229);
+  var sheen = ValueNoise(spec.seed + 3313);
+
+  // Every relief below is given as the slope it should reach rather than as a
+  // depth, and its depth worked out from that. They are not the same thing:
+  // the steepness of a wave is its height times how often it happens, so a
+  // fixed depth at ten times the frequency is ten times the slope -- which is
+  // why grain fine enough to look like brushing, given a depth, came out as a
+  // sheet of corrugated iron. The light only ever sees the slope.
+  double depthFor(double slope, double frequency) =>
+      slope / math.max(1.0, frequency);
+
+  // How often the brushing repeats across the sheet. Sparse and broad at
+  // nought, tight and fine at one -- and held under what the lattice can
+  // actually carry, since anything finer than two cells is not fine, it is
+  // noise.
+  var across = carried(math.max(3.0, (10 + m.roughness * 110) / size));
+  // And how far it is stretched along the sheet. A hairline finish and a
+  // coarse orbital sanding differ in exactly this and in nothing else. From
+  // one -- the same in both directions, which is a blasted or granular
+  // finish rather than a brushed one -- up to a long hairline drag.
+  var stretch = 1 + spec.variation * 26;
+  var along = math.max(0.6, across / stretch);
+  var grainDepth = depthFor(0.2 + m.roughness * 1.0, across);
+
+  // The slow unevenness in the metal itself, under the brushing: rolling
+  // marks, the sheet not being quite flat. Its own frequency, worked out the
+  // same way everything else is -- given the depth for a frequency of two
+  // while actually running at seven times that, it got seven times steeper as
+  // the Size came down, and drowned the grain it was supposed to sit under.
+  var swellAlong = carried(1.7 / size), swellAcross = carried(2.3 / size);
+  var swellDepth = depthFor(0.18, math.max(swellAlong, swellAcross));
+
+  // Where the rust has taken hold. Smooth noise piles up around its middle and
+  // almost never reaches its ends, so these are the levels the field actually
+  // crosses rather than a fraction of its nominal range.
+  var rustLevel = 0.72 - m.rust * 0.38;
+
+  var dentSize = carried(13 / size);
+  var dentDepth = depthFor(0.16 * m.damage, dentSize);
+  // Long and thin: a scratch is something dragged, so it runs a long way in
+  // one direction and hardly wanders across it at all. Nearer isotropic, the
+  // creases of a folded field join into a web and the sheet comes out looking
+  // like cracked paint rather than scratched steel.
+  var scratchAcross = carried(150 / size), scratchAlong = 0.5 / size;
+  var scratchDepth = depthFor(0.5 + m.damage * 0.8, scratchAcross);
+  var crustAcross = carried(across * 1.6);
+  var crustDepth = depthFor(0.9, crustAcross);
+
+  var count = (cols + 1) * (rows + 1);
+  var height = Float64List(count);
+  var rusted = Float64List(count);
+  var shine = Float64List(count);
+
+  for (var iy = 0; iy <= rows; iy++) {
+    for (var ix = 0; ix <= cols; ix++) {
+      var u = (ix * stepX) / short;
+      var v = (iy * stepY) / short;
+      var at = iy * (cols + 1) + ix;
+
+      // Brushed: long one way, short the other.
+      // One octave rather than a stack of them: the octaves under the top one
+      // are the same shape at half the frequency, which on a brushed finish is
+      // a slow swell running through the grain -- and a slow swell in a
+      // reflective surface reads as water, not as steel.
+      var h = (brush.at(u * along, v * across) - 0.5) * grainDepth;
+      // And a slow unevenness in the metal itself, under the brushing --
+      // rolling marks, the sheet not being quite flat. Without it there is
+      // nothing between the grain but a plane, which reads as paper with a
+      // texture printed on it.
+      h += (brush.at(u * swellAlong, v * swellAcross) - 0.5) * swellDepth;
+
+      if (m.damage > 0) {
+        // Dents: a dish in the surface at a scattered point. Only the ones the
+        // damage keeps -- every cell of the lattice having one is a golf ball,
+        // not a sheet that has been knocked about.
+        var (distance, which) =
+            worley(spec.seed + 31, u * dentSize, v * dentSize);
+        // Only some of them, and no two the same. Every cell of the lattice
+        // having a dent is a golf ball, and dents all of one size are
+        // perforations -- what makes a sheet look knocked about is that no
+        // two knocks were alike.
+        var keep = m.damage * 0.22;
+        if (which < keep) {
+          var spread = which / math.max(0.0001, keep);
+          // Measured against a radius smaller than the cell, so a dent is a
+          // round thing with flat metal around it. Run all the way out to the
+          // cell wall, it meets the next cell's dent along a straight line,
+          // and a sheet of dents sharing their edges is not a dented sheet --
+          // it is flaking paint, which is what this looked like.
+          var radius = 0.3 + spread * 0.45;
+          // Eased at both ends rather than cubed. A cube comes to a point in
+          // the middle and meets the flat with a crease at the rim, and the
+          // light finds both: the dents came out as little arrowheads.
+          var dish = (1 - distance / radius).clamp(0.0, 1.0);
+          h -= dish * dish * (3 - 2 * dish) * dentDepth * (0.45 + spread);
+        }
+        // Scratches: the sharpest creases of a folded field, which wander the
+        // way something dragged across a sheet wanders.
+        //
+        // One octave: the second is the same creases at twice the frequency,
+        // and what it adds is short marks *across* the long ones -- which is
+        // what turned the scratches into a field of dashes.
+        var creased =
+            ridged(crease, u * scratchAlong, v * scratchAcross, octaves: 1);
+        // High up the field and narrow, so what is left is the few sharpest
+        // creases rather than every ridge in it.
+        var cut = ((creased - (0.93 - m.damage * 0.10)) / 0.05).clamp(0.0, 1.0);
+        h -= cut * scratchDepth;
+      }
+
+      // Rust: a threshold on a smooth field, because rust creeps. Its edge is
+      // ragged at every scale and its middle is deeper than its edge.
+      var r = 0.0;
+      if (m.rust > 0) {
+        var n = patch.fbm(u * 4.2, v * 4.2, octaves: 3);
+        if (n > rustLevel) {
+          r = ((n - rustLevel) / math.max(0.0001, 0.85 - rustLevel))
+              .clamp(0.0, 1.0);
+          // Crust stands proud of the metal and is rough at a scale of its
+          // own, which is why rust catches no highlight: there is no flat left
+          // on it to catch one with.
+          h += (crust.fbm(u * crustAcross, v * crustAcross, octaves: 2) - 0.4) *
+              crustDepth *
+              r;
+        }
+      }
+
+      height[at] = h;
+      rusted[at] = r;
+      // How polished this part of the sheet is. A real sheet is not equally
+      // polished everywhere -- it is worn where it has been handled -- and a
+      // highlight of one strength everywhere is the flat band across the sheet
+      // that this setting used to be.
+      // One octave, and a slow one: this is how worn the sheet is here,
+      // which is a thing that changes over a hand's width and not over a
+      // pixel. Stacking octaves on it was eight hashes a point for a field
+      // nobody can see the detail of.
+      shine[at] = 0.5 + sheen.at(u * 1.1, v * 1.1);
+    }
+  }
+
+  // How hard the relief tilts the surface overall. Divided by the lattice
+  // spacing so that shading the same sheet on a finer lattice gives the same
+  // slopes rather than a flatter picture.
+  var gain = 0.35 + spec.density * 1.1;
+  var slopeX = gain / math.max(0.0001, 2 * stepX / short);
+  var slopeY = gain / math.max(0.0001, 2 * stepY / short);
+
+  // The light on the sheet. From up and to the left, which is where a reader
+  // assumes light comes from and where every shaded control in the app puts
+  // it. Turning the background turns this with everything else, since the
+  // whole pattern is drawn rotated -- see paintProcedural.
+  const lx = -0.42, ly = -0.58, lz = 0.70;
+  // The halfway direction between the light and the eye, which is the
+  // direction a surface has to face for the light to come straight back.
+  var hx = lx, hy = ly, hz = lz + 1;
+  var hlen = math.sqrt(hx * hx + hy * hy + hz * hz);
+  hx /= hlen;
+  hy /= hlen;
+  hz /= hlen;
+
+  // Tight and hard on a mirror, broad and weak on a bead-blasted panel. The
+  // power is what makes a highlight small and the strength is what makes it
+  // bright; a mirror needs both.
+  var power = 4 + m.shine * m.shine * 70;
+  var force = 0.10 + m.shine * 0.95;
+
+  // Pulled apart into plain numbers before the loop. Color.lerp allocates,
+  // and allocating two colours per lattice point is a quarter of a million
+  // objects for one sheet.
+  var mr = spec.background.r, mg = spec.background.g, mb = spec.background.b;
+  var lr = spec.foreground.r, lg = spec.foreground.g, lb = spec.foreground.b;
+  var or_ = spec.accent.r, og = spec.accent.g, ob = spec.accent.b;
+  var bright = 0.6 + spec.intensity * 0.6;
+
+  // The highlight's curve, worked out once. math.pow with a fractional
+  // exponent is one of the most expensive calls there is and this wants one
+  // per lattice point; a table with the answers in it, read between its
+  // entries, is the same curve for a fraction of the cost.
+  const steps = 1024;
+  var curve = Float64List(steps + 1);
+  for (var i = 0; i <= steps; i++) {
+    var t = i / steps;
+    // Two lobes rather than one: a tight glint, and a much broader sheen
+    // under it. A single tight lobe is what a polished sheet has in theory,
+    // and in practice it is a highlight so small that a surface sampled at a
+    // point per pixel mostly misses it -- which is why turning Shine up used
+    // to make the sheet *duller* than the middle of the range.
+    curve[i] = 0.72 * math.pow(t, power).toDouble() +
+        0.28 * math.pow(t, power * 0.18).toDouble();
+  }
+
+  var colours = Int32List(count);
+  for (var iy = 0; iy <= rows; iy++) {
+    for (var ix = 0; ix <= cols; ix++) {
+      var at = iy * (cols + 1) + ix;
+      var left = height[iy * (cols + 1) + math.max(0, ix - 1)];
+      var right = height[iy * (cols + 1) + math.min(cols, ix + 1)];
+      var up = height[math.max(0, iy - 1) * (cols + 1) + ix];
+      var down = height[math.min(rows, iy + 1) * (cols + 1) + ix];
+
+      // The surface's own direction, from how fast it is rising either way.
+      var nx = -(right - left) * slopeX;
+      var ny = -(down - up) * slopeY;
+      var len = math.sqrt(nx * nx + ny * ny + 1);
+      nx /= len;
+      ny /= len;
+      var nz = 1 / len;
+
+      var diffuse = (nx * lx + ny * ly + nz * lz).clamp(0.0, 1.0);
+      var toEye = (nx * hx + ny * hy + nz * hz).clamp(0.0, 1.0);
+      var slot = toEye * steps;
+      // One short of the end, so that reading the entry after it is always
+      // inside the table: toEye reaches exactly one wherever the surface is
+      // flat, which is most of a polished sheet.
+      var low = slot.floor().clamp(0, steps - 1);
+      var lift = slot - low;
+      var highlight = (curve[low] + (curve[low + 1] - curve[low]) * lift) *
+          force *
+          shine[at];
+
+      var r = rusted[at];
+      // Rust scatters what it is given back in every direction, which is what
+      // matt means. So the highlight dies where the rust is, and along the
+      // edge of a patch it goes out gradually -- which is the thing anybody
+      // looking at rusted steel actually sees.
+      highlight *= 1 - r * 0.95;
+      // And the grain dulls it: a ground surface is a great many small faces,
+      // and only some of them are ever pointed the right way.
+      highlight *= 1 - m.roughness * 0.3;
+
+      // The rust is the accent colour, darkened towards the middle of a
+      // patch rather than towards a brown: the middle of one is scale rather
+      // than fresh oxide, and it is darker for that reason and not because
+      // rust happens to be brown. Mixed towards a brown, a grey accent came
+      // out brown, which is not the colour anybody chose.
+      var dark = 1 - r * 0.5;
+      var sr = mr + (or_ * dark - mr) * r;
+      var sg = mg + (og * dark - mg) * r;
+      var sb = mb + (ob * dark - mb) * r;
+      // Well off black at the bottom: a groove in a sheet of steel is a darker
+      // grey, not a hole. Metal in shadow is still metal.
+      var shade = (0.52 + diffuse * 0.62) * bright;
+
+      var red = sr * shade + lr * highlight;
+      var green = sg * shade + lg * highlight;
+      var blue = sb * shade + lb * highlight;
+
+      colours[at] = 0xFF000000 |
+          ((red.clamp(0.0, 1.0) * 255).round() << 16) |
+          ((green.clamp(0.0, 1.0) * 255).round() << 8) |
+          (blue.clamp(0.0, 1.0) * 255).round();
+    }
+  }
+
+  // Drawn as one strip of triangles per row of the lattice, with a colour at
+  // every corner. A strip a row at a time rather than the whole sheet in one
+  // call: the whole sheet is a million vertices at export sizes, and a row is
+  // a few hundred.
+  var paint = Paint();
+  var positions = Float32List((cols + 1) * 4);
+  var strip = Int32List((cols + 1) * 2);
+  for (var iy = 0; iy < rows; iy++) {
+    var top = rect.top + iy * stepY;
+    var bottom = top + stepY;
+    for (var ix = 0; ix <= cols; ix++) {
+      var x = rect.left + ix * stepX;
+      positions[ix * 4] = x;
+      positions[ix * 4 + 1] = top;
+      positions[ix * 4 + 2] = x;
+      positions[ix * 4 + 3] = bottom;
+      strip[ix * 2] = colours[iy * (cols + 1) + ix];
+      strip[ix * 2 + 1] = colours[(iy + 1) * (cols + 1) + ix];
+    }
+    var vertices = ui.Vertices.raw(
+      ui.VertexMode.triangleStrip,
+      Float32List.fromList(positions),
+      colors: Int32List.fromList(strip),
+    );
+    // Modulated against a white paint, which is how a mesh's own colours are
+    // drawn unchanged: the paint has no shader, so its colour is what the
+    // vertex colours are combined with.
+    canvas.drawVertices(vertices, ui.BlendMode.modulate,
+        paint..color = const Color(0xFFFFFFFF));
+    vertices.dispose();
+  }
 }
 
 /// _paintBase fills the frame before the generator runs.
 void _paintBase(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
-  if (!spec.gradient) {
-    canvas.drawRect(rect, Paint()..color = spec.background);
-    return;
-  }
-  var a = spec.gradientAngle * math.pi / 180;
-  // The gradient's endpoints are pushed out to the corners along the chosen
-  // angle, so a diagonal gradient runs corner to corner rather than fading out
-  // inside the frame the way a naive centre-plus-radius one does.
-  var half = math.max(rect.width, rect.height);
-  var c = rect.center;
-  var from =
-      Offset(c.dx - math.cos(a) * half / 2, c.dy - math.sin(a) * half / 2);
-  var to = Offset(c.dx + math.cos(a) * half / 2, c.dy + math.sin(a) * half / 2);
+  // Through the same PaintSpec every other colour in the app fades with, so
+  // the background gets radial fades and movable stops without the generator
+  // knowing anything about them.
+  var shader =
+      PaintSpec(spec.background, gradient: spec.gradient).shaderFor(rect);
   canvas.drawRect(
       rect,
-      Paint()
-        ..shader =
-            ui.Gradient.linear(from, to, [spec.background, spec.gradientTo]));
+      shader == null
+          ? (Paint()..color = spec.background)
+          : (Paint()..shader = shader));
 }
 
 /// _vignette darkens the edges, which is what makes most of these read as a

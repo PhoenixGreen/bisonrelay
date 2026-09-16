@@ -22,6 +22,10 @@ import 'package:flutter/material.dart';
 class TableDataEditor extends StatefulWidget {
   final List<List<String>> rows;
 
+  /// elementId is which table this is, so the grid's height is kept for this
+  /// one rather than for tables in general. See CanvasDataEditorShell.scope.
+  final String elementId;
+
   /// onChanged is a change to keep. The caller opens the undo step.
   final ValueChanged<List<List<String>>> onChanged;
   final VoidCallback onCommit;
@@ -36,6 +40,7 @@ class TableDataEditor extends StatefulWidget {
     required this.rows,
     required this.onChanged,
     required this.onCommit,
+    this.elementId = "",
     this.names = const [],
     this.namesColumn = 0,
     super.key,
@@ -127,6 +132,8 @@ class _TableDataEditorState extends State<TableDataEditor> {
   @override
   Widget build(BuildContext context) => CanvasDataEditorShell(
         remember: "canvasTableData",
+        // Per table, for the same reason a chart's is per chart.
+        scope: widget.elementId,
         // Tall enough for the rows there are, with room to spare: a cell and
         // the gap under it is about thirty, and the buttons along the foot
         // are another forty. Erring high on purpose -- a little slack at the

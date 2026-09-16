@@ -217,4 +217,93 @@ void main() {
     decoded.image.dispose();
     codec.dispose();
   });
+
+  // A canvas is mostly still -- a chart drawing itself on, a word arriving --
+  // so most of most frames is the frame before it. Writing each one in full
+  // is what made a twenty-four frame animation of one moving shape a hundred
+  // and seventy kilobytes; only the rectangle that changed goes now, with the
+  // rest left see-through for the frame underneath to show through.
+  group("frames that carry only what changed", () {
+    /// _withBlock is a frame of one colour with a small square of another at
+    /// [at], so consecutive frames differ in a known, small rectangle.
+    GifFrame withBlock(int at) {
+      var rgba = Uint8List(64 * 64 * 4);
+      for (var i = 0; i < 64 * 64; i++) {
+        rgba[i * 4] = 20;
+        rgba[i * 4 + 1] = 30;
+        rgba[i * 4 + 2] = 40;
+        rgba[i * 4 + 3] = 255;
+      }
+      for (var y = 4; y < 12; y++) {
+        for (var x = at; x < at + 8; x++) {
+          var i = (y * 64 + x) * 4;
+          rgba[i] = 240;
+          rgba[i + 1] = 60;
+          rgba[i + 2] = 90;
+        }
+      }
+      return GifFrame(rgba: rgba, width: 64, height: 64, delayMs: 80);
+    }
+
+    test("a still animation costs almost nothing after the first frame", () {
+      var one = encodeGif([withBlock(4)], dither: false).length;
+      var twenty =
+          encodeGif([for (var i = 0; i < 20; i++) withBlock(4)], dither: false)
+              .length;
+      // Nineteen identical frames are nineteen one-pixel patches: a control
+      // block, an image descriptor and a byte or two of pixels each.
+      expect((twenty - one) / 19, lessThan(60),
+          reason: "an unchanged frame costs its headers and no more");
+    });
+
+    test("and a moving one costs what moved", () {
+      var one = encodeGif([withBlock(4)], dither: false).length;
+      var moving = encodeGif([for (var i = 0; i < 20; i++) withBlock(4 + i)],
+              dither: false)
+          .length;
+      expect(moving, greaterThan(one),
+          reason: "something did change, frame to frame");
+      expect(moving, lessThan(one * 20 * 0.6),
+          reason: "but far less than writing each frame out in full");
+    });
+
+    test("every frame still decodes to the right picture", () async {
+      // The whole point of the saving is that nothing is lost by it. Each
+      // frame is a patch on the one before, so a decoder that follows the
+      // disposal must still see the block where it was put.
+      var codec = await _decode(encodeGif(
+          [for (var i = 0; i < 4; i++) withBlock(4 + i * 8)],
+          dither: false));
+      expect(codec.frameCount, 4);
+
+      for (var i = 0; i < 4; i++) {
+        var frame = await codec.getNextFrame();
+        var raw = await frame.image
+            .toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+        var pixels = raw!.buffer.asUint8List();
+        var at = 4 + i * 8;
+        int red(int x, int y) => pixels[(y * 64 + x) * 4];
+        expect(red(at + 1, 6), greaterThan(200), reason: "the block, frame $i");
+        expect(red(at - 2, 6), lessThan(60),
+            reason: "and nothing left behind it, frame $i");
+        frame.image.dispose();
+      }
+      codec.dispose();
+    });
+
+    test("a see-through animation is still written out in full", () async {
+      // Patching frames onto each other means each stays until something is
+      // drawn over it, and a see-through element moving across that would
+      // leave a trail. Where there is real transparency every frame goes in
+      // full and is thrown away before the next.
+      var clear = Uint8List(16 * 16 * 4); // every pixel fully transparent
+      var frames = [
+        GifFrame(rgba: clear, width: 16, height: 16, delayMs: 80),
+        _solid(16, 16, 10, 200, 10),
+      ];
+      var codec = await _decode(encodeGif(frames, dither: false));
+      expect(codec.frameCount, 2);
+      codec.dispose();
+    });
+  });
 }

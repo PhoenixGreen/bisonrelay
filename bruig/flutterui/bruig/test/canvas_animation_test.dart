@@ -640,7 +640,8 @@ void main() {
       // grew on the way in, and it must be going away rather than arriving.
       var chart = ChartElement(
         const ElementBase(id: "c", width: 400, height: 300),
-        showAxisLabels: false,
+        showXLabels: false,
+        showYLabels: false,
         showLegend: false,
         data: ChartData(categories: const [
           "x"

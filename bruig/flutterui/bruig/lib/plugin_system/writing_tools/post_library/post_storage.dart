@@ -328,6 +328,28 @@ class PostStorage {
     folders.sort(byName);
     documents.sort(byName);
 
+    // Documents first. They are what the library is for -- a folder is
+    // where some of them are kept -- and putting the folders on top meant
+    // scrolling past the filing to reach the writing.
+    var order = await readOrder(folder);
+    return arrange(
+        [...inOrder(documents, order), ...inOrder(folders, order)], folder);
+  }
+
+  /// arrange puts a list of entries into the order the library shows them in:
+  /// the documents, then the folders, with every pinned row back in its fixed
+  /// place however the rest has been arranged.
+  ///
+  /// Public, and separate from [listing], because the sidebar has to be able
+  /// to ask the question without going to disk. A drag used to be shown by
+  /// inserting the row where it was dropped, which is not what the listing
+  /// would produce the moment a pinned row was involved: the row appeared
+  /// below the reserved folders and then jumped back above them when the
+  /// folder was next read. Whatever arranges one has to arrange the other.
+  static List<PostEntry> arrange(List<PostEntry> entries, String folder) {
+    var documents = entries.where((e) => !e.isFolder).toList();
+    var folders = entries.where((e) => e.isFolder).toList();
+
     // The reserved folders are held out of the ordering entirely and put
     // back on the end, so they are always the last rows of the top level
     // however the rest has been arranged. They fill up on their own, without
@@ -336,34 +358,30 @@ class PostStorage {
     // for.
     //
     // Kept in reservedFolderNames' order rather than the order they were
-    // read in, so the three do not swap places between listings.
+    // read in, so they do not swap places between listings.
     var reserved = [
       for (var name in reservedFolderNames)
         ...folders.where((f) => f.name == name),
     ];
     folders.removeWhere((f) => f.isReservedFolder);
 
-    // Documents first. They are what the library is for -- a folder is
-    // where some of them are kept -- and putting the folders on top meant
-    // scrolling past the filing to reach the writing.
-    var order = await readOrder(folder);
-    var ordered = _inOrder(documents, order);
-
     // In the Pages folder the front page is pinned first, however the rest
     // has been arranged. It is the page every visitor lands on, so it is
     // the one to keep at hand -- the same reasoning that puts index.md at
     // the top of the served listing.
     if (folder == pagesFolderName) {
-      var front = ordered.where(isFrontPageName).toList();
-      ordered = [...front, ...ordered.where((e) => !isFrontPageName(e))];
+      var front = documents.where(isFrontPageName).toList();
+      documents = [...front, ...documents.where((e) => !isFrontPageName(e))];
     }
 
-    return [
-      ...ordered,
-      ..._inOrder(folders, order),
-      ...reserved,
-    ];
+    return [...documents, ...folders, ...reserved];
   }
+
+  /// isPinned is whether a row is held in a fixed place by [arrange], and so
+  /// cannot be dragged and cannot be dropped onto.
+  static bool isPinned(PostEntry entry, String folder) =>
+      entry.isReservedFolder ||
+      (folder == pagesFolderName && isFrontPageName(entry));
 
   /// isFrontPageName is whether a document in the Pages folder is the site's
   /// front page.
@@ -379,9 +397,14 @@ class PostStorage {
     return name == "index";
   }
 
-  /// _inOrder puts the entries the order file names first, in its order, and
+  /// inOrder puts the entries the order file names first, in its order, and
   /// leaves everything else after them exactly as it was.
-  static List<PostEntry> _inOrder(List<PostEntry> entries, List<String> order) {
+  ///
+  /// Public because the sidebar arranges a listing by an order it has not
+  /// saved yet -- see PostLibraryModel's pending order. One function, so a
+  /// listing arranged before the write and one arranged after it cannot
+  /// disagree.
+  static List<PostEntry> inOrder(List<PostEntry> entries, List<String> order) {
     if (order.isEmpty) return entries;
     var byName = {for (var e in entries) e.name: e};
     var out = <PostEntry>[];
@@ -415,8 +438,21 @@ class PostStorage {
     }
   }
 
+  /// slowOrderWriteForTest holds up the order write, so a test can put
+  /// something else in the window between a drag being shown and its being
+  /// saved.
+  ///
+  /// A seam rather than a real delay, and it earns its place: the fault it
+  /// exists for is a race, and a race nobody can reproduce on demand is one
+  /// that gets "fixed" by a change nobody can show works. On a temp directory
+  /// on an SSD the write always wins, so the window never opens by itself.
+  @visibleForTesting
+  static Future<void> Function()? slowOrderWriteForTest;
+
   /// writeOrder records the order [folder] should be shown in.
   static Future<bool> writeOrder(String folder, List<String> names) async {
+    var hold = slowOrderWriteForTest;
+    if (hold != null) await hold();
     var dirPath = await _resolve(folder, null);
     if (dirPath == null) return false;
     try {

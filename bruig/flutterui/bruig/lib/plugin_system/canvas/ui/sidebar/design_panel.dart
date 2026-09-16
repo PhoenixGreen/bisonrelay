@@ -5,7 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/panel_stack.dart';
+import 'package:bruig/components/panel_stack.dart';
 import 'package:flutter/material.dart';
 
 // design_panel.dart is the three things you use to build a canvas, in one
@@ -89,10 +89,10 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
         builder: (context, _) => _stack(context),
       );
 
-  Widget _stack(BuildContext context) => CanvasPanelStack(
+  Widget _stack(BuildContext context) => PanelStack(
         storageKey: "canvasDesign",
         panels: [
-          CanvasStackPanel(
+          StackPanel(
             id: "add",
             label: "Add",
             icon: Icons.category_outlined,
@@ -103,7 +103,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           // Between what can be added and what is on this canvas, because
           // that is the order the questions come in: which canvas am I on,
           // then what is on it.
-          CanvasStackPanel(
+          StackPanel(
             id: "scenes",
             label: "Scenes",
             icon: Icons.movie_outlined,
@@ -123,7 +123,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           // canvas the whole panel would be settings about an event that
           // cannot happen.
           if (controller.document.hasScenes)
-            CanvasStackPanel(
+            StackPanel(
               id: "transitions",
               label: "Transition",
               icon: Icons.compare_arrows,
@@ -131,7 +131,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
                   "master canvas this is the one every scene starts from.",
               body: _transitions,
             ),
-          CanvasStackPanel(
+          StackPanel(
             id: "layers",
             label: "Layers",
             icon: Icons.layers_outlined,
@@ -141,7 +141,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             trailing: "${controller.document.elements.length + 1}",
             body: _layers,
           ),
-          CanvasStackPanel(
+          StackPanel(
             id: "settings",
             // Named for what is selected. The settings no longer head
             // themselves with the element's name, so this is what says what is

@@ -1,4 +1,5 @@
 import 'package:bruig/components/color_picker.dart';
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 
 import 'package:bruig/storage_manager.dart';
@@ -695,10 +696,33 @@ class CanvasColorButton extends StatelessWidget {
   final bool allowAlpha;
   final ValueChanged<Color> onChanged;
 
+  /// gradient is the second colour, for the things that can be painted with
+  /// two. Set [onGradientChanged] to offer the picker's Gradient tab; leave
+  /// it null and this is the plain swatch it has always been.
+  ///
+  /// The gradient is set *in the picker*, not beside it. A Fade toggle, a
+  /// second swatch, a Radial toggle and an Angle field next to every colour
+  /// is four controls per colour for something most colours never use.
+  final GradientSpec? gradient;
+  final ValueChanged<GradientSpec?>? onGradientChanged;
+
+  /// labelWidth holds the caption to the swatch's own width, for the rows
+  /// where a swatch has to fit in a known amount of room.
+  ///
+  /// A Column is as wide as its widest child, so a caption longer than the
+  /// thing it names is what decides how much of a line the control takes --
+  /// and a thirty-pixel swatch under the word "Colour" is a fifty-pixel
+  /// column, which is the difference between a row that fits and one that
+  /// wraps.
+  final double? labelWidth;
+
   const CanvasColorButton({
     required this.label,
     required this.color,
     required this.onChanged,
+    this.gradient,
+    this.onGradientChanged,
+    this.labelWidth,
     this.allowAlpha = true,
     super.key,
   });
@@ -709,14 +733,25 @@ class CanvasColorButton extends StatelessWidget {
     return _labelled(
       theme,
       label,
+      cap: labelWidth,
       Tooltip(
-        message: "Choose a colour",
+        message: onGradientChanged == null
+            ? "Choose a colour"
+            : "Choose a colour, or two to fade between",
         child: InkWell(
           borderRadius: BorderRadius.circular(4),
           onTap: () async {
-            var picked = await pickColor(context,
-                initial: color, allowAlpha: allowAlpha);
-            if (picked != null) onChanged(picked);
+            var picked = await pickPaint(
+              context,
+              initial: PaintSpec(color, gradient: gradient),
+              allowAlpha: allowAlpha,
+              fades: onGradientChanged != null,
+            );
+            if (picked == null) return;
+            if (picked.color != color) onChanged(picked.color);
+            if (picked.gradient != gradient) {
+              onGradientChanged?.call(picked.gradient);
+            }
           },
           child: Container(
             width: 30,
@@ -732,7 +767,7 @@ class CanvasColorButton extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: CustomPaint(
-                painter: _SwatchPainter(color),
+                painter: _SwatchPainter(color, gradient),
                 size: const Size(30, controlHeight),
               ),
             ),
@@ -745,7 +780,12 @@ class CanvasColorButton extends StatelessWidget {
 
 class _SwatchPainter extends CustomPainter {
   final Color color;
-  const _SwatchPainter(this.color);
+
+  /// gradient is drawn in the swatch itself, so a colour that fades looks
+  /// like one without having to be opened.
+  final GradientSpec? gradient;
+
+  const _SwatchPainter(this.color, [this.gradient]);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -758,11 +798,15 @@ class _SwatchPainter extends CustomPainter {
             ((x ~/ square) + (y ~/ square)).isEven ? light : dark);
       }
     }
-    canvas.drawRect(Offset.zero & size, Paint()..color = color);
+    var area = Offset.zero & size;
+    var shader = PaintSpec(color, gradient: gradient).shaderFor(area);
+    canvas.drawRect(area,
+        shader == null ? (Paint()..color = color) : (Paint()..shader = shader));
   }
 
   @override
-  bool shouldRepaint(_SwatchPainter old) => old.color != color;
+  bool shouldRepaint(_SwatchPainter old) =>
+      old.color != color || old.gradient != gradient;
 }
 
 /// CanvasToggle is a switch with a label, for the many booleans.

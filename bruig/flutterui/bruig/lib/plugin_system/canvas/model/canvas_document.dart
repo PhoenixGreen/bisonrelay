@@ -359,6 +359,28 @@ class CanvasDocument {
         background;
   }
 
+  /// settledFrame is the first frame on which everything that arrives has
+  /// finished arriving.
+  ///
+  /// What a canvas opens on. Opening on frame nought shows a canvas whose
+  /// elements have not arrived yet -- which is an empty page, and reads as a
+  /// document that has failed to load rather than one that is about to play.
+  ///
+  /// The end of the last *arrival*, not of the last movement: a canvas whose
+  /// elements arrive and then drift for ten seconds should open showing them,
+  /// not showing where they end up. Anything with no arrival band counts as
+  /// nought, because it was there from the start.
+  int get settledFrame {
+    var last = 0;
+    for (var element in scene.elements) {
+      for (var band in bandsIn(element.base.track)) {
+        if (band.channel != KeyframeChannel.reveal) continue;
+        if (band.to > last) last = band.to;
+      }
+    }
+    return last.clamp(0, math.max(0, frames - 1)).toInt();
+  }
+
   /// defaultTransition is what a scene with no transition of its own uses:
   /// the master scene's, or a cut.
   SceneTransition get defaultTransition =>
@@ -631,12 +653,64 @@ class CanvasDocument {
   }
 
   /// addScene puts a new empty canvas after [after], or at the end.
+  ///
+  /// With a plain backdrop of its own rather than none. A scene with none
+  /// falls back to the document's, and the document's is whatever the
+  /// background was when there was only one canvas to put it on -- so a new
+  /// scene arrived wearing a backdrop from earlier in the document's life,
+  /// often one nobody could remember choosing and nothing on screen could be
+  /// used to change. Empty means empty.
+  ///
+  /// The scenes already there are untouched: they still have no backdrop of
+  /// their own and still fall back to the document's, so adding a scene does
+  /// not change how any of them looks. And a backdrop on the shared canvas
+  /// still covers this one, which is what the shared canvas is for.
   CanvasDocument addScene({int? after, String name = ""}) {
-    var list = [...allScenes];
+    // Every canvas that was relying on the document's backdrop takes a copy
+    // of it first.
+    //
+    // Nothing on screen moves: they were already showing it. What changes is
+    // that the document's own background stops being a live fallback the
+    // moment there is more than one canvas -- so the next scene added is
+    // plain, and the one after that, rather than each of them inheriting
+    // whatever the backdrop happened to be when the document had one canvas
+    // in it. That inheritance is what put a backdrop nobody remembered
+    // choosing behind a new scene.
+    var list = [
+      for (var scene in allScenes)
+        scene.background == null
+            ? scene.copyWith(background: background)
+            : scene,
+    ];
     var to =
         after == null ? list.length : (after + 1).clamp(0, list.length).toInt();
-    list.insert(to, CanvasScene(id: newSceneId(), name: name, frames: frames));
+    list.insert(
+        to,
+        CanvasScene(
+          id: newSceneId(),
+          name: name,
+          frames: frames,
+          background: const CanvasBackground(),
+        ));
     return withScenes(list, at: to);
+  }
+
+  /// scenesFrom is this document holding only scenes [first] to [last], for a
+  /// publish that is meant to be part of it.
+  ///
+  /// A trimmed document rather than a range threaded through every renderer.
+  /// The GIF, the video, the PDF and the bundle all ask the document how long
+  /// it runs for and what is on it at a given moment; handed one that is four
+  /// scenes long, all four publish four scenes without knowing anything new.
+  ///
+  /// The shared canvas, the size, the frame rate and the guides come with it,
+  /// because they are the document's and not any scene's.
+  CanvasDocument scenesFrom(int first, int last) {
+    var list = allScenes;
+    var from = first.clamp(0, list.length - 1).toInt();
+    var to = last.clamp(from, list.length - 1).toInt();
+    if (from == 0 && to == list.length - 1) return this;
+    return withScenes(list.sublist(from, to + 1), at: 0);
   }
 
   /// duplicateScene copies one, elements and all, under new ids.

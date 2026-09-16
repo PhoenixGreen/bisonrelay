@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -40,7 +41,19 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   canvas.save();
   canvas.clipRRect(outer);
 
-  if (e.cellFill.a > 0) canvas.drawRect(rect, Paint()..color = e.cellFill);
+  // Both fills are shaded across the whole table, not across the band or the
+  // cell being filled: a table that fades should fade once from top to
+  // bottom, not restart on every row.
+  var cells = PaintSpec(e.cellFill, gradient: e.cellFade).shaderFor(rect);
+  var header = PaintSpec(e.headerFill, gradient: e.headerFade).shaderFor(rect);
+
+  if (e.cellFill.a > 0) {
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..color = e.cellFill
+          ..shader = cells);
+  }
 
   // Row fills first, so the grid and the text land on top of them rather than
   // being covered by the next row's zebra tint.
@@ -56,7 +69,10 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     }
     if (fill != null && fill.a > 0) {
       canvas.drawRect(
-          Rect.fromLTWH(rect.left, y, rect.width, h), Paint()..color = fill);
+          Rect.fromLTWH(rect.left, y, rect.width, h),
+          Paint()
+            ..color = fill
+            ..shader = isHeader ? header : null);
     }
     y += h;
   }
@@ -71,7 +87,9 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     var top = rect.top + (e.headerRow ? heights.first : 0);
     canvas.drawRect(
         Rect.fromLTRB(rect.left, top, rect.left + widths.first, rect.bottom),
-        Paint()..color = e.headerFill);
+        Paint()
+          ..color = e.headerFill
+          ..shader = header);
   }
 
   // A rule with no word to look for is drawn as one box around everything it
@@ -104,7 +122,7 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       if (asset != null) {
         // Its share of the cell, inside the cell's own padding. A badge that
         // touches the rules either side of it reads as a mistake.
-        var cell = Rect.fromLTWH(x, y, w, h).deflate(e.cellPadding);
+        var cell = Rect.fromLTWH(x, y, w, h).deflateSides(e);
         var scale = e.pictureScale.clamp(0.05, 1.0);
         var box = Rect.fromCenter(
             center: cell.center,
@@ -156,8 +174,15 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       // Alignment is unusable without the second: pushed left or right the
       // words sit against the edge, and the table's padding is one number for
       // every cell in it.
-      var pad = e.cellPadding + (style?.textPad ?? 0);
-      var textBox = Rect.fromLTWH(x + pad, y, math.max(1, w - pad * 2), h);
+      // Every side, not two of them. The padding was the words' margin left
+      // and right and nothing at all above or below: at any setting the
+      // writing sat hard against the rule over it, which is not what a
+      // control called Padding says it does.
+      var extra = style?.textPad ?? 0;
+      var left = e.leftPad + extra, right = e.rightPad + extra;
+      var top = e.topPad + extra, bottom = e.bottomPad + extra;
+      var textBox = Rect.fromLTWH(x + left, y + top,
+          math.max(1, w - left - right), math.max(1, h - top - bottom));
 
       // A header kept but not shown -- see TableElement.hiddenHeaders. The
       // cell's background, its rules and its share of the width all still
@@ -632,7 +657,7 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
       var text = e.cell(r, c);
       if (text.isEmpty) continue;
       var w = layoutText(text, spec, maxWidth: cap).width;
-      natural[c] = math.max(natural[c], w + e.cellPadding * 2);
+      natural[c] = math.max(natural[c], w + e.leftPad + e.rightPad);
     }
   }
 
@@ -647,6 +672,16 @@ List<double> _columnWidths(TableElement e, Rect rect, int cols) {
   _measuredWidth = rect.width;
   _measured = out;
   return out;
+}
+
+/// deflateSides takes each of a cell's four paddings off it.
+extension on Rect {
+  Rect deflateSides(TableElement e) => Rect.fromLTRB(
+        left + e.leftPad,
+        top + e.topPad,
+        math.max(left + e.leftPad + 1, right - e.rightPad),
+        math.max(top + e.topPad + 1, bottom - e.bottomPad),
+      );
 }
 
 /// tableRowHeights is where a table's rows fall, for the same reason

@@ -1,4 +1,5 @@
 import 'package:bruig/components/color_picker.dart';
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/element_specs.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -79,124 +80,42 @@ String hexOf(Color c) {
 }
 
 /// pickHexColour asks for a colour, and gives back the hex for it.
-Future<String?> pickHexColour(BuildContext context, Color start,
-    {required String title}) async {
-  var chosen = start;
-  var ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: SingleChildScrollView(
-        child: AppColorPicker(
-          // Alpha, because a panel behind a banner's writing is usually
-          // meant to be seen through -- that is what #rrggbbaa is for.
-          color: start,
-          onChanged: (c) => chosen = c,
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text("Cancel")),
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text("Use this")),
-      ],
-    ),
-  );
-  return ok == true ? hexOf(chosen) : null;
+///
+/// Through the app's own colour dialog rather than one built here. There was
+/// one built here, and a dialog built here is a dialog that does not get the
+/// fixes the shared one gets -- it still sized itself from a formula the
+/// shared one had moved on from.
+Future<String?> pickHexColour(BuildContext context, Color start) async {
+  // Alpha, because a panel behind a banner's writing is usually meant to be
+  // seen through -- that is what #rrggbbaa is for.
+  var picked = await pickColor(context, initial: start);
+  return picked == null ? null : hexOf(picked);
 }
 
-/// pickGradient asks for both of a gradient's colours at once, with the
-/// gradient itself drawn above them.
+/// pickGradient asks for the colours a banner's writing is poured through,
+/// and gives them back as the comma-separated list the banner reads.
 ///
-/// Both together rather than one and then the other. A gradient is the two
-/// colours against each other -- neither is right or wrong on its own -- and
-/// picking them in turn meant choosing the second against a memory of the
-/// first, then reopening the whole thing to change it.
+/// All of them, not two. The picker's Gradient tab takes as many colours as
+/// you care to add and HeaderTextStyle has always held a list, so a banner
+/// can now run through three or four -- which it could not when this was two
+/// swatches side by side.
+///
+/// Always at least two go back, even where the fade was switched off: the
+/// banner builds a LinearGradient out of whatever it is given, and a
+/// LinearGradient of one colour is one Flutter refuses to build. A colour
+/// running to itself is the flat band that asking for no fade means.
 Future<String?> pickGradient(
     BuildContext context, Color startFrom, Color startTo) async {
-  var from = startFrom;
-  var to = startTo;
-  var editingFirst = true;
-
-  var ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text("Gradient"),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // What the two colours actually make, which is the thing being
-            // chosen and the only way to judge either of them.
-            Container(
-              height: 44,
-              width: 280,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [from, to]),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Theme.of(context).dividerColor),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              for (var first in [true, false])
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => editingFirst = first),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: editingFirst == first
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : null,
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: first ? from : to,
-                          border:
-                              Border.all(color: Theme.of(context).dividerColor),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(first ? "First" : "Second"),
-                    ]),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 8),
-            AppColorPicker(
-              // Keyed on which one is being edited, so the picker resets to
-              // that colour when the other is chosen. Without it the wheel
-              // keeps the position it had and the swatch it shows is not
-              // the colour it is about to change.
-              key: ValueKey(editingFirst),
-              color: editingFirst ? from : to,
-              onChanged: (c) => setState(() {
-                if (editingFirst) {
-                  from = c;
-                } else {
-                  to = c;
-                }
-              }),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text("Cancel")),
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text("Use this")),
-        ],
-      ),
-    ),
-  );
-  return ok == true ? "${hexOf(from)},${hexOf(to)}" : null;
+  var picked = await pickPaint(context,
+      initial: PaintSpec(startFrom, gradient: GradientSpec(to: startTo)));
+  if (picked == null) return null;
+  var colours = <Color>[
+    picked.color,
+    for (var stop in picked.gradient?.ramp ?? const <GradientStop>[])
+      stop.color,
+  ];
+  if (colours.length < 2) colours.add(picked.color);
+  return colours.map(hexOf).join(",");
 }
 
 /// ElementPanel lists the blocks and what each of them takes.
@@ -526,8 +445,7 @@ class _ElementPanelState extends State<ElementPanel> {
       return;
     }
     var one = await pickHexColour(
-        context, parseHexColour(start.first) ?? const Color(0xffffffff),
-        title: setting.label);
+        context, parseHexColour(start.first) ?? const Color(0xffffffff));
     if (one == null || !mounted) return;
     setState(() => _forOpen()[setting.key] = one);
   }

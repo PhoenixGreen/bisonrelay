@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/components/color_picker.dart';
 import 'dart:io';
 import 'package:bruig/components/snackbars.dart';
@@ -630,17 +632,27 @@ class _PaletteSectionState extends State<PaletteSection> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(children: [
-            // As wide as the settings page gives it, up to the width that
-            // puts the numbers and the saved colours beside the colour
-            // instead of under it -- see AppColorPicker.width.
-            AppColorPicker(
-              color: draftColor ?? fullPalette[editing],
-              // Lets a palette color blend into whatever it's painted over
-              // (e.g. a semi-transparent divider or overlay) instead of
-              // always being fully opaque.
-              allowAlpha: true,
-              width: (MediaQuery.of(context).size.width - 80).clamp(300, 640),
-              onChanged: (c) => setState(() => draftColor = c),
+            // As wide as this row actually is, up to the width that puts the
+            // numbers and the saved colours beside the colour instead of
+            // under it -- see AppColorPicker.width.
+            //
+            // Measured rather than worked out from the screen. The screen is
+            // not this panel: a settings page has a sidebar and its own
+            // padding, so a width taken from the screen was one this row did
+            // not have, with a floor under it that made it worse on a narrow
+            // window. A LayoutBuilder is safe here and not in the dialog,
+            // because nothing above this asks it how wide it would like to
+            // be.
+            LayoutBuilder(
+              builder: (context, room) => AppColorPicker(
+                color: draftColor ?? fullPalette[editing],
+                // Lets a palette color blend into whatever it's painted over
+                // (e.g. a semi-transparent divider or overlay) instead of
+                // always being fully opaque.
+                allowAlpha: true,
+                width: math.min(room.maxWidth, pickerWidest),
+                onChanged: (c) => setState(() => draftColor = c),
+              ),
             ),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               TextButton(onPressed: _collapse, child: const Text("Cancel")),

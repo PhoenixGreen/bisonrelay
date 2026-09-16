@@ -118,3 +118,56 @@ class ValueNoise {
 /// the same way.
 double angleNoise(ValueNoise noise, double x, double y, double turns) =>
     noise.fbm(x, y, octaves: 3) * turns * 2 * math.pi;
+
+/// worley is cellular noise: how far a point is from the nearest of a set of
+/// scattered feature points, and which point that was.
+///
+/// A different kind of noise from the two above, and worth having for what it
+/// makes: smooth noise makes fields that flow and white noise makes scatter,
+/// but neither makes *rounded things at random intervals* -- a dent, a pit, a
+/// bubble in a casting. That is a distance to the nearest of something, which
+/// is what this is.
+///
+/// One feature point per lattice cell, found by hashing the cell, so the
+/// nearest one is always in the nine cells around the sample. The id that
+/// comes back with it is the feature's own random number, which is what lets
+/// a caller keep some of them and drop the rest -- the difference between a
+/// sheet covered in dents and a sheet with three.
+(double, double) worley(int seed, double x, double y) {
+  var cx = x.floor(), cy = y.floor();
+  var best = 8.0, id = 0.0;
+  for (var oy = -1; oy <= 1; oy++) {
+    for (var ox = -1; ox <= 1; ox++) {
+      var gx = cx + ox, gy = cy + oy;
+      var fx = gx + hash(seed, gx, gy);
+      var fy = gy + hash(seed + 9277, gx, gy);
+      var dx = x - fx, dy = y - fy;
+      var d = dx * dx + dy * dy;
+      if (d < best) {
+        best = d;
+        id = hash(seed + 5501, gx, gy);
+      }
+    }
+  }
+  return (math.min(1.0, math.sqrt(best)), id);
+}
+
+/// ridged is noise folded at its middle so the peaks come to a crease.
+///
+/// Smooth noise is round everywhere, which is right for a field and wrong for
+/// anything with an edge. Folding it -- taking the distance from the middle
+/// rather than the value -- turns every crossing into a sharp ridge, and a
+/// high threshold on that leaves long thin lines that wander: a scratch, a
+/// crack, a gouge. Drawing those as line segments instead is what makes them
+/// look drawn.
+double ridged(ValueNoise noise, double x, double y, {int octaves = 3}) {
+  var sum = 0.0, amp = 1.0, norm = 0.0, freq = 1.0;
+  for (var i = 0; i < octaves; i++) {
+    var v = 1 - (noise.at(x * freq, y * freq) * 2 - 1).abs();
+    sum += v * v * amp;
+    norm += amp;
+    amp *= 0.55;
+    freq *= 2.1;
+  }
+  return norm == 0 ? 0 : sum / norm;
+}

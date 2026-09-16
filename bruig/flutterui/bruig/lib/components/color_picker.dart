@@ -1,6 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/components/saved_colors.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -27,7 +30,12 @@ enum ColorPickerMode {
   wheel("Wheel", Icons.colorize),
 
   /// palette is five colours at once, arranged by one of the harmonies.
-  palette("Palette", Icons.auto_awesome);
+  palette("Palette", Icons.auto_awesome),
+
+  /// gradient is the second colour and how it is reached. Offered only where
+  /// the thing being coloured can hold two, which is why it is last: the
+  /// three before it are always there, and this one comes and goes.
+  gradient("Gradient", Icons.gradient);
 
   final String label;
   final IconData icon;
@@ -145,35 +153,67 @@ Future<Color?> pickColor(
   BuildContext context, {
   required Color initial,
   bool allowAlpha = true,
-  String title = "Colour",
+}) async {
+  var picked = await pickPaint(context,
+      initial: PaintSpec(initial), allowAlpha: allowAlpha, fades: false);
+  return picked?.color;
+}
+
+/// pickPaint is pickColor with the gradient tab offered: it answers with a
+/// colour and, if one was set up, the second colour to fade to.
+///
+/// The gradient lives here rather than beside the thing being coloured, so
+/// that every swatch in the app gains gradients at once and none of them
+/// grows a row of gradient settings of its own.
+Future<PaintSpec?> pickPaint(
+  BuildContext context, {
+  required PaintSpec initial,
+  bool allowAlpha = true,
+  bool fades = true,
 }) {
   // As wide as the screen sensibly allows, which is what puts the numbers and
   // the saved colours beside the picker rather than under it. Measured here
   // rather than by the picker: a dialog asks what it holds how big it wants
   // to be, and a widget that measures the room it has been given cannot
   // answer that question.
-  var room = MediaQuery.of(context).size.width - 120;
-  return showDialog<Color>(
+  //
+  // Allowing for everything between the screen's edge and the content: the
+  // dialog's own margin at each side and its padding inside that. Under-
+  // counting it by eight pixels is not a dialog eight pixels too wide -- it
+  // is a picker told it has room it does not have, which lays itself out for
+  // that room and overflows by the difference.
+  return showDialog<PaintSpec>(
     context: context,
     builder: (context) => _ColorDialog(
       initial: initial,
       allowAlpha: allowAlpha,
-      title: title,
-      width: room.clamp(300.0, 640.0),
+      fades: fades,
     ),
   );
 }
 
+/// pickerWidthFor is how wide the picker is drawn on a screen this wide.
+///
+/// Worked out in the dialog's own build rather than once when it opens, so
+/// that dragging the window narrower re-lays the picker out instead of
+/// leaving it at the width the screen used to be -- which is a picker holding
+/// on to room it no longer has, and that is an overflow stripe.
+///
+/// No floor: on a small screen there is no width to be had. A picker told it
+/// has 280 pixels of a 192-pixel dialog lays itself out for 280 and overflows
+/// by the difference. It is narrow because the screen is narrow, which is the
+/// right answer.
+double pickerWidthFor(double screen) =>
+    math.min(screen - dialogChrome(screen), pickerWidest);
+
 class _ColorDialog extends StatefulWidget {
-  final Color initial;
+  final PaintSpec initial;
   final bool allowAlpha;
-  final String title;
-  final double width;
+  final bool fades;
   const _ColorDialog({
     required this.initial,
     required this.allowAlpha,
-    required this.title,
-    required this.width,
+    required this.fades,
   });
 
   @override
@@ -181,31 +221,45 @@ class _ColorDialog extends StatefulWidget {
 }
 
 class _ColorDialogState extends State<_ColorDialog> {
-  late Color _color = widget.initial;
+  late PaintSpec _paint = widget.initial;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: Text(widget.title),
-        content: SingleChildScrollView(
-          child: AppColorPicker(
-            color: _color,
-            allowAlpha: widget.allowAlpha,
-            width: widget.width,
-            onChanged: (c) => setState(() => _color = c),
-          ),
+  Widget build(BuildContext context) {
+    var screen = MediaQuery.of(context).size.width;
+    return AlertDialog(
+      insetPadding:
+          EdgeInsets.symmetric(horizontal: _dialogInset(screen), vertical: 24),
+      contentPadding:
+          EdgeInsets.fromLTRB(_dialogPad(screen), 20, _dialogPad(screen), 24),
+      // No title. A square of colour, a hue bar and four channels is not a
+      // panel anybody needs the word "Colour" over.
+      content: SingleChildScrollView(
+        child: AppColorPicker(
+          color: _paint.color,
+          gradient: _paint.gradient,
+          onGradientChanged: widget.fades
+              ? (g) =>
+                  setState(() => _paint = PaintSpec(_paint.color, gradient: g))
+              : null,
+          allowAlpha: widget.allowAlpha,
+          width: pickerWidthFor(screen),
+          onChanged: (c) =>
+              setState(() => _paint = PaintSpec(c, gradient: _paint.gradient)),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            key: const ValueKey("colorPickerSelect"),
-            onPressed: () => Navigator.of(context).pop(_color),
-            child: const Text("Select"),
-          ),
-        ],
-      );
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text("Cancel"),
+        ),
+        TextButton(
+          key: const ValueKey("colorPickerSelect"),
+          onPressed: () => Navigator.of(context).pop(_paint),
+          child: const Text("Select"),
+        ),
+      ],
+    );
+  }
 }
 
 /// AppColorPicker is the picker itself, for the places that show it in a
@@ -213,6 +267,15 @@ class _ColorDialogState extends State<_ColorDialog> {
 class AppColorPicker extends StatefulWidget {
   final Color color;
   final ValueChanged<Color> onChanged;
+
+  /// gradient is the second colour, when the thing being coloured has one.
+  ///
+  /// Null with [onGradientChanged] set means "can fade, but does not"; a null
+  /// [onGradientChanged] means the gradient tab is not offered at all, which
+  /// is how the palette editor next door keeps a picker that answers with one
+  /// flat colour.
+  final GradientSpec? gradient;
+  final ValueChanged<GradientSpec?>? onGradientChanged;
 
   /// allowAlpha offers the transparency channel. Off where the thing being
   /// coloured has no way to be see-through.
@@ -229,6 +292,8 @@ class AppColorPicker extends StatefulWidget {
   const AppColorPicker({
     required this.color,
     required this.onChanged,
+    this.gradient,
+    this.onGradientChanged,
     this.allowAlpha = true,
     this.width = 320,
     super.key,
@@ -238,11 +303,64 @@ class AppColorPicker extends StatefulWidget {
   State<AppColorPicker> createState() => _AppColorPickerState();
 }
 
-/// _wideAt is the width at which the picker lays itself out in two columns.
-const double _wideAt = 560;
+/// dialogChrome is everything between the screen's edge and the picker: the
+/// dialog's margin at each side and its padding inside that.
+///
+/// A dialog's usual 40 of margin and 24 of padding is 128 pixels of nothing,
+/// which on a phone is nearly half the screen -- so on a narrow one the
+/// dialog is pulled in to the edges instead. Read here *and* used to lay the
+/// dialog out, because a picker told it has room the dialog does not give it
+/// lays itself out for that room and overflows by the difference.
+double dialogChrome(double screen) => screen < _wideAt ? 32 : 128;
 
-/// _pickerColumn is how much of a wide picker the colour itself takes.
-const double _pickerColumn = 300;
+/// _dialogInset and _dialogPad are the two halves of that, for the dialog
+/// itself.
+double _dialogInset(double screen) => screen < _wideAt ? 8 : 40;
+double _dialogPad(double screen) => screen < _wideAt ? 8 : 24;
+
+/// pickerWidest is as big as the picker is ever drawn. Past this the square
+/// and the bars stop looking like controls and start looking like a poster.
+///
+/// Public for the one caller that lays the picker out itself rather than in a
+/// dialog -- the palette editor's expanding row, which measures the room it
+/// has and caps it with this.
+const double pickerWidest = 700;
+
+/// _wideAt is the width at which the picker lays itself out in two columns.
+///
+/// The least each column will accept, added together, rather than a round
+/// number picked by eye. Under it the numbers and the saved colours go
+/// beneath the colour instead of beside it.
+const double _wideAt = _pickerLeast + _columnGap + _settingsColumn;
+
+/// _columnGap is the gutter between the colour and the numbers beside it.
+///
+/// Wide enough to read as two columns rather than as one that happens to
+/// have a seam in it: the right-hand one is a stack of small boxes, and small
+/// boxes close to a big one look like part of it.
+const double _columnGap = 36;
+
+/// _pickerColumn is how much of a wide picker the colour itself would like,
+/// and _pickerLeast is how little it will accept.
+///
+/// The colour column gives way first, down to its floor. It is the one with
+/// something to give: a square and two bars read perfectly well at 250, and
+/// four numbered boxes at 150 do not -- they fold one to a line, which is the
+/// strip that was appearing beside a colour square that had not budged.
+const double _pickerColumn = 344;
+const double _pickerLeast = 250;
+
+/// _stopButtons is how much room the add and remove buttons take beside the
+/// stop bar, each.
+const double _stopButtons = 30;
+
+/// _settingsColumn is the least the numbers and the saved colours can be
+/// given: four channel boxes and the gaps between them, and no less.
+///
+/// Held rather than shrunk. What shrinking it does is fold the fourth channel
+/// onto a line of its own, and a column of four numbers stacked is worse than
+/// two narrower columns side by side.
+const double _settingsColumn = 4 * (_channelWidth + 6) + 8;
 
 /// _Spot is one of the five colours in the palette mode.
 class _Spot {
@@ -276,6 +394,10 @@ class _AppColorPickerState extends State<AppColorPicker> {
   /// colour is by then, which is the opposite of what it is for.
   late final Color _opened;
 
+  /// _openedGradient is the second colour the picker was given, for the same
+  /// reason [_opened] is held: reset goes back to how it opened.
+  late final GradientSpec? _openedGradient;
+
   // Where the handle sits on the wheel: a turn and a distance out.
   //
   // Held rather than worked out from the colour, because a colour does not
@@ -288,6 +410,26 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   ColorPickerMode _mode = ColorPickerMode.sliders;
   ColorFormat _format = ColorFormat.hex;
+
+  /// _gradient is the fade as the picker currently has it, and _editingStop
+  /// is which of its colours the three colour modes are pointed at: -1 for
+  /// the first, 0 for the second, and so on.
+  ///
+  /// One picker editing whichever stop is selected, rather than a second
+  /// picker per colour: a gradient's colours are chosen against each other,
+  /// and a dialog each is what stops you doing that.
+  GradientSpec? _gradient;
+  int _editingStop = -1;
+
+  /// _fades is whether this picker is being asked for a gradient at all.
+  bool get _fades => widget.onGradientChanged != null;
+
+  /// _modesOffered leaves the gradient tab out where there is nowhere to put
+  /// one.
+  List<ColorPickerMode> get _modesOffered => [
+        for (var mode in ColorPickerMode.values)
+          if (mode != ColorPickerMode.gradient || _fades) mode,
+      ];
 
   // The palette mode's own state. The five colours are a shape laid out
   // around a colour it is led by, which is not the same thing as the colour
@@ -341,6 +483,8 @@ class _AppColorPickerState extends State<AppColorPicker> {
   void initState() {
     super.initState();
     _opened = widget.color;
+    _gradient = widget.gradient;
+    _openedGradient = widget.gradient;
     _take(widget.color);
     _readWheel();
     _readThird();
@@ -374,7 +518,9 @@ class _AppColorPickerState extends State<AppColorPicker> {
     super.didUpdateWidget(old);
     // Only when somebody else has changed it. Taking it every time would undo
     // the slider positions this picker is holding on to.
-    if (widget.color.toARGB32() != _current.toARGB32()) {
+    // ...and not while the colour modes are pointed at the far end of a
+    // gradient, where widget.color is the end they are *not* editing.
+    if (_editingStop < 0 && widget.color.toARGB32() != _current.toARGB32()) {
       _tookFromOutside(widget.color);
     }
   }
@@ -535,7 +681,43 @@ class _AppColorPickerState extends State<AppColorPicker> {
 
   void _say() {
     _write();
+    // Whichever end is selected. The three colour modes do not know there is
+    // a gradient; this is the one place that decides which of its two
+    // colours they have been editing.
+    var g = _gradient;
+    if (_editingStop >= 0 && g != null && _editingStop < g.ramp.length) {
+      _gradient = g.withStop(
+          _editingStop, g.ramp[_editingStop].copyWith(color: _current));
+      widget.onGradientChanged?.call(_gradient);
+      return;
+    }
     widget.onChanged(_current);
+  }
+
+  /// _editEnd points the colour modes at one of the fade's colours, opening
+  /// them on whatever that colour already is.
+  void _editEnd(int stop) {
+    var g = _gradient;
+    setState(() {
+      _editingStop = stop;
+      _tookFromOutside(
+          stop < 0 || g == null ? widget.color : g.ramp[stop].color);
+      _leadFromCurrent();
+    });
+  }
+
+  /// _setGradient writes the gradient out, and keeps the colour modes
+  /// pointing at a colour that still exists.
+  void _setGradient(GradientSpec? next) {
+    setState(() {
+      _gradient = next;
+      if (next == null || _editingStop >= next.ramp.length) {
+        _editingStop = -1;
+        _tookFromOutside(widget.color);
+        _leadFromCurrent();
+      }
+      widget.onGradientChanged?.call(next);
+    });
   }
 
   /// _leadFromCurrent points the palette at the colour in hand and lays the
@@ -720,79 +902,97 @@ class _AppColorPickerState extends State<AppColorPicker> {
     if (color == null) return;
     setState(() {
       _tookFromOutside(color);
-      widget.onChanged(_current);
+      // Through _say, so that a colour typed in while the far end of a
+      // gradient is selected lands on that end like every other way of
+      // choosing one does.
+      _say();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Told, never measured. A LayoutBuilder here reads better and does not
+    // work: an AlertDialog asks what it holds how wide it would like to be,
+    // and a LayoutBuilder cannot answer an intrinsic question -- it asserts.
+    //
+    // So the caller has to be right. pickPaint is, because it sets the
+    // dialog's own margin and padding as well as reading them: see
+    // dialogChrome, which is the one place that knows what stands between
+    // the screen's edge and this.
+    var width = widget.width;
     var theme = Theme.of(context).colorScheme;
-    var wide = widget.width >= _wideAt;
-    var pickerWidth = wide ? _pickerColumn : widget.width;
-    var settingsWidth = wide ? widget.width - _pickerColumn - 20 : widget.width;
+    var wide = width >= _wideAt;
+    // What is left after the numbers have had what they need, up to what the
+    // colour column would like and down to what it will accept. The colour
+    // column gives way first: a picker only just wide enough for two columns
+    // should be two narrow ones rather than a comfortable one beside a strip.
+    var pickerWidth = wide
+        ? (width - _columnGap - _settingsColumn)
+            .clamp(_pickerLeast, _pickerColumn)
+        : width;
 
-    var picking = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _modes(theme, pickerWidth),
-        const SizedBox(height: 10),
-        switch (_mode) {
-          ColorPickerMode.sliders => _slidersMode(theme, pickerWidth),
-          ColorPickerMode.wheel => _wheelMode(theme, pickerWidth),
-          ColorPickerMode.palette => _paletteMode(theme, pickerWidth),
-        },
-      ],
-    );
+    var picking = switch (_mode) {
+      ColorPickerMode.sliders => _slidersMode(theme, pickerWidth),
+      ColorPickerMode.wheel => _wheelMode(theme, pickerWidth),
+      ColorPickerMode.palette => _paletteMode(theme, pickerWidth),
+      ColorPickerMode.gradient => _gradientMode(theme, pickerWidth),
+    };
 
     var settings = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _channels(theme, settingsWidth),
+        _channels(theme),
         const SizedBox(height: 14),
         _SavedRow(
           current: _current,
-          width: settingsWidth,
           onPick: (c) => setState(() {
             _tookFromOutside(c);
-            widget.onChanged(_current);
+            _say();
           }),
         ),
       ],
     );
 
-    if (!wide) {
-      return SizedBox(
-        width: widget.width,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [picking, const SizedBox(height: 14), settings],
-        ),
-      );
-    }
+    // The ways of choosing run across the whole picker rather than across the
+    // colour column only. They are the picker's own navigation, not a part of
+    // the square underneath them -- and given the narrower column they wrapped
+    // onto a second line, which moves everything below them down the dialog
+    // for no reason at all.
     return SizedBox(
-      width: widget.width,
-      child: Row(
+      width: width,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(width: pickerWidth, child: picking),
-          const SizedBox(width: 20),
-          Expanded(child: settings),
+          _modes(theme, width),
+          const SizedBox(height: 10),
+          if (!wide) ...[
+            picking,
+            const SizedBox(height: 14),
+            settings,
+          ] else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: pickerWidth, child: picking),
+                const SizedBox(width: _columnGap),
+                Expanded(child: settings),
+              ],
+            ),
         ],
       ),
     );
   }
 
-  /// _modes is the three ways of choosing, across the top.
+  /// _modes is the ways of choosing, across the top of the whole picker.
   Widget _modes(ColorScheme theme, double width) => SizedBox(
         width: width,
         child: Wrap(
           spacing: 0,
           runSpacing: 6,
           children: [
-            for (var mode in ColorPickerMode.values)
+            for (var mode in _modesOffered)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: InkWell(
@@ -865,6 +1065,12 @@ class _AppColorPickerState extends State<AppColorPicker> {
       _format = ColorFormat.hex;
       _harmony = ColorHarmony.analogous;
       _locked = List.filled(5, false);
+      // The gradient too, and the end being edited with it: it is as much a
+      // part of how the picker opened as the colour is, and a reset that
+      // left a second colour behind would be a way out of half a tangle.
+      _gradient = _openedGradient;
+      _editingStop = -1;
+      widget.onGradientChanged?.call(_gradient);
       _tookFromOutside(_opened);
       _leadFromCurrent();
       widget.onChanged(_current);
@@ -1059,6 +1265,223 @@ class _AppColorPickerState extends State<AppColorPicker> {
   }
 
   /// _paletteMode is five colours at once.
+  /// _gradientMode is the colours a fade runs through, and how it runs.
+  ///
+  /// There is no "make this a gradient" switch. A colour with one point on
+  /// the bar is a flat colour and a colour with two is a fade, which is the
+  /// same thing the switch used to say and one control fewer to find.
+  ///
+  /// The fade itself is shown full size, at the same height the colour square
+  /// is, and painted with the very shader the painters use -- so the angle and
+  /// the radial switch are things you watch happen rather than things you set
+  /// and go and look at. The points live on a bar under it, where they can be
+  /// dragged along a straight line whichever way the gradient itself is
+  /// pointing.
+  Widget _gradientMode(ColorScheme theme, double width) {
+    var g = _gradient;
+    var label = TextStyle(fontSize: 11, color: theme.onSurfaceVariant);
+    var chosen = _chosenColour();
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _GradientPreview(
+            key: const ValueKey("gradientPreview"),
+            paint: PaintSpec(widget.color, gradient: g),
+            width: width,
+            height: width * 0.52,
+            outline: theme.outlineVariant,
+          ),
+          const SizedBox(height: 8),
+          // The points, and the buttons that add one and take one away. On a
+          // straight bar however the gradient itself is pointing: dragging a
+          // handle round a radial fade is not a thing anybody can aim.
+          Row(children: [
+            _GradientBar(
+              key: const ValueKey("gradientBar"),
+              from: widget.color,
+              spec: g,
+              editing: _editingStop,
+              onPick: _editEnd,
+              onMove: (index, at) {
+                if (g == null) return;
+                _setGradient(index < 0
+                    ? g.copyWith(start: at)
+                    : g.withStop(index, g.ramp[index].copyWith(at: at)));
+              },
+              onBias: (index, bias) {
+                if (g == null) return;
+                _setGradient(
+                    g.withStop(index, g.ramp[index].copyWith(bias: bias)));
+              },
+              width: math.max(60, width - _stopButtons * 2),
+            ),
+            _GradientStopButton(
+              key: const ValueKey("gradientAdd"),
+              icon: Icons.add,
+              width: _stopButtons,
+              tip: g == null
+                  ? "Fade to a second colour"
+                  : "Another colour in the fade",
+              // The first press is what turns a flat colour into a fade.
+              onTap: () {
+                if (g == null) {
+                  _setGradient(GradientSpec(to: _fadeTowards(widget.color)));
+                  _editEnd(0);
+                  return;
+                }
+                var (next, index) = g.plus();
+                _setGradient(next);
+                _editEnd(index);
+              },
+            ),
+            _GradientStopButton(
+              key: const ValueKey("gradientRemove"),
+              icon: Icons.remove,
+              width: _stopButtons,
+              tip: g == null
+                  ? "One colour already"
+                  : "Take this colour out of the fade",
+              // And taking the last one out is what turns it back.
+              onTap: g == null || _editingStop < 0
+                  ? null
+                  : () {
+                      var next = g.minus(_editingStop);
+                      _editingStop =
+                          math.min(_editingStop, (next?.count ?? 2) - 2);
+                      _setGradient(next);
+                    },
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text(g == null ? "One colour" : _editingName(g), style: label),
+          if (g != null) ...[
+            const SizedBox(height: 10),
+            // Which way it runs. A radial one runs outwards from the middle
+            // and has no direction, so the angle goes away rather than
+            // sitting there doing nothing.
+            Row(children: [
+              _GradientShapeButton(
+                key: const ValueKey("gradientLinear"),
+                icon: Icons.linear_scale,
+                label: "Straight",
+                on: !g.radial,
+                onTap: () => _setGradient(g.copyWith(radial: false)),
+              ),
+              const SizedBox(width: 6),
+              _GradientShapeButton(
+                key: const ValueKey("gradientRadial"),
+                icon: Icons.blur_circular,
+                label: "Radial",
+                on: g.radial,
+                onTap: () => _setGradient(g.copyWith(radial: true)),
+              ),
+            ]),
+            if (!g.radial)
+              _gradientSlider(
+                theme,
+                key: const ValueKey("gradientAngle"),
+                name: "Angle",
+                value: g.angle.clamp(0, 360),
+                max: 360,
+                divisions: 72,
+                reading: "${g.angle.round()}\u00B0",
+                onChanged: (v) => _setGradient(g.copyWith(angle: v)),
+              ),
+          ],
+          // How see-through the colour in hand is. Per point, so a fade can
+          // run from a colour to nothing -- which is most of what a gradient
+          // on a chart or a picture is actually for.
+          if (widget.allowAlpha)
+            _gradientSlider(
+              theme,
+              key: const ValueKey("gradientOpacity"),
+              name: "Opacity",
+              value: chosen.a,
+              max: 1,
+              divisions: 100,
+              reading: "${(chosen.a * 100).round()}%",
+              onChanged: (v) => _setChosen(chosen.withValues(alpha: v)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// _chosenColour is the colour the gradient tab is working on: one of the
+  /// fade's, or the flat colour when there is no fade.
+  Color _chosenColour() {
+    var g = _gradient;
+    if (g == null || _editingStop < 0 || _editingStop >= g.ramp.length) {
+      return widget.color;
+    }
+    return g.ramp[_editingStop].color;
+  }
+
+  /// _setChosen writes a colour back to wherever the tab is working, and
+  /// brings the rest of the picker with it.
+  void _setChosen(Color colour) {
+    setState(() {
+      _take(colour);
+      _readWheel();
+      _readThird();
+      _readField();
+      _say();
+    });
+  }
+
+  /// _gradientSlider is one named number with its reading beside it. Three of
+  /// these in a row is most of the gradient tab.
+  Widget _gradientSlider(
+    ColorScheme theme, {
+    required Key key,
+    required String name,
+    required double value,
+    required double max,
+    required int divisions,
+    required String reading,
+    required ValueChanged<double> onChanged,
+  }) {
+    var label = TextStyle(fontSize: 11, color: theme.onSurfaceVariant);
+    return Row(children: [
+      SizedBox(width: 54, child: Text(name, style: label)),
+      Expanded(
+        child: Slider(
+          key: key,
+          value: value,
+          max: max,
+          divisions: divisions,
+          label: reading,
+          onChanged: onChanged,
+        ),
+      ),
+      SizedBox(width: 48, child: Text(reading, style: label)),
+    ]);
+  }
+
+  /// _editingName says which colour the rest of the picker is working on.
+  String _editingName(GradientSpec g) {
+    if (_editingStop < 0) return "Editing the first colour";
+    if (_editingStop == 0 && g.count == 2) return "Editing the second colour";
+    return "Editing colour ${_editingStop + 2} of ${g.count}";
+  }
+
+  /// _fadeTowards is what a gradient starts out running to: the same colour
+  /// most of the way to black, or to white where it is already dark.
+  ///
+  /// A second colour that is visibly related to the first. Starting on a flat
+  /// black meant every new gradient's first job was to be undone.
+  Color _fadeTowards(Color from) {
+    var hsv = HSVColor.fromColor(Color(from.toARGB32()).withAlpha(255));
+    var value = hsv.value > 0.4 ? hsv.value * 0.35 : 0.9;
+    return hsv
+        .withValue(value.clamp(0.0, 1.0))
+        .toColor()
+        .withValues(alpha: from.a);
+  }
+
   Widget _paletteMode(ColorScheme theme, double width) {
     // The disc itself the same size as the wheel mode's: the box is bigger by
     // the margin the handle on the rim runs in, rather than the wheel being
@@ -1350,13 +1773,23 @@ class _AppColorPickerState extends State<AppColorPicker> {
   }
 
   /// _channels is the four numbers and the notation under them.
-  Widget _channels(ColorScheme theme, double width) {
+  /// _channels is the four numbers, the notation and the field.
+  ///
+  /// Told nothing about how wide it is. Everything in here fills the column
+  /// it is given instead, because a width worked out by the caller and a
+  /// width actually handed down by the layout are two different numbers the
+  /// moment a dialog trims anything -- and the difference comes out as an
+  /// overflow stripe rather than as a narrower picker.
+  Widget _channels(ColorScheme theme) {
     var c = _current;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(children: [
+        // Wrapped rather than a row: in the narrowest dialog four boxes and
+        // their gaps are wider than the column, and a Row that does not fit
+        // is a stripe rather than a second line.
+        Wrap(children: [
           _ChannelField(
               label: "R",
               value: (c.r * 255).roundToDouble(),
@@ -1418,7 +1851,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
                 _readThird();
                 _readField();
                 _write();
-                widget.onChanged(_current);
+                _say();
               }),
             ),
           ),
@@ -1426,7 +1859,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
         const SizedBox(height: 2),
         SizedBox(
           height: 30,
-          width: width,
+          width: double.infinity,
           child: TextField(
             key: const ValueKey("colorPickerHex"),
             controller: _text,
@@ -1534,7 +1967,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
     );
     setState(() {
       _tookFromOutside(next);
-      widget.onChanged(_current);
+      _say();
     });
   }
 }
@@ -1700,10 +2133,8 @@ double greyOf(Color color) =>
 class _SavedRow extends StatelessWidget {
   final Color current;
   final ValueChanged<Color> onPick;
-  final double width;
 
-  const _SavedRow(
-      {required this.current, required this.onPick, required this.width});
+  const _SavedRow({required this.current, required this.onPick});
 
   @override
   Widget build(BuildContext context) {
@@ -1723,13 +2154,19 @@ class _SavedRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(children: [
-              Text(
-                "SAVED COLOURS",
-                style: TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 0.7,
-                  fontWeight: FontWeight.w600,
-                  color: theme.onSurfaceVariant.withValues(alpha: 0.7),
+              // Flexible, so on the narrowest phone the heading gives way
+              // rather than pushing the two buttons off the end of the row.
+              // The buttons are the part you cannot do without.
+              Flexible(
+                child: Text(
+                  "SAVED COLOURS",
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9,
+                    letterSpacing: 0.7,
+                    fontWeight: FontWeight.w600,
+                    color: theme.onSurfaceVariant.withValues(alpha: 0.7),
+                  ),
                 ),
               ),
               const Spacer(),
@@ -1768,7 +2205,7 @@ class _SavedRow extends StatelessWidget {
             else
               SizedBox(
                 key: const ValueKey("savedSwatches"),
-                width: width,
+                width: double.infinity,
                 child: Wrap(
                   spacing: 5,
                   runSpacing: 5,
@@ -2461,4 +2898,440 @@ void paintCheckerboard(Canvas canvas, Rect box, {double square = 6}) {
           light);
     }
   }
+}
+
+/// _GradientShapeButton is one of the two shapes a gradient can be.
+class _GradientShapeButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+
+  const _GradientShapeButton({
+    required this.icon,
+    required this.label,
+    required this.on,
+    required this.onTap,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(4),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          color: on ? theme.secondaryContainer : null,
+          border: Border.all(
+              color: on ? theme.secondaryContainer : theme.outlineVariant),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon,
+              size: 13,
+              color: on ? theme.onSecondaryContainer : theme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: on
+                      ? theme.onSecondaryContainer
+                      : theme.onSurfaceVariant)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// _GradientStopButton adds a colour to the fade or takes one away.
+class _GradientStopButton extends StatelessWidget {
+  final IconData icon;
+  final String tip;
+  final double width;
+  final VoidCallback? onTap;
+
+  const _GradientStopButton(
+      {required this.icon,
+      required this.tip,
+      required this.width,
+      this.onTap,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tip,
+      child: SizedBox(
+        width: width,
+        height: width,
+        child: IconButton(
+          icon: Icon(icon, size: 16),
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          color: theme.onSurfaceVariant,
+          onPressed: onTap,
+        ),
+      ),
+    );
+  }
+}
+
+/// _GradientPreview is the fade drawn the way it will actually be painted.
+///
+/// Through the same PaintSpec the renderers use, rather than a Flutter
+/// LinearGradient built to look similar: a preview with its own idea of what
+/// a gradient is is a preview that can be wrong about the angle, the falloff
+/// or where the third colour lands, and being wrong is the only thing a
+/// preview must not be.
+class _GradientPreview extends StatelessWidget {
+  final PaintSpec paint;
+  final double width;
+  final double height;
+  final Color outline;
+
+  const _GradientPreview({
+    required this.paint,
+    required this.width,
+    required this.height,
+    required this.outline,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        size: Size(width, height),
+        painter: _GradientPreviewPainter(paint, outline),
+      );
+}
+
+class _GradientPreviewPainter extends CustomPainter {
+  final PaintSpec spec;
+  final Color outline;
+
+  const _GradientPreviewPainter(this.spec, this.outline);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var area = Offset.zero & size;
+    var round = RRect.fromRectAndRadius(area, const Radius.circular(6));
+    canvas.save();
+    canvas.clipRRect(round);
+    _checker(canvas, area);
+    var shader = spec.shaderFor(area);
+    canvas.drawRect(
+        area,
+        shader == null
+            ? (Paint()..color = spec.color)
+            : (Paint()..shader = shader));
+    canvas.restore();
+    canvas.drawRRect(
+        round,
+        Paint()
+          ..color = outline
+          ..style = PaintingStyle.stroke);
+  }
+
+  @override
+  bool shouldRepaint(_GradientPreviewPainter old) =>
+      old.spec != spec || old.outline != outline;
+}
+
+/// _checker is the grey squares that make a see-through colour visibly
+/// see-through rather than black.
+void _checker(Canvas canvas, Rect area) {
+  const square = 6.0;
+  var light = Paint()..color = const Color(0xFF9A9A9A);
+  var dark = Paint()..color = const Color(0xFF6E6E6E);
+  for (var y = area.top; y < area.bottom; y += square) {
+    for (var x = area.left; x < area.right; x += square) {
+      canvas.drawRect(Rect.fromLTWH(x, y, square, square),
+          ((x ~/ square) + (y ~/ square)).isEven ? light : dark);
+    }
+  }
+}
+
+/// _GradientBar is where each colour in the fade is reached, with a handle
+/// apiece.
+///
+/// Dragging them together makes the change abrupt and dragging them apart
+/// leaves more of each colour flat. Always drawn left to right whatever
+/// direction the gradient runs in: this bar is the order of the colours, and
+/// the preview above it is the direction.
+/// _GradientBar is the gradient itself, with a handle at each end.
+///
+/// The handles are where the two colours stop being themselves, so dragging
+/// them together makes the change abrupt and dragging them apart leaves more
+/// of each colour flat. Shown on the gradient rather than as two numbers,
+/// because "how far along does the fade start" is a question about a picture.
+class _GradientBar extends StatefulWidget {
+  final Color from;
+
+  /// spec is null when the colour is flat: the bar then has one point on it,
+  /// and the add button beside it is what turns it into a fade.
+  final GradientSpec? spec;
+
+  /// editing is which colour is selected: -1 for the first, 0 for the second,
+  /// and so on.
+  final int editing;
+  final ValueChanged<int> onPick;
+  final void Function(int stop, double at) onMove;
+
+  /// onBias moves one of the thin handles either side of the selected point:
+  /// where the change into the colour at [stop] is half done.
+  final void Function(int stop, double bias) onBias;
+  final double width;
+
+  const _GradientBar({
+    required this.from,
+    required this.spec,
+    required this.editing,
+    required this.onPick,
+    required this.onMove,
+    required this.onBias,
+    required this.width,
+    super.key,
+  });
+
+  @override
+  State<_GradientBar> createState() => _GradientBarState();
+}
+
+/// _Held is what a drag on the bar has hold of.
+enum _Held { stop, bias }
+
+class _GradientBarState extends State<_GradientBar> {
+  /// _dragging is which handle is under the finger and what kind it is, so a
+  /// drag running past another one does not hand itself over to it.
+  int? _dragging;
+  _Held _kind = _Held.stop;
+
+  static const double _bar = 34;
+  static const double _grip = 18;
+
+  /// _inset is the room the handles need at each end: half a handle, so one
+  /// pushed all the way to 0 or 1 is still fully drawn.
+  static const double _inset = _grip / 2;
+
+  double _at(double x) {
+    var span = widget.width - _grip;
+    if (span <= 0) return 0;
+    return ((x - _inset) / span).clamp(0.0, 1.0);
+  }
+
+  double _xOf(double at) => _inset + (widget.width - _grip) * at;
+
+  /// _places is every point's position, the first colour's included.
+  List<double> get _places => widget.spec?.positions ?? const [0.0];
+
+  /// _biasHandles are the thin handles either side of the selected point:
+  /// which span each one shapes, and where it currently sits.
+  ///
+  /// A span belongs to the colour it runs *into*, so the handle to the left
+  /// of a point shapes that point's own span and the one to its right shapes
+  /// the next point's. The first colour has nothing to its left.
+  List<(int, double)> get _biasHandles {
+    var spec = widget.spec;
+    if (spec == null) return const [];
+    var places = spec.positions;
+    var ramp = spec.ramp;
+    var out = <(int, double)>[];
+    void add(int stop) {
+      if (stop < 0 || stop >= ramp.length) return;
+      var from = places[stop];
+      var to = places[stop + 1];
+      out.add((stop, from + (to - from) * ramp[stop].bias));
+    }
+
+    // The span into this point, and the one out of it.
+    add(widget.editing);
+    add(widget.editing + 1);
+    return out;
+  }
+
+  /// _grab picks whatever is nearest the touch. The thin handles win a tie:
+  /// they are small, they are only there while their point is selected, and
+  /// the point itself is a much bigger thing to hit.
+  void _grab(double x) {
+    debugPrint(
+        "GRAB x=\$x handles=\${_biasHandles} editing=\${widget.editing}");
+    for (var (stop, at) in _biasHandles) {
+      if ((_xOf(at) - x).abs() <= 7) {
+        setState(() {
+          _dragging = stop;
+          _kind = _Held.bias;
+        });
+        return;
+      }
+    }
+    var at = _at(x);
+    var places = _places;
+    var nearest = 0;
+    for (var i = 1; i < places.length; i++) {
+      if ((at - places[i]).abs() < (at - places[nearest]).abs()) nearest = i;
+    }
+    setState(() {
+      _dragging = nearest;
+      _kind = _Held.stop;
+    });
+    widget.onPick(nearest - 1);
+  }
+
+  void _move(double x) {
+    var index = _dragging;
+    if (index == null) return;
+    if (_kind == _Held.bias) {
+      var places = _places;
+      var from = places[index];
+      var to = places[index + 1];
+      var span = to - from;
+      if (span <= 0) return;
+      widget.onBias(index, ((_at(x) - from) / span).clamp(0.05, 0.95));
+      return;
+    }
+    widget.onMove(index - 1, _at(x));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      dragStartBehavior: DragStartBehavior.down,
+      // From where the finger went down, not from where the drag was
+      // recognised. A drag is not recognised until the pointer has travelled
+      // about eighteen pixels, and eighteen pixels is far enough past a thin
+      // handle to miss it and take the point behind it instead -- which is
+      // why dragStartBehavior is down.
+      onHorizontalDragStart: (d) => _grab(d.localPosition.dx),
+      onHorizontalDragUpdate: (d) => _move(d.localPosition.dx),
+      onHorizontalDragEnd: (_) => setState(() => _dragging = null),
+      onTapDown: (d) => _grab(d.localPosition.dx),
+      child: CustomPaint(
+        size: Size(widget.width, _bar),
+        painter: _GradientBarPainter(
+          from: widget.from,
+          spec: widget.spec,
+          editing: widget.editing,
+          biases: _biasHandles,
+          outline: theme.outlineVariant,
+          ring: theme.primary,
+          inset: _inset,
+          grip: _grip,
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientBarPainter extends CustomPainter {
+  final Color from;
+  final GradientSpec? spec;
+  final int editing;
+  final List<(int, double)> biases;
+  final Color outline;
+  final Color ring;
+  final double inset;
+  final double grip;
+
+  const _GradientBarPainter({
+    required this.from,
+    required this.spec,
+    required this.editing,
+    required this.biases,
+    required this.outline,
+    required this.ring,
+    required this.inset,
+    required this.grip,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var track =
+        Rect.fromLTWH(inset, 6, size.width - inset * 2, size.height - 18);
+    var round = RRect.fromRectAndRadius(track, const Radius.circular(4));
+    canvas.save();
+    canvas.clipRRect(round);
+    _checker(canvas, track);
+    var paint = PaintSpec(from, gradient: spec);
+    if (spec == null) {
+      canvas.drawRect(track, Paint()..color = from);
+    } else {
+      // Left to right whatever direction the gradient runs in, and with each
+      // span's bias already in it -- this is the order of the colours and how
+      // sharply each gives way to the next.
+      var (colours, places) = paint.rampFor();
+      canvas.drawRect(
+        track,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            Offset(track.left, track.center.dy),
+            Offset(track.right, track.center.dy),
+            colours,
+            places,
+          ),
+      );
+    }
+    canvas.restore();
+    canvas.drawRRect(
+        round,
+        Paint()
+          ..color = outline
+          ..style = PaintingStyle.stroke);
+
+    // The thin handles first, so a point drawn over one still reads as the
+    // thing on top.
+    for (var (_, at) in biases) {
+      var x = inset + (size.width - grip) * at;
+      canvas.drawLine(
+        Offset(x, track.top + 2),
+        Offset(x, track.bottom - 2),
+        Paint()
+          ..color = ring
+          ..strokeWidth = 2,
+      );
+      canvas.drawLine(
+        Offset(x, track.top + 2),
+        Offset(x, track.bottom - 2),
+        Paint()
+          ..color = const Color(0xCCFFFFFF)
+          ..strokeWidth = 0.8,
+      );
+    }
+
+    var handles = spec?.positions ?? const [0.0];
+    var inks = [from, for (var stop in spec?.ramp ?? const []) stop.color];
+    for (var i = 0; i < handles.length; i++) {
+      var x = inset + (size.width - grip) * handles[i];
+      var selected = editing == i - 1;
+      var centre = Offset(x, size.height - grip / 2);
+      // On the checker, so a see-through point looks see-through: a gradient
+      // running to nothing is most of what these are for.
+      canvas.save();
+      canvas.clipPath(
+          Path()..addOval(Rect.fromCircle(center: centre, radius: grip / 2)));
+      _checker(canvas, Rect.fromCircle(center: centre, radius: grip / 2));
+      canvas.restore();
+      canvas.drawCircle(centre, grip / 2, Paint()..color = inks[i]);
+      canvas.drawCircle(
+        centre,
+        grip / 2,
+        Paint()
+          ..color = selected ? ring : outline
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = selected ? 2.5 : 1,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GradientBarPainter old) =>
+      old.from != from ||
+      old.spec != spec ||
+      old.editing != editing ||
+      old.biases.length != biases.length ||
+      old.ring != ring;
 }

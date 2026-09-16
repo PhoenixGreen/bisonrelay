@@ -31,9 +31,17 @@ List<Widget> shapeSettings(
         CanvasColorButton(
           label: "Fill",
           color: e.fill,
+          gradient: e.fillFade,
           onChanged: (c) {
             begin();
             write(e.copyWith(fill: c));
+            commit();
+          },
+          onGradientChanged: (g) {
+            begin();
+            write(g == null
+                ? e.copyWith(flatFill: true)
+                : e.copyWith(fillFade: g));
             commit();
           },
         ),
@@ -50,9 +58,17 @@ List<Widget> shapeSettings(
         CanvasColorButton(
           label: "Colour",
           color: e.strokeColor,
+          gradient: e.strokeFade,
           onChanged: (c) {
             begin();
             write(e.copyWith(strokeColor: c));
+            commit();
+          },
+          onGradientChanged: (g) {
+            begin();
+            write(g == null
+                ? e.copyWith(flatStroke: true)
+                : e.copyWith(strokeFade: g));
             commit();
           },
         ),

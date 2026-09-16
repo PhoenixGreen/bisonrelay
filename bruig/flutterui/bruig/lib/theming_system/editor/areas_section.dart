@@ -1,3 +1,6 @@
+import 'package:bruig/theming_system/model/area_gradient.dart';
+import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/components/color_picker.dart';
 import 'dart:io';
 import 'package:bruig/theming_system/editor/areas/buttons.dart';
 import 'package:bruig/theming_system/editor/areas/chat.dart';
@@ -296,7 +299,19 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
         onGradientColorChanged,
     required Alignment gradientBegin,
     required Alignment gradientEnd,
-    required ValueChanged<GradientDirection> onDirectionChanged,
+    required List<double>? gradientStops,
+    required bool gradientRadial,
+    // Everything about the fade except which palette slots the first two
+    // colours are bound to: the direction, whether it runs out from the
+    // middle, where each colour is reached, how sharp each change is, and
+    // any colour after the second.
+    //
+    // Through the app's colour picker rather than a dropdown of four fixed
+    // directions, which is what was here. The two dropdowns beside it stay,
+    // because they are what binds a gradient's colours to palette slots so
+    // the gradient follows the palette when it is edited -- something the
+    // picker knows nothing about.
+    required ValueChanged<PaintSpec> onGradientChanged,
     // allowImage is false for every border, and for the background of every
     // area outside _imageAreas.
     bool allowImage = false,
@@ -462,22 +477,12 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
                   ),
                 ),
               labelled(
-                "Direction",
-                DropdownButton<GradientDirection>(
-                  value: gradientDirectionFor(gradientBegin, gradientEnd),
-                  isExpanded: true,
-                  items: GradientDirection.values
-                      .map((d) => DropdownMenuItem(
-                          value: d,
-                          child: Text(gradientDirectionLabel(d),
-                              // The longest labels in any of these dropdowns;
-                              // in a narrow column they ellipsize rather than
-                              // overflowing the button.
-                              overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (d) {
-                    if (d != null) onDirectionChanged(d);
-                  },
+                "The fade",
+                _GradientButton(
+                  paint: areaPaintOf(
+                      gradientColors, gradientStops, gradientBegin, gradientEnd,
+                      radial: gradientRadial),
+                  onChanged: onGradientChanged,
                 ),
               ),
             ],
@@ -699,9 +704,22 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
             }),
             gradientBegin: style.gradientBegin,
             gradientEnd: style.gradientEnd,
-            onDirectionChanged: (d) => setAreaStyle(theme, (s) {
-              var (b, e) = gradientDirectionAlignments(d);
-              return s.copyWith(gradientBegin: b, gradientEnd: e);
+            gradientStops: style.gradientStops,
+            gradientRadial: style.gradientRadial,
+            onGradientChanged: (paint) => setAreaStyle(theme, (s) {
+              var made = areaGradientOf(paint);
+              var (colors, indexes) = _afterPicker(
+                  s.resolveGradientColors(theme),
+                  s.gradientColorIndexes,
+                  made.colours);
+              return s.copyWith(
+                gradientColors: colors,
+                gradientColorIndexes: indexes,
+                gradientStops: made.stops,
+                gradientBegin: made.begin,
+                gradientEnd: made.end,
+                gradientRadial: made.radial,
+              );
             }),
             allowImage: _imageAreas.contains(selected),
             imagePath: style.imagePath,
@@ -766,9 +784,22 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
             }),
             gradientBegin: style.borderGradientBegin,
             gradientEnd: style.borderGradientEnd,
-            onDirectionChanged: (d) => setAreaStyle(theme, (s) {
-              var (b, e) = gradientDirectionAlignments(d);
-              return s.copyWith(borderGradientBegin: b, borderGradientEnd: e);
+            gradientStops: style.borderGradientStops,
+            gradientRadial: style.borderGradientRadial,
+            onGradientChanged: (paint) => setAreaStyle(theme, (s) {
+              var made = areaGradientOf(paint);
+              var (colors, indexes) = _afterPicker(
+                  s.resolveBorderGradientColors(theme),
+                  s.borderGradientColorIndexes,
+                  made.colours);
+              return s.copyWith(
+                borderGradientColors: colors,
+                borderGradientColorIndexes: indexes,
+                borderGradientStops: made.stops,
+                borderGradientBegin: made.begin,
+                borderGradientEnd: made.end,
+                borderGradientRadial: made.radial,
+              );
             }),
             // No allowImage/onPickImage: borders are never image-filled.
             imagePath: style.borderImagePath,
@@ -874,4 +905,86 @@ class _AreasSectionState extends State<AreasSection> implements AreaEditorHost {
   nextColors[at] = color ?? fallback;
   nextIndexes[at] = color == null ? fallbackIndex : colorIndex;
   return (nextColors, nextIndexes);
+}
+
+/// _afterPicker works out what to store after the colour picker has been
+/// through a gradient's colours.
+///
+/// A colour it left alone keeps the palette slot it was bound to, so a
+/// gradient built out of "Primary" and "Surface" still follows those slots
+/// when they are edited. A colour it changed is now that colour and nothing
+/// else, and a colour it added never had a slot -- both come back bound to
+/// nothing, which is what a null index means.
+(List<Color>, List<int?>) _afterPicker(
+  List<Color> before,
+  List<int?> indexes,
+  List<Color> after,
+) {
+  var out = <int?>[];
+  for (var i = 0; i < after.length; i++) {
+    var was = i < before.length ? before[i] : null;
+    var bound = i < indexes.length ? indexes[i] : null;
+    out.add(
+        was != null && was.toARGB32() == after[i].toARGB32() ? bound : null);
+  }
+  return (after, out);
+}
+
+/// _GradientButton is the fade itself, drawn, opening the colour picker.
+///
+/// A swatch rather than a row of settings: a gradient has a direction, a
+/// shape, a colour per point, a place per point and a sharpness per change,
+/// and that is not a thing to lay out beside two dropdowns. It is all in the
+/// picker, where every other gradient in the app is set.
+class _GradientButton extends StatelessWidget {
+  final PaintSpec paint;
+  final ValueChanged<PaintSpec> onChanged;
+
+  const _GradientButton({required this.paint, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: "Set the fade: its direction, its shape, and the colours "
+          "along it",
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: () async {
+          var picked = await pickPaint(context, initial: paint);
+          if (picked != null) onChanged(picked);
+        },
+        child: Container(
+          height: 34,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: theme.outlineVariant),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: CustomPaint(painter: _GradientButtonPainter(paint)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientButtonPainter extends CustomPainter {
+  final PaintSpec spec;
+  const _GradientButtonPainter(this.spec);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var area = Offset.zero & size;
+    var shader = spec.shaderFor(area);
+    canvas.drawRect(
+        area,
+        shader == null
+            ? (Paint()..color = spec.color)
+            : (Paint()..shader = shader));
+  }
+
+  @override
+  bool shouldRepaint(_GradientButtonPainter old) => old.spec != spec;
 }

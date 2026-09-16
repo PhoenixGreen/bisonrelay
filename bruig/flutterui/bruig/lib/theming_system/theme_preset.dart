@@ -3,7 +3,7 @@
 //
 //   theme_area.dart        ThemeArea (which region of the app) + ContentAlign.
 //   area_fill.dart         how a background/border layer is painted
-//                          (AreaBackgroundMode, GradientDirection, AreaFill).
+//                          (AreaBackgroundMode, AreaFill).
 //   area_options.dart      the multiple-choice settings belonging to
 //                          individual areas, grouped by area.
 //   area_sides.dart        SideValues, a spacing setting split per side.

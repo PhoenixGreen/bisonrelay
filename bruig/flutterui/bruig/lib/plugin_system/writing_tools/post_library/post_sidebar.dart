@@ -349,10 +349,23 @@ class _PostSidebarState extends State<PostSidebar> {
   /// explaining a gesture that cannot change anything.
   Widget? _reorderHint(ThemeNotifier theme, PostLibraryModel library) {
     if (library.entries.length < 2) return null;
+    // And where it can go, where that is not everywhere.
+    //
+    // Documents and folders are separate runs and stay that way, so a
+    // document dragged past the last one stops against the boundary instead
+    // of filing itself among the folders. Said out loud because from the
+    // outside it looks like a bug: drag the top document down four places in
+    // a library of four, and it lands on the fourth however much further you
+    // take it -- which reads as the row jumping somewhere of its own accord.
+    var mixed = library.entries.any((e) => e.isFolder) &&
+        library.entries.any((e) => !e.isFolder);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       child: Text(
-        "Press and hold a row's ⋮ to move it",
+        mixed
+            ? "Press and hold a row's ⋮ to move it. Documents stay above the "
+                "folders."
+            : "Press and hold a row's ⋮ to move it",
         style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
       ),
     );

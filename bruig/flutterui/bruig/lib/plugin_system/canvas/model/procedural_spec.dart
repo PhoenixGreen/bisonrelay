@@ -1,6 +1,8 @@
 import 'dart:ui';
 
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 
 // procedural_spec.dart is the recipe for a generated background: which
@@ -48,7 +50,11 @@ enum ProceduralStyle {
   crosshatch("Crosshatch", "Inked hatching, crossed at an angle"),
   splatter("Paint splatter", "Thrown ink, with droplets and drips"),
   flames("Flames", "Tongues of fire licking upward"),
-  pitch("Sports pitch", "A marked playing surface, drawn to scale");
+  pitch("Sports pitch", "A marked playing surface, drawn to scale"),
+  // A surface rather than a pattern. The others are marks on a ground; this
+  // one is the ground itself, which is what a title plate, a panel behind a
+  // logo or an industrial-looking banner wants underneath it.
+  metal("Metal texture", "Brushed metal, with rust, damage and a sheen");
 
   final String label;
   final String description;
@@ -70,7 +76,8 @@ enum ProceduralStyle {
         ProceduralStyle.plain ||
         ProceduralStyle.lineGrid ||
         ProceduralStyle.hexGrid ||
-        ProceduralStyle.pitch =>
+        ProceduralStyle.pitch ||
+        ProceduralStyle.metal =>
           false,
         _ => true,
       };
@@ -128,12 +135,14 @@ class ProceduralSpec {
   final Color foreground;
   final Color accent;
 
-  /// gradient blends [background] towards [gradientTo] behind the generator.
-  final bool gradient;
-  final Color gradientTo;
-
-  /// gradientAngle is in degrees, clockwise from left-to-right.
-  final double gradientAngle;
+  /// gradient fades [background] towards a second colour behind the
+  /// generator, or null for a flat one.
+  ///
+  /// Set in the Base colour's picker rather than in a Gradient toggle, a To
+  /// swatch and an Angle field of its own -- which is where it used to be,
+  /// and which is three controls in the Colours group for something most
+  /// backgrounds do not do. See GradientSpec.
+  final GradientSpec? gradient;
 
   /// density is roughly "how much of it": 0 draws nothing at all and 1 fills
   /// the frame. Every generator is written so that turning this down leaves a
@@ -208,6 +217,14 @@ class ProceduralSpec {
   /// to carry the answer.
   final RingSpec rings;
 
+  /// light is the one light thrown over the finished pattern, which every
+  /// style has and which none of them knows about. See LightSpec.
+  final LightSpec light;
+
+  /// metal is read only by [ProceduralStyle.metal], the way [rings] is read
+  /// only by the rings.
+  final MetalSpec metal;
+
   /// vignette darkens the edges. Its own field rather than part of intensity
   /// because it is what makes almost all of these read as a background rather
   /// than as a pattern -- it puts the middle of the canvas forward.
@@ -219,9 +236,7 @@ class ProceduralSpec {
     this.background = const Color(0xFF0B0F14),
     this.foreground = const Color(0xFF2FE08A),
     this.accent = const Color(0xFFDFFFF0),
-    this.gradient = false,
-    this.gradientTo = const Color(0xFF16202B),
-    this.gradientAngle = 90,
+    this.gradient,
     this.density = 0.5,
     this.scale = 0.05,
     this.intensity = 0.8,
@@ -238,6 +253,8 @@ class ProceduralSpec {
     this.pauseEase = 6,
     this.sport = PitchSport.football,
     this.rings = const RingSpec(),
+    this.light = const LightSpec(),
+    this.metal = const MetalSpec(),
     this.vignette = 0.25,
   });
 
@@ -252,9 +269,8 @@ class ProceduralSpec {
     Color? background,
     Color? foreground,
     Color? accent,
-    bool? gradient,
-    Color? gradientTo,
-    double? gradientAngle,
+    GradientSpec? gradient,
+    bool flatBackground = false,
     double? density,
     double? scale,
     double? intensity,
@@ -271,6 +287,8 @@ class ProceduralSpec {
     int? pauseEase,
     PitchSport? sport,
     RingSpec? rings,
+    LightSpec? light,
+    MetalSpec? metal,
     double? vignette,
   }) =>
       ProceduralSpec(
@@ -279,9 +297,7 @@ class ProceduralSpec {
         background: background ?? this.background,
         foreground: foreground ?? this.foreground,
         accent: accent ?? this.accent,
-        gradient: gradient ?? this.gradient,
-        gradientTo: gradientTo ?? this.gradientTo,
-        gradientAngle: gradientAngle ?? this.gradientAngle,
+        gradient: flatBackground ? null : (gradient ?? this.gradient),
         density: density ?? this.density,
         scale: scale ?? this.scale,
         intensity: intensity ?? this.intensity,
@@ -298,6 +314,8 @@ class ProceduralSpec {
         pauseEase: pauseEase ?? this.pauseEase,
         sport: sport ?? this.sport,
         rings: rings ?? this.rings,
+        light: light ?? this.light,
+        metal: metal ?? this.metal,
         vignette: vignette ?? this.vignette,
       );
 
@@ -312,9 +330,7 @@ class ProceduralSpec {
         "bg": colorToJson(background),
         "fg": colorToJson(foreground),
         "accent": colorToJson(accent),
-        if (gradient) "gradient": true,
-        if (gradient) "gradientTo": colorToJson(gradientTo),
-        if (gradient) "gradientAngle": gradientAngle,
+        if (gradient != null) "gradient": gradient!.toJson(),
         "density": density,
         "scale": scale,
         "intensity": intensity,
@@ -331,6 +347,10 @@ class ProceduralSpec {
         if (animated && pauseFor > 0) "pauseEase": pauseEase,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
         if (style == ProceduralStyle.rings) "rings": rings.toJson(),
+        // Only where there is one. A light that has never been switched on is
+        // nine numbers in every document that has a background.
+        if (light.on) "light": light.toJson(),
+        if (style == ProceduralStyle.metal) "metal": metal.toJson(),
         "vignette": vignette,
       };
 
@@ -340,9 +360,7 @@ class ProceduralSpec {
         background: colorFromJson(json["bg"], const Color(0xFF0B0F14)),
         foreground: colorFromJson(json["fg"], const Color(0xFF2FE08A)),
         accent: colorFromJson(json["accent"], const Color(0xFFDFFFF0)),
-        gradient: jsonBool(json["gradient"], false),
-        gradientTo: colorFromJson(json["gradientTo"], const Color(0xFF16202B)),
-        gradientAngle: jsonDouble(json["gradientAngle"], 90),
+        gradient: _fadeFromJson(json),
         density: jsonDouble(json["density"], 0.5).clamp(0.0, 1.0),
         scale: jsonDouble(json["scale"], 0.05).clamp(0.002, 0.5),
         intensity: jsonDouble(json["intensity"], 0.8).clamp(0.0, 1.0),
@@ -365,6 +383,31 @@ class ProceduralSpec {
         rings: json["rings"] is Map
             ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())
             : const RingSpec(),
+        light: json["light"] is Map
+            ? LightSpec.fromJson((json["light"] as Map).cast<String, dynamic>())
+            : const LightSpec(),
+        metal: json["metal"] is Map
+            ? MetalSpec.fromJson((json["metal"] as Map).cast<String, dynamic>())
+            : const MetalSpec(),
         vignette: jsonDouble(json["vignette"], 0.25).clamp(0.0, 1.0),
       );
+}
+
+/// _fadeFromJson reads the background's second colour, in either of the two
+/// shapes it has been saved in.
+///
+/// The old shape was a flag, a colour and an angle measured clockwise from
+/// left to right; the angle is now read off a compass like every other
+/// direction in a canvas, which is a quarter turn round from where it was.
+/// Backgrounds saved before the move have to keep pointing the way they did.
+GradientSpec? _fadeFromJson(Map<String, dynamic> json) {
+  var raw = json["gradient"];
+  if (raw is Map) {
+    return GradientSpec.fromJson(raw.cast<String, dynamic>());
+  }
+  if (raw != true) return null;
+  return GradientSpec(
+    to: colorFromJson(json["gradientTo"], const Color(0xFF16202B)),
+    angle: jsonDouble(json["gradientAngle"], 90) + 90,
+  );
 }

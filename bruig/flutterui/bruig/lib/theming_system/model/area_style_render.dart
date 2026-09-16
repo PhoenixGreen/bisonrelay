@@ -119,6 +119,7 @@ extension AreaStyleRender on AreaStyle {
           gradStops: gradientStops,
           gradBegin: gradientBegin,
           gradEnd: gradientEnd,
+          gradRadial: gradientRadial,
           imgPath: imagePath,
           imgFit: imageFit,
           preset: imagePreset,
@@ -132,6 +133,7 @@ extension AreaStyleRender on AreaStyle {
           gradStops: borderGradientStops,
           gradBegin: borderGradientBegin,
           gradEnd: borderGradientEnd,
+          gradRadial: borderGradientRadial,
           imgPath: borderImagePath,
           imgFit: borderImageFit,
           presetDir: presetDir);
@@ -145,6 +147,7 @@ extension AreaStyleRender on AreaStyle {
     List<double>? gradStops,
     Alignment gradBegin = Alignment.topLeft,
     Alignment gradEnd = Alignment.bottomRight,
+    bool gradRadial = false,
     String? imgPath,
     BoxFit imgFit = BoxFit.cover,
     // preset is only passed for the background layer -- borders have no
@@ -172,12 +175,17 @@ extension AreaStyleRender on AreaStyle {
         return AreaFill(color: solid ?? theme.surfaceColor(fallback));
       case AreaBackgroundMode.gradient:
         if (gradColors.length >= 2) {
+          // Out from the middle, or across. A radial one has no direction to
+          // run in, so the begin/end pair it would have used is left out
+          // rather than quietly doing nothing.
           return AreaFill(
-              gradient: LinearGradient(
-                  begin: gradBegin,
-                  end: gradEnd,
-                  colors: gradColors,
-                  stops: gradStops));
+              gradient: gradRadial
+                  ? RadialGradient(colors: gradColors, stops: gradStops)
+                  : LinearGradient(
+                      begin: gradBegin,
+                      end: gradEnd,
+                      colors: gradColors,
+                      stops: gradStops));
         }
         return AreaFill(color: theme.surfaceColor(fallback));
       case AreaBackgroundMode.image:

@@ -42,7 +42,10 @@ List<Widget> pathSettings(
       CanvasColorButton(
         label: "Colour",
         color: e.color,
+        gradient: e.fade,
         onChanged: (c) => now(e.copyWith(color: c)),
+        onGradientChanged: (g) =>
+            now(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g)),
       ),
       CanvasNumberField(
         label: "Width",

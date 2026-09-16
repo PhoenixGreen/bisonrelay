@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -162,6 +163,15 @@ class ShapeElement extends CanvasElement {
   final ShapeKind shape;
   final Color fill;
   final Color strokeColor;
+
+  /// fillFade and strokeFade are the second colours, when the fill or the
+  /// outline fades to one. Null for the flat ones, which is most of them.
+  ///
+  /// Set in the picker beside the colour itself rather than in settings of
+  /// their own -- see GradientSpec. That is why they have no on/off flag:
+  /// there either is a second colour or there is not.
+  final GradientSpec? fillFade;
+  final GradientSpec? strokeFade;
   final double strokeWidth;
 
   /// cornerRadius rounds a rectangle, and is ignored by the shapes that have
@@ -220,6 +230,8 @@ class ShapeElement extends CanvasElement {
     this.shape = ShapeKind.rectangle,
     this.fill = const Color(0xFF3D7EFF),
     this.strokeColor = const Color(0xFFFFFFFF),
+    this.fillFade,
+    this.strokeFade,
     this.strokeWidth = 0,
     this.cornerRadius = 0,
     this.radTL,
@@ -260,6 +272,8 @@ class ShapeElement extends CanvasElement {
       shape: shape,
       fill: fill,
       strokeColor: strokeColor,
+      fillFade: fillFade,
+      strokeFade: strokeFade,
       strokeWidth: strokeWidth,
       cornerRadius: cornerRadius,
       radTL: radTL,
@@ -282,6 +296,10 @@ class ShapeElement extends CanvasElement {
     ShapeKind? shape,
     Color? fill,
     Color? strokeColor,
+    GradientSpec? fillFade,
+    GradientSpec? strokeFade,
+    bool flatFill = false,
+    bool flatStroke = false,
     double? strokeWidth,
     double? cornerRadius,
     double? radTL,
@@ -311,6 +329,8 @@ class ShapeElement extends CanvasElement {
           shape: shape ?? this.shape,
           fill: fill ?? this.fill,
           strokeColor: strokeColor ?? this.strokeColor,
+          fillFade: flatFill ? null : (fillFade ?? this.fillFade),
+          strokeFade: flatStroke ? null : (strokeFade ?? this.strokeFade),
           strokeWidth: strokeWidth ?? this.strokeWidth,
           cornerRadius: cornerRadius ?? this.cornerRadius,
           radTL: clearCorners ? radTL : (radTL ?? this.radTL),
@@ -333,6 +353,8 @@ class ShapeElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "shape": shape.name,
         "fill": colorToJson(fill),
+        if (fillFade != null) "fillFade": fillFade!.toJson(),
+        if (strokeFade != null) "strokeFade": strokeFade!.toJson(),
         if (strokeWidth > 0) "sw": strokeWidth,
         if (strokeWidth > 0) "sc": colorToJson(strokeColor),
         if (cornerRadius > 0) "cr": cornerRadius,
@@ -354,10 +376,23 @@ class ShapeElement extends CanvasElement {
       };
 
   factory ShapeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      ShapeElement(
-          b,
+      ShapeElement(b,
           shape: ShapeKind.fromName(json["shape"] as String?),
           fill: colorFromJson(json["fill"], const Color(0xFF3D7EFF)),
+          fillFade:
+              json["fillFade"]
+                      is Map
+                  ? GradientSpec.fromJson((json[
+                          "fillFade"] as Map)
+                      .cast<String, dynamic>())
+                  : null,
+          strokeFade:
+              json[
+                      "strokeFade"] is Map
+                  ? GradientSpec
+                      .fromJson(
+                          (json["strokeFade"] as Map).cast<String, dynamic>())
+                  : null,
           strokeColor: colorFromJson(json["sc"]),
           strokeWidth: jsonDouble(json["sw"], 0),
           cornerRadius: jsonDouble(json["cr"], 0),

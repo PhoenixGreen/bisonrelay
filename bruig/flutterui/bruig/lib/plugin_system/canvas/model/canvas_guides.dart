@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -63,27 +64,63 @@ class SnapTo {
   final bool edges;
   final bool centres;
 
+  /// objects is whether the other elements on the canvas count as lines too:
+  /// their sides and their middles, so a thing dragged near another lines up
+  /// with it.
+  ///
+  /// The lines that matter most of the time, and the ones that were missing.
+  /// A grid catches a design at regular intervals; what anybody actually
+  /// wants is this heading over that picture, and no grid spacing puts them
+  /// together unless both were already on it.
+  final bool objects;
+
   const SnapTo({
     this.vertices = true,
     this.edges = true,
     this.centres = true,
+    this.objects = true,
   });
 
   bool get any => vertices || edges || centres;
 
-  SnapTo copyWith({bool? vertices, bool? edges, bool? centres}) => SnapTo(
+  SnapTo copyWith(
+          {bool? vertices, bool? edges, bool? centres, bool? objects}) =>
+      SnapTo(
         vertices: vertices ?? this.vertices,
         edges: edges ?? this.edges,
         centres: centres ?? this.centres,
+        objects: objects ?? this.objects,
       );
 
-  Map<String, dynamic> toJson() => {"v": vertices, "e": edges, "c": centres};
+  Map<String, dynamic> toJson() =>
+      {"v": vertices, "e": edges, "c": centres, if (!objects) "o": false};
 
   factory SnapTo.fromJson(Map<String, dynamic> json) => SnapTo(
         vertices: jsonBool(json["v"], true),
         edges: jsonBool(json["e"], true),
         centres: jsonBool(json["c"], true),
+        objects: jsonBool(json["o"], true),
       );
+}
+
+/// CanvasAlign is one of the six ways a set of elements can be lined up.
+///
+/// Named for what they do to the selection rather than for a direction, so
+/// that "left" means "all their left edges together" and not "move them left".
+enum CanvasAlign {
+  left("Align left", Icons.align_horizontal_left),
+  centreX("Centre across", Icons.align_horizontal_center),
+  right("Align right", Icons.align_horizontal_right),
+  top("Align top", Icons.align_vertical_top),
+  middleY("Centre down", Icons.align_vertical_center),
+  bottom("Align bottom", Icons.align_vertical_bottom);
+
+  final String label;
+  final IconData icon;
+  const CanvasAlign(this.label, this.icon);
+
+  /// across is whether this one moves things sideways.
+  bool get across => this == left || this == centreX || this == right;
 }
 
 /// CanvasRulers is which edges carry a ruler.
@@ -202,6 +239,7 @@ class CanvasGuides {
       snapTo.vertices &&
       snapTo.edges &&
       snapTo.centres &&
+      snapTo.objects &&
       snapWithin == 6 &&
       !rulers.any;
 

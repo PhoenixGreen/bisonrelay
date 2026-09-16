@@ -59,13 +59,18 @@ class PaletteColorDropdown extends StatelessWidget {
   // to the fixed palette slots.
   static const _customValue = -2;
 
+  // Through the app's own colour dialog rather than one of this file's own.
+  // There was a copy here, and copies drift: it still carried the width
+  // formula the shared one was fixed for, so on a narrow window this dialog
+  // overflowed and did not re-lay itself out when the window moved.
+  //
+  // pickColor rather than pickPaint: a palette slot is a colour that dozens
+  // of widgets resolve to -- a ColorScheme entry, a TextStyle, an icon tint
+  // -- and those take a Color. A gradient is a thing you fill a known
+  // rectangle with; see AreaStyle's background, which does offer one.
   Future<void> _pickCustomColor(BuildContext context, Color initial) async {
-    var result = await showDialog<_ColorPickResult>(
-      context: context,
-      builder: (context) => _CustomColorDialog(initial: initial),
-    );
-    if (result == null) return;
-    if (result.color != null) onChanged(result.color, null);
+    var picked = await pickColor(context, initial: initial);
+    if (picked != null) onChanged(picked, null);
   }
 
   @override
@@ -205,51 +210,4 @@ class _CheckerboardPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_CheckerboardPainter old) => old.cell != cell;
-}
-
-// _ColorPickResult is _CustomColorDialog's pop() value: the committed color,
-// or null where Cancel was pressed.
-class _ColorPickResult {
-  final Color? color;
-  const _ColorPickResult.color(this.color);
-}
-
-// _CustomColorDialog lets the user pick an arbitrary color (not limited to
-// the active preset's fixed palette slots) for a single AreaStyle field,
-// via PaletteColorDropdown's "Custom color..." entry.
-class _CustomColorDialog extends StatefulWidget {
-  final Color initial;
-  const _CustomColorDialog({required this.initial});
-
-  @override
-  State<_CustomColorDialog> createState() => _CustomColorDialogState();
-}
-
-class _CustomColorDialogState extends State<_CustomColorDialog> {
-  late Color _color = widget.initial;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text("Custom color"),
-      content: SingleChildScrollView(
-        child: AppColorPicker(
-          color: _color,
-          width: (MediaQuery.of(context).size.width - 120).clamp(300.0, 640.0),
-          onChanged: (c) => setState(() => _color = c),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text("Cancel"),
-        ),
-        TextButton(
-          onPressed: () =>
-              Navigator.of(context).pop(_ColorPickResult.color(_color)),
-          child: const Text("Select"),
-        ),
-      ],
-    );
-  }
 }

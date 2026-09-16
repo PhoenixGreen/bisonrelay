@@ -135,6 +135,70 @@ void main() {
         reason: "pulling the line off is how a chain is taken apart");
   });
 
+  group("on a box too short for both", () {
+    // The grips sit half way between a corner and the middle handle, so on a
+    // short box they land on top of the middle handle -- and the grip was
+    // asked first, so dragging the side of a short box started a link
+    // instead of resizing it.
+    CanvasController shortBox() {
+      var a = TextElement(
+        const ElementBase(id: "a", x: 100, y: 100, width: 300, height: 34),
+        text: _lorem,
+        box: const BoxSpec(padding: 0),
+        textSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
+      );
+      var b = TextElement(
+        const ElementBase(id: "b", x: 100, y: 300, width: 300, height: 200),
+        text: "Its own words",
+        box: const BoxSpec(padding: 0),
+        textSpec: const TextSpec(fontSize: 16, align: TextAlignSpec.left),
+      );
+      return CanvasController(CanvasDocument(
+        size: const CanvasSize(width: 800, ratio: CanvasRatio.wide),
+        elements: [a, b],
+      ));
+    }
+
+    testWidgets("the middle handle still resizes it", (tester) async {
+      var controller = shortBox();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      controller.selectOnly("a");
+      await tester.pumpAndSettle();
+
+      var before = boxIn(controller, "a").base.width;
+      // The middle-right handle, which on this box is a few pixels from the
+      // outgoing grip.
+      // The middle of the box's right edge, in document units: this box is
+      // at x 100 and 300 wide, 34 high from y 100.
+      var middle = stage.toStagePoint(const Offset(400, 117));
+      expect((middle - stage.textFlowGrips!.outAt).distance, lessThan(20),
+          reason: "otherwise this test is not asking anything");
+
+      await tester.dragFrom(middle, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      expect(boxIn(controller, "a").base.width, greaterThan(before + 30),
+          reason: "the drag resized the box rather than pulling a link out");
+      expect(boxIn(controller, "a").flowTo, isEmpty);
+    });
+
+    testWidgets("and the grip still works when it is what was aimed at",
+        (tester) async {
+      var controller = shortBox();
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      controller.selectOnly("a");
+      await tester.pumpAndSettle();
+
+      var from = stage.textFlowGrips!.outAt;
+      var onto = stage.toStagePoint(const Offset(250, 400));
+      await tester.dragFrom(from, onto - from);
+      await tester.pumpAndSettle();
+      expect(boxIn(controller, "a").flowTo, "b");
+    });
+  });
+
   testWidgets("a box being flowed into cannot be typed into", (tester) async {
     // It does not own the words it is showing: they belong to the box in
     // front of it, and typing here would be edited away by the next layout

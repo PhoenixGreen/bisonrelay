@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/data_source.dart';
+import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
@@ -19,6 +20,56 @@ import 'package:flutter/material.dart';
 // It is as wide as the sidebar and as tall as it has been dragged, both
 // because a table crammed into a 240-pixel control with two visible lines is a
 // table nobody can read.
+
+/// ChartStyleDefaults is how the chart draws by default: the settings a
+/// series falls back to until it has been given its own.
+///
+/// They were three groups of chart settings under the table -- Bars, Lines,
+/// Points -- which asked anybody looking at a chart of bars with a line over
+/// it to work out which group was about which half of it. The settings live
+/// on the series now, behind that series' own button; what is left here is
+/// the fallback, and the first series drawn a given way is what writes it.
+/// So giving the first set of bars a square corner squares every other set
+/// that has not been told otherwise, which is what "they inherit the first
+/// one" means.
+class ChartStyleDefaults {
+  final double width;
+  final double gap;
+  final double corner;
+  final bool smooth;
+  final bool points;
+  final double pointSize;
+  final Color pointColor;
+
+  const ChartStyleDefaults({
+    this.width = 2,
+    this.gap = 0.3,
+    this.corner = 4,
+    this.smooth = false,
+    this.points = false,
+    this.pointSize = 0,
+    this.pointColor = const Color(0x00000000),
+  });
+
+  ChartStyleDefaults copyWith({
+    double? width,
+    double? gap,
+    double? corner,
+    bool? smooth,
+    bool? points,
+    double? pointSize,
+    Color? pointColor,
+  }) =>
+      ChartStyleDefaults(
+        width: width ?? this.width,
+        gap: gap ?? this.gap,
+        corner: corner ?? this.corner,
+        smooth: smooth ?? this.smooth,
+        points: points ?? this.points,
+        pointSize: pointSize ?? this.pointSize,
+        pointColor: pointColor ?? this.pointColor,
+      );
+}
 
 class ChartDataEditor extends StatefulWidget {
   final ChartData data;
@@ -53,10 +104,38 @@ class ChartDataEditor extends StatefulWidget {
   /// onBind points one series at one of those columns.
   final void Function(int series, int column)? onBind;
 
+  /// chartType is what the chart draws by default, so that a series row can
+  /// leave out the settings its own kind of drawing has no use for -- a set
+  /// of bars has no line to set the width of.
+  final ChartType chartType;
+
+  /// animated is whether the chart arrives at all, so the series rows only
+  /// offer an arrival offset where there is an arrival to offset.
+  final bool animated;
+
+  /// elementId is which chart this is, so the grid's height is kept for this
+  /// one rather than for charts in general. See CanvasDataEditorShell.scope.
+  final String elementId;
+
+  /// style is how the chart draws where a series has not been told
+  /// otherwise, so a series' own field opens on what it is actually drawn at
+  /// rather than on a nought that has to be decoded.
+  final ChartStyleDefaults style;
+
+  /// onStyleChanged writes that back, for the series that leads its kind of
+  /// drawing. Null where the caller has no chart to write to, which is the
+  /// editor standing on its own in a test.
+  final ValueChanged<ChartStyleDefaults>? onStyleChanged;
+
   const ChartDataEditor({
     required this.data,
     required this.onChanged,
     required this.onCommit,
+    this.chartType = ChartType.line,
+    this.animated = false,
+    this.elementId = "",
+    this.style = const ChartStyleDefaults(),
+    this.onStyleChanged,
     this.sourceColumns = const [],
     this.boundTo = const [],
     this.sourceFields = const [],
@@ -75,6 +154,14 @@ const int _typedIn = -1;
 
 class _ChartDataEditorState extends State<ChartDataEditor> {
   ChartData get data => widget.data;
+
+  /// _openSeries is which series have their own settings showing.
+  ///
+  /// By position rather than by name, because a series has no id and its name
+  /// is a field somebody is in the middle of typing. Closed again whenever a
+  /// series is added or taken away, which is the only time a position means a
+  /// different series.
+  final Set<int> _openSeries = {};
 
   void _write(ChartData next) {
     widget.onChanged(next);
@@ -116,6 +203,10 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   }
 
   void _addSeries() {
+    // Whatever was open is shut: the open set is positions, and adding or
+    // removing a series is the one thing that makes a position mean a
+    // different series.
+    _openSeries.clear();
     var series = [...data.series];
     series.add(ChartSeries(
       name: "Series ${series.length + 1}",
@@ -126,6 +217,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   }
 
   void _removeSeries(int index) {
+    _openSeries.clear();
     var series = [...data.series]..removeAt(index);
     _write(ChartData(categories: data.categories, series: series));
   }
@@ -154,6 +246,10 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         // series names and where each one comes from.
         wanted: (data.categories.length + 2) * 32 + 48,
         remember: "canvasChartData",
+        // Per chart: a table of twenty rows wants a tall box and one of
+        // three does not, and one height shared by every chart left a hole
+        // under the small ones.
+        scope: widget.elementId,
         gridTooltip: "Edit the numbers in a table",
         textTooltip: "Edit the numbers as pasted text",
         toolbar: [
@@ -187,61 +283,319 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         ],
       );
 
-  /// _seriesRow is one series' name, colour and type, in a line.
+  /// _seriesRow is one series: its name, how it is drawn, its colour and when
+  /// it arrives, with the rest behind a button.
   ///
-  /// Captioned on the first row only. One caption per column says as much as
-  /// one per control and leaves a chart of six series six lines rather than
-  /// eighteen.
+  /// Behind a button because the row is read far more often than it is
+  /// changed. What anybody scans a list of series for is which one is which
+  /// -- the name, the colour, the kind of drawing -- and every setting laid
+  /// out beside those buried the answer in a thicket. Three series with five
+  /// controls each is fifteen controls to look past.
+  ///
+  /// The arrival offset stays out on the row rather than going behind the
+  /// button with the rest, because it is the one setting that is about this
+  /// series *against the others*: it is set by looking down the column and
+  /// comparing, which is not something you can do one flyout at a time.
   Widget _seriesRow(int i) {
     var series = data.series[i];
-    // Wrapped rather than a row: a narrow sidebar has no room for a swatch, a
-    // name and a dropdown side by side, and a Row that does not fit is an
-    // overflow stripe rather than a second line.
-    return Wrap(crossAxisAlignment: WrapCrossAlignment.start, children: [
-      CanvasColorButton(
-        label: i == 0 ? "Colour" : "",
-        color: series.color,
-        onChanged: (c) => _writeSeries(i, series.copyWith(color: c)),
+    var drawnAs = series.typeIn(widget.chartType);
+    var stroked = _stroked(drawnAs);
+    // Bars have settings of their own -- how far apart they stand and how
+    // round their corners are -- so the button is not a line chart's alone.
+    var settable = stroked || drawnAs.isBar;
+    // The first series is what the rest are offset against, so it has none.
+    var offsettable = widget.animated && i > 0;
+    var open = _openSeries.contains(i);
+
+    return Padding(
+      // Clear of the series after it: a handful of controls run together into
+      // one block unless the gap between series is bigger than the gap
+      // between the lines of one.
+      padding: EdgeInsets.only(bottom: i == data.series.length - 1 ? 16 : 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(crossAxisAlignment: WrapCrossAlignment.start, children: [
+            _captioned(
+              i == 0 ? "Name" : "",
+              SizedBox(
+                // Held down so name, kind, colour, offset and the button all
+                // make one line in a narrow sidebar. A series name is a
+                // legend entry -- "Revenue", "2024" -- not a sentence.
+                width: 68,
+                height: controlHeight,
+                child: CanvasGridCell(
+                  key: ValueKey("seriesName$i"),
+                  value: series.name,
+                  dense: true,
+                  onChanged: (v) {
+                    var out = [...data.series];
+                    out[i] = out[i].copyWith(name: v);
+                    widget.onChanged(
+                        ChartData(categories: data.categories, series: out));
+                  },
+                  onCommit: widget.onCommit,
+                ),
+              ),
+            ),
+            // "As the chart" rather than a second copy of the chart's own
+            // type: a series that follows the chart keeps following it when
+            // the chart is changed, which is what almost every series wants.
+            CanvasDropdown<String>(
+              label: i == 0 ? "Drawn as" : "",
+              value: series.type?.name ?? "",
+              width: 96,
+              options: [
+                ("", "As the chart"),
+                for (var t in ChartType.values)
+                  if (!t.isCircular) (t.name, t.label),
+              ],
+              onChanged: (v) => _writeSeries(
+                  i,
+                  v.isEmpty
+                      ? series.copyWith(followChart: true)
+                      : series.copyWith(type: ChartType.fromName(v))),
+            ),
+            CanvasColorButton(
+              label: i == 0 ? "Colour" : "",
+              // Held to the swatch's own width so the caption cannot be what
+              // decides whether this row fits on one line.
+              labelWidth: 30,
+              color: series.color,
+              gradient: series.gradient,
+              onChanged: (c) => _writeSeries(i, series.copyWith(color: c)),
+              onGradientChanged: (g) => _writeSeries(
+                  i,
+                  g == null
+                      ? series.copyWith(oneColour: true)
+                      : series.copyWith(gradient: g)),
+            ),
+            if (offsettable)
+              CanvasNumberField(
+                key: ValueKey("seriesDelay$i"),
+                label: i == 1 ? "Offset" : "",
+                value: series.delay * 100,
+                min: -100,
+                max: 100,
+                decimals: 0,
+                width: 52,
+                suffix: "%",
+                onChanged: (v) =>
+                    _writeSeries(i, series.copyWith(delay: v / 100)),
+                onCommit: widget.onCommit,
+              ),
+            // Nothing behind the button for a series with nothing to set --
+            // a set of bars takes its thickness from nowhere.
+            // Not wrapped in _captioned: the button reserves the caption's
+            // height itself, and reserving it twice put it a caption lower
+            // than the controls it sits beside -- far enough that the middle
+            // of it was empty space.
+            if (settable)
+              CanvasIconButton(
+                key: ValueKey("seriesMore$i"),
+                icon: open ? Icons.expand_less : Icons.tune,
+                tooltip: open
+                    ? "Hide this series' settings"
+                    : "This series' own settings",
+                onPressed: () => setState(
+                    () => open ? _openSeries.remove(i) : _openSeries.add(i)),
+              ),
+          ]),
+          if (open && settable) ...[
+            const SizedBox(height: 4),
+            Wrap(
+                crossAxisAlignment: WrapCrossAlignment.start,
+                children: _seriesSettings(i, series, drawnAs)),
+          ],
+        ],
       ),
-      Padding(
-        padding: EdgeInsets.only(top: i == 0 ? controlLabelHeight : 0),
-        child: SizedBox(
-          width: 96,
-          height: controlHeight,
-          child: CanvasGridCell(
-            value: series.name,
-            dense: true,
-            onChanged: (v) {
-              var out = [...data.series];
-              out[i] = out[i].copyWith(name: v);
-              widget.onChanged(
-                  ChartData(categories: data.categories, series: out));
-            },
+    );
+  }
+
+  /// _seriesSettings is what is behind one series' button: the settings that
+  /// belong to the way *that* series is drawn, and nothing else.
+  ///
+  /// Which is the whole point of the button. A chart of bars with a line over
+  /// it used to carry a Bars group, a Lines group and a Points group under
+  /// the table, and working out which of them was about which half of the
+  /// chart was left to the reader. Here the question and the answer are in
+  /// the same place.
+  List<Widget> _seriesSettings(int i, ChartSeries series, ChartType kind) {
+    var style = widget.style;
+    // The first series drawn this way owns the chart's own setting, so every
+    // other series drawn the same way follows it until it is given its own.
+    var leads = _firstDrawn(kind) == i;
+
+    void writeStyle(ChartStyleDefaults next) {
+      widget.onStyleChanged?.call(next);
+      widget.onCommit();
+    }
+
+    if (kind.isBar) {
+      return [
+        // Only on the series that leads: the bars all stand in the same
+        // slots, so how wide those slots are is one number for the chart and
+        // not one per series. It is here rather than in a group of its own
+        // because this is where somebody shaping the bars is standing.
+        if (leads)
+          CanvasNumberField(
+            key: ValueKey("seriesGap$i"),
+            // "Spacing" rather than "Gap": the animation section has a Gap of
+            // its own -- how much one item's arrival overlaps the next -- and
+            // two settings called Gap in one panel is one too many.
+            label: "Spacing",
+            value: style.gap,
+            min: 0,
+            max: 0.9,
+            decimals: 2,
+            width: 58,
+            onChanged: (v) => writeStyle(style.copyWith(gap: v)),
             onCommit: widget.onCommit,
           ),
+        CanvasNumberField(
+          key: ValueKey("seriesCorner$i"),
+          label: "Corner",
+          value: series.cornerOn(style.corner),
+          min: 0,
+          max: 100,
+          width: 54,
+          onChanged: (v) => leads
+              ? writeStyle(style.copyWith(corner: v))
+              : _writeSeries(i, series.copyWith(corner: v)),
+          onCommit: widget.onCommit,
         ),
+        CanvasHint(leads
+            ? "How the bars are shaped. Spacing is the gap between one "
+                "category and the next, and every other set of bars on this "
+                "chart takes these until it is given its own."
+            : "How round this set of bars is. It follows the first set until "
+                "it is changed here."),
+      ];
+    }
+
+    return [
+      CanvasNumberField(
+        key: ValueKey("seriesWidth$i"),
+        label: "Width",
+        // The width it is actually drawn at, so the field is never a bare
+        // nought that has to be decoded.
+        value: series.widthOn(style.width),
+        min: 0.5,
+        max: 40,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => leads
+            ? writeStyle(style.copyWith(width: v))
+            : _writeSeries(i, series.copyWith(width: v)),
+        onCommit: widget.onCommit,
       ),
-      const SizedBox(width: 5),
-      // "As the chart" rather than a second copy of the chart's own type: a
-      // series that follows the chart keeps following it when the chart is
-      // changed, which is what almost every series wants.
-      CanvasDropdown<String>(
-        label: i == 0 ? "Drawn as" : "",
-        value: series.type?.name ?? "",
-        width: 118,
-        options: [
-          ("", "As the chart"),
-          for (var t in ChartType.values)
-            if (!t.isCircular) (t.name, t.label),
+      // Nothing to curve on a scatter, which is unconnected by definition.
+      if (kind.usesSmooth)
+        CanvasToggle(
+          key: ValueKey("seriesSmooth$i"),
+          label: "Smooth",
+          value: series.smoothOn(style.smooth),
+          onChanged: (v) => leads
+              ? writeStyle(style.copyWith(smooth: v))
+              : _writeSeries(i, series.copyWith(smooth: v)),
+        ),
+      // A scatter is dots already, so there is nothing to mark.
+      if (kind.usesSmooth) ...[
+        CanvasToggle(
+          key: ValueKey("seriesPoints$i"),
+          label: "Points",
+          value: series.pointsOn(style.points),
+          onChanged: (v) => leads
+              ? writeStyle(style.copyWith(points: v))
+              : _writeSeries(i, series.copyWith(points: v)),
+        ),
+        if (series.pointsOn(style.points)) ...[
+          CanvasNumberField(
+            key: ValueKey("seriesPointSize$i"),
+            label: "Size",
+            // Nought is a real answer -- take the line's own weight -- so the
+            // field opens on it rather than on the weight it works out to.
+            value: series.pointSizeOn(style.pointSize),
+            min: 0,
+            max: 60,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) => leads
+                ? writeStyle(style.copyWith(pointSize: v))
+                : _writeSeries(i, series.copyWith(pointSize: v)),
+            onCommit: widget.onCommit,
+          ),
+          CanvasColorButton(
+            key: ValueKey("seriesPointColour$i"),
+            label: "Dots",
+            // The series' own colour until one is chosen, which is what a dot
+            // on a line is unless somebody says otherwise.
+            color: series.pointColorOn(style.pointColor).a > 0
+                ? series.pointColorOn(style.pointColor)
+                : series.color,
+            onChanged: (c) => leads
+                ? writeStyle(style.copyWith(pointColor: c))
+                : _writeSeries(i, series.copyWith(pointColor: c)),
+          ),
         ],
-        onChanged: (v) => _writeSeries(
-            i,
-            v.isEmpty
-                ? series.copyWith(followChart: true)
-                : series.copyWith(type: ChartType.fromName(v))),
-      ),
-    ]);
+      ],
+      CanvasHint(leads
+          ? "How this series is drawn. Every other series drawn the same way "
+              "takes these until it is given its own."
+          : "How this series is drawn. It follows the first series drawn the "
+              "same way until it is changed here."),
+    ];
   }
+
+  /// _firstDrawn is the first series drawn the same way as [kind]: the one
+  /// whose settings the rest of that kind follow.
+  ///
+  /// By kind rather than by position, because a chart of bars with a line
+  /// over it has two firsts -- the first set of bars and the first line --
+  /// and each leads its own.
+  int _firstDrawn(ChartType kind) {
+    for (var i = 0; i < data.series.length; i++) {
+      var drawn = data.series[i].typeIn(widget.chartType);
+      if (kind.isBar ? drawn.isBar : _stroked(drawn)) return i;
+    }
+    return -1;
+  }
+
+  /// _stroked is whether a kind of drawing has a line whose width can be set.
+  bool _stroked(ChartType type) =>
+      type == ChartType.line ||
+      type == ChartType.area ||
+      type == ChartType.scatter ||
+      type == ChartType.radar;
+
+  /// _captioned puts a caption over something that has none of its own, at
+  /// exactly the height every labelled control reserves for one.
+  ///
+  /// The controls in a row all stand on one baseline because each reserves
+  /// the caption's height above itself, words or no words. Anything put
+  /// beside them has to reserve it too, and doing that by hand in two places
+  /// is how one of them came to reserve a different amount from the other.
+  Widget _captioned(String label, Widget child) => Padding(
+        padding: const EdgeInsets.only(right: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: controlLabelHeight,
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 9,
+                      height: 1.1,
+                      color: ThemeNotifier.of(context).colors.onSurfaceVariant),
+                  overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(height: controlLabelGap),
+            child,
+          ],
+        ),
+      );
 
   /// _grip drags the editor taller or shorter.
   /// _raw is the whole table as one block of text, in the tab or comma
@@ -367,8 +721,12 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                 child: CanvasGridCell(
                   value: _number(data.valueAt(s, i)),
                   dense: true,
-                  onChanged: (v) =>
-                      _withValue(s, i, double.tryParse(v.trim()) ?? 0),
+                  // Through cellNumber rather than tryParse, so a figure
+                  // pasted or typed the way it is written -- 222,203 or 45% --
+                  // is the number it plainly is. Refusing the separators and
+                  // charting a nought is the sort of wrong that looks like
+                  // the chart's fault rather than the typing's.
+                  onChanged: (v) => _withValue(s, i, cellNumber(v) ?? 0),
                   onCommit: widget.onCommit,
                 ),
               ),

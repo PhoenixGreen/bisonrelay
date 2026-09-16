@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:flutter/painting.dart';
 
@@ -59,6 +61,17 @@ Color sliceColour(ChartElement e, int i) {
   }
   return chartPalette[i % chartPalette.length];
 }
+
+/// seriesShader is the gradient a series is drawn with across [area], or null
+/// where it is one colour.
+///
+/// One definition, because the bars, the area under a line and the line
+/// itself all ask: a gradient that ran one way on the bars and another on the
+/// line over them would be two gradients wearing one setting. [alpha] is
+/// whatever the arrival has done to it, applied to both ends so a series
+/// fading in fades as a whole.
+ui.Shader? seriesShader(ChartSeries series, Rect area, {double alpha = 1}) =>
+    series.paint.shaderFor(area, alpha: alpha);
 
 /// colouredByValue is whether a type takes its colours from the values rather
 /// than from the series they are in.

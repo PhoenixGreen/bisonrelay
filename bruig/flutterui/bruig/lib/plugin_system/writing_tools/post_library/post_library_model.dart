@@ -65,6 +65,33 @@ class PostLibraryModel extends ChangeNotifier {
 
   TextEditingController? _editor;
   Timer? _debounce;
+
+  /// _ordering is the order file being written, while it is being written,
+  /// and _pendingOrder is the arrangement it is writing.
+  ///
+  /// A drag is shown at once -- a row that does not move until a disk write
+  /// finishes is a drag that looks like it failed, and one that never moves
+  /// at all if the write is slow. That leaves a window in which the list on
+  /// screen and the list on disk disagree, and anything re-reading the folder
+  /// inside that window used to put the row back where it came from:
+  /// autosave finishing, a refresh from anywhere, the sidebar being built
+  /// again. Waiting for the write in each of those meant finding all of them.
+  /// This does not care which one it is -- until the write lands, every
+  /// listing is put into the order the drag asked for.
+  Future<void>? _ordering;
+  List<String>? _pendingOrder;
+
+  /// _arranged is a fresh listing, in whatever order a drag is still waiting
+  /// to save.
+  ///
+  /// Through PostStorage's own two functions, so a listing arranged before
+  /// the write and one arranged after it cannot disagree.
+  List<PostEntry> _arranged(List<PostEntry> listed) {
+    var wanted = _pendingOrder;
+    if (wanted == null) return listed;
+    return PostStorage.arrange(PostStorage.inOrder(listed, wanted), _folder);
+  }
+
   DateTime? _dirtySince;
   bool _disposed = false;
 
@@ -122,9 +149,13 @@ class PostLibraryModel extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    // After any order still being written, and in it either way. Reading the
+    // folder mid-write returns the order as it was, which puts a
+    // just-dragged row back where it came from -- see _ordering.
+    await _ordering;
     _loading = true;
     _notify();
-    _entries = await PostStorage.list(_folder);
+    _entries = _arranged(await PostStorage.list(_folder));
     _loading = false;
     _notify();
     unawaited(_sweepEmbedsOnce());
@@ -365,8 +396,14 @@ class PostLibraryModel extends ChangeNotifier {
     _saving = false;
     // Only the browsed folder is on screen; refreshing another one would
     // replace the list the user is looking at.
+    // And after any order still being written. This is the one that was
+    // biting: autosave fires eight hundred milliseconds after typing stops,
+    // so dragging a row while a document was open re-read the folder from
+    // disk with the old order still on it -- and the row anybody had just
+    // dropped hopped back a moment later.
     if (_openFolder == _folder) {
-      _entries = await PostStorage.list(_folder);
+      await _ordering;
+      _entries = _arranged(await PostStorage.list(_folder));
     }
     _notify();
   }
@@ -418,19 +455,32 @@ class PostLibraryModel extends ChangeNotifier {
     if (from < 0 || from >= _entries.length) return false;
 
     var moving = _entries[from];
-    // The notes folder is pinned to the bottom by the listing itself and is
-    // not among the rows that can move. Its own row offers no drag handle;
-    // this is the guard for everything else, so a folder dragged to the end
-    // lands above it rather than past it.
-    if (moving.isNotesFolder) return false;
-    var first = _entries.indexWhere((e) => e.isFolder == moving.isFolder);
-    var last = _entries.lastIndexWhere(
-        (e) => e.isFolder == moving.isFolder && !e.isNotesFolder);
-    to = to.clamp(first, last);
+    // The pinned rows -- the reserved folders, and the front page in Pages --
+    // are put back in their fixed places by the listing however the rest is
+    // arranged. They cannot be moved, and nothing can be moved past them.
+    //
+    // Asked of PostStorage rather than answered here, because the listing is
+    // what actually decides and two places deciding is how this came to be
+    // wrong: the guard here knew only about the notes folder, so a folder
+    // dragged to the bottom went below Pages, Partials and Store, sat there
+    // until the folder was next read, and then jumped back above them.
+    if (PostStorage.isPinned(moving, _folder)) return false;
+    var movable = [
+      for (var i = 0; i < _entries.length; i++)
+        if (_entries[i].isFolder == moving.isFolder &&
+            !PostStorage.isPinned(_entries[i], _folder))
+          i,
+    ];
+    if (movable.isEmpty) return false;
+    to = to.clamp(movable.first, movable.last);
     if (to == from) return false;
 
     var next = [..._entries];
     next.insert(to, next.removeAt(from));
+    // Through the listing's own arrangement, so what is shown now is what
+    // comes back when the folder is next read rather than something close to
+    // it.
+    next = PostStorage.arrange(next, _folder);
 
     // Written as one list for the folder, documents then folders, which is
     // the order the listing puts them back in.
@@ -441,12 +491,18 @@ class PostLibraryModel extends ChangeNotifier {
         if (e.isFolder) e.name,
     ];
 
-    // Shown before it is saved. A drag that snaps back while the disk write
-    // finishes reads as the drag having failed.
+    // Shown at once, and held against anything that reads the folder before
+    // the write lands. See _ordering.
     _entries = next;
+    _pendingOrder = order;
     _notify();
 
-    if (!await PostStorage.writeOrder(_folder, order)) {
+    var write = PostStorage.writeOrder(_folder, order);
+    _ordering = write.then((_) {});
+    var saved = await write;
+    _ordering = null;
+    _pendingOrder = null;
+    if (!saved) {
       _error = "Could not save the order of this folder";
       await refresh();
       return false;

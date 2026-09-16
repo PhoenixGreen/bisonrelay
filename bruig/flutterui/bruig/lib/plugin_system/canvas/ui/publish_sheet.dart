@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/components/text.dart';
@@ -46,6 +47,21 @@ enum PublishAs {
   final String label;
   final String description;
   const PublishAs(this.label, this.description);
+}
+
+/// PublishScenes is how much of a document with several canvases goes.
+///
+/// Offered only where there is more than one: on a single-canvas document the
+/// three choices are the same choice, and a control whose options are all the
+/// same answer is a control that has to be read before it can be ignored.
+enum PublishScenes {
+  all("All scenes", "The whole document, in order"),
+  one("One scene", "Just the one, as if it were the whole document"),
+  range("A range", "From one scene to another, in order");
+
+  final String label;
+  final String description;
+  const PublishScenes(this.label, this.description);
 }
 
 /// PublishTo is where it goes.
@@ -148,8 +164,72 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// back, so the sheet never offers something and then takes it away.
   bool _ffmpeg = false;
 
+  /// _scenes is how much of a document with several canvases is published,
+  /// and _first and _last are which ones -- held as indexes, shown counting
+  /// from one.
+  ///
+  /// _last is only read for a range. Kept while a single scene is chosen so
+  /// that going back to a range finds the pair as it was left.
+  PublishScenes _scenes = PublishScenes.all;
+  late int _first = widget.document.at;
+  late int _last = widget.document.at;
+
   ChatModel? _chat;
   String _caption = "";
+
+  /// _document is what is actually published: the whole thing, or the scenes
+  /// that were chosen.
+  ///
+  /// A trimmed document rather than a range handed to each renderer. The GIF,
+  /// the video, the PDF, the estimate and the bundle all ask the document how
+  /// long it runs for and what is on it at a given moment -- handed a shorter
+  /// one they all do the right thing, and none of them learns a new argument.
+  CanvasDocument get _document {
+    if (!widget.document.hasScenes) return widget.document;
+    // A still is one canvas, whichever one is chosen. Everything else follows
+    // the three-way choice.
+    if (_onePicture) return widget.document.scenesFrom(_first, _first);
+    return switch (_scenes) {
+      PublishScenes.all => widget.document,
+      PublishScenes.one => widget.document.scenesFrom(_first, _first),
+      PublishScenes.range =>
+        widget.document.scenesFrom(_first, math.max(_first, _last)),
+    };
+  }
+
+  /// _runNote is how long what is about to be published runs for.
+  String _runNote() {
+    var frames = _document.playFrames;
+    var rate = _document.frameRate <= 0 ? 1 : _document.frameRate;
+    return "$frames frame${frames == 1 ? "" : "s"} at $rate per second — "
+        "${(frames / rate).toStringAsFixed(1)} seconds.";
+  }
+
+  /// _onePicture is whether what is being made holds exactly one canvas.
+  ///
+  /// A PNG or a JPEG does and always will, so the question it is asked is
+  /// "which one" rather than "how many" -- one dropdown instead of a
+  /// three-way choice whose other two answers it cannot honour. A PDF holds a
+  /// page per scene, an animation and a video hold every frame of them, and
+  /// the canvas itself carries the lot.
+  bool get _onePicture => _as == PublishAs.image && !_pdf;
+
+  /// _frame is which frame is taken.
+  ///
+  /// The one the reader was looking at, where it is in the document being
+  /// published. Publishing the scene somebody is on should give the moment
+  /// they are looking at rather than the start of it -- and the whole
+  /// document's frame number means nothing to a document trimmed down to one
+  /// scene, so it is moved into that scene's own count.
+  int get _frame {
+    var document = widget.document;
+    if (!document.hasScenes || _scenes == PublishScenes.all && !_onePicture) {
+      return widget.frame;
+    }
+    var from = document.startOfScene(_first);
+    var into = widget.frame - from;
+    return into >= 0 && into < _document.playFrames ? into : 0;
+  }
 
   /// _record is what was published from this canvas before, which is what
   /// makes Publish say Update and puts an Unpublish button in the corner.
@@ -169,9 +249,11 @@ class _PublishSheetState extends State<_PublishSheet> {
   @override
   void initState() {
     super.initState();
-    // A still document should not default to offering an animation, and an
-    // animated one almost always wants to be one.
-    if (widget.document.isAnimated) _as = PublishAs.animation;
+    // Image, always. An animated document used to open on Animation, on the
+    // grounds that an animated thing wants to be one -- but a GIF is the
+    // most expensive thing this sheet makes, and opening on it means the
+    // first size anybody sees is the biggest one, for a canvas they may well
+    // have wanted a picture of.
     _loadRecord();
     _measurePictures();
     // Asked once, here, rather than in build: it is a process launch, and
@@ -204,18 +286,16 @@ class _PublishSheetState extends State<_PublishSheet> {
         // its pixels are deflated rather than PNG-compressed -- close enough
         // to the same size that a second guess would be a second thing to get
         // wrong.
-        PublishAs.image => estimateStillBytes(widget.document, scale: _scale),
-        PublishAs.animation =>
-          estimateAnimationBytes(widget.document, scale: _scale),
-        PublishAs.video => estimateVideoBytes(widget.document,
+        PublishAs.image => estimateStillBytes(_document, scale: _scale),
+        PublishAs.animation => estimateAnimationBytes(_document, scale: _scale),
+        PublishAs.video => estimateVideoBytes(_document,
             scale: _scale, format: _videoFormat, quality: _videoQuality),
         // An interactive canvas is the document itself, which is a known
         // quantity rather than an estimate -- so this one is exact, and the
         // label below says so. The pictures are added at their stored size,
         // which is what the bundle will carry: they go in without being
         // deflated again, being compressed already.
-        PublishAs.interactive =>
-          widget.document.encode().length + _pictureBytes,
+        PublishAs.interactive => _document.encode().length + _pictureBytes,
       };
 
   /// _pictureBytes is what the canvas's pictures weigh, which is nearly all
@@ -225,7 +305,7 @@ class _PublishSheetState extends State<_PublishSheet> {
 
   Future<void> _measurePictures() async {
     var total = 0;
-    for (var id in widget.document.assetIds) {
+    for (var id in _document.assetIds) {
       total += (await CanvasAssets.load(id))?.length ?? 0;
     }
     if (mounted) setState(() => _pictureBytes = total);
@@ -253,8 +333,8 @@ class _PublishSheetState extends State<_PublishSheet> {
       case PublishAs.image:
         if (_pdf) {
           return renderPdf(
-            widget.document,
-            frame: widget.frame,
+            _document,
+            frame: _frame,
             scale: _scale,
             images: widget.images,
             paper: _paper,
@@ -262,15 +342,15 @@ class _PublishSheetState extends State<_PublishSheet> {
           );
         }
         return renderImage(
-          widget.document,
-          frame: widget.frame,
+          _document,
+          frame: _frame,
           scale: _scale,
           images: widget.images,
           options: EmbedOptions(format: _format, quality: _quality),
         );
       case PublishAs.animation:
         return renderGif(
-          widget.document,
+          _document,
           scale: _scale,
           images: widget.images,
           dither: _dither,
@@ -284,7 +364,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         );
       case PublishAs.video:
         return renderVideo(
-          widget.document,
+          _document,
           scale: _scale,
           images: widget.images,
           format: _videoFormat,
@@ -305,16 +385,16 @@ class _PublishSheetState extends State<_PublishSheet> {
         // placeholder where every photograph had been, because the ids in it
         // pointed at a store only the sender had. A canvas with no pictures
         // stays the plain readable JSON it has always been.
-        if (widget.document.assetIds.isEmpty) {
+        if (_document.assetIds.isEmpty) {
           return CanvasExport(
-            utf8.encode(widget.document.encode()),
+            utf8.encode(_document.encode()),
             "application/json",
             width: widget.document.size.exportWidth,
             height: widget.document.size.exportHeight,
           );
         }
         return CanvasExport(
-          await packCanvas(widget.document),
+          await packCanvas(_document),
           bundleMime,
           width: widget.document.size.exportWidth,
           height: widget.document.size.exportHeight,
@@ -478,15 +558,20 @@ class _PublishSheetState extends State<_PublishSheet> {
               // one-frame animation, an unsaved canvas, a chat message too
               // large to send -- is said where the choice that caused it is,
               // rather than collected into one list at the bottom.
-              _heading("Publish as"),
-              for (var option in PublishAs.values)
-                _option(
-                  theme,
-                  selected: option == _as,
-                  label: option.label,
-                  description: option.description,
-                  onTap: _busy ? null : () => setState(() => _as = option),
-                ),
+              // A dropdown rather than four rows. The four descriptions are
+              // worth reading once and then never again, and a sheet that
+              // spends a quarter of its height restating them is a sheet you
+              // scroll past to reach the settings. The one that is chosen
+              // keeps its description underneath, where it is about the
+              // choice actually made.
+              _dropdown<PublishAs>(
+                theme,
+                "Publish as",
+                _as,
+                [for (var o in PublishAs.values) (o, o.label)],
+                _busy ? (_) {} : (v) => setState(() => _as = v),
+              ),
+              _note(theme, _as.description),
               // Said where the choice is rather than after a long wait: a
               // video with no encoder to make it cannot be published, and the
               // button below says so too.
@@ -498,6 +583,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                     theme,
                     "This canvas is a single frame, so the animation will be "
                     "one frame long. Add frames on the timeline first."),
+              ..._sceneControls(theme),
               const SizedBox(height: 8),
               ..._formatControls(theme),
               const Divider(height: 24),
@@ -606,6 +692,91 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// disabled: quality means nothing to a GIF and dithering means nothing to
   /// a PNG, and a greyed-out row still reads as a setting somebody is failing
   /// to reach.
+  /// _sceneControls choose how much of a document with several canvases goes.
+  ///
+  /// Nothing at all on a document with one: three choices that all mean the
+  /// same thing is a control somebody has to read before they can ignore it.
+  ///
+  /// Under "Publish as" rather than beside the destination, because it is
+  /// part of what is being made -- a range of scenes is a different animation,
+  /// not a different place to send the same one.
+  List<Widget> _sceneControls(ThemeNotifier theme) {
+    var document = widget.document;
+    if (!document.hasScenes) return const [];
+    var count = document.allScenes.length;
+
+    /// name says which canvas a number is, so a document whose scenes are
+    /// named does not make anybody count rows to find scene four.
+    String name(int index) {
+      var label = document.allScenes[index].name.trim();
+      return label.isEmpty ? "Scene ${index + 1}" : "${index + 1}. $label";
+    }
+
+    // A still is one canvas whatever happens, so the only question worth
+    // asking is which one. It used to be asked nothing at all and always
+    // publish the first, which is the wrong end of "this choice cannot be
+    // honoured": a picture of scene four is a perfectly ordinary thing to
+    // want.
+    if (_onePicture) {
+      return [
+        const SizedBox(height: 10),
+        _dropdown<int>(
+          theme,
+          "Scene",
+          _first.clamp(0, count - 1),
+          [for (var i = 0; i < count; i++) (i, name(i))],
+          _busy ? (_) {} : (v) => setState(() => _first = v),
+        ),
+        _note(theme, "Which canvas the picture is of."),
+      ];
+    }
+
+    return [
+      const SizedBox(height: 10),
+      _dropdown<PublishScenes>(
+        theme,
+        "Scenes",
+        _scenes,
+        [for (var o in PublishScenes.values) (o, o.label)],
+        _busy ? (_) {} : (v) => setState(() => _scenes = v),
+      ),
+      _note(theme, _scenes.description),
+      if (_scenes != PublishScenes.all)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Expanded(
+              child: _dropdown<int>(
+                theme,
+                _scenes == PublishScenes.one ? "Scene" : "From",
+                _first.clamp(0, count - 1),
+                [for (var i = 0; i < count; i++) (i, name(i))],
+                (v) => setState(() {
+                  _first = v;
+                  // A range that runs backwards is not a range. The far end
+                  // follows rather than refusing, which is what somebody
+                  // moving the first past the second means.
+                  if (_last < _first) _last = _first;
+                }),
+              ),
+            ),
+            if (_scenes == PublishScenes.range) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: _dropdown<int>(
+                  theme,
+                  "To",
+                  _last.clamp(_first, count - 1),
+                  [for (var i = _first; i < count; i++) (i, name(i))],
+                  (v) => setState(() => _last = v),
+                ),
+              ),
+            ],
+          ]),
+        ),
+    ];
+  }
+
   List<Widget> _formatControls(ThemeNotifier theme) {
     switch (_as) {
       case PublishAs.image:
@@ -725,11 +896,10 @@ class _PublishSheetState extends State<_PublishSheet> {
               ),
             ),
           ]),
-          _note(
-              theme,
-              "${widget.document.frames} frames at "
-              "${widget.document.frameRate} per second — "
-              "${widget.document.durationSeconds.toStringAsFixed(1)} seconds."),
+          // playFrames and the document being published, not the canvas in
+          // front of the reader: with several scenes the run is all of them
+          // end to end, and with a scene chosen it is only that one.
+          _note(theme, _runNote()),
         ];
 
       case PublishAs.video:
@@ -764,11 +934,8 @@ class _PublishSheetState extends State<_PublishSheet> {
           ]),
           _note(
               theme,
-              "${widget.document.frames} frames at "
-              "${widget.document.frameRate} per second — "
-              "${widget.document.durationSeconds.toStringAsFixed(1)} seconds. "
-              "A video keeps every colour, where a GIF has 256, and is "
-              "usually much smaller. ${_videoFormat.note}"),
+              "${_runNote()} A video keeps every colour, where a GIF has 256, "
+              "and is usually much smaller. ${_videoFormat.note}"),
         ];
 
       case PublishAs.interactive:

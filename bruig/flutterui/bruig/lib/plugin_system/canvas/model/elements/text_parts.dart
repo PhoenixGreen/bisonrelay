@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Color;
 
@@ -69,6 +70,10 @@ enum PartLineStyle {
 /// actually looks like.
 class PartHighlight {
   final Color color;
+
+  /// fade is the second colour the band runs to, or null for a flat one.
+  /// Chosen in the picker beside [color] -- see GradientSpec.
+  final GradientSpec? fade;
   final double padLeft;
   final double padTop;
   final double padRight;
@@ -79,6 +84,7 @@ class PartHighlight {
 
   const PartHighlight({
     this.color = const Color(0x66FFD54F),
+    this.fade,
     this.padLeft = 4,
     this.padTop = 2,
     this.padRight = 4,
@@ -95,6 +101,8 @@ class PartHighlight {
 
   PartHighlight copyWith({
     Color? color,
+    GradientSpec? fade,
+    bool flat = false,
     double? padLeft,
     double? padTop,
     double? padRight,
@@ -103,6 +111,7 @@ class PartHighlight {
   }) =>
       PartHighlight(
         color: color ?? this.color,
+        fade: flat ? null : (fade ?? this.fade),
         padLeft: padLeft ?? this.padLeft,
         padTop: padTop ?? this.padTop,
         padRight: padRight ?? this.padRight,
@@ -115,6 +124,7 @@ class PartHighlight {
 
   Map<String, dynamic> toJson() => {
         "color": colorToJson(color),
+        if (fade != null) "fade": fade!.toJson(),
         "l": padLeft,
         "t": padTop,
         "r": padRight,
@@ -124,6 +134,10 @@ class PartHighlight {
 
   factory PartHighlight.fromJson(Map<String, dynamic> json) => PartHighlight(
         color: colorFromJson(json["color"], const Color(0x66FFD54F)),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
         padLeft: jsonDouble(json["l"], 4),
         padTop: jsonDouble(json["t"], 2),
         padRight: jsonDouble(json["r"], 4),
@@ -137,6 +151,9 @@ class PartUnderline {
   /// color is the line's own, or null to take the words'.
   final Color? color;
 
+  /// fade is the second colour the line runs to, or null for a flat one.
+  final GradientSpec? fade;
+
   /// width is how thick it is, in design pixels.
   final double width;
 
@@ -148,6 +165,7 @@ class PartUnderline {
 
   const PartUnderline({
     this.color,
+    this.fade,
     this.width = 3,
     this.style = PartLineStyle.solid,
     this.away = 2,
@@ -155,6 +173,8 @@ class PartUnderline {
 
   PartUnderline copyWith({
     Color? color,
+    GradientSpec? fade,
+    bool flat = false,
     bool clearColor = false,
     double? width,
     PartLineStyle? style,
@@ -162,6 +182,7 @@ class PartUnderline {
   }) =>
       PartUnderline(
         color: clearColor ? null : (color ?? this.color),
+        fade: flat ? null : (fade ?? this.fade),
         width: width ?? this.width,
         style: style ?? this.style,
         away: away ?? this.away,
@@ -169,6 +190,7 @@ class PartUnderline {
 
   Map<String, dynamic> toJson() => {
         if (color != null) "color": colorToJson(color!),
+        if (fade != null) "fade": fade!.toJson(),
         "width": width,
         if (style != PartLineStyle.solid) "style": style.name,
         "away": away,
@@ -178,6 +200,10 @@ class PartUnderline {
         color: json["color"] == null
             ? null
             : colorFromJson(json["color"], const Color(0xFFFFFFFF)),
+        fade: json["fade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fade"] as Map).cast<String, dynamic>())
+            : null,
         width: jsonDouble(json["width"], 3).clamp(0.1, 80),
         style: PartLineStyle.fromName(json["style"] as String?),
         away: jsonDouble(json["away"], 2),

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
@@ -38,6 +39,7 @@ List<Widget> tableSettings(
           children: [
             TableDataEditor(
               rows: e.rows,
+              elementId: e.base.id,
               // What the source has, where its rows are what it is asked
               // for: typing a coin offers the coins. See DataPreset.rowNames.
               names: e.source.fromRows
@@ -243,18 +245,34 @@ List<Widget> tableSettings(
               CanvasColorButton(
                 label: "Header",
                 color: e.headerFill,
+                gradient: e.headerFade,
                 onChanged: (c) {
                   begin();
                   write(e.copyWith(headerFill: c));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  write(g == null
+                      ? e.copyWith(flatHeader: true)
+                      : e.copyWith(headerFade: g));
                   commit();
                 },
               ),
               CanvasColorButton(
                 label: "Cells",
                 color: e.cellFill,
+                gradient: e.cellFade,
                 onChanged: (c) {
                   begin();
                   write(e.copyWith(cellFill: c));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  write(g == null
+                      ? e.copyWith(flatCells: true)
+                      : e.copyWith(cellFade: g));
                   commit();
                 },
               ),
@@ -286,6 +304,7 @@ List<Widget> tableSettings(
                 },
               ),
               CanvasNumberField(
+                key: const ValueKey("tablePadding"),
                 label: "Padding",
                 value: e.cellPadding,
                 min: 0,
@@ -293,6 +312,103 @@ List<Widget> tableSettings(
                 width: 54,
                 onChanged: (v) => write(e.copyWith(cellPadding: v)),
                 onCommit: commit,
+              ),
+              // One figure until somebody wants four. Almost every table wants
+              // the same room on every side, and four fields for that is three
+              // fields of clutter -- but a heading given more room above and
+              // below than beside it is exactly what somebody setting a title
+              // row up asks for.
+              CanvasToggle(
+                key: const ValueKey("tableSidedPadding"),
+                label: "Sides",
+                value: !e.evenPadding,
+                onChanged: (v) {
+                  begin();
+                  // On: each side starts where the single figure left it, so
+                  // switching it on changes nothing until something is typed.
+                  // Off: back to the one figure, and the four are forgotten
+                  // rather than kept invisibly.
+                  write(v
+                      ? e.copyWith(
+                          padTop: e.topPad,
+                          padRight: e.rightPad,
+                          padBottom: e.bottomPad,
+                          padLeft: e.leftPad)
+                      : e.copyWith(evenPadding: true));
+                  commit();
+                },
+              ),
+              if (!e.evenPadding) ...[
+                CanvasNumberField(
+                  key: const ValueKey("tablePadTop"),
+                  label: "Top",
+                  value: e.topPad,
+                  min: 0,
+                  max: 120,
+                  width: 50,
+                  onChanged: (v) => write(e.copyWith(padTop: v)),
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("tablePadRight"),
+                  label: "Right",
+                  value: e.rightPad,
+                  min: 0,
+                  max: 120,
+                  width: 50,
+                  onChanged: (v) => write(e.copyWith(padRight: v)),
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("tablePadBottom"),
+                  label: "Bottom",
+                  value: e.bottomPad,
+                  min: 0,
+                  max: 120,
+                  width: 50,
+                  onChanged: (v) => write(e.copyWith(padBottom: v)),
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("tablePadLeft"),
+                  label: "Left",
+                  value: e.leftPad,
+                  min: 0,
+                  max: 120,
+                  width: 50,
+                  onChanged: (v) => write(e.copyWith(padLeft: v)),
+                  onCommit: commit,
+                ),
+              ],
+              // How the columns are sized, as a state rather than a button.
+              //
+              // A column width is dragged on the table itself and there was no
+              // way back from it: the moment one edge moved, every column's
+              // width was written down, and a table set up by dragging could
+              // not be put back. Saying it as a state also says what the two
+              // ways back actually are, which a button called "Even" would
+              // not -- a table left alone sizes its columns by what is in
+              // them, which is not the same thing as all of them matching.
+              CanvasDropdown<String>(
+                key: const ValueKey("tableColumnSizing"),
+                label: "Columns",
+                value: _columnSizing(e),
+                width: 128,
+                options: [
+                  ("fit", "Fit to contents"),
+                  ("even", "All the same"),
+                  if (_columnSizing(e) == "dragged") ("dragged", "Dragged"),
+                ],
+                onChanged: (v) {
+                  if (v == _columnSizing(e)) return;
+                  begin();
+                  write(e.copyWith(
+                      columnWidths: v == "fit"
+                          ? const []
+                          : List.filled(
+                              e.columnCount, 1 / math.max(1, e.columnCount))));
+                  commit();
+                },
               ),
               CanvasNumberField(
                 label: "Radius",
@@ -354,6 +470,17 @@ List<Widget> tableSettings(
           elementAnimationSection(controller, e, e.animation,
               (a) => write(e.copyWith(animation: a)), begin, commit)),
     ];
+
+/// _columnSizing is which of the three states a table's columns are in:
+/// sized by what is in them, all the same, or whatever they were dragged to.
+String _columnSizing(TableElement e) {
+  if (e.evenColumns) return "fit";
+  var first = e.columnWidths.first;
+  for (var w in e.columnWidths) {
+    if ((w - first).abs() > 0.001) return "dragged";
+  }
+  return "even";
+}
 
 /// _tableRuleName says what a rule picks out, for its own heading and for the
 /// button that removes it.

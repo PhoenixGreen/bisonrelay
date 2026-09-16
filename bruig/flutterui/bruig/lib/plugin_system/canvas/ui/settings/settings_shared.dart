@@ -457,9 +457,22 @@ List<Widget> typeGroups(
         CanvasColorButton(
           label: "Text",
           color: spec.color,
+          // The words can fade from one colour to another, across the box
+          // they are drawn in. Not where they are outlined rather than
+          // filled, or where a picture or a pattern is showing through them:
+          // each of those already decides what the letters are painted with.
+          // See TextSpec.fade.
+          gradient: spec.fade,
           onChanged: (c) {
             begin();
             onChanged(spec.copyWith(color: c));
+            commit();
+          },
+          onGradientChanged: (g) {
+            begin();
+            onChanged(g == null
+                ? spec.copyWith(flatText: true)
+                : spec.copyWith(fade: g));
             commit();
           },
         ),
@@ -580,35 +593,43 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
       CanvasColorButton(
         label: fillLabel,
         color: box.fill,
+        gradient: box.fillFade,
         onChanged: (c) {
           begin();
           onChanged(box.copyWith(fill: c));
           commit();
         },
-      ),
-      CanvasNumberField(
-        label: "Border",
-        value: box.borderWidth,
-        min: 0,
-        max: 200,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) => onChanged(box.copyWith(borderWidth: v)),
-        onCommit: commit,
+        onGradientChanged: (g) {
+          begin();
+          onChanged(g == null
+              ? box.copyWith(flatFill: true)
+              : box.copyWith(fillFade: g));
+          commit();
+        },
       ),
       CanvasColorButton(
         label: "Colour",
         color: box.borderColor,
+        gradient: box.borderFade,
         onChanged: (c) {
           begin();
           onChanged(box.copyWith(borderColor: c));
           commit();
         },
+        onGradientChanged: (g) {
+          begin();
+          onChanged(g == null
+              ? box.copyWith(flatBorder: true)
+              : box.copyWith(borderFade: g));
+          commit();
+        },
       ),
-      // A line each for the corners and for the sides. Nine fields wrapped
-      // into whatever room the panel had put a corner at the end of the
-      // border's line and the rest underneath, which reads as one row of
-      // unrelated numbers.
+      // A line each for the border, the corners and the sides. Wrapped into
+      // whatever room the panel had, they came out as one row of unrelated
+      // numbers with a corner on the end of the border's line.
+      const CanvasLineBreak(),
+      ...roomFields(box.borders, (r) => onChanged(box.withBorders(r)), commit,
+          label: "Border", allKey: "Border", sideKey: "Border"),
       const CanvasLineBreak(),
       ...cornerFields(
           box.corners, (c) => onChanged(box.withCorners(c)), commit),
@@ -616,9 +637,10 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
       ...roomFields(
           box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit),
       const CanvasHint(
-          "Radius and Padding set all four corners and all four sides at "
-          "once; the fields beside them set one each. They show blank when "
-          "the four no longer agree."),
+          "Border, Radius and Padding set all four sides or corners at once; "
+          "the fields beside them set one each, and show blank when the four "
+          "no longer agree. Sides of different weights are drawn square where "
+          "they meet, since two weights cannot round the same corner."),
     ]);
 
 /// valueDot is the diamond beside one animatable property.
@@ -759,11 +781,19 @@ List<Widget> _fillBits(
             now(fill.copyWith(pattern: fill.pattern.copyWith(style: v))),
       ),
     if (fill.kind == TextFillKind.pattern) ...[
+      // The same colour a generated background's "Base" is, so the second
+      // colour it fades to is chosen in the same picker and the pattern
+      // behind a word can fade the way the one behind a whole canvas does.
       CanvasColorButton(
         label: "Behind",
         color: fill.pattern.background,
+        gradient: fill.pattern.gradient,
         onChanged: (c) =>
             now(fill.copyWith(pattern: fill.pattern.copyWith(background: c))),
+        onGradientChanged: (g) => now(fill.copyWith(
+            pattern: g == null
+                ? fill.pattern.copyWith(flatBackground: true)
+                : fill.pattern.copyWith(gradient: g))),
       ),
       CanvasColorButton(
         label: "Ink",
@@ -1159,10 +1189,16 @@ List<Widget> cornerFields(
 /// cornerFields, which is the same idea for the corners.
 List<Widget> roomFields(
         Room room, ValueChanged<Room> onChanged, VoidCallback commit,
-        {String label = "Padding", String prefix = "box"}) =>
+        {String label = "Padding",
+        String prefix = "box",
+        // What the keys are called, so that a second set of these in the same
+        // panel -- the border's, beside the padding's -- is findable by what
+        // it is rather than by which one came first.
+        String allKey = "Padding",
+        String sideKey = "Pad"}) =>
     [
       CanvasNumberField(
-        key: ValueKey("${prefix}Padding"),
+        key: ValueKey("$prefix$allKey"),
         label: label,
         value: room.even ?? 0,
         min: 0,
@@ -1178,7 +1214,7 @@ List<Widget> roomFields(
         ("Bottom", room.bottom, (v) => room.copyWith(b: v)),
       ])
         CanvasNumberField(
-          key: ValueKey("${prefix}Pad$name"),
+          key: ValueKey("$prefix$sideKey$name"),
           label: name,
           value: at,
           min: 0,

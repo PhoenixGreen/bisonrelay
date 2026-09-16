@@ -74,10 +74,22 @@ class ProceduralCache extends ChangeNotifier {
 
   /// imageFor is the picture to draw, or null when there is not one yet.
   ///
-  /// Asking for one that is not ready starts it and returns null, and the
-  /// caller draws the background the slow way this once. That is the right
-  /// way round: a frame that is late is worse than a frame that cost what it
-  /// used to cost.
+  /// Asking for one that is not ready starts it, and hands back the last one
+  /// while it is being made. The last one is a design or two behind -- for
+  /// the length of one raster -- and that is the better answer: the
+  /// alternative is the caller generating the new design itself, on the frame
+  /// it was asked for and on every frame after it until the raster lands,
+  /// which for an expensive generator is the whole of a drag.
+  ///
+  /// It used to return null there, on the grounds that a late frame is worse
+  /// than an expensive one. That was written when the dearest generator cost
+  /// a tenth of a second; the Metal texture shades a point per pixel, and
+  /// dragging its Roughness slider re-shaded the sheet on every frame of the
+  /// drag. A background one raster out of date is not something anybody can
+  /// see. A canvas that stops moving is.
+  ///
+  /// Only at the size asked for. A picture of the right design at the wrong
+  /// shape is a stretched background, which is something anybody can see.
   ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time,
       [CanvasImageSource? images]) {
     // A background that moves is a different picture every frame, so caching
@@ -89,6 +101,13 @@ class ProceduralCache extends ChangeNotifier {
     var key = keyFor(spec, size, time, images);
     if (key == _for) return _image;
     if (key != _making) _make(spec, size, time, key, images);
+
+    var last = _image;
+    if (last != null &&
+        last.width == size.width.round().clamp(1, 8192) &&
+        last.height == size.height.round().clamp(1, 8192)) {
+      return last;
+    }
     return null;
   }
 

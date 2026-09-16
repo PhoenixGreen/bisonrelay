@@ -272,43 +272,62 @@ void paintCartesian(
         log: range.log);
   }
 
-  // Reserve room by measuring, not by guessing. The value labels decide the
-  // left gutter and the category labels decide the bottom one.
-  var labelSpec = e.labelSpec;
+  // Which axis carries what depends on which way the chart is drawn: on
+  // horizontal bars the categories run up the side and the values along the
+  // bottom. The switches and the type are the axis', not the writing's, so
+  // "the X labels" means whatever is written along the bottom either way.
+  var sideSpec = e.yLabels, bottomSpec = e.xLabels;
+  var sideOn = e.showYLabels, bottomOn = e.showXLabels;
+
+  // Reserve room by measuring, not by guessing: the value labels are as wide
+  // as the widest of them and no wider.
   var valueGutter = 0.0;
-  if (e.showAxisLabels) {
+  var valueSide = horizontal ? bottomOn : sideOn;
+  var valueSpec = horizontal ? bottomSpec : sideSpec;
+  if (valueSide && !horizontal) {
     for (var t in range.ticks) {
-      var p = layoutText(formatAxis(e, t), labelSpec, maxWidth: area.width / 3);
+      var p = layoutText(formatAxis(e, t), valueSpec, maxWidth: area.width / 3);
       valueGutter = math.max(valueGutter, p.width);
     }
-    valueGutter += labelSpec.fontSize * 0.5;
+    valueGutter += valueSpec.fontSize * 0.5;
   }
 
-  // No writing, no gutters. Switching the labels off and keeping the room
-  // they took would be a chart with a margin of nothing down two sides.
-  var categoryGutter = e.showAxisLabels ? labelSpec.fontSize * 1.6 : 0.0;
+  // No writing, no gutters. Switching one axis' labels off and keeping the
+  // room they took would be a chart with a margin of nothing down that side.
+  var categoryGutter = bottomOn ? bottomSpec.fontSize * 1.6 : 0.0;
   // The axis titles have their own type and their own distance from the plot:
   // one and a half times their height to sit against it, plus whatever room
   // has been asked for to push them out. A title an inch clear of the plot is
   // a layout decision and the chart cannot make it -- how much air a design
   // wants is not a thing a drawing routine knows.
   var axisSpec = e.axisText;
-  var axisTitleGutter =
-      e.showAxisLabels ? axisSpec.fontSize * 1.5 + math.max(0, e.axisGap) : 0.0;
+  var axisTitleGutter = axisSpec.fontSize * 1.5 + math.max(0, e.axisGap);
 
   // No writing, no gutter. Room kept for labels that are switched off is a
   // margin of nothing down one side, which looks like a chart that has been
   // pushed off centre.
   var left = area.left +
       (horizontal
-          ? _widestCategory(data.categories, labelSpec, area)
+          ? (sideOn ? _widestCategory(data.categories, sideSpec, area) : 0.0)
           : valueGutter) +
       (e.showsYTitle ? axisTitleGutter : 0);
-  var bottom = area.bottom -
-      categoryGutter -
-      (e.xAxisLabel.isNotEmpty ? axisTitleGutter : 0);
-  var plot = Rect.fromLTRB(left, area.top + labelSpec.fontSize * 0.6,
-      area.right - labelSpec.fontSize * 0.5, bottom);
+  // The title's own switch, not whether anybody has typed one. A chart with a
+  // name for its x axis and the titles switched off kept the room the title
+  // would have taken, which is a strip of nothing along the bottom -- and the
+  // strip is what made the element's box sit away from the chart in it.
+  var bottom =
+      area.bottom - categoryGutter - (e.showsXTitle ? axisTitleGutter : 0);
+
+  // The air over the top tick and past the last category, so neither is cut
+  // in half by the edge. Only where there are labels to cut: with them off it
+  // is a margin around nothing, and the box the chart is aligned and snapped
+  // by is the box it is drawn in.
+  // The air over the top tick belongs to the axis the ticks are written on,
+  // and the air past the last category to the one the categories are on.
+  var topAir = sideOn ? sideSpec.fontSize : 0.0;
+  var rightAir = bottomOn ? bottomSpec.fontSize : 0.0;
+  var plot = Rect.fromLTRB(
+      left, area.top + topAir * 0.6, area.right - rightAir * 0.5, bottom);
   if (plot.width <= 4 || plot.height <= 4) return;
 
   _grid(canvas, plot, range, e, horizontal);
@@ -407,10 +426,16 @@ void _axisLabels(
   double categoryGutter,
   double axisTitleGutter,
 ) {
-  var spec = e.labelSpec;
+  // The ticks are written on whichever axis carries the values, and the
+  // category names on the other one, each in that axis' own type.
+  var tickSpec = horizontal ? e.xLabels : e.yLabels;
+  var nameSpec = horizontal ? e.yLabels : e.xLabels;
+  var showTicks = horizontal ? e.showXLabels : e.showYLabels;
+  var showNames = horizontal ? e.showYLabels : e.showXLabels;
   var categories = e.data.categories;
 
-  for (var t in range.ticks) {
+  var spec = tickSpec;
+  for (var t in showTicks ? range.ticks : const <double>[]) {
     var f = range.fraction(t);
     var text = formatAxis(e, t);
     if (horizontal) {
@@ -439,7 +464,8 @@ void _axisLabels(
     }
   }
 
-  var slots = categories.length;
+  spec = nameSpec;
+  var slots = showNames ? categories.length : 0;
   for (var i = 0; i < slots; i++) {
     if (horizontal) {
       var slot = plot.height / slots;
@@ -658,7 +684,9 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       var colour = series.color;
       var arrived = 1.0;
       if (e.animation.on && reveal < 1) {
-        var p = e.animation.progressAt(reveal, i, slots);
+        // This series' own place in the animation, which is the whole of it
+        // unless it has been shifted. See ChartSeries.delay.
+        var p = e.animation.progressAt(series.revealAt(reveal), i, slots);
         if (p <= 0) continue;
         switch (e.animation.preset) {
           case ChartAnimationPreset.fadeIn:
@@ -690,10 +718,18 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         }
       }
 
-      var r = math.min(e.barRadius, math.min(bar.width, bar.height) / 2);
+      var r = math.min(
+          series.cornerOn(e.barRadius), math.min(bar.width, bar.height) / 2);
+      // Across the bar rather than across the plot: a gradient set on a
+      // series is a gradient on each of its bars, which is what a chart of
+      // bars fading into the background looks like. Across the plot they
+      // would each be a different flat colour.
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
-          Paint()..color = colour);
+          Paint()
+            ..color = colour
+            ..shader = seriesShader(series, bar,
+                alpha: series.color.a == 0 ? 1 : colour.a / series.color.a));
 
       if (e.showValues && v != 0) {
         // Counting up with the bar. Clamped to the real value even when the
@@ -758,8 +794,9 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     // as well as along them, so two series fill in together rather than one
     // after the other.
     var perPoint = animation.preset.scrambles && kind == ChartType.scatter;
+    var mine = series.revealAt(reveal);
     var progress = animating && !perPoint
-        ? animation.progressAt(reveal, at, which.length)
+        ? animation.progressAt(mine, at, which.length)
         : 1.0;
     if (animating && !perPoint && progress <= 0) continue;
 
@@ -789,9 +826,14 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var colour = alpha >= 1
         ? series.color
         : series.color.withValues(alpha: series.color.a * alpha);
+    // This series' own thickness where it has been given one, so a line laid
+    // over a set of bars can be heavy enough to read against them without
+    // every other line on the chart thickening with it.
+    var weight = series.widthOn(e.strokeWidth);
 
     if (kind != ChartType.scatter) {
-      var path = _linePath(points, e.smooth && kind.usesSmooth);
+      var path =
+          _linePath(points, series.smoothOn(e.smooth) && kind.usesSmooth);
       // Traced from its start rather than grown from the axis: the line is
       // cut short at the point it has reached, and the area under it with it.
       if (animating &&
@@ -804,6 +846,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         ];
         if (points.isEmpty) points = [_firstPoint(path)];
       }
+      var shader = seriesShader(series, plot, alpha: alpha);
       if (kind == ChartType.area) {
         // Closed at the line's own tip rather than at the last point it has
         // passed. Using the last *data* point left the fill's right edge
@@ -814,43 +857,69 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
           ..lineTo(tip.dx, plot.bottom)
           ..lineTo(points.first.dx, plot.bottom)
           ..close();
+        // The series' own gradient where it has one; otherwise the fade
+        // into nothing that is what an area chart has always been.
         canvas.drawPath(
             fill,
             Paint()
-              ..shader = ui.Gradient.linear(
-                  Offset(0, plot.top), Offset(0, plot.bottom), [
-                colour.withValues(alpha: 0.45 * alpha),
-                colour.withValues(alpha: 0.02 * alpha),
-              ]));
+              ..shader = shader ??
+                  ui.Gradient.linear(
+                      Offset(0, plot.top), Offset(0, plot.bottom), [
+                    colour.withValues(alpha: 0.45 * alpha),
+                    colour.withValues(alpha: 0.02 * alpha),
+                  ]));
       }
       canvas.drawPath(
           path,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = e.strokeWidth
+            ..strokeWidth = weight
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
-            ..color = colour);
+            ..color = colour
+            // Across the plot, so the line changes colour along its length
+            // rather than each segment being its own gradient.
+            ..shader = shader);
     }
 
-    if (kind == ChartType.scatter || e.showValues) {
+    // A scatter is all dots; a chart writing its values has to put them
+    // somewhere; and a line or an area marks its readings where it is asked
+    // to. Eleven points joined up look like a hundred until the dots are on
+    // them.
+    if (kind == ChartType.scatter ||
+        e.showValues ||
+        series.pointsOn(e.showPoints)) {
       for (var i = 0; i < points.length; i++) {
         // Each dot's own arrival, when they are being dealt one at a time.
         var dot = perPoint
-            ? animation.progressAt(reveal, at * n + i, which.length * n)
+            ? animation.progressAt(mine, at * n + i, which.length * n)
             : progress;
         if (animating && dot <= 0) continue;
 
         var swelling = animating &&
             (animation.preset == ChartAnimationPreset.popIn ||
                 animation.preset == ChartAnimationPreset.random);
+        // The size asked for, or the line's own weight as it always was.
+        var size = series.pointSizeOn(e.pointSize);
+        var radius = size > 0 ? size : weight * 1.4;
+        // And the colour asked for, or the series' -- which is what a dot on
+        // a line is unless somebody says otherwise. Whatever the arrival has
+        // done to the line is done to the dot as well, so the two come on
+        // together.
+        var dotPaint = series.pointColorOn(e.pointColor);
+        var dotColour = dotPaint.a > 0
+            ? dotPaint.withValues(
+                alpha: dotPaint.a *
+                    (colour.a / (series.color.a == 0 ? 1 : series.color.a)))
+            : colour;
         canvas.drawCircle(
             points[i],
-            e.strokeWidth * 1.4 * (swelling ? dot.clamp(0.0, 1.4) : 1),
+            radius * (swelling ? dot.clamp(0.0, 1.4) : 1),
             Paint()
               ..color = perPoint && dot < 1
-                  ? colour.withValues(alpha: colour.a * dot.clamp(0.0, 1.0))
-                  : colour);
+                  ? dotColour.withValues(
+                      alpha: dotColour.a * dot.clamp(0.0, 1.0))
+                  : dotColour);
         if (e.showValues) {
           // Counting up only where the point itself is growing. Drawn on, a
           // point that has been passed is at its full value and saying

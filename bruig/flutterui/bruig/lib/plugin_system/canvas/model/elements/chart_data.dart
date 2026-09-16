@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_numbers.dart';
 import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
@@ -138,13 +139,113 @@ class ChartSeries {
   /// style, since there is one axis and it cannot be two things.
   final ChartNumbers? numbers;
 
+  /// gradient draws this series in two colours instead of one. Null for the
+  /// almost every series that is one colour.
+  ///
+  /// Set in the colour picker beside [color] rather than in a row of its own,
+  /// which is why it has no on/off flag of its own: there either is a second
+  /// colour or there is not.
+  final GradientSpec? gradient;
+
+  /// delay shifts this series' arrival, as a fraction of the whole animation:
+  /// positive starts it later, negative starts it sooner. 0 for almost every
+  /// series.
+  ///
+  /// A fraction rather than seconds, because how long a chart's arrival takes
+  /// is the two keyframes on the timeline and they are dragged about -- an
+  /// offset in seconds would mean something different every time the length
+  /// changed, which is the opposite of what somebody lining two series up
+  /// wants.
+  ///
+  /// It exists because the presets stagger by *item*, and two series drawn
+  /// differently do not have the same items: a set of bars is one item per
+  /// category and a line is one item per series, so the line traces over the
+  /// whole window while the bars go one after another. That is right for each
+  /// of them on its own and wrong for the pair, and no single stagger rule
+  /// fixes it -- which is why this is a knob rather than a cleverer default.
+  final double delay;
+
+  /// width overrides the chart's stroke for this series, or 0 to draw it at
+  /// whatever the chart's own is.
+  ///
+  /// So that a line laid over a set of bars can be heavy enough to read
+  /// against them without every other line on the chart thickening with it.
+  final double width;
+
+  /// corner, smooth, points, pointSize and pointColor are how this series is
+  /// drawn, or null to be drawn the way the chart is.
+  ///
+  /// They were the chart's own settings, in three groups under the table --
+  /// Bars, Lines, Points -- which asked somebody reading a chart of bars with
+  /// a line over it to work out which group was about which half of it. They
+  /// are per series now, behind the series' own button, so the answer is
+  /// where the question is.
+  ///
+  /// Null rather than a sentinel because every one of these has a meaningful
+  /// zero: a corner of nought is a square bar, points off is points off. Null
+  /// is the only value left to mean "whatever the chart says", which is what
+  /// makes a series drawn the same way as the first one follow it.
+  final double? corner;
+  final bool? smooth;
+  final bool? points;
+  final double? pointSize;
+  final Color? pointColor;
+
   const ChartSeries({
     required this.name,
     required this.color,
     required this.values,
     this.type,
     this.numbers,
+    this.gradient,
+    this.width = 0,
+    this.delay = 0,
+    this.corner,
+    this.smooth,
+    this.points,
+    this.pointSize,
+    this.pointColor,
   });
+
+  /// paint is the colour and the gradient as one thing, for the picker and
+  /// for the painters.
+  PaintSpec get paint => PaintSpec(color, gradient: gradient);
+
+  /// widthOn is how thick this series is drawn on a chart whose own stroke is
+  /// [chartWidth].
+  double widthOn(double chartWidth) => width > 0 ? width : chartWidth;
+
+  /// cornerOn and the four beside it are the same question as [widthOn] for
+  /// the rest of the drawing: this series' own answer where it has been given
+  /// one, and the chart's where it has not.
+  double cornerOn(double chartCorner) => corner ?? chartCorner;
+  bool smoothOn(bool chartSmooth) => smooth ?? chartSmooth;
+  bool pointsOn(bool chartPoints) => points ?? chartPoints;
+  double pointSizeOn(double chartSize) => pointSize ?? chartSize;
+  Color pointColorOn(Color chartColor) => pointColor ?? chartColor;
+
+  /// revealAt is how far through its own arrival this series is, given how
+  /// far through the whole thing the chart is.
+  ///
+  /// The offset moves the *start* and the series still finishes with the
+  /// chart: delayed by a quarter, it waits a quarter and then has three
+  /// quarters of the window to arrive in. Brought forward by a quarter, it
+  /// starts at once and is done a quarter early.
+  ///
+  /// Squeezed into what is left rather than shifted whole, which is what this
+  /// did first and was wrong: shifted, a series delayed by a quarter was only
+  /// three quarters arrived when the chart stopped animating -- and then the
+  /// chart drew itself complete, so the series appeared to race and jump to
+  /// the end.
+  double revealAt(double reveal) {
+    if (delay == 0) return reveal;
+    // Never the whole window: an offset of one would leave no time at all,
+    // and a series that arrives in no time does not arrive.
+    var shift = delay.clamp(-0.95, 0.95);
+    var window = 1 - shift.abs();
+    var into = shift > 0 ? reveal - shift : reveal;
+    return (into / window).clamp(0.0, 1.0);
+  }
 
   /// typeIn is how this series is actually drawn on a chart of [chartType].
   ChartType typeIn(ChartType chartType) => type ?? chartType;
@@ -155,8 +256,17 @@ class ChartSeries {
     List<double>? values,
     ChartType? type,
     ChartNumbers? numbers,
+    GradientSpec? gradient,
+    double? width,
+    double? delay,
+    double? corner,
+    bool? smooth,
+    bool? points,
+    double? pointSize,
+    Color? pointColor,
     bool followChart = false,
     bool writtenLikeChart = false,
+    bool oneColour = false,
   }) =>
       ChartSeries(
         name: name ?? this.name,
@@ -164,6 +274,14 @@ class ChartSeries {
         values: values ?? this.values,
         type: followChart ? null : (type ?? this.type),
         numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
+        gradient: oneColour ? null : (gradient ?? this.gradient),
+        width: width ?? this.width,
+        delay: delay ?? this.delay,
+        corner: corner ?? this.corner,
+        smooth: smooth ?? this.smooth,
+        points: points ?? this.points,
+        pointSize: pointSize ?? this.pointSize,
+        pointColor: pointColor ?? this.pointColor,
       );
 
   Map<String, dynamic> toJson() => {
@@ -172,6 +290,16 @@ class ChartSeries {
         "values": values,
         if (type != null) "type": type!.name,
         if (numbers != null) "numbers": numbers!.toJson(),
+        if (gradient != null) "gradient": gradient!.toJson(),
+        if (width > 0) "width": width,
+        if (delay != 0) "delay": delay,
+        // Written only where this series has been given its own, so a chart
+        // whose series all follow it saves the same file it always did.
+        if (corner != null) "corner": corner,
+        if (smooth != null) "smooth": smooth,
+        if (points != null) "points": points,
+        if (pointSize != null) "pointSize": pointSize,
+        if (pointColor != null) "pointColor": colorToJson(pointColor!),
       };
 
   factory ChartSeries.fromJson(Map<String, dynamic> json, int index) {
@@ -186,6 +314,25 @@ class ChartSeries {
       numbers: json["numbers"] is Map<String, dynamic>
           ? ChartNumbers.fromJson(json["numbers"] as Map<String, dynamic>)
           : null,
+      // A gradient saved before the second colour moved into the picker
+      // carried an "on" flag with it, and one saved switched off is one
+      // nobody wanted: read as no gradient rather than as a black fade.
+      gradient: json["gradient"] is Map<String, dynamic> &&
+              (json["gradient"] as Map<String, dynamic>)["on"] != false
+          ? GradientSpec.fromJson(json["gradient"] as Map<String, dynamic>)
+          : null,
+      width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
+      delay: json["delay"] is num
+          ? (json["delay"] as num).toDouble().clamp(-1.0, 1.0)
+          : 0,
+      corner: json["corner"] is num ? (json["corner"] as num).toDouble() : null,
+      smooth: json["smooth"] is bool ? json["smooth"] as bool : null,
+      points: json["points"] is bool ? json["points"] as bool : null,
+      pointSize: json["pointSize"] is num
+          ? (json["pointSize"] as num).toDouble()
+          : null,
+      pointColor:
+          json["pointColor"] == null ? null : colorFromJson(json["pointColor"]),
       values: raw is List
           ? [for (var v in raw) v is num ? v.toDouble() : 0.0]
           : const [],
@@ -319,8 +466,11 @@ class ChartData {
     if (rows.isEmpty) return const ChartData();
 
     var header = rows.first;
-    var hasHeader = header.length > 1 &&
-        header.skip(1).every((c) => double.tryParse(c) == null);
+    // Through cellNumber, so a row beginning "Jan 1,000" is a row of numbers
+    // and not a header. tryParse refuses a thousands separator, which made
+    // every figure written the way people write it look like a word.
+    var hasHeader =
+        header.length > 1 && header.skip(1).every((c) => cellNumber(c) == null);
     var names = hasHeader
         ? header.skip(1).toList()
         : [for (var i = 1; i < header.length; i++) "Series $i"];
@@ -332,7 +482,7 @@ class ChartData {
       categories.add(row.isEmpty ? "" : row.first);
       for (var i = 0; i < names.length; i++) {
         var cell = i + 1 < row.length ? row[i + 1] : "";
-        values[i].add(double.tryParse(cell.replaceAll("%", "")) ?? 0);
+        values[i].add(cellNumber(cell) ?? 0);
       }
     }
 
@@ -348,6 +498,10 @@ class ChartData {
                     ? keep[i].color
                     : chartPalette[i % chartPalette.length],
             type: keep != null && i < keep.length ? keep[i].type : null,
+            // What was decided about how it looks survives its numbers being
+            // retyped, the same way it survives a refresh.
+            numbers: keep != null && i < keep.length ? keep[i].numbers : null,
+            gradient: keep != null && i < keep.length ? keep[i].gradient : null,
             values: values[i],
           ),
       ],

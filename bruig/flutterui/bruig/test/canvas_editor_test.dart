@@ -35,7 +35,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/panel_stack.dart';
+import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
@@ -2684,6 +2684,88 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// showStyle opens the Style section if it is shut, and hands back what
+    /// closes it again.
+    ///
+    /// Only if, and only what this test opened: an expander remembers whether
+    /// it was open and that memory outlives the test, so a blind tap leaves
+    /// the next test looking at a panel it did not ask for.
+    Future<Future<void> Function()> showStyle(WidgetTester tester) async {
+      var open =
+          find.byKey(const ValueKey("tablePadding")).evaluate().isNotEmpty;
+      if (!open) await press(tester, find.text("STYLE"));
+      return () async {
+        if (!open) await press(tester, find.text("STYLE"));
+      };
+    }
+
+    testWidgets("the padding can be asked for a side at a time",
+        (tester) async {
+      // One figure until somebody wants four: almost every table wants the
+      // same room on every side.
+      var controller = await panel(tester);
+      var shut = await showStyle(tester);
+      expect(find.byKey(const ValueKey("tablePadding")), findsOneWidget);
+      expect(find.byKey(const ValueKey("tablePadTop")), findsNothing);
+
+      await press(tester, find.byKey(const ValueKey("tableSidedPadding")));
+      for (var side in ["Top", "Right", "Bottom", "Left"]) {
+        expect(find.byKey(ValueKey("tablePad$side")), findsOneWidget);
+      }
+      // Switched on, nothing has changed yet: each side starts where the one
+      // figure left it.
+      expect(tableIn(controller).topPad, tableIn(controller).cellPadding);
+
+      await tester.enterText(find.byKey(const ValueKey("tablePadTop")), "30");
+      await tester.pumpAndSettle();
+      expect(tableIn(controller).topPad, 30);
+      expect(tableIn(controller).leftPad, tableIn(controller).cellPadding,
+          reason: "one side, not all of them");
+
+      await press(tester, find.byKey(const ValueKey("tableSidedPadding")));
+      expect(tableIn(controller).evenPadding, isTrue);
+      expect(find.byKey(const ValueKey("tablePadTop")), findsNothing);
+      await shut();
+    });
+
+    testWidgets("and the columns can be put back", (tester) async {
+      // A column width is dragged on the table itself, and there was no way
+      // back from it.
+      var controller = await panel(tester);
+      controller.replaceElement(
+          tableIn(controller).copyWith(columnWidths: const [0.8, 0.2]));
+      await tester.pumpAndSettle();
+      var shut = await showStyle(tester);
+
+      var sizing = find.byKey(const ValueKey("tableColumnSizing"));
+      expect(sizing, findsOneWidget);
+      // Three states, and the third only while the columns are in it: a
+      // dragged table is neither of the two a reader can ask for.
+      expect(
+          tester
+              .widget<CanvasDropdown<String>>(sizing)
+              .options
+              .map((o) => o.$1),
+          ["fit", "even", "dragged"]);
+
+      await press(tester, sizing);
+      await press(tester, find.text("All the same").last);
+      expect(tableIn(controller).columnWidths, [0.5, 0.5]);
+
+      await press(tester, find.byKey(const ValueKey("tableColumnSizing")));
+      await press(tester, find.text("Fit to contents").last);
+      expect(tableIn(controller).evenColumns, isTrue);
+      expect(
+          tester
+              .widget<CanvasDropdown<String>>(
+                  find.byKey(const ValueKey("tableColumnSizing")))
+              .options
+              .map((o) => o.$1),
+          ["fit", "even"],
+          reason: "nothing is dragged any more, so there is no such state");
+      await shut();
+    });
+
     testWidgets("Refresh is on the Table section as well as the Data one",
         (tester) async {
       // Where somebody is standing when they want the numbers again: looking
@@ -2968,10 +3050,14 @@ void main() {
     // whoever has.
 
     /// shown is the text of every hint the panel is offering.
-    List<String> shown(WidgetTester tester) => tester
-        .widgetList<CanvasHint>(find.byType(CanvasHint))
-        .map((h) => h.message)
-        .toList();
+    // Both kinds: the canvas's own hint inside a settings group, and the
+    // shared panel stack's, which is what a panel header carries now.
+    List<String> shown(WidgetTester tester) => [
+          for (var h in tester.widgetList<CanvasHint>(find.byType(CanvasHint)))
+            h.message,
+          for (var h in tester.widgetList<PanelHint>(find.byType(PanelHint)))
+            h.message,
+        ];
 
     testWidgets("the Add grid explains itself on a question mark",
         (tester) async {
@@ -2988,7 +3074,7 @@ void main() {
 
       // Tap as well as hover: a hint reachable only by hovering does not
       // exist on a touch screen.
-      await tester.tap(find.byType(CanvasHint).first);
+      await tester.tap(find.byType(PanelHint).first);
       await tester.pumpAndSettle();
       expect(find.text(hint), findsOneWidget);
     });
@@ -3103,7 +3189,7 @@ void main() {
       for (var name in ["ADD", "LAYERS", "BACKGROUND SETTINGS"]) {
         expect(find.text(name), findsOneWidget, reason: name);
       }
-      expect(find.byType(CanvasPanelStack), findsOneWidget);
+      expect(find.byType(PanelStack), findsOneWidget);
     });
 
     testWidgets("the settings are never empty", (tester) async {
@@ -3182,7 +3268,7 @@ void main() {
           reason: "the grip that used to sit in the header is gone");
       expect(
           find.descendant(
-              of: find.byType(CanvasPanelStack),
+              of: find.byType(PanelStack),
               matching: find.byWidgetPredicate((w) =>
                   w is MouseRegion &&
                   w.cursor == SystemMouseCursors.resizeUpDown)),
@@ -3210,7 +3296,7 @@ void main() {
           reason: "all of them line up: $rights");
 
       // And hard right, not floating in the middle of the band.
-      var band = tester.getRect(find.byType(CanvasPanelStack)).right;
+      var band = tester.getRect(find.byType(PanelStack)).right;
       expect(rights.first, closeTo(band, 14));
     });
 
@@ -3219,8 +3305,19 @@ void main() {
       // No expander arrow: the whole band opens and closes the panel, and an
       // arrow beside it is a smaller target that looks like the only one.
       await panel(tester);
-      expect(find.byIcon(Icons.expand_more), findsNothing);
-      expect(find.byIcon(Icons.chevron_right), findsNothing);
+
+      // Beside the name, rather than anywhere on the page: a section *inside*
+      // a panel -- the Lights under a background, the Table under a chart --
+      // is a CanvasExpander and has an arrow of its own, which is a different
+      // control and not what this is about.
+      var header = tester.getRect(find.text("ADD"));
+      for (var arrow in [Icons.expand_more, Icons.chevron_right]) {
+        for (var element in find.byIcon(arrow).evaluate()) {
+          expect(tester.getRect(find.byElementPredicate((e) => e == element)),
+              isNot(predicate<Rect>((r) => r.overlaps(header))),
+              reason: "an arrow on the header's own line");
+        }
+      }
 
       // Tapping the name, which is nowhere near where an arrow would have
       // been, still closes it.
@@ -3272,15 +3369,29 @@ void main() {
       }
     }
 
-    testWidgets("smooth is only offered where there is a line to curve",
-        (tester) async {
-      // Offered on a bar chart it was a switch that did nothing, which is
-      // indistinguishable from a broken one.
-      await panel(tester);
-      expect(find.text("Smooth"), findsNothing);
-
+    testWidgets("smooth is behind the series it curves", (tester) async {
+      // It was a chart setting in a group called Lines, which on a chart of
+      // bars with a line over it said nothing about which half of the chart
+      // it meant. It is on the series now.
       await panel(tester, shape: (e) => e.copyWith(type: ChartType.line));
+      expect(find.text("Smooth"), findsNothing,
+          reason: "not until the series is opened");
+
+      await press(tester, find.byKey(const ValueKey("seriesMore0")));
       expect(find.text("Smooth"), findsOneWidget);
+      expect(find.text("Width"), findsOneWidget,
+          reason: "the rest of how a line is drawn is in there with it");
+    });
+
+    testWidgets("and a set of bars is offered what bars have instead",
+        (tester) async {
+      // A switch that does nothing is indistinguishable from a broken one,
+      // and bars have nothing to curve.
+      await panel(tester);
+      await press(tester, find.byKey(const ValueKey("seriesMore0")));
+      expect(find.text("Smooth"), findsNothing);
+      expect(find.text("Corner"), findsOneWidget);
+      expect(find.text("Spacing"), findsOneWidget);
     });
 
     testWidgets("grouped bars say what they need", (tester) async {
@@ -3466,23 +3577,35 @@ void main() {
       Finder toggle(String label) => find.ancestor(
           of: find.text(label), matching: find.byType(CanvasToggle));
       expect(toggle("Grid"), findsOneWidget);
-      expect(find.text("Axes labels"), findsOneWidget);
+      expect(find.text("X labels"), findsOneWidget);
       expect(toggle("Values"), findsOneWidget);
 
       await panel(tester, shape: (e) => e.copyWith(type: ChartType.pie));
       expect(find.text("AXES AND VALUES"), findsOneWidget);
       expect(find.text("X label"), findsNothing);
       expect(toggle("Grid"), findsNothing);
-      expect(find.text("Axes labels"), findsNothing);
+      expect(find.text("X labels"), findsNothing);
       expect(toggle("Values"), findsOneWidget);
     });
 
-    testWidgets("the axes labels can be switched off", (tester) async {
+    testWidgets("each axis' labels can be switched off on their own",
+        (tester) async {
+      // One switch each. It was one for both, and often enough they are not
+      // read together: a bar chart named by its categories does not always
+      // want the figures up the side as well.
       var controller = await panel(tester);
-      expect(chartIn(controller).showAxisLabels, isTrue);
+      expect(chartIn(controller).showXLabels, isTrue);
+      expect(chartIn(controller).showYLabels, isTrue);
 
-      await press(tester, find.text("Axes labels"));
-      expect(chartIn(controller).showAxisLabels, isFalse);
+      await press(tester, find.text("X labels"));
+      expect(chartIn(controller).showXLabels, isFalse);
+      expect(chartIn(controller).showYLabels, isTrue,
+          reason: "the other axis is not touched");
+
+      await press(tester, find.text("Y labels"));
+      expect(chartIn(controller).showYLabels, isFalse);
+      expect(chartIn(controller).showAxisLabels, isFalse,
+          reason: "and with both off there is no writing on the axes at all");
     });
 
     testWidgets("a radial bar says where its numbers went", (tester) async {
@@ -3609,14 +3732,11 @@ void main() {
       await labels(tester);
       var before = chartIn(controller).labelSpec.fontSize;
 
-      // Two "Size" fields, the title's first.
-      var sizes = find.ancestor(
-          of: find.text("Size"), matching: find.byType(CanvasNumberField));
-      expect(sizes, findsNWidgets(2));
-
+      // By name rather than by counting: there are four Size fields in this
+      // section -- the title's, the description's, and one per axis -- and
+      // counting finds a different one every time a field is added.
       await tester.enterText(
-          find.descendant(of: sizes.at(1), matching: find.byType(TextField)),
-          "44");
+          find.byKey(const ValueKey("chartDescriptionSize")), "44");
       await tester.pump();
 
       var after = chartIn(controller);
@@ -4234,6 +4354,8 @@ void main() {
       expect(find.byTooltip(outward), findsOneWidget);
       expect(find.byTooltip("Cling"), findsNothing);
 
+      await tester.ensureVisible(find.byTooltip(outward));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip(outward));
       await tester.pumpAndSettle();
 

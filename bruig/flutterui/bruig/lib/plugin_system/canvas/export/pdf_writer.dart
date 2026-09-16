@@ -122,78 +122,118 @@ PdfPage pageFor(PdfPaper paper, Size size,
 /// fills the width and leaves the room above and below, which is the whole
 /// reason somebody would choose that. A page cut to the canvas has no margin
 /// and no letterboxing, so the two are the same thing there.
-Uint8List writePdf(
-  Uint8List rgba, {
-  required int width,
-  required int height,
-  required PdfPage page,
-}) {
-  if (width <= 0 || height <= 0 || rgba.length < width * height * 4) {
-    throw ArgumentError("the picture and its size do not agree");
-  }
+/// PdfPicture is one page's worth of pixels.
+class PdfPicture {
+  final Uint8List rgba;
+  final int width;
+  final int height;
 
-  // RGB and alpha are separated because PDF keeps them apart: the colours are
-  // one image and the transparency is another, attached to it as a soft mask.
-  var rgb = Uint8List(width * height * 3);
-  var alpha = Uint8List(width * height);
-  var opaque = true;
-  for (var i = 0, to = 0; i < width * height; i++, to += 3) {
-    rgb[to] = rgba[i * 4];
-    rgb[to + 1] = rgba[i * 4 + 1];
-    rgb[to + 2] = rgba[i * 4 + 2];
-    var a = rgba[i * 4 + 3];
-    alpha[i] = a;
-    if (a != 255) opaque = false;
+  const PdfPicture(this.rgba, {required this.width, required this.height});
+}
+
+/// writePdf writes [pictures], one to a page.
+///
+/// Several pages rather than one, because a document with several canvases is
+/// several pages -- which is what anybody asking for a PDF of it meant, and
+/// what the one-page version could not give them however the scene range was
+/// set.
+Uint8List writePdf(List<PdfPicture> pictures, {required PdfPage page}) {
+  if (pictures.isEmpty) throw ArgumentError("a PDF needs at least one page");
+  for (var picture in pictures) {
+    if (picture.width <= 0 ||
+        picture.height <= 0 ||
+        picture.rgba.length < picture.width * picture.height * 4) {
+      throw ArgumentError("the picture and its size do not agree");
+    }
   }
 
   var deflate = ZLibCodec(level: 6);
-  var colours = Uint8List.fromList(deflate.encode(rgb));
-  // A canvas with no transparency anywhere is the common case, and its mask
-  // would be a megabyte of 255s that changes nothing.
-  var mask = opaque ? null : Uint8List.fromList(deflate.encode(alpha));
-
-  var box = _fit(
-    Size(width.toDouble(), height.toDouble()),
-    Rect.fromLTWH(page.margin, page.margin, page.width - page.margin * 2,
-        page.height - page.margin * 2),
-  );
-
   var out = _PdfBuilder();
   out.header();
 
-  var maskRef = mask == null ? 0 : 6;
+  // Object numbers are handed out up front, because a page has to name the
+  // image it draws and the image comes after it.
+  //
+  // One catalogue, one page tree, then three objects per page: the page, its
+  // image and its content stream, with a fourth for the transparency mask
+  // where there is one.
+  var pageRefs = <int>[];
+  var next = 3;
+  var plan = <(int, int, int, int, Uint8List, Uint8List?, Rect)>[];
+  for (var picture in pictures) {
+    var rgb = Uint8List(picture.width * picture.height * 3);
+    var alpha = Uint8List(picture.width * picture.height);
+    var opaque = true;
+    for (var i = 0, to = 0; i < picture.width * picture.height; i++, to += 3) {
+      rgb[to] = picture.rgba[i * 4];
+      rgb[to + 1] = picture.rgba[i * 4 + 1];
+      rgb[to + 2] = picture.rgba[i * 4 + 2];
+      var a = picture.rgba[i * 4 + 3];
+      alpha[i] = a;
+      if (a != 255) opaque = false;
+    }
+    var colours = Uint8List.fromList(deflate.encode(rgb));
+    // A canvas with no transparency anywhere is the common case, and its mask
+    // would be a megabyte of 255s that changes nothing.
+    var mask = opaque ? null : Uint8List.fromList(deflate.encode(alpha));
+
+    var box = _fit(
+      Size(picture.width.toDouble(), picture.height.toDouble()),
+      Rect.fromLTWH(page.margin, page.margin, page.width - page.margin * 2,
+          page.height - page.margin * 2),
+    );
+
+    var pageRef = next++;
+    var imageRef = next++;
+    var contentRef = next++;
+    var maskRef = mask == null ? 0 : next++;
+    pageRefs.add(pageRef);
+    plan.add((pageRef, imageRef, contentRef, maskRef, colours, mask, box));
+  }
+
   out.object(1, "<< /Type /Catalog /Pages 2 0 R >>");
-  out.object(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
   out.object(
-      3,
-      "<< /Type /Page /Parent 2 0 R "
-      "/MediaBox [0 0 ${_n(page.width)} ${_n(page.height)}] "
-      "/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
-  out.stream(
-      4,
-      "<< /Type /XObject /Subtype /Image /Width $width /Height $height "
-      "/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
-      "${maskRef == 0 ? "" : " /SMask $maskRef 0 R"} >>",
-      colours);
+      2,
+      "<< /Type /Pages /Kids [${pageRefs.map((r) => "$r 0 R").join(" ")}] "
+      "/Count ${pageRefs.length} >>");
 
-  // PDF's origin is the bottom left and its y counts upwards, so the image is
-  // placed by its bottom edge. The matrix is a scale and a translation in one:
-  // an image XObject is always drawn into the unit square, and this is what
-  // says how big that square is and where it goes.
-  out.stream(
-      5,
-      "<< /Filter /FlateDecode >>",
-      Uint8List.fromList(deflate
-          .encode(ascii.encode("q\n${_n(box.width)} 0 0 ${_n(box.height)} "
-              "${_n(box.left)} ${_n(page.height - box.bottom)} cm\n"
-              "/Im0 Do\nQ\n"))));
-
-  if (mask != null) {
+  for (var i = 0; i < plan.length; i++) {
+    var (pageRef, imageRef, contentRef, maskRef, colours, mask, box) = plan[i];
+    var picture = pictures[i];
+    out.object(
+        pageRef,
+        "<< /Type /Page /Parent 2 0 R "
+        "/MediaBox [0 0 ${_n(page.width)} ${_n(page.height)}] "
+        "/Resources << /XObject << /Im0 $imageRef 0 R >> >> "
+        "/Contents $contentRef 0 R >>");
     out.stream(
-        6,
-        "<< /Type /XObject /Subtype /Image /Width $width /Height $height "
-        "/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode >>",
-        mask);
+        imageRef,
+        "<< /Type /XObject /Subtype /Image /Width ${picture.width} "
+        "/Height ${picture.height} "
+        "/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode"
+        "${maskRef == 0 ? "" : " /SMask $maskRef 0 R"} >>",
+        colours);
+
+    // PDF's origin is the bottom left and its y counts upwards, so the image
+    // is placed by its bottom edge. The matrix is a scale and a translation
+    // in one: an image XObject is always drawn into the unit square, and this
+    // is what says how big that square is and where it goes.
+    out.stream(
+        contentRef,
+        "<< /Filter /FlateDecode >>",
+        Uint8List.fromList(deflate
+            .encode(ascii.encode("q\n${_n(box.width)} 0 0 ${_n(box.height)} "
+                "${_n(box.left)} ${_n(page.height - box.bottom)} cm\n"
+                "/Im0 Do\nQ\n"))));
+
+    if (mask != null) {
+      out.stream(
+          maskRef,
+          "<< /Type /XObject /Subtype /Image /Width ${picture.width} "
+          "/Height ${picture.height} "
+          "/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode >>",
+          mask);
+    }
   }
 
   return out.finish();

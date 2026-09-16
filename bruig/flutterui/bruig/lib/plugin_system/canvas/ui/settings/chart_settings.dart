@@ -65,6 +65,11 @@ List<Widget> chartSettings(
         ),
         if (box.show)
           CanvasNumberField(
+            // Named after which label it is. There are four Size fields in
+            // this section now -- the title's, the description's, and one per
+            // axis -- and finding one by counting is finding a different one
+            // the next time a field is added.
+            key: ValueKey("chart${name}Size"),
             label: "Size",
             min: 4,
             max: 400,
@@ -128,12 +133,6 @@ List<Widget> chartSettings(
             ),
       ];
 
-  // Whether Smooth means anything here: the chart's own type, or any series
-  // that has overridden it. Offered otherwise, it was a switch that did
-  // nothing on a bar chart, which is indistinguishable from a broken one.
-  var smoothable = e.type.usesSmooth ||
-      e.data.series.any((s) => s.typeIn(e.type).usesSmooth);
-
   return [
     boxed(
       context,
@@ -188,6 +187,33 @@ List<Widget> chartSettings(
           ]),
           ChartDataEditor(
             data: e.data,
+            chartType: e.type,
+            animated: e.animation.on,
+            elementId: e.base.id,
+            // How the chart draws where a series has not been told
+            // otherwise. The series that leads its kind of drawing writes
+            // this back, so the rest of that kind follow it.
+            style: ChartStyleDefaults(
+              width: e.strokeWidth,
+              gap: e.barGap,
+              corner: e.barRadius,
+              smooth: e.smooth,
+              points: e.showPoints,
+              pointSize: e.pointSize,
+              pointColor: e.pointColor,
+            ),
+            onStyleChanged: (style) {
+              begin();
+              write(e.copyWith(
+                strokeWidth: style.width,
+                barGap: style.gap,
+                barRadius: style.corner,
+                smooth: style.smooth,
+                showPoints: style.points,
+                pointSize: style.pointSize,
+                pointColor: style.pointColor,
+              ));
+            },
             onChanged: (data) {
               begin();
               writeData(data);
@@ -222,15 +248,24 @@ List<Widget> chartSettings(
           // And how it looks, at the foot of the section that decides what it
           // is: the colours and the weights are about this drawing of these
           // numbers rather than about the words on it.
+          // Split by what each setting is about, rather than one long run of
+          // everything.
+          //
+          // It was one run, and it read as a jumble because it is four
+          // unrelated questions: what colour the rules are, how bars are
+          // shaped, how lines are drawn, and whether the readings are marked.
+          // Worse, the chart's own line width sat in the middle of it while
+          // each series' width sat in the series list, so the two looked like
+          // the same setting in two places.
           CanvasControlGroup(label: "Style", children: [
             CanvasColorButton(
               label: "Grid",
               color: e.gridColor,
               onChanged: (c) => now(e.copyWith(gridColor: c)),
             ),
-            // On a candlestick the colour is the reading rather than a label for a
-            // series, so the two of them belong with the chart's own style and not
-            // in the series list.
+            // On a candlestick the colour is the reading rather than a label
+            // for a series, so the two of them belong with the chart's own
+            // style and not in the series list.
             if (e.type.isCandles) ...[
               CanvasColorButton(
                 label: "Up",
@@ -243,47 +278,42 @@ List<Widget> chartSettings(
                 onChanged: (c) => now(e.copyWith(fallColor: c)),
               ),
             ],
-            CanvasNumberField(
-              label: "Bar gap",
-              min: 0,
-              decimals: 2,
-              width: 62,
-              value: e.barGap,
-              max: 0.9,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(barGap: v));
-              },
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              label: "Bar radius",
-              value: e.barRadius,
-              min: 0,
-              max: 100,
-              width: 54,
-              onChanged: (v) => write(e.copyWith(barRadius: v)),
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              label: "Stroke",
-              value: e.strokeWidth,
-              min: 0.5,
-              max: 40,
-              decimals: 1,
-              width: 54,
-              onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-              onCommit: commit,
-            ),
-            // Only where there is a line to curve. Bars have nothing to curve and a
-            // scatter is unconnected by definition.
-            if (smoothable)
-              CanvasToggle(
-                label: "Smooth",
-                value: e.smooth,
-                onChanged: (v) => now(e.copyWith(smooth: v)),
-              ),
           ]),
+          // Bars, Lines and Points used to be three groups here. They are on
+          // the series now, behind each series' own button, because a chart
+          // of bars with a line over it made them three groups that were each
+          // about half of the chart and said nothing about which half.
+          //
+          // Candlesticks are the exception, and stay. A candlestick's four
+          // series are the open, high, low and close of one drawing -- the
+          // bodies belong to the chart the way the up and down colours above
+          // do, and there is no "the series that is drawn as bars" to put
+          // them behind.
+          if (e.type.isCandles)
+            CanvasControlGroup(label: "Bodies", children: [
+              CanvasNumberField(
+                label: "Spacing",
+                min: 0,
+                decimals: 2,
+                width: 62,
+                value: e.barGap,
+                max: 0.9,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(barGap: v));
+                },
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                label: "Corner",
+                value: e.barRadius,
+                min: 0,
+                max: 100,
+                width: 54,
+                onChanged: (v) => write(e.copyWith(barRadius: v)),
+                onCommit: commit,
+              ),
+            ]),
         ],
       ),
     ),
@@ -351,6 +381,51 @@ List<Widget> chartSettings(
               // them; their own distance, because how much air a design wants
               // around them is a layout decision and not one a drawing
               // routine can make.
+              // The two label types had a size and a gap and no colour at
+              // all, so a chart on a pale background wrote its figures in
+              // whatever the default was and there was nowhere to say
+              // otherwise.
+              // The colour both axes take until one of them is given its
+              // own, and the colour of everything else written in the label
+              // type -- the legend, a pie's slice names.
+              CanvasColorButton(
+                key: const ValueKey("chartFigureColour"),
+                label: "Figures",
+                color: e.labelSpec.color,
+                gradient: e.labelSpec.fade,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(labelSpec: e.labelSpec.copyWith(color: c)));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  write(e.copyWith(
+                      labelSpec: g == null
+                          ? e.labelSpec.copyWith(flatText: true)
+                          : e.labelSpec.copyWith(fade: g)));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                key: const ValueKey("chartAxisTitleColour"),
+                label: "Titles",
+                color: e.axisText.color,
+                gradient: e.axisText.fade,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(axisSpec: e.axisText.copyWith(color: c)));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  write(e.copyWith(
+                      axisSpec: g == null
+                          ? e.axisText.copyWith(flatText: true)
+                          : e.axisText.copyWith(fade: g)));
+                  commit();
+                },
+              ),
               CanvasNumberField(
                 label: "Label size",
                 value: e.axisText.fontSize,
@@ -391,11 +466,78 @@ List<Widget> chartSettings(
                 value: e.showAxes,
                 onChanged: (v) => now(e.copyWith(showAxes: v)),
               ),
+              // One switch each. It was one for both, on the grounds that
+              // they are read together or not at all -- often enough they are
+              // not: a bar chart named by its categories does not always want
+              // the figures up the side as well.
+              //
+              // By axis rather than by what is written there, because which
+              // of the two an axis carries depends on which way the chart is
+              // drawn: on horizontal bars the categories run up the side.
+              const CanvasLineBreak(),
               CanvasToggle(
-                label: "Axes labels",
-                value: e.showAxisLabels,
-                onChanged: (v) => now(e.copyWith(showAxisLabels: v)),
+                key: const ValueKey("chartShowXLabels"),
+                label: "X labels",
+                value: e.showXLabels,
+                onChanged: (v) => now(e.copyWith(showXLabels: v)),
               ),
+              if (e.showXLabels) ...[
+                CanvasNumberField(
+                  key: const ValueKey("chartXLabelSize"),
+                  label: "Size",
+                  // What it is actually written at, so the field is never a
+                  // bare nought that has to be decoded. See Figures below for
+                  // what it takes until it is given one of its own.
+                  value: e.xLabels.fontSize,
+                  min: 4,
+                  max: 200,
+                  decimals: 0,
+                  width: 52,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(xLabelSize: v));
+                  },
+                  onCommit: commit,
+                ),
+                CanvasColorButton(
+                  key: const ValueKey("chartXLabelColour"),
+                  label: "Colour",
+                  labelWidth: 30,
+                  color: e.xLabels.color,
+                  onChanged: (c) => now(e.copyWith(xLabelColor: c)),
+                ),
+              ],
+              const CanvasLineBreak(),
+              CanvasToggle(
+                key: const ValueKey("chartShowYLabels"),
+                label: "Y labels",
+                value: e.showYLabels,
+                onChanged: (v) => now(e.copyWith(showYLabels: v)),
+              ),
+              if (e.showYLabels) ...[
+                CanvasNumberField(
+                  key: const ValueKey("chartYLabelSize"),
+                  label: "Size",
+                  value: e.yLabels.fontSize,
+                  min: 4,
+                  max: 200,
+                  decimals: 0,
+                  width: 52,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(yLabelSize: v));
+                  },
+                  onCommit: commit,
+                ),
+                CanvasColorButton(
+                  key: const ValueKey("chartYLabelColour"),
+                  label: "Colour",
+                  labelWidth: 30,
+                  color: e.yLabels.color,
+                  onChanged: (c) => now(e.copyWith(yLabelColor: c)),
+                ),
+              ],
+              const CanvasLineBreak(),
               CanvasToggle(
                 label: "Log scale",
                 value: e.logScale,

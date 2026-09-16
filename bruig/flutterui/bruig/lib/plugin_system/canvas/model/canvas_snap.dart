@@ -40,9 +40,13 @@ SnapResult snapTopLeft(
   CanvasGuides guides,
   Size canvas, {
   required double within,
+  List<Rect> others = const [],
 }) {
   if (!guides.snap || !guides.snapTo.any) return SnapResult(topLeft);
   var (vertical, horizontal) = guides.linesFor(canvas);
+  var (theirX, theirY) = objectLines(others, guides);
+  vertical = [...vertical, ...theirX];
+  horizontal = [...horizontal, ...theirY];
 
   // What on the element is allowed to land on a line. An edge and a vertex are
   // the same x -- a corner is where two edges meet -- so the two switches only
@@ -80,11 +84,50 @@ double? snapEdgeTo(
   Size canvas, {
   required bool vertical,
   required double within,
+  List<Rect> others = const [],
 }) {
   if (!guides.snap || !guides.snapTo.any) return null;
   var (xs, ys) = guides.linesFor(canvas);
-  var found = _nearest([edge], vertical ? xs : ys, within);
+  var (theirX, theirY) = objectLines(others, guides);
+  var lines = vertical ? [...xs, ...theirX] : [...ys, ...theirY];
+  var found = _nearest([edge], lines, within);
   return found?.line;
+}
+
+/// objectLines is what the other elements on the canvas offer to land on:
+/// their sides and their middles, down and across.
+///
+/// The lines that matter most of the time, and the ones that were missing. A
+/// grid catches a design at regular intervals; what anybody actually wants is
+/// this heading over that picture, and no grid spacing puts the two together
+/// unless both were already on it.
+///
+/// Which lines an element *offers* follows the same two switches as which of
+/// its own points can land: turn centres off and nothing lines up on a middle,
+/// theirs or its own.
+(List<double>, List<double>) objectLines(
+    List<Rect> others, CanvasGuides guides) {
+  if (!guides.snapTo.objects || others.isEmpty) {
+    return (const [], const []);
+  }
+  var sides = guides.snapTo.edges || guides.snapTo.vertices;
+  var middles = guides.snapTo.centres;
+  var xs = <double>[];
+  var ys = <double>[];
+  for (var other in others) {
+    if (other.isEmpty) continue;
+    if (sides) {
+      xs.add(other.left);
+      xs.add(other.right);
+      ys.add(other.top);
+      ys.add(other.bottom);
+    }
+    if (middles) {
+      xs.add(other.center.dx);
+      ys.add(other.center.dy);
+    }
+  }
+  return (xs, ys);
 }
 
 /// _Catch is one snap: the line caught, and how far the element has to move.

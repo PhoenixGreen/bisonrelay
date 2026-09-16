@@ -58,6 +58,11 @@ class AreaStyle {
   final List<double>? gradientStops;
   final Alignment gradientBegin;
   final Alignment gradientEnd;
+
+  // gradientRadial runs the fade out from the middle instead of across, which
+  // the begin/end pair has no way to say. Set in the colour picker along with
+  // everything else about the fade -- see areaPaintOf.
+  final bool gradientRadial;
   final String? imagePath; // Relative path within the preset's directory.
   final BoxFit imageFit;
   // imagePreset picks one of the built-in background images, for the four
@@ -80,6 +85,7 @@ class AreaStyle {
   final List<double>? borderGradientStops;
   final Alignment borderGradientBegin;
   final Alignment borderGradientEnd;
+  final bool borderGradientRadial;
   final String? borderImagePath;
   final BoxFit borderImageFit;
   final double borderWidth;
@@ -646,6 +652,7 @@ class AreaStyle {
     this.gradientStops,
     this.gradientBegin = Alignment.topLeft,
     this.gradientEnd = Alignment.bottomRight,
+    this.gradientRadial = false,
     this.imagePath,
     this.imageFit = BoxFit.cover,
     this.imagePreset = AreaImagePreset.standard,
@@ -657,6 +664,7 @@ class AreaStyle {
     this.borderGradientStops,
     this.borderGradientBegin = Alignment.topLeft,
     this.borderGradientEnd = Alignment.bottomRight,
+    this.borderGradientRadial = false,
     this.borderImagePath,
     this.borderImageFit = BoxFit.cover,
     this.borderWidth = 0,
@@ -792,6 +800,7 @@ class AreaStyle {
     List<double>? gradientStops,
     Alignment? gradientBegin,
     Alignment? gradientEnd,
+    bool? gradientRadial,
     String? imagePath,
     bool clearImagePath = false,
     BoxFit? imageFit,
@@ -805,6 +814,7 @@ class AreaStyle {
     List<double>? borderGradientStops,
     Alignment? borderGradientBegin,
     Alignment? borderGradientEnd,
+    bool? borderGradientRadial,
     String? borderImagePath,
     bool clearBorderImagePath = false,
     BoxFit? borderImageFit,
@@ -989,6 +999,7 @@ class AreaStyle {
         gradientStops: gradientStops ?? this.gradientStops,
         gradientBegin: gradientBegin ?? this.gradientBegin,
         gradientEnd: gradientEnd ?? this.gradientEnd,
+        gradientRadial: gradientRadial ?? this.gradientRadial,
         imagePath: clearImagePath ? null : (imagePath ?? this.imagePath),
         imageFit: imageFit ?? this.imageFit,
         imagePreset: imagePreset ?? this.imagePreset,
@@ -1003,6 +1014,7 @@ class AreaStyle {
         borderGradientStops: borderGradientStops ?? this.borderGradientStops,
         borderGradientBegin: borderGradientBegin ?? this.borderGradientBegin,
         borderGradientEnd: borderGradientEnd ?? this.borderGradientEnd,
+        borderGradientRadial: borderGradientRadial ?? this.borderGradientRadial,
         borderImagePath: clearBorderImagePath
             ? null
             : (borderImagePath ?? this.borderImagePath),
@@ -1249,6 +1261,7 @@ class AreaStyle {
           "gradientBegin": _alignToJson(gradientBegin),
         if (gradientEnd != Alignment.bottomRight)
           "gradientEnd": _alignToJson(gradientEnd),
+        if (gradientRadial) "gradientRadial": true,
         if (imagePath != null) "imagePath": imagePath,
         if (imageFit != BoxFit.cover) "imageFit": imageFit.name,
         if (imagePreset != AreaImagePreset.standard)
@@ -1267,6 +1280,7 @@ class AreaStyle {
           "borderGradientBegin": _alignToJson(borderGradientBegin),
         if (borderGradientEnd != Alignment.bottomRight)
           "borderGradientEnd": _alignToJson(borderGradientEnd),
+        if (borderGradientRadial) "borderGradientRadial": true,
         if (borderImagePath != null) "borderImagePath": borderImagePath,
         if (borderImageFit != BoxFit.cover)
           "borderImageFit": borderImageFit.name,
@@ -1490,6 +1504,7 @@ class AreaStyle {
       gradientStops: stops("gradientStops"),
       gradientBegin: _alignFromJson(j["gradientBegin"], Alignment.topLeft),
       gradientEnd: _alignFromJson(j["gradientEnd"], Alignment.bottomRight),
+      gradientRadial: j["gradientRadial"] == true,
       imagePath: j["imagePath"],
       imageFit: _enumOr(BoxFit.values, j["imageFit"], BoxFit.cover),
       // "loginBgPreset" is imagePreset's old, login-screen-only name -- read
@@ -1508,6 +1523,7 @@ class AreaStyle {
           _alignFromJson(j["borderGradientBegin"], Alignment.topLeft),
       borderGradientEnd:
           _alignFromJson(j["borderGradientEnd"], Alignment.bottomRight),
+      borderGradientRadial: j["borderGradientRadial"] == true,
       borderImagePath: j["borderImagePath"],
       borderImageFit: _enumOr(BoxFit.values, j["borderImageFit"], BoxFit.cover),
       borderWidth: number("borderWidth") ?? 0,

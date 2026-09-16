@@ -48,9 +48,21 @@ double editorHeight({double? dragged, double? stored, double wanted = 0}) {
 
 /// CanvasDataEditorShell is the frame; [text] and [grid] are what goes in it.
 class CanvasDataEditorShell extends StatefulWidget {
-  /// remember names where this editor's height and chosen view are kept. Each
-  /// editor passes its own, so a chart and a table are dragged separately.
+  /// remember names where this editor's chosen view is kept. Each editor
+  /// passes its own, so a chart and a table are switched separately.
   final String remember;
+
+  /// scope names the *one element* whose height is being kept, and is the
+  /// element's id.
+  ///
+  /// Separate from [remember] because the two are remembered at different
+  /// grains on purpose. Grid or text is a way of working -- somebody who
+  /// prefers to paste numbers in prefers it everywhere -- so it is kept per
+  /// editor. The height is about what is in front of you: a table of twenty
+  /// rows wants a tall box and one of three does not, and one height shared
+  /// by every chart in the app meant dragging one open left a hole under
+  /// every other one.
+  final String scope;
 
   /// wanted is how tall the grid would be if nothing cut it off: enough for
   /// every row.
@@ -84,6 +96,7 @@ class CanvasDataEditorShell extends StatefulWidget {
 
   const CanvasDataEditorShell({
     required this.remember,
+    this.scope = "",
     this.wanted = 0,
     required this.gridTooltip,
     required this.textTooltip,
@@ -112,19 +125,36 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
 
   bool get _grid => _grids[widget.remember] ?? false;
 
+  /// _mine is where this editor's height is kept: its own name and the
+  /// element it is showing.
+  String get _mine => widget.scope.isEmpty
+      ? widget.remember
+      : "${widget.remember}.${widget.scope}";
+
   double get _height => editorHeight(
-        dragged: _dragged[widget.remember],
-        stored: _stored[widget.remember],
+        dragged: _dragged[_mine],
+        stored: _stored[_mine],
         wanted: widget.wanted,
       );
 
   String get _gridKey => "${widget.remember}Grid";
-  String get _heightKey => "${widget.remember}Height";
+  String get _heightKey => "${_mine}Height";
 
   @override
   void initState() {
     super.initState();
-    if (!_grids.containsKey(widget.remember)) _restore();
+    if (!_grids.containsKey(widget.remember) || !_stored.containsKey(_mine)) {
+      _restore();
+    }
+  }
+
+  @override
+  void didUpdateWidget(CanvasDataEditorShell old) {
+    super.didUpdateWidget(old);
+    // A different element in the same panel: its height is its own and has to
+    // be read for itself. Without this, choosing a second chart showed it at
+    // the first one's height until the app was restarted.
+    if (old.scope != widget.scope && !_stored.containsKey(_mine)) _restore();
   }
 
   Future<void> _restore() async {
@@ -132,8 +162,7 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
     var height = await StorageManager.readData(_heightKey);
     if (grid is bool) _grids[widget.remember] = grid;
     if (height is num) {
-      _stored[widget.remember] =
-          height.toDouble().clamp(_minHeight, _maxHeight);
+      _stored[_mine] = height.toDouble().clamp(_minHeight, _maxHeight);
     }
     if (mounted) setState(() {});
   }
@@ -158,6 +187,7 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
           ...widget.toolbar,
         ]),
         SizedBox(
+          key: const ValueKey("dataEditorBody"),
           width: double.infinity,
           height: _height,
           child: _grid ? widget.grid(context) : widget.text(context),
@@ -172,12 +202,13 @@ class _CanvasDataEditorShellState extends State<CanvasDataEditorShell> {
   Widget _grip(ThemeNotifier theme) => MouseRegion(
         cursor: SystemMouseCursors.resizeRow,
         child: GestureDetector(
+          key: const ValueKey("dataEditorGrip"),
           behavior: HitTestBehavior.opaque,
           onVerticalDragUpdate: (d) => setState(() {
             // Kept as it moves rather than only when the drag ends: a drag the
             // surrounding list wins ends as a cancel, and a height saved only
             // on a clean end was a height that sometimes was not saved.
-            _dragged[widget.remember] =
+            _dragged[_mine] =
                 (_height + d.delta.dy).clamp(_minHeight, _maxHeight);
           }),
           onVerticalDragEnd: (_) =>

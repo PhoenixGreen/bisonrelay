@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -1038,6 +1039,92 @@ class CanvasController extends ChangeNotifier {
     apply(next, transient: transient);
   }
 
+  /// alignSelected lines every chosen element up on one edge or middle.
+  ///
+  /// Against the whole selection's own box rather than against the canvas: two
+  /// things picked out and aligned left means "put these two at the same
+  /// left", and which left is the leftmost of the two. Aligning to the canvas
+  /// is what the guides and the snapping are for, and doing both from one
+  /// button would make the result depend on how many things were chosen.
+  ///
+  /// One element chosen is a no-op rather than a jump to the canvas edge --
+  /// its own box is itself, so it is already aligned with it. The buttons say
+  /// so by being dead until there are two.
+  void alignSelected(CanvasAlign align, {bool transient = false}) {
+    var chosen = [
+      for (var e in selectedElements)
+        if (!e.locked) e
+    ];
+    if (chosen.length < 2) return;
+
+    Rect? box;
+    for (var element in chosen) {
+      box = box == null ? element.bounds : box.expandToInclude(element.bounds);
+    }
+    if (box == null) return;
+
+    var next = _document;
+    for (var element in chosen) {
+      var at = element.bounds;
+      var dx = switch (align) {
+        CanvasAlign.left => box.left - at.left,
+        CanvasAlign.centreX => box.center.dx - at.center.dx,
+        CanvasAlign.right => box.right - at.right,
+        _ => 0.0,
+      };
+      var dy = switch (align) {
+        CanvasAlign.top => box.top - at.top,
+        CanvasAlign.middleY => box.center.dy - at.center.dy,
+        CanvasAlign.bottom => box.bottom - at.bottom,
+        _ => 0.0,
+      };
+      if (dx == 0 && dy == 0) continue;
+      next = next.withElement(_moved(element, dx, dy));
+    }
+    apply(next, transient: transient);
+  }
+
+  /// spreadSelected puts an even gap between the chosen elements.
+  ///
+  /// The two on the ends stay where they are and everything between them is
+  /// moved, which is what makes this "spread these out" rather than "move
+  /// everything". Needs three: with two there is nothing between them to
+  /// space.
+  ///
+  /// Even *gaps* rather than even centres. Elements of different sizes spaced
+  /// by their centres leave visibly different amounts of white between them,
+  /// which is the thing anybody doing this is actually looking at.
+  void spreadSelected(bool across, {bool transient = false}) {
+    var chosen = [
+      for (var e in selectedElements)
+        if (!e.locked) e
+    ];
+    if (chosen.length < 3) return;
+    chosen.sort((a, b) => across
+        ? a.bounds.left.compareTo(b.bounds.left)
+        : a.bounds.top.compareTo(b.bounds.top));
+
+    var first = chosen.first.bounds;
+    var last = chosen.last.bounds;
+    var span = across ? last.right - first.left : last.bottom - first.top;
+    var filled = chosen.fold<double>(
+        0, (sum, e) => sum + (across ? e.bounds.width : e.bounds.height));
+    var gap = (span - filled) / (chosen.length - 1);
+
+    var next = _document;
+    var at = across ? first.left : first.top;
+    for (var element in chosen) {
+      var bounds = element.bounds;
+      var shift = at - (across ? bounds.left : bounds.top);
+      if (shift != 0) {
+        next = next.withElement(
+            _moved(element, across ? shift : 0, across ? 0 : shift));
+      }
+      at += (across ? bounds.width : bounds.height) + gap;
+    }
+    apply(next, transient: transient);
+  }
+
   /// posesRatherThanMoves is whether dragging [element] should record a
   /// keyframe instead of relocating it.
   ///
@@ -1321,6 +1408,15 @@ class CanvasController extends ChangeNotifier {
     }
     _backgroundSelected = false;
     _selection = {id};
+    _focusedPlayer = null;
+    notifyListeners();
+  }
+
+  /// selectMany picks out a set at once, for the things that work on several
+  /// -- the alignment tools, and a sweep over empty space.
+  void selectMany(Set<String> ids) {
+    _backgroundSelected = false;
+    _selection = {...ids};
     _focusedPlayer = null;
     notifyListeners();
   }
@@ -2435,7 +2531,13 @@ class CanvasController extends ChangeNotifier {
     _selection = {};
     _backgroundSelected = false;
     _focusedPlayer = null;
-    _frame = 0;
+    // Opened on the frame everything has arrived by, rather than on nought.
+    //
+    // A canvas whose elements arrive shows none of them on its first frame,
+    // and an empty page reads as a document that has failed to load rather
+    // than one that is about to play. Nought for a canvas with no arrivals,
+    // which is the same thing said the other way.
+    _frame = document.settledFrame;
     _undo.clear();
     _redo.clear();
     _interaction = null;

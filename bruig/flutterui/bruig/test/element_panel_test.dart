@@ -267,11 +267,11 @@ void main() {
   });
 
   group('picking a gradient', () {
-    testWidgets('shows both colours and what they make', (tester) async {
-      // A gradient is the two colours against each other -- neither is
-      // right or wrong on its own -- so picking them in turn meant judging
-      // the second against a memory of the first.
-      tester.view.physicalSize = const Size(900, 1600);
+    testWidgets('shows the colours and what they make', (tester) async {
+      // Through the app's own picker now, rather than two swatches and a
+      // hand-drawn band built here: a gradient is the colours against each
+      // other, and the picker draws the real thing full size.
+      tester.view.physicalSize = const Size(1400, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
@@ -287,23 +287,76 @@ void main() {
       await tester.tap(find.text("open"));
       await tester.pumpAndSettle();
 
-      expect(find.text("First"), findsOneWidget);
-      expect(find.text("Second"), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("colorModegradient")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("gradientPreview")), findsOneWidget);
 
-      // The gradient itself is on screen, drawn from both colours.
-      var painted = tester
-          .widgetList<Container>(find.byType(Container))
-          .where((c) => (c.decoration as BoxDecoration?)?.gradient != null);
-      expect(painted, isNotEmpty);
-      expect(
-          ((painted.first.decoration as BoxDecoration).gradient
-                  as LinearGradient)
-              .colors,
-          [const Color(0xffff0000), const Color(0xff0000ff)]);
-
-      await tester.tap(find.text("Use this"));
+      await tester.tap(find.byKey(const ValueKey("colorPickerSelect")));
       await tester.pumpAndSettle();
       expect(got, "#ff0000,#0000ff");
+    });
+
+    testWidgets('and takes as many colours as the banner will hold',
+        (tester) async {
+      // HeaderTextStyle has always held a list. Two swatches side by side
+      // could only ever fill two of it.
+      tester.view.physicalSize = const Size(1400, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      String? got;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Builder(
+                  builder: (context) => TextButton(
+                        onPressed: () async => got = await pickGradient(context,
+                            const Color(0xffff0000), const Color(0xff0000ff)),
+                        child: const Text("open"),
+                      )))));
+      await tester.tap(find.text("open"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("colorModegradient")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("gradientAdd")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("colorPickerSelect")));
+      await tester.pumpAndSettle();
+
+      expect(got!.split(",").length, 3);
+    });
+
+    testWidgets('and never fewer than the two a gradient needs',
+        (tester) async {
+      // A LinearGradient of one colour is one Flutter refuses to build, and
+      // the banner builds one out of whatever it is given.
+      tester.view.physicalSize = const Size(1400, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      String? got;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Builder(
+                  builder: (context) => TextButton(
+                        onPressed: () async => got = await pickGradient(context,
+                            const Color(0xffff0000), const Color(0xff0000ff)),
+                        child: const Text("open"),
+                      )))));
+      await tester.tap(find.text("open"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("colorModegradient")));
+      await tester.pumpAndSettle();
+
+      // Take the second colour out, which leaves a flat colour.
+      var bar = tester.getRect(find.byKey(const ValueKey("gradientBar")));
+      await tester.tapAt(Offset(bar.right - 4, bar.center.dy));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("gradientRemove")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("colorPickerSelect")));
+      await tester.pumpAndSettle();
+
+      expect(got, "#ff0000,#ff0000");
     });
 
     testWidgets('cancelling changes nothing', (tester) async {

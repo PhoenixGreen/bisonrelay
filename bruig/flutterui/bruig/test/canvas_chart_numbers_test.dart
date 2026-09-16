@@ -230,7 +230,8 @@ void main() {
           const ElementBase(id: "c", width: 400, height: 300),
           xAxisLabel: "Coin",
           yAxisLabel: "Price",
-          showAxisLabels: all,
+          showXLabels: all,
+          showYLabels: all,
           showXTitle: x,
           showYTitle: y,
         );

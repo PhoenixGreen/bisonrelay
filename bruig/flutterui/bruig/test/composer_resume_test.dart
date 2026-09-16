@@ -74,29 +74,4 @@ void main() {
       expect(post.scrollOffset, 900);
     });
   });
-
-  group("the writing sidebar remembers its page", () {
-    test("it starts on the first page", () {
-      expect(WritingPreferences().sidebarPage, 0);
-    });
-
-    // Held as an index because the enum lives in a file that imports this
-    // one. A page removed from the enum has to land somewhere real rather
-    // than out of range.
-    test("an index past the end falls back to the first page", () {
-      var prefs = WritingPreferences()..sidebarPage = 99;
-      var at = prefs.sidebarPage;
-      var page = at >= 0 && at < WritingSidebarPage.values.length
-          ? WritingSidebarPage.values[at]
-          : WritingSidebarPage.mistakes;
-      expect(page, WritingSidebarPage.mistakes);
-    });
-
-    test("a page that was opened is the one returned to", () {
-      var prefs = WritingPreferences()
-        ..sidebarPage = WritingSidebarPage.document.index;
-      expect(WritingSidebarPage.values[prefs.sidebarPage],
-          WritingSidebarPage.document);
-    });
-  });
 }

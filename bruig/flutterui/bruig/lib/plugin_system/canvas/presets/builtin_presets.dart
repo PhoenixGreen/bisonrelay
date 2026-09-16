@@ -1,3 +1,4 @@
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
@@ -91,9 +92,7 @@ CanvasDocument emptyCanvas() => const CanvasDocument(
         spec: ProceduralSpec(
           style: ProceduralStyle.plain,
           background: Color(0xFF11161D),
-          gradient: true,
-          gradientTo: Color(0xFF1B2530),
-          gradientAngle: 120,
+          gradient: GradientSpec(to: Color(0xFF1B2530), angle: 210),
           vignette: 0.18,
         ),
       ),
