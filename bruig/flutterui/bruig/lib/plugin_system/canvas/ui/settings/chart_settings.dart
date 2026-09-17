@@ -884,6 +884,10 @@ List<Widget> chartSettings(
                 : e.animation.preset.label)
             : (e.animation.closes ? e.animation.exit.label : null),
         children: [
+          // The same group every other element's animation section carries:
+          // the easing belongs to the keyframe, and a chart's keyframes are
+          // keyframes like any other.
+          keyframeEasingGroup(controller, e, begin, commit),
           const CanvasHint(
               "Choosing one draws the chart on over two seconds and puts a "
               "keyframe at each end of it on the timeline. Drag those to "

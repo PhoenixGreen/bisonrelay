@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -43,11 +44,17 @@ const int canvasFormatVersion = 1;
 
 /// defaultFrameRate is what a new document plays at.
 ///
-/// Twelve rather than twenty-four or thirty. What gets made here is a tactics
-/// diagram or a title moving into place, not film, and twelve is where a GIF
-/// stops looking choppy while staying a quarter of the size of a 30fps one --
-/// which matters when the result has to fit in a chat message.
-const int defaultFrameRate = 12;
+/// Twenty-four, which is film's rate and what a canvas that moves is usually
+/// for. It was twelve, on the grounds that what gets made here is a tactics
+/// diagram or a title moving into place, and that twelve is where a GIF stops
+/// looking choppy while staying a quarter of the size of a 30fps one. That
+/// trade is still real and is why twelve is the first thing on the Rate list
+/// -- but a document published as a video is the common case now, and
+/// twenty-four is what somebody making one expects to find.
+///
+/// A page is the exception and takes one: see defaultFrameRateFor, which is
+/// what the settings bar follows when the shape changes.
+const int defaultFrameRate = 24;
 
 /// defaultFrameCount is one second at [defaultFrameRate]. A new document is
 /// deliberately a still: one frame's worth of timeline, so the timeline is
@@ -988,5 +995,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return TeamElement.fromJson(json, base);
     case ElementKind.path:
       return PathElement.fromJson(json, base);
+    case ElementKind.counter:
+      return CounterElement.fromJson(json, base);
   }
 }

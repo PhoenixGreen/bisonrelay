@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -28,6 +29,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
+import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
 import 'package:flutter/gestures.dart';
@@ -77,6 +79,11 @@ enum _DragMode {
   /// tableColumn is the rule between two of a table's columns being dragged
   /// to make one wider and the other narrower.
   tableColumn,
+
+  /// counterPart is one of a counter's freely placed pieces -- a word, or one
+  /// of its buttons -- being moved inside the counter's own box. A part of an
+  /// element rather than the element, like chartLabel.
+  counterPart,
 
   /// imageFrame is a picture being moved about inside its own frame, which
   /// moves neither the element nor the picture's pixels -- only which part of
@@ -137,6 +144,25 @@ class CanvasStageState extends State<CanvasStage> {
   /// released. It runs its action on release, and only if the pointer has not
   /// travelled far enough to have been a drag. See _onPointerDown.
   ButtonElement? _pendingButton;
+
+  /// _pendingCounter is a live counter's own button that has been pressed and
+  /// not yet released, and _pendingCounterAt which of them it is.
+  ///
+  /// The same deferral a button element gets: a press that turns into a drag
+  /// moves the counter rather than starting its clock, so what the press
+  /// meant is only known on release. See _onPointerUp.
+  CounterElement? _pendingCounter;
+  int _pendingCounterAt = -1;
+
+  /// _settingCounter is the counter whose Set button is being typed into, and
+  /// _settingAt which button that is.
+  String? _settingCounter;
+  int _settingAt = -1;
+
+  /// _hoveredCounter is the counter whose button is under the pointer, and
+  /// _hoveredCounterAt which one, so it can be drawn lit.
+  String? _hoveredCounter;
+  int _hoveredCounterAt = -1;
 
   /// _buttonClickSlop is how far the pointer may move and still count as a
   /// click rather than a drag. Most trackpad clicks move a pixel or two.
@@ -310,6 +336,10 @@ class CanvasStageState extends State<CanvasStage> {
     super.initState();
     controller.addListener(_onChanged);
     controller.images.addListener(_onChanged);
+    // Counters that say they start running do. A clock on a canvas should be
+    // going when the canvas is opened; a stopwatch says it is not and waits
+    // to be started.
+    controller.startCounters();
   }
 
   @override
@@ -843,6 +873,139 @@ class CanvasStageState extends State<CanvasStage> {
     return null;
   }
 
+  /// _counterPart is which freely placed piece of a counter is being dragged:
+  /// its id, and which piece -- -2 for the words in front, -3 for the words
+  /// after, and 0 upwards for a button.
+  String? _counterPart;
+  int _counterPartAt = 0;
+
+  /// _counterPartUnder is the freely placed piece a document point is on, if
+  /// any.
+  ///
+  /// Only the pieces that have actually been let loose: a word sitting on the
+  /// number's line is part of that line, and dragging it would be dragging a
+  /// word out of a sentence.
+  int? _counterPartUnder(CounterElement e, Offset doc) {
+    if (e.looseButtons) {
+      var at = _counterButtonAt(e, doc);
+      if (at >= 0) return at;
+    }
+    if (!e.loose) return null;
+    var inner = e.box.inner(e.bounds);
+    for (var (which, text, at) in [
+      (-2, e.before, e.beforeAt),
+      (-3, e.after, e.afterAt),
+    ]) {
+      if (text.isEmpty) continue;
+      var centre = Offset(inner.center.dx + inner.width * at.dx,
+          inner.center.dy + inner.height * at.dy);
+      // A target the height of the words and a few of their ems wide, which
+      // is about what is drawn and enough to take hold of.
+      var box = Rect.fromCenter(
+          center: centre,
+          width: math.max(
+              e.affixSpec.fontSize * text.length * 0.7, e.affixSpec.fontSize),
+          height: e.affixSpec.fontSize * 1.4);
+      if (box.contains(doc)) return which;
+    }
+    return null;
+  }
+
+  /// _applyCounterPart moves that piece to wherever the pointer is.
+  void _applyCounterPart(Offset doc) {
+    var id = _counterPart;
+    var element = id == null ? null : document.elementById(id);
+    if (element is! CounterElement) return;
+
+    var inner = element.box.inner(element.bounds);
+    if (inner.width <= 0 || inner.height <= 0) return;
+    // Back to a fraction of the box from its middle, which is how a placement
+    // is held -- so the piece stays where it was put when the counter is
+    // resized.
+    var at = Offset(
+      ((doc.dx - inner.center.dx) / inner.width).clamp(-1.0, 1.0),
+      ((doc.dy - inner.center.dy) / inner.height).clamp(-1.0, 1.0),
+    );
+
+    controller.replaceElement(
+        switch (_counterPartAt) {
+          -2 => element.copyWith(beforeAt: at),
+          -3 => element.copyWith(afterAt: at),
+          _ => element.copyWith(buttonAt: [
+              for (var i = 0; i < element.buttons.length; i++)
+                i == _counterPartAt ? at : element.placedButton(i),
+            ]),
+        },
+        transient: true);
+  }
+
+  /// _counterButtonAt is which of a counter's buttons a document point is in,
+  /// or -1 for none.
+  int _counterButtonAt(CounterElement e, Offset doc) {
+    var rects = counterButtonRects(e, e.bounds);
+    for (var i = 0; i < rects.length; i++) {
+      if (rects[i].contains(doc)) return i;
+    }
+    return -1;
+  }
+
+  /// _pressCounter runs one of a counter's buttons.
+  ///
+  /// Set is the one this has to handle itself: the controller has no window,
+  /// and the answer is typed on the button rather than in a dialog. A box
+  /// that opens over the middle of the canvas to ask for one number is a lot
+  /// of ceremony for a stopwatch, and it covers the thing being set.
+  void _pressCounter(CounterElement e, int at) {
+    if (at < 0 || at >= e.buttons.length) return;
+    var button = e.buttons[at];
+    if (controller.pressCounterButton(e, button)) return;
+    setState(() {
+      _settingCounter = e.id;
+      _settingAt = at;
+    });
+  }
+
+  /// _counterInputFor is the field that opens on a counter's Set button.
+  ///
+  /// On the button, at the button's size, so that what is being typed is
+  /// where the thing being set is. Enter takes it; anything else that closes
+  /// it leaves the counter alone, which is what dismissing a question means.
+  Widget? _counterInputFor() {
+    var id = _settingCounter;
+    if (id == null) return null;
+    var element = document.elementById(id);
+    if (element is! CounterElement) return null;
+    var rects = counterButtonRects(element, element.bounds);
+    if (_settingAt < 0 || _settingAt >= rects.length) return null;
+
+    var box = rects[_settingAt];
+    var topLeft = _toStage(box.topLeft);
+    void close() {
+      if (mounted) {
+        setState(() {
+          _settingCounter = null;
+          _settingAt = -1;
+        });
+      }
+    }
+
+    return Positioned(
+      left: topLeft.dx,
+      top: topLeft.dy,
+      width: box.width * _scale,
+      height: box.height * _scale,
+      child: CounterInput(
+        key: ValueKey("set-$id"),
+        value: controller.counterValue(element),
+        decimals: element.decimals,
+        onDone: (typed) {
+          if (typed != null) controller.setCounterValue(element, typed);
+          close();
+        },
+      ),
+    );
+  }
+
   /// _dropFlow finishes a link drag: onto another text box it points the
   /// words there, anywhere else it takes the link away.
   ///
@@ -1132,6 +1295,38 @@ class CanvasStageState extends State<CanvasStage> {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
       return;
+    }
+
+    // A live counter's own buttons, on the same terms: pressed when it is the
+    // thing selected, and only when the press does not turn into a drag.
+    //
+    // A freely placed piece is both -- press it and it runs, drag it and it
+    // moves -- so the press is armed here and the mode is the one that moves
+    // the piece. Which of the two happened is known on release, the same way
+    // it is for a button element.
+    if (element is CounterElement &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var part = _counterPartUnder(element, doc);
+      var at = element.live ? _counterButtonAt(element, doc) : -1;
+      if (part != null) {
+        controller.beginInteraction();
+        _counterPart = element.id;
+        _counterPartAt = part;
+        _dragStart = doc;
+        if (at >= 0 && element.live) {
+          _pendingCounter = element;
+          _pendingCounterAt = at;
+        }
+        setState(() => _mode = _DragMode.counterPart);
+        return;
+      }
+      if (at >= 0) {
+        _pendingCounter = element;
+        _pendingCounterAt = at;
+        _beginTransform(_DragMode.move, null);
+        return;
+      }
     }
 
     // A second click on a picture that is already selected reframes it:
@@ -1876,6 +2071,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyPart(doc, chartLabel: true);
       case _DragMode.tableColumn:
         _applyPart(doc, chartLabel: false);
+      case _DragMode.counterPart:
+        _applyCounterPart(doc);
       case _DragMode.imageFrame:
         _applyFraming(doc);
       case _DragMode.guide:
@@ -2130,6 +2327,24 @@ class CanvasStageState extends State<CanvasStage> {
     // document units so the tolerance is the same however far in the canvas
     // is zoomed -- what is being allowed for is an unsteady hand, not a
     // distance on the page.
+    var counter = _pendingCounter;
+    var counterAt = _pendingCounterAt;
+    _pendingCounter = null;
+    _pendingCounterAt = -1;
+    if (_counterPart != null) {
+      _counterPart = null;
+      controller.endInteraction();
+      _mode = _DragMode.none;
+    }
+    if (counter != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      _pressCounter(counter, counterAt);
+      return;
+    }
+
     var button = _pendingButton;
     _pendingButton = null;
     if (button != null &&
@@ -2208,11 +2423,27 @@ class CanvasStageState extends State<CanvasStage> {
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
-    var element = _hitElement(_toDocument(stage));
+    var doc = _toDocument(stage);
+    var element = _hitElement(doc);
     var id = element is ButtonElement ? element.id : null;
-    if (id != controller.hoveredButton) {
+
+    // And which of a live counter's own buttons, which light the same way a
+    // button element does.
+    String? counter;
+    var at = -1;
+    if (element is CounterElement && element.live) {
+      at = _counterButtonAt(element, doc);
+      if (at >= 0) counter = element.id;
+    }
+
+    if (id != controller.hoveredButton ||
+        counter != _hoveredCounter ||
+        at != _hoveredCounterAt) {
       controller.hoveredButton = id;
-      setState(() {});
+      setState(() {
+        _hoveredCounter = counter;
+        _hoveredCounterAt = at;
+      });
     }
   }
 
@@ -2384,6 +2615,11 @@ class CanvasStageState extends State<CanvasStage> {
                         origin: _origin,
                         images: controller.images,
                         hoveredButton: controller.hoveredButton,
+                        counterValue: controller.counterValue,
+                        counterPressed: (e) =>
+                            e.id == _hoveredCounter ? _hoveredCounterAt : -1,
+                        counterRunning: controller.counterRunning,
+                        counterTick: controller.counterTicks,
                         selection: controller.selection,
                         showHelpers: controller.showHelpers,
                         selectedPath: _selectedPath(),
@@ -2415,6 +2651,7 @@ class CanvasStageState extends State<CanvasStage> {
               )),
               if (_editorFor() case var editor?) editor,
               if (_cellEditorFor() case var cell?) cell,
+              if (_counterInputFor() case var setting?) setting,
             ]),
           );
 

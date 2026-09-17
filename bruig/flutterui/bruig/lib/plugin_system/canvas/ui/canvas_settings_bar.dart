@@ -671,12 +671,23 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     return [
       CanvasControlGroup(label: "Canvas", children: [
         CanvasDropdown<CanvasRatio>(
+          key: const ValueKey("canvasRatio"),
           label: "Ratio",
           value: document.size.ratio,
           width: 96,
           options: [for (var r in CanvasRatio.values) (r, r.label)],
-          onChanged: (v) =>
-              write(document.copyWith(size: document.size.copyWith(ratio: v))),
+          onChanged: (v) {
+            // A shape change carries its own frame rate with it, but only
+            // where nobody has chosen one: going from a screen to a page
+            // should stop the document being twenty-four frames a second,
+            // and should not overrule somebody who has typed 30.
+            var rate = document.frameRate;
+            if (rate == defaultFrameRateFor(document.size.ratio)) {
+              rate = defaultFrameRateFor(v);
+            }
+            write(document.copyWith(
+                size: document.size.copyWith(ratio: v), frameRate: rate));
+          },
         ),
         // The sizes that have a name *in this shape*, beside the box that
         // takes any other number. A width on its own names nothing: 1920
@@ -719,6 +730,43 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           suffix: "px",
           onChanged: (v) => edit(document.copyWith(
               size: document.size.copyWith(exportWidth: v.round()))),
+          onCommit: controller.endInteraction,
+        ),
+        // How many frames a second this canvas runs at. On the band with the
+        // shape and the width because it is the same kind of decision -- what
+        // this document *is* -- and because the answer follows the shape: a
+        // page is one frame a second and a screen is twenty-four.
+        CanvasDropdown<int>(
+          key: const ValueKey("canvasRatePreset"),
+          label: "Rate",
+          value: canvasFrameRates.contains(document.frameRate)
+              ? document.frameRate
+              : 0,
+          width: 104,
+          options: [
+            // "Custom" only while it is one: a list saying a name for 25fps
+            // would be saying something untrue, and the number is in the box
+            // beside it either way.
+            if (!canvasFrameRates.contains(document.frameRate))
+              (0, "Custom · ${document.frameRate}"),
+            for (var rate in canvasFrameRates)
+              (rate, rate == 1 ? "Still · 1" : "$rate fps"),
+          ],
+          onChanged: (v) {
+            if (v == 0) return;
+            write(document.copyWith(frameRate: v));
+          },
+        ),
+        CanvasNumberField(
+          key: const ValueKey("canvasRate"),
+          label: "fps",
+          value: document.frameRate.toDouble(),
+          min: 1,
+          max: 120,
+          decimals: 0,
+          width: 52,
+          onChanged: (v) =>
+              edit(document.copyWith(frameRate: v.round().clamp(1, 120))),
           onCommit: controller.endInteraction,
         ),
         if (document.size.ratio == CanvasRatio.custom)

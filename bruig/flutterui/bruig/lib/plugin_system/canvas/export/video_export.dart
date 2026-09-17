@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -177,12 +178,23 @@ enum VideoQuality {
 
 /// renderVideo draws every frame and hands them to ffmpeg.
 ///
-/// The frames go to a temporary directory as PNGs rather than down ffmpeg's
-/// standard input. Piping is the tidier shape and it deadlocks: ffmpeg blocks
-/// writing its own output while we are still blocked writing input, and the
-/// export hangs with no error on exactly the long animations that most need
-/// one. Files also mean the exact frames handed over can be looked at when
-/// something goes wrong.
+/// Raw pixels down ffmpeg's standard input, rather than a directory of PNGs.
+/// Encoding each frame as a PNG was most of what an export spent its time on
+/// -- measured on a 2048-square canvas with a generated texture behind it,
+/// four hundred milliseconds a frame against thirty for the drawing, which on
+/// a thirty-second animation is five minutes of compressing pictures that
+/// were about to be thrown away by a video encoder.
+///
+/// Piping was tried before and deadlocked, and the way it deadlocks is worth
+/// naming: ffmpeg writes progress to stderr, nobody reads it, its pipe fills,
+/// ffmpeg blocks on the write, and it stops reading the frames we are blocked
+/// trying to give it. Both output pipes are drained here from the moment the
+/// process starts, and each frame is flushed before the next is drawn, which
+/// is also what keeps a long export from queueing gigabytes in memory.
+///
+/// If the pipe fails for any reason, the frames go to a temporary directory
+/// as PNGs instead -- the way this always worked. An export that is slow is
+/// better than an export that is not there.
 ///
 /// Returns null when there is no ffmpeg, when it fails, or when the document
 /// has no frames. The caller reports it; see [ffmpegHelp].
@@ -193,20 +205,44 @@ Future<CanvasExport?> renderVideo(
   VideoFormat format = VideoFormat.mp4,
   VideoQuality quality = VideoQuality.balanced,
   GifProgress? onProgress,
+
+  /// viaFiles takes the old road: every frame written out as a PNG and handed
+  /// to ffmpeg as a numbered set. What the pipe falls back to, and what the
+  /// test for the fallback asks for on purpose.
+  bool viaFiles = false,
 }) async {
   var ffmpeg = await ffmpegPath();
   if (ffmpeg == null || document.playFrames <= 0) return null;
 
+  if (!viaFiles) {
+    var piped = await _renderPiped(document,
+        ffmpeg: ffmpeg,
+        scale: scale,
+        images: images,
+        format: format,
+        quality: quality,
+        onProgress: onProgress);
+    if (piped != null) return piped;
+    debugPrint("Streaming the frames to ffmpeg did not work; writing them "
+        "out as files instead.");
+  }
+
   Directory? work;
+  ExportBackdrop? backdrop;
   try {
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
+
+    // The background, once. It is the most expensive thing on a canvas and on
+    // a still one it is the same picture every frame -- see ExportBackdrop.
+    backdrop =
+        await ExportBackdrop.prepare(document, scale: scale, images: images);
 
     var width = 0, height = 0;
     for (var i = 0; i < document.playFrames; i++) {
       ui.Image? image;
       try {
-        image =
-            await renderFrame(document, frame: i, scale: scale, images: images);
+        image = await renderFrame(document,
+            frame: i, scale: scale, images: images, backdrop: backdrop);
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
         width = image.width;
@@ -227,32 +263,8 @@ Future<CanvasExport?> renderVideo(
     var out = path.join(work.path, "canvas${format.extension}");
     var result = await Process.run(ffmpeg, [
       "-y",
-      "-framerate", "${document.frameRate}",
-      "-i", path.join(work.path, "frame-%05d.png"),
-      // yuv420p and the even-sized scale are what makes the file play in
-      // QuickTime, on a phone and in a browser rather than only in VLC.
-      // Neither codec in 4:2:0 can have an odd dimension, and a canvas is any
-      // size its author made it.
-      "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-      "-pix_fmt", "yuv420p",
-      "-c:v", format.encoder,
-      "-crf", "${quality.crfFor(format)}",
-      if (format == VideoFormat.mp4) ...[
-        "-preset", "medium",
-        // Puts the index at the front, so the file starts playing before it
-        // has all arrived -- which is the difference between a link that
-        // plays and one that downloads.
-        "-movflags", "+faststart",
-      ],
-      if (format == VideoFormat.webm) ...[
-        // VP9 only honours the CRF when the bitrate is explicitly nothing.
-        // Left out, it quietly encodes to a default bitrate instead and the
-        // quality control does nothing at all.
-        "-b:v", "0",
-        // Rows in parallel. VP9 is slow enough without it that a long export
-        // reads as a hang.
-        "-row-mt", "1",
-      ],
+      ..._input(document, work.path),
+      ..._encoderArgs(document, format, quality),
       out,
     ]);
 
@@ -277,6 +289,7 @@ Future<CanvasExport?> renderVideo(
     debugPrint("Unable to render the canvas video: $exception");
     return null;
   } finally {
+    backdrop?.dispose();
     // Whatever happened, the frames are not left behind. A 200-frame 4K export
     // is gigabytes of PNG in the temporary directory.
     try {
@@ -286,6 +299,166 @@ Future<CanvasExport?> renderVideo(
     }
   }
 }
+
+/// _renderPiped draws every frame and writes its raw pixels to ffmpeg.
+///
+/// Returns null where anything at all went wrong, so the caller can fall back
+/// to files rather than telling somebody their export failed.
+Future<CanvasExport?> _renderPiped(
+  CanvasDocument document, {
+  required String ffmpeg,
+  required double scale,
+  required CanvasImageSource? images,
+  required VideoFormat format,
+  required VideoQuality quality,
+  GifProgress? onProgress,
+}) async {
+  ExportBackdrop? backdrop;
+  Process? process;
+  Directory? work;
+  try {
+    // The size is needed before ffmpeg starts -- raw pixels carry no header
+    // saying how wide they are -- so the first frame is drawn first and kept.
+    backdrop =
+        await ExportBackdrop.prepare(document, scale: scale, images: images);
+    var first = await renderFrame(document,
+        frame: 0, scale: scale, images: images, backdrop: backdrop);
+    var width = first.width, height = first.height;
+
+    work = await Directory.systemTemp.createTemp("bruig-canvas-video");
+    var out = path.join(work.path, "canvas${format.extension}");
+
+    process = await Process.start(ffmpeg, [
+      "-y",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgba",
+      "-s",
+      "${width}x$height",
+      "-framerate",
+      "${document.frameRate}",
+      "-i",
+      "-",
+      ..._encoderArgs(document, format, quality),
+      out,
+    ]);
+
+    // Drained from the moment it starts. This is the deadlock: ffmpeg writes
+    // its progress to stderr, and if nobody empties that pipe it fills, ffmpeg
+    // blocks writing to it, and it stops reading the frames we are blocked
+    // trying to hand over.
+    var errors = StringBuffer();
+    var draining = [
+      process.stderr.transform(utf8.decoder).forEach(errors.write),
+      process.stdout.drain<void>(),
+    ];
+
+    Future<void> send(ui.Image image) async {
+      try {
+        var raw =
+            await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+        if (raw == null) throw StateError("no pixels");
+        process!.stdin.add(raw.buffer.asUint8List());
+        // Flushed per frame, which is what applies the backpressure: without
+        // it a long export queues every frame it has drawn in memory while
+        // ffmpeg works through them.
+        await process.stdin.flush();
+      } finally {
+        image.dispose();
+      }
+    }
+
+    await send(first);
+    onProgress?.call(1, document.playFrames);
+    for (var i = 1; i < document.playFrames; i++) {
+      await send(await renderFrame(document,
+          frame: i, scale: scale, images: images, backdrop: backdrop));
+      onProgress?.call(i + 1, document.playFrames);
+      // The same yield the other exports make: without it the whole run
+      // happens in one turn of the event loop and the progress line the
+      // caller is drawing never appears.
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await process.stdin.close();
+    var code = await process.exitCode;
+    await Future.wait(draining);
+    if (code != 0) {
+      var why = errors.toString();
+      if (why.contains("Unknown encoder")) {
+        debugPrint("This ffmpeg has no ${format.encoder}: ${format.label} "
+            "needs a build that includes it.");
+        // Nothing about the road in fixes a missing encoder, and writing the
+        // whole run out as files to be told so again is a minute of somebody's
+        // time for the same message.
+        return null;
+      }
+      debugPrint("ffmpeg could not write the video: $why");
+      return null;
+    }
+
+    var file = File(out);
+    if (!await file.exists()) return null;
+    return CanvasExport(await file.readAsBytes(), format.mime,
+        width: _even(width), height: _even(height));
+  } catch (exception) {
+    debugPrint("Unable to stream the canvas video: $exception");
+    return null;
+  } finally {
+    backdrop?.dispose();
+    try {
+      process?.kill();
+    } catch (_) {
+      // Already gone, which is the usual case and not worth saying.
+    }
+    try {
+      await work?.delete(recursive: true);
+    } catch (exception) {
+      debugPrint("Unable to clear the video's working directory: $exception");
+    }
+  }
+}
+
+/// _input is where ffmpeg reads the frames from: a numbered set of PNGs.
+List<String> _input(CanvasDocument document, String work) => [
+      "-framerate",
+      "${document.frameRate}",
+      "-i",
+      path.join(work, "frame-%05d.png"),
+    ];
+
+/// _encoderArgs is everything after the input: what the file is and how good
+/// it is. Shared by both ways of getting frames in, so the two cannot drift
+/// into producing different files.
+List<String> _encoderArgs(
+        CanvasDocument document, VideoFormat format, VideoQuality quality) =>
+    [
+      // yuv420p and the even-sized scale are what makes the file play in
+      // QuickTime, on a phone and in a browser rather than only in VLC.
+      // Neither codec in 4:2:0 can have an odd dimension, and a canvas is any
+      // size its author made it.
+      "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+      "-pix_fmt", "yuv420p",
+      "-c:v", format.encoder,
+      "-crf", "${quality.crfFor(format)}",
+      if (format == VideoFormat.mp4) ...[
+        "-preset", "medium",
+        // Puts the index at the front, so the file starts playing before it
+        // has all arrived -- which is the difference between a link that
+        // plays and one that downloads.
+        "-movflags", "+faststart",
+      ],
+      if (format == VideoFormat.webm) ...[
+        // VP9 only honours the CRF when the bitrate is explicitly nothing.
+        // Left out, it quietly encodes to a default bitrate instead and the
+        // quality control does nothing at all.
+        "-b:v", "0",
+        // Rows in parallel. VP9 is slow enough without it that a long export
+        // reads as a hang.
+        "-row-mt", "1",
+      ],
+    ];
 
 /// _numbered is ffmpeg's zero-padded sequence, which is how it knows the order
 /// without being told.

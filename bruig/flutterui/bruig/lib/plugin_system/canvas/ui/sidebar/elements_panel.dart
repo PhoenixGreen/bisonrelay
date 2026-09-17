@@ -31,6 +31,7 @@ const List<ElementKind> _addable = [
   ElementKind.chart,
   ElementKind.table,
   ElementKind.button,
+  ElementKind.counter,
   ElementKind.background,
   ElementKind.player,
   ElementKind.path,
@@ -44,6 +45,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.chart => Icons.bar_chart,
       ElementKind.table => Icons.table_chart_outlined,
       ElementKind.button => Icons.smart_button_outlined,
+      ElementKind.counter => Icons.timer_outlined,
       ElementKind.background => Icons.blur_on,
       ElementKind.player => Icons.person_pin_circle_outlined,
       ElementKind.path => Icons.gesture,
@@ -57,6 +59,7 @@ String _hintForKind(ElementKind kind) => switch (kind) {
       ElementKind.chart => "Bars, lines, pies and radars",
       ElementKind.table => "A grid of text",
       ElementKind.button => "Something to press in a published canvas",
+      ElementKind.counter => "A number that counts, or a clock",
       ElementKind.background => "A generated pattern in a panel",
       ElementKind.player => "A numbered dot with a name",
       ElementKind.path =>

@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -19,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
@@ -113,12 +115,23 @@ void paintCanvasDocument(
   /// exporter, which renders each frame once and wants exact pixels at a size
   /// of its own choosing. See ProceduralCache.
   ProceduralCache? backgrounds,
+
+  /// counterValue and counterPressed are what a live counter is showing and
+  /// which of its buttons is lit -- see paintElement. Null in an export,
+  /// where nothing is running.
+  double Function(CounterElement)? counterValue,
+  int Function(CounterElement)? counterPressed,
+  bool Function(CounterElement)? counterRunning,
+
+  /// backdrop is the background already rasterised, for a caller drawing many
+  /// frames of a document whose background does not move. See ExportBackdrop.
+  ui.Image? backdrop,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
 
-  _paintDocumentBackground(
-      canvas, rect, doc, time, images, backgrounds, doc.frameRate.toDouble());
+  _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds,
+      doc.frameRate.toDouble(), backdrop);
 
   // The shared canvas, under every scene. Under rather than over: what goes
   // on a master is a backdrop, a frame, a watermark -- the things a scene is
@@ -134,14 +147,20 @@ void paintCanvasDocument(
         images: images,
         editing: editing,
         hoveredButton: hoveredButton,
-        skipElement: skipElement);
+        skipElement: skipElement,
+        counterValue: counterValue,
+        counterPressed: counterPressed,
+        counterRunning: counterRunning);
   }
 
   _paintScene(canvas, doc, doc.elements, frame,
       images: images,
       editing: editing,
       hoveredButton: hoveredButton,
-      skipElement: skipElement);
+      skipElement: skipElement,
+      counterValue: counterValue,
+      counterPressed: counterPressed,
+      counterRunning: counterRunning);
 }
 
 /// _paintScene draws one canvas's worth of elements.
@@ -158,6 +177,9 @@ void _paintScene(
   bool editing = false,
   String? hoveredButton,
   String? skipElement,
+  double Function(CounterElement)? counterValue,
+  int Function(CounterElement)? counterPressed,
+  bool Function(CounterElement)? counterRunning,
 }) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -178,6 +200,9 @@ void _paintScene(
         images: images,
         editing: editing,
         document: doc,
+        counterValue: counterValue,
+        counterPressed: counterPressed,
+        counterRunning: counterRunning,
         hovered: element.id == hoveredButton);
   }
 }
@@ -189,7 +214,25 @@ void _paintDocumentBackground(
     double time,
     CanvasImageSource? images,
     ProceduralCache? backgrounds,
-    double frameRate) {
+    double frameRate,
+    [ui.Image? backdrop]) {
+  // A backdrop handed in has already been generated: it is this document's own
+  // background, rasterised once for a whole run of frames -- see
+  // ExportBackdrop. Generating the same still picture for every frame of an
+  // export is the most expensive thing an export does.
+  if (backdrop != null) {
+    canvas.drawImageRect(
+        backdrop,
+        Rect.fromLTWH(
+            0, 0, backdrop.width.toDouble(), backdrop.height.toDouble()),
+        rect,
+        // No filtering: the backdrop was rasterised at exactly the size this
+        // export writes, so the draw is one pixel to one pixel. Any filter at
+        // all resamples it -- which is both slower and, pixel for pixel, not
+        // the picture the slow road would have drawn.
+        Paint()..filterQuality = FilterQuality.none);
+    return;
+  }
   // The master's own where the shared canvas is switched on and has one.
   // See CanvasDocument.drawnBackground.
   var bg = doc.drawnBackground;
@@ -223,6 +266,17 @@ void _paintDocumentBackground(
       time: time, frameRate: frameRate, images: images);
 }
 
+/// paintDocumentBackdrop draws a document's background and nothing else.
+///
+/// For an export, which rasterises it once and then draws that picture on
+/// every frame -- see ExportBackdrop. Public because the background painter
+/// itself is private and has six arguments, half of which an export has no
+/// answer for.
+void paintDocumentBackdrop(ui.Canvas canvas, CanvasDocument doc,
+        {CanvasImageSource? images}) =>
+    _paintDocumentBackground(
+        canvas, doc.size.rect, doc, 0, images, null, doc.frameRate.toDouble());
+
 /// paintElement draws one element, with its animation pose applied.
 void paintElement(
   ui.Canvas canvas,
@@ -241,6 +295,17 @@ void paintElement(
   /// no document to look in, and text on a curve simply falls back to its own
   /// box there.
   CanvasDocument? document,
+
+  /// counterValue is what a live counter is showing at this instant, and
+  /// counterPressed which of its buttons is lit.
+  ///
+  /// Asked of the caller rather than worked out here, because a counter that
+  /// is running is running in somebody's window: the stage knows, a published
+  /// canvas knows, and an exported frame has nobody to ask. Null means
+  /// nobody is running anything, which is what an export is.
+  double Function(CounterElement)? counterValue,
+  int Function(CounterElement)? counterPressed,
+  bool Function(CounterElement)? counterRunning,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
@@ -322,6 +387,32 @@ void paintElement(
           () => paintTable(canvas, bounds, e, images: images));
     case ButtonElement e:
       _paintButton(canvas, bounds, e, hovered);
+    case CounterElement e:
+      // Keyed, the number is whatever the timeline says here; live, it is
+      // whatever the thing running it says -- and in a picture, where nothing
+      // is running, it is where the count starts. A live counter exported as
+      // a PNG is a photograph of a stopped clock, which is the only thing a
+      // still picture of one can be.
+      paintArriving(
+          canvas,
+          bounds,
+          e.animation,
+          pose,
+          () => paintCounter(
+              canvas,
+              bounds,
+              e,
+              // Keyed, the number is the timeline's and nothing else may
+              // answer for it: the live callback is asked for *live* counters
+              // only. Asked for both, it answered "wherever this counter's
+              // clock has got to" for a counter that has no clock -- which is
+              // its starting value, at every frame, however many keyframes
+              // had been laid on it.
+              e.live
+                  ? (counterValue?.call(e) ?? e.from)
+                  : (pose.values[KeyframeChannel.count] ?? e.from),
+              pressed: counterPressed?.call(e) ?? -1,
+              running: counterRunning?.call(e)));
     case BackgroundElement e:
       _paintBackgroundElement(
           canvas, bounds, e, time, frameRate.toDouble(), images);

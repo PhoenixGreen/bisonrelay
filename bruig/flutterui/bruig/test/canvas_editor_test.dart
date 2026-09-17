@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
@@ -358,6 +359,51 @@ void main() {
       expect(shown(), isNot(asPng), reason: "a JPEG is not a PNG: $asPng");
     });
 
+    testWidgets("the frame rate is chosen by name or typed", (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("30 fps").last);
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 30);
+
+      // And anything else in the box beside it, which then says Custom rather
+      // than borrowing a name that would be untrue.
+      await tester.enterText(find.byKey(const ValueKey("canvasRate")), "25");
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 25);
+      expect(find.text("Custom · 25"), findsOneWidget);
+    });
+
+    testWidgets("and follows the shape until somebody chooses one",
+        (tester) async {
+      // A page has no frames to have a rate between; a screen that moves
+      // wants film's twenty-four.
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasSettingsPanel(controller: controller));
+      expect(controller.document.frameRate, 24);
+
+      await tester.tap(find.byKey(const ValueKey("canvasRatio")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(CanvasRatio.a4.label).last);
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 1, reason: "a page is a still");
+
+      // But a rate somebody has chosen is theirs, and changing the shape does
+      // not overrule it.
+      await tester.enterText(find.byKey(const ValueKey("canvasRate")), "12");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("canvasRatio")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(CanvasRatio.wide.label).last);
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 12);
+    });
+
     testWidgets("a size can be chosen by the name people use for it",
         (tester) async {
       // Nobody remembers that 1080p is 1920 across, and everybody knows what
@@ -434,6 +480,9 @@ void main() {
       // At the end of the line, after the size and the cost: it is set once
       // and left, rather than sitting between the ratio and the width.
       var scaling = find.byKey(const ValueKey("canvasScalesDesign"));
+      // The line scrolls sideways, and it grew when the frame rate joined it.
+      await tester.ensureVisible(scaling);
+      await tester.pumpAndSettle();
       expect(tester.getRect(scaling).left,
           greaterThan(tester.getRect(find.text("ESTIMATED SIZE")).left));
 
@@ -2015,8 +2064,11 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      // Focus the strip without landing on a mark.
-      await tapMark(tester, 5, 30);
+      // Focus the strip without landing on a mark *or* on the bar between
+      // two of them: a stretch where something happens is a bar now, and
+      // clicking one takes both of its ends. Past the last mark there is
+      // neither.
+      await tapMark(tester, 25, 30);
       await tester.sendKeyEvent(LogicalKeyboardKey.delete);
       await tester.pumpAndSettle();
 
@@ -3325,6 +3377,414 @@ void main() {
       await tester.tap(find.text("ADD"));
       await tester.pumpAndSettle();
       expect(find.byType(CanvasElementsPanel), findsNothing);
+    });
+  });
+
+  group("an element's keyframe easing", () {
+    /// showAnimation opens the Animation section if it is shut, and hands
+    /// back what shuts it again -- an expander remembers, and the memory
+    /// outlives the test.
+    Future<Future<void> Function()> showAnimation(WidgetTester tester) async {
+      var open = find
+          .byKey(const ValueKey("elementAnimationFamily"))
+          .evaluate()
+          .isNotEmpty;
+      if (!open) {
+        await tester.ensureVisible(find.text("ANIMATION"));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("ANIMATION"));
+        await tester.pumpAndSettle();
+      }
+      return () async {
+        if (!open) {
+          await tester.tap(find.text("ANIMATION"));
+          await tester.pumpAndSettle();
+        }
+      };
+    }
+
+    // Easing belongs to the keyframe it leaves, so it is offered wherever
+    // somebody is looking at one -- and it matters more now that a run of
+    // keyframes can be copied and pasted, because what gets pasted is
+    // whatever easing each of them had.
+    testWidgets("is offered while the playhead is on one", (tester) async {
+      var document = const CanvasDocument(frames: 40);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      controller.frame = 5;
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      var shut = await showAnimation(tester);
+
+      var easing = find.byKey(const ValueKey("elementKeyframeEasing"));
+      expect(easing, findsNothing, reason: "no keyframe here to ease out of");
+
+      controller.setKeyframe(element.id, const Keyframe(frame: 5, dx: 20));
+      controller.setKeyframe(element.id, const Keyframe(frame: 15, dx: 60));
+      await tester.pumpAndSettle();
+      easing = find.byKey(const ValueKey("elementKeyframeEasing"));
+      await tester.ensureVisible(easing);
+      await tester.pumpAndSettle();
+      expect(easing, findsOneWidget);
+
+      await tester.tap(easing);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Bounce").last);
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.track?.keyAt(5)?.easing,
+          KeyframeEasing.bounce);
+      expect(controller.document.elements.single.track?.keyAt(15)?.easing,
+          KeyframeEasing.linear,
+          reason: "one keyframe, not the whole track");
+
+      // And the button beside it gives every keyframe the same one.
+      var all = find.byKey(const ValueKey("elementKeyframeEasingAll"));
+      await tester.ensureVisible(all);
+      await tester.pumpAndSettle();
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.track?.keyAt(15)?.easing,
+          KeyframeEasing.bounce);
+      await shut();
+    });
+
+    testWidgets("and says so even when the playhead is between two",
+        (tester) async {
+      // Hidden until the playhead stood on a keyframe, it was a control
+      // nobody could find: there is no telling a setting that does not exist
+      // from one waiting for the playhead to be somewhere else.
+      var document = const CanvasDocument(frames: 40);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      controller.setKeyframe(element.id, const Keyframe(frame: 5, dx: 20));
+      controller.setKeyframe(element.id, const Keyframe(frame: 15, dx: 60));
+      controller.frame = 9;
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      var shut = await showAnimation(tester);
+
+      var easing = find.byKey(const ValueKey("elementKeyframeEasing"));
+      expect(easing, findsOneWidget, reason: "there for the finding");
+      expect(tester.widget<CanvasDropdown<KeyframeEasing>>(easing).enabled,
+          isFalse,
+          reason: "and greyed, because there is no keyframe on this frame");
+      expect(
+          tester
+              .widgetList<CanvasHint>(find.byType(CanvasHint))
+              .map((h) => h.message)
+              .where((m) => m.contains("2 marks")),
+          isNotEmpty,
+          reason: "and says where to put the playhead to use it");
+      await shut();
+    });
+
+    testWidgets("and an element with no keyframes at all offers none",
+        (tester) async {
+      var document = const CanvasDocument(frames: 40);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      var shut = await showAnimation(tester);
+      expect(find.byKey(const ValueKey("elementKeyframeEasing")), findsNothing);
+      await shut();
+    });
+
+    testWidgets("a caption and a chart have it too", (tester) async {
+      // They have animation sections of their own, and "the easing of this
+      // keyframe" is not a question about what kind of element it is.
+      for (var kind in [ElementKind.text, ElementKind.chart]) {
+        var document = const CanvasDocument(frames: 40);
+        var element = newElement(kind, document);
+        var controller = CanvasController(document.addElement(element));
+        addTearDown(controller.dispose);
+        controller.selectOnly(element.id);
+        controller.setKeyframe(element.id, const Keyframe(frame: 0, dx: 4));
+        await pump(tester, CanvasDesignPanel(controller: controller));
+
+        await tester.ensureVisible(find.text("ANIMATION"));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("ANIMATION"));
+        await tester.pumpAndSettle();
+        expect(
+            find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget,
+            reason: kind.name);
+        await tester.tap(find.text("ANIMATION"));
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets("and Hold is among the choices", (tester) async {
+      // "Stays the same until the next keyframe", which is what a count in
+      // steps and a cut both need.
+      var document = const CanvasDocument(frames: 40);
+      var element = newElement(ElementKind.shape, document);
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly(element.id);
+      controller.frame = 5;
+      controller.setKeyframe(element.id, const Keyframe(frame: 5, dx: 20));
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      var shut = await showAnimation(tester);
+
+      var easing = find.byKey(const ValueKey("elementKeyframeEasing"));
+      await tester.ensureVisible(easing);
+      await tester.pumpAndSettle();
+      await tester.tap(easing);
+      await tester.pumpAndSettle();
+      expect(find.text("Hold (stays the same)"), findsWidgets);
+      expect(find.text("Overshoot"), findsWidgets);
+      await tester.tap(find.text("Hold (stays the same)").last);
+      await tester.pumpAndSettle();
+      expect(controller.document.elements.single.track?.keyAt(5)?.easing,
+          KeyframeEasing.hold);
+      await shut();
+    });
+  });
+
+  group("the counter settings", () {
+    // Two elements in one, and the switch between them is the thing to pin:
+    // keyframes on, the number is read off the timeline; off, it runs in real
+    // time and the buttons under it mean something.
+    Future<CanvasController> panel(WidgetTester tester,
+        {CounterElement Function(CounterElement)? shape,
+        int frames = 60}) async {
+      var element = const CounterElement(
+        ElementBase(id: "n", width: 320, height: 160),
+        from: 0,
+        to: 100,
+      );
+      var controller = CanvasController(CanvasDocument(frames: frames)
+          .addElement(shape == null ? element : shape(element)));
+      addTearDown(controller.dispose);
+      controller.selectOnly("n");
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      return controller;
+    }
+
+    CounterElement counterIn(CanvasController controller) =>
+        controller.document.elements.single as CounterElement;
+
+    Future<void> press(WidgetTester tester, Finder what) async {
+      await tester.ensureVisible(what);
+      await tester.pumpAndSettle();
+      await tester.tap(what);
+      await tester.pumpAndSettle();
+    }
+
+    /// showCount opens the Count section if it is shut, and hands back what
+    /// shuts it again -- an expander remembers, and the memory outlives the
+    /// test.
+    Future<Future<void> Function()> showCount(WidgetTester tester) async {
+      var open =
+          find.byKey(const ValueKey("counterKeyed")).evaluate().isNotEmpty;
+      if (!open) await press(tester, find.text("COUNT"));
+      return () async {
+        if (!open) await press(tester, find.text("COUNT"));
+      };
+    }
+
+    testWidgets("count from, to and how the number is written", (tester) async {
+      var controller = await panel(tester);
+      await tester.enterText(find.byKey(const ValueKey("counterTo")), "250");
+      await tester.pumpAndSettle();
+      expect(counterIn(controller).to, 250);
+
+      await tester.enterText(
+          find.byKey(const ValueKey("counterDecimals")), "2");
+      await tester.pumpAndSettle();
+      expect(counterIn(controller).decimals, 2);
+      expect(counterIn(controller).format(1234.5), "1234.50");
+    });
+
+    testWidgets("the words either side are the counter's, not the number's",
+        (tester) async {
+      var controller = await panel(tester);
+      await tester.enterText(find.byKey(const ValueKey("counterBefore")), "£");
+      await tester.pumpAndSettle();
+      expect(counterIn(controller).before, "£");
+      expect(counterIn(controller).textFor(12), "£12");
+    });
+
+    testWidgets("the two ends can be pinned where the playhead is",
+        (tester) async {
+      var controller = await panel(tester);
+      var shut = await showCount(tester);
+
+      controller.frame = 0;
+      await tester.pumpAndSettle();
+      await press(tester, find.byKey(const ValueKey("counterPinFrom")));
+      controller.frame = 24;
+      await tester.pumpAndSettle();
+      await press(tester, find.byKey(const ValueKey("counterPinTo")));
+
+      controller.frame = 12;
+      expect(
+          controller.valueAt(counterIn(controller), KeyframeChannel.count, -1),
+          closeTo(50, 0.001),
+          reason: "half way along, half way through the count");
+
+      // And pinning a number says nothing about where the element is. It used
+      // to: the seed keyframe is a resting pose, which is how a track says it
+      // has been animated in space -- so the position, size, angle and fade
+      // diamond lit up and every later drag wrote a pose.
+      expect(counterIn(controller).track?.posesAnything, isFalse);
+      await shut();
+    });
+
+    testWidgets("and a point in between is another keyframe", (tester) async {
+      var controller = await panel(tester);
+      var shut = await showCount(tester);
+
+      controller.frame = 10;
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey("counterPointValue")), "140");
+      await tester.pumpAndSettle();
+
+      expect(counterIn(controller).track?.keyAt(10), isNotNull);
+      expect(
+          controller.valueAt(counterIn(controller), KeyframeChannel.count, -1),
+          140,
+          reason: "a point can be higher than either end");
+      await shut();
+    });
+
+    testWidgets("and one easing can be given to every point", (tester) async {
+      var controller = await panel(tester);
+      var shut = await showCount(tester);
+
+      for (var frame in [0, 6, 12]) {
+        controller.frame = frame;
+        await tester.pumpAndSettle();
+        await press(tester, find.byKey(const ValueKey("counterAddPoint")));
+      }
+
+      controller.frame = 6;
+      await tester.pumpAndSettle();
+      await press(tester, find.byKey(const ValueKey("counterEasing")));
+      await press(tester, find.text("Hold (stays the same)").last);
+      await press(tester, find.byKey(const ValueKey("counterEasingAll")));
+
+      var track = counterIn(controller).track!;
+      for (var frame in [0, 6, 12]) {
+        expect(track.keyAt(frame)?.easing, KeyframeEasing.hold,
+            reason: "frame $frame");
+      }
+      await shut();
+    });
+
+    testWidgets("and each point says how the number leaves it", (tester) async {
+      var controller = await panel(tester);
+      var shut = await showCount(tester);
+
+      controller.frame = 6;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("counterEasing")), findsNothing,
+          reason: "no keyframe here, so nothing to ease out of");
+
+      await press(tester, find.byKey(const ValueKey("counterPinFrom")));
+      var easing = find.byKey(const ValueKey("counterEasing"));
+      expect(easing, findsOneWidget);
+
+      await press(tester, easing);
+      await press(tester, find.text("Hold (stays the same)").last);
+      expect(
+          counterIn(controller).track?.keyAt(6)?.easing, KeyframeEasing.hold);
+      expect(
+          counterIn(controller).track?.keyAt(6)?.values[KeyframeChannel.count],
+          0,
+          reason: "and the number it pins is still there");
+      await shut();
+    });
+
+    testWidgets("switching the keyframes off offers the live settings instead",
+        (tester) async {
+      var controller = await panel(tester);
+      var shut = await showCount(tester);
+      expect(find.byKey(const ValueKey("counterPinFrom")), findsOneWidget);
+      expect(find.byKey(const ValueKey("counterRate")), findsNothing);
+
+      await press(tester, find.byKey(const ValueKey("counterKeyed")));
+      expect(counterIn(controller).live, isTrue);
+      expect(find.byKey(const ValueKey("counterPinFrom")), findsNothing);
+      expect(find.byKey(const ValueKey("counterRate")), findsOneWidget);
+      expect(find.byKey(const ValueKey("counterLoop")), findsOneWidget);
+      await shut();
+    });
+
+    testWidgets("and asking for the time writes it the way a clock is written",
+        (tester) async {
+      // A clock written plainly is a number of seconds since midnight, which
+      // is not a thing anybody wants to read.
+      var controller =
+          await panel(tester, shape: (e) => e.copyWith(keyed: false));
+      var shut = await showCount(tester);
+
+      await press(tester, find.byKey(const ValueKey("counterSource")));
+      await press(tester, find.text("The time").last);
+      expect(counterIn(controller).source, CounterSource.clock);
+      expect(counterIn(controller).separator.isTime, isTrue);
+      await shut();
+    });
+
+    testWidgets("the number's spacing and the words' placing are offered",
+        (tester) async {
+      // Both of these went missing once: they live inside the two type
+      // sections rather than in a group of their own, and a section nobody
+      // opens is a setting nobody has.
+      var controller = await panel(tester);
+      await press(tester, find.text("NUMBER TYPE"));
+      expect(find.byKey(const ValueKey("counterGap")), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey("counterGap")), "1.5");
+      await tester.pumpAndSettle();
+      expect(counterIn(controller).gap, 1.5);
+      await press(tester, find.text("NUMBER TYPE"));
+
+      await press(tester, find.text("WORDS TYPE"));
+      expect(find.byKey(const ValueKey("counterLoose")), findsOneWidget);
+      expect(find.byKey(const ValueKey("counterBeforeAtX")), findsNothing);
+
+      await press(tester, find.byKey(const ValueKey("counterLoose")));
+      expect(counterIn(controller).loose, isTrue);
+      for (var key in [
+        "counterBeforeAtX",
+        "counterBeforeAtY",
+        "counterAfterAtX",
+        "counterAfterAtY",
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      }
+
+      await tester.enterText(
+          find.byKey(const ValueKey("counterAfterAtY")), "0.3");
+      await tester.pumpAndSettle();
+      expect(counterIn(controller).afterAt.dy, 0.3);
+      expect(counterIn(controller).beforeAt.dy, 0,
+          reason: "one word, not both");
+      await press(tester, find.text("WORDS TYPE"));
+    });
+
+    testWidgets("the buttons are switched on one at a time", (tester) async {
+      var controller =
+          await panel(tester, shape: (e) => e.copyWith(keyed: false));
+      await press(tester, find.text("BUTTONS"));
+      expect(counterIn(controller).buttons, isEmpty);
+
+      await press(
+          tester, find.byKey(const ValueKey("counterButton-startStop")));
+      await press(tester, find.byKey(const ValueKey("counterButton-input")));
+      expect(counterIn(controller).buttons,
+          [CounterButton.startStop, CounterButton.input],
+          reason: "kept in the order they are declared in, not switched on");
+
+      await press(
+          tester, find.byKey(const ValueKey("counterButton-startStop")));
+      expect(counterIn(controller).buttons, [CounterButton.input]);
+      await press(tester, find.text("BUTTONS"));
     });
   });
 

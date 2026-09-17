@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -47,6 +48,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.chart => Size(wide * 0.6, short * 0.6),
     ElementKind.table => Size(wide * 0.55, short * 0.4),
     ElementKind.button => Size(short * 0.32, short * 0.11),
+    // Wide enough for a figure with words either side of it, and tall enough
+    // for the row of buttons a live one can carry.
+    ElementKind.counter => Size(wide * 0.34, short * 0.22),
     ElementKind.background => Size(wide * 0.6, short * 0.5),
     // A team, not a player: the box is the half of the pitch the formation is
     // laid out in, so it wants most of the canvas rather than a dot's worth.
@@ -122,6 +126,22 @@ CanvasElement newElement(
               ),
             ],
           ));
+
+    case ElementKind.counter:
+      // A hundred, counting up from nothing, written plainly. Every other
+      // element arrives with something obviously placeholder in it; the
+      // placeholder here is the count itself, which is the one thing that
+      // shows what this is the moment it lands.
+      return CounterElement(base,
+          from: 0,
+          to: 100,
+          numberSpec: TextSpec(
+              fontSize: unit * 2.4, weight: 700, align: TextAlignSpec.center),
+          affixSpec:
+              TextSpec(fontSize: unit * 0.9, align: TextAlignSpec.center),
+          buttonSpec: TextSpec(
+              fontSize: unit * 0.5, weight: 600, align: TextAlignSpec.center),
+          box: BoxSpec(padding: unit * 0.6));
 
     case ElementKind.table:
       return TableElement(base,

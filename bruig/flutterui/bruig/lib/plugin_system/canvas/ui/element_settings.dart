@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -15,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/chart_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/counter_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/path_settings.dart';
@@ -82,6 +84,8 @@ List<Widget> elementSettings(
       TableElement e =>
         tableSettings(context, controller, e, write, begin, commit),
       ButtonElement e => buttonSettings(controller, e, write, begin, commit),
+      CounterElement e =>
+        counterSettings(context, controller, e, write, begin, commit),
       BackgroundElement e => [
           ProceduralSettings(
             spec: e.spec,

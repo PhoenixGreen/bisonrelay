@@ -898,6 +898,10 @@ Widget _animationSection(CanvasController controller, TextElement e,
             : animation.preset.label)
         : (animation.closes ? animation.exit.label : null),
     children: [
+      // The same group every other element's animation section carries: the
+      // easing belongs to the keyframe, and a caption's keyframes are
+      // keyframes like any other.
+      keyframeEasingGroup(controller, e, begin, commit),
       const CanvasHint(
           "Choosing one draws the words on over two seconds and puts a "
           "keyframe at each end of it on the timeline. Drag those to decide "

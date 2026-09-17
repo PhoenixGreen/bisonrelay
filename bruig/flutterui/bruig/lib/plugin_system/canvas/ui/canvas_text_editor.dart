@@ -392,3 +392,84 @@ class _CanvasCellEditorState extends State<CanvasCellEditor> {
 class _CloseCellIntent extends Intent {
   const _CloseCellIntent();
 }
+
+/// CounterInput is the field that opens on a live counter's Set button.
+///
+/// On the button rather than in a dialog: a box over the middle of the canvas
+/// asking for one number is a lot of ceremony for a stopwatch, and it covers
+/// the thing being set. It opens with the current value selected, so typing
+/// replaces it and there is nothing to clear first.
+class CounterInput extends StatefulWidget {
+  final double value;
+  final int decimals;
+
+  /// onDone hands back the number typed, or null where the field was closed
+  /// without one -- which means leave the counter alone.
+  final ValueChanged<double?> onDone;
+
+  const CounterInput({
+    required this.value,
+    required this.decimals,
+    required this.onDone,
+    super.key,
+  });
+
+  @override
+  State<CounterInput> createState() => _CounterInputState();
+}
+
+class _CounterInputState extends State<CounterInput> {
+  late final TextEditingController _field =
+      TextEditingController(text: widget.value.toStringAsFixed(widget.decimals))
+        ..selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: widget.value.toStringAsFixed(widget.decimals).length);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.requestFocus();
+  }
+
+  @override
+  void dispose() {
+    _field.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// _read is the number typed, with the separators a counter writes taken
+  /// back out: somebody setting a counter that shows 1,240 types what they
+  /// see.
+  double? _read() => double.tryParse(
+      _field.text.trim().replaceAll(",", "").replaceAll(" ", ""));
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Focus(
+      onFocusChange: (has) {
+        if (!has) widget.onDone(null);
+      },
+      child: TextField(
+        key: const ValueKey("counterInputField"),
+        controller: _field,
+        focusNode: _focus,
+        autofocus: true,
+        textAlign: TextAlign.center,
+        keyboardType:
+            const TextInputType.numberWithOptions(decimal: true, signed: true),
+        style: TextStyle(color: theme.colors.onSurface, fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          filled: true,
+          fillColor: theme.colors.surface,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+          border: const OutlineInputBorder(),
+        ),
+        onSubmitted: (_) => widget.onDone(_read()),
+      ),
+    );
+  }
+}

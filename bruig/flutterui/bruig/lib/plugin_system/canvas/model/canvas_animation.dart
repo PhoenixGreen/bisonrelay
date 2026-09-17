@@ -27,6 +27,19 @@ enum KeyframeEasing {
   easeOut("Ease out"),
   easeInOut("Ease in-out"),
 
+  /// overshoot, bounce and spring go past the value they are travelling to
+  /// and come back.
+  ///
+  /// The same three a chart's items can arrive on -- see ChartEase -- because
+  /// they are the same question asked of a different thing, and a reader who
+  /// has met Bounce on a chart should not find a keyframe cannot do it. They
+  /// leave 0..1 on the way, which is exactly the point: a counter that runs
+  /// past its number and settles reads as a number landing, and a pose that
+  /// does it reads as weight.
+  overshoot("Overshoot"),
+  bounce("Bounce"),
+  spring("Spring"),
+
   /// hold does not interpolate at all: the pose snaps at the next keyframe.
   /// What a cut is, and what "show this, then that" needs.
   hold("Hold");
@@ -36,6 +49,22 @@ enum KeyframeEasing {
 
   static KeyframeEasing fromName(String? name) => values
       .firstWhere((e) => e.name == name, orElse: () => KeyframeEasing.linear);
+
+  /// _bounce is the classic four-stage bounce, the same curve ChartEase uses.
+  static double _bounce(double t) {
+    const n = 7.5625, d = 2.75;
+    if (t < 1 / d) return n * t * t;
+    if (t < 2 / d) {
+      var u = t - 1.5 / d;
+      return n * u * u + 0.75;
+    }
+    if (t < 2.5 / d) {
+      var u = t - 2.25 / d;
+      return n * u * u + 0.9375;
+    }
+    var u = t - 2.625 / d;
+    return n * u * u + 0.984375;
+  }
 
   /// apply maps a 0..1 position between two keyframes onto an eased one.
   double apply(double t) {
@@ -48,6 +77,27 @@ enum KeyframeEasing {
         return 1 - (1 - t) * (1 - t);
       case KeyframeEasing.easeInOut:
         return t < 0.5 ? 2 * t * t : 1 - math.pow(-2 * t + 2, 2) / 2;
+      case KeyframeEasing.overshoot:
+        // The standard back-out: one overshoot and a settle, no wobble.
+        // Pinned at the ends, because the arithmetic leaves a hair of
+        // rounding there and a keyframe has to be reached exactly.
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        const c = 1.70158;
+        var u = t - 1;
+        return 1 + (c + 1) * u * u * u + c * u * u;
+      case KeyframeEasing.bounce:
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return _bounce(t);
+      case KeyframeEasing.spring:
+        // A decaying oscillation: three visible swings before it settles,
+        // which is enough to read as a spring and few enough to stop being
+        // charming the fourth time it happens.
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        var decay = math.pow(2, -9 * t).toDouble();
+        return 1 - decay * math.cos(t * math.pi * 6);
       case KeyframeEasing.hold:
         return 0;
     }
@@ -144,6 +194,33 @@ class Keyframe {
 
   /// lerp is this pose blended towards [other] by [t], already eased.
   /// withValue is this keyframe with one extra property pinned.
+  /// differsFrom is whether anything about this keyframe and [other] is not
+  /// the same: where the element sits, how big it is, which way round, how
+  /// visible, or any of the extra channels either of them pins.
+  ///
+  /// What decides whether a stretch between two marks gets a bar. Two
+  /// keyframes that say the same thing are a hold by another name, and a bar
+  /// over them would be claiming something happens there.
+  bool differsFrom(Keyframe other) {
+    if (dx != other.dx ||
+        dy != other.dy ||
+        scale != other.scale ||
+        rotate != other.rotate ||
+        opacity != other.opacity) {
+      return true;
+    }
+    // Only the channels *both* of them pin. A channel one carries and the
+    // other does not is not a change: the missing one holds whatever was set
+    // before it -- see ElementTrack._withHeldValues -- so the end of an
+    // arrival and the start of an exit are two keyframes with nothing
+    // happening between them, which is exactly what they look like.
+    for (var channel in values.keys) {
+      if (!other.values.containsKey(channel)) continue;
+      if (values[channel] != other.values[channel]) return true;
+    }
+    return false;
+  }
+
   Keyframe withValue(String key, double value) =>
       copyWith(values: {...values, key: value});
 
@@ -447,14 +524,50 @@ class KeyframeBand {
 List<KeyframeBand> bandsIn(ElementTrack? track) {
   if (track == null) return const [];
   var out = <KeyframeBand>[];
+
+  // An arrival and an exit first. Each is a *pair* that means nothing apart,
+  // so it is one bar from the first of them to the last however many frames
+  // lie between -- which is what lets the timeline drag the whole animation
+  // as one thing.
+  //
+  // Unless it is held at the start: then it does not arrive over the stretch,
+  // it snaps at the end of it, and a bar saying "drawing on over here" would
+  // be describing something that does not happen.
   for (var channel in const [KeyframeChannel.reveal, KeyframeChannel.close]) {
-    var frames = [
+    var carried = [
       for (var key in track.keys)
-        if (key.values.containsKey(channel)) key.frame,
-    ]..sort();
-    if (frames.length < 2) continue;
-    out.add(KeyframeBand(frames.first, frames.last, channel));
+        if (key.values.containsKey(channel)) key,
+    ]..sort((a, b) => a.frame - b.frame);
+    if (carried.length < 2) continue;
+    if (carried.first.easing == KeyframeEasing.hold) continue;
+    out.add(KeyframeBand(carried.first.frame, carried.last.frame, channel));
   }
+
+  // Then every other stretch where something actually changes.
+  //
+  // The bar is read as "something happens between these two marks", so it is
+  // drawn wherever something does: a pose moving, a number counting, a
+  // caption sliding along its line. It used to be drawn only for the two
+  // channels a preset lays down, which meant keyframes laid by hand -- most
+  // of the keyframes on most canvases -- had nothing between them at all.
+  //
+  // Two stretches get none. One whose ends read the same, because nothing
+  // happens there and a bar over it would be saying something untrue; and one
+  // that holds, because easing belongs to the keyframe a stretch leaves and a
+  // held one does not travel -- it stays exactly as it is and steps at the far
+  // end. Ease, hold, ease, hold is a bar, a gap, a bar.
+  var claimed = {for (var band in out) "${band.from}:${band.to}"};
+  var keys = [...track.keys]..sort((a, b) => a.frame - b.frame);
+  for (var i = 0; i + 1 < keys.length; i++) {
+    var from = keys[i], to = keys[i + 1];
+    if (from.easing == KeyframeEasing.hold) continue;
+    if (!from.differsFrom(to)) continue;
+    // Not a second bar over a stretch an arrival already claims: one thing
+    // happening is one bar.
+    if (claimed.contains("${from.frame}:${to.frame}")) continue;
+    out.add(KeyframeBand(from.frame, to.frame, KeyframeChannel.pose));
+  }
+
   return out;
 }
 
@@ -485,4 +598,19 @@ class KeyframeChannel {
 
   /// bow is how far a line element is curved, as LineElement.curvature holds.
   static const String bow = "bow";
+
+  /// pose is not a channel anybody pins: it is what a bar over an ordinary
+  /// stretch is about -- the element itself moving, growing, turning or
+  /// fading between two keyframes somebody laid by hand.
+  static const String pose = "pose";
+
+  /// count is the number a counter is showing.
+  ///
+  /// The value itself rather than a fraction of the way from the start to the
+  /// end, which is what makes a point in the middle of a count worth having:
+  /// a counter running from 0 to 100 can pass through 140 and come back, and
+  /// a fraction cannot say that. The two ends are keyframes on this channel
+  /// like any other, so moving them is moving keyframes and needs nothing of
+  /// its own on the timeline.
+  static const String count = "count";
 }

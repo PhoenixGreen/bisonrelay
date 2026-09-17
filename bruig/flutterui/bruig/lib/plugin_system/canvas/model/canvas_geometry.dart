@@ -39,6 +39,13 @@ enum CanvasRatio {
   a4Wide("A4 landscape", 297 / 210),
   custom("Custom", 16 / 9);
 
+  /// isPaper is whether this shape is a page rather than a screen.
+  ///
+  /// Worth asking because the answer changes what the rest of the document
+  /// wants: a page is one frame at one frame a second, and a screen is
+  /// twenty-four of them. See canvasFrameRates.
+  bool get isPaper => this == a4 || this == a4Wide;
+
   /// label is what the dropdown shows.
   final String label;
 
@@ -127,6 +134,21 @@ List<CanvasSizePreset> sizePresetsFor(CanvasRatio ratio) => [
       for (var p in canvasSizePresets)
         if (p.ratio == ratio) p
     ];
+
+/// canvasFrameRates are the rates offered in the settings bar, and
+/// defaultFrameRateFor is which of them a shape starts at.
+///
+/// Offered as a short list rather than a number on its own, because the
+/// numbers that matter are four: twelve for something light, twenty-four for
+/// film, thirty for a screen recording and sixty for something smooth. The
+/// box beside the list still takes any other number -- a canvas is somebody
+/// else's to make.
+const List<int> canvasFrameRates = [1, 12, 24, 30, 60];
+
+/// A page is a page: one frame a second, because a printed sheet has no
+/// frames to have a rate between. A screen starts at twenty-four, which is
+/// what film runs at and what almost every canvas that moves wants.
+int defaultFrameRateFor(CanvasRatio ratio) => ratio.isPaper ? 1 : 24;
 
 /// minCanvasWidth and maxCanvasWidth bound the output width.
 ///

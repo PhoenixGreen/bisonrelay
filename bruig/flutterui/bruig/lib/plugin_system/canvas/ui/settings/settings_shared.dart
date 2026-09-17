@@ -54,11 +54,23 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
   /// onKey is what the little diamonds do: add the pose at this frame, or take
   /// it away. One keyframe holds every animated property at once, so all of
   /// them light up together -- see CanvasKeyframeDot.
-  var hasKey = e.track?.keyAt(frame) != null;
+  ///
+  /// Lit by a keyframe that actually *poses* the element, not by any keyframe
+  /// standing on this frame. A counter's count, a chart's arrival and a
+  /// caption's slide are keyframes that say nothing about where the element
+  /// is, and lighting the pose diamond for those told the reader that the
+  /// position, size, angle and fade were pinned here when they were not --
+  /// and pressing it then took the count away with the pose. The same rule
+  /// ElementTrack.posesAnything uses, asked of one keyframe: a rest key laid
+  /// deliberately is a pose, because holding something still is posing it.
+  var here = e.track?.keyAt(frame);
+  var hasKey = here != null && (here.posesElement || here.values.isEmpty);
   void toggleKey() {
     begin();
     if (hasKey) {
-      controller.removeKeyframe(e.id, frame);
+      // The pose only: whatever else that frame pinned -- a counter's number,
+      // a chart's arrival -- is not this diamond's to take away.
+      controller.clearPose(e.id, frame);
     } else {
       controller.setKeyframe(e.id, pose.copyWith(frame: frame));
     }
@@ -1005,6 +1017,7 @@ Widget elementAnimationSection(
           begin();
           write(animation.copyWith(effect: next));
         }),
+      keyframeEasingGroup(controller, element, begin, commit),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [
           CanvasNumberField(
@@ -1056,6 +1069,71 @@ Widget elementAnimationSection(
         ]),
     ],
   );
+}
+
+/// keyframeEasingGroup is how the element travels *out of* the keyframe the
+/// playhead is on.
+///
+/// Its own group, shown by every kind of element's animation section rather
+/// than by the one shared between some of them: a text element and a chart
+/// have animation sections of their own, and "the easing of this keyframe" is
+/// not a question about what kind of element it is.
+///
+/// Shown whenever the element has keyframes at all, rather than only when the
+/// playhead is standing on one. Hidden the rest of the time it was a control
+/// nobody could find: there is no way to tell a setting that does not exist
+/// from one that is waiting for the playhead to be somewhere else.
+Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
+    VoidCallback begin, VoidCallback commit) {
+  var keys = element.track?.keys ?? const <Keyframe>[];
+  if (keys.isEmpty) return const SizedBox.shrink();
+  var here = element.track?.keyAt(controller.frame);
+
+  return CanvasControlGroup(label: "This keyframe", children: [
+    CanvasDropdown<KeyframeEasing>(
+      key: const ValueKey("elementKeyframeEasing"),
+      label: "Easing",
+      value: here?.easing ?? KeyframeEasing.linear,
+      width: 132,
+      enabled: here != null,
+      options: [
+        for (var easing in KeyframeEasing.values)
+          (
+            easing,
+            easing == KeyframeEasing.hold
+                ? "Hold (stays the same)"
+                : easing.label
+          ),
+      ],
+      onChanged: (v) {
+        begin();
+        controller.setKeyframeEasing(element, v);
+        commit();
+      },
+    ),
+    CanvasIconButton(
+      key: const ValueKey("elementKeyframeEasingAll"),
+      icon: Icons.format_line_spacing,
+      tooltip: here == null
+          ? "Put the playhead on a keyframe to choose an easing first"
+          : "Give every keyframe on this element the same easing",
+      onPressed: here == null
+          ? null
+          : () {
+              begin();
+              controller.setKeyframeEasing(element, here.easing, all: true);
+              commit();
+            },
+    ),
+    CanvasHint(here == null
+        ? "How this element travels out of a keyframe, set on the keyframe "
+            "itself. Put the playhead on one of its ${keys.length} marks on "
+            "the timeline and this is about that one."
+        : "How this element travels from the keyframe on frame "
+            "${controller.frame} to the next one. Hold does not travel: it "
+            "stays exactly as it is and changes at the next keyframe, which "
+            "is what a cut is."),
+  ]);
 }
 
 /// effectBits are the settings a cutting preset has: how many pieces, how far

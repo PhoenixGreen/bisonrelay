@@ -89,6 +89,10 @@ void main() {
     // Checked against a stand-in rather than the real thing, because most
     // machines have no ffmpeg and this is the half that can go wrong without
     // one: the frames handed over, the arguments, and the clearing up.
+    //
+    // This stand-in does not read its standard input, which is what the
+    // frames now go down -- so these are the file road, asked for by name.
+    // The pipe has a group of its own below, with a stand-in that drinks.
     late Directory scratch;
     late File script;
     late File log;
@@ -122,7 +126,8 @@ head -c 4000 /dev/zero >> "\$out"
 
     test("every frame is written out, and the encoder is told the rate",
         () async {
-      var export = await renderVideo(moving(frames: 4), scale: 0.25);
+      var export =
+          await renderVideo(moving(frames: 4), viaFiles: true, scale: 0.25);
       expect(export, isNotNull);
       expect(export!.mime, "video/mp4");
 
@@ -141,7 +146,7 @@ head -c 4000 /dev/zero >> "\$out"
 
     test("the quality reaches the encoder as a CRF", () async {
       await renderVideo(moving(frames: 2),
-          scale: 0.25, quality: VideoQuality.small);
+          viaFiles: true, scale: 0.25, quality: VideoQuality.small);
       var args = await log.readAsLines();
       expect(args[args.indexOf("-crf") + 1],
           "${VideoQuality.small.crfFor(VideoFormat.mp4)}");
@@ -149,7 +154,7 @@ head -c 4000 /dev/zero >> "\$out"
 
     test("a WebM is asked for with VP9 and the flags it needs", () async {
       var export = await renderVideo(moving(frames: 2),
-          scale: 0.25, format: VideoFormat.webm);
+          viaFiles: true, scale: 0.25, format: VideoFormat.webm);
       expect(export!.mime, "video/webm");
 
       var args = await log.readAsLines();
@@ -170,7 +175,8 @@ head -c 4000 /dev/zero >> "\$out"
           .listSync()
           .where((e) => e.path.contains("bruig-canvas-video"))
           .length;
-      var export = await renderVideo(moving(frames: 3), scale: 0.25);
+      var export =
+          await renderVideo(moving(frames: 3), viaFiles: true, scale: 0.25);
       expect(export!.data.length, greaterThan(1000));
       var after = Directory.systemTemp
           .listSync()
@@ -183,7 +189,8 @@ head -c 4000 /dev/zero >> "\$out"
         () async {
       await script.writeAsString("#!/bin/sh\nexit 3\n");
       await Process.run("chmod", ["+x", script.path]);
-      expect(await renderVideo(moving(frames: 2), scale: 0.25), isNull);
+      expect(await renderVideo(moving(frames: 2), viaFiles: true, scale: 0.25),
+          isNull);
     });
   });
 
@@ -238,5 +245,90 @@ head -c 4000 /dev/zero >> "\$out"
       expect(after, before,
           reason: "the frames it wrote out are not left behind");
     }, timeout: const Timeout(Duration(minutes: 2)));
+  });
+  group("the frames go down a pipe", () {
+    // Encoding each frame as a PNG was most of what an export spent its time
+    // on: four hundred milliseconds a frame against thirty for the drawing,
+    // on pictures a video encoder was about to throw away. They go to ffmpeg
+    // as raw pixels now, and the file road is what happens when that fails.
+    late Directory scratch;
+    late File script;
+    late File log;
+
+    setUp(() async {
+      scratch = await Directory.systemTemp.createTemp("bruig-piped-ffmpeg");
+      log = File(path.join(scratch.path, "args.txt"));
+      script = File(path.join(scratch.path, "ffmpeg"));
+      // This one *drinks*: it reads its standard input to the end and records
+      // how many bytes it was given, which is the only way to tell that every
+      // frame arrived.
+      await script.writeAsString("""#!/bin/sh
+printf '%s\\n' "\$@" > "${log.path}"
+for a in "\$@"; do out="\$a"; done
+bytes=\$(cat | wc -c)
+printf 'bytes=%s\\n' "\$bytes" >> "${log.path}"
+printf '\\x00\\x00\\x00\\x18ftypisom' > "\$out"
+head -c 4000 /dev/zero >> "\$out"
+""");
+      await Process.run("chmod", ["+x", script.path]);
+      useFfmpegForTest(script.path);
+    });
+
+    tearDown(() async {
+      forgetFfmpegForTest();
+      await scratch.delete(recursive: true);
+    });
+
+    test("as raw pixels, with the size ffmpeg cannot read off them", () async {
+      var export = await renderVideo(moving(frames: 4), scale: 0.25);
+      expect(export, isNotNull);
+
+      var args = await log.readAsLines();
+      expect(args, contains("rawvideo"));
+      expect(args[args.indexOf("-pix_fmt") + 1], "rgba");
+      expect(args[args.indexOf("-i") + 1], "-");
+      // Raw pixels carry no header saying how wide they are, so the size has
+      // to be handed over -- and it has to be the size of the frames actually
+      // drawn, not the document's own.
+      expect(args[args.indexOf("-s") + 1], "${export!.width}x${export.height}");
+      expect(args.any((a) => a.contains("frame-%05d.png")), isFalse,
+          reason: "nothing was written out as a picture");
+    });
+
+    test("and every frame arrives, whole", () async {
+      var export = await renderVideo(moving(frames: 5), scale: 0.25);
+      var args = (await log.readAsLines()).map((a) => a.replaceAll(" ", ""));
+      var sent = args.firstWhere((a) => a.startsWith("bytes="));
+      expect(
+          int.parse(sent.split("=")[1]), 5 * export!.width * export.height * 4,
+          reason: "five frames of RGBA and not a byte else");
+    });
+
+    test("and the encoder settings are the same either way", () async {
+      // Two roads to the same file: if they drifted, an export would be a
+      // different video depending on which one it happened to take.
+      await renderVideo(moving(frames: 2), scale: 0.25);
+      var piped = await log.readAsLines();
+      expect(piped, contains("libx264"));
+      expect(piped, contains("yuv420p"));
+      expect(piped, contains("+faststart"));
+      expect(piped[piped.indexOf("-crf") + 1],
+          "${VideoQuality.balanced.crfFor(VideoFormat.mp4)}");
+    });
+
+    test("and the working directory goes when it is done", () async {
+      var before = Directory.systemTemp
+          .listSync()
+          .whereType<Directory>()
+          .where((d) => d.path.contains("bruig-canvas-video"))
+          .length;
+      await renderVideo(moving(frames: 2), scale: 0.25);
+      var after = Directory.systemTemp
+          .listSync()
+          .whereType<Directory>()
+          .where((d) => d.path.contains("bruig-canvas-video"))
+          .length;
+      expect(after, before);
+    });
   });
 }

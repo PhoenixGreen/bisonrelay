@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -1326,8 +1327,20 @@ class CanvasController extends ChangeNotifier {
   /// Seeded at the start like every other first keyframe, so one press makes a
   /// movement rather than a value that holds for the whole document -- see
   /// ElementTrack.seededFor.
-  void setValueKey(CanvasElement element, String channel, double value) {
-    var track = (element.track ?? ElementTrack.empty).seededFor(_frame);
+  ///
+  /// [seed] is what turns that off, and a counter turns it off. The seed is a
+  /// *resting pose* laid at frame 0, and a resting pose laid deliberately is
+  /// the clearest way of saying "this element is animated in space" -- see
+  /// ElementTrack.posesAnything. That is true of a chart told how much of
+  /// itself to draw, and false of a number told what to say: pinning a count
+  /// lit the position-size-angle-fade diamond and made every later drag write
+  /// a pose, neither of which anybody had asked for. A count needs no seed
+  /// anyway, because the first key already holds for every frame before it.
+  void setValueKey(CanvasElement element, String channel, double value,
+      {bool seed = true}) {
+    var track = seed
+        ? (element.track ?? ElementTrack.empty).seededFor(_frame)
+        : (element.track ?? ElementTrack.empty);
     var at = track.at(_frame);
     replaceElement(element.withBase(
         track: track
@@ -1896,6 +1909,185 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ------------------------------------------------------------------------
+  // Live counters
+  // ------------------------------------------------------------------------
+
+  /// _counters is what each live counter is showing, by element id.
+  ///
+  /// Held here rather than on the element, and deliberately: a stopwatch that
+  /// has been running for nine seconds is not a *design* that has been running
+  /// for nine seconds, and writing every tick into the document would make a
+  /// clock an unsaved change once a second and an undo history nobody could
+  /// use. The document says how the counter behaves; this says where it has
+  /// got to, and it goes when the window does.
+  final Map<String, double> _counters = {};
+
+  /// _countersRunning is which of them are counting, and _countersSince when
+  /// each was last read, so that a tick advances by the time that has actually
+  /// passed rather than by however often the timer happened to fire.
+  final Set<String> _countersRunning = {};
+  final Map<String, DateTime> _countersSince = {};
+
+  Timer? _counterTimer;
+
+  /// counterTicks counts how many times the running counters have moved.
+  ///
+  /// So that the stage's painter can tell that something changed: where a
+  /// counter has got to is not in the document, so nothing else about the
+  /// drawing is different from one tick to the next.
+  int get counterTicks => _counterTicks;
+  int _counterTicks = 0;
+
+  /// counterValue is what [e] is showing now.
+  ///
+  /// A clock is the time of day whatever anybody has pressed -- there is
+  /// nothing to start or stop about the afternoon -- and everything else is
+  /// wherever its own count has got to, which starts at the start.
+  double counterValue(CounterElement e) {
+    if (!e.live) return e.from;
+    if (e.source == CounterSource.clock) return _secondsOfDay();
+    return _counters[e.id] ?? e.from;
+  }
+
+  /// counterRunning is whether [e] is counting at this moment.
+  ///
+  /// The element's own `running` is where it starts; this is where it has got
+  /// to. A clock is always running.
+  bool counterRunning(CounterElement e) =>
+      e.live &&
+      (e.source == CounterSource.clock || _countersRunning.contains(e.id));
+
+  /// startCounters gets every counter that says it starts running going, which
+  /// is what opening a canvas with a clock on it should do.
+  void startCounters() {
+    for (var e in _document.elements) {
+      if (e is CounterElement && e.live && e.running) _runCounter(e, true);
+    }
+  }
+
+  /// pressCounterButton is what one of a counter's own buttons does.
+  ///
+  /// Returns true where the press was handled here. Input is the exception:
+  /// asking for a number is a question for whoever has a window, so it comes
+  /// back false and the caller puts the box up -- see setCounterValue.
+  bool pressCounterButton(CounterElement e, CounterButton button) {
+    if (!e.live) return true;
+    switch (button) {
+      case CounterButton.startStop:
+        _runCounter(e, !_countersRunning.contains(e.id));
+        return true;
+      case CounterButton.reset:
+        _counters[e.id] = e.from;
+        _countersSince[e.id] = DateTime.now();
+        _counterTicks++;
+        notifyListeners();
+        return true;
+      case CounterButton.input:
+        return false;
+    }
+  }
+
+  /// setCounterValue is the answer to the Set button: the number to count on
+  /// from. It does not start or stop anything -- typing a value into a
+  /// stopwatch that is running should not stop it.
+  void setCounterValue(CounterElement e, double value) {
+    _counters[e.id] = value;
+    _countersSince[e.id] = DateTime.now();
+    _counterTicks++;
+    notifyListeners();
+  }
+
+  void _runCounter(CounterElement e, bool on) {
+    if (on) {
+      _counters.putIfAbsent(e.id, () => e.from);
+      _countersSince[e.id] = DateTime.now();
+      _countersRunning.add(e.id);
+      _counterTicks++;
+      _startCounterTimer();
+    } else {
+      _countersRunning.remove(e.id);
+      if (_countersRunning.isEmpty) {
+        _counterTimer?.cancel();
+        _counterTimer = null;
+      }
+    }
+    notifyListeners();
+  }
+
+  void _startCounterTimer() {
+    if (_counterTimer != null) return;
+    // Twenty times a second. A counter written to two decimal places wants to
+    // be seen changing, and a clock written to the second does not -- but the
+    // cost of the faster one is a repaint of a number, and the slower one
+    // would make the fast one stutter.
+    _counterTimer =
+        Timer.periodic(const Duration(milliseconds: 50), (_) => tickCounters());
+  }
+
+  /// tickCounters moves every running counter on by the time that has passed.
+  ///
+  /// By the clock rather than by a fixed step per tick: a timer that loses
+  /// time whenever the window is busy is a broken timer, and this is the kind
+  /// of element somebody points a camera at.
+  @visibleForTesting
+  void tickCounters({DateTime? now}) {
+    if (_countersRunning.isEmpty) return;
+    var at = now ?? DateTime.now();
+    var moved = false;
+    for (var id in _countersRunning.toList()) {
+      var e = _document.elementById(id);
+      if (e is! CounterElement || !e.live) {
+        _countersRunning.remove(id);
+        continue;
+      }
+      var since = _countersSince[id] ?? at;
+      var seconds = at.difference(since).inMicroseconds / 1000000;
+      if (seconds <= 0) continue;
+      _countersSince[id] = at;
+
+      var value = _counters[id] ?? e.from;
+      // Towards the far end, whichever way round the two ends are: 100 to 1
+      // is a countdown and 1 to 100 is not, and the rate is how fast, not
+      // which way.
+      var step = e.rate.abs() * seconds * (e.span < 0 ? -1 : 1);
+      value += step;
+
+      // Stopped at the end, or back round to the start -- which is what makes
+      // a metronome a metronome rather than a counter that ran out.
+      var done = e.span < 0 ? value <= e.to : value >= e.to;
+      if (done && e.span != 0) {
+        if (e.loop) {
+          var over = (value - e.to).abs();
+          var span = e.span.abs();
+          value = span <= 0 ? e.from : e.from + (over % span) * (e.span.sign);
+        } else {
+          value = e.to;
+          _countersRunning.remove(id);
+        }
+      }
+      _counters[id] = value;
+      moved = true;
+    }
+    if (_countersRunning.isEmpty) {
+      _counterTimer?.cancel();
+      _counterTimer = null;
+    }
+    if (moved) {
+      _counterTicks++;
+      notifyListeners();
+    }
+  }
+
+  /// _secondsOfDay is the reader's own clock, as a number of seconds.
+  double _secondsOfDay() {
+    var now = DateTime.now();
+    return now.hour * 3600 +
+        now.minute * 60 +
+        now.second +
+        now.millisecond / 1000;
+  }
+
   /// runButtonAction is what pressing a button element does, both in the
   /// editor's preview and in a published interactive canvas.
   ///
@@ -1945,7 +2137,15 @@ class CanvasController extends ChangeNotifier {
   void setKeyframe(String id, Keyframe key) {
     var element = _document.elementById(id);
     if (element == null) return;
-    var track = (element.track ?? ElementTrack.empty).withKey(key);
+    // Whatever that frame already pinned is kept. A keyframe holds the pose
+    // *and* any channels -- a counter's number, a chart's arrival -- and
+    // writing a pose over one wholesale threw the channels away: keying the
+    // position on the frame a count starts took the count with it.
+    var was = element.track?.keyAt(key.frame);
+    var merged = was == null || was.values.isEmpty
+        ? key
+        : key.copyWith(values: {...was.values, ...key.values});
+    var track = (element.track ?? ElementTrack.empty).withKey(merged);
     replaceElement(element.withBase(track: track));
   }
 
@@ -2155,6 +2355,7 @@ class CanvasController extends ChangeNotifier {
         LineElement e => e.animation,
         PathElement e => e.animation,
         TableElement e => e.animation,
+        CounterElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -2169,7 +2370,10 @@ class CanvasController extends ChangeNotifier {
       element is ImageElement ||
       element is LineElement ||
       element is PathElement ||
-      element is TableElement;
+      element is TableElement ||
+      // A counter is a thing in a box like the rest of them: it arrives and
+      // leaves the same way, whatever its number is doing while it is there.
+      element is CounterElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -2179,6 +2383,7 @@ class CanvasController extends ChangeNotifier {
         LineElement e => e.copyWith(animation: animation),
         PathElement e => e.copyWith(animation: animation),
         TableElement e => e.copyWith(animation: animation),
+        CounterElement e => e.copyWith(animation: animation),
         _ => element,
       };
 
@@ -2455,8 +2660,60 @@ class CanvasController extends ChangeNotifier {
     var element = _document.elementById(id);
     var track = element?.track;
     if (element == null || track == null) return;
-    var next = withoutHalfAnimations(element, track.withoutFrame(frame));
-    replaceElement(next);
+
+    replaceElement(withoutHalfAnimations(element, track.withoutFrame(frame)));
+  }
+
+  /// setKeyframeEasing writes how the element travels *out* of a keyframe.
+  ///
+  /// Easing belongs to the keyframe it leaves, which is why this is here and
+  /// not on the animation: one arrival can be laid down and then eased, and a
+  /// run of keyframes copied and pasted keeps whatever easing each of them
+  /// had.
+  ///
+  /// [all] sets every keyframe on the element at once, and [channel] narrows
+  /// that to the keyframes carrying one thing -- a counter's number, say --
+  /// so setting the count's easing does not restyle a move somebody laid by
+  /// hand on the same element.
+  void setKeyframeEasing(
+    CanvasElement element,
+    KeyframeEasing easing, {
+    bool all = false,
+    String? channel,
+  }) {
+    var track = element.track;
+    if (track == null) return;
+    var next = track;
+    for (var key in track.keys) {
+      if (!all && key.frame != _frame) continue;
+      if (channel != null && !key.values.containsKey(channel)) continue;
+      next = next.withKey(key.copyWith(easing: easing));
+    }
+    if (identical(next, track)) return;
+    replaceElement(element.withBase(track: next));
+  }
+
+  /// clearPose takes the *pose* off one frame and leaves whatever else that
+  /// keyframe pinned.
+  ///
+  /// What the position-size-angle-fade diamond does, as against deleting the
+  /// keyframe: one keyframe holds the pose and the channels together, so
+  /// pressing a diamond labelled "position, size, angle and fade" took a
+  /// counter's number and a chart's arrival away with them. Deleting the
+  /// keyframe itself still deletes all of it -- an animation is a pair, and a
+  /// deliberate delete on the timeline means the whole mark.
+  void clearPose(String id, int frame) {
+    var element = _document.elementById(id);
+    var track = element?.track;
+    if (element == null || track == null) return;
+    var here = track.keyAt(frame);
+    if (here == null) return;
+    if (here.values.isEmpty) {
+      removeKeyframe(id, frame);
+      return;
+    }
+    replaceElement(element.withBase(
+        track: track.withKey(Keyframe(frame: frame, values: here.values))));
   }
 
   /// withoutHalfAnimations takes away any arrival or exit that has lost one
@@ -2620,6 +2877,7 @@ class CanvasController extends ChangeNotifier {
   void dispose() {
     _autosave?.cancel();
     _playback?.cancel();
+    _counterTimer?.cancel();
     images.dispose();
     super.dispose();
   }

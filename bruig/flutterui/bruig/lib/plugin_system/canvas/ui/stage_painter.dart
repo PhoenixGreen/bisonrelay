@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -71,6 +72,20 @@ class StagePainter extends CustomPainter {
   final double selectionRotation;
   final Offset Function(StageHandle, Rect) handleFor;
   final Rect? marquee;
+
+  /// counterValue is what a live counter is showing at this instant, and
+  /// counterPressed which of its buttons is under the pointer.
+  ///
+  /// Handed in rather than read from the document, because where a running
+  /// counter has got to is session state and not design -- see
+  /// CanvasController.counterValue.
+  final double Function(CounterElement)? counterValue;
+  final int Function(CounterElement)? counterPressed;
+  final bool Function(CounterElement)? counterRunning;
+
+  /// counterTick is what changes when a running counter moves, so that a
+  /// repaint happens even though nothing in the document has changed.
+  final int counterTick;
 
   /// flowGrips are the two dots on a selected text box -- see TextFlowGrips.
   final TextFlowGrips? flowGrips;
@@ -215,6 +230,10 @@ class StagePainter extends CustomPainter {
     required this.origin,
     required this.images,
     required this.hoveredButton,
+    this.counterValue,
+    this.counterPressed,
+    this.counterRunning,
+    this.counterTick = 0,
     required this.selection,
     required this.selectionBounds,
     required this.selectionRotation,
@@ -261,6 +280,9 @@ class StagePainter extends CustomPainter {
         images: images,
         hoveredButton: hoveredButton,
         skipElement: editingText,
+        counterValue: counterValue,
+        counterPressed: counterPressed,
+        counterRunning: counterRunning,
         // Drawn once and kept while the design and the size hold still. See
         // ProceduralCache: the editor repaints for a pointer moving over the
         // stage, and generating the background again to produce exactly the
@@ -939,6 +961,7 @@ class StagePainter extends CustomPainter {
       old.liveStroke.length != liveStroke.length ||
       old.liveStrokeKeeps != liveStrokeKeeps ||
       old.hoveredButton != hoveredButton ||
+      old.counterTick != counterTick ||
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||
       old.marquee != marquee;

@@ -530,6 +530,13 @@ class CanvasDropdown<T> extends StatelessWidget {
   final double width;
   final ValueChanged<T> onChanged;
 
+  /// enabled is whether it answers at all.
+  ///
+  /// A control that is drawn and does nothing is worse than one that is not
+  /// drawn -- except where its being there is the only way anybody learns it
+  /// exists, which is what the greyed state is for. See keyframeEasingGroup.
+  final bool enabled;
+
   /// tight holds the caption to the width of the box under it.
   ///
   /// Off by default, because a caption reading "Gives way w..." is worse than
@@ -545,6 +552,7 @@ class CanvasDropdown<T> extends StatelessWidget {
     required this.onChanged,
     this.width = 130,
     this.tight = false,
+    this.enabled = true,
     super.key,
   });
 
@@ -598,14 +606,16 @@ class CanvasDropdown<T> extends StatelessWidget {
                   child: Text(text, overflow: TextOverflow.ellipsis),
                 ),
             ],
-            onChanged: (v) {
-              // Null is a real answer where the type says it is one -- a
-              // dropdown of "None, Fade, Slide" is a dropdown whose first
-              // entry is null, and refusing it meant None could be chosen and
-              // nothing happened.
-              if (v == null && null is! T) return;
-              onChanged(v as T);
-            },
+            onChanged: enabled
+                ? (v) {
+                    // Null is a real answer where the type says it is one --
+                    // a dropdown of "None, Fade, Slide" is a dropdown whose
+                    // first entry is null, and refusing it meant None could
+                    // be chosen and nothing happened.
+                    if (v == null && null is! T) return;
+                    onChanged(v as T);
+                  }
+                : null,
           ),
         ),
       ),

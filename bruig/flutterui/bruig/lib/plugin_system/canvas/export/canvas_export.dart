@@ -60,11 +60,69 @@ class CanvasExport {
 /// hidden behind a convenience, because a GIF export holds every frame at once
 /// and leaking them is how a two hundred frame export runs a machine out of
 /// memory.
+/// ExportBackdrop is a document's background, rasterised once for a whole run
+/// of frames.
+///
+/// The most expensive thing on a canvas is generating its background, and an
+/// export of a thirty-second animation generated the same still picture seven
+/// hundred and fifty times. Measured on a square canvas exporting at 2048 with
+/// the Metal texture behind it: about a tenth of a second a frame, which is
+/// well over a minute of the run spent drawing a picture that never changed.
+///
+/// Only where it *is* still. A background told to animate is a different
+/// picture every frame and there is nothing to keep; so is a document of
+/// several scenes, where each scene brings its own. Both fall back to
+/// generating, which is what every export did before this existed.
+class ExportBackdrop {
+  final ui.Image image;
+  ExportBackdrop._(this.image);
+
+  /// prepare rasterises [document]'s background at the size the export is
+  /// being written at, or hands back null where there is nothing to keep.
+  ///
+  /// At the export's own pixel size rather than the document's: a background
+  /// rasterised at the design size and then blown up is a blurred background,
+  /// and the whole reason an export names its own width is that somebody
+  /// wants the pixels.
+  static Future<ExportBackdrop?> prepare(
+    CanvasDocument document, {
+    double scale = 1,
+    CanvasImageSource? images,
+  }) async {
+    if (document.hasScenes) return null;
+    var background = document.drawnBackground;
+    if (background.spec.animated) return null;
+
+    var asked = scale.clamp(0.05, maxExportScale);
+    var s = asked * document.size.exportScale;
+    var width = math.max(1, (document.size.exportSize.width * asked).round());
+    var height = math.max(1, (document.size.exportSize.height * asked).round());
+
+    var recorder = ui.PictureRecorder();
+    var canvas = ui.Canvas(recorder);
+    canvas.scale(s);
+    paintDocumentBackdrop(canvas, document, images: images);
+    var picture = recorder.endRecording();
+    try {
+      return ExportBackdrop._(await picture.toImage(width, height));
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  void dispose() => image.dispose();
+}
+
 Future<ui.Image> renderFrame(
   CanvasDocument document, {
   int frame = 0,
   double scale = 1,
   CanvasImageSource? images,
+
+  /// backdrop is the background rasterised once for the whole run, for the
+  /// exports that render many frames. Null renders it the slow way, which is
+  /// right for a single still.
+  ExportBackdrop? backdrop,
 }) async {
   // The caller's own multiplier is what maxExportScale bounds; the design's
   // scale is not a request for a bigger file but the arithmetic that makes
@@ -85,7 +143,8 @@ Future<ui.Image> renderFrame(
   if (document.hasScenes) {
     paintSequenceFrame(canvas, document, frame, images: images);
   } else {
-    paintCanvasDocument(canvas, document, frame: frame, images: images);
+    paintCanvasDocument(canvas, document,
+        frame: frame, images: images, backdrop: backdrop?.image);
   }
 
   var picture = recorder.endRecording();
@@ -232,12 +291,18 @@ Future<CanvasExport?> renderGif(
   // instead of alternating 8 and 9 and visibly stuttering.
   var delayMs = (1000 / document.frameRate).round().clamp(10, 65535);
 
+  // The background, once, for the same reason the video export does it: it is
+  // the most expensive thing on a canvas and on a still one it is the same
+  // picture every frame.
+  ExportBackdrop? backdrop;
   try {
+    backdrop =
+        await ExportBackdrop.prepare(document, scale: scale, images: images);
     for (var i = 0; i < document.playFrames; i++) {
       ui.Image? image;
       try {
-        image =
-            await renderFrame(document, frame: i, scale: scale, images: images);
+        image = await renderFrame(document,
+            frame: i, scale: scale, images: images, backdrop: backdrop);
         var raw =
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
         if (raw == null) return null;
@@ -265,6 +330,8 @@ Future<CanvasExport?> renderGif(
   } catch (exception) {
     debugPrint("Unable to render the canvas animation: $exception");
     return null;
+  } finally {
+    backdrop?.dispose();
   }
 }
 

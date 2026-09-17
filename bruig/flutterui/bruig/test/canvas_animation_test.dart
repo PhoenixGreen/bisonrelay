@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
@@ -66,19 +67,59 @@ void main() {
   });
 
   test("easings all start and end in the same place", () {
-    // Whatever the curve does in the middle, a keyframe has to be reached
-    // exactly -- an easing that overshot would move an element somewhere the
-    // person who placed it never put it.
+    // Whatever the curve does in the middle, a keyframe has to be *reached*
+    // exactly: an easing that ended anywhere else would leave an element
+    // somewhere the person who placed it never put it.
     for (var easing in KeyframeEasing.values) {
       expect(easing.apply(0), 0, reason: "$easing at 0");
       if (easing == KeyframeEasing.hold) continue;
       expect(easing.apply(1), closeTo(1, 1e-9), reason: "$easing at 1");
+    }
+  });
+
+  test("and only the ones that are about overshooting overshoot", () {
+    // The ends are the promise; the middle is the curve's own business.
+    // Overshoot, Bounce and Spring go past the value they are travelling to
+    // and come back -- that is what they are for, and it is what makes a
+    // counter read as a number landing rather than sliding to a halt. The
+    // rest may not: a slide that crept past its keyframe and back would be a
+    // keyframe nobody could place accurately.
+    const wanders = {
+      KeyframeEasing.overshoot,
+      KeyframeEasing.bounce,
+      KeyframeEasing.spring,
+    };
+    for (var easing in KeyframeEasing.values) {
+      if (wanders.contains(easing)) continue;
       for (var i = 0; i <= 10; i++) {
         var t = easing.apply(i / 10);
         expect(t, inInclusiveRange(-1e-9, 1 + 1e-9),
-            reason: "$easing overshoots at ${i / 10}");
+            reason: "$easing wanders at ${i / 10}");
       }
     }
+
+    // And the ones that do, do: a curve called Overshoot that never left the
+    // range would be a curve with the wrong name.
+    for (var easing in [KeyframeEasing.overshoot, KeyframeEasing.spring]) {
+      var most = 0.0;
+      for (var i = 0; i <= 100; i++) {
+        most = math.max(most, easing.apply(i / 100));
+      }
+      expect(most, greaterThan(1.0 + 1e-6), reason: "$easing never overshoots");
+    }
+
+    // Bounce is the exception, and it is worth being exact about: the classic
+    // bounce-out never goes past its target at all. It comes up short, falls
+    // back, and does it again in smaller hops -- so what makes it a bounce is
+    // that it goes backwards on the way, not that it overshoots.
+    var falls = 0;
+    var last = 0.0;
+    for (var i = 0; i <= 100; i++) {
+      var t = KeyframeEasing.bounce.apply(i / 100);
+      if (t < last - 1e-9) falls++;
+      last = t;
+    }
+    expect(falls, greaterThan(2), reason: "it bounces more than once");
   });
 
   test("withKey replaces the keyframe on the same frame", () {
@@ -583,7 +624,7 @@ void main() {
       expect(chartIn(controller).animation.preset, ChartAnimationPreset.grow);
     });
 
-    test("a pair is one band, four separate poses are none", () {
+    test("a pair is one band, and every other stretch is its own", () {
       var track = ElementTrack(const [
         Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
         Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
@@ -595,15 +636,22 @@ void main() {
       expect([bands[0].from, bands[0].to], [0, 10]);
       expect([bands[1].from, bands[1].to], [30, 47]);
 
-      // Four poses of an element moving about are four poses. Joining them up
-      // would be inventing a relationship nobody asked for.
-      expect(
-          bandsIn(ElementTrack(const [
-            Keyframe(frame: 0, dx: 10),
-            Keyframe(frame: 5, dx: 20),
-            Keyframe(frame: 9, dx: 30),
-          ])),
-          isEmpty);
+      // Poses of an element moving about get a bar each now, which is a
+      // deliberate change: this said that joining them up would be inventing
+      // a relationship nobody asked for, and then somebody asked for it. The
+      // bar is read as "something happens between these two marks", and
+      // something does -- so three poses are two stretches and two bars.
+      expect([
+        for (var band in bandsIn(ElementTrack(const [
+          Keyframe(frame: 0, dx: 10),
+          Keyframe(frame: 5, dx: 20),
+          Keyframe(frame: 9, dx: 30),
+        ])))
+          [band.from, band.to]
+      ], [
+        [0, 5],
+        [5, 9],
+      ]);
       expect(bandsIn(null), isEmpty);
     });
 

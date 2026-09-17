@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -43,10 +45,30 @@ import 'package:flutter/services.dart';
 /// -- which took those three off the ruler, and the keyframe marks with them,
 /// because the marks sit a fixed distance down a box that had quietly become
 /// shorter. A total that is the sum of its parts cannot do that.
-/// Seventy-two is everything below the transport row: the ruler, the two rows
-/// of marks and the air around them. It was 110 all in, of which the transport
-/// row was 38.
-const double timelineHeight = controlWithLabelHeight + 72;
+/// Added up, and it has to add up to what is actually drawn. Seventy-two was
+/// meant to be everything below the transport row, but the strip's own padding
+/// comes out of the same box -- so the drawing had thirty-nine pixels for the
+/// sixty-two it needed. The lower half of every keyframe was painted outside
+/// the widget, which is why a mark could only be clicked along its top edge,
+/// and the row of timeline markers under it was never drawn at all.
+const double timelineHeight = controlWithLabelHeight +
+    _stripPadTop +
+    _stripGap +
+    _stripHeight +
+    _stripPadBottom +
+    _notesGutter;
+
+const double _stripPadTop = 4;
+const double _stripPadBottom = 6;
+const double _stripGap = 3;
+
+/// _markRow and _actionRow are where the two rows of marks sit inside the
+/// strip, and _stripHeight is tall enough for both of them with air under the
+/// lower one. Every hit test and the painter read these, so a row cannot be
+/// drawn somewhere the pointer is not looking for it.
+const double _markRow = _rulerHeight + 14;
+const double _actionRow = _rulerHeight + 34;
+const double _stripHeight = _actionRow + 12;
 
 /// keyframeBarHeight is the floating pose bar's height.
 const double keyframeBarHeight = controlWithLabelHeight + 10;
@@ -67,10 +89,13 @@ const double _rulerHeight = 22;
 /// keyframe mark to take hold of it rather than scrub.
 ///
 /// Generous horizontally, because a mark is a few pixels wide and a timeline
-/// squeezed to a hundred frames puts them close together; tight vertically, so
-/// a drag anywhere else on the strip is still a scrub.
+/// squeezed to a hundred frames puts them close together; and far enough
+/// vertically to cover the whole mark and the air either side of it. It was
+/// eleven, which would have been enough -- except that the strip was shorter
+/// than the drawing, so half the target was off the end of the widget and the
+/// pointer never reached it.
 const double _markGrabWidth = 9;
-const double _markGrabHeight = 11;
+const double _markGrabHeight = 12;
 
 /// _pathDriving is the path that owns a row's keyframes, if one does.
 ///
@@ -144,12 +169,26 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// drag was recognised. See onHorizontalDragDown.
   int? _pressedFrame;
 
-  /// _selectedKey is the frame of the mark that has been clicked, or null.
+  /// _selectedKeys are the frames of the marks that have been clicked.
+  ///
+  /// A set rather than one frame, because the things somebody wants to do to
+  /// keyframes -- move them, copy them, take them away -- are as often about
+  /// several as about one. Shift picks up another; clicking the bar between a
+  /// pair picks up both ends, since a pair is what that bar means.
   ///
   /// Cleared whenever the row changes underneath it -- a frame number means
   /// nothing once the strip is showing somebody else's keyframes, and a stale
   /// one would put Delete on a mark that is not there.
-  int? _selectedKey;
+  final Set<int> _selectedKeys = {};
+
+  /// _copied is what was last copied: each keyframe, and how far it sits after
+  /// the first of them. Relative, so a paste lands wherever the playhead is
+  /// with the shape of the run preserved.
+  List<(int, Keyframe)> _copied = const [];
+
+  /// _shiftHeld is whether a click adds to the selection rather than starting
+  /// a new one, which is what shift means on every list in the app.
+  bool get _shiftHeld => HardwareKeyboard.instance.isShiftPressed;
 
   /// _focus is what lets Delete reach this strip. Requested when a mark is
   /// clicked, because a mark is not a widget and cannot take focus itself.
@@ -173,8 +212,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     // A mark that is no longer on this row cannot stay selected: the frame
     // number would still be a number, and Delete would take a keyframe the
     // reader never picked.
-    var at = _selectedKey;
-    if (at != null && _targetTrack?.keyAt(at) == null) _selectedKey = null;
+    _selectedKeys.removeWhere((at) => _targetTrack?.keyAt(at) == null);
     setState(() {});
   }
 
@@ -276,6 +314,134 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var element = controller.selected;
     if (element != null) {
       controller.replaceElement(element.withBase(track: moved));
+    }
+  }
+
+  /// _copyKeys puts the selected keyframes on this strip's own clipboard.
+  ///
+  /// Kept here rather than on the system clipboard: these are keyframes, and
+  /// the thing anybody does with them is paste them somewhere else on this
+  /// timeline a moment later. Relative to the first of them, so the run keeps
+  /// its shape wherever it lands.
+  void _copyKeys() {
+    var track = _targetTrack;
+    if (track == null || _selectedKeys.isEmpty) return;
+    var frames = _selectedKeys.toList()..sort();
+    var first = frames.first;
+    var copied = <(int, Keyframe)>[];
+    for (var at in frames) {
+      var key = track.keyAt(at);
+      if (key != null) copied.add((at - first, key));
+    }
+    if (copied.isEmpty) return;
+    setState(() => _copied = copied);
+    _say(copied.length == 1
+        ? "Keyframe copied. Move the playhead and paste it."
+        : "${copied.length} keyframes copied. Move the playhead and paste "
+            "them.");
+  }
+
+  /// _pasteKeys lays the copied run down with its first keyframe on the
+  /// playhead.
+  ///
+  /// Refused rather than merged where it would land on what is already there.
+  /// Two keyframes on one frame is one keyframe, so a paste that overlapped
+  /// would quietly eat whatever it landed on -- and an animation is a pair,
+  /// so eating one end of one leaves half an animation behind.
+  void _pasteKeys() {
+    var track = _targetTrack;
+    if (track == null || _copied.isEmpty) return;
+    var at = controller.frame;
+    var last = controller.document.frames - 1;
+
+    var wanted = [for (var (offset, _) in _copied) at + offset];
+    if (wanted.last > last) {
+      _say("There is not room for that before the end of the timeline.");
+      return;
+    }
+    var taken = [
+      for (var frame in wanted)
+        if (track.keyAt(frame) != null) frame,
+    ];
+    if (taken.isNotEmpty) {
+      _say(taken.length == 1
+          ? "There is already a keyframe on frame ${taken.first}. Keyframes "
+              "cannot sit on top of each other -- move the playhead clear of "
+              "the ones that are there."
+          : "Frames ${taken.join(", ")} already have keyframes. Keyframes "
+              "cannot sit on top of each other -- move the playhead clear of "
+              "the ones that are there.");
+      return;
+    }
+
+    controller.beginInteraction();
+    var next = track;
+    for (var (offset, key) in _copied) {
+      next = next.withKey(key.copyWith(frame: at + offset));
+    }
+    _writeTrack(next);
+    controller.endInteraction();
+    setState(() {
+      _selectedKeys
+        ..clear()
+        ..addAll(wanted);
+    });
+  }
+
+  /// _writeTrack puts a whole track back on whatever the strip is pointed at.
+  void _writeTrack(ElementTrack track) {
+    var team = controller.focusedTeam;
+    var index = controller.focusedPlayer;
+    if (team != null && index != null) {
+      controller.replaceElement(
+          team.withPlayer(index, team.players[index].copyWith(track: track)));
+      return;
+    }
+    var element = controller.selected;
+    if (element != null) {
+      controller.replaceElement(element.withBase(track: track));
+    }
+  }
+
+  /// _say puts a message where the reader is looking, which for a refusal is
+  /// the only way they learn why nothing happened.
+  void _say(String message) {
+    if (!mounted) return;
+    SnackBarModel.of(context, listen: false).success(message);
+  }
+
+  /// _keyframeFrames is every frame this strip has a mark on, in order. What
+  /// the next and previous buttons walk.
+  List<int> get _keyframeFrames {
+    var path = _selectedPath;
+    if (path != null) {
+      return [for (var node in path.nodes) node.frame]..sort();
+    }
+    return [for (var key in _targetTrack?.keys ?? const <Keyframe>[]) key.frame]
+      ..sort();
+  }
+
+  /// _goToKeyframe moves the playhead to the next mark in [direction], or
+  /// leaves it where it is when there is not one that way.
+  void _goToKeyframe(int direction) {
+    var frames = _keyframeFrames;
+    if (frames.isEmpty) return;
+    controller.pause();
+    var at = controller.frame;
+    if (direction > 0) {
+      for (var frame in frames) {
+        if (frame > at) {
+          controller.frame = frame;
+          return;
+        }
+      }
+      return;
+    }
+    for (var frame in frames.reversed) {
+      if (frame < at) {
+        controller.frame = frame;
+        return;
+      }
     }
   }
 
@@ -428,7 +594,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
       onKeyEvent: _onKey,
       child: Container(
         height: timelineHeight,
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 6 + _notesGutter),
+        padding: const EdgeInsets.fromLTRB(
+            10, _stripPadTop, 10, _stripPadBottom + _notesGutter),
         decoration: BoxDecoration(
           color: theme.colors.surfaceContainerLow,
           border: Border(
@@ -489,6 +656,30 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                   icon: Icons.chevron_right,
                   tooltip: "Next frame",
                   onPressed: () => controller.frame = controller.frame + 1,
+                ),
+                // And to the next mark rather than the next frame. Stepping a
+                // frame at a time to reach a keyframe eighty frames away is
+                // eighty presses, and dragging the playhead there lands one
+                // frame off as often as on -- which is the difference between
+                // editing the pose that is there and laying a new one beside
+                // it.
+                CanvasIconButton(
+                  key: const ValueKey("prevKeyframe"),
+                  icon: Icons.keyboard_double_arrow_left,
+                  tooltip: _keyframeFrames.isEmpty
+                      ? "No keyframes on this row yet"
+                      : "Back to the previous keyframe",
+                  onPressed:
+                      _keyframeFrames.isEmpty ? null : () => _goToKeyframe(-1),
+                ),
+                CanvasIconButton(
+                  key: const ValueKey("nextKeyframe"),
+                  icon: Icons.keyboard_double_arrow_right,
+                  tooltip: _keyframeFrames.isEmpty
+                      ? "No keyframes on this row yet"
+                      : "On to the next keyframe",
+                  onPressed:
+                      _keyframeFrames.isEmpty ? null : () => _goToKeyframe(1),
                 ),
                 const SizedBox(width: 6),
                 // The playhead and the document's length, as one control reading
@@ -685,20 +876,57 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
               ]),
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: _stripGap),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTapDown: (details) {
                   controller.pause();
-                  // A tap on a mark selects it *and* moves the playhead to it,
-                  // which is the same thing anybody wants from clicking a
-                  // keyframe: to be looking at the pose they are about to change.
+                  // Selected on the press and the playhead moved on the
+                  // release. Moving it here moved it the instant a mark was
+                  // touched -- including at the start of a drag, so the frame
+                  // somebody had lined the playhead up with as a guide was
+                  // gone before they had dragged anywhere. A drag never
+                  // reaches onTapUp, which is exactly the distinction wanted.
                   var mark =
                       _keyframeAt(details.localPosition, constraints.maxWidth);
-                  setState(() => _selectedKey = mark);
-                  if (mark != null) _focus.requestFocus();
+                  var band = mark != null
+                      ? null
+                      : _bandAt(details.localPosition, constraints.maxWidth);
+                  setState(() {
+                    if (mark != null) {
+                      // Shift adds to the selection; an ordinary click starts
+                      // a new one.
+                      if (!_shiftHeld) _selectedKeys.clear();
+                      if (!_selectedKeys.add(mark) && _shiftHeld) {
+                        _selectedKeys.remove(mark);
+                      }
+                    } else if (band != null) {
+                      // Both ends. The bar is what says the two belong
+                      // together, so picking it up picks up the pair.
+                      if (!_shiftHeld) _selectedKeys.clear();
+                      _selectedKeys.addAll(band);
+                    } else {
+                      _selectedKeys.clear();
+                    }
+                  });
+                },
+                onTapUp: (details) {
+                  // Focus is asked for here rather than on the press: the
+                  // press is followed by the framework handing focus to the
+                  // enclosing scope, so a request made before that is undone
+                  // by it -- and without focus the strip never sees Delete,
+                  // copy or paste.
+                  if (_selectedKeys.isNotEmpty) {
+                    FocusScope.of(context).requestFocus(_focus);
+                  }
+                  // The click has turned out to be a click. A mark puts the
+                  // playhead on itself, which is what anybody wants from
+                  // clicking a keyframe -- to be looking at the pose they are
+                  // about to change -- and anywhere else scrubs.
+                  var mark =
+                      _keyframeAt(details.localPosition, constraints.maxWidth);
                   controller.frame = mark ??
                       _frameAt(details.localPosition.dx, constraints.maxWidth);
                 },
@@ -769,7 +997,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     // another's.
                     keyframes: _targetTrack?.keys ?? const [],
                     bands: _bands,
-                    selectedKeyframe: _selectedKey,
+                    selected: _selectedKeys,
                     actions: document.actions,
                     colors: theme.colors,
                     xFor: (f) => _xFor(f, constraints.maxWidth),
@@ -805,10 +1033,26 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     // pose, the other is the whole element and everything on it.
     if (event.logicalKey == LogicalKeyboardKey.delete ||
         event.logicalKey == LogicalKeyboardKey.backspace) {
-      var at = _selectedKey;
-      if (at == null) return KeyEventResult.ignored;
-      _removeTargetKey(at);
-      setState(() => _selectedKey = null);
+      if (_selectedKeys.isEmpty) return KeyEventResult.ignored;
+      // Highest first, so removing one does not move the next.
+      for (var at in _selectedKeys.toList()..sort((a, b) => b - a)) {
+        _removeTargetKey(at);
+      }
+      setState(_selectedKeys.clear);
+      return KeyEventResult.handled;
+    }
+
+    // Copy and paste, on the strip's own selection. The canvas has its own
+    // pair for elements; which of the two answers is decided by where the
+    // focus is, which is where the last click was.
+    var meta = HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed;
+    if (meta && event.logicalKey == LogicalKeyboardKey.keyC) {
+      _copyKeys();
+      return KeyEventResult.handled;
+    }
+    if (meta && event.logicalKey == LogicalKeyboardKey.keyV) {
+      _pasteKeys();
       return KeyEventResult.handled;
     }
 
@@ -838,7 +1082,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   int? _keyframeAt(Offset local, double width) {
     var keys = _targetTrack?.keys ?? const <Keyframe>[];
     if (keys.isEmpty) return null;
-    if ((local.dy - (_rulerHeight + 14)).abs() > _markGrabHeight) return null;
+    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
 
     int? best;
     var nearest = _markGrabWidth;
@@ -867,7 +1111,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// between the two marks rather than on them, because dragging one end to
   /// change the length has to stay possible.
   List<int>? _bandAt(Offset local, double width) {
-    if ((local.dy - (_rulerHeight + 14)).abs() > _markGrabHeight) return null;
+    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
     for (var band in _bands) {
       if (!band.real) continue;
       var from = _xFor(band.from, width);
@@ -924,9 +1168,9 @@ class _TimelinePainter extends CustomPainter {
   /// See KeyframeBand.
   final List<KeyframeBand> bands;
 
-  /// selectedKeyframe is the frame of the mark that has been clicked, drawn
+  /// selected is the frames of the marks that have been clicked, drawn
   /// with a ring so it is obvious which one Delete will take.
-  final int? selectedKeyframe;
+  final Set<int> selected;
   final List<TimelineAction> actions;
   final ColorScheme colors;
   final double Function(int) xFor;
@@ -937,7 +1181,7 @@ class _TimelinePainter extends CustomPainter {
     required this.frameRate,
     required this.bands,
     required this.keyframes,
-    required this.selectedKeyframe,
+    required this.selected,
     required this.actions,
     required this.colors,
     required this.xFor,
@@ -977,12 +1221,12 @@ class _TimelinePainter extends CustomPainter {
     // exit are each two keyframes that mean nothing apart, and two marks with
     // nothing between them are two marks somebody will separate by accident.
     // Dragging the bar moves both -- see _shiftBand.
-    _paintBands(canvas, y: _rulerHeight + 14);
+    _paintBands(canvas, y: _markRow);
 
     _paintMarks(
       canvas,
       size,
-      y: _rulerHeight + 14,
+      y: _markRow,
       frames: [for (var k in keyframes) k.frame],
       // Muted, the same weight as the transport's own icons. They were all
       // drawn in the accent, which is the colour that means "this one" -- so
@@ -990,13 +1234,13 @@ class _TimelinePainter extends CustomPainter {
       // with and needed a ring drawn round it to be picked out at all.
       color: colors.onSurfaceVariant.withValues(alpha: 0.65),
       diamond: true,
-      selected: selectedKeyframe,
+      selected: selected,
       selectedColor: colors.primary,
     );
     _paintMarks(
       canvas,
       size,
-      y: _rulerHeight + 34,
+      y: _actionRow,
       frames: [for (var a in actions) a.frame],
       // A different colour from the keyframes above, which is the whole job of
       // this row -- but not tertiary, which is a panel background in this app
@@ -1058,7 +1302,7 @@ class _TimelinePainter extends CustomPainter {
     /// selected is drawn in [selectedColor] instead of [color]. The colour is
     /// the whole signal -- a ring as well was belt and braces on a mark nine
     /// pixels wide.
-    int? selected,
+    Set<int> selected = const {},
     Color? selectedColor,
   }) {
     if (y > size.height) return;
@@ -1066,7 +1310,7 @@ class _TimelinePainter extends CustomPainter {
     var chosen = Paint()..color = selectedColor ?? color;
     for (var f in frames) {
       var x = xFor(f);
-      var ink = f == selected ? chosen : paint;
+      var ink = selected.contains(f) ? chosen : paint;
       if (diamond) {
         canvas.drawPath(
           Path()
@@ -1111,7 +1355,7 @@ class _TimelinePainter extends CustomPainter {
       old.frameRate != frameRate ||
       old.keyframes != keyframes ||
       !_sameBands(old.bands, bands) ||
-      old.selectedKeyframe != selectedKeyframe ||
+      !setEquals(old.selected, selected) ||
       old.actions != actions;
 }
 

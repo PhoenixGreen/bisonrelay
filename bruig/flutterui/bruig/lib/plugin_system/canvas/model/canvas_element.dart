@@ -32,7 +32,10 @@ enum ElementKind {
   // TeamElement. The enum value keeps its old name so that documents saved
   // before the change still load.
   path("Path"),
-  player("Team");
+  player("Team"),
+  // A number that counts -- across the timeline, or in real time when nobody
+  // has keyframed it. See CounterElement.
+  counter("Counter");
 
   final String label;
   const ElementKind(this.label);
