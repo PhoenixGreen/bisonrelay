@@ -23,85 +23,97 @@ List<Widget> lineSettings(
   return [
     // No caption: the panel header says "Line settings" already, and a
     // group called Line directly under it was the word twice.
-    CanvasControlGroup(label: "Line", hideCaption: true, children: [
-      CanvasColorButton(
-        label: "Colour",
-        color: e.color,
-        gradient: e.fade,
-        onChanged: (c) {
-          begin();
-          write(e.copyWith(color: c));
-          commit();
-        },
-        onGradientChanged: (g) {
-          begin();
-          write(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g));
-          commit();
-        },
-      ),
-      CanvasNumberField(
-        label: "Width",
-        value: e.strokeWidth,
-        min: 0.2,
-        max: 200,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(strokeWidth: v)),
-        onCommit: commit,
-      ),
-      ...strokeEndControls(
-        cap: e.cap,
-        startEnd: e.startEnd,
-        endEnd: e.endEnd,
-        endSize: e.endSize,
-        onCap: (v) => now(e.copyWith(cap: v)),
-        onStart: (v) => now(e.copyWith(startEnd: v)),
-        onEnd: (v) => now(e.copyWith(endEnd: v)),
-        onEndSize: (v) {
-          begin();
-          write(e.copyWith(endSize: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Dash",
-        value: e.dash,
-        min: 0,
-        max: 400,
-        width: 50,
-        onChanged: (v) => write(e.copyWith(dash: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Curve",
-        decimals: 2,
-        width: 62,
-        value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
-        min: -1,
-        max: 1,
-        onChanged: (v) {
-          begin();
-          if (controller.hasValueKey(e, KeyframeChannel.bow)) {
-            controller.setValueKey(e, KeyframeChannel.bow, v);
-            return;
-          }
-          write(e.copyWith(curvature: v));
-        },
-        onCommit: commit,
-      ),
-      valueDot(
-          controller, e, KeyframeChannel.bow, "the line's curve", e.curvature),
-      CanvasIconButton(
-        icon: Icons.swap_vert,
-        tooltip: "Flip which way the line runs",
-        active: e.flipped,
-        onPressed: () {
-          begin();
-          write(e.copyWith(flipped: !e.flipped));
-          commit();
-        },
-      ),
-    ]),
+    //
+    // What the line is -- its colour, its weight, its curve -- on the line,
+    // and how it is finished off behind the button. The curve is out here
+    // because it can be keyframed, and the diamond beside it is the only
+    // thing that says so.
+    CanvasMoreGroup(
+        label: "Line",
+        hideCaption: true,
+        remember: "lineMore",
+        tooltip: "How the line ends, and whether it is dashed",
+        row: [
+          CanvasColorButton(
+            label: "Colour",
+            color: e.color,
+            gradient: e.fade,
+            onChanged: (c) {
+              begin();
+              write(e.copyWith(color: c));
+              commit();
+            },
+            onGradientChanged: (g) {
+              begin();
+              write(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g));
+              commit();
+            },
+          ),
+          CanvasNumberField(
+            label: "Width",
+            value: e.strokeWidth,
+            min: 0.2,
+            max: 200,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) => write(e.copyWith(strokeWidth: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Curve",
+            decimals: 2,
+            width: 62,
+            value: controller.valueAt(e, KeyframeChannel.bow, e.curvature),
+            min: -1,
+            max: 1,
+            onChanged: (v) {
+              begin();
+              if (controller.hasValueKey(e, KeyframeChannel.bow)) {
+                controller.setValueKey(e, KeyframeChannel.bow, v);
+                return;
+              }
+              write(e.copyWith(curvature: v));
+            },
+            onCommit: commit,
+          ),
+          valueDot(controller, e, KeyframeChannel.bow, "the line's curve",
+              e.curvature),
+        ],
+        more: [
+          ...strokeEndControls(
+            cap: e.cap,
+            startEnd: e.startEnd,
+            endEnd: e.endEnd,
+            endSize: e.endSize,
+            onCap: (v) => now(e.copyWith(cap: v)),
+            onStart: (v) => now(e.copyWith(startEnd: v)),
+            onEnd: (v) => now(e.copyWith(endEnd: v)),
+            onEndSize: (v) {
+              begin();
+              write(e.copyWith(endSize: v));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Dash",
+            value: e.dash,
+            min: 0,
+            max: 400,
+            width: 50,
+            onChanged: (v) => write(e.copyWith(dash: v)),
+            onCommit: commit,
+          ),
+          CanvasIconButton(
+            icon: Icons.swap_vert,
+            tooltip: "Flip which way the line runs",
+            active: e.flipped,
+            onPressed: () {
+              begin();
+              write(e.copyWith(flipped: !e.flipped));
+              commit();
+            },
+          ),
+        ]),
     // How it arrives, in a section of its own like a headline's.
     boxed(
         context,

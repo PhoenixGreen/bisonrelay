@@ -2261,6 +2261,18 @@ void main() {
           shape: kind,
         );
 
+    /// tail opens the button on the end of the Bubble line, which holds the
+    /// tail's own measurements. Only if it is shut: an opened area stays open
+    /// for the rest of the file.
+    Future<void> tail(WidgetTester tester) async {
+      var button = find.byKey(const ValueKey("more-shapeBubbleMore"));
+      if (find.text("Length").evaluate().isNotEmpty) return;
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
     testWidgets("a bubble shows its own settings, label or no label",
         (tester) async {
       // They were nested inside "if there is a label" by accident, so a bubble
@@ -2270,6 +2282,9 @@ void main() {
       expect(find.text("BUBBLE"), findsOneWidget);
       expect(find.text("Body"), findsOneWidget);
       expect(find.text("Tail"), findsOneWidget);
+      // Where the tail points is a measurement, so it is behind the button
+      // on the end of that line.
+      await tail(tester);
       expect(find.text("Points"), findsOneWidget);
     });
 
@@ -2310,6 +2325,7 @@ void main() {
 
     testWidgets("the tail angle can be typed", (tester) async {
       var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
+      await tail(tester);
       await tester.enterText(
           find.byKey(const ValueKey("bubbleTailAngle")), "270");
       await tester.pump();
@@ -2322,6 +2338,7 @@ void main() {
 
     testWidgets("the curl appears only for a curved tail", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble));
+      await tail(tester);
       expect(find.text("Curl"), findsNothing);
 
       var curved = ShapeElement(
@@ -2330,6 +2347,7 @@ void main() {
         bubble: const SpeechBubbleSpec(tail: BubbleTail.curved),
       );
       await panel(tester, curved);
+      await tail(tester);
       expect(find.text("Curl"), findsOneWidget);
     });
   });
@@ -2967,16 +2985,50 @@ void main() {
       expect(find.byType(TableDataEditor), findsOneWidget);
     });
 
+    testWidgets("the presets list says what it is for", (tester) async {
+      // The list is never blank. With nothing saved it offers to save this
+      // design, and with something to choose it says so -- an empty box at
+      // the top of every element's settings says nothing at all.
+      var controller = await panel(tester);
+      var list = find.byKey(const ValueKey("elementPresets"));
+      await tester.ensureVisible(list);
+      await tester.pumpAndSettle();
+      expect(find.text("Choose a preset"), findsOneWidget,
+          reason: "a table has a built-in design to start from");
+
+      // Nothing chosen yet, so there is nothing to rename or throw away.
+      expect(find.byKey(const ValueKey("elementPresetRename")), findsNothing);
+      expect(find.byKey(const ValueKey("elementPresetRemove")), findsNothing);
+
+      await tester.tap(list);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Football table").last);
+      await tester.pumpAndSettle();
+      // It replaces what is being edited, which is a question first: this
+      // table has rows somebody typed.
+      await tester.tap(find.text("Use the preset"));
+      await tester.pumpAndSettle();
+      expect(tableIn(controller).rows.length, greaterThan(2));
+
+      // The list now says which design this one came from, so that the two
+      // buttons beside it have something to act on. A built-in is not the
+      // reader's to rename, so it still offers neither.
+      expect(find.text("Football table"), findsWidgets);
+      expect(find.byKey(const ValueKey("elementPresetRename")), findsNothing);
+      expect(find.byKey(const ValueKey("elementPresetRemove")), findsNothing);
+    });
+
     testWidgets("the panel is ordered by what it is about", (tester) async {
       // The cells, then where they come from, then their order -- what the
       // table says -- and only after that how it looks. The look is two sets
       // of type controls and a dozen colour rows, which is what pushed the
       // data and the order off the bottom of the panel.
       await panel(tester);
-      // Presets first of all: start from a design somebody already made, or
-      // start from nothing.
+      // Presets is not among them: it is one uncaptioned line at the top of
+      // the panel rather than a section that has to be opened to find one
+      // button.
+      expect(find.byKey(const ValueKey("elementPresets")), findsOneWidget);
       expect(sections(tester), [
-        "Presets",
         "Table",
         "Data",
         "Order",
@@ -3829,6 +3881,33 @@ void main() {
       }
     }
 
+    /// grid opens the section the rules, the scale and the way a number is
+    /// written are gathered in.
+    Future<void> grid(WidgetTester tester) async {
+      if (find.text("Log scale").evaluate().isEmpty) {
+        await press(tester, find.text("GRID"));
+      }
+    }
+
+    /// axisMore opens the button on the end of the X and Y labels line, which
+    /// is where everything about how the writing on the axes looks now lives.
+    Future<void> axisMore(WidgetTester tester) async {
+      await labels(tester);
+      if (find.text("Label size").evaluate().isEmpty) {
+        await press(
+            tester, find.byKey(const ValueKey("more-chartAxisLabelsMore")));
+      }
+    }
+
+    /// legendMore opens the button on the end of the Legend line, which holds
+    /// the key's own settings.
+    Future<void> legendMore(WidgetTester tester) async {
+      await labels(tester);
+      if (find.text("Place").evaluate().isEmpty) {
+        await press(tester, find.byKey(const ValueKey("more-chartLegendMore")));
+      }
+    }
+
     testWidgets("smooth is behind the series it curves", (tester) async {
       // It was a chart setting in a group called Lines, which on a chart of
       // bars with a line over it said nothing about which half of the chart
@@ -3877,6 +3956,75 @@ void main() {
       expect(hints(), isEmpty, reason: "with two series it has its answer");
     });
 
+    testWidgets("the grid line carries the switches and hides the rest",
+        (tester) async {
+      // Four switches and a button. What is ruled and what is written on the
+      // plot are the things anybody changes; how finely it is ruled and what
+      // colour the rules are are things they set once.
+      var controller = await panel(tester);
+      Finder toggle(String label) => find.ancestor(
+          of: find.text(label), matching: find.byType(CanvasToggle));
+      for (var label in ["Grid", "Axes", "Log scale", "Values"]) {
+        expect(toggle(label), findsOneWidget, reason: label);
+      }
+      expect(find.text("Lines"), findsNothing);
+      expect(find.byKey(const ValueKey("chartAxisSteps")), findsNothing);
+
+      await press(tester, find.byKey(const ValueKey("more-chartGridMore")));
+      expect(find.byKey(const ValueKey("chartAxisSteps")), findsOneWidget);
+      // The rules' colour with them. It was in a section called Style, two
+      // headings away from the switch it belongs to.
+      expect(find.byKey(const ValueKey("chartGridColour")), findsOneWidget);
+
+      // Values is the chart's own, not the key's.
+      var was = chartIn(controller).showValues;
+      await press(tester, toggle("Values"));
+      expect(chartIn(controller).showValues, !was);
+      // Shut it again: an open button stays open for the rest of the file.
+      await press(tester, find.byKey(const ValueKey("more-chartGridMore")));
+    });
+
+    testWidgets("the first series' Drawn as is the chart's own type",
+        (tester) async {
+      // There was a Type dropdown as well, three sections above the series
+      // list, and the two said the same thing in two places: a one-series
+      // chart set to bars with its series set to "As the chart" has one
+      // answer and two controls for it that could disagree.
+      var controller = await panel(tester);
+      expect(find.text("TYPE"), findsNothing);
+
+      var drawnAs = find.byKey(const ValueKey("chartType"));
+      expect(drawnAs, findsOneWidget);
+      // Every kind, including the circular ones no later series can be: this
+      // is the chart's own setting, not a series' override.
+      expect(tester.widget<CanvasDropdown<String>>(drawnAs).options.length,
+          ChartType.values.length);
+
+      await press(tester, drawnAs);
+      await tester.tap(find.text(ChartType.pie.label).last);
+      await tester.pumpAndSettle();
+      expect(chartIn(controller).type, ChartType.pie);
+
+      // And the series goes back to following the chart in the same write.
+      // Left pinned to what it was, choosing here would change the chart and
+      // draw the first series the old way.
+      controller.replaceElement(chartIn(controller).copyWith(
+          data: ChartData(
+        categories: chartIn(controller).data.categories,
+        series: [
+          chartIn(controller).data.series.first.copyWith(type: ChartType.bar),
+          ...chartIn(controller).data.series.skip(1),
+        ],
+      )));
+      await tester.pumpAndSettle();
+
+      await press(tester, find.byKey(const ValueKey("chartType")));
+      await tester.tap(find.text(ChartType.area.label).last);
+      await tester.pumpAndSettle();
+      expect(chartIn(controller).type, ChartType.area);
+      expect(chartIn(controller).data.series.first.type, isNull);
+    });
+
     testWidgets("the title and the description can be switched off",
         (tester) async {
       var controller = await panel(tester);
@@ -3905,15 +4053,17 @@ void main() {
       var controller = await panel(tester);
       await labels(tester);
       expect(chartIn(controller).floatingLabels, isFalse);
-      // One X already: the element's own position, at the top of the panel.
-      expect(find.text("X"), findsOneWidget);
+      // Two X already: the element's own position at the top of the panel,
+      // and the switch that shows the X axis' title.
+      expect(find.text("X"), findsNWidgets(2));
+      expect(find.text("H"), findsOneWidget);
       expect(find.byTooltip("Place it yourself — then drag it on the canvas"),
           findsNothing);
 
       await press(tester, find.text("Over the chart"));
 
       // And now one for the title and one for the description as well.
-      expect(find.text("X"), findsNWidgets(3));
+      expect(find.text("X"), findsNWidgets(4));
       expect(find.text("H"), findsNWidgets(3));
     });
 
@@ -3951,9 +4101,9 @@ void main() {
       // The decimals only appear once there is a style to apply them to:
       // automatic picks its own, so a box under it would do nothing.
       var controller = await panel(tester);
-      // It sits with the rest of the writing on the chart, which is a section
-      // that starts shut.
-      await labels(tester);
+      // It sits with the gridlines and the scale -- how this chart is
+      // measured -- which is a section that starts shut.
+      await grid(tester);
       expect(find.text("Decimal places"), findsNothing);
 
       await press(tester, find.text("Automatic — 1000000, 12.5"));
@@ -3978,7 +4128,7 @@ void main() {
           shape: (e) => e.copyWith(
               numbers: const ChartNumbers(
                   style: NumberStyle.millions, decimals: 2)));
-      await labels(tester);
+      await grid(tester);
 
       expect(find.text("Millions — 1.00M"), findsOneWidget);
       expect(find.text("Millions — 1.0M"), findsNothing);
@@ -3997,7 +4147,7 @@ void main() {
           shape: (e) => e.copyWith(
               numbers: const ChartNumbers(
                   style: NumberStyle.millions, decimals: 3)));
-      await labels(tester);
+      await grid(tester);
 
       expect(find.text("Axis numbers"), findsNothing,
           reason: "it follows the values until told not to");
@@ -4016,7 +4166,7 @@ void main() {
 
     testWidgets("the axis titles have a size and a distance", (tester) async {
       var controller = await panel(tester);
-      await labels(tester);
+      await axisMore(tester);
 
       expect(find.text("Label size"), findsOneWidget);
       expect(find.text("Label gap"), findsOneWidget);
@@ -4029,22 +4179,29 @@ void main() {
       // The switches are all the same question -- what does this chart write
       // on itself -- so they are one group, and a pie keeps the half of it
       // that applies.
-      await panel(tester);
-      expect(find.text("AXES AND VALUES"), findsOneWidget);
-      expect(find.text("X label"), findsOneWidget);
       // "Grid" twice over: the switch here and the colour in Style, so it is
       // found by the control it belongs to rather than by its word.
       Finder toggle(String label) => find.ancestor(
           of: find.text(label), matching: find.byType(CanvasToggle));
-      expect(toggle("Grid"), findsOneWidget);
-      expect(find.text("X labels"), findsOneWidget);
-      expect(toggle("Values"), findsOneWidget);
 
+      await panel(tester);
+      expect(toggle("Grid"), findsOneWidget);
+      expect(toggle("Values"), findsOneWidget);
+      await axisMore(tester);
+      expect(find.text("X label"), findsOneWidget);
+      // "X values", not "X labels": beside a switch called X, which shows the
+      // word naming the axis, "X labels" was the same thing said twice.
+      expect(find.text("X values"), findsOneWidget);
+
+      // A pie has no axes to rule or to name, so neither the section about
+      // the grid nor the line about the axis labels is offered at all. What
+      // it writes on its slices still is.
       await panel(tester, shape: (e) => e.copyWith(type: ChartType.pie));
-      expect(find.text("AXES AND VALUES"), findsOneWidget);
+      expect(find.text("GRID"), findsNothing);
+      await labels(tester);
       expect(find.text("X label"), findsNothing);
-      expect(toggle("Grid"), findsNothing);
-      expect(find.text("X labels"), findsNothing);
+      expect(find.text("X values"), findsNothing);
+      // Its switch moves to the Numbers line, which a pie does have.
       expect(toggle("Values"), findsOneWidget);
     });
 
@@ -4054,18 +4211,20 @@ void main() {
       // read together: a bar chart named by its categories does not always
       // want the figures up the side as well.
       var controller = await panel(tester);
+      await axisMore(tester);
       expect(chartIn(controller).showXLabels, isTrue);
       expect(chartIn(controller).showYLabels, isTrue);
 
-      await press(tester, find.text("X labels"));
+      await press(tester, find.text("X values"));
       expect(chartIn(controller).showXLabels, isFalse);
       expect(chartIn(controller).showYLabels, isTrue,
           reason: "the other axis is not touched");
 
-      await press(tester, find.text("Y labels"));
+      await press(tester, find.text("Y values"));
       expect(chartIn(controller).showYLabels, isFalse);
       expect(chartIn(controller).showAxisLabels, isFalse,
-          reason: "and with both off there is no writing on the axes at all");
+          reason: "and with both off, on a chart whose axes are unnamed, "
+              "there is no writing on the axes at all");
     });
 
     testWidgets("a radial bar says where its numbers went", (tester) async {
@@ -4082,6 +4241,7 @@ void main() {
       await panel(tester,
           shape: (e) =>
               e.copyWith(type: ChartType.radialBar, showLegend: false));
+      await labels(tester);
       expect(hints(), contains(hint));
 
       // The legend on but its own values off is still nowhere for them to go:
@@ -4089,6 +4249,7 @@ void main() {
       await panel(tester,
           shape: (e) =>
               e.copyWith(type: ChartType.radialBar, showLegend: true));
+      await labels(tester);
       expect(hints(), contains(hint));
 
       await panel(tester,
@@ -4096,6 +4257,7 @@ void main() {
               type: ChartType.radialBar,
               showLegend: true,
               legend: const ChartLegend(values: true)));
+      await labels(tester);
       expect(hints(), isNot(contains(hint)),
           reason: "with both on, the numbers are where it says");
     });
@@ -4140,7 +4302,7 @@ void main() {
       await panel(tester);
 
       var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
-      for (var name in ["LABELS", "TABLE", "ANIMATION"]) {
+      for (var name in ["DATA SOURCE", "TABLE", "ANIMATION"]) {
         var heading = find.text(name);
         await tester.ensureVisible(heading);
         await tester.pumpAndSettle();
@@ -4163,21 +4325,30 @@ void main() {
       var controller = await panel(tester);
       await labels(tester);
 
-      expect(find.text("LEGEND"), findsOneWidget);
+      // One switch on the line, with everything else about the key behind the
+      // button at the end of it. A section of its own for what is mostly two
+      // dropdowns and a size was a heading for each of them.
+      //
+      // Last of the label lines, because it is the last thing anybody sets:
+      // what the chart says, how it is measured, how it is written, and then
+      // where the key for all of it sits.
       expect(find.text("Over the chart"), findsOneWidget,
-          reason: "and the switch that places them, at the foot of it");
+          reason: "and the switch that places them, on the same line");
+      expect(find.byKey(const ValueKey("chartShowLegend")), findsOneWidget);
       expect(find.text("Place"), findsNothing, reason: "the key is off");
 
-      await press(tester, find.text("Show").last);
+      await press(tester, find.byKey(const ValueKey("chartShowLegend")));
       expect(chartIn(controller).showLegend, isTrue);
+
+      await legendMore(tester);
       expect(find.text("Place"), findsOneWidget);
       expect(find.text("Along"), findsOneWidget);
       expect(find.byType(CanvasDropdown<LegendPlacement>), findsOneWidget);
       expect(find.text("Between"), findsNothing,
           reason: "nothing to separate until the key shows values");
 
-      // Two "Values" on the panel now: the chart's own, up in Axes and
-      // values, and the key's down here. The key's is the later of the two.
+      // Two "Values" on the panel now: the chart's own up on the Grid line,
+      // and the key's in here. The key's is the later of the two.
       await press(tester, find.text("Values").last);
       expect(chartIn(controller).legend.values, isTrue);
       expect(find.text("Between"), findsOneWidget);
@@ -4209,11 +4380,17 @@ void main() {
         "a series is added beside the data, not in a section of its "
         "own", (tester) async {
       // A series is a column of the table, so it is added where the table is
-      // and its name, colour and type sit under the table rather than three
-      // headings away.
+      // -- and its name, colour and type are the section directly under it
+      // rather than three headings away.
       var controller = await panel(tester);
       expect(chartIn(controller).data.series.length, 1);
-      expect(find.text("SERIES"), findsNothing);
+      expect(
+          tester
+              .getTopLeft(find.text("SERIES"))
+              .dy
+              .compareTo(tester.getTopLeft(find.text("TABLE")).dy),
+          1,
+          reason: "directly under the numbers it names");
 
       await press(
           tester,
@@ -4226,8 +4403,14 @@ void main() {
       expect(data.series[1].values.length, data.categories.length,
           reason: "a value per row, so it lines up with what is there");
 
-      // Two "Drawn as" dropdowns now, one per series, under the table.
-      expect(find.byType(CanvasDropdown<String>), findsNWidgets(2));
+      // Two "Drawn as" dropdowns now, one per series, under the table. Found
+      // inside the series list rather than by type: the presets line at the
+      // top of the panel is a dropdown of strings as well.
+      expect(
+          find.descendant(
+              of: find.byType(ChartDataEditor).last,
+              matching: find.byType(CanvasDropdown<String>)),
+          findsNWidgets(2));
     });
   });
 
@@ -4646,18 +4829,22 @@ void main() {
       // Pasted text is the fast way in; it is a bad way to change one number
       // in the middle of forty, which is the other thing people do all day.
       var controller = await panel(tester);
-      expect(find.byType(ChartDataEditor), findsOneWidget);
+      // Two of them: the numbers in the Table section, and the series list
+      // under it, which is the same widget showing only its series rows.
+      expect(find.byType(ChartDataEditor), findsNWidgets(2));
       expect(find.byTooltip("Add a row"), findsOneWidget,
           reason: "rows and series are added the same way in either view");
 
       await grid(tester);
-      expect(find.byTooltip("Edit the numbers as pasted text"), findsOneWidget);
+      // "Raw table", not "Edit the numbers as pasted text": the button sits
+      // on a line of three and the sentence was longer than the row.
+      expect(find.byTooltip("Raw table"), findsOneWidget);
 
       // The first row's category, then its value.
       await tester.enterText(
           find
               .descendant(
-                  of: find.byType(ChartDataEditor),
+                  of: find.byType(ChartDataEditor).first,
                   matching: find.byType(TextField))
               .at(2),
           "42");
@@ -5454,11 +5641,14 @@ void main() {
             in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
           it.label,
       ];
+      // Labels is not among them: it is a run of plain lines now rather than
+      // a section, so it has no expander to be counted here. What is left
+      // reads as the work does -- where the numbers come from, the numbers,
+      // how they are mapped, and last how the chart arrives.
       var wanted = [
-        "Table",
-        "Labels",
         "Data source",
         "Columns",
+        "Table",
         "Animation",
       ];
       expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
@@ -6480,16 +6670,22 @@ void main() {
       var controller = await panel(tester);
       expect(controller.document.elements.length, 1);
 
-      await tester.ensureVisible(find.text("PRESETS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("PRESETS"));
+      // One line, not a section that has to be opened, and not captioned:
+      // what was behind the expander was one button and a list of at most a
+      // few names, which is less than the heading it was hidden under.
+      expect(find.text("PRESETS"), findsNothing);
+      var list = find.byKey(const ValueKey("elementPresets"));
+      expect(list, findsOneWidget);
+      await tester.ensureVisible(list);
       await tester.pumpAndSettle();
 
-      // Saving comes first: it is the one thing here about the element in
-      // front of you rather than about the list, and it says what it does.
-      expect(find.byKey(const ValueKey("savePreset")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementPresetSave")), findsOneWidget);
+      // Nothing chosen, so there is nothing to rename or throw away.
+      expect(find.byKey(const ValueKey("elementPresetRename")), findsNothing);
+      expect(find.byKey(const ValueKey("elementPresetRemove")), findsNothing);
+      // With nothing saved the list says what the button next to it is for
+      // rather than sitting there empty.
       expect(find.text("Save this design"), findsOneWidget);
-      expect(find.text("Nothing saved yet."), findsOneWidget);
       expect(find.text("THIS ONE"), findsNothing,
           reason: "a caption over a button that already says what it does");
     });

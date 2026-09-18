@@ -84,6 +84,30 @@ const _bottom = Rect.fromLTWH(50, 170, 250, 30);
 const _side = Rect.fromLTWH(0, 0, 40, 170);
 
 void main() {
+  group("the words naming the axes", () {
+    testWidgets("are drawn with the tick values switched off", (tester) async {
+      // They were under the tick values' switch, on the grounds that both are
+      // writing on an axis. Switching the figures off then took the word
+      // naming the axis with it, and left the switch that asks for the word
+      // doing nothing at all.
+      late int titles, nothing;
+      await tester.runAsync(() async {
+        var named = _chart(x: false, y: false)
+            .copyWith(xAxisLabel: "Month", yAxisLabel: "Messages");
+        titles = _ink(await _pixels(named), _bottom, _white) +
+            _ink(await _pixels(named), _side, _white);
+
+        var bare = _chart(x: false, y: false);
+        nothing = _ink(await _pixels(bare), _bottom, _white) +
+            _ink(await _pixels(bare), _side, _white);
+      });
+
+      expect(nothing, 0, reason: "nothing asked for, nothing written");
+      expect(titles, greaterThan(20),
+          reason: "the two words, with no figures beside them");
+    });
+  });
+
   group("each axis", () {
     testWidgets("can be switched off without the other", (tester) async {
       late int bothBottom, bothSide, noXBottom, noXSide, noYBottom, noYSide;

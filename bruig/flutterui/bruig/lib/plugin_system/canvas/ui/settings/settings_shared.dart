@@ -261,7 +261,12 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           value: e.rotationAt(frame),
           min: -3600,
           max: 3600,
-          width: 56,
+          // The same least width as X above it. The fields share out what is
+          // left of the line evenly, so equal minimums put Angle in X's
+          // column and Opacity in Y's -- which is the only reason the second
+          // line of this group reads as a second line rather than as a
+          // different group.
+          width: 62,
           suffix: "°",
           onChanged: (v) {
             begin();
@@ -706,7 +711,9 @@ List<(String, String)> curveOptions(CanvasController controller) => [
 Widget boxed(BuildContext context, Widget child) {
   var theme = ThemeNotifier.of(context);
   return Padding(
-    padding: const EdgeInsets.only(bottom: 14, top: 2),
+    // The same gap a group leaves under itself, so a boxed section and a
+    // captioned group are the same distance from what follows them.
+    padding: const EdgeInsets.only(bottom: canvasGroupGap),
     // Builder, because the context these settings are built with comes from
     // *above* the CanvasControlScope that says whether this is a column or a
     // band -- so asking it directly always answered "band".
@@ -719,7 +726,11 @@ Widget boxed(BuildContext context, Widget child) {
         // somebody has left lying there.
         //
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(7, 2, 7, 8),
+        // The same above and below. It was 2 and 8, which nobody notices on a
+        // section that is open -- and on a closed one carrying a button in its
+        // heading it put the button hard against the top edge with six pixels
+        // of nothing under it.
+        padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: theme.colors.outlineVariant),

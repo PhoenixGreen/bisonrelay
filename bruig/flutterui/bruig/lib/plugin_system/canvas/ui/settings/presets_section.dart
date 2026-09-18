@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // presets_section.dart is the row of saved designs at the top of an element's
@@ -43,6 +42,16 @@ class _PresetsSection extends StatefulWidget {
 
 class _PresetsSectionState extends State<_PresetsSection> {
   ElementPresetStore get store => ElementPresetStore.instance;
+
+  /// _chosen is the design this element was last started from.
+  ///
+  /// Held so that Rename and Remove have something to act on. They were one
+  /// button opening a list to pick from, which is a dialog to do a thing the
+  /// row already has a list for -- and it only appeared once something had
+  /// been saved, so on a panel showing the built-in designs there was no way
+  /// to reach it at all. Two buttons beside the list, acting on whatever is
+  /// in it, is one fewer list.
+  String _chosen = "";
 
   @override
   void initState() {
@@ -139,226 +148,88 @@ class _PresetsSectionState extends State<_PresetsSection> {
   @override
   Widget build(BuildContext context) {
     var presets = store.forKind(widget.element.kind);
+    // Gone if it was thrown away, or if the panel is now showing a different
+    // kind of element with designs of its own.
+    var chosen = presets.where((p) => p.name == _chosen).firstOrNull;
 
-    return CanvasExpander(
-      label: "Presets",
-      remember: "elementPresets.${widget.element.kind.name}",
-      trailing: presets.isEmpty ? null : "${presets.length}",
-      children: [
-        // Saving first: it is the one thing here that is about the element in
-        // front of you rather than about the list. A button that says what it
-        // does rather than an icon under a caption -- a caption reading "This
-        // one" over a bookmark icon was two attempts at the same sentence and
-        // neither of them said it.
-        _SaveButton(
-          onPressed: () async {
-            var name =
-                await _ask("Save as a preset", initial: widget.element.name);
-            if (name == null) return;
-            await store.save(name, widget.element);
-          },
-        ),
-        // A line under the button, and room either side of it. What is above
-        // it is about the element in front of you and what is below it is a
-        // list of other designs -- two different things in one short section,
-        // and without a break between them the first preset read as another
-        // button belonging to the first one.
-        _Rule(),
-        // A line of plain text rather than a hint: a section with three
-        // buttons in it does not need explaining, and the one thing worth
-        // saying is what an empty list means.
-        if (presets.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              "Nothing saved yet.",
-              style: TextStyle(
-                  fontSize: 11,
-                  color: ThemeNotifier.of(context)
-                      .colors
-                      .onSurfaceVariant
-                      .withValues(alpha: 0.7)),
+    // One row, uncaptioned. "PRESETS" over a list already offering to save
+    // this design was the word twice, at the top of every element's settings,
+    // above the settings somebody actually came for.
+    return CanvasControlGroup(
+        label: "Presets",
+        hideCaption: true,
+        // No rule under it either. A line between one row and the first
+        // section of the element's own settings divides nothing: what is
+        // above it is a single row, and a rule wants two groups to separate.
+        rule: false,
+        children: [
+          CanvasDropdown<String>(
+            key: const ValueKey("elementPresets"),
+            label: "",
+            value: chosen?.name ?? "",
+            width: 168,
+            enabled: presets.isNotEmpty,
+            options: [
+              // What the box reads when nothing has been chosen, which depends on
+              // whether there is anything to choose.
+              ("", presets.isEmpty ? "Save this design" : "Choose a preset"),
+              for (var preset in presets) (preset.name, preset.name),
+            ],
+            onChanged: (name) {
+              var picked = presets.where((p) => p.name == name).firstOrNull;
+              if (picked == null) {
+                setState(() => _chosen = "");
+                return;
+              }
+              setState(() => _chosen = picked.name);
+              _use(picked);
+            },
+          ),
+          // Only for a design somebody saved. A built-in one is not theirs to
+          // rename, and a button that is there and refuses is worse than no
+          // button.
+          if (chosen != null && !chosen.builtIn) ...[
+            CanvasIconButton(
+              key: const ValueKey("elementPresetRename"),
+              icon: Icons.drive_file_rename_outline,
+              tooltip: "Rename ${chosen.name}",
+              onPressed: () async {
+                var name = await _ask("Rename preset", initial: chosen.name);
+                if (name == null || name.trim().isEmpty) return;
+                await store.rename(chosen, name);
+                if (mounted) setState(() => _chosen = name);
+              },
             ),
-          ),
-        for (var preset in presets)
-          _PresetRow(
-            preset: preset,
-            onUse: () => _use(preset),
-            onRename: preset.builtIn
-                ? null
-                : () async {
-                    var name =
-                        await _ask("Rename preset", initial: preset.name);
-                    if (name == null) return;
-                    await store.rename(preset, name);
-                  },
-            onDelete: preset.builtIn ? null : () => store.remove(preset),
-          ),
-      ],
-    );
-  }
-}
-
-/// _PresetRow is one preset: its name, which is the button, and what can be
-/// done to it.
-///
-/// The name is the target rather than a plus beside it. A list of designs is
-/// a list of things to choose, and a row that is only a label with a button
-/// on the end reads as a setting rather than as a choice.
-class _PresetRow extends StatelessWidget {
-  final ElementPreset preset;
-  final VoidCallback onUse;
-  final VoidCallback? onRename;
-  final VoidCallback? onDelete;
-
-  const _PresetRow({
-    required this.preset,
-    required this.onUse,
-    this.onRename,
-    this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(children: [
-        Expanded(
-          child: InkWell(
-            key: ValueKey("usePreset.${preset.id}"),
-            borderRadius: BorderRadius.circular(4),
-            onTap: onUse,
-            child: Container(
-              height: controlHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: theme.colors.outlineVariant),
-              ),
-              child: Text(
-                preset.name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12, color: theme.colors.onSurfaceVariant),
-              ),
+            CanvasIconButton(
+              key: const ValueKey("elementPresetRemove"),
+              icon: Icons.delete_outline,
+              tooltip: "Remove ${chosen.name}",
+              onPressed: () async {
+                if (!await askToConfirm(context,
+                    title: "Remove ${chosen.name}?",
+                    message:
+                        "The saved design is thrown away. Anything already "
+                        "made from it is left alone.",
+                    confirm: "Remove")) {
+                  return;
+                }
+                await store.remove(chosen);
+                if (mounted) setState(() => _chosen = "");
+              },
             ),
+          ],
+          CanvasIconButton(
+            key: const ValueKey("elementPresetSave"),
+            icon: Icons.bookmark_add_outlined,
+            tooltip: "Save this design as a preset",
+            onPressed: () async {
+              var name =
+                  await _ask("Save as a preset", initial: widget.element.name);
+              if (name == null || name.trim().isEmpty) return;
+              await store.save(name, widget.element);
+              if (mounted) setState(() => _chosen = name);
+            },
           ),
-        ),
-        if (onRename != null || onDelete != null) const SizedBox(width: 4),
-        if (onRename != null)
-          _RowIcon(
-            icon: Icons.drive_file_rename_outline,
-            tooltip: "Rename ${preset.name}",
-            onPressed: onRename!,
-          ),
-        if (onDelete != null)
-          _RowIcon(
-            icon: Icons.delete_outline,
-            tooltip: "Delete ${preset.name}",
-            onPressed: onDelete!,
-          ),
-      ]),
-    );
-  }
-}
-
-/// _Rule is the line between the button that saves and the list of designs.
-class _Rule extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Container(
-          height: 1,
-          color: ThemeNotifier.of(context)
-              .colors
-              .outlineVariant
-              .withValues(alpha: 0.6),
-        ),
-      );
-}
-
-/// _SaveButton is the labelled button that keeps this element's design.
-///
-/// Built like the panel's own switches rather than like its icon buttons: it
-/// is the thing somebody comes to this section to press when they are not
-/// choosing a design, and a 24-pixel square with a bookmark on it is not
-/// something anybody finds.
-class _SaveButton extends StatelessWidget {
-  final VoidCallback onPressed;
-
-  const _SaveButton({required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        key: const ValueKey("savePreset"),
-        borderRadius: BorderRadius.circular(4),
-        onTap: onPressed,
-        child: Container(
-          height: controlHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: theme.colors.outlineVariant),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.bookmark_add_outlined,
-                size: 14, color: theme.colors.onSurfaceVariant),
-            const SizedBox(width: 5),
-            Text("Save this design",
-                style: TextStyle(
-                    fontSize: 11, color: theme.colors.onSurfaceVariant)),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-/// _RowIcon is a small square button that lines up with a row rather than
-/// with a captioned control.
-///
-/// The panel's own icon button leaves room above itself for the caption its
-/// neighbours have, which is right in a row of controls and wrong beside a
-/// list item -- there it sat half a caption lower than the thing it belongs
-/// to.
-class _RowIcon extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-
-  const _RowIcon({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(left: 3),
-      child: Tooltip(
-        message: tooltip,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: onPressed,
-          child: Container(
-            width: controlHeight,
-            height: controlHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: theme.colors.outlineVariant),
-            ),
-            child: Icon(icon, size: 15, color: theme.colors.onSurfaceVariant),
-          ),
-        ),
-      ),
-    );
+        ]);
   }
 }

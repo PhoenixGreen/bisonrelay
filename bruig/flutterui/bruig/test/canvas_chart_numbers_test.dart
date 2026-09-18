@@ -249,11 +249,17 @@ void main() {
       expect(blank.showsYTitle, isTrue);
     });
 
-    test("switching off every label takes the titles with it", () {
-      // They are writing on the axes, and that switch means no writing on
-      // the axes at all.
-      expect(titled(all: false).showsXTitle, isFalse);
-      expect(titled(all: false).showsYTitle, isFalse);
+    test("switching off the tick values leaves the titles alone", () {
+      // They were under that switch, on the grounds that both are writing on
+      // an axis. Switching the figures off then took the word naming the axis
+      // with it, and left the switch that asks for the word doing nothing --
+      // what an axis is measured in and what it is called are two questions.
+      expect(titled(all: false).showsXTitle, isTrue);
+      expect(titled(all: false).showsYTitle, isTrue);
+      // And the gutters are still kept, because there is still writing there.
+      expect(titled(all: false).showAxisLabels, isTrue);
+      // Nothing written on the axes at all only when the titles are off too.
+      expect(titled(all: false, x: false, y: false).showAxisLabels, isFalse);
     });
 
     test("a chart saved before they existed shows both", () {

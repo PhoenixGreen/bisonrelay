@@ -113,6 +113,16 @@ class ChartDataEditor extends StatefulWidget {
   /// offer an arrival offset where there is an arrival to offset.
   final bool animated;
 
+  /// showGrid and showSeries are which halves of this editor to build.
+  ///
+  /// Both, and it is the table with its series under it, which is what this
+  /// was. The grid alone and the series alone are the same editor built
+  /// twice, in two sections of the panel: the numbers in one and what each
+  /// column is called in the other. Two widgets rather than two copies of the
+  /// code, so the rows and the series cannot drift apart.
+  final bool showGrid;
+  final bool showSeries;
+
   /// elementId is which chart this is, so the grid's height is kept for this
   /// one rather than for charts in general. See CanvasDataEditorShell.scope.
   final String elementId;
@@ -127,6 +137,18 @@ class ChartDataEditor extends StatefulWidget {
   /// editor standing on its own in a test.
   final ValueChanged<ChartStyleDefaults>? onStyleChanged;
 
+  /// onChartType makes the first series' "Drawn as" the chart's own type.
+  ///
+  /// There was a Type dropdown at the top of the settings as well, and the
+  /// two said the same thing in two places: a one-series chart set to bars
+  /// with its series set to "As the chart" has one answer and two controls
+  /// for it, and changing either made the other look wrong. Given, the first
+  /// row *is* that control -- it offers every kind, including the circular
+  /// ones no later series can be, and choosing one sets the chart. Null
+  /// leaves every row a plain series row, which is what a table's editor and
+  /// a bare one in a test want.
+  final ValueChanged<ChartType>? onChartType;
+
   const ChartDataEditor({
     required this.data,
     required this.onChanged,
@@ -134,8 +156,11 @@ class ChartDataEditor extends StatefulWidget {
     this.chartType = ChartType.line,
     this.animated = false,
     this.elementId = "",
+    this.showGrid = true,
+    this.showSeries = true,
     this.style = const ChartStyleDefaults(),
     this.onStyleChanged,
+    this.onChartType,
     this.sourceColumns = const [],
     this.boundTo = const [],
     this.sourceFields = const [],
@@ -241,47 +266,64 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => CanvasDataEditorShell(
-        // The rows, plus the two header rows a chart's grid carries: the
-        // series names and where each one comes from.
-        wanted: (data.categories.length + 2) * 32 + 48,
-        remember: "canvasChartData",
-        // Per chart: a table of twenty rows wants a tall box and one of
-        // three does not, and one height shared by every chart left a hole
-        // under the small ones.
-        scope: widget.elementId,
-        gridTooltip: "Edit the numbers in a table",
-        textTooltip: "Edit the numbers as pasted text",
-        toolbar: [
-          // The two ways a chart grows, side by side, because they are the
-          // same kind of thing: a row is another category and a series is
-          // another column of numbers against the same ones.
-          CanvasIconButton(
-            icon: Icons.add,
-            tooltip: "Add a row",
-            onPressed: _addRow,
-          ),
-          CanvasIconButton(
-            icon: Icons.add_chart,
-            tooltip: "Add a series — give it its own type below to lay one "
-                "kind of chart over another",
-            onPressed: _addSeries,
-          ),
+  Widget build(BuildContext context) {
+    // The series on their own, for the panel that shows them under the table
+    // rather than inside it. A column of numbers and what that column is
+    // called are two questions -- "are these the right figures" and "how
+    // should this one look" -- and one box holding both is what made the
+    // table section the longest thing in the panel.
+    if (!widget.showGrid) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < data.series.length; i++) _seriesRow(i),
         ],
-        text: (_) => _raw(),
-        grid: (context) => _table(ThemeNotifier.of(context)),
-        below: [
+      );
+    }
+    return CanvasDataEditorShell(
+      // The rows, plus the two header rows a chart's grid carries: the
+      // series names and where each one comes from.
+      wanted: (data.categories.length + 2) * 32 + 48,
+      remember: "canvasChartData",
+      // Per chart: a table of twenty rows wants a tall box and one of
+      // three does not, and one height shared by every chart left a hole
+      // under the small ones.
+      scope: widget.elementId,
+      gridTooltip: "Edit the numbers in a table",
+      // "Raw table": what it shows is the table as text, and the switch is
+      // read as a name for the thing it turns on rather than as a sentence
+      // about editing.
+      textTooltip: "Raw table",
+      toolbar: [
+        // The two ways a chart grows, side by side, because they are the
+        // same kind of thing: a row is another category and a series is
+        // another column of numbers against the same ones.
+        CanvasIconButton(
+          icon: Icons.add,
+          tooltip: "Add a row",
+          onPressed: _addRow,
+        ),
+        CanvasIconButton(
+          icon: Icons.add_chart,
+          tooltip: "Add a series — give it its own type below to lay one "
+              "kind of chart over another",
+          onPressed: _addSeries,
+        ),
+      ],
+      text: (_) => _raw(),
+      grid: (context) => _table(ThemeNotifier.of(context)),
+      below: [
+        if (widget.showSeries) ...[
           // Clear of the table. The series rows are about the columns above
           // them, not another row of them, and butted up against the grid
           // they read as one more line of it.
           const SizedBox(height: 8),
-          // Under the table, because a series is a column of it: what it is
-          // called, what colour it is and how it is drawn all belong beside
-          // the numbers they describe rather than in a section of their own
-          // three headings away.
           for (var i = 0; i < data.series.length; i++) _seriesRow(i),
         ],
-      );
+      ],
+    );
+  }
 
   /// _seriesRow is one series: its name, how it is drawn, its colour and when
   /// it arrives, with the rest behind a button.
@@ -316,47 +358,67 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Wrap(crossAxisAlignment: WrapCrossAlignment.start, children: [
-            _captioned(
-              i == 0 ? "Name" : "",
-              SizedBox(
-                // Held down so name, kind, colour, offset and the button all
-                // make one line in a narrow sidebar. A series name is a
-                // legend entry -- "Revenue", "2024" -- not a sentence.
-                width: 68,
-                height: controlHeight,
-                child: CanvasGridCell(
-                  key: ValueKey("seriesName$i"),
-                  value: series.name,
-                  dense: true,
-                  onChanged: (v) {
-                    var out = [...data.series];
-                    out[i] = out[i].copyWith(name: v);
-                    widget.onChanged(
-                        ChartData(categories: data.categories, series: out));
-                  },
-                  onCommit: widget.onCommit,
-                ),
+          // A CanvasWrap rather than a Wrap, so the name and the kind grow
+          // into a wide sidebar the way the settings under them do. A row that
+          // fills the panel above a row of fixed boxes reads as two panels.
+          CanvasWrap(children: [
+            // An ordinary settings field rather than a grid cell. It sits in a
+            // line of settings, not in a table: a cell is drawn to a table's
+            // height and takes a table's typeface, which beside a dropdown is
+            // a box half a caption short.
+            CanvasTextField(
+              key: ValueKey("seriesName$i"),
+              label: i == 0 ? "Name" : "",
+              value: series.name,
+              // The least it will be, and small enough that the name, the
+              // kind, the colour and the button all make one line of a narrow
+              // sidebar. It grows into a wide one, so the floor only has to
+              // hold a legend entry -- "Revenue", "2024" -- not a sentence.
+              width: 56,
+              onChanged: (v) {
+                var out = [...data.series];
+                out[i] = out[i].copyWith(name: v);
+                widget.onChanged(
+                    ChartData(categories: data.categories, series: out));
+              },
+              onCommit: widget.onCommit,
+            ),
+            // The first row is the chart's own type where the caller has one
+            // to set -- see onChartType. Every row after it is "As the chart"
+            // or a kind of its own: a series that follows the chart keeps
+            // following it when the chart is changed, which is what almost
+            // every series wants.
+            if (i == 0 && widget.onChartType != null)
+              CanvasDropdown<String>(
+                key: const ValueKey("chartType"),
+                label: "Drawn as",
+                value: widget.chartType.name,
+                width: 96,
+                options: [for (var t in ChartType.values) (t.name, t.label)],
+                // The caller puts the series back to following the chart in
+                // the same write. Left pinned to what it was, choosing a new
+                // kind here would change the chart and draw the first series
+                // the old way, which reads as the dropdown not working -- and
+                // done as a second write from here it would be a write
+                // against the element as it was before the first one.
+                onChanged: (v) => widget.onChartType!(ChartType.fromName(v)),
+              )
+            else
+              CanvasDropdown<String>(
+                label: i == 0 ? "Drawn as" : "",
+                value: series.type?.name ?? "",
+                width: 96,
+                options: [
+                  ("", "As the chart"),
+                  for (var t in ChartType.values)
+                    if (!t.isCircular) (t.name, t.label),
+                ],
+                onChanged: (v) => _writeSeries(
+                    i,
+                    v.isEmpty
+                        ? series.copyWith(followChart: true)
+                        : series.copyWith(type: ChartType.fromName(v))),
               ),
-            ),
-            // "As the chart" rather than a second copy of the chart's own
-            // type: a series that follows the chart keeps following it when
-            // the chart is changed, which is what almost every series wants.
-            CanvasDropdown<String>(
-              label: i == 0 ? "Drawn as" : "",
-              value: series.type?.name ?? "",
-              width: 96,
-              options: [
-                ("", "As the chart"),
-                for (var t in ChartType.values)
-                  if (!t.isCircular) (t.name, t.label),
-              ],
-              onChanged: (v) => _writeSeries(
-                  i,
-                  v.isEmpty
-                      ? series.copyWith(followChart: true)
-                      : series.copyWith(type: ChartType.fromName(v))),
-            ),
             CanvasColorButton(
               label: i == 0 ? "Colour" : "",
               // Held to the swatch's own width so the caption cannot be what
@@ -404,9 +466,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           ]),
           if (open && settable) ...[
             const SizedBox(height: 4),
-            Wrap(
-                crossAxisAlignment: WrapCrossAlignment.start,
-                children: _seriesSettings(i, series, drawnAs)),
+            CanvasWrap(children: _seriesSettings(i, series, drawnAs)),
           ],
         ],
       ),
@@ -569,34 +629,6 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
       type == ChartType.scatter ||
       type == ChartType.radar;
 
-  /// _captioned puts a caption over something that has none of its own, at
-  /// exactly the height every labelled control reserves for one.
-  ///
-  /// The controls in a row all stand on one baseline because each reserves
-  /// the caption's height above itself, words or no words. Anything put
-  /// beside them has to reserve it too, and doing that by hand in two places
-  /// is how one of them came to reserve a different amount from the other.
-  Widget _captioned(String label, Widget child) => Padding(
-        padding: const EdgeInsets.only(right: 5),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: controlLabelHeight,
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 9,
-                      height: 1.1,
-                      color: ThemeNotifier.of(context).colors.onSurfaceVariant),
-                  overflow: TextOverflow.ellipsis),
-            ),
-            const SizedBox(height: controlLabelGap),
-            child,
-          ],
-        ),
-      );
-
   /// _grip drags the editor taller or shorter.
   /// _raw is the whole table as one block of text, in the tab or comma
   /// separated form a spreadsheet copies.
@@ -623,6 +655,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     }
 
     const nameWidth = 86.0;
+
     const valueWidth = 62.0;
 
     Widget header() => Row(children: [

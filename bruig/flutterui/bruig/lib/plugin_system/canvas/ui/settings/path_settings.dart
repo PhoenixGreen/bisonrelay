@@ -38,123 +38,144 @@ List<Widget> pathSettings(
   return [
     // No caption: the panel header says "Path settings" already, and a
     // group called Path directly under it was the word twice.
-    CanvasControlGroup(label: "Path", hideCaption: true, children: [
-      CanvasColorButton(
-        label: "Colour",
-        color: e.color,
-        gradient: e.fade,
-        onChanged: (c) => now(e.copyWith(color: c)),
-        onGradientChanged: (g) =>
-            now(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g)),
-      ),
-      CanvasNumberField(
-        label: "Width",
-        value: e.strokeWidth,
-        min: 0.5,
-        max: 60,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(strokeWidth: v));
-        },
-        onCommit: commit,
-      ),
-      ...strokeEndControls(
-        cap: e.cap,
-        startEnd: e.startEnd,
-        endEnd: e.endEnd,
-        endSize: e.endSize,
-        onCap: (v) => now(e.copyWith(cap: v)),
-        onStart: (v) => now(e.copyWith(startEnd: v)),
-        onEnd: (v) => now(e.copyWith(endEnd: v)),
-        onEndSize: (v) {
-          begin();
-          write(e.copyWith(endSize: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Dash",
-        value: e.dash,
-        min: 0,
-        max: 200,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(dash: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasToggle(
-        label: "Closed",
-        value: e.closed,
-        onChanged: (v) => now(e.copyWith(closed: v)),
-      ),
-      CanvasToggle(
-        // A route is scaffolding: the line showing where a player runs helps
-        // while the move is being worked out and ruins the picture that comes
-        // out of it.
-        label: "Guide only",
-        value: e.guide,
-        onChanged: (v) => now(e.copyWith(guide: v)),
-      ),
-    ]),
-    CanvasControlGroup(label: "Follow", children: [
-      CanvasDropdown<String>(
-        label: "Who follows",
-        value: _followKey(e.follow),
-        width: 176,
-        options: _followOptions(controller),
-        onChanged: (v) {
-          var follow = _followFromKey(v);
-          if (follow == null) {
-            controller.clearPathFollow(e);
-            now(e.copyWith(clearFollow: true));
-            return;
-          }
-          // Detaching the old follower first, or its baked keyframes are left
-          // behind and it goes on running a route nothing is attached to.
-          controller.clearPathFollow(e);
-          relink(e.copyWith(follow: follow, guide: true));
-        },
-      ),
-      CanvasNumberField(
-        key: const ValueKey("pathStartFrame"),
-        label: "Start",
-        value: e.firstFrame.toDouble(),
-        min: 0,
-        max: (controller.document.frames - 1).toDouble(),
-        width: 54,
-        onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
-      ),
-      CanvasNumberField(
-        key: const ValueKey("pathEndFrame"),
-        label: "End",
-        value: e.lastFrame.toDouble(),
-        min: 0,
-        max: (controller.document.frames - 1).toDouble(),
-        width: 54,
-        onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
-      ),
-      CanvasIconButton(
-        icon: Icons.horizontal_distribute,
-        tooltip: "Space the points evenly over the run",
-        onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
-      ),
-      CanvasIconButton(
-        icon: Icons.sync,
-        tooltip: "Re-apply this route to ${controller.followerLabel(e.follow)}",
-        onPressed: e.follow == null ? null : () => relink(e),
-      ),
-      CanvasIconButton(
-        icon: Icons.add,
-        tooltip: "Carry the path on past its last point",
-        onPressed: () =>
-            relink(e.appendNode(maxFrame: controller.document.frames - 1)),
-      ),
-    ]),
+    //
+    // What the route is on the line -- its colour, its weight, whether it
+    // closes, and whether it is scaffolding -- and how the stroke is finished
+    // off behind the button.
+    CanvasMoreGroup(
+        label: "Path",
+        hideCaption: true,
+        remember: "pathMore",
+        tooltip: "How the stroke ends, and whether it is dashed",
+        row: [
+          CanvasColorButton(
+            label: "Colour",
+            color: e.color,
+            gradient: e.fade,
+            onChanged: (c) => now(e.copyWith(color: c)),
+            onGradientChanged: (g) =>
+                now(g == null ? e.copyWith(flat: true) : e.copyWith(fade: g)),
+          ),
+          CanvasNumberField(
+            label: "Width",
+            value: e.strokeWidth,
+            min: 0.5,
+            max: 60,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(strokeWidth: v));
+            },
+            onCommit: commit,
+          ),
+          CanvasToggle(
+            label: "Closed",
+            value: e.closed,
+            onChanged: (v) => now(e.copyWith(closed: v)),
+          ),
+          CanvasToggle(
+            // A route is scaffolding: the line showing where a player runs helps
+            // while the move is being worked out and ruins the picture that comes
+            // out of it.
+            label: "Guide only",
+            value: e.guide,
+            onChanged: (v) => now(e.copyWith(guide: v)),
+          ),
+        ],
+        more: [
+          ...strokeEndControls(
+            cap: e.cap,
+            startEnd: e.startEnd,
+            endEnd: e.endEnd,
+            endSize: e.endSize,
+            onCap: (v) => now(e.copyWith(cap: v)),
+            onStart: (v) => now(e.copyWith(startEnd: v)),
+            onEnd: (v) => now(e.copyWith(endEnd: v)),
+            onEndSize: (v) {
+              begin();
+              write(e.copyWith(endSize: v));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Dash",
+            value: e.dash,
+            min: 0,
+            max: 200,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(dash: v));
+            },
+            onCommit: commit,
+          ),
+        ]),
+    // Who runs this, and when. Its own group because it is a different
+    // question from what the line looks like -- and the one this element
+    // exists to answer.
+    CanvasMoreGroup(
+        label: "Follow",
+        remember: "pathFollowMore",
+        tooltip: "Re-time the run, and carry the path on",
+        row: [
+          CanvasDropdown<String>(
+            label: "Who follows",
+            value: _followKey(e.follow),
+            width: 176,
+            options: _followOptions(controller),
+            onChanged: (v) {
+              var follow = _followFromKey(v);
+              if (follow == null) {
+                controller.clearPathFollow(e);
+                now(e.copyWith(clearFollow: true));
+                return;
+              }
+              // Detaching the old follower first, or its baked keyframes are left
+              // behind and it goes on running a route nothing is attached to.
+              controller.clearPathFollow(e);
+              relink(e.copyWith(follow: follow, guide: true));
+            },
+          ),
+          CanvasNumberField(
+            key: const ValueKey("pathStartFrame"),
+            label: "Start",
+            value: e.firstFrame.toDouble(),
+            min: 0,
+            max: (controller.document.frames - 1).toDouble(),
+            width: 54,
+            onChanged: (v) => relink(e.spreadFrames(v.round(), e.lastFrame)),
+          ),
+          CanvasNumberField(
+            key: const ValueKey("pathEndFrame"),
+            label: "End",
+            value: e.lastFrame.toDouble(),
+            min: 0,
+            max: (controller.document.frames - 1).toDouble(),
+            width: 54,
+            onChanged: (v) => relink(e.spreadFrames(e.firstFrame, v.round())),
+          ),
+        ],
+        more: [
+          CanvasIconButton(
+            icon: Icons.horizontal_distribute,
+            tooltip: "Space the points evenly over the run",
+            onPressed: () => relink(e.spreadFrames(e.firstFrame, e.lastFrame)),
+          ),
+          CanvasIconButton(
+            icon: Icons.sync,
+            tooltip:
+                "Re-apply this route to ${controller.followerLabel(e.follow)}",
+            onPressed: e.follow == null ? null : () => relink(e),
+          ),
+          CanvasIconButton(
+            icon: Icons.add,
+            tooltip: "Carry the path on past its last point",
+            onPressed: () =>
+                relink(e.appendNode(maxFrame: controller.document.frames - 1)),
+          ),
+        ]),
     _pathNodeList(controller, e, relink),
     // How it arrives, in a section of its own like a headline's. A path that
     // carries a follower still carries it: this is the line itself coming on,

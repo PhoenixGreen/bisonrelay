@@ -97,12 +97,22 @@ class CanvasTransitionsPanel extends StatelessWidget {
     var last = !master && index >= scenes.length - 1;
 
     // How much of the line the two names may take. The buttons are each as
-    // wide as a control is tall and have their own padding; what is left is
-    // shared between the two dropdowns, the second wider than the first
-    // because "Fade through a colour" is a longer thing to say than "Fade".
-    // Each still has a floor: past that the name in it is an ellipsis, and
-    // three letters and a dot is not a setting anybody can read.
-    var free = room - 16 - 70;
+    // wide as a control is tall, and every control on the line keeps a gap to
+    // its right; what is left is shared between the two dropdowns, the second
+    // wider than the first because "Fade through a colour" is a longer thing
+    // to say than "Fade". Each still has a floor: past that the name in it is
+    // an ellipsis, and three letters and a dot is not a setting anybody can
+    // read.
+    //
+    // Counted from the panel's own constants rather than written out as a
+    // number. It was 70 for two buttons and their gaps, which stopped being
+    // true the day those gaps were put on one scale with the rest -- and what
+    // it looked like was the second button on a line of its own with the
+    // width of the panel to the right of it.
+    var free = room -
+        16 -
+        2 * (controlHeight + canvasControlGap) -
+        2 * canvasControlGap;
     var family = (free * 0.42).clamp(62.0, 128.0);
     var which = (free * 0.58).clamp(80.0, 168.0);
 

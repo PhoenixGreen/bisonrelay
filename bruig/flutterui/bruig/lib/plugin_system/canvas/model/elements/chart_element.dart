@@ -519,7 +519,12 @@ class ChartElement extends CanvasElement {
   ///
   /// showAxisLabels is whether there is any writing on the axes at all, which
   /// is what the gutters and the air round the plot are kept for.
-  bool get showAxisLabels => showXLabels || showYLabels;
+  ///
+  /// The titles count. They are two separate switches -- the tick values up
+  /// the side, and the word naming the axis -- and a chart wanting only the
+  /// word is an ordinary thing to ask for.
+  bool get showAxisLabels =>
+      showXLabels || showYLabels || showsXTitle || showsYTitle;
 
   /// xLabels and yLabels are the type each axis is actually written in: the
   /// chart's own label type, with whatever that axis has been told instead.
@@ -533,10 +538,13 @@ class ChartElement extends CanvasElement {
     return spec;
   }
 
-  /// Under showAxisLabels, because that switch is "no writing on the axes at
-  /// all" and a title is writing on an axis.
-  bool get showsXTitle => showXLabels && showXTitle && xAxisLabel.isNotEmpty;
-  bool get showsYTitle => showYLabels && showYTitle && yAxisLabel.isNotEmpty;
+  /// Not under the tick values' switch. It was, on the grounds that both are
+  /// writing on an axis -- which made switching the figures off take the word
+  /// naming the axis with it, and left the switch that asks for the word
+  /// doing nothing at all. The two are separate questions: what the axis is
+  /// measured in, and what it is called.
+  bool get showsXTitle => showXTitle && xAxisLabel.isNotEmpty;
+  bool get showsYTitle => showYTitle && yAxisLabel.isNotEmpty;
 
   /// positiveOnly is whether a log axis can describe this chart's numbers:
   /// nothing below zero, and something above it.

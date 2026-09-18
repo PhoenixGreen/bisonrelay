@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 // controls.dart is the small set of controls the canvas settings bar is built
@@ -39,6 +40,24 @@ const double controlLabelGap = 3;
 /// that has no caption -- a toggle, an icon button -- is pushed down by
 /// exactly this much so the whole row sits on one baseline.
 const double controlLabelHeight = 11;
+
+/// The four gaps the settings panel is spaced with, and the whole of it.
+///
+/// One scale, because the alternative is what this was: a caption seven
+/// pixels over its controls in one group and fourteen in another, a rule with
+/// twelve pixels above it and sixteen below, and four different widths of gap
+/// between two controls on the same line. None of it is far enough out to
+/// name, and all of it together is a panel that reads as having been assembled
+/// rather than laid out.
+///
+/// canvasControlGap is between two controls on a line, canvasRowGap between
+/// one line of a group and the next, canvasCaptionGap under a group's name,
+/// and canvasGroupGap on each side of the rule that divides two groups -- the
+/// same above as below, which is the one people notice.
+const double canvasControlGap = 5;
+const double canvasRowGap = 8;
+const double canvasCaptionGap = 7;
+const double canvasGroupGap = 16;
 
 /// bandGroupHeight is how tall the line between two groups on the band is:
 /// the caption and one row of controls, which is the whole of the band.
@@ -176,6 +195,431 @@ class CanvasHint extends StatelessWidget {
       );
 }
 
+/// CanvasFill marks a control that should grow to help fill its line.
+///
+/// Its own width is the least it will ever be. Everything else about it --
+/// where the line breaks, what it sits beside -- is decided by [CanvasWrap],
+/// which hands out whatever room is left over.
+class CanvasFill extends ParentDataWidget<_CanvasWrapParentData> {
+  const CanvasFill({required super.child, super.key});
+
+  @override
+  void applyParentData(RenderObject renderObject) {
+    var data = renderObject.parentData! as _CanvasWrapParentData;
+    if (data.fill) return;
+    data.fill = true;
+    renderObject.parent?.markNeedsLayout();
+  }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => _RawCanvasWrap;
+}
+
+class _CanvasWrapParentData extends ContainerBoxParentData<RenderBox> {
+  bool fill = false;
+}
+
+/// _GrowRoot is a growable control's outermost box.
+///
+/// It answers "how little will you take" when it is asked loosely, which is
+/// what CanvasWrap packs the lines from, and takes exactly what it is given
+/// when it is asked tightly, which is how the room left over is handed out.
+/// Either way it passes a *tight* width down, so that the [_Stretch] inside
+/// it has a width to fill.
+///
+/// The least it will take is its control's own width or its caption's,
+/// whichever is wider: a caption longer than the box under it is what decides
+/// how much of a row the control needs, and always has been.
+class _GrowRoot extends SingleChildRenderObjectWidget {
+  final double min;
+
+  const _GrowRoot({required this.min, required Widget super.child});
+
+  @override
+  _RenderGrowRoot createRenderObject(BuildContext context) =>
+      _RenderGrowRoot(min);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderGrowRoot renderObject) {
+    renderObject.min = min;
+  }
+}
+
+class _RenderGrowRoot extends RenderProxyBox {
+  _RenderGrowRoot(this._min);
+
+  double _min;
+  set min(double value) {
+    if (_min == value) return;
+    _min = value;
+    markNeedsLayout();
+  }
+
+  double _natural() =>
+      math.max(_min, child!.getMaxIntrinsicWidth(double.infinity));
+
+  @override
+  void performLayout() {
+    var width = constraints.hasTightWidth
+        ? constraints.maxWidth
+        : constraints.constrainWidth(_natural());
+    child!.layout(BoxConstraints.tightFor(width: width), parentUsesSize: true);
+    size = constraints.constrain(Size(width, child!.size.height));
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _natural();
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => _natural();
+}
+
+/// _Stretch is the control's own box inside that: as wide as it is offered,
+/// and [min] wide when it is asked how little it will take.
+class _Stretch extends SingleChildRenderObjectWidget {
+  final double min;
+  final double height;
+
+  const _Stretch({
+    required this.min,
+    required this.height,
+    required Widget super.child,
+  });
+
+  @override
+  _RenderStretch createRenderObject(BuildContext context) =>
+      _RenderStretch(min, height);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderStretch renderObject) {
+    renderObject
+      ..min = min
+      ..height = height;
+  }
+}
+
+class _RenderStretch extends RenderProxyBox {
+  _RenderStretch(this._min, this._height);
+
+  double _min;
+  set min(double value) {
+    if (_min == value) return;
+    _min = value;
+    markNeedsLayout();
+  }
+
+  double _height;
+  set height(double value) {
+    if (_height == value) return;
+    _height = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    var width = constraints.constrainWidth(
+        constraints.maxWidth.isFinite ? constraints.maxWidth : _min);
+    var height = constraints.constrainHeight(_height);
+    child!.layout(BoxConstraints.tightFor(width: width, height: height));
+    size = Size(width, height);
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _min;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => _min;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _height;
+}
+
+/// canvasSized is a control's own box: [min] wide and fixed, or as wide as
+/// the line has room for, depending on where it has been put and whether it
+/// asked to grow.
+Widget canvasSized(
+  BuildContext context, {
+  required double min,
+  required double height,
+  required bool grow,
+  required Widget child,
+}) =>
+    grow && _CanvasWrapScope.of(context)
+        ? _Stretch(min: min, height: height, child: child)
+        : SizedBox(width: min, height: height, child: child);
+
+/// CanvasWrap is a Wrap whose marked children share out the room left over.
+///
+/// A sidebar is a column of unknown width that people drag, and a row of
+/// fixed-width boxes in one leaves a ragged margin down the right that gets
+/// wider the wider the panel is. The boxes grow into it instead.
+///
+/// The extra is shared as a *per-control amount* rather than by making every
+/// marked control the same width, and that is the part worth keeping: a title
+/// field beside a number field stays the wider of the two, and -- because
+/// every line gets the same amount -- four number fields on one line and two
+/// on the next come out the same width, so Angle sits under X.
+///
+/// The amount is the smallest any line can afford, so widening never pushes a
+/// control off the end of the line it was packed onto. A line with fewer
+/// marked controls than the busiest one therefore stops short of the right
+/// margin, which is what makes the columns line up.
+class CanvasWrap extends StatelessWidget {
+  final double spacing;
+  final double runSpacing;
+  final List<Widget> children;
+
+  const CanvasWrap({
+    required this.children,
+    this.spacing = 0,
+    this.runSpacing = 0,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) => _RawCanvasWrap(
+        spacing: spacing,
+        runSpacing: runSpacing,
+        children: [
+          // Marked here rather than by each control, because the mark is
+          // parent data and has to sit between this and the control -- and
+          // because the scope that goes with it then covers the control and
+          // nothing else. Provided from further up it reached every control
+          // inside every child, including the ones in a data grid's own
+          // Wrap, which is a mark applied to the wrong parent.
+          for (var child in children)
+            if (child is CanvasGrowable && (child as CanvasGrowable).grow)
+              CanvasFill(
+                child: _GrowRoot(
+                  min: (child as CanvasGrowable).least,
+                  child: _CanvasWrapScope(child: child),
+                ),
+              )
+            else
+              child,
+        ],
+      );
+}
+
+/// CanvasGrowable is a control that will take some of the room left over on
+/// its line if [CanvasWrap] offers it. See CanvasTextField.grow.
+abstract interface class CanvasGrowable {
+  bool get grow;
+
+  /// least is the width it will not go below.
+  double get least;
+}
+
+/// _CanvasWrapScope says that a control is inside one of these.
+///
+/// A control only offers to grow where there is a line to grow into. Asked for
+/// its width by anything else -- a dialog, a Column, the band above the canvas
+/// -- it answers with the width it was given and nothing more, because
+/// "however much room there is" in an unknown parent is how a seventy-pixel
+/// field ends up four hundred wide.
+class _CanvasWrapScope extends InheritedWidget {
+  const _CanvasWrapScope({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_CanvasWrapScope>() != null;
+
+  @override
+  bool updateShouldNotify(_CanvasWrapScope old) => false;
+}
+
+class _RawCanvasWrap extends MultiChildRenderObjectWidget {
+  final double spacing;
+  final double runSpacing;
+
+  const _RawCanvasWrap({
+    required super.children,
+    this.spacing = 0,
+    this.runSpacing = 0,
+  });
+
+  @override
+  RenderCanvasWrap createRenderObject(BuildContext context) =>
+      RenderCanvasWrap(spacing: spacing, runSpacing: runSpacing);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderCanvasWrap renderObject) {
+    renderObject
+      ..spacing = spacing
+      ..runSpacing = runSpacing;
+  }
+}
+
+class RenderCanvasWrap extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _CanvasWrapParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _CanvasWrapParentData> {
+  RenderCanvasWrap({double spacing = 0, double runSpacing = 0})
+      : _spacing = spacing,
+        _runSpacing = runSpacing;
+
+  double _spacing;
+  set spacing(double value) {
+    if (_spacing == value) return;
+    _spacing = value;
+    markNeedsLayout();
+  }
+
+  double _runSpacing;
+  set runSpacing(double value) {
+    if (_runSpacing == value) return;
+    _runSpacing = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _CanvasWrapParentData) {
+      child.parentData = _CanvasWrapParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    var width = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : constraints.minWidth;
+
+    // What each child is when nothing is given to it. A marked child is asked
+    // with no width at all, so that it answers with the least it will take
+    // rather than with the whole line; everything else is asked within the
+    // line, because a line break is a child as wide as one.
+    var kids = <RenderBox>[];
+    var fills = <bool>[];
+    var widths = <double>[];
+    for (var child = firstChild; child != null;) {
+      var data = child.parentData! as _CanvasWrapParentData;
+      child.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
+      kids.add(child);
+      fills.add(data.fill);
+      widths.add(child.size.width);
+      child = data.nextSibling;
+    }
+
+    // Packed greedily, exactly as a Wrap packs: a child that does not fit
+    // what is left starts the next line.
+    var lines = <List<int>>[];
+    var line = <int>[];
+    var used = 0.0;
+    for (var i = 0; i < kids.length; i++) {
+      var w = widths[i];
+      if (line.isNotEmpty && used + _spacing + w > width + 0.01) {
+        lines.add(line);
+        line = [];
+        used = 0;
+      }
+      used += (line.isEmpty ? 0 : _spacing) + w;
+      line.add(i);
+    }
+    if (line.isNotEmpty) lines.add(line);
+
+    // The most every marked control can be given without the line it is on
+    // running past the edge. One number for all of them, so that the lines
+    // agree with each other.
+    var extra = double.infinity;
+    for (var row in lines) {
+      var marked = [
+        for (var i in row)
+          if (fills[i]) i
+      ];
+      if (marked.isEmpty) continue;
+      var taken = _spacing * (row.length - 1);
+      for (var i in row) {
+        taken += widths[i];
+      }
+      var slack = width - taken;
+      if (slack <= 0) {
+        extra = 0;
+        break;
+      }
+      extra = math.min(extra, slack / marked.length);
+    }
+    if (!extra.isFinite) extra = 0;
+
+    // And laid out again at what they have been given.
+    if (extra > 0) {
+      for (var i = 0; i < kids.length; i++) {
+        if (!fills[i]) continue;
+        kids[i].layout(BoxConstraints.tightFor(width: widths[i] + extra),
+            parentUsesSize: true);
+        widths[i] = kids[i].size.width;
+      }
+    }
+
+    // A line with nothing tall on it takes no room and costs no gap. The one
+    // thing that makes such a line is a deliberate break -- CanvasLineBreak,
+    // which is as wide as the wrap and no pixels tall -- and counting it as a
+    // line of its own charged the gap twice: two rows the sidebar happened to
+    // wrap sat eight pixels apart, and two the author had separated on purpose
+    // sat sixteen.
+    var y = 0.0;
+    var started = false;
+    for (var row in lines) {
+      var height = 0.0;
+      for (var i in row) {
+        height = math.max(height, kids[i].size.height);
+      }
+      if (height > 0 && started) y += _runSpacing;
+      var x = 0.0;
+      for (var i in row) {
+        var data = kids[i].parentData! as _CanvasWrapParentData;
+        data.offset = Offset(x, y + (height - kids[i].size.height) / 2);
+        x += widths[i] + _spacing;
+      }
+      if (height == 0) continue;
+      y += height;
+      started = true;
+    }
+
+    size = constraints.constrain(Size(width, math.max(0, y)));
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => 0;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) {
+    var total = 0.0;
+    for (var child = firstChild; child != null;) {
+      var data = child.parentData! as _CanvasWrapParentData;
+      total += child.getMaxIntrinsicWidth(double.infinity) + _spacing;
+      child = data.nextSibling;
+    }
+    return total;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+/// CanvasNoScrollbar is a scroll behaviour with no bar on it.
+///
+/// For the panels people scroll with two fingers rather than by taking hold of
+/// anything: a bar that appears over the right-hand edge of the settings the
+/// moment they move, and fades once they stop, is furniture reporting
+/// something they can already see. The wheel, a trackpad and a dragged finger
+/// all still scroll.
+class CanvasNoScrollbar extends ScrollBehavior {
+  const CanvasNoScrollbar();
+
+  @override
+  Widget buildScrollbar(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
+}
+
 /// CanvasControlGroup is a labelled cluster of controls with a rule after it.
 ///
 /// The rules are what stop a bar of thirty controls reading as one undivided
@@ -211,11 +655,20 @@ class CanvasControlGroup extends StatelessWidget {
   /// first control under it run together as one paragraph.
   final double captionGap;
 
+  /// rule is the line under the group.
+  ///
+  /// Dropped where the group after it is a continuation rather than a new
+  /// subject -- the axis names under the title and the description, which are
+  /// one heading's worth of settings split over two lines because the second
+  /// line carries a button of its own.
+  final bool rule;
+
   const CanvasControlGroup({
     required this.label,
     required this.children,
     this.hideCaption = false,
-    this.captionGap = 7,
+    this.captionGap = canvasCaptionGap,
+    this.rule = true,
     super.key,
   });
 
@@ -283,16 +736,20 @@ class CanvasControlGroup extends StatelessWidget {
     return Padding(
       // The spacing every group gets, and the reason it is here rather than in
       // each of them: a settings panel where one group breathes and the next
-      // is packed reads as two panels by different hands. These four numbers
-      // -- above the caption, under it, between wrapped rows, and before the
-      // rule -- are the whole of it.
+      // is packed reads as two panels by different hands.
       //
-      // A rule under each group as well as a gap. Six clusters of small
+      // A group divided from the next by a rule keeps the same gap on both
+      // sides of it -- unequal, it reads as belonging to whichever group it is
+      // nearer, which is the opposite of what a divider is for. A group with
+      // no rule is a group the one under it continues, so it gets the gap
+      // between two lines of one group instead.
+      //
+      // A rule under most groups as well as a gap. Six clusters of small
       // controls down one narrow column, separated by nine pixels of nothing,
       // ran together into one field of boxes -- the caption above each was the
       // only thing saying where one ended, and a caption is nine pixels tall
       // and grey.
-      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      padding: EdgeInsets.only(bottom: rule ? canvasGroupGap : canvasRowGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -301,13 +758,12 @@ class CanvasControlGroup extends StatelessWidget {
             Padding(
                 padding: EdgeInsets.only(bottom: captionGap, left: 1),
                 child: caption),
-          Wrap(runSpacing: 8, children: children),
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Container(
-                height: 1,
-                color: theme.colors.outlineVariant.withValues(alpha: 0.45)),
-          ),
+          // No spacing between them: each control carries its own right-hand
+          // padding, as it did under the Wrap this replaced. Adding a gap here
+          // as well is four pixels a control, which is what pushed a row that
+          // had been measured to fit onto two lines.
+          CanvasWrap(runSpacing: canvasRowGap, children: children),
+          if (rule) const CanvasGroupRule(),
         ],
       ),
     );
@@ -319,7 +775,10 @@ class CanvasControlGroup extends StatelessWidget {
 /// Committed on every keystroke that parses, rather than on submit. A field
 /// that only takes effect when focus leaves it means typing a width and seeing
 /// nothing happen, and then wondering whether it took.
-class CanvasNumberField extends StatefulWidget {
+class CanvasNumberField extends StatefulWidget implements CanvasGrowable {
+  @override
+  double get least => width;
+
   final String label;
   final double value;
   final double min;
@@ -338,6 +797,11 @@ class CanvasNumberField extends StatefulWidget {
 
   final ValueChanged<double> onChanged;
 
+  /// grow lets this take some of the room left over on its line; [width] is
+  /// then the least it will be. See CanvasWrap.
+  @override
+  final bool grow;
+
   /// onCommit is called when the field is done being edited, and is where a
   /// caller ends the undo step it started.
   final VoidCallback? onCommit;
@@ -352,6 +816,7 @@ class CanvasNumberField extends StatefulWidget {
     this.width = 62,
     this.suffix = "",
     this.step,
+    this.grow = true,
     this.onCommit,
     super.key,
   });
@@ -411,9 +876,11 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         onChanged: widget.onChanged,
         onCommit: widget.onCommit,
       ),
-      SizedBox(
-        width: CanvasControlScope.widthFor(context, widget.width),
+      canvasSized(
+        context,
+        min: CanvasControlScope.widthFor(context, widget.width),
         height: controlHeight,
+        grow: widget.grow,
         child: TextField(
           controller: _text,
           focusNode: _focus,
@@ -424,12 +891,9 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r"^-?[0-9]*\.?[0-9]*")),
           ],
-          decoration: InputDecoration(
-            isDense: true,
+          decoration: canvasFieldDecoration(theme).copyWith(
             suffixText: widget.suffix.isEmpty ? null : widget.suffix,
             suffixStyle: const TextStyle(fontSize: 10),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-            border: const OutlineInputBorder(),
           ),
           onChanged: (raw) {
             var parsed = double.tryParse(raw);
@@ -443,8 +907,47 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
   }
 }
 
+/// canvasFieldDecoration is what every field on this panel is drawn with.
+///
+/// The border is left to the app's own input theme, which draws a line under
+/// the words. Spelled out as a box here it matched the dropdown beside it and
+/// looked wrong everywhere else, and it is not this panel's decision to make.
+///
+/// What is spelled out is the room above and below the words, because that is
+/// what decides how tall the field is *drawn*. A field is given a row's height
+/// to sit in; the decoration is drawn at whatever height its padding adds up
+/// to and sits at the top of that row. With no padding at all -- which is what
+/// the number fields had -- that is eighteen pixels of field in a
+/// twenty-seven pixel row, which is a line sitting nine pixels high of where
+/// the eye expects it, on every number on the panel.
+InputDecoration canvasFieldDecoration(
+  ThemeNotifier theme, {
+  String hint = "",
+  double fontSize = 12,
+}) =>
+    InputDecoration(
+      isDense: true,
+      hintText: hint.isEmpty ? null : hint,
+      hintStyle: const TextStyle(fontSize: 11),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: 6,
+        vertical: canvasFieldPadding(fontSize),
+      ),
+    );
+
+/// canvasFieldPadding is the room above and below the words that makes a
+/// field exactly [controlHeight] tall.
+///
+/// A line of text is about a fifth taller than its point size, and the border
+/// takes a pixel at each end.
+double canvasFieldPadding(double fontSize) =>
+    math.max(0, (controlHeight - 2 - fontSize * 1.2) / 2);
+
 /// CanvasTextField is a short string with a label above it.
-class CanvasTextField extends StatefulWidget {
+class CanvasTextField extends StatefulWidget implements CanvasGrowable {
+  @override
+  double get least => width;
+
   final String label;
   final String value;
   final double width;
@@ -453,6 +956,11 @@ class CanvasTextField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback? onCommit;
 
+  /// grow lets this take some of the room left over on its line; [width] is
+  /// then the least it will be. See CanvasWrap.
+  @override
+  final bool grow;
+
   const CanvasTextField({
     required this.label,
     required this.value,
@@ -460,6 +968,7 @@ class CanvasTextField extends StatefulWidget {
     this.width = 150,
     this.maxLines = 1,
     this.hint = "",
+    this.grow = true,
     this.onCommit,
     super.key,
   });
@@ -500,30 +1009,161 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
   Widget build(BuildContext context) => _labelled(
         ThemeNotifier.of(context),
         widget.label,
-        SizedBox(
-          width: CanvasControlScope.widthFor(context, widget.width),
+        canvasSized(
+          context,
+          min: CanvasControlScope.widthFor(context, widget.width),
           height: widget.maxLines > 1 ? controlHeight * 2 : controlHeight,
+          grow: widget.grow,
           child: TextField(
             controller: _text,
             focusNode: _focus,
             maxLines: widget.maxLines,
             style: const TextStyle(fontSize: 12),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: widget.hint.isEmpty ? null : widget.hint,
-              hintStyle: const TextStyle(fontSize: 11),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              border: const OutlineInputBorder(),
-            ),
+            decoration: canvasFieldDecoration(ThemeNotifier.of(context),
+                hint: widget.hint),
             onChanged: widget.onChanged,
           ),
         ),
       );
 }
 
+/// CanvasMoreGroup is a group of settings with the rest of them behind a
+/// button on the end of its first line.
+///
+/// The shape a chart's series list uses, made shareable: the settings anybody
+/// changes are out where they can be seen, and the ones that are set once and
+/// left are one press away. A panel where everything is equally visible is a
+/// panel where nothing is -- which is what these settings had become, twenty
+/// controls deep in sections with no shape to them.
+///
+/// The open state is remembered under [remember] for the run, like a
+/// section's, so a panel that rebuilds -- which it does on every change to the
+/// element -- does not shut what somebody has just opened.
+class CanvasMoreGroup extends StatefulWidget {
+  final String label;
+  final bool hideCaption;
+
+  /// rule is the line under the group; see CanvasControlGroup.rule.
+  final bool rule;
+
+  /// remember names where the open state is kept. Null keeps it only as long
+  /// as the widget is in the tree, which in a settings panel is not long.
+  final String? remember;
+
+  /// row is what is always shown, and more is what the button reveals. The
+  /// button is drawn at the end of the row, so [row] should be short enough
+  /// to leave space for it.
+  final List<Widget> row;
+  final List<Widget> more;
+
+  /// tooltip says what is behind the button, which is the only thing that
+  /// tells anybody whether it is worth pressing.
+  final String tooltip;
+
+  const CanvasMoreGroup({
+    required this.label,
+    required this.row,
+    required this.more,
+    this.tooltip = "More settings",
+    this.hideCaption = false,
+    this.rule = true,
+    this.remember,
+    super.key,
+  });
+
+  @override
+  State<CanvasMoreGroup> createState() => _CanvasMoreGroupState();
+}
+
+class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
+  static final Map<String, bool> _remembered = {};
+
+  late bool _open = _remembered[widget.remember] ?? false;
+
+  void _toggle() {
+    setState(() => _open = !_open);
+    var key = widget.remember;
+    if (key != null) _remembered[key] = _open;
+  }
+
+  @override
+  Widget build(BuildContext context) => CanvasControlGroup(
+        label: widget.label,
+        hideCaption: widget.hideCaption,
+        rule: widget.rule,
+        children: [
+          ...widget.row,
+          if (widget.more.isNotEmpty)
+            CanvasIconButton(
+              key: ValueKey("more-${widget.remember ?? widget.label}"),
+              icon: _open ? Icons.expand_less : Icons.tune,
+              tooltip: _open ? "Hide these settings" : widget.tooltip,
+              active: _open,
+              onPressed: _toggle,
+            ),
+          if (_open) ...[
+            const CanvasLineBreak(),
+            ...widget.more,
+            // And a line across the foot of what was revealed. Opened, these
+            // settings run straight into whatever is below them, and a reader
+            // who has scrolled past the button has nothing telling them where
+            // one group's overflow stops and the next group starts. Heavier
+            // than the rule between groups on purpose: it is closing something
+            // that was opened, which is a different thing from dividing two
+            // things that were always there.
+            const CanvasMoreEnd(),
+          ],
+        ],
+      );
+}
+
+/// CanvasGroupRule is the line between one group of settings and the next.
+///
+/// It keeps the gap above it and the group under it keeps the same gap below,
+/// so the line sits midway between the two things it divides. Nearer one than
+/// the other it reads as belonging to that one, which is the opposite of what
+/// a divider is for.
+class CanvasGroupRule extends StatelessWidget {
+  const CanvasGroupRule({super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: canvasGroupGap),
+        child: Container(
+            height: 1,
+            color: ThemeNotifier.of(context)
+                .colors
+                .outlineVariant
+                .withValues(alpha: 0.45)),
+      );
+}
+
+/// CanvasMoreEnd is the line across the foot of an opened more-settings area.
+class CanvasMoreEnd extends StatelessWidget {
+  const CanvasMoreEnd({super.key});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: canvasRowGap, bottom: 1),
+        child: Container(
+          width: double.infinity,
+          height: 2,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(1),
+            color: ThemeNotifier.of(context)
+                .colors
+                .outlineVariant
+                .withValues(alpha: 0.9),
+          ),
+        ),
+      );
+}
+
 /// CanvasDropdown is a choice from a fixed list.
-class CanvasDropdown<T> extends StatelessWidget {
+class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
+  @override
+  double get least => width;
+
   final String label;
   final T value;
   final List<(T, String)> options;
@@ -545,6 +1185,15 @@ class CanvasDropdown<T> extends StatelessWidget {
   /// caption deciding the width means narrowing the box achieves nothing.
   final bool tight;
 
+  /// grow lets this take some of the room left over on its line.
+  ///
+  /// [width] is then the least it will be rather than the whole of it. See
+  /// CanvasWrap: the extra is shared out evenly among everything on the line
+  /// that asked for it, and by the same amount on every line, so that a row of
+  /// four fields and a row of two below it come out in the same columns.
+  @override
+  final bool grow;
+
   const CanvasDropdown({
     required this.label,
     required this.value,
@@ -553,6 +1202,7 @@ class CanvasDropdown<T> extends StatelessWidget {
     this.width = 130,
     this.tight = false,
     this.enabled = true,
+    this.grow = true,
     super.key,
   });
 
@@ -563,59 +1213,63 @@ class CanvasDropdown<T> extends StatelessWidget {
       theme,
       label,
       cap: tight ? CanvasControlScope.widthFor(context, width) : null,
-      Container(
-        width: CanvasControlScope.widthFor(context, width),
+      canvasSized(
+        context,
+        min: CanvasControlScope.widthFor(context, width),
         height: controlHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: theme.colors.outlineVariant),
-        ),
-        // A bare DropdownButton rather than a DropdownButtonFormField, which
-        // is a FormField and keeps its own copy of the value. In a settings
-        // bar the value changes from outside constantly -- a different element
-        // is selected, an undo lands -- and a form field would go on showing
-        // whatever was chosen in it last.
-        //
-        // Its own Material, because ink -- the splash, and the highlight a
-        // focused control keeps -- is painted by the nearest Material
-        // *ancestor*, in that ancestor's coordinates. Without one here the
-        // nearest was the whole sidebar, so the highlight left behind by
-        // choosing a chart type was drawn at the dropdown's position in the
-        // sidebar and stayed there: a grey box floating over the Add panel
-        // while the settings scrolled underneath it. Painted here it is in
-        // the right place and clipped to the control.
-        child: Material(
-          type: MaterialType.transparency,
-          // And no highlight at all once the menu has closed. In a settings
-          // panel the focused control is not a thing anybody is tracking, and
-          // a box that stays lit after a choice reads as something still
-          // open.
-          child: DropdownButton<T>(
-            focusColor: Colors.transparent,
-            value: options.any((o) => o.$1 == value) ? value : null,
-            isDense: true,
-            isExpanded: true,
-            underline: const SizedBox.shrink(),
-            style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
-            iconSize: 16,
-            items: [
-              for (var (v, text) in options)
-                DropdownMenuItem(
-                  value: v,
-                  child: Text(text, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: enabled
-                ? (v) {
-                    // Null is a real answer where the type says it is one --
-                    // a dropdown of "None, Fade, Slide" is a dropdown whose
-                    // first entry is null, and refusing it meant None could
-                    // be chosen and nothing happened.
-                    if (v == null && null is! T) return;
-                    onChanged(v as T);
-                  }
-                : null,
+        grow: grow,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: theme.colors.outlineVariant),
+          ),
+          // A bare DropdownButton rather than a DropdownButtonFormField, which
+          // is a FormField and keeps its own copy of the value. In a settings
+          // bar the value changes from outside constantly -- a different element
+          // is selected, an undo lands -- and a form field would go on showing
+          // whatever was chosen in it last.
+          //
+          // Its own Material, because ink -- the splash, and the highlight a
+          // focused control keeps -- is painted by the nearest Material
+          // *ancestor*, in that ancestor's coordinates. Without one here the
+          // nearest was the whole sidebar, so the highlight left behind by
+          // choosing a chart type was drawn at the dropdown's position in the
+          // sidebar and stayed there: a grey box floating over the Add panel
+          // while the settings scrolled underneath it. Painted here it is in
+          // the right place and clipped to the control.
+          child: Material(
+            type: MaterialType.transparency,
+            // And no highlight at all once the menu has closed. In a settings
+            // panel the focused control is not a thing anybody is tracking, and
+            // a box that stays lit after a choice reads as something still
+            // open.
+            child: DropdownButton<T>(
+              focusColor: Colors.transparent,
+              value: options.any((o) => o.$1 == value) ? value : null,
+              isDense: true,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
+              iconSize: 16,
+              items: [
+                for (var (v, text) in options)
+                  DropdownMenuItem(
+                    value: v,
+                    child: Text(text, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: enabled
+                  ? (v) {
+                      // Null is a real answer where the type says it is one --
+                      // a dropdown of "None, Fade, Slide" is a dropdown whose
+                      // first entry is null, and refusing it meant None could
+                      // be chosen and nothing happened.
+                      if (v == null && null is! T) return;
+                      onChanged(v as T);
+                    }
+                  : null,
+            ),
           ),
         ),
       ),
@@ -844,7 +1498,7 @@ class CanvasToggle extends StatelessWidget {
       // pixels high of where it should be, which is not much until it is a
       // button sitting beside two dropdowns.
       padding: EdgeInsets.only(
-          right: 5,
+          right: canvasControlGap,
           top: CanvasControlScope.isInline(context)
               ? 0
               : controlWithLabelHeight - controlHeight),
@@ -862,15 +1516,11 @@ class CanvasToggle extends StatelessWidget {
                     ? theme.colors.secondaryContainer
                     : theme.colors.outlineVariant),
           ),
+          // No check box beside the word. It was nineteen pixels per switch
+          // saying what the fill already says, on a panel whose switches come
+          // five to a line -- and the difference between five of them fitting
+          // a narrow sidebar and four of them fitting was exactly that.
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(
-              value ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-              size: 14,
-              color: value
-                  ? theme.colors.onSecondaryContainer
-                  : theme.colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: 5),
             Text(label,
                 style: TextStyle(
                     fontSize: 11,
@@ -928,11 +1578,20 @@ class CanvasIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool active;
 
+  /// tight drops the room this button leaves above itself for the caption its
+  /// neighbours have.
+  ///
+  /// Right in a row of captioned controls, wrong anywhere else: on a
+  /// section's heading it put the button half a caption below the words it
+  /// sits beside, and made a closed section taller than the one under it.
+  final bool tight;
+
   const CanvasIconButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
     this.active = false,
+    this.tight = false,
     super.key,
   });
 
@@ -950,8 +1609,8 @@ class CanvasIconButton extends StatelessWidget {
       // pixels high of where it should be, which is not much until it is a
       // button sitting beside two dropdowns.
       padding: EdgeInsets.only(
-          right: 3,
-          top: CanvasControlScope.isInline(context)
+          right: canvasControlGap,
+          top: tight || CanvasControlScope.isInline(context)
               ? 0
               : controlWithLabelHeight - controlHeight),
       child: Tooltip(
@@ -1153,7 +1812,7 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
     }
 
     return Padding(
-      padding: const EdgeInsets.only(right: 5),
+      padding: const EdgeInsets.only(right: canvasControlGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1413,7 +2072,7 @@ class CanvasKeyframeDot extends StatelessWidget {
       // nothing above to line up under, so the nudge is what pushed this out
       // of line with its neighbours.
       padding: EdgeInsets.only(
-          right: 4,
+          right: canvasControlGap,
           top: CanvasControlScope.isInline(context)
               ? 0
               : controlWithLabelHeight - controlHeight),
@@ -1581,15 +2240,14 @@ class CanvasGridCellState extends State<CanvasGridCell> {
         maxLines: widget.multiline ? null : 1,
         minLines: null,
         style: TextStyle(fontSize: widget.dense ? 11 : 12),
-        textAlignVertical: TextAlignVertical.top,
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: widget.hint.isEmpty ? null : widget.hint,
-          hintStyle: const TextStyle(fontSize: 11),
-          contentPadding: EdgeInsets.symmetric(
-              horizontal: 6, vertical: widget.dense ? 5 : 6),
-          border: const OutlineInputBorder(),
-        ),
+        // Centred on one line, top on several. A cell is given the row's
+        // height, which is more than one line of eleven-point text needs, so
+        // top-aligned left the words sitting high in their box -- visibly out
+        // of line with the dropdown beside them in a series row.
+        textAlignVertical:
+            widget.multiline ? TextAlignVertical.top : TextAlignVertical.center,
+        decoration: canvasFieldDecoration(ThemeNotifier.of(context),
+            hint: widget.hint, fontSize: widget.dense ? 11 : 12),
         onChanged: widget.onChanged,
       );
 }

@@ -66,13 +66,12 @@ void main() {
   testWidgets("the name stands on the line the dropdown is on", (tester) async {
     await show(tester, ChartData.parse("Cat\tTreasury in\nx\t10"));
 
-    // A labelled control's box starts at the caption; the cell inside one
-    // starts below it. So the cell is on its neighbours' line when it sits
-    // exactly one caption lower than the box beside it -- and off it by
-    // whatever else anybody pads it with by hand.
+    // Both are ordinary labelled controls now -- the name was a table cell
+    // wrapped in a caption by hand, which is a second place to get the
+    // caption's height right -- so their boxes start at the same line.
     var drawn = topOf(tester, find.byType(CanvasDropdown<String>));
     var name = topOf(tester, find.byKey(const ValueKey("seriesName0")));
-    expect(name, closeTo(drawn + controlLabelHeight + controlLabelGap, 1.5));
+    expect(name, closeTo(drawn, 0.5));
   });
 
   testWidgets("colour sits on that line too, at the end of it", (tester) async {

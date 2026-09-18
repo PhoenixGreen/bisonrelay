@@ -579,6 +579,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const ValueKey("ringCount")));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("ringCount")), "24");
     await tester.pumpAndSettle();
     expect(spec.rings.count, 24);
@@ -590,24 +592,38 @@ void main() {
     expect(find.byKey(const ValueKey("ringTo")), findsNothing);
     expect(find.byKey(const ValueKey("ringGrunge")), findsNothing);
 
+    await tester.ensureVisible(find.text("WHERE THEY RUN"));
+    await tester.pumpAndSettle();
     await tester.tap(find.text("WHERE THEY RUN"));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey("ringTo")));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("ringTo")), "1.5");
     await tester.pumpAndSettle();
     expect(spec.rings.to, 1.5);
 
+    await tester.ensureVisible(find.byKey(const ValueKey("ringInward")));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("ringInward")));
     await tester.pumpAndSettle();
     expect(spec.rings.inward, isTrue);
 
     // The build-up switch is in the fade section, and reaches the rings.
+    await tester.ensureVisible(find.text("ARRIVING AND LEAVING"));
+    await tester.pumpAndSettle();
     await tester.tap(find.text("ARRIVING AND LEAVING"));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey("ringBuildUp")));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("ringBuildUp")));
     await tester.pumpAndSettle();
     expect(spec.rings.buildUp, isFalse);
 
+    await tester.ensureVisible(find.text("TEXTURE"));
+    await tester.pumpAndSettle();
     await tester.tap(find.text("TEXTURE"));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey("ringGrunge")));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("ringGrunge")), "0.6");
     await tester.pumpAndSettle();
@@ -622,10 +638,14 @@ void main() {
     expect(find.byKey(const ValueKey("passFrames")), findsNothing);
     await tester.ensureVisible(find.byKey(const ValueKey("loopTimes")));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey("loopTimes")));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("loopTimes")), "1");
     await tester.pumpAndSettle();
     expect(spec.loopTimes, 1);
     expect(find.byKey(const ValueKey("speed")), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey("passFrames")));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey("passFrames")));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey("passFrames")), "90");

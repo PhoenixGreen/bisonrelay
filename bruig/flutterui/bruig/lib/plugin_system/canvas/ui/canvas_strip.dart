@@ -55,7 +55,7 @@ class _CanvasSettingsStripState extends State<CanvasSettingsStrip> {
         // wrapping -- which is what the band used to do at anything under
         // about a thousand pixels.
         child: ScrollConfiguration(
-          behavior: const _NoScrollbar(),
+          behavior: const CanvasNoScrollbar(),
           child: SingleChildScrollView(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
@@ -74,18 +74,4 @@ class _CanvasSettingsStripState extends State<CanvasSettingsStrip> {
       ),
     );
   }
-}
-
-/// _NoScrollbar is a scroll behaviour with no bar on it.
-///
-/// The strip is two lines tall and scrolls sideways when the window is
-/// narrow. A bar under the controls is a third line of furniture saying what
-/// being cut off already says. The wheel and a trackpad still scroll it.
-class _NoScrollbar extends ScrollBehavior {
-  const _NoScrollbar();
-
-  @override
-  Widget buildScrollbar(
-          BuildContext context, Widget child, ScrollableDetails details) =>
-      child;
 }

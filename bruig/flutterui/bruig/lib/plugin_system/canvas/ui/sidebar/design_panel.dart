@@ -247,14 +247,25 @@ class _SettingsBodyState extends State<_SettingsBody> {
         // A key that has to name everything is a key that goes stale the next
         // time somebody adds a control.
         select: () => controller.revision,
-        builder: (context, _) => SingleChildScrollView(
-          controller: _scroll,
-          // A clear gap under the header. It is a coloured band, so settings
-          // starting immediately beneath it read as being part of it.
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
-          child: CanvasControlScope(
-            maxWidth: 240,
-            child: elementSettingsBody(context, controller),
+        builder: (context, _) => ScrollConfiguration(
+          // No bar down the edge. These settings are scrolled with two fingers
+          // rather than by taking hold of anything, and a bar that appears the
+          // moment they move and fades once they stop is furniture reporting
+          // something already plain.
+          behavior: const CanvasNoScrollbar(),
+          child: SingleChildScrollView(
+            controller: _scroll,
+            // A clear gap under the header, and twice what it was. It is a
+            // coloured band, and the first thing under it is a row of numbers
+            // with captions a third the height of the header's own words --
+            // close up they read as the header's second line rather than as
+            // the first setting.
+            padding: const EdgeInsets.fromLTRB(
+                8, canvasGroupGap + canvasRowGap, 8, canvasGroupGap - 4),
+            child: CanvasControlScope(
+              maxWidth: 240,
+              child: elementSettingsBody(context, controller),
+            ),
           ),
         ),
       );

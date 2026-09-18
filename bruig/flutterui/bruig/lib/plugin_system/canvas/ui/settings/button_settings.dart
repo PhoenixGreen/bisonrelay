@@ -12,102 +12,112 @@ List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
   return [
     // No caption: the panel header says "Button settings" already, and a
     // group called Button directly under it was the word twice.
-    CanvasControlGroup(label: "Button", hideCaption: true, children: [
-      CanvasTextField(
-        label: "Label",
-        value: e.label,
-        width: 150,
-        onChanged: (v) => write(e.copyWith(label: v)),
-        onCommit: commit,
-      ),
-      CanvasColorButton(
-        label: "Hover fill",
-        color: e.hoverFill,
-        onChanged: (c) {
-          begin();
-          write(e.copyWith(hoverFill: c));
-          commit();
-        },
-      ),
-      CanvasColorButton(
-        label: "Hover text",
-        color: e.hoverTextColor,
-        onChanged: (c) {
-          begin();
-          write(e.copyWith(hoverTextColor: c));
-          commit();
-        },
-      ),
-    ]),
-    CanvasControlGroup(label: "Action", children: [
-      CanvasDropdown<ButtonActionKind>(
-        label: "Does",
-        value: action.kind,
-        width: 150,
-        options: [for (var k in ButtonActionKind.values) (k, k.label)],
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(action: action.copyWith(kind: v)));
-          commit();
-        },
-      ),
-      if (action.kind.needsFrame)
-        CanvasNumberField(
-          label: "Frame",
-          value: action.frame.toDouble(),
-          min: 0,
-          max: (controller.document.frames - 1).toDouble(),
-          width: 54,
-          onChanged: (v) =>
-              write(e.copyWith(action: action.copyWith(frame: v.round()))),
-          onCommit: commit,
-        ),
-      if (action.kind.needsElement)
-        CanvasDropdown<String>(
-          label: "Element",
-          value: action.elementId,
-          width: 150,
-          options: [
-            ("", "Nothing"),
-            for (var other in controller.document.elements)
-              if (other.id != e.id) (other.id, other.name),
-          ],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(action: action.copyWith(elementId: v)));
-            commit();
-          },
-        ),
-      // Which canvas of this document to show. Held by id rather than by
-      // place in the order, so rearranging the scenes does not quietly point
-      // the button at a different one.
-      if (action.kind.needsScene)
-        CanvasDropdown<String>(
-          key: const ValueKey("buttonScene"),
-          label: "Scene",
-          value: action.elementId,
-          width: 170,
-          options: [
-            ("", "Nothing"),
-            for (var (i, scene) in controller.document.allScenes.indexed)
-              (scene.id, scene.saysAt(i)),
-          ],
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(action: action.copyWith(elementId: v)));
-            commit();
-          },
-        ),
-      if (action.kind.needsUrl)
-        CanvasTextField(
-          label: "Link",
-          value: action.url,
-          width: 220,
-          hint: "https://",
-          onChanged: (v) => write(e.copyWith(action: action.copyWith(url: v))),
-          onCommit: commit,
-        ),
-    ]),
+    //
+    // What it says and what it does, on one line: those are the two things a
+    // button is, and they were two groups with a heading each. What it looks
+    // like when the pointer is over it is a colour somebody picks once.
+    CanvasMoreGroup(
+        label: "Button",
+        hideCaption: true,
+        remember: "buttonMore",
+        tooltip: "What it looks like under the pointer",
+        row: [
+          CanvasTextField(
+            label: "Label",
+            value: e.label,
+            width: 150,
+            onChanged: (v) => write(e.copyWith(label: v)),
+            onCommit: commit,
+          ),
+          CanvasDropdown<ButtonActionKind>(
+            label: "Does",
+            value: action.kind,
+            width: 150,
+            options: [for (var k in ButtonActionKind.values) (k, k.label)],
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(action: action.copyWith(kind: v)));
+              commit();
+            },
+          ),
+          if (action.kind.needsFrame)
+            CanvasNumberField(
+              label: "Frame",
+              value: action.frame.toDouble(),
+              min: 0,
+              max: (controller.document.frames - 1).toDouble(),
+              width: 54,
+              onChanged: (v) =>
+                  write(e.copyWith(action: action.copyWith(frame: v.round()))),
+              onCommit: commit,
+            ),
+          if (action.kind.needsElement)
+            CanvasDropdown<String>(
+              label: "Element",
+              value: action.elementId,
+              width: 150,
+              options: [
+                ("", "Nothing"),
+                for (var other in controller.document.elements)
+                  if (other.id != e.id) (other.id, other.name),
+              ],
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(action: action.copyWith(elementId: v)));
+                commit();
+              },
+            ),
+          // Which canvas of this document to show. Held by id rather than by
+          // place in the order, so rearranging the scenes does not quietly point
+          // the button at a different one.
+          if (action.kind.needsScene)
+            CanvasDropdown<String>(
+              key: const ValueKey("buttonScene"),
+              label: "Scene",
+              value: action.elementId,
+              width: 170,
+              options: [
+                ("", "Nothing"),
+                for (var (i, scene) in controller.document.allScenes.indexed)
+                  (scene.id, scene.saysAt(i)),
+              ],
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(action: action.copyWith(elementId: v)));
+                commit();
+              },
+            ),
+          if (action.kind.needsUrl)
+            CanvasTextField(
+              label: "Link",
+              value: action.url,
+              width: 220,
+              hint: "https://",
+              onChanged: (v) =>
+                  write(e.copyWith(action: action.copyWith(url: v))),
+              onCommit: commit,
+            ),
+        ],
+        more: [
+          CanvasColorButton(
+            label: "Hover fill",
+            color: e.hoverFill,
+            onChanged: (c) {
+              begin();
+              write(e.copyWith(hoverFill: c));
+              commit();
+            },
+          ),
+          CanvasColorButton(
+            label: "Hover text",
+            color: e.hoverTextColor,
+            onChanged: (c) {
+              begin();
+              write(e.copyWith(hoverTextColor: c));
+              commit();
+            },
+          ),
+        ]),
     ...typeGroups(
         e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
         label: "Label type"),

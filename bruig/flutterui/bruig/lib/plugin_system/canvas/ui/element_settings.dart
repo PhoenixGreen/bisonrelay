@@ -66,10 +66,14 @@ List<Widget> elementSettings(
     // element that are worth saving: start from something, or start from
     // nothing. Below the type and the colours it would be a thing to find
     // after the work of setting them by hand had already been done.
+    //
+    // Not boxed. A rule round it made two rows -- a caption and a line with
+    // a list and a button on it -- look like a section that had been left
+    // open, which is the one thing it is not.
     if (element is TextElement ||
         element is ChartElement ||
         element is TableElement)
-      boxed(context, presetsSection(context, controller, element)),
+      presetsSection(context, controller, element),
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),

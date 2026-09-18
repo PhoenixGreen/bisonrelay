@@ -96,6 +96,8 @@ class _RefreshButtonState extends State<_RefreshButton> {
   Widget build(BuildContext context) {
     var source = widget.target.source;
     return CanvasIconButton(
+      // It hangs off a section's heading, not off a row of controls.
+      tight: true,
       icon: _busy ? Icons.hourglass_empty : Icons.refresh,
       tooltip: source.fetchedAt == null
           ? "Read the data and put it in the ${widget.target.noun}"
@@ -1129,6 +1131,7 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
         // the one place somebody checking how old a table is would not look.
         // It belongs on the button that changes it.
         action: CanvasIconButton(
+          tight: true,
           icon: _busy ? Icons.hourglass_empty : Icons.refresh,
           tooltip: !source.on
               ? "Choose where the data comes from first"
