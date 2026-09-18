@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -426,6 +427,15 @@ void main() {
           ["Team", "Pts"],
           ["Red", "12"],
         ],
+        animation: const ElementAnimation(
+            preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
+      ),
+      // Arriving is not pressing: one is what the canvas does to the button,
+      // the other what somebody does to the canvas. It was the one thing in a
+      // box that could not arrive with the panel it belongs to.
+      "a button": ButtonElement(
+        const ElementBase(id: "u", x: 20, y: 20, width: 160, height: 48),
+        label: "Press",
         animation: const ElementAnimation(
             preset: ElementAnimationPreset.fadeIn, ease: ChartEase.linear),
       ),

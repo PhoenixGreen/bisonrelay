@@ -191,6 +191,7 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
       begin,
       commit,
       label: "Numbers and names",
+      remember: "team",
     ),
     CanvasControlGroup(label: "Labels", children: [
       CanvasToggle(

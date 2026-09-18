@@ -41,88 +41,94 @@ List<Widget> imageSettings(
   return [
     // No caption: the panel header says "Picture settings" already, and a
     // group called Picture directly under it was the word twice.
-    CanvasControlGroup(label: "Picture", hideCaption: true, children: [
-      // The one control this element did not have, and without which it does
-      // nothing at all: somewhere to put a picture in it.
-      CanvasIconButton(
-        icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
-        tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
-        onPressed: () async {
-          var id = await pickCanvasImage(context);
-          if (id != null) await use(id);
-        },
-      ),
-      // The other half of a shared picture store: the bytes have always been
-      // shared between canvases, but nothing ever showed what was in there, so
-      // the only way to put the same badge on a second canvas was to go and
-      // find the file again.
-      CanvasIconButton(
-        icon: Icons.photo_library_outlined,
-        tooltip: "Use a picture you have already added",
-        onPressed: () async {
-          var id = await showRecentPictures(context);
-          if (id != null) await use(id);
-        },
-      ),
-      // The size controls are offered on the way in, but only above half a
-      // megabyte -- so anybody who wanted them for a smaller picture, or who
-      // took a size on the way in and thought better of it, had nowhere to
-      // go. This is that door, and it is the app's own width, quality and
-      // format controls, the same ones an embedded picture goes through.
-      if (e.hasImage)
-        CanvasIconButton(
-          icon: Icons.compress,
-          tooltip: "Change this picture's size and quality",
-          onPressed: () async {
-            var id = await compressCanvasPicture(context, e.assetId);
-            if (id != null) await use(id);
-          },
-        ),
-      if (e.hasImage)
-        CanvasIconButton(
-          icon: Icons.hide_image_outlined,
-          tooltip: "Take the picture out",
-          onPressed: () => now(e.copyWith(assetId: "")),
-        ),
-      CanvasDropdown<ImageFit>(
-        label: "Fit",
-        value: e.fit,
-        width: 106,
-        options: [for (var f in ImageFit.values) (f, f.label)],
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(fit: v));
-          commit();
-        },
-      ),
-      CanvasNumberField(
-        label: "Saturation",
-        decimals: 2,
-        width: 62,
-        value: e.saturation,
-        min: 0,
-        max: 3,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(saturation: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Brightness",
-        decimals: 2,
-        width: 62,
-        value: e.brightness,
-        min: 0,
-        max: 3,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(brightness: v));
-        },
-        onCommit: commit,
-      ),
-    ]),
-    CanvasControlGroup(label: "Remove background", children: [
+    CanvasControlGroup(
+        label: "Picture",
+        hideCaption: true,
+        // No line under it. The picture and what is taken out of it are one
+        // question, and the rule between them read as two.
+        rule: false,
+        children: [
+          // The one control this element did not have, and without which it does
+          // nothing at all: somewhere to put a picture in it.
+          CanvasIconButton(
+            icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
+            tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
+            onPressed: () async {
+              var id = await pickCanvasImage(context);
+              if (id != null) await use(id);
+            },
+          ),
+          // The other half of a shared picture store: the bytes have always been
+          // shared between canvases, but nothing ever showed what was in there, so
+          // the only way to put the same badge on a second canvas was to go and
+          // find the file again.
+          CanvasIconButton(
+            icon: Icons.photo_library_outlined,
+            tooltip: "Use a picture you have already added",
+            onPressed: () async {
+              var id = await showRecentPictures(context);
+              if (id != null) await use(id);
+            },
+          ),
+          // The size controls are offered on the way in, but only above half a
+          // megabyte -- so anybody who wanted them for a smaller picture, or who
+          // took a size on the way in and thought better of it, had nowhere to
+          // go. This is that door, and it is the app's own width, quality and
+          // format controls, the same ones an embedded picture goes through.
+          if (e.hasImage)
+            CanvasIconButton(
+              icon: Icons.compress,
+              tooltip: "Change this picture's size and quality",
+              onPressed: () async {
+                var id = await compressCanvasPicture(context, e.assetId);
+                if (id != null) await use(id);
+              },
+            ),
+          if (e.hasImage)
+            CanvasIconButton(
+              icon: Icons.hide_image_outlined,
+              tooltip: "Take the picture out",
+              onPressed: () => now(e.copyWith(assetId: "")),
+            ),
+          CanvasDropdown<ImageFit>(
+            label: "Fit",
+            value: e.fit,
+            width: 106,
+            options: [for (var f in ImageFit.values) (f, f.label)],
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(fit: v));
+              commit();
+            },
+          ),
+          CanvasNumberField(
+            label: "Saturation",
+            decimals: 2,
+            width: 62,
+            value: e.saturation,
+            min: 0,
+            max: 3,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(saturation: v));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Brightness",
+            decimals: 2,
+            width: 62,
+            value: e.brightness,
+            min: 0,
+            max: 3,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(brightness: v));
+            },
+            onCommit: commit,
+          ),
+        ]),
+    CanvasControlGroup(label: "Remove background", rule: false, children: [
       // The brush comes before the method, and outside the check for whether
       // anything is being removed yet.
       //
@@ -605,8 +611,10 @@ List<Widget> imageSettings(
     // behind the picture -- what shows through where the picture does not
     // reach, which is wherever there is padding or the fit is not a cover.
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+        remember: "image",
         label: "Background and Border",
         fillLabel: "Background",
+        rule: false,
         onPadding: (box) => write(grownForPadding(e, box))),
     // How it arrives, in a section of its own like a headline's.
     boxed(

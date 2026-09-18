@@ -32,6 +32,10 @@ List<Widget> lineSettings(
         label: "Line",
         hideCaption: true,
         remember: "lineMore",
+        // Nothing between the line's own settings and the section that says
+        // how it arrives: the section has a border of its own to say where it
+        // starts.
+        rule: false,
         tooltip: "How the line ends, and whether it is dashed",
         row: [
           CanvasColorButton(

@@ -123,7 +123,11 @@ List<Widget> pathSettings(
           CanvasDropdown<String>(
             label: "Who follows",
             value: _followKey(e.follow),
-            width: 176,
+            // The least it will be. At a hundred and seventy-six the two
+            // frame fields and the button were pushed onto a line of their
+            // own the moment anybody pulled the sidebar in; it grows back
+            // into a wide one.
+            width: 112,
             options: _followOptions(controller),
             onChanged: (v) {
               var follow = _followFromKey(v);
@@ -253,8 +257,11 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
           Padding(
             key: ValueKey("path-node-$i-${e.id}"),
             padding: const EdgeInsets.only(bottom: 2),
-            child:
-                Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+            // A CanvasWrap rather than a Wrap, so the three numbers grow into
+            // a wide sidebar the way every other line of settings does. Every
+            // point has the same controls, so they all take the same share and
+            // the rows come out in columns.
+            child: CanvasWrap(children: [
               CanvasNumberField(
                 key: ValueKey("node-frame-$i-${e.id}"),
                 // The two ends are named, because they are what the run is

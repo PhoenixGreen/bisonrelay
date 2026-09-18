@@ -52,8 +52,10 @@ const double controlLabelHeight = 11;
 ///
 /// canvasControlGap is between two controls on a line, canvasRowGap between
 /// one line of a group and the next, canvasCaptionGap under a group's name,
-/// and canvasGroupGap on each side of the rule that divides two groups -- the
-/// same above as below, which is the one people notice.
+/// and canvasGroupGap under every group. A rule between two groups sits in
+/// the middle of a doubled one -- the same above as below, which is the one
+/// people notice -- so a group with no rule under it is half as far from the
+/// next as a group with one, rather than a quarter.
 const double canvasControlGap = 5;
 const double canvasRowGap = 8;
 const double canvasCaptionGap = 7;
@@ -217,6 +219,40 @@ class CanvasFill extends ParentDataWidget<_CanvasWrapParentData> {
 
 class _CanvasWrapParentData extends ContainerBoxParentData<RenderBox> {
   bool fill = false;
+  bool restart = false;
+}
+
+/// CanvasBlockBreak ends a line and starts the sharing out again.
+///
+/// A line break that also says "what follows is a different piece of panel".
+/// The room left over is shared by the smallest amount any line can afford,
+/// so that the lines of a group come out in the same columns -- and on its
+/// own that meant opening a button at the end of a row could make that row
+/// narrower, because the line it revealed afforded less.
+///
+/// [CanvasMoreGroup] puts one of these in front of what its button reveals.
+/// An ordinary [CanvasLineBreak] does not start a new block, because the
+/// second line of a group is still the same group.
+class CanvasBlockBreak extends StatelessWidget {
+  const CanvasBlockBreak({super.key});
+
+  @override
+  Widget build(BuildContext context) => const CanvasLineBreak();
+}
+
+class _CanvasWrapRestart extends ParentDataWidget<_CanvasWrapParentData> {
+  const _CanvasWrapRestart({required super.child});
+
+  @override
+  void applyParentData(RenderObject renderObject) {
+    var data = renderObject.parentData! as _CanvasWrapParentData;
+    if (data.restart) return;
+    data.restart = true;
+    renderObject.parent?.markNeedsLayout();
+  }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => _RawCanvasWrap;
 }
 
 /// _GrowRoot is a growable control's outermost box.
@@ -398,6 +434,8 @@ class CanvasWrap extends StatelessWidget {
                   child: _CanvasWrapScope(child: child),
                 ),
               )
+            else if (child is CanvasBlockBreak)
+              const _CanvasWrapRestart(child: CanvasLineBreak())
             else
               child,
         ],
@@ -493,12 +531,14 @@ class RenderCanvasWrap extends RenderBox
     // line, because a line break is a child as wide as one.
     var kids = <RenderBox>[];
     var fills = <bool>[];
+    var restarts = <bool>[];
     var widths = <double>[];
     for (var child = firstChild; child != null;) {
       var data = child.parentData! as _CanvasWrapParentData;
       child.layout(BoxConstraints(maxWidth: width), parentUsesSize: true);
       kids.add(child);
       fills.add(data.fill);
+      restarts.add(data.restart);
       widths.add(child.size.width);
       child = data.nextSibling;
     }
@@ -506,6 +546,7 @@ class RenderCanvasWrap extends RenderBox
     // Packed greedily, exactly as a Wrap packs: a child that does not fit
     // what is left starts the next line.
     var lines = <List<int>>[];
+    var blockAt = <int>{};
     var line = <int>[];
     var used = 0.0;
     for (var i = 0; i < kids.length; i++) {
@@ -515,39 +556,56 @@ class RenderCanvasWrap extends RenderBox
         line = [];
         used = 0;
       }
+      if (restarts[i]) blockAt.add(lines.length + (line.isEmpty ? 0 : 1));
       used += (line.isEmpty ? 0 : _spacing) + w;
       line.add(i);
     }
     if (line.isNotEmpty) lines.add(line);
 
-    // The most every marked control can be given without the line it is on
-    // running past the edge. One number for all of them, so that the lines
-    // agree with each other.
-    var extra = double.infinity;
-    for (var row in lines) {
-      var marked = [
-        for (var i in row)
-          if (fills[i]) i
-      ];
-      if (marked.isEmpty) continue;
-      var taken = _spacing * (row.length - 1);
-      for (var i in row) {
-        taken += widths[i];
+    // One amount per block, rather than one for the whole wrap. Taking the
+    // smallest any line can afford is what puts the lines of a group in the
+    // same columns -- and across a block break it is what made opening a
+    // button narrow the row the button sits on, because the line it revealed
+    // afforded less. Settings already on screen moving when something appears
+    // under them is the one thing a reveal must not do.
+    var extras = List<double>.filled(lines.length, 0);
+    for (var from = 0; from < lines.length;) {
+      var to = from + 1;
+      while (to < lines.length && !blockAt.contains(to)) {
+        to++;
       }
-      var slack = width - taken;
-      if (slack <= 0) {
-        extra = 0;
-        break;
+      var extra = double.infinity;
+      for (var at = from; at < to; at++) {
+        var row = lines[at];
+        var marked = [
+          for (var i in row)
+            if (fills[i]) i
+        ];
+        if (marked.isEmpty) continue;
+        var taken = _spacing * (row.length - 1);
+        for (var i in row) {
+          taken += widths[i];
+        }
+        var slack = width - taken;
+        if (slack <= 0) {
+          extra = 0;
+          break;
+        }
+        extra = math.min(extra, slack / marked.length);
       }
-      extra = math.min(extra, slack / marked.length);
+      if (!extra.isFinite) extra = 0;
+      for (var at = from; at < to; at++) {
+        extras[at] = extra;
+      }
+      from = to;
     }
-    if (!extra.isFinite) extra = 0;
 
     // And laid out again at what they have been given.
-    if (extra > 0) {
-      for (var i = 0; i < kids.length; i++) {
+    for (var (at, row) in lines.indexed) {
+      if (extras[at] <= 0) continue;
+      for (var i in row) {
         if (!fills[i]) continue;
-        kids[i].layout(BoxConstraints.tightFor(width: widths[i] + extra),
+        kids[i].layout(BoxConstraints.tightFor(width: widths[i] + extras[at]),
             parentUsesSize: true);
         widths[i] = kids[i].size.width;
       }
@@ -738,18 +796,24 @@ class CanvasControlGroup extends StatelessWidget {
       // each of them: a settings panel where one group breathes and the next
       // is packed reads as two panels by different hands.
       //
-      // A group divided from the next by a rule keeps the same gap on both
-      // sides of it -- unequal, it reads as belonging to whichever group it is
-      // nearer, which is the opposite of what a divider is for. A group with
-      // no rule is a group the one under it continues, so it gets the gap
-      // between two lines of one group instead.
+      // Every group leaves the same gap under it, and a rule sits in the
+      // middle of a doubled one: with a line, two gaps and the line between
+      // them; without, one gap. Unequal either side, the line reads as
+      // belonging to whichever group it is nearer, which is the opposite of
+      // what a divider is for.
+      //
+      // The gap without a rule used to be the one between two lines of a
+      // group, on the grounds that an unruled group is one the next continues.
+      // That is true of two groups and false of five: a run of them with
+      // nothing between reads as one undivided block, and the rules were the
+      // only thing that had been holding it apart.
       //
       // A rule under most groups as well as a gap. Six clusters of small
       // controls down one narrow column, separated by nine pixels of nothing,
       // ran together into one field of boxes -- the caption above each was the
       // only thing saying where one ended, and a caption is nine pixels tall
       // and grey.
-      padding: EdgeInsets.only(bottom: rule ? canvasGroupGap : canvasRowGap),
+      padding: const EdgeInsets.only(bottom: canvasGroupGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1102,7 +1166,10 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
               onPressed: _toggle,
             ),
           if (_open) ...[
-            const CanvasLineBreak(),
+            // A block break, not a plain one: what is revealed shares out the
+            // room left over on its own, so opening this cannot narrow the row
+            // the button sits on.
+            const CanvasBlockBreak(),
             ...widget.more,
             // And a line across the foot of what was revealed. Opened, these
             // settings run straight into whatever is below them, and a reader

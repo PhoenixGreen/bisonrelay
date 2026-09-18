@@ -118,7 +118,9 @@ List<Widget> counterSettings(
         children: [
           ...typeGroups(e.numberSpec,
               (spec) => write(e.copyWith(numberSpec: spec)), begin, commit,
-              label: "Number type", hideCaption: true),
+              label: "Number type",
+              hideCaption: true,
+              remember: "counterNumber"),
           CanvasControlGroup(label: "Spacing", children: [
             CanvasNumberField(
               key: const ValueKey("counterGap"),
@@ -152,7 +154,7 @@ List<Widget> counterSettings(
         children: [
           ...typeGroups(e.affixSpec,
               (spec) => write(e.copyWith(affixSpec: spec)), begin, commit,
-              label: "Words type", hideCaption: true),
+              label: "Words type", hideCaption: true, remember: "counterWords"),
           CanvasControlGroup(label: "Placing", children: [
             CanvasToggle(
               key: const ValueKey("counterLoose"),
@@ -188,7 +190,8 @@ List<Widget> counterSettings(
         ],
       ),
     ),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+        remember: "counter"),
     CanvasControlGroup(label: "Size", children: [
       CanvasToggle(
         key: const ValueKey("counterFit"),
@@ -576,11 +579,13 @@ Widget _buttonsSection(
             trailing: "${e.buttonSpec.fontSize.round()}",
             children: typeGroups(e.buttonSpec,
                 (spec) => write(e.copyWith(buttonSpec: spec)), begin, commit,
-                label: "Button type", hideCaption: true),
+                label: "Button type",
+                hideCaption: true,
+                remember: "counterButton"),
           ),
           boxGroup(e.buttonBox, (box) => write(e.copyWith(buttonBox: box)),
               begin, commit,
-              label: "Button box"),
+              label: "Button box", remember: "counterButton"),
         ],
       ],
     );

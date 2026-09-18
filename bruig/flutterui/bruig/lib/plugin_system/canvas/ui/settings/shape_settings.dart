@@ -24,6 +24,9 @@ List<Widget> shapeSettings(
           label: "Shape",
           hideCaption: true,
           remember: "shapeMore",
+          // What the shape is and what is written on it are one question, so
+          // no line between them and none after the label either.
+          rule: false,
           tooltip: "How round its corners are",
           row: [
             CanvasDropdown<ShapeKind>(
@@ -126,6 +129,7 @@ List<Widget> shapeSettings(
       CanvasMoreGroup(
         label: "Label",
         remember: "shapeLabelMore",
+        rule: false,
         tooltip: "How far the label is kept from the edge",
         row: [
           // The empty field says what it is for, rather than a caption above
@@ -252,7 +256,7 @@ List<Widget> shapeSettings(
       if (e.text.isNotEmpty)
         ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
             begin, commit,
-            label: "Label type"),
+            label: "Label type", remember: "shapeLabel"),
       // How it arrives, in a section of its own like a headline's: a handful
       // of choices made once and then left alone.
       boxed(

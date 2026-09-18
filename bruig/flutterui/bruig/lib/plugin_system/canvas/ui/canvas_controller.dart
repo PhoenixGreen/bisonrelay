@@ -2356,6 +2356,7 @@ class CanvasController extends ChangeNotifier {
         PathElement e => e.animation,
         TableElement e => e.animation,
         CounterElement e => e.animation,
+        ButtonElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -2373,7 +2374,10 @@ class CanvasController extends ChangeNotifier {
       element is TableElement ||
       // A counter is a thing in a box like the rest of them: it arrives and
       // leaves the same way, whatever its number is doing while it is there.
-      element is CounterElement;
+      element is CounterElement ||
+      // And a button. Arriving is not pressing: one is what the canvas does
+      // to it, the other what somebody does to the canvas.
+      element is ButtonElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -2384,6 +2388,7 @@ class CanvasController extends ChangeNotifier {
         PathElement e => e.copyWith(animation: animation),
         TableElement e => e.copyWith(animation: animation),
         CounterElement e => e.copyWith(animation: animation),
+        ButtonElement e => e.copyWith(animation: animation),
         _ => element,
       };
 

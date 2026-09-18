@@ -6,8 +6,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // button settings.dart is a button's settings.
 
-List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+List<Widget> buttonSettings(
+    BuildContext context,
+    CanvasController controller,
+    ButtonElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   var action = e.action;
   return [
     // No caption: the panel header says "Button settings" already, and a
@@ -20,6 +25,11 @@ List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
         label: "Button",
         hideCaption: true,
         remember: "buttonMore",
+        // No lines through this panel. What it says, what it does, how its
+        // label is set and what the box round it looks like are one question
+        // -- what is this button -- and a rule between each pair of them made
+        // four answers out of it.
+        rule: false,
         tooltip: "What it looks like under the pointer",
         row: [
           CanvasTextField(
@@ -120,8 +130,16 @@ List<Widget> buttonSettings(CanvasController controller, ButtonElement e,
         ]),
     ...typeGroups(
         e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
-        label: "Label type"),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
+        label: "Label type", remember: "buttonLabel", rule: false),
+    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+        remember: "button", rule: false),
+    // How it arrives, in a section of its own like every other thing in a box.
+    // Arriving is not pressing: one is what the canvas does to the button, the
+    // other what somebody does to the canvas.
+    boxed(
+        context,
+        elementAnimationSection(controller, e, e.animation,
+            (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }
 

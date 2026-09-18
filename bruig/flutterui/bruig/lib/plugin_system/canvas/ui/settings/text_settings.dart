@@ -31,185 +31,368 @@ List<Widget> textSettings(
   }
 
   return [
-    // Four sections, each of which is one question: what the type looks like,
-    // how it is laid out, which words are different, and how it arrives.
-    // Flat, this was eight groups down one narrow column and the animation
-    // settings were below the fold on any panel narrower than the screen.
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Type",
-        remember: "textType",
-        initiallyOpen: true,
-        trailing: "${e.textSpec.fontSize.round()}",
-        children: [
-          // No Content field. The words are typed on the canvas, in the box
-          // they will appear in, at the size and face they will appear at --
-          // see CanvasTextEditor. A two-line box in a settings panel could
-          // show neither, so writing a headline meant typing it here and
-          // looking over there.
-          CanvasControlGroup(label: "Text", hideCaption: true, children: [
-            CanvasToggle(
-              label: "Fit to box",
-              value: e.autoSize,
-              onChanged: (v) => now(e.copyWith(autoSize: v)),
-            ),
-            // Words from the Writing library rather than typed on the canvas.
-            // Beside Fit to box because it is the same kind of question --
-            // where the words and their size come from -- and because it is
-            // the first thing to decide about a text element that is a
-            // document.
-            //
-            // Not offered at all on a box that is being flowed into: its
-            // words belong to the box in front of it, so a document chosen
-            // here would be read, stored and never seen -- and the most
-            // confusing version of that is a chain that is already carrying a
-            // document, where every box in it looks like somewhere to attach
-            // another one.
-            if (flowSourceOf(e, controller.document) == null)
-              CanvasToggle(
-                key: const ValueKey("textFromDocument"),
-                label: "From a document",
-                value: e.document.on,
-                onChanged: (v) async {
-                  if (!v) {
-                    // Back to what was typed here before the document took the
-                    // words over. Left showing the document's words, the switch
-                    // would be off and the element would still say what the
-                    // document says, with no way back to what was there.
-                    now(e.copyWith(
-                        text: e.document.wasText.isEmpty
-                            ? e.text
-                            : e.document.wasText,
-                        document: const TextDocumentRef(),
-                        documentParts: const []));
-                    return;
-                  }
-                  var picked = await pickLibraryDocument(context);
-                  if (picked == null) return;
-                  now(e.copyWith(
-                      document: picked.copyWith(wasText: e.text),
-                      documentParts: const []));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-            if (e.document.on) ...[
-              CanvasIconButton(
-                key: const ValueKey("textDocumentPick"),
-                icon: Icons.description_outlined,
-                tooltip: "Choose another document",
-                onPressed: () async {
-                  var picked = await pickLibraryDocument(context);
-                  if (picked == null) return;
-                  // The remembered words are the element's own, not the last
-                  // document's, so changing which document is read leaves
-                  // them alone.
-                  now(e.copyWith(
-                      document: e.document
-                          .copyWith(folder: picked.folder, name: picked.name),
-                      documentParts: const []));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-              CanvasReadout(label: "Document", value: e.document.says),
-              CanvasToggle(
-                key: const ValueKey("textDocumentMarkdown"),
-                label: "Markdown",
-                value: e.document.markdown,
-                onChanged: (v) async {
-                  now(e.copyWith(document: e.document.copyWith(markdown: v)));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-              const CanvasHint(
-                  "The words come from the library and are read again every "
-                  "few seconds, so editing the document changes the canvas. "
-                  "With Markdown off they arrive as plain text — every mark "
-                  "stripped, all of the styling from the settings here. With "
-                  "it on, only the pieces switched on are honoured; the rest "
-                  "are still stripped, because a headline reading \"## Title\" "
-                  "is not markdown being ignored, it is markdown showing."),
-            ],
-          ]),
-          // Words set around whatever overlaps the box. Its own row rather
-          // than a switch among the type settings, because it comes with two
-          // questions of its own -- how much room to leave, and which side of
-          // the thing in the way the words go.
-          CanvasControlGroup(label: "Wrap", children: [
-            CanvasToggle(
-              key: const ValueKey("textWrap"),
-              label: "Wrap around things",
-              value: e.wrap.on,
-              onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
-            ),
-            if (e.wrap.on) ...[
-              CanvasNumberField(
-                label: "Space",
-                value: e.wrap.gap,
-                min: 0,
-                max: 400,
-                decimals: 0,
-                width: 62,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(wrap: e.wrap.copyWith(gap: v)));
-                },
-                onCommit: commit,
-              ),
-              CanvasDropdown<WrapSide>(
-                key: const ValueKey("textWrapSide"),
-                label: "Words go",
-                value: e.wrap.side,
-                width: 132,
-                options: [for (var s in WrapSide.values) (s, s.label)],
-                onChanged: (v) =>
-                    now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
-              ),
-              const CanvasHint(
-                  "The words are set line by line around every visible "
-                  "element that overlaps this box, leaving Space between "
-                  "them. Both sides fills the room either side of something "
-                  "narrow; Left or Right keeps the words in one block beside "
-                  "it. Anything that covers the box from top to bottom is "
-                  "left out — that is a background, and a paragraph cannot go "
-                  "around it."),
-            ],
-          ]),
-          // The section's own heading says Type already, so the first group
-          // inside it does not say it again.
-          ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
-              begin, commit,
-              hideCaption: true, fill: true, context: context),
-          // The element's own marks: a band behind all of the words, a line
-          // under all of them. Here rather than only on a part, because
-          // highlighting a whole headline should not mean first making a part
-          // that covers it.
-          CanvasControlGroup(label: "Marks", children: [
-            ..._markBits(
-              highlight: e.highlight,
-              underline: e.underline,
-              textColor: e.textSpec.color,
-              keyPrefix: "text",
-              setHighlight: (h) => now(h == null
-                  ? e.copyWith(clearHighlight: true)
-                  : e.copyWith(highlight: h)),
-              setUnderline: (u) => now(u == null
-                  ? e.copyWith(clearUnderline: true)
-                  : e.copyWith(underline: u)),
-              liveHighlight: (h) {
-                begin();
-                write(e.copyWith(highlight: h));
-              },
-              liveUnderline: (u) {
-                begin();
-                write(e.copyWith(underline: u));
-              },
-              done: commit,
-            ),
-          ]),
-          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit),
-        ],
+    // No section round the type settings. They were behind a heading that was
+    // open every time anybody looked, which is a chevron and a word standing
+    // between the panel and the first thing it is for.
+    //
+    // No Content field either. The words are typed on the canvas, in the box
+    // they will appear in, at the size and face they will appear at -- see
+    // CanvasTextEditor. A two-line box in a settings panel could show
+    // neither, so writing a headline meant typing it here and looking over
+    // there.
+    //
+    // Where the words come from and how they are set: three switches on one
+    // line, with whatever each of them needs underneath. Wrap was a group of
+    // its own with a heading, for one switch and the two questions it brings
+    // with it.
+    CanvasControlGroup(label: "Text", hideCaption: true, children: [
+      CanvasToggle(
+        label: "Fit to box",
+        value: e.autoSize,
+        onChanged: (v) => now(e.copyWith(autoSize: v)),
       ),
+      // Words from the Writing library rather than typed on the canvas.
+      // Beside Fit to box because it is the same kind of question --
+      // where the words and their size come from -- and because it is
+      // the first thing to decide about a text element that is a
+      // document.
+      //
+      // Not offered at all on a box that is being flowed into: its
+      // words belong to the box in front of it, so a document chosen
+      // here would be read, stored and never seen -- and the most
+      // confusing version of that is a chain that is already carrying a
+      // document, where every box in it looks like somewhere to attach
+      // another one.
+      if (flowSourceOf(e, controller.document) == null)
+        CanvasToggle(
+          key: const ValueKey("textFromDocument"),
+          label: "From document",
+          value: e.document.on,
+          onChanged: (v) async {
+            if (!v) {
+              // Back to what was typed here before the document took the
+              // words over. Left showing the document's words, the switch
+              // would be off and the element would still say what the
+              // document says, with no way back to what was there.
+              now(e.copyWith(
+                  text:
+                      e.document.wasText.isEmpty ? e.text : e.document.wasText,
+                  document: const TextDocumentRef(),
+                  documentParts: const []));
+              return;
+            }
+            var picked = await pickLibraryDocument(context);
+            if (picked == null) return;
+            now(e.copyWith(
+                document: picked.copyWith(wasText: e.text),
+                documentParts: const []));
+            await refreshTextDocuments(controller);
+          },
+        ),
+      if (e.document.on) ...[
+        CanvasIconButton(
+          key: const ValueKey("textDocumentPick"),
+          icon: Icons.description_outlined,
+          tooltip: "Choose another document",
+          onPressed: () async {
+            var picked = await pickLibraryDocument(context);
+            if (picked == null) return;
+            // The remembered words are the element's own, not the last
+            // document's, so changing which document is read leaves
+            // them alone.
+            now(e.copyWith(
+                document: e.document
+                    .copyWith(folder: picked.folder, name: picked.name),
+                documentParts: const []));
+            await refreshTextDocuments(controller);
+          },
+        ),
+        CanvasReadout(label: "Document", value: e.document.says),
+        CanvasToggle(
+          key: const ValueKey("textDocumentMarkdown"),
+          label: "Markdown",
+          value: e.document.markdown,
+          onChanged: (v) async {
+            now(e.copyWith(document: e.document.copyWith(markdown: v)));
+            await refreshTextDocuments(controller);
+          },
+        ),
+        const CanvasHint(
+            "The words come from the library and are read again every "
+            "few seconds, so editing the document changes the canvas. "
+            "With Markdown off they arrive as plain text — every mark "
+            "stripped, all of the styling from the settings here. With "
+            "it on, only the pieces switched on are honoured; the rest "
+            "are still stripped, because a headline reading \"## Title\" "
+            "is not markdown being ignored, it is markdown showing."),
+      ],
+      // Words set around whatever overlaps the box. On the line with the
+      // other two because it is the same kind of question -- how these
+      // words are laid out -- and it brings two of its own with it.
+      CanvasToggle(
+        key: const ValueKey("textWrap"),
+        label: "Wrap text",
+        value: e.wrap.on,
+        onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
+      ),
+      if (e.wrap.on) ...[
+        const CanvasLineBreak(),
+        CanvasNumberField(
+          label: "Space",
+          value: e.wrap.gap,
+          min: 0,
+          max: 400,
+          decimals: 0,
+          width: 62,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(wrap: e.wrap.copyWith(gap: v)));
+          },
+          onCommit: commit,
+        ),
+        CanvasDropdown<WrapSide>(
+          key: const ValueKey("textWrapSide"),
+          label: "Words go",
+          value: e.wrap.side,
+          width: 132,
+          options: [for (var s in WrapSide.values) (s, s.label)],
+          onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
+        ),
+        const CanvasHint("The words are set line by line around every visible "
+            "element that overlaps this box, leaving Space between "
+            "them. Both sides fills the room either side of something "
+            "narrow; Left or Right keeps the words in one block beside "
+            "it. Anything that covers the box from top to bottom is "
+            "left out — that is a background, and a paragraph cannot go "
+            "around it."),
+      ],
+    ]),
+    // The face, the size and the weight on one line; how the words are spaced
+    // and where they sit behind the button, along with the element's own
+    // marks -- a band behind all of the words, a line under all of them. Here
+    // rather than only on a part, because highlighting a whole headline
+    // should not mean first making a part that covers it.
+    ...typeGroups(
+        e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
+        hideCaption: true,
+        fill: true,
+        context: context,
+        remember: "text",
+        // No lines through this run. The face, the colour, the box, the
+        // columns and the line it rides are all one question -- how do these
+        // words look -- and a rule between each pair of them made five
+        // answers to five different questions out of it.
+        rule: false,
+        extraMore: [
+          const CanvasLineBreak(),
+          ..._markBits(
+            highlight: e.highlight,
+            underline: e.underline,
+            textColor: e.textSpec.color,
+            keyPrefix: "text",
+            setHighlight: (h) => now(h == null
+                ? e.copyWith(clearHighlight: true)
+                : e.copyWith(highlight: h)),
+            setUnderline: (u) => now(u == null
+                ? e.copyWith(clearUnderline: true)
+                : e.copyWith(underline: u)),
+            liveHighlight: (h) {
+              begin();
+              write(e.copyWith(highlight: h));
+            },
+            liveUnderline: (u) {
+              begin();
+              write(e.copyWith(underline: u));
+            },
+            done: commit,
+          ),
+        ]),
+    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+        remember: "text", rule: false),
+    // One line, so no section round it. A heading with a chevron on it, for
+    // a number and a switch, is more furniture than setting -- and what is
+    // behind it only grows to five controls on a box that has been given
+    // columns and a rule between them.
+    CanvasControlGroup(label: "Columns", rule: false, children: [
+      CanvasNumberField(
+        key: const ValueKey("textColumns"),
+        // "Count", not "Columns": the caption over the line already says
+        // which settings these are, and saying it twice on one line is how a
+        // panel comes to read as a list of words rather than of controls.
+        label: "Count",
+        value: e.columns.count.toDouble(),
+        min: 1,
+        max: 12,
+        width: 54,
+        onChanged: (v) {
+          begin();
+          write(e.copyWith(columns: e.columns.copyWith(count: v.round())));
+        },
+        onCommit: commit,
+      ),
+      // The gap between two paragraphs is a line like any other, and
+      // whatever starts on one -- a column, or the next box in a chain --
+      // starts with an empty row and its words sitting lower than its
+      // neighbour's. Offered whether or not this box has columns of its
+      // own, because a chain of boxes asks the same question of boxes;
+      // and only on the box the words belong to, since the rest of a
+      // chain follows what it says.
+      if (flowSourceOf(e, controller.document) == null)
+        CanvasToggle(
+          key: const ValueKey("textColumnsNoBlankStart"),
+          label: "No blank first line",
+          value: e.columns.noBlankStart,
+          onChanged: (v) =>
+              now(e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
+        ),
+      // The rest only means something once there is a gutter to put it in.
+      if (!e.columns.isSingle) ...[
+        CanvasNumberField(
+          label: "Gap",
+          value: e.columns.gap,
+          min: 0,
+          max: 400,
+          width: 54,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(columns: e.columns.copyWith(gap: v)));
+          },
+          onCommit: commit,
+        ),
+        CanvasDropdown<ColumnRuleStyle>(
+          label: "Rule",
+          value: e.columns.ruleStyle,
+          width: 92,
+          options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
+          onChanged: (v) =>
+              now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
+        ),
+        if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
+          CanvasNumberField(
+            label: "Width",
+            value: e.columns.ruleWidth,
+            min: 0,
+            max: 40,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(columns: e.columns.copyWith(ruleWidth: v)));
+            },
+            onCommit: commit,
+          ),
+          CanvasColorButton(
+            label: "Colour",
+            color: e.columns.ruleColor,
+            onChanged: (c) =>
+                now(e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
+          ),
+        ],
+      ],
+    ]),
+    // Under the columns rather than in a section of its own, and still its own
+    // group: a text element is either riding a line or it is not, and the two
+    // questions have nothing to say to each other.
+    //
+    // Which line, how far along it and how far apart the letters stand are
+    // what anybody sets; which side of the line the words fall on and whether
+    // it is a window are set once. The button is only there once a line has
+    // been chosen, because until then there is nothing behind it.
+    CanvasMoreGroup(
+      label: "On a line",
+      rule: false,
+      remember: "textOnALineMore",
+      tooltip: "Which side of the line, and what is cut off",
+      row: [
+        CanvasDropdown<String>(
+          label: "Follow",
+          value: e.curve?.elementId ?? "",
+          width: 156,
+          options: curveOptions(controller),
+          onChanged: (v) => now(v.isEmpty
+              ? e.copyWith(clearCurve: true)
+              : e.copyWith(
+                  curve: (e.curve ?? const TextOnCurve(elementId: ""))
+                      .copyWith(elementId: v))),
+        ),
+        if (e.curve != null) ...[
+          CanvasNumberField(
+            label: "Slide",
+            decimals: 2,
+            width: 62,
+            value:
+                controller.valueAt(e, KeyframeChannel.slide, e.curve!.offset),
+            // Far enough either way to carry the words right off the end
+            // of the line and back on again, which is what a caption
+            // sliding in and out of a shot is.
+            min: -2,
+            max: 2,
+            onChanged: (v) {
+              begin();
+              // Written as a keyframe once this frame has one, so dragging the
+              // slider while animating retimes the caption's travel rather than
+              // moving the whole run.
+              if (controller.hasValueKey(e, KeyframeChannel.slide)) {
+                controller.setValueKey(e, KeyframeChannel.slide, v);
+                return;
+              }
+              write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
+            },
+            onCommit: commit,
+          ),
+          valueDot(
+              controller,
+              e,
+              KeyframeChannel.slide,
+              "the slide along the "
+              "line",
+              e.curve!.offset),
+          CanvasNumberField(
+            label: "Spacing",
+            value: e.curve!.spacing,
+            min: -20,
+            max: 60,
+            decimals: 1,
+            width: 58,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(curve: e.curve!.copyWith(spacing: v)));
+            },
+            onCommit: commit,
+          ),
+        ],
+      ],
+      more: [
+        if (e.curve != null) ...[
+          CanvasToggle(
+            label: "Below",
+            value: e.curve!.away,
+            onChanged: (v) =>
+                now(e.copyWith(curve: e.curve!.copyWith(away: v))),
+          ),
+          CanvasToggle(
+            key: const ValueKey("textCurveMask"),
+            label: "Mask",
+            value: e.curve!.mask,
+            onChanged: (v) =>
+                now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
+          ),
+          CanvasToggle(
+            // Not the line element's own Hide: a hidden element is skipped
+            // everywhere, this one included, so the text would go with it.
+            label: "Hide line",
+            value: e.curve!.hideHost,
+            onChanged: (v) =>
+                now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
+          ),
+          const CanvasHint(
+              "Slide carries the words along the line, and past either "
+              "end of it — far enough to take them right off and back on "
+              "again. Mask makes the line a window: whatever has slid off "
+              "an end is cut off there rather than carrying on across the "
+              "canvas."),
+        ],
+      ],
     ),
     // Markdown's own section, with a look per piece. It only exists while
     // the words come from a document and the marks are being honoured: a
@@ -217,191 +400,6 @@ List<Widget> textSettings(
     // nothing.
     if (e.document.on && e.document.markdown)
       boxed(context, _markdownSection(controller, e, write, begin, commit)),
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Columns",
-        remember: "textColumns",
-        trailing: e.columns.isSingle ? null : "${e.columns.count}",
-        children: [
-          CanvasControlGroup(label: "Columns", hideCaption: true, children: [
-            CanvasNumberField(
-              key: const ValueKey("textColumns"),
-              label: "Columns",
-              value: e.columns.count.toDouble(),
-              min: 1,
-              max: 12,
-              width: 54,
-              onChanged: (v) {
-                begin();
-                write(
-                    e.copyWith(columns: e.columns.copyWith(count: v.round())));
-              },
-              onCommit: commit,
-            ),
-            // The gap between two paragraphs is a line like any other, and
-            // whatever starts on one -- a column, or the next box in a chain --
-            // starts with an empty row and its words sitting lower than its
-            // neighbour's. Offered whether or not this box has columns of its
-            // own, because a chain of boxes asks the same question of boxes;
-            // and only on the box the words belong to, since the rest of a
-            // chain follows what it says.
-            if (flowSourceOf(e, controller.document) == null)
-              CanvasToggle(
-                key: const ValueKey("textColumnsNoBlankStart"),
-                label: "No blank first line",
-                value: e.columns.noBlankStart,
-                onChanged: (v) => now(
-                    e.copyWith(columns: e.columns.copyWith(noBlankStart: v))),
-              ),
-            // The rest only means something once there is a gutter to put it in.
-            if (!e.columns.isSingle) ...[
-              CanvasNumberField(
-                label: "Gap",
-                value: e.columns.gap,
-                min: 0,
-                max: 400,
-                width: 54,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(columns: e.columns.copyWith(gap: v)));
-                },
-                onCommit: commit,
-              ),
-              CanvasDropdown<ColumnRuleStyle>(
-                label: "Rule",
-                value: e.columns.ruleStyle,
-                width: 92,
-                options: [for (var v in ColumnRuleStyle.values) (v, v.label)],
-                onChanged: (v) =>
-                    now(e.copyWith(columns: e.columns.copyWith(ruleStyle: v))),
-              ),
-              if (e.columns.ruleStyle != ColumnRuleStyle.none) ...[
-                CanvasNumberField(
-                  label: "Width",
-                  value: e.columns.ruleWidth,
-                  min: 0,
-                  max: 40,
-                  decimals: 1,
-                  width: 54,
-                  onChanged: (v) {
-                    begin();
-                    write(
-                        e.copyWith(columns: e.columns.copyWith(ruleWidth: v)));
-                  },
-                  onCommit: commit,
-                ),
-                CanvasColorButton(
-                  label: "Colour",
-                  color: e.columns.ruleColor,
-                  onChanged: (c) => now(
-                      e.copyWith(columns: e.columns.copyWith(ruleColor: c))),
-                ),
-              ],
-            ],
-          ]),
-        ],
-      ),
-    ),
-    // Its own section rather than sharing one with the columns: a text
-    // element is either riding a line or it is not, and the two questions
-    // have nothing to say to each other.
-    boxed(
-      context,
-      CanvasExpander(
-        label: "On a line",
-        remember: "textOnALine",
-        trailing: e.curve == null ? null : "Following a line",
-        children: [
-          CanvasControlGroup(label: "On a line", hideCaption: true, children: [
-            CanvasDropdown<String>(
-              label: "Follow",
-              value: e.curve?.elementId ?? "",
-              width: 156,
-              options: curveOptions(controller),
-              onChanged: (v) => now(v.isEmpty
-                  ? e.copyWith(clearCurve: true)
-                  : e.copyWith(
-                      curve: (e.curve ?? const TextOnCurve(elementId: ""))
-                          .copyWith(elementId: v))),
-            ),
-            if (e.curve != null) ...[
-              CanvasNumberField(
-                label: "Slide",
-                decimals: 2,
-                width: 62,
-                value: controller.valueAt(
-                    e, KeyframeChannel.slide, e.curve!.offset),
-                // Far enough either way to carry the words right off the end
-                // of the line and back on again, which is what a caption
-                // sliding in and out of a shot is.
-                min: -2,
-                max: 2,
-                onChanged: (v) {
-                  begin();
-                  // Written as a keyframe once this frame has one, so dragging the
-                  // slider while animating retimes the caption's travel rather than
-                  // moving the whole run.
-                  if (controller.hasValueKey(e, KeyframeChannel.slide)) {
-                    controller.setValueKey(e, KeyframeChannel.slide, v);
-                    return;
-                  }
-                  write(e.copyWith(curve: e.curve!.copyWith(offset: v)));
-                },
-                onCommit: commit,
-              ),
-              valueDot(
-                  controller,
-                  e,
-                  KeyframeChannel.slide,
-                  "the slide along the "
-                  "line",
-                  e.curve!.offset),
-              CanvasNumberField(
-                label: "Spacing",
-                value: e.curve!.spacing,
-                min: -20,
-                max: 60,
-                decimals: 1,
-                width: 58,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(curve: e.curve!.copyWith(spacing: v)));
-                },
-                onCommit: commit,
-              ),
-              CanvasToggle(
-                label: "Below",
-                value: e.curve!.away,
-                onChanged: (v) =>
-                    now(e.copyWith(curve: e.curve!.copyWith(away: v))),
-              ),
-              CanvasToggle(
-                key: const ValueKey("textCurveMask"),
-                label: "Mask",
-                value: e.curve!.mask,
-                onChanged: (v) =>
-                    now(e.copyWith(curve: e.curve!.copyWith(mask: v))),
-              ),
-              CanvasToggle(
-                // Not the line element's own Hide: a hidden element is skipped
-                // everywhere, this one included, so the text would go with it.
-                label: "Hide line",
-                value: e.curve!.hideHost,
-                onChanged: (v) =>
-                    now(e.copyWith(curve: e.curve!.copyWith(hideHost: v))),
-              ),
-              const CanvasHint(
-                  "Slide carries the words along the line, and past either "
-                  "end of it — far enough to take them right off and back on "
-                  "again. Mask makes the line a window: whatever has slid off "
-                  "an end is cut off there rather than carrying on across the "
-                  "canvas."),
-            ],
-          ]),
-        ],
-      ),
-    ),
     boxed(context, _iconSection(context, e, write, begin, commit)),
     boxed(context, _partsSection(e, write, begin, commit)),
     // Boxed like every other section: a bare expander among boxed ones reads

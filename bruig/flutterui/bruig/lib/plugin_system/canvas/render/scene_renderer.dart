@@ -386,7 +386,8 @@ void paintElement(
       paintArriving(canvas, bounds, e.animation, pose,
           () => paintTable(canvas, bounds, e, images: images));
     case ButtonElement e:
-      _paintButton(canvas, bounds, e, hovered);
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => _paintButton(canvas, bounds, e, hovered));
     case CounterElement e:
       // Keyed, the number is whatever the timeline says here; live, it is
       // whatever the thing running it says -- and in a picture, where nothing

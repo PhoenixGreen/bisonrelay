@@ -648,11 +648,11 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       // Nothing selected: the list, and no settings under it.
-      expect(find.text("TYPE"), findsNothing);
+      expect(find.text("Fit to box"), findsNothing);
 
       controller.selectOnly(element.id);
       await tester.pumpAndSettle();
-      expect(find.text("TYPE"), findsWidgets);
+      expect(find.text("Fit to box"), findsWidgets);
     });
 
     testWidgets("the background is the bottom layer, and selectable",
@@ -6569,19 +6569,31 @@ void main() {
 
     testWidgets("are five sections, in the order the work happens",
         (tester) async {
-      // What the type looks like, how it is laid out, which words are
-      // different, and how it arrives. Flat, it was eight groups down one
-      // narrow column with the animation settings below the fold.
+      // How it is laid out, which words are different, and how it arrives.
+      // Flat, it was eight groups down one narrow column with the animation
+      // settings below the fold.
+      //
+      // Three of them are not among them any more. The type was a section
+      // that was open every time anybody looked, which is a chevron and a
+      // word standing between the panel and the first thing it is for; the
+      // columns and the line are one row each, and a heading with a chevron
+      // on it for one row is more furniture than setting.
       await panel(tester);
       var headings = [
         for (var it
             in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
           it.label,
       ];
+      for (var gone in ["Type", "Columns", "On a line"]) {
+        expect(headings, isNot(contains(gone)));
+      }
+      // And they are still on the panel, in that order, as rows.
+      expect(find.text("COLUMNS"), findsOneWidget);
+      expect(find.text("ON A LINE"), findsOneWidget);
+      expect(tester.getRect(find.text("COLUMNS")).top,
+          lessThan(tester.getRect(find.text("ON A LINE")).top));
+
       var wanted = [
-        "Type",
-        "Columns",
-        "On a line",
         "Parts of the text",
         "Animation",
       ];
@@ -6592,11 +6604,12 @@ void main() {
       expect(places, sorted, reason: "out of order: $headings");
     });
 
-    testWidgets("the type section holds the type, the box and Fit to box",
+    testWidgets("the type settings are out on the panel, not in a section",
         (tester) async {
-      // Open to begin with: it is the section somebody is in the settings for.
+      // They were behind a heading that was open every time anybody looked.
       var controller = await panel(tester);
       expect(find.text("Fit to box"), findsOneWidget);
+      expect(find.text("Font"), findsOneWidget);
       expect(find.text("BOX"), findsOneWidget);
 
       // Scrolled to first: with four panels in the column the settings can
@@ -6631,8 +6644,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text("COLUMNS"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS"));
-      await tester.pumpAndSettle();
 
       expect(find.text("No blank first line"), findsOneWidget,
           reason: "one column, and still the box the words belong to");
@@ -6655,13 +6666,6 @@ void main() {
       controller.selectOnly("tail");
       await tester.pumpAndSettle();
       expect(find.text("No blank first line"), findsNothing);
-
-      // Shut again: whether a section is open is remembered, and a test that
-      // left one open would open it for the next test as well.
-      await tester.ensureVisible(find.text("COLUMNS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS"));
-      await tester.pumpAndSettle();
     });
 
     testWidgets("the presets section offers to save this one", (tester) async {
@@ -6703,12 +6707,12 @@ void main() {
       );
       var controller = await panel(tester, element: reading);
 
-      expect(find.text("From a document"), findsOneWidget);
+      expect(find.text("From document"), findsOneWidget);
       // Below the fold now that the presets are above it, and a tap at a
       // point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("From a document"));
+      await tester.ensureVisible(find.text("From document"));
       await tester.pumpAndSettle();
-      await tester.tap(find.text("From a document"));
+      await tester.tap(find.text("From document"));
       await tester.pumpAndSettle();
 
       expect(textIn(controller).document.on, isFalse);
@@ -6736,12 +6740,12 @@ void main() {
       controller.selectOnly("head");
       await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.pumpAndSettle();
-      expect(find.text("From a document"), findsOneWidget,
+      expect(find.text("From document"), findsOneWidget,
           reason: "the box the words belong to still chooses");
 
       controller.selectOnly("tail");
       await tester.pumpAndSettle();
-      expect(find.text("From a document"), findsNothing);
+      expect(find.text("From document"), findsNothing);
     });
 
     testWidgets("and the columns section still works once it is opened",
@@ -6749,24 +6753,19 @@ void main() {
       // A section that shuts its controls away is a section that can hide a
       // dead one, which is what a model-only test cannot see.
       var controller = await panel(tester);
-      expect(find.byKey(const ValueKey("textColumns")), findsNothing,
-          reason: "shut to begin with");
-
-      // Scrolled to first: the heading is below the fold in a panel this
-      // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("COLUMNS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("COLUMNS"));
+      // Out on the panel rather than behind a heading: one number and a
+      // switch is not a section.
+      var field = find.byKey(const ValueKey("textColumns"));
+      expect(field, findsOneWidget);
+      await tester.ensureVisible(field);
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byKey(const ValueKey("textColumns")), "3");
+      await tester.enterText(field, "3");
       await tester.pumpAndSettle();
       expect(textIn(controller).columns.count, 3);
-
-      // Shut again: whether a section is open is remembered, and a test that
-      // left one open would open it for the next test as well.
-      await tester.tap(find.text("COLUMNS"));
-      await tester.pumpAndSettle();
+      // And the rest of them arrive once there is a gutter to put them in.
+      expect(find.text("Gap"), findsOneWidget);
+      expect(find.text("Rule"), findsOneWidget);
     });
   });
 }

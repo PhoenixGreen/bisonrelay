@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 /// ButtonActionKind is what pressing a button does.
@@ -111,6 +112,14 @@ class ButtonElement extends CanvasElement {
 
   final ButtonAction action;
 
+  /// animation is how it arrives and leaves, like any other thing in a box.
+  ///
+  /// A button is inert in a picture and is the reason to publish a canvas as
+  /// an interactive one -- but arriving is not pressing. A button that fades
+  /// in with the panel it belongs to and leaves with it is an ordinary thing
+  /// to want, and it was the one element in a box that could not.
+  final ElementAnimation animation;
+
   const ButtonElement(
     super.base, {
     this.label = "Button",
@@ -120,6 +129,7 @@ class ButtonElement extends CanvasElement {
     this.hoverFill = const Color(0x00000000),
     this.hoverTextColor = const Color(0x00000000),
     this.action = const ButtonAction(),
+    this.animation = const ElementAnimation(),
   });
 
   @override
@@ -132,7 +142,8 @@ class ButtonElement extends CanvasElement {
       box: box,
       hoverFill: hoverFill,
       hoverTextColor: hoverTextColor,
-      action: action);
+      action: action,
+      animation: animation);
 
   ButtonElement copyWith({
     String? label,
@@ -141,6 +152,7 @@ class ButtonElement extends CanvasElement {
     Color? hoverFill,
     Color? hoverTextColor,
     ButtonAction? action,
+    ElementAnimation? animation,
   }) =>
       ButtonElement(base,
           label: label ?? this.label,
@@ -148,7 +160,8 @@ class ButtonElement extends CanvasElement {
           box: box ?? this.box,
           hoverFill: hoverFill ?? this.hoverFill,
           hoverTextColor: hoverTextColor ?? this.hoverTextColor,
-          action: action ?? this.action);
+          action: action ?? this.action,
+          animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
@@ -158,6 +171,7 @@ class ButtonElement extends CanvasElement {
         if (hoverFill.a > 0) "hoverFill": colorToJson(hoverFill),
         if (hoverTextColor.a > 0) "hoverText": colorToJson(hoverTextColor),
         "action": action.toJson(),
+        if (animation.on || animation.closes) "anim": animation.toJson(),
       };
 
   factory ButtonElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -174,5 +188,7 @@ class ButtonElement extends CanvasElement {
           hoverTextColor:
               colorFromJson(json["hoverText"], const Color(0x00000000)),
           action: jsonSpec(
-              json["action"], ButtonAction.fromJson, const ButtonAction()));
+              json["action"], ButtonAction.fromJson, const ButtonAction()),
+          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
+              const ElementAnimation()));
 }

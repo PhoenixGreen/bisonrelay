@@ -334,260 +334,299 @@ List<Widget> typeGroups(
   /// chosen with, so it is required wherever this is on.
   bool fill = false,
   BuildContext? context,
+
+  /// remember prefixes the two buttons' open state, so that a panel carrying
+  /// three sets of these -- a counter has one for the number, one for the
+  /// words and one for the buttons -- does not open all three at once.
+  String remember = "type",
+
+  /// rule draws the line under each of these groups.
+  ///
+  /// Off where they are one run with what comes after them rather than two
+  /// subjects: on a text element the face, the colour and the box are all
+  /// "how do these words look", and three lines through that run made it read
+  /// as three answers to three different questions.
+  bool rule = true,
+
+  /// extraMore is put behind the first button, under the spacing settings.
+  /// For the element that has something of its own to hide there: a text
+  /// element's marks, which belong with how the words are set rather than
+  /// with what they say.
+  List<Widget> extraMore = const [],
 }) =>
     [
-      CanvasControlGroup(label: label, hideCaption: hideCaption, children: [
-        CanvasDropdown<String>(
-          label: "Font",
-          value: spec.fontFamily,
-          width: 118,
-          options: [for (var f in canvasFonts) (f, f)],
-          onChanged: (v) {
-            begin();
-            onChanged(spec.copyWith(fontFamily: v));
-            commit();
-          },
-        ),
-        CanvasNumberField(
-          label: "Size",
-          value: spec.fontSize,
-          min: 1,
-          max: 800,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(fontSize: v)),
-          onCommit: commit,
-        ),
-        CanvasDropdown<int>(
-          label: "Weight",
-          value: spec.weight,
-          width: 82,
-          options: const [
-            (100, "Thin"),
-            (300, "Light"),
-            (400, "Regular"),
-            (500, "Medium"),
-            (600, "Semibold"),
-            (700, "Bold"),
-            (800, "Extrabold"),
-            (900, "Black"),
+      CanvasMoreGroup(
+          label: label,
+          hideCaption: hideCaption,
+          rule: rule,
+          remember: "${remember}Type",
+          tooltip: "Spacing, alignment and case",
+          row: [
+            CanvasDropdown<String>(
+              label: "Font",
+              value: spec.fontFamily,
+              // The least these three will be, not the width they are. Six
+              // things share this line -- the face, the size, the weight, two
+              // switches and the button -- and the three boxes between them
+              // were asking for two hundred and fifty-four pixels, which is
+              // what pushed the switches onto a line of their own the moment
+              // anybody pulled the sidebar in. They grow back into a wide one.
+              width: 66,
+              options: [for (var f in canvasFonts) (f, f)],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(fontFamily: v));
+                commit();
+              },
+            ),
+            CanvasNumberField(
+              label: "Size",
+              value: spec.fontSize,
+              min: 1,
+              max: 800,
+              width: 44,
+              onChanged: (v) => onChanged(spec.copyWith(fontSize: v)),
+              onCommit: commit,
+            ),
+            CanvasDropdown<int>(
+              label: "Weight",
+              value: spec.weight,
+              width: 62,
+              options: const [
+                (100, "Thin"),
+                (300, "Light"),
+                (400, "Regular"),
+                (500, "Medium"),
+                (600, "Semibold"),
+                (700, "Bold"),
+                (800, "Extrabold"),
+                (900, "Black"),
+              ],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(weight: v));
+                commit();
+              },
+            ),
+            CanvasIconButton(
+              icon: Icons.format_italic,
+              tooltip: "Italic",
+              active: spec.italic,
+              onPressed: () {
+                begin();
+                onChanged(spec.copyWith(italic: !spec.italic));
+                commit();
+              },
+            ),
+            CanvasIconButton(
+              icon: Icons.format_underlined,
+              tooltip: "Underline",
+              active: spec.underline,
+              onPressed: () {
+                begin();
+                onChanged(spec.copyWith(underline: !spec.underline));
+                commit();
+              },
+            ),
           ],
-          onChanged: (v) {
-            begin();
-            onChanged(spec.copyWith(weight: v));
-            commit();
-          },
-        ),
-        CanvasIconButton(
-          icon: Icons.format_italic,
-          tooltip: "Italic",
-          active: spec.italic,
-          onPressed: () {
-            begin();
-            onChanged(spec.copyWith(italic: !spec.italic));
-            commit();
-          },
-        ),
-        CanvasIconButton(
-          icon: Icons.format_underlined,
-          tooltip: "Underline",
-          active: spec.underline,
-          onPressed: () {
-            begin();
-            onChanged(spec.copyWith(underline: !spec.underline));
-            commit();
-          },
-        ),
-      ]),
-      CanvasControlGroup(label: "Spacing", children: [
-        CanvasNumberField(
-          label: "Letter",
-          value: spec.letterSpacing,
-          min: -50,
-          max: 200,
-          decimals: 1,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(letterSpacing: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          label: "Line",
-          value: spec.lineHeight,
-          min: 0.5,
-          max: 5,
-          decimals: 2,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
-          onCommit: commit,
-        ),
-        CanvasDropdown<TextAlignSpec>(
-          label: "Align",
-          value: spec.align,
-          width: 92,
-          options: [for (var a in TextAlignSpec.values) (a, a.label)],
-          onChanged: (v) {
-            begin();
-            onChanged(spec.copyWith(align: v));
-            commit();
-          },
-        ),
-        CanvasDropdown<VerticalAlignSpec>(
-          label: "Vertical",
-          value: spec.verticalAlign,
-          width: 86,
-          options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
-          onChanged: (v) {
-            begin();
-            onChanged(spec.copyWith(verticalAlign: v));
-            commit();
-          },
-        ),
-        if (includeCase)
-          CanvasDropdown<TextCase>(
-            label: "Case",
-            value: spec.textCase,
-            width: 96,
-            options: [for (var c in TextCase.values) (c, c.label)],
-            onChanged: (v) {
-              begin();
-              onChanged(spec.copyWith(textCase: v));
-              commit();
-            },
-          ),
-      ]),
-      CanvasControlGroup(label: "Colour", children: [
-        // What the letters are painted with. The colour is the usual answer
-        // and stays first; a picture or a pattern replaces it, and the
-        // outline and shadow settings under it go on meaning what they mean.
-        if (fill && context != null)
-          CanvasDropdown<TextFillKind>(
-            key: const ValueKey("textFillKind"),
-            label: "Painted with",
-            value: spec.fill.kind,
-            width: 118,
-            options: [for (var k in TextFillKind.values) (k, k.label)],
-            onChanged: (v) {
-              begin();
-              onChanged(spec.copyWith(fill: spec.fill.copyWith(kind: v)));
-              commit();
-            },
-          ),
-        CanvasColorButton(
-          label: "Text",
-          color: spec.color,
-          // The words can fade from one colour to another, across the box
-          // they are drawn in. Not where they are outlined rather than
-          // filled, or where a picture or a pattern is showing through them:
-          // each of those already decides what the letters are painted with.
-          // See TextSpec.fade.
-          gradient: spec.fade,
-          onChanged: (c) {
-            begin();
-            onChanged(spec.copyWith(color: c));
-            commit();
-          },
-          onGradientChanged: (g) {
-            begin();
-            onChanged(g == null
-                ? spec.copyWith(flatText: true)
-                : spec.copyWith(fade: g));
-            commit();
-          },
-        ),
-        if (fill && context != null && spec.fill.kind != TextFillKind.color)
-          ..._fillBits(context, spec, onChanged, begin, commit),
-        CanvasNumberField(
-          label: "Outline",
-          value: spec.outlineWidth,
-          min: 0,
-          max: 60,
-          decimals: 1,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
-          onCommit: commit,
-        ),
-        CanvasColorButton(
-          label: "Line",
-          color: spec.outlineColor,
-          onChanged: (c) {
-            begin();
-            onChanged(spec.copyWith(outlineColor: c));
-            commit();
-          },
-        ),
-        CanvasNumberField(
-          label: "Shadow",
-          value: spec.shadowBlur,
-          min: 0,
-          max: 120,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
-          onCommit: commit,
-        ),
-        CanvasColorButton(
+          more: [
+            CanvasNumberField(
+              label: "Letter",
+              value: spec.letterSpacing,
+              min: -50,
+              max: 200,
+              decimals: 1,
+              width: 54,
+              onChanged: (v) => onChanged(spec.copyWith(letterSpacing: v)),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Line",
+              value: spec.lineHeight,
+              min: 0.5,
+              max: 5,
+              decimals: 2,
+              width: 54,
+              onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
+              onCommit: commit,
+            ),
+            CanvasDropdown<TextAlignSpec>(
+              label: "Align",
+              value: spec.align,
+              width: 92,
+              options: [for (var a in TextAlignSpec.values) (a, a.label)],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(align: v));
+                commit();
+              },
+            ),
+            CanvasDropdown<VerticalAlignSpec>(
+              label: "Vertical",
+              value: spec.verticalAlign,
+              width: 86,
+              options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(verticalAlign: v));
+                commit();
+              },
+            ),
+            if (includeCase)
+              CanvasDropdown<TextCase>(
+                label: "Case",
+                value: spec.textCase,
+                width: 96,
+                options: [for (var c in TextCase.values) (c, c.label)],
+                onChanged: (v) {
+                  begin();
+                  onChanged(spec.copyWith(textCase: v));
+                  commit();
+                },
+              ),
+            ...extraMore,
+          ]),
+      CanvasMoreGroup(
           label: "Colour",
-          color: spec.shadowColor,
-          onChanged: (c) {
-            begin();
-            onChanged(spec.copyWith(shadowColor: c));
-            commit();
-          },
-        ),
-        // Where the light is, not where the shadow goes: one light for a
-        // scene, and the same two numbers on every element in it.
-        CanvasNumberField(
-          key: const ValueKey("textShadowAngle"),
-          label: "Direction",
-          value: spec.shadowAngle,
-          min: 0,
-          max: 360,
-          width: 60,
-          onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          key: const ValueKey("textShadowDistance"),
-          label: "Distance",
-          value: spec.shadowDistance,
-          min: 0,
-          max: 400,
-          decimals: 1,
-          width: 60,
-          onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          key: const ValueKey("textGlow"),
-          label: "Glow",
-          value: spec.glowBlur,
-          min: 0,
-          max: 200,
-          width: 54,
-          onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
-          onCommit: commit,
-        ),
-        CanvasColorButton(
-          label: "Light",
-          color: spec.glowColor,
-          onChanged: (c) {
-            begin();
-            onChanged(spec.copyWith(glowColor: c));
-            commit();
-          },
-        ),
-        if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
-          const CanvasHint(
-              "Direction is where the light is, read like a compass: 0 is "
-              "straight up, 90 to the right. The shadow falls the other way, "
-              "Distance away from the words. At a distance of 0 it sits "
-              "directly underneath them, which is a shadow that reads as a "
-              "glow in its own colour."),
-        if (spec.glowBlur > 0)
-          const CanvasHint(
-              "Glow is light all round the letters, in its own colour, and it "
-              "is drawn behind them — so a picture or a pattern showing "
-              "through the words cannot cut it up, and an outline sits over "
-              "it rather than under it."),
-      ]),
+          rule: rule,
+          remember: "${remember}Colour",
+          tooltip: "The shadow, the glow, and what shows through the letters",
+          row: [
+            // What the letters are painted with. The colour is the usual answer
+            // and stays first; a picture or a pattern replaces it, and the
+            // outline and shadow settings under it go on meaning what they mean.
+            if (fill && context != null)
+              CanvasDropdown<TextFillKind>(
+                key: const ValueKey("textFillKind"),
+                label: "Painted with",
+                value: spec.fill.kind,
+                width: 118,
+                options: [for (var k in TextFillKind.values) (k, k.label)],
+                onChanged: (v) {
+                  begin();
+                  onChanged(spec.copyWith(fill: spec.fill.copyWith(kind: v)));
+                  commit();
+                },
+              ),
+            CanvasColorButton(
+              label: "Text",
+              color: spec.color,
+              // The words can fade from one colour to another, across the box
+              // they are drawn in. Not where they are outlined rather than
+              // filled, or where a picture or a pattern is showing through them:
+              // each of those already decides what the letters are painted with.
+              // See TextSpec.fade.
+              gradient: spec.fade,
+              onChanged: (c) {
+                begin();
+                onChanged(spec.copyWith(color: c));
+                commit();
+              },
+              onGradientChanged: (g) {
+                begin();
+                onChanged(g == null
+                    ? spec.copyWith(flatText: true)
+                    : spec.copyWith(fade: g));
+                commit();
+              },
+            ),
+            CanvasNumberField(
+              label: "Outline",
+              value: spec.outlineWidth,
+              min: 0,
+              max: 60,
+              decimals: 1,
+              width: 54,
+              onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
+              onCommit: commit,
+            ),
+            CanvasColorButton(
+              label: "Line",
+              color: spec.outlineColor,
+              onChanged: (c) {
+                begin();
+                onChanged(spec.copyWith(outlineColor: c));
+                commit();
+              },
+            ),
+          ],
+          more: [
+            if (fill && context != null && spec.fill.kind != TextFillKind.color)
+              ..._fillBits(context, spec, onChanged, begin, commit),
+            CanvasNumberField(
+              label: "Shadow",
+              value: spec.shadowBlur,
+              min: 0,
+              max: 120,
+              width: 54,
+              onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
+              onCommit: commit,
+            ),
+            CanvasColorButton(
+              label: "Colour",
+              color: spec.shadowColor,
+              onChanged: (c) {
+                begin();
+                onChanged(spec.copyWith(shadowColor: c));
+                commit();
+              },
+            ),
+            // Where the light is, not where the shadow goes: one light for a
+            // scene, and the same two numbers on every element in it.
+            CanvasNumberField(
+              key: const ValueKey("textShadowAngle"),
+              label: "Direction",
+              value: spec.shadowAngle,
+              min: 0,
+              max: 360,
+              width: 60,
+              onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("textShadowDistance"),
+              label: "Distance",
+              value: spec.shadowDistance,
+              min: 0,
+              max: 400,
+              decimals: 1,
+              width: 60,
+              onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("textGlow"),
+              label: "Glow",
+              value: spec.glowBlur,
+              min: 0,
+              max: 200,
+              width: 54,
+              onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
+              onCommit: commit,
+            ),
+            CanvasColorButton(
+              label: "Light",
+              color: spec.glowColor,
+              onChanged: (c) {
+                begin();
+                onChanged(spec.copyWith(glowColor: c));
+                commit();
+              },
+            ),
+            if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
+              const CanvasHint(
+                  "Direction is where the light is, read like a compass: 0 is "
+                  "straight up, 90 to the right. The shadow falls the other way, "
+                  "Distance away from the words. At a distance of 0 it sits "
+                  "directly underneath them, which is a shadow that reads as a "
+                  "glow in its own colour."),
+            if (spec.glowBlur > 0)
+              const CanvasHint(
+                  "Glow is light all round the letters, in its own colour, and it "
+                  "is drawn behind them — so a picture or a pattern showing "
+                  "through the words cannot cut it up, and an outline sits over "
+                  "it rather than under it."),
+          ]),
     ];
 
 /// boxGroup is the shared frame controls: the background, the border, the
@@ -605,60 +644,91 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         VoidCallback begin, VoidCallback commit,
         {String label = "Box",
         String fillLabel = "Fill",
+        String remember = "box",
+        bool rule = true,
         ValueChanged<BoxSpec>? onPadding}) =>
-    CanvasControlGroup(label: label, children: [
-      CanvasColorButton(
-        label: fillLabel,
-        color: box.fill,
-        gradient: box.fillFade,
-        onChanged: (c) {
-          begin();
-          onChanged(box.copyWith(fill: c));
-          commit();
-        },
-        onGradientChanged: (g) {
-          begin();
-          onChanged(g == null
-              ? box.copyWith(flatFill: true)
-              : box.copyWith(fillFade: g));
-          commit();
-        },
-      ),
-      CanvasColorButton(
-        label: "Colour",
-        color: box.borderColor,
-        gradient: box.borderFade,
-        onChanged: (c) {
-          begin();
-          onChanged(box.copyWith(borderColor: c));
-          commit();
-        },
-        onGradientChanged: (g) {
-          begin();
-          onChanged(g == null
-              ? box.copyWith(flatBorder: true)
-              : box.copyWith(borderFade: g));
-          commit();
-        },
-      ),
-      // A line each for the border, the corners and the sides. Wrapped into
-      // whatever room the panel had, they came out as one row of unrelated
-      // numbers with a corner on the end of the border's line.
-      const CanvasLineBreak(),
-      ...roomFields(box.borders, (r) => onChanged(box.withBorders(r)), commit,
-          label: "Border", allKey: "Border", sideKey: "Border"),
-      const CanvasLineBreak(),
-      ...cornerFields(
-          box.corners, (c) => onChanged(box.withCorners(c)), commit),
-      const CanvasLineBreak(),
-      ...roomFields(
-          box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit),
-      const CanvasHint(
-          "Border, Radius and Padding set all four sides or corners at once; "
-          "the fields beside them set one each, and show blank when the four "
-          "no longer agree. Sides of different weights are drawn square where "
-          "they meet, since two weights cannot round the same corner."),
-    ]);
+    // The colours and one number each for the border, the corners and the
+    // room inside; the twelve that set a side or a corner on its own are
+    // behind the button. Laid out flat this was three lines of five numbers,
+    // and the three anybody actually sets were the first of each line.
+    CanvasMoreGroup(
+        label: label,
+        rule: rule,
+        remember: "${remember}Box",
+        tooltip: "Each side and each corner on its own",
+        row: [
+          CanvasColorButton(
+            label: fillLabel,
+            color: box.fill,
+            gradient: box.fillFade,
+            onChanged: (c) {
+              begin();
+              onChanged(box.copyWith(fill: c));
+              commit();
+            },
+            onGradientChanged: (g) {
+              begin();
+              onChanged(g == null
+                  ? box.copyWith(flatFill: true)
+                  : box.copyWith(fillFade: g));
+              commit();
+            },
+          ),
+          CanvasColorButton(
+            label: "Colour",
+            color: box.borderColor,
+            gradient: box.borderFade,
+            onChanged: (c) {
+              begin();
+              onChanged(box.copyWith(borderColor: c));
+              commit();
+            },
+            onGradientChanged: (g) {
+              begin();
+              onChanged(g == null
+                  ? box.copyWith(flatBorder: true)
+                  : box.copyWith(borderFade: g));
+              commit();
+            },
+          ),
+          ...roomFields(
+              box.borders, (r) => onChanged(box.withBorders(r)), commit,
+              label: "Border",
+              allKey: "Border",
+              sideKey: "Border",
+              part: SidePart.all),
+          ...cornerFields(
+              box.corners, (c) => onChanged(box.withCorners(c)), commit,
+              part: SidePart.all),
+          ...roomFields(
+              box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit,
+              part: SidePart.all),
+        ],
+        more: [
+          // A line each for the border, the corners and the sides. Wrapped into
+          // whatever room the panel had, they came out as one row of unrelated
+          // numbers with a corner on the end of the border's line.
+          ...roomFields(
+              box.borders, (r) => onChanged(box.withBorders(r)), commit,
+              label: "Border",
+              allKey: "Border",
+              sideKey: "Border",
+              part: SidePart.sides),
+          const CanvasLineBreak(),
+          ...cornerFields(
+              box.corners, (c) => onChanged(box.withCorners(c)), commit,
+              part: SidePart.sides),
+          const CanvasLineBreak(),
+          ...roomFields(
+              box.pad, (r) => (onPadding ?? onChanged)(box.withRoom(r)), commit,
+              part: SidePart.sides),
+          const CanvasHint(
+              "Border, Radius and Padding on the line above set all four sides or "
+              "corners at once; these set one each, and the one above shows blank "
+              "when the four no longer agree. Sides of different weights are drawn "
+              "square where they meet, since two weights cannot round the same "
+              "corner."),
+        ]);
 
 /// valueDot is the diamond beside one animatable property.
 ///
@@ -1242,36 +1312,54 @@ List<Widget> effectBits(
 /// element and a rectangle shape -- and the controls for them had better be
 /// the same controls. The "all" field shows blank once they differ, so it
 /// never claims a number that is not true of every corner.
+/// SidePart is which half of one of these to build: the one number that sets
+/// all of them, the four that set one each, or both.
+///
+/// The two halves live on different lines now -- the one number on the row, the
+/// four behind the button at the end of it -- and they are still one function
+/// because they are still one control split in two. Written as two functions
+/// they would be two places to keep the range, the width and the keys in step.
+enum SidePart { all, sides, both }
+
 List<Widget> cornerFields(
         Corners corners, ValueChanged<Corners> onChanged, VoidCallback commit,
-        {String label = "Radius", String prefix = "box"}) =>
+        {String label = "Radius",
+        String prefix = "box",
+        SidePart part = SidePart.both}) =>
     [
-      CanvasNumberField(
-        key: ValueKey("${prefix}Radius"),
-        label: label,
-        value: corners.even ?? 0,
-        min: 0,
-        max: 400,
-        width: 54,
-        onChanged: (v) => onChanged(corners.withEven(v)),
-        onCommit: commit,
-      ),
-      for (var (name, at, set) in <(String, double, Corners Function(double))>[
-        ("↖", corners.topLeft, (v) => corners.copyWith(tl: v)),
-        ("↗", corners.topRight, (v) => corners.copyWith(tr: v)),
-        ("↘", corners.bottomRight, (v) => corners.copyWith(br: v)),
-        ("↙", corners.bottomLeft, (v) => corners.copyWith(bl: v)),
-      ])
+      if (part != SidePart.sides)
         CanvasNumberField(
-          key: ValueKey("${prefix}Radius$name"),
-          label: name,
-          value: at,
+          key: ValueKey("${prefix}Radius"),
+          label: label,
+          value: corners.even ?? 0,
           min: 0,
           max: 400,
-          width: 50,
-          onChanged: (v) => onChanged(set(v)),
+          width: 54,
+          onChanged: (v) => onChanged(corners.withEven(v)),
           onCommit: commit,
         ),
+      if (part != SidePart.all)
+        for (var (name, at, set)
+            in <(String, double, Corners Function(double))>[
+          ("↖", corners.topLeft, (v) => corners.copyWith(tl: v)),
+          ("↗", corners.topRight, (v) => corners.copyWith(tr: v)),
+          ("↘", corners.bottomRight, (v) => corners.copyWith(br: v)),
+          ("↙", corners.bottomLeft, (v) => corners.copyWith(bl: v)),
+        ])
+          CanvasNumberField(
+            key: ValueKey("${prefix}Radius$name"),
+            label: name,
+            value: at,
+            min: 0,
+            max: 400,
+            // The same least width as a side's, so that the four corners line
+            // up under the four sides. They were fifty against fifty-six,
+            // which is six pixels a column and a row of four visibly out of
+            // step with the rows above and below it.
+            width: 56,
+            onChanged: (v) => onChanged(set(v)),
+            onCommit: commit,
+          ),
     ];
 
 /// roomFields is the "all sides" number and the four sides beside it. See
@@ -1284,32 +1372,35 @@ List<Widget> roomFields(
         // panel -- the border's, beside the padding's -- is findable by what
         // it is rather than by which one came first.
         String allKey = "Padding",
-        String sideKey = "Pad"}) =>
+        String sideKey = "Pad",
+        SidePart part = SidePart.both}) =>
     [
-      CanvasNumberField(
-        key: ValueKey("$prefix$allKey"),
-        label: label,
-        value: room.even ?? 0,
-        min: 0,
-        max: 400,
-        width: 54,
-        onChanged: (v) => onChanged(room.withEven(v)),
-        onCommit: commit,
-      ),
-      for (var (name, at, set) in <(String, double, Room Function(double))>[
-        ("Left", room.left, (v) => room.copyWith(l: v)),
-        ("Top", room.top, (v) => room.copyWith(t: v)),
-        ("Right", room.right, (v) => room.copyWith(r: v)),
-        ("Bottom", room.bottom, (v) => room.copyWith(b: v)),
-      ])
+      if (part != SidePart.sides)
         CanvasNumberField(
-          key: ValueKey("$prefix$sideKey$name"),
-          label: name,
-          value: at,
+          key: ValueKey("$prefix$allKey"),
+          label: label,
+          value: room.even ?? 0,
           min: 0,
           max: 400,
-          width: 56,
-          onChanged: (v) => onChanged(set(v)),
+          width: 54,
+          onChanged: (v) => onChanged(room.withEven(v)),
           onCommit: commit,
         ),
+      if (part != SidePart.all)
+        for (var (name, at, set) in <(String, double, Room Function(double))>[
+          ("Left", room.left, (v) => room.copyWith(l: v)),
+          ("Top", room.top, (v) => room.copyWith(t: v)),
+          ("Right", room.right, (v) => room.copyWith(r: v)),
+          ("Bottom", room.bottom, (v) => room.copyWith(b: v)),
+        ])
+          CanvasNumberField(
+            key: ValueKey("$prefix$sideKey$name"),
+            label: name,
+            value: at,
+            min: 0,
+            max: 400,
+            width: 56,
+            onChanged: (v) => onChanged(set(v)),
+            onCommit: commit,
+          ),
     ];

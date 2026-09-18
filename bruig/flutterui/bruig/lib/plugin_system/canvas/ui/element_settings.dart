@@ -87,7 +87,8 @@ List<Widget> elementSettings(
         chartSettings(context, controller, e, write, begin, commit),
       TableElement e =>
         tableSettings(context, controller, e, write, begin, commit),
-      ButtonElement e => buttonSettings(controller, e, write, begin, commit),
+      ButtonElement e =>
+        buttonSettings(context, controller, e, write, begin, commit),
       CounterElement e =>
         counterSettings(context, controller, e, write, begin, commit),
       BackgroundElement e => [
