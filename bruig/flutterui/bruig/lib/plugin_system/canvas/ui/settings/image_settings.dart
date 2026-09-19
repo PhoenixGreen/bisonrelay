@@ -455,7 +455,7 @@ List<Widget> imageSettings(
       ],
     ]),
     if (e.hasImage)
-      CanvasControlGroup(label: "Frame", children: [
+      CanvasControlGroup(label: "Frame", rule: false, children: [
         CanvasDropdown<String>(
           label: "Cut to",
           value: e.frame?.name ?? "",
@@ -475,7 +475,7 @@ List<Widget> imageSettings(
     // other, and because a control that exists is how anybody finds out the
     // gesture is there at all.
     if (e.hasImage && e.fit == ImageFit.cover)
-      CanvasControlGroup(label: "Framing", children: [
+      CanvasControlGroup(label: "Framing", rule: false, children: [
         CanvasHint("Double-click the picture to drag it about inside its box, "
             "and scroll to zoom."),
         for (var (label, value, apply)
@@ -504,7 +504,7 @@ List<Widget> imageSettings(
         ),
       ]),
     if (e.hasImage)
-      CanvasControlGroup(label: "Crop", children: [
+      CanvasControlGroup(label: "Crop", rule: false, children: [
         for (var (label, value, apply)
             in <(String, double, ImageCrop Function(double))>[
           ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
@@ -532,7 +532,7 @@ List<Widget> imageSettings(
         ),
       ]),
     if (e.hasImage)
-      CanvasControlGroup(label: "Look", children: [
+      CanvasControlGroup(label: "Look", rule: false, children: [
         CanvasDropdown<ImageFilterPreset>(
           label: "Filter",
           value: e.filter,
@@ -560,7 +560,7 @@ List<Widget> imageSettings(
     // it works just as well on a picture that arrived with one -- and burying
     // it in the removal group would say otherwise.
     if (e.hasImage)
-      CanvasControlGroup(label: "Outline", children: [
+      CanvasControlGroup(label: "Outline", rule: false, children: [
         CanvasNumberField(
           label: "Width",
           min: 0,

@@ -54,12 +54,16 @@ const double controlLabelHeight = 11;
 /// one line of a group and the next, canvasCaptionGap under a group's name,
 /// and canvasGroupGap under every group. A rule between two groups sits in
 /// the middle of a doubled one -- the same above as below, which is the one
-/// people notice -- so a group with no rule under it is half as far from the
-/// next as a group with one, rather than a quarter.
+/// people notice.
+///
+/// The group gap is three times the row gap, and it has to be: most panels
+/// have no rules left in them at all, so the gap is the only thing saying
+/// where one group ends. At twice the row gap a run of five groups still read
+/// as one block of controls.
 const double canvasControlGap = 5;
 const double canvasRowGap = 8;
 const double canvasCaptionGap = 7;
-const double canvasGroupGap = 16;
+const double canvasGroupGap = 24;
 
 /// bandGroupHeight is how tall the line between two groups on the band is:
 /// the caption and one row of controls, which is the whole of the band.

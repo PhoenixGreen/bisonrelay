@@ -837,6 +837,10 @@ void main() {
       var id = teamIn(controller).id;
 
       expect(find.byKey(ValueKey("name-0-$id")), findsNothing);
+      // Scrolled to first: the squad list is below the fold in a panel this
+      // tall, and a tap at a point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("PLAYERS"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("PLAYERS"));
       await tester.pumpAndSettle();
 
@@ -861,6 +865,10 @@ void main() {
       var controller = await panel(tester, team: team);
       var id = teamIn(controller).id;
 
+      // Scrolled to first: the squad list is below the fold in a panel this
+      // tall, and a tap at a point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("PLAYERS"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("PLAYERS"));
       await tester.pumpAndSettle();
 
@@ -874,6 +882,10 @@ void main() {
 
     testWidgets("lock, hide and reorder work per player", (tester) async {
       var controller = await panel(tester);
+      // Scrolled to first: the squad list is below the fold in a panel this
+      // tall, and a tap at a point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("PLAYERS"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("PLAYERS"));
       await tester.pumpAndSettle();
 
@@ -2135,6 +2147,10 @@ void main() {
       controller.selectOnly("t");
 
       await pump(tester, CanvasDesignPanel(controller: controller));
+      // Scrolled to first: the squad list is below the fold in a panel this
+      // tall, and a tap at a point outside the viewport hits nothing.
+      await tester.ensureVisible(find.text("PLAYERS"));
+      await tester.pumpAndSettle();
       await tester.tap(find.text("PLAYERS"));
       await tester.pumpAndSettle();
 

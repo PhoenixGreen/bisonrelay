@@ -25,59 +25,63 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
   return [
     // No caption: the panel header says "Team settings" already, and a
     // group called Team directly under it was the word twice.
-    CanvasControlGroup(label: "Team", hideCaption: true, children: [
-      CanvasDropdown<TeamSport>(
-        label: "Sport",
-        value: e.sport,
-        width: 104,
-        options: [for (var s in TeamSport.values) (s, s.label)],
-        // Changing the sport re-lays the squad out, since a formation belongs
-        // to one game and the squad size changes with it.
-        onChanged: (v) =>
-            now(e.copyWith(sport: v).withFormation(v.formations.first)),
-      ),
-      CanvasDropdown<TeamFormation>(
-        label: "Formation",
-        value: e.sport.formations.contains(e.formation)
-            ? e.formation
-            : e.sport.formations.first,
-        width: 118,
-        options: [for (var f in e.sport.formations) (f, f.label)],
-        onChanged: (v) => now(e.withFormation(v)),
-      ),
-      CanvasDropdown<FormationSpread>(
-        label: "Spread",
-        value: e.spread,
-        width: 108,
-        options: [for (var v in FormationSpread.values) (v, v.label)],
-        // The same eleven positions, two pictures: the shape at kick-off sits
-        // inside its own half, the shape in possession has its forwards over
-        // the halfway line. See FormationSpread.
-        onChanged: (v) => now(e.withFormation(e.formation, spread: v)),
-      ),
-      CanvasToggle(
-        label: "Attack left",
-        value: e.mirrored,
-        // Turning the team round re-lays it out, which is how the away side
-        // faces the home side rather than both running at the same goal.
-        onChanged: (v) => now(e.withFormation(e.formation, mirror: v)),
-      ),
-      CanvasIconButton(
-        icon: e.frameLocked ? Icons.lock : Icons.lock_open,
-        tooltip: e.frameLocked
-            ? "The team's box is pinned — players still move"
-            : "Pin the team's box so only players move",
-        active: e.frameLocked,
-        onPressed: () => now(e.copyWith(frameLocked: !e.frameLocked)),
-      ),
-      CanvasIconButton(
-        icon: Icons.refresh,
-        tooltip: "Put everybody back in formation",
-        onPressed: () => now(e.withFormation(e.formation)),
-      ),
-    ]),
+    CanvasControlGroup(
+        label: "Team",
+        hideCaption: true,
+        rule: false,
+        children: [
+          CanvasDropdown<TeamSport>(
+            label: "Sport",
+            value: e.sport,
+            width: 104,
+            options: [for (var s in TeamSport.values) (s, s.label)],
+            // Changing the sport re-lays the squad out, since a formation belongs
+            // to one game and the squad size changes with it.
+            onChanged: (v) =>
+                now(e.copyWith(sport: v).withFormation(v.formations.first)),
+          ),
+          CanvasDropdown<TeamFormation>(
+            label: "Formation",
+            value: e.sport.formations.contains(e.formation)
+                ? e.formation
+                : e.sport.formations.first,
+            width: 118,
+            options: [for (var f in e.sport.formations) (f, f.label)],
+            onChanged: (v) => now(e.withFormation(v)),
+          ),
+          CanvasDropdown<FormationSpread>(
+            label: "Spread",
+            value: e.spread,
+            width: 108,
+            options: [for (var v in FormationSpread.values) (v, v.label)],
+            // The same eleven positions, two pictures: the shape at kick-off sits
+            // inside its own half, the shape in possession has its forwards over
+            // the halfway line. See FormationSpread.
+            onChanged: (v) => now(e.withFormation(e.formation, spread: v)),
+          ),
+          CanvasToggle(
+            label: "Attack left",
+            value: e.mirrored,
+            // Turning the team round re-lays it out, which is how the away side
+            // faces the home side rather than both running at the same goal.
+            onChanged: (v) => now(e.withFormation(e.formation, mirror: v)),
+          ),
+          CanvasIconButton(
+            icon: e.frameLocked ? Icons.lock : Icons.lock_open,
+            tooltip: e.frameLocked
+                ? "The team's box is pinned — players still move"
+                : "Pin the team's box so only players move",
+            active: e.frameLocked,
+            onPressed: () => now(e.copyWith(frameLocked: !e.frameLocked)),
+          ),
+          CanvasIconButton(
+            icon: Icons.refresh,
+            tooltip: "Put everybody back in formation",
+            onPressed: () => now(e.withFormation(e.formation)),
+          ),
+        ]),
     _squadList(e, write, begin, commit, now),
-    CanvasControlGroup(label: "Colours", children: [
+    CanvasControlGroup(label: "Colours", rule: false, children: [
       CanvasColorButton(
         label: "Keeper",
         color: e.keeperColor,
@@ -110,7 +114,7 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
         onCommit: commit,
       ),
     ]),
-    CanvasControlGroup(label: "Dots", children: [
+    CanvasControlGroup(label: "Dots", rule: false, children: [
       CanvasNumberField(
         key: const ValueKey("teamDotWidth"),
         label: "Width",
@@ -192,8 +196,9 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
       commit,
       label: "Numbers and names",
       remember: "team",
+      rule: false,
     ),
-    CanvasControlGroup(label: "Labels", children: [
+    CanvasControlGroup(label: "Labels", rule: false, children: [
       CanvasToggle(
         label: "Numbers",
         value: e.showNumbers,

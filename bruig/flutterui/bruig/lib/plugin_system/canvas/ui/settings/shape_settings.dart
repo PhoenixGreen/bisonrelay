@@ -167,6 +167,7 @@ List<Widget> shapeSettings(
         CanvasMoreGroup(
             label: "Bubble",
             remember: "shapeBubbleMore",
+            rule: false,
             tooltip: "Where the tail points, and how long it is",
             row: [
               CanvasDropdown<BubbleBody>(
@@ -256,7 +257,7 @@ List<Widget> shapeSettings(
       if (e.text.isNotEmpty)
         ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
             begin, commit,
-            label: "Label type", remember: "shapeLabel"),
+            label: "Label type", remember: "shapeLabel", rule: false),
       // How it arrives, in a section of its own like a headline's: a handful
       // of choices made once and then left alone.
       boxed(

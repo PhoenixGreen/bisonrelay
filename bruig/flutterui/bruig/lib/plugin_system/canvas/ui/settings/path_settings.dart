@@ -46,6 +46,10 @@ List<Widget> pathSettings(
         label: "Path",
         hideCaption: true,
         remember: "pathMore",
+        // No lines down this panel. What the route looks like, who runs it
+        // and where its points are is one question -- what is this path --
+        // and a rule between each pair made three answers out of it.
+        rule: false,
         tooltip: "How the stroke ends, and whether it is dashed",
         row: [
           CanvasColorButton(
@@ -118,6 +122,7 @@ List<Widget> pathSettings(
     CanvasMoreGroup(
         label: "Follow",
         remember: "pathFollowMore",
+        rule: false,
         tooltip: "Re-time the run, and carry the path on",
         row: [
           CanvasDropdown<String>(
@@ -252,6 +257,7 @@ Widget _pathNodeList(CanvasController controller, PathElement e,
         void Function(PathElement) relink) =>
     CanvasControlGroup(
       label: "Points (${e.nodes.length})",
+      rule: false,
       children: [
         for (var i = 0; i < e.nodes.length; i++)
           Padding(

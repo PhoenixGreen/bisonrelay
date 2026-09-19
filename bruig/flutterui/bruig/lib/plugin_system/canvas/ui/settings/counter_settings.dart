@@ -37,59 +37,63 @@ List<Widget> counterSettings(
       : controller.counterValue(e);
 
   return [
-    CanvasControlGroup(label: "Counts", hideCaption: true, children: [
-      CanvasNumberField(
-        key: const ValueKey("counterFrom"),
-        label: "From",
-        value: e.from,
-        min: -1000000000,
-        max: 1000000000,
-        decimals: e.decimals,
-        width: 84,
-        onChanged: (v) => write(e.copyWith(from: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        key: const ValueKey("counterTo"),
-        label: "To",
-        value: e.to,
-        min: -1000000000,
-        max: 1000000000,
-        decimals: e.decimals,
-        width: 84,
-        onChanged: (v) => write(e.copyWith(to: v)),
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        key: const ValueKey("counterDecimals"),
-        label: "Decimals",
-        value: e.decimals.toDouble(),
-        min: 0,
-        max: 8,
-        decimals: 0,
-        width: 54,
-        onChanged: (v) => write(e.copyWith(decimals: v.round())),
-        onCommit: commit,
-      ),
-      // The grouping and the point are one choice rather than two: a number
-      // written 1.234,56 is not 1,234.56 with a different point, it is a
-      // different convention -- and the two time formats are not grouping at
-      // all.
-      CanvasDropdown<CounterSeparator>(
-        key: const ValueKey("counterSeparator"),
-        label: "Written",
-        value: e.separator,
-        width: 132,
-        options: [
-          for (var s in CounterSeparator.values)
-            (s, s == CounterSeparator.none ? "Plain" : s.label)
-        ],
-        onChanged: (v) => now(e.copyWith(separator: v)),
-      ),
-      CanvasHint("Counts ${e.format(e.from)} to ${e.format(e.to)}"
-          "${e.separator.isTime ? ", reading the value as seconds" : ""}."),
-    ]),
-    CanvasControlGroup(label: "Words", children: [
+    CanvasControlGroup(
+        label: "Counts",
+        hideCaption: true,
+        rule: false,
+        children: [
+          CanvasNumberField(
+            key: const ValueKey("counterFrom"),
+            label: "From",
+            value: e.from,
+            min: -1000000000,
+            max: 1000000000,
+            decimals: e.decimals,
+            width: 84,
+            onChanged: (v) => write(e.copyWith(from: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("counterTo"),
+            label: "To",
+            value: e.to,
+            min: -1000000000,
+            max: 1000000000,
+            decimals: e.decimals,
+            width: 84,
+            onChanged: (v) => write(e.copyWith(to: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("counterDecimals"),
+            label: "Decimals",
+            value: e.decimals.toDouble(),
+            min: 0,
+            max: 8,
+            decimals: 0,
+            width: 54,
+            onChanged: (v) => write(e.copyWith(decimals: v.round())),
+            onCommit: commit,
+          ),
+          // The grouping and the point are one choice rather than two: a number
+          // written 1.234,56 is not 1,234.56 with a different point, it is a
+          // different convention -- and the two time formats are not grouping at
+          // all.
+          CanvasDropdown<CounterSeparator>(
+            key: const ValueKey("counterSeparator"),
+            label: "Written",
+            value: e.separator,
+            width: 132,
+            options: [
+              for (var s in CounterSeparator.values)
+                (s, s == CounterSeparator.none ? "Plain" : s.label)
+            ],
+            onChanged: (v) => now(e.copyWith(separator: v)),
+          ),
+          CanvasHint("Counts ${e.format(e.from)} to ${e.format(e.to)}"
+              "${e.separator.isTime ? ", reading the value as seconds" : ""}."),
+        ]),
+    CanvasControlGroup(label: "Words", rule: false, children: [
       CanvasTextField(
         key: const ValueKey("counterBefore"),
         label: "Before",
@@ -191,8 +195,8 @@ List<Widget> counterSettings(
       ),
     ),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "counter"),
-    CanvasControlGroup(label: "Size", children: [
+        remember: "counter", rule: false),
+    CanvasControlGroup(label: "Size", rule: false, children: [
       CanvasToggle(
         key: const ValueKey("counterFit"),
         label: "Shrink to fit",

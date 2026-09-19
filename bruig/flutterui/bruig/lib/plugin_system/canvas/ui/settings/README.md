@@ -49,7 +49,7 @@ Three levels, and only three:
 |---|---|
 | `boxed(context, CanvasExpander(...))` | a section that holds a panel of its own — a data grid, a list of columns, the animation controls. It has a border because what is inside it is not a row of controls. |
 | `CanvasControlGroup` / `CanvasMoreGroup` | a captioned run of controls. The ordinary case. |
-| `rule: false` | this group and the one under it are one subject. Use it where the second group exists only because it needs a button of its own, or across a whole run that answers one question — a text element's face, colour, box, columns and the line it rides are all "how do these words look", and a rule between each pair made five answers out of it. |
+| `rule: false` | this group and the one under it are one subject. **This is the usual case.** Most elements are one run of lines answering one question — what is this path, what is this button, what does this picture look like — and a rule between each pair turns it into five answers. The rule under the position row stays, because where an element sits really is a different subject from what it is. |
 
 A group whose name is already said by the panel header takes
 `hideCaption: true` — "Line" under a header reading "Line settings" is the
@@ -69,11 +69,13 @@ Four numbers, in `controls.dart`, and everything reads from them:
 | `canvasControlGap` | 5 | between two controls on a line |
 | `canvasRowGap` | 8 | between one line of a group and the next |
 | `canvasCaptionGap` | 7 | under a group's name |
-| `canvasGroupGap` | 16 | under every group |
+| `canvasGroupGap` | 24 | under every group |
 
 A rule between two groups sits in the middle of a doubled group gap — the same
-above as below, which is the one people notice — so a group with no rule under
-it is half as far from the next as a group with one, rather than a quarter.
+above as below, which is the one people notice.
+
+The group gap is three times the row gap, and it has to be: most panels have no
+rules left in them, so the gap is the only thing saying where one group ends.
 
 Never write a pixel gap into an element's settings. The reason these are
 constants is that they were not: captions sat seven pixels over their controls

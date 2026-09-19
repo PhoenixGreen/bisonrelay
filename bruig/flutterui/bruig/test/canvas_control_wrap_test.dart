@@ -340,6 +340,42 @@ void main() {
     });
   });
 
+  group("the lines down a panel", () {
+    testWidgets("are one: the one under where the element sits",
+        (tester) async {
+      // Most elements are one run of lines answering one question -- what is
+      // this path, what is this button, what does this picture look like --
+      // and a rule between each pair turned that into five answers. What is
+      // left is the gap, which is why it is three times the gap between two
+      // lines of one group.
+      //
+      // The position row keeps its rule, because where an element sits really
+      // is a different subject from what it is.
+      //
+      // Not every kind: a chart and a table are several subjects and say so.
+      for (var kind in [
+        ElementKind.line,
+        ElementKind.button,
+        ElementKind.shape,
+        ElementKind.path,
+        ElementKind.image,
+        ElementKind.counter,
+        ElementKind.player,
+      ]) {
+        var document = const CanvasDocument();
+        var element = newElement(kind, document);
+        var controller = CanvasController(document.addElement(element));
+        addTearDown(controller.dispose);
+        controller.selectOnly(element.id);
+        await pump(tester, CanvasDesignPanel(controller: controller),
+            width: 420);
+
+        expect(find.byType(CanvasGroupRule), findsOneWidget,
+            reason: "${kind.label} draws more than the position rule");
+      }
+    });
+  });
+
   group("the space between groups", () {
     testWidgets("is the same above a rule as below it", (tester) async {
       // Nearer one group than the other, a rule reads as belonging to that
