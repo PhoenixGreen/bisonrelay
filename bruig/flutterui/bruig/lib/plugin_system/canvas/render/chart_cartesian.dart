@@ -910,11 +910,11 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         if (run.length < 2) continue;
         var pts = [for (var i in run) points[i]];
         path.addPath(_linePath(pts, smooth), Offset.zero);
-        if (!marks) continue;
         for (var k = 0; k < run.length - 1; k++) {
           // Either end: a stretch running into an estimated year is as
           // uncertain as the year itself.
-          var soft = data.isEstimated(run[k]) || data.isEstimated(run[k + 1]);
+          var soft = marks &&
+              (data.isEstimated(run[k]) || data.isEstimated(run[k + 1]));
           (soft ? dashed : solid)
               .addPath(_segmentPath(pts, k, smooth), Offset.zero);
         }
@@ -973,18 +973,26 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         // Across the plot, so the line changes colour along its length
         // rather than each segment being its own gradient.
         ..shader = shader;
-      if (!marks) {
+      // The series' own style -- a stroke, a run of dashes, a run of dots --
+      // which is a different statement from the dashes that mark an estimated
+      // year. A dotted series stays dotted across an estimated stretch, and
+      // the faintness carries the estimate on its own.
+      var pattern = series.lineStyle.pattern;
+      if (!marks && pattern == null) {
         canvas.drawPath(path, stroke);
       } else {
-        canvas.drawPath(solid, stroke);
+        canvas.drawPath(
+            pattern == null ? solid : _dashed(solid, weight, pattern), stroke);
         // Dashed *and* faint, the same two things the bars say: how certain
         // the figure is, said in the weight of the mark.
         canvas.drawPath(
-            _dashed(dashed, weight),
+            _dashed(dashed, weight, pattern ?? estimatedDash),
             Paint()
               ..style = PaintingStyle.stroke
               ..strokeWidth = weight
-              ..strokeCap = StrokeCap.butt
+              // Round for a dot, which is a dash of almost no length and is
+              // nothing at all without one. See ChartLineStyle.pattern.
+              ..strokeCap = pattern == null ? StrokeCap.butt : StrokeCap.round
               ..strokeJoin = StrokeJoin.round
               ..color = colour.withValues(alpha: colour.a * estimatedFade * 2)
               ..shader = shader);
@@ -1088,11 +1096,12 @@ Path _segmentPath(List<Offset> points, int i, bool smooth) {
   return path;
 }
 
-/// _dashed is [path] as a run of dashes, or the path itself where the weight
-/// makes no sense.
-Path _dashed(Path path, double weight) {
+/// _dashed is [path] as a run of dashes or dots, or the path itself where the
+/// weight makes no sense.
+Path _dashed(Path path, double weight, [List<double> pattern = estimatedDash]) {
   if (weight <= 0) return path;
-  var on = estimatedDash[0] * weight, off = estimatedDash[1] * weight;
+  var on = pattern[0] * weight, off = pattern[1] * weight;
+  if (on + off <= 0) return path;
   var out = Path();
   for (var metric in path.computeMetrics()) {
     var at = 0.0;

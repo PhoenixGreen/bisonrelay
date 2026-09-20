@@ -621,6 +621,19 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
             : _writeSeries(i, series.copyWith(width: v)),
         onCommit: widget.onCommit,
       ),
+      // A stroke, a run of dashes or a run of dots. Its own setting per
+      // series rather than the chart's, because that is the point of it: a
+      // projection beside a measurement, a target beside a total. Nothing to
+      // style on a scatter, which is dots already.
+      if (kind.usesSmooth)
+        CanvasDropdown<ChartLineStyle>(
+          key: ValueKey("seriesLineStyle$i"),
+          label: "Line",
+          value: series.lineStyle,
+          width: 78,
+          options: [for (var v in ChartLineStyle.values) (v, v.label)],
+          onChanged: (v) => _writeSeries(i, series.copyWith(lineStyle: v)),
+        ),
       // Nothing to curve on a scatter, which is unconnected by definition.
       if (kind.usesSmooth)
         CanvasToggle(

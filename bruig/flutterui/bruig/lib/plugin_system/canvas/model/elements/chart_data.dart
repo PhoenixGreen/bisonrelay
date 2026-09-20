@@ -19,6 +19,40 @@ import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 // the series or off the values, are questions ChartData answers.
 
 /// ChartType is which drawing the numbers get.
+/// ChartLineStyle is what a line is drawn as: a stroke, a run of dashes, or a
+/// run of dots.
+///
+/// A property of the series, and a different statement from the dashes that
+/// mark an estimated year. Those say "this figure was worked out"; this says
+/// "this line is a different kind of thing from the one beside it" -- a
+/// projection against a measurement, a target against a total. A series drawn
+/// dotted stays dotted across an estimated stretch, where the faintness
+/// carries the estimate on its own.
+enum ChartLineStyle {
+  solid("Solid"),
+  dashed("Dashed"),
+  dotted("Dotted");
+
+  final String label;
+  const ChartLineStyle(this.label);
+
+  static ChartLineStyle fromName(String? name) => values.firstWhere(
+        (s) => s.name == name,
+        orElse: () => ChartLineStyle.solid,
+      );
+
+  /// pattern is the on and off lengths, in multiples of the line's own
+  /// weight, or null for a line drawn straight through.
+  ///
+  /// A dot is a dash of almost no length: with a round cap, that is a circle
+  /// the width of the line, which is what a dotted line is made of.
+  List<double>? get pattern => switch (this) {
+        ChartLineStyle.solid => null,
+        ChartLineStyle.dashed => const [2.6, 2.0],
+        ChartLineStyle.dotted => const [0.02, 1.9],
+      };
+}
+
 /// missingValue is a cell nobody filled in.
 ///
 /// A NaN rather than a nullable double, so that a series' values stay a plain
@@ -149,6 +183,10 @@ class ChartSeries {
   /// style, since there is one axis and it cannot be two things.
   final ChartNumbers? numbers;
 
+  /// lineStyle is whether this series is drawn as a stroke, a run of dashes
+  /// or a run of dots. Only meaningful where the series is drawn as a line.
+  final ChartLineStyle lineStyle;
+
   /// hidden takes this series off the chart without taking it out of the
   /// table.
   ///
@@ -220,6 +258,7 @@ class ChartSeries {
     this.numbers,
     this.gradient,
     this.hidden = false,
+    this.lineStyle = ChartLineStyle.solid,
     this.width = 0,
     this.delay = 0,
     this.corner,
@@ -280,6 +319,7 @@ class ChartSeries {
     ChartNumbers? numbers,
     GradientSpec? gradient,
     bool? hidden,
+    ChartLineStyle? lineStyle,
     double? width,
     double? delay,
     double? corner,
@@ -308,6 +348,9 @@ class ChartSeries {
         numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
         gradient: oneColour ? null : (gradient ?? this.gradient),
         hidden: hidden ?? this.hidden,
+        lineStyle: drawnLikeChart
+            ? ChartLineStyle.solid
+            : (lineStyle ?? this.lineStyle),
         width: drawnLikeChart ? 0 : (width ?? this.width),
         delay: delay ?? this.delay,
         corner: drawnLikeChart ? null : (corner ?? this.corner),
@@ -327,6 +370,7 @@ class ChartSeries {
         if (numbers != null) "numbers": numbers!.toJson(),
         if (gradient != null) "gradient": gradient!.toJson(),
         if (hidden) "off": true,
+        if (lineStyle != ChartLineStyle.solid) "line": lineStyle.name,
         if (width > 0) "width": width,
         if (delay != 0) "delay": delay,
         // Written only where this series has been given its own, so a chart
@@ -358,6 +402,7 @@ class ChartSeries {
           ? GradientSpec.fromJson(json["gradient"] as Map<String, dynamic>)
           : null,
       hidden: json["off"] == true,
+      lineStyle: ChartLineStyle.fromName(json["line"] as String?),
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
           ? (json["delay"] as num).toDouble().clamp(-1.0, 1.0)
