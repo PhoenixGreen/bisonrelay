@@ -634,6 +634,15 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           options: [for (var v in ChartLineStyle.values) (v, v.label)],
           onChanged: (v) => _writeSeries(i, series.copyWith(lineStyle: v)),
         ),
+      // The space between this line and the next one. Only where there is a
+      // next one to fill to, which is what makes the switch mean something.
+      if (kind.usesSmooth && i < data.series.length - 1)
+        CanvasToggle(
+          key: ValueKey("seriesBand$i"),
+          label: "Band",
+          value: series.band,
+          onChanged: (v) => _writeSeries(i, series.copyWith(band: v)),
+        ),
       // Nothing to curve on a scatter, which is unconnected by definition.
       if (kind.usesSmooth)
         CanvasToggle(
@@ -684,11 +693,16 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           ),
         ],
       ],
-      CanvasHint(leads
-          ? "How this series is drawn. Every other series drawn the same way "
-              "takes these until it is given its own."
-          : "How this series is drawn. It follows the first series drawn the "
-              "same way until it is changed here."),
+      CanvasHint("${leads ? "How this series is drawn. Every other series "
+              "drawn the same way takes these until it is given its own." : "How this series is drawn. It follows the first series drawn "
+              "the same way until it is changed here."} "
+          "Line is this one's own either way: solid, dashed or dotted says "
+          "what kind of thing it is — a projection beside a measurement — "
+          "which is a different question from whether a year's figure was "
+          "worked out."
+          "${i < data.series.length - 1 ? " Band fills the space between this "
+              "line and the next one down the list, fading from this "
+              "colour into that one's." : ""}"),
     ];
   }
 

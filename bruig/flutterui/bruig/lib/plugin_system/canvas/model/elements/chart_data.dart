@@ -183,6 +183,18 @@ class ChartSeries {
   /// style, since there is one axis and it cannot be two things.
   final ChartNumbers? numbers;
 
+  /// band fills the space between this line and the next one.
+  ///
+  /// "The next one" rather than a series named or numbered, because that is
+  /// the only way of saying it that survives the series being reordered --
+  /// and because a band is nearly always between a pair that sit together
+  /// for exactly that reason: a budget and what was paid out of it, a high
+  /// and a low, a forecast and an outturn.
+  ///
+  /// The fill fades from this series' colour into the next one's, so the band
+  /// says which two lines it belongs to without a third colour to explain.
+  final bool band;
+
   /// lineStyle is whether this series is drawn as a stroke, a run of dashes
   /// or a run of dots. Only meaningful where the series is drawn as a line.
   final ChartLineStyle lineStyle;
@@ -258,6 +270,7 @@ class ChartSeries {
     this.numbers,
     this.gradient,
     this.hidden = false,
+    this.band = false,
     this.lineStyle = ChartLineStyle.solid,
     this.width = 0,
     this.delay = 0,
@@ -319,6 +332,7 @@ class ChartSeries {
     ChartNumbers? numbers,
     GradientSpec? gradient,
     bool? hidden,
+    bool? band,
     ChartLineStyle? lineStyle,
     double? width,
     double? delay,
@@ -348,6 +362,7 @@ class ChartSeries {
         numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
         gradient: oneColour ? null : (gradient ?? this.gradient),
         hidden: hidden ?? this.hidden,
+        band: drawnLikeChart ? false : (band ?? this.band),
         lineStyle: drawnLikeChart
             ? ChartLineStyle.solid
             : (lineStyle ?? this.lineStyle),
@@ -371,6 +386,7 @@ class ChartSeries {
         if (gradient != null) "gradient": gradient!.toJson(),
         if (hidden) "off": true,
         if (lineStyle != ChartLineStyle.solid) "line": lineStyle.name,
+        if (band) "band": true,
         if (width > 0) "width": width,
         if (delay != 0) "delay": delay,
         // Written only where this series has been given its own, so a chart
@@ -403,6 +419,7 @@ class ChartSeries {
           : null,
       hidden: json["off"] == true,
       lineStyle: ChartLineStyle.fromName(json["line"] as String?),
+      band: json["band"] == true,
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
           ? (json["delay"] as num).toDouble().clamp(-1.0, 1.0)

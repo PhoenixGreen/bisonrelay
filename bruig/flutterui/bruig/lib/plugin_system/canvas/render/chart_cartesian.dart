@@ -921,22 +921,55 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       }
       // Traced from its start rather than grown from the axis: the line is
       // cut short at the point it has reached, and the area under it with it.
+      //
+      // How far it has got, as a place on the canvas rather than as a
+      // fraction of each piece. The styled strokes are one path per stretch
+      // -- that is how a run of dashes is told from the solid part either
+      // side of it -- and trimming each of those by the fraction drew a
+      // fraction of every stretch at once: a dotted line that appeared whole
+      // and faint and then filled in, rather than one drawn on from its
+      // start. Clipping to the tip draws exactly what has been reached.
+      var drawnTo = double.infinity;
       if (animating &&
           animation.preset == ChartAnimationPreset.drawOn &&
           progress < 1) {
         path = _trimmed(path, progress);
-        solid = _trimmed(solid, progress);
-        dashed = _trimmed(dashed, progress);
+        drawnTo = _lastX(path);
         // A point the line has not reached yet is not there yet, which is the
         // same thing as a point with no reading as far as the dots and the
         // written values are concerned. Marked rather than dropped, so that
         // every point keeps the index of the row it came from.
-        var tip = _lastX(path);
         for (var i = 0; i < n; i++) {
-          if (points[i].dx > tip) present[i] = false;
+          if (points[i].dx > drawnTo) present[i] = false;
         }
       }
       var shader = seriesShader(series, plot, alpha: alpha);
+
+      // The space between this line and the next one, where it has been asked
+      // for: a budget against what was paid out of it, a high against a low.
+      // Fading from this series' colour into the next one's, so the band says
+      // which two lines it belongs to without a third colour to explain --
+      // and drawn before either of them, because a band is the ground they
+      // stand on.
+      if (series.band) {
+        var next = _nextDrawn(data, s);
+        if (next >= 0) {
+          var pair =
+              _bandPath(data, next, points, present, n, xAt, yAt, drawnTo);
+          if (pair != null) {
+            canvas.drawPath(
+                pair,
+                Paint()
+                  ..shader = ui.Gradient.linear(
+                      Offset(0, plot.top), Offset(0, plot.bottom), [
+                    colour.withValues(alpha: colour.a * 0.30 * alpha),
+                    data.series[next].color.withValues(
+                        alpha: data.series[next].color.a * 0.30 * alpha),
+                  ]));
+          }
+        }
+      }
+
       if (kind == ChartType.area) {
         // Closed at the line's own tip rather than at the last point it has
         // passed. Using the last *data* point left the fill's right edge
@@ -981,6 +1014,14 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       if (!marks && pattern == null) {
         canvas.drawPath(path, stroke);
       } else {
+        var clipped = drawnTo.isFinite;
+        if (clipped) {
+          canvas.save();
+          // Generous above and below, and hard at the tip: the only edge that
+          // means anything here is how far along the line has got.
+          canvas.clipRect(Rect.fromLTRB(plot.left - weight * 2,
+              plot.top - plot.height, drawnTo, plot.bottom + plot.height));
+        }
         canvas.drawPath(
             pattern == null ? solid : _dashed(solid, weight, pattern), stroke);
         // Dashed *and* faint, the same two things the bars say: how certain
@@ -996,6 +1037,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
               ..strokeJoin = StrokeJoin.round
               ..color = colour.withValues(alpha: colour.a * estimatedFade * 2)
               ..shader = shader);
+        if (clipped) canvas.restore();
       }
     }
 
@@ -1074,6 +1116,67 @@ const double estimatedFade = 0.34;
 /// estimatedDash is the on-off pattern an estimated stretch of line is drawn
 /// with, in multiples of the line's own weight.
 const List<double> estimatedDash = [2.2, 1.8];
+
+/// _nextDrawn is the series after [s] that is actually on the chart, or -1.
+///
+/// Past the hidden ones, because a band between a line and something nobody
+/// can see is a shape with one visible edge -- and switching a series off
+/// from the key should take its band with it rather than leave the band
+/// hanging off the line above.
+int _nextDrawn(ChartData data, int s) {
+  for (var i = s + 1; i < data.series.length; i++) {
+    if (!data.series[i].hidden) return i;
+  }
+  return -1;
+}
+
+/// _bandPath is the closed shape between one line and the next.
+///
+/// Only across the run where both of them have a reading. A band over a year
+/// one of the two has no figure for would be a claim about a distance between
+/// a number and nothing.
+Path? _bandPath(
+  ChartData data,
+  int other,
+  List<Offset> points,
+  List<bool> present,
+  int n,
+  double Function(int) xAt,
+  double Function(double) yAt,
+  double drawnTo,
+) {
+  var path = Path();
+  var any = false;
+  var run = <int>[];
+
+  void close() {
+    if (run.length < 2) {
+      run = [];
+      return;
+    }
+    path.moveTo(points[run.first].dx, points[run.first].dy);
+    for (var i in run.skip(1)) {
+      path.lineTo(points[i].dx, points[i].dy);
+    }
+    for (var i in run.reversed) {
+      path.lineTo(xAt(i), yAt(data.valueAt(other, i)));
+    }
+    path.close();
+    any = true;
+    run = [];
+  }
+
+  for (var i = 0; i < n; i++) {
+    // Both sides, and only as far as the drawing has got.
+    if (present[i] && data.hasValueAt(other, i) && points[i].dx <= drawnTo) {
+      run.add(i);
+      continue;
+    }
+    close();
+  }
+  close();
+  return any ? path : null;
+}
 
 /// _segmentPath is the one stretch from `points[i]` to `points[i + 1]`, drawn
 /// exactly as [_linePath] would draw it.
