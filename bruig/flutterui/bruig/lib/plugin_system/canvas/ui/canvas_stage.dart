@@ -163,6 +163,17 @@ class CanvasStageState extends State<CanvasStage> {
   ChartElement? _pendingLegend;
   int _pendingLegendAt = -1;
 
+  /// _legendHold is the timer running while a key is held down, and
+  /// _legendHoldDelay how long it has to be held.
+  ///
+  /// Held, a key stops being a row of switches and becomes a thing to move.
+  /// It needs the gesture because the two ordinary ones are already spoken
+  /// for: a press switches a series off and a drag moves the chart, and a key
+  /// that the chart lays out has no grip of its own to aim at -- it is a few
+  /// words against the plot, which is what made it so hard to pick up.
+  Timer? _legendHold;
+  static const Duration _legendHoldDelay = Duration(milliseconds: 400);
+
   /// _settingCounter is the counter whose Set button is being typed into, and
   /// _settingAt which button that is.
   String? _settingCounter;
@@ -365,6 +376,7 @@ class CanvasStageState extends State<CanvasStage> {
   @override
   void dispose() {
     _previewDebounce?.cancel();
+    _legendHold?.cancel();
     _backgrounds.dispose();
     _scroll.dispose();
     controller.removeListener(_onChanged);
@@ -974,6 +986,41 @@ class CanvasStageState extends State<CanvasStage> {
     controller.endInteraction();
   }
 
+  /// _holdLegend takes hold of a chart's key, so a press that is held turns
+  /// into a move of the key rather than a press on one of its switches.
+  ///
+  /// The key is given the place it is already drawn in, so it does not jump
+  /// when it stops being laid out by the chart. From then on it is a placed
+  /// label like the title: dragged directly, and put back by the button in
+  /// the Legend settings.
+  void _holdLegend(ChartElement e) {
+    _legendHold = null;
+    var current = document.elementById(e.id);
+    if (current is! ChartElement || current.locked) return;
+    var bounds = current.boundsAt(controller.frame);
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    var block = chartLegendBlock(current, bounds);
+    if (block.isEmpty) return;
+
+    // What was pressed is not a switch any more.
+    _pendingLegend = null;
+    _pendingLegendAt = -1;
+
+    if (!current.legend.hasPlace) {
+      controller.replaceElement(
+          current.copyWith(
+            legend: current.legend.copyWith(
+              x: (block.left - bounds.left) / bounds.width,
+              y: (block.top - bounds.top) / bounds.height,
+            ),
+          ),
+          transient: true);
+    }
+    _labelGrab = ChartLabelGrab(
+        ChartLabelPart.legend, false, _toDocument(_pressedAt) - block.topLeft);
+    setState(() => _mode = _DragMode.chartLabel);
+  }
+
   /// _counterButtonAt is which of a counter's buttons a document point is in,
   /// or -1 for none.
   int _counterButtonAt(CounterElement e, Offset doc) {
@@ -1287,6 +1334,17 @@ class CanvasStageState extends State<CanvasStage> {
       var grab = chartLabelGrabAt(
           chart, chart.boundsAt(controller.frame), doc, _docSlop);
       if (grab != null) {
+        // A placed key is both the thing that moves and the row of switches,
+        // so the press is armed here too and which of the two happened is
+        // decided on release by how far the pointer travelled.
+        if (grab.part == ChartLabelPart.legend &&
+            controller.selection.length == 1) {
+          var at = _legendSeriesAt(chart, doc);
+          if (at >= 0) {
+            _pendingLegend = chart;
+            _pendingLegendAt = at;
+          }
+        }
         _labelGrab = grab;
         _mode = _DragMode.chartLabel;
         controller.beginInteraction();
@@ -1375,6 +1433,8 @@ class CanvasStageState extends State<CanvasStage> {
       if (at >= 0) {
         _pendingLegend = element;
         _pendingLegendAt = at;
+        // Held rather than tapped, the same press moves the key instead.
+        _legendHold = Timer(_legendHoldDelay, () => _holdLegend(element));
         _beginTransform(_DragMode.move, null);
         return;
       }
@@ -2078,6 +2138,12 @@ class CanvasStageState extends State<CanvasStage> {
   int? _columnGrab;
 
   void _onPointerMove(PointerMoveEvent event) {
+    // A press that travels is a drag of the chart, not a hold of its key.
+    if (_legendHold != null &&
+        (event.localPosition - _pressedAt).distance > _buttonClickSlop) {
+      _legendHold?.cancel();
+      _legendHold = null;
+    }
     if (_painting != null) {
       _paintStrokeAt(_toDocument(event.localPosition));
       return;
@@ -2367,6 +2433,9 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   void _onPointerUp(PointerUpEvent event) {
+    // Let go before it was held long enough, so it was a press after all.
+    _legendHold?.cancel();
+    _legendHold = null;
     if (_painting != null) {
       _commitStroke();
       return;

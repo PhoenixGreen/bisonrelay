@@ -804,7 +804,7 @@ List<Widget> chartSettings(
         ),
       ],
       more: [
-        if (e.showLegend && e.floatingLabels && e.legend.hasPlace)
+        if (e.showLegend && e.legend.hasPlace)
           CanvasIconButton(
             icon: Icons.filter_center_focus,
             tooltip: "Put the key back where Place says",

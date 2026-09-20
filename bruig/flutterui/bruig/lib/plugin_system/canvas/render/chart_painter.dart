@@ -88,7 +88,9 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     // turned on used to draw nothing at all, which reads as the switch being
     // broken rather than as the legend being unnecessary -- and a single
     // series with a name worth reading is a good reason to want one.
-    if (e.showLegend && data.series.isNotEmpty) {
+    // Unless it has been dragged off its slot, in which case it takes no
+    // room and is drawn over the plot below, like a placed label.
+    if (e.showLegend && data.series.isNotEmpty && !e.legend.hasPlace) {
       area = _legend(canvas, area, e, showing);
     }
   }
@@ -133,6 +135,11 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
     if (e.showLegend && data.series.isNotEmpty) {
       _legend(canvas, rect, e, showing);
     }
+  } else if (e.showLegend && data.series.isNotEmpty && e.legend.hasPlace) {
+    // A key dragged off its slot, on a chart whose labels are still laid out
+    // for it. Drawn here for the same reason a placed label is: it was put
+    // over the plot on purpose.
+    _legend(canvas, rect, e, showing);
   }
 }
 
@@ -143,7 +150,16 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
 /// the stage has to hit-test exactly what was drawn -- and a legend's size is
 /// decided by measuring its own text, which is not something to reimplement.
 Map<ChartLabelPart, Rect> chartLabelPlaces(ChartElement e, Rect rect) {
-  if (!e.floatingLabels) return const {};
+  if (!e.floatingLabels) {
+    // The key on its own, where it has been dragged off the slot Place gives
+    // it. Nothing else here can be moved while the chart is laying its
+    // writing out, but the key is drawn over the plot once it has a place of
+    // its own, and a thing that is drawn floating has to be grabbable.
+    if (e.showLegend && e.legend.hasPlace && e.data.series.isNotEmpty) {
+      return {ChartLabelPart.legend: _legendBlock(e, rect, 1)};
+    }
+    return const {};
+  }
   return {
     if (e.titleBox.show && e.title.isNotEmpty)
       ChartLabelPart.title: _placeOf(e.titleBox, defaultTitlePlacement, rect),
@@ -428,21 +444,7 @@ List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
     {double reveal = 1}) {
   if (!e.showLegend || e.data.series.isEmpty) return const [];
 
-  // The same walk the painter takes: the body, then whatever the title and
-  // the description have left of it. Into a canvas nobody keeps, which is how
-  // legendLeavesForTest asks the same question -- measuring a label means
-  // laying it out, and laying it out is what the drawing does.
-  var body = e.body.rectIn(bounds);
-  var area = body;
-  if (!e.floatingLabels) {
-    var scratch = ui.Canvas(ui.PictureRecorder());
-    area = _flowLabel(scratch, area, body, e.title, e.titleBox, e.titleSpec);
-    area = _flowLabel(scratch, area, body, e.description, e.descriptionBox,
-        descriptionSpec(e));
-  } else {
-    area = bounds;
-  }
-
+  var area = _legendArea(e, bounds);
   var layout = _measureLegend(e, area, reveal);
   if (layout == null) return const [];
 
@@ -467,10 +469,28 @@ List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
   return out;
 }
 
+/// _legendArea is the rectangle the key is laid out in: the whole box once it
+/// floats, and whatever the title and the description have left of the plot
+/// while the chart is arranging them.
+///
+/// The same walk the painter takes, into a canvas nobody keeps -- measuring a
+/// label means laying it out, and laying it out is what the drawing does.
+Rect _legendArea(ChartElement e, Rect bounds) {
+  if (e.floatingLabels || e.legend.hasPlace) return bounds;
+  var body = e.body.rectIn(bounds);
+  var scratch = ui.Canvas(ui.PictureRecorder());
+  var area = _flowLabel(scratch, body, body, e.title, e.titleBox, e.titleSpec);
+  return _flowLabel(
+      scratch, area, body, e.description, e.descriptionBox, descriptionSpec(e));
+}
+
 /// _legendOrigin is the top left corner the key is drawn from.
 Offset _legendOrigin(ChartElement e, Rect area, Size size) {
-  // Dragged somewhere of its own, once the labels are floating.
-  if (e.floatingLabels && e.legend.hasPlace) {
+  // Dragged somewhere of its own. The key is placed on its own terms rather
+  // than only when the labels are floating: it is the one piece a reader
+  // presses as well as reads, and a key that can only be moved by first
+  // putting the title over the chart is a key most people never move.
+  if (e.legend.hasPlace) {
     return Offset(area.left + e.legend.x * area.width,
         area.top + e.legend.y * area.height);
   }
@@ -487,6 +507,17 @@ Rect _legendBlock(ChartElement e, Rect area, double reveal) {
   var layout = _measureLegend(e, area, reveal);
   if (layout == null) return Rect.zero;
   return _legendOrigin(e, area, layout.size) & layout.size;
+}
+
+/// chartLegendBlock is where the whole key is drawn, in the element's own
+/// coordinates, whether the chart is laying it out or it has been placed.
+///
+/// The stage needs it to take hold of a key that has never been moved: the
+/// place it is given on the first drag is the place it is already in, so it
+/// does not jump out from under the pointer.
+Rect chartLegendBlock(ChartElement e, Rect bounds, {double reveal = 1}) {
+  if (!e.showLegend || e.data.series.isEmpty) return Rect.zero;
+  return _legendBlock(e, _legendArea(e, bounds), reveal);
 }
 
 /// _legend draws the key and returns what is left for the chart.
