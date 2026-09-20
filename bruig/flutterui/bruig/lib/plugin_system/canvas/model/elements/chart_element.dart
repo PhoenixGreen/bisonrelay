@@ -394,6 +394,19 @@ class ChartElement extends CanvasElement {
   final double barGap;
   final double barRadius;
 
+  /// barFloor is the least height a bar is drawn at, in pixels, so a reading
+  /// of nought still makes a mark.
+  ///
+  /// A bar of no height has no pixels, which means a measured nought and a
+  /// year nobody has a figure for look identical -- and they are not the same
+  /// fact at all. A sliver says "this was measured, and it was nothing"; a
+  /// blank says "there is nothing to measure". See ChartData.hasValueAt, which
+  /// is the other half of the distinction.
+  ///
+  /// Zero, the default, draws what it always drew. The bars that have a height
+  /// of their own are never shortened to this -- it is a floor, not a size.
+  final double barFloor;
+
   /// innerRadius is the hole in a donut, as a fraction of the outer radius.
   final double innerRadius;
 
@@ -469,6 +482,7 @@ class ChartElement extends CanvasElement {
     this.yMax = double.nan,
     this.barGap = 0.3,
     this.barRadius = 4,
+    this.barFloor = 0,
     this.innerRadius = 0.55,
     this.showPoints = false,
     this.pointSize = 0,
@@ -625,6 +639,7 @@ class ChartElement extends CanvasElement {
     double? yMax,
     double? barGap,
     double? barRadius,
+    double? barFloor,
     double? innerRadius,
     bool? showPoints,
     double? pointSize,
@@ -679,6 +694,7 @@ class ChartElement extends CanvasElement {
           yMax: yMax,
           barGap: barGap,
           barRadius: barRadius,
+          barFloor: barFloor,
           innerRadius: innerRadius,
           showPoints: showPoints,
           pointSize: pointSize,
@@ -737,6 +753,7 @@ class ChartElement extends CanvasElement {
     double? yMax,
     double? barGap,
     double? barRadius,
+    double? barFloor,
     double? innerRadius,
     bool? showPoints,
     double? pointSize,
@@ -794,6 +811,7 @@ class ChartElement extends CanvasElement {
           yMax: yMax ?? this.yMax,
           barGap: barGap ?? this.barGap,
           barRadius: barRadius ?? this.barRadius,
+          barFloor: barFloor ?? this.barFloor,
           innerRadius: innerRadius ?? this.innerRadius,
           showPoints: showPoints ?? this.showPoints,
           pointSize: pointSize ?? this.pointSize,
@@ -856,6 +874,9 @@ class ChartElement extends CanvasElement {
         if (!yMax.isNaN) "ymax": yMax,
         "barGap": barGap,
         "barRadius": barRadius,
+        // Only where it is asked for, so a chart that does not use it saves
+        // the file it always did.
+        if (barFloor > 0) "barFloor": barFloor,
         "inner": innerRadius,
         "sw": strokeWidth,
         if (showPoints) "points": true,
@@ -942,6 +963,7 @@ class ChartElement extends CanvasElement {
           yMax: jsonDouble(json["ymax"], double.nan),
           barGap: jsonDouble(json["barGap"], 0.3),
           barRadius: jsonDouble(json["barRadius"], 4),
+          barFloor: jsonDouble(json["barFloor"], 0),
           innerRadius: jsonDouble(json["inner"], 0.55),
           strokeWidth: jsonDouble(json["sw"], 3),
           showPoints: jsonBool(json["points"], false),

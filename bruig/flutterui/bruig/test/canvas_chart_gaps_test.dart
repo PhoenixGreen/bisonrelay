@@ -19,7 +19,8 @@ const int _w = 300, _h = 200;
 const Rect _rect = Rect.fromLTWH(0, 0, 300, 200);
 const Color _ink = Color(0xFF30E0A0);
 
-ChartElement _chart(List<double> values, {ChartType type = ChartType.bar}) =>
+ChartElement _chart(List<double> values,
+        {ChartType type = ChartType.bar, double floor = 0}) =>
     ChartElement(
       const ElementBase(id: "c", width: 300, height: 200),
       type: type,
@@ -30,6 +31,7 @@ ChartElement _chart(List<double> values, {ChartType type = ChartType.bar}) =>
       showYLabels: false,
       showPoints: false,
       strokeWidth: 4,
+      barFloor: floor,
       data: ChartData(
         categories: const ["a", "b", "c", "d", "e"],
         series: [ChartSeries(name: "A", color: _ink, values: values)],
@@ -119,18 +121,26 @@ void main() {
       expect(gap, 0, reason: "a blank is nothing at all");
     });
 
-    testWidgets("and a nought draws nothing either, for now", (tester) async {
-      // Which is the one place this distinction is still invisible: a bar of
-      // no height has no pixels, so on a bar chart a nought and a blank look
-      // alike even though they no longer mean alike. The fix is a least bar
-      // height -- a sliver standing for "measured, and it was nothing" -- and
-      // it is not built yet. Pinned so that building it is a change to this
-      // line rather than a surprise.
-      late int zero;
+    testWidgets("and a nought is told apart from it by the least height",
+        (tester) async {
+      // A bar of no height has no pixels, so with no floor a measured nought
+      // and a year nobody has a figure for look identical. A sliver says
+      // "measured, and it was nothing"; nothing at all says "there is nothing
+      // to measure". Dash's budget is nought every year by design, and that
+      // is the whole point of its chart.
+      late int bare, floored, gap;
       await tester.runAsync(() async {
-        zero = _column(await _paint(_chart(const [5, 0, 5, 5, 5])), 1, 5);
+        bare = _column(await _paint(_chart(const [5, 0, 5, 5, 5])), 1, 5);
+        floored = _column(
+            await _paint(_chart(const [5, 0, 5, 5, 5], floor: 4)), 1, 5);
+        gap = _column(
+            await _paint(_chart(const [5, missingValue, 5, 5, 5], floor: 4)),
+            1,
+            5);
       });
-      expect(zero, 0);
+      expect(bare, 0, reason: "no floor, no pixels");
+      expect(floored, greaterThan(0), reason: "a floor gives it a sliver");
+      expect(gap, 0, reason: "and a blank still draws nothing at all");
     });
 
     testWidgets("breaks a line rather than drawing across it", (tester) async {

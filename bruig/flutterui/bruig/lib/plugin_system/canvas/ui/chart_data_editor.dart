@@ -36,6 +36,9 @@ class ChartStyleDefaults {
   final double width;
   final double gap;
   final double corner;
+
+  /// floor is the least height a bar is drawn at. See ChartElement.barFloor.
+  final double floor;
   final bool smooth;
   final bool points;
   final double pointSize;
@@ -45,6 +48,7 @@ class ChartStyleDefaults {
     this.width = 2,
     this.gap = 0.3,
     this.corner = 4,
+    this.floor = 0,
     this.smooth = false,
     this.points = false,
     this.pointSize = 0,
@@ -55,6 +59,7 @@ class ChartStyleDefaults {
     double? width,
     double? gap,
     double? corner,
+    double? floor,
     bool? smooth,
     bool? points,
     double? pointSize,
@@ -64,6 +69,7 @@ class ChartStyleDefaults {
         width: width ?? this.width,
         gap: gap ?? this.gap,
         corner: corner ?? this.corner,
+        floor: floor ?? this.floor,
         smooth: smooth ?? this.smooth,
         points: points ?? this.points,
         pointSize: pointSize ?? this.pointSize,
@@ -502,6 +508,20 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
             onChanged: (v) => writeStyle(style.copyWith(gap: v)),
             onCommit: widget.onCommit,
           ),
+        // Also only on the series that leads: a floor is about how the bars
+        // are drawn against the axis, which is one answer for the chart.
+        if (leads)
+          CanvasNumberField(
+            key: ValueKey("seriesFloor$i"),
+            label: "Least",
+            value: style.floor,
+            min: 0,
+            max: 20,
+            decimals: 0,
+            width: 50,
+            onChanged: (v) => writeStyle(style.copyWith(floor: v)),
+            onCommit: widget.onCommit,
+          ),
         CanvasNumberField(
           key: ValueKey("seriesCorner$i"),
           label: "Corner",
@@ -516,8 +536,12 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
         ),
         CanvasHint(leads
             ? "How the bars are shaped. Spacing is the gap between one "
-                "category and the next, and every other set of bars on this "
-                "chart takes these until it is given its own."
+                "category and the next. Least is the smallest a bar is ever "
+                "drawn, in pixels: at 0 a reading of nought has no height and "
+                "so no pixels, which looks exactly like a year nobody has a "
+                "figure for — a pixel or two says \"measured, and it was "
+                "nothing\". Every other set of bars on this chart takes these "
+                "until it is given its own."
             : "How round this set of bars is. It follows the first set until "
                 "it is changed here."),
       ];

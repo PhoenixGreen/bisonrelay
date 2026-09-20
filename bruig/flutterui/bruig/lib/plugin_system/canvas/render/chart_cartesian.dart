@@ -675,6 +675,26 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       }
 
       var lo = math.min(from, to), hi = math.max(from, to);
+      // A reading of nought still makes a mark, where the chart asks for one.
+      // A bar of no height has no pixels, so a measured nought and a year
+      // nobody has a figure for looked identical -- and Dash's budget, which
+      // is never retained and so is nought every year by design, drew nothing
+      // at all where the whole point was to show that it was nought.
+      //
+      // Grown from the baseline in the direction the bar would have gone, so
+      // a floor on a chart with negative readings pushes down rather than up.
+      if (e.barFloor > 0) {
+        var span = horizontal ? plot.width : plot.height;
+        var least = span <= 0 ? 0.0 : e.barFloor / span;
+        if (hi - lo < least) {
+          if (to < from) {
+            lo = hi - least;
+          } else {
+            hi = lo + least;
+          }
+        }
+      }
+
       Rect bar;
       if (horizontal) {
         var y = slotStart + inset + (grouped ? barSize * at : 0);
