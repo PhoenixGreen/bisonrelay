@@ -257,18 +257,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
     Provider.of<CanvasPreferences>(context, listen: false).panel = panel.index;
   }
 
-  /// _confirmDiscard asks before throwing away unsaved work.
+  /// _confirmDiscard keeps unsaved work, and asks only where it cannot.
   ///
-  /// Asked before opening a different canvas and before starting from a
+  /// Called before opening a different canvas and before starting from a
   /// preset, which are the two ways to lose one.
   ///
-  /// Still asked even though a saved canvas writes itself out a few seconds
-  /// after the editing stops -- see CanvasController.scheduleAutosave. Two
-  /// cases are left: a canvas whose autosave has not fired yet, and one that
-  /// has never been saved at all, which has nowhere to be written to and is
-  /// the whole of what somebody loses by walking away from a preset.
+  /// A canvas with a file of its own is saved rather than asked about. It
+  /// writes itself out three seconds after the editing stops -- see
+  /// CanvasController.scheduleAutosave -- so the only way to see the question
+  /// was to move between canvases inside those three seconds, which is
+  /// exactly what somebody arranging a document does all afternoon. Asking
+  /// then is asking whether to throw away work nobody meant to throw away,
+  /// and the honest answer is always no: there is somewhere to put it, so it
+  /// goes there.
+  ///
+  /// What is left is a canvas that has never been saved -- started from a
+  /// preset, or from nothing. That one has nowhere to be written to, and
+  /// walking away from it really does lose it, so it is still worth a
+  /// question. A save that fails falls back to the question too, because
+  /// then there is no longer somewhere to put it.
   Future<bool> _confirmDiscard() async {
     if (!_controller.dirty) return true;
+    if (_controller.name != null && await _controller.save()) return true;
+    if (!mounted) return false;
     return askToConfirm(context,
         title: "Discard the changes?",
         message: "${_controller.name ?? "This canvas"} has changes that have "

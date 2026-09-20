@@ -109,6 +109,40 @@ void main() {
     return it;
   }
 
+  testWidgets("a saved canvas offers Save now beside Open", (tester) async {
+    // The autosave is three seconds of quiet away and leaving the canvas
+    // saves it, but both of those are invisible. A button that says the work
+    // is on disk is worth more than being told that it will be.
+    // Disposed by pump, which takes ownership of whatever it is handed.
+    var controller = CanvasController(const CanvasDocument(title: "Plan"));
+    controller.folder = "";
+    controller.name = "Plan";
+
+    await pump(tester, canvases: ["Plan"], controller: controller);
+    expect(find.byTooltip("Saved"), findsOneWidget,
+        reason: "nothing to write yet, and it says so");
+    expect(find.byTooltip("Save now"), findsNothing);
+
+    controller.apply(const CanvasDocument(title: "Plan", frames: 40));
+    await idle(tester);
+    expect(find.byTooltip("Save now"), findsOneWidget);
+
+    await tester.tap(find.byTooltip("Save now"));
+    await idle(tester);
+    expect(controller.dirty, isFalse);
+    expect(find.byTooltip("Saved"), findsOneWidget);
+  });
+
+  testWidgets("and a canvas with no file of its own offers Save canvas",
+      (tester) async {
+    // Which is Save As: there is nowhere to write to yet, so the press has a
+    // question to ask before it can do anything.
+    await pump(tester);
+    expect(find.text("Save canvas"), findsOneWidget);
+    expect(find.byTooltip("Save now"), findsNothing);
+    expect(find.byTooltip("Saved"), findsNothing);
+  });
+
   testWidgets("the folder you were in is where you come back to",
       (tester) async {
     // Being put at the top of the library every time is being made to walk

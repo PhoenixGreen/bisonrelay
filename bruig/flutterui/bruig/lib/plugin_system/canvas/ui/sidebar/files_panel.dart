@@ -196,6 +196,23 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
   /// Reached only by the Save chip, which appears only for a canvas with no
   /// file behind it -- one started from a preset. Everything else has a name
   /// and saves itself.
+  /// _saveNow writes this canvas out, for somebody who would rather not wait
+  /// for the autosave.
+  ///
+  /// It is three seconds of quiet away in any case, and leaving the canvas
+  /// saves it -- see CanvasScreen._confirmDiscard. This is for the moment
+  /// before either of those, which is the moment people reach for a save
+  /// button: it says the work is on disk rather than asking them to believe
+  /// it will be.
+  Future<void> _saveNow() async {
+    var snackbar = SnackBarModel.of(context);
+    var name = controller.name;
+    if (name == null) return _saveAs();
+    var ok = await controller.save();
+    if (!mounted) return;
+    ok ? snackbar.success("Saved $name.") : snackbar.error("Unable to save.");
+  }
+
   Future<void> _saveAs() async {
     var snackbar = SnackBarModel.of(context);
     var wanted = await _ask("Save canvas as", "Name",
@@ -488,13 +505,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         ),
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
         child: Wrap(spacing: 6, runSpacing: 6, children: [
-          // One button in this place, and which one depends on what is open.
-          //
-          // A canvas with no file behind it -- started from a preset, or from
-          // nothing -- has one thing that needs doing, and it is not making
-          // another canvas. Everything else is already saving itself, so Save
-          // would be a button inviting a press for no reason, and New canvas
-          // is the useful thing to offer instead.
+          // The worded button depends on what is open. A canvas with no file
+          // behind it -- started from a preset, or from nothing -- has one
+          // thing that needs doing, and it is not making another canvas.
           if (controller.name == null)
             _action(theme, Icons.save_outlined, "Save canvas", _saveAs)
           else
@@ -502,8 +515,16 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           if (_folder.isEmpty)
             _action(theme, Icons.create_new_folder_outlined, "New folder",
                 _newFolder),
-          // Icon only: it is the least used of the three and the one whose
-          // meaning survives without a word beside it.
+          // Icons only: the two least used, and the two whose meaning
+          // survives without a word beside them.
+          //
+          // Save is here even though a saved canvas writes itself out after
+          // three seconds of quiet and again on the way out. Both of those
+          // are invisible, and a button that says the work is on disk is
+          // worth more than being told it will be.
+          if (controller.name != null)
+            _iconAction(theme, Icons.save_outlined,
+                controller.dirty ? "Save now" : "Saved", _saveNow),
           _iconAction(theme, Icons.file_open_outlined,
               "Open a canvas from a file", _import),
         ]),
