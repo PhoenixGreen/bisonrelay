@@ -65,12 +65,19 @@ void main() {
 
   test("percentages and blanks do not throw", () {
     var data = ChartData.parse("\tShare\nA\t40%\nB\t\nC\tnonsense");
-    expect(data.series.single.values, [40.0, 0.0, 0.0]);
+    expect(data.valueAt(0, 0), 40.0);
+    // A cell with nothing in it is a cell nobody filled in, and the chart
+    // leaves a hole there. A cell with something unreadable in it is still a
+    // nought: that is a typo in a number, not an absence.
+    expect(data.hasValueAt(0, 1), isFalse);
+    expect(data.valueAt(0, 2), 0.0);
   });
 
   test("ragged rows are a gap, not an error", () {
     var data = ChartData.parse("\tOne\tTwo\nA\t1\t2\nB\t3");
-    expect(data.valueAt(1, 1), 0);
+    // Literally a gap now: the row ran out, so there is no reading there and
+    // the chart draws nothing rather than a bar of no height.
+    expect(data.hasValueAt(1, 1), isFalse);
     expect(data.valueAt(0, 1), 3);
   });
 

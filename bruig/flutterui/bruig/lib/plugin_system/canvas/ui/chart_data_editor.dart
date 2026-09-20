@@ -206,7 +206,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     }
     values[row] = value;
     out[series] = out[series].copyWith(values: values);
-    _write(ChartData(categories: data.categories, series: out));
+    _write(data.copyWith(series: out));
   }
 
   /// _addRow adds a category and a zero for it in every series.
@@ -215,7 +215,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
   /// short, and the next row removed then takes a value that belongs to a
   /// different row -- so the numbers walk up the table one delete at a time.
   void _addRow() {
-    _write(ChartData(
+    _write(data.copyWith(
       categories: [...data.categories, "Row ${data.categories.length + 1}"],
       series: [
         for (var s in data.series)
@@ -238,32 +238,22 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
       color: chartPalette[series.length % chartPalette.length],
       values: List.filled(data.categories.length, 0),
     ));
-    _write(ChartData(categories: data.categories, series: series));
+    _write(data.copyWith(series: series));
   }
 
   void _removeSeries(int index) {
     _openSeries.clear();
     var series = [...data.series]..removeAt(index);
-    _write(ChartData(categories: data.categories, series: series));
+    _write(data.copyWith(series: series));
   }
 
   void _writeSeries(int index, ChartSeries next) {
     var series = [...data.series];
     series[index] = next;
-    _write(ChartData(categories: data.categories, series: series));
+    _write(data.copyWith(series: series));
   }
 
-  void _removeRow(int row) {
-    var categories = [...data.categories]..removeAt(row);
-    var series = [
-      for (var s in data.series)
-        s.copyWith(
-            values: row < s.values.length
-                ? ([...s.values]..removeAt(row))
-                : s.values),
-    ];
-    _write(ChartData(categories: categories, series: series));
-  }
+  void _removeRow(int row) => _write(data.withRowRemoved(row));
 
   @override
   Widget build(BuildContext context) {
@@ -378,8 +368,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               onChanged: (v) {
                 var out = [...data.series];
                 out[i] = out[i].copyWith(name: v);
-                widget.onChanged(
-                    ChartData(categories: data.categories, series: out));
+                widget.onChanged(data.copyWith(series: out));
               },
               onCommit: widget.onCommit,
             ),
@@ -672,8 +661,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                     onChanged: (v) {
                       var out = [...data.series];
                       out[s] = out[s].copyWith(name: v);
-                      widget.onChanged(
-                          ChartData(categories: data.categories, series: out));
+                      widget.onChanged(data.copyWith(series: out));
                     },
                     onCommit: widget.onCommit,
                   ),
@@ -739,8 +727,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               onChanged: (v) {
                 var out = [...data.categories];
                 out[i] = v;
-                widget
-                    .onChanged(ChartData(categories: out, series: data.series));
+                widget.onChanged(data.copyWith(categories: out));
               },
               onCommit: widget.onCommit,
             ),
@@ -759,11 +746,33 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                   // is the number it plainly is. Refusing the separators and
                   // charting a nought is the sort of wrong that looks like
                   // the chart's fault rather than the typing's.
-                  onChanged: (v) => _withValue(s, i, cellNumber(v) ?? 0),
+                  // A cell cleared out is a cell nobody has filled in, not a
+                  // nought: the chart leaves a hole there rather than drawing
+                  // a bar of no height or a line straight across. Anything
+                  // else that will not parse is still a nought, which is what
+                  // a stray word in a pasted column has always been.
+                  onChanged: (v) => _withValue(s, i,
+                      v.trim().isEmpty ? missingValue : cellNumber(v) ?? 0),
                   onCommit: widget.onCommit,
                 ),
               ),
             ),
+          // Whether this row's figures were looked up or worked out. On the
+          // row because that is where the doubt lives: a year is sourced or
+          // it is not, and when it is not, every figure in the row came out
+          // of the same arithmetic.
+          CanvasIconButton(
+            key: ValueKey("rowEstimated$i"),
+            icon: data.isEstimated(i)
+                ? Icons.auto_graph
+                : Icons.check_circle_outline,
+            tooltip: data.isEstimated(i)
+                ? "Worked out, not looked up — drawn faint and dashed"
+                : "Looked up. Press to mark it as an estimate",
+            active: data.isEstimated(i),
+            onPressed: () =>
+                _write(data.withEstimated(i, !data.isEstimated(i))),
+          ),
           CanvasIconButton(
             icon: Icons.close,
             tooltip: "Remove this row",
@@ -794,6 +803,9 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     );
   }
 
-  static String _number(double v) =>
-      v == v.roundToDouble() ? v.round().toString() : v.toString();
+  static String _number(double v) => v.isNaN
+      ? ""
+      : v == v.roundToDouble()
+          ? v.round().toString()
+          : v.toString();
 }

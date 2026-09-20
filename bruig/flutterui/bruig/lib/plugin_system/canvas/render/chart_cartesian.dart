@@ -242,6 +242,8 @@ void paintCartesian(
       var pos = 0.0, neg = 0.0;
       for (var s = 0; s < data.series.length; s++) {
         var v = data.valueAt(s, i);
+        // A gap adds nothing to the pile it is missing from.
+        if (v.isNaN) continue;
         v >= 0 ? pos += v : neg += v;
       }
       hi = math.max(hi, pos);
@@ -256,6 +258,8 @@ void paintCartesian(
         // and the scale quietly stops being a log scale. The zeros are still
         // drawn; they sit on the floor. See _ValueRange.fraction.
         if (e.logs && v <= 0) continue;
+        // A cell nobody filled in is not a number the axis has to reach.
+        if (v.isNaN) continue;
         lo = math.min(lo, v);
         hi = math.max(hi, v);
       }
@@ -654,6 +658,10 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       var s = which[at];
       var series = data.series[s];
       var v = data.valueAt(s, i);
+      // No bar at all where there is no reading. A pot that did not exist in
+      // 2019 and one that held nothing in 2019 are different facts, and a bar
+      // of no height says the second about both.
+      if (v.isNaN) continue;
 
       double from, to;
       if (stacked) {
@@ -718,6 +726,15 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         }
       }
 
+      // A year worked out rather than looked up is drawn faint. The weight
+      // of the mark is how certain the figure is, which is a thing a chart
+      // can say without a word of explanation -- and the alternative, a
+      // footnote naming the estimated years, is a footnote nobody reads
+      // against the bar they are looking at.
+      if (data.isEstimated(i)) {
+        colour = colour.withValues(alpha: colour.a * estimatedFade);
+      }
+
       var r = math.min(
           series.cornerOn(e.barRadius), math.min(bar.width, bar.height) / 2);
       // Across the bar rather than across the plot: a gradient set on a
@@ -780,10 +797,16 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     var s = which[at];
     var series = data.series[s];
     var kind = series.typeIn(e.type);
+    // A cell nobody filled in is a hole in the line, not a reading of nought.
+    // The points stay a full-length list so that a row and its dot and its
+    // written value keep the same index; what says whether each one is there
+    // is [present], and every step below asks it.
+    var present = [for (var i = 0; i < n; i++) data.hasValueAt(s, i)];
     var points = [
-      for (var i = 0; i < n; i++) Offset(xAt(i), yAt(data.valueAt(s, i))),
+      for (var i = 0; i < n; i++)
+        Offset(xAt(i), yAt(present[i] ? data.valueAt(s, i) : 0)),
     ];
-    if (points.isEmpty) continue;
+    if (points.isEmpty || !present.contains(true)) continue;
 
     // A line is staggered by *series*, not by point: the points of one line
     // are one movement, and drawing them in turn is what "draw on" already
@@ -831,20 +854,57 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     // every other line on the chart thickening with it.
     var weight = series.widthOn(e.strokeWidth);
 
+    // The runs of consecutive readings. A line drawn straight across a year
+    // nobody has a figure for is a line claiming a figure, so each run is its
+    // own path -- and a run of one has no line at all, only its dot.
+    var runs = <List<int>>[];
+    for (var i = 0; i < n; i++) {
+      if (!present[i]) continue;
+      if (runs.isEmpty || i == 0 || !present[i - 1]) runs.add(<int>[]);
+      runs.last.add(i);
+    }
+
     if (kind != ChartType.scatter) {
-      var path =
-          _linePath(points, series.smoothOn(e.smooth) && kind.usesSmooth);
+      var smooth = series.smoothOn(e.smooth) && kind.usesSmooth;
+      // path is the whole line, which is what the area under it is closed
+      // from and what the drawing-on measures along. Where the chart marks
+      // its estimates the stroke is split in two -- the stretches either end
+      // of which was worked out rather than looked up are drawn as dashes --
+      // and where it does not, solid is the whole line and the split costs
+      // nothing.
+      var path = Path();
+      var solid = Path();
+      var dashed = Path();
+      var marks = data.marksEstimates;
+      for (var run in runs) {
+        if (run.length < 2) continue;
+        var pts = [for (var i in run) points[i]];
+        path.addPath(_linePath(pts, smooth), Offset.zero);
+        if (!marks) continue;
+        for (var k = 0; k < run.length - 1; k++) {
+          // Either end: a stretch running into an estimated year is as
+          // uncertain as the year itself.
+          var soft = data.isEstimated(run[k]) || data.isEstimated(run[k + 1]);
+          (soft ? dashed : solid)
+              .addPath(_segmentPath(pts, k, smooth), Offset.zero);
+        }
+      }
       // Traced from its start rather than grown from the axis: the line is
       // cut short at the point it has reached, and the area under it with it.
       if (animating &&
           animation.preset == ChartAnimationPreset.drawOn &&
           progress < 1) {
         path = _trimmed(path, progress);
-        points = [
-          for (var point in points)
-            if (point.dx <= _lastX(path)) point,
-        ];
-        if (points.isEmpty) points = [_firstPoint(path)];
+        solid = _trimmed(solid, progress);
+        dashed = _trimmed(dashed, progress);
+        // A point the line has not reached yet is not there yet, which is the
+        // same thing as a point with no reading as far as the dots and the
+        // written values are concerned. Marked rather than dropped, so that
+        // every point keeps the index of the row it came from.
+        var tip = _lastX(path);
+        for (var i = 0; i < n; i++) {
+          if (points[i].dx > tip) present[i] = false;
+        }
       }
       var shader = seriesShader(series, plot, alpha: alpha);
       if (kind == ChartType.area) {
@@ -852,10 +912,15 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         // passed. Using the last *data* point left the fill's right edge
         // standing still while the line ran on ahead of it, so the area
         // caught up in jumps -- one jump per category.
-        var tip = _pathEnd(path) ?? points.last;
+        var drawn = [
+          for (var i = 0; i < n; i++)
+            if (present[i]) points[i]
+        ];
+        if (drawn.isEmpty) drawn = [points.first];
+        var tip = _pathEnd(path) ?? drawn.last;
         var fill = Path.from(path)
           ..lineTo(tip.dx, plot.bottom)
-          ..lineTo(points.first.dx, plot.bottom)
+          ..lineTo(drawn.first.dx, plot.bottom)
           ..close();
         // The series' own gradient where it has one; otherwise the fade
         // into nothing that is what an area chart has always been.
@@ -869,17 +934,31 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                     colour.withValues(alpha: 0.02 * alpha),
                   ]));
       }
-      canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = weight
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round
-            ..color = colour
-            // Across the plot, so the line changes colour along its length
-            // rather than each segment being its own gradient.
-            ..shader = shader);
+      var stroke = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = weight
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = colour
+        // Across the plot, so the line changes colour along its length
+        // rather than each segment being its own gradient.
+        ..shader = shader;
+      if (!marks) {
+        canvas.drawPath(path, stroke);
+      } else {
+        canvas.drawPath(solid, stroke);
+        // Dashed *and* faint, the same two things the bars say: how certain
+        // the figure is, said in the weight of the mark.
+        canvas.drawPath(
+            _dashed(dashed, weight),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = weight
+              ..strokeCap = StrokeCap.butt
+              ..strokeJoin = StrokeJoin.round
+              ..color = colour.withValues(alpha: colour.a * estimatedFade * 2)
+              ..shader = shader);
+      }
     }
 
     // A scatter is all dots; a chart writing its values has to put them
@@ -890,6 +969,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         e.showValues ||
         series.pointsOn(e.showPoints)) {
       for (var i = 0; i < points.length; i++) {
+        if (!present[i]) continue;
         // Each dot's own arrival, when they are being dealt one at a time.
         var dot = perPoint
             ? animation.progressAt(mine, at * n + i, which.length * n)
@@ -946,6 +1026,55 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   }
 }
 
+/// estimatedFade is how much of its colour a mark keeps where the figure
+/// behind it was worked out rather than looked up.
+///
+/// A third, which is enough to read as the same series and not enough to be
+/// mistaken for a sourced one. See ChartData.estimated.
+const double estimatedFade = 0.34;
+
+/// estimatedDash is the on-off pattern an estimated stretch of line is drawn
+/// with, in multiples of the line's own weight.
+const List<double> estimatedDash = [2.2, 1.8];
+
+/// _segmentPath is the one stretch from `points[i]` to `points[i + 1]`, drawn
+/// exactly as [_linePath] would draw it.
+///
+/// The same control points, so that splitting a smoothed line into solid and
+/// dashed stretches does not change its shape: a curve through its
+/// neighbours, cut where the certainty changes rather than re-fitted.
+Path _segmentPath(List<Offset> points, int i, bool smooth) {
+  var p1 = points[i], p2 = points[i + 1];
+  var path = Path()..moveTo(p1.dx, p1.dy);
+  if (!smooth || points.length < 3) {
+    path.lineTo(p2.dx, p2.dy);
+    return path;
+  }
+  var p0 = i == 0 ? p1 : points[i - 1];
+  var p3 = i + 2 < points.length ? points[i + 2] : p2;
+  var c1 = p1 + (p2 - p0) / 6;
+  var c2 = p2 - (p3 - p1) / 6;
+  path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+  return path;
+}
+
+/// _dashed is [path] as a run of dashes, or the path itself where the weight
+/// makes no sense.
+Path _dashed(Path path, double weight) {
+  if (weight <= 0) return path;
+  var on = estimatedDash[0] * weight, off = estimatedDash[1] * weight;
+  var out = Path();
+  for (var metric in path.computeMetrics()) {
+    var at = 0.0;
+    while (at < metric.length) {
+      out.addPath(metric.extractPath(at, math.min(at + on, metric.length)),
+          Offset.zero);
+      at += on + off;
+    }
+  }
+  return out;
+}
+
 /// _trimmed is the first [fraction] of a path, by length. What draws a line on
 /// rather than growing it out of the axis.
 Path _trimmed(Path path, double fraction) {
@@ -976,8 +1105,6 @@ Offset? _pathEnd(Path path) {
   }
   return out;
 }
-
-Offset _firstPoint(Path path) => path.getBounds().topLeft;
 
 /// _linePath joins the points, optionally through a Catmull-Rom style smooth.
 ///

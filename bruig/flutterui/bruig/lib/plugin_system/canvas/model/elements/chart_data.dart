@@ -19,6 +19,16 @@ import 'package:bruig/plugin_system/canvas/model/tabular_text.dart';
 // the series or off the values, are questions ChartData answers.
 
 /// ChartType is which drawing the numbers get.
+/// missingValue is a cell nobody filled in.
+///
+/// A NaN rather than a nullable double, so that a series' values stay a plain
+/// list of doubles: every sum, every axis range, every scale that walks them
+/// goes on compiling and running, and the places that have to care ask
+/// [ChartData.hasValueAt]. NaN is also the one double that is not equal to
+/// itself, which means no arithmetic can produce it by accident and mistake a
+/// result for a gap.
+const double missingValue = double.nan;
+
 enum ChartType {
   bar("Bars", "One bar per category"),
   groupedBar("Grouped bars", "Series side by side within each category"),
@@ -287,7 +297,9 @@ class ChartSeries {
   Map<String, dynamic> toJson() => {
         "name": name,
         "color": colorToJson(color),
-        "values": values,
+        // A gap is written as a null, because JSON has no NaN. Read back by
+        // ChartSeries.fromJson.
+        "values": [for (var v in values) v.isNaN ? null : v],
         if (type != null) "type": type!.name,
         if (numbers != null) "numbers": numbers!.toJson(),
         if (gradient != null) "gradient": gradient!.toJson(),
@@ -333,8 +345,18 @@ class ChartSeries {
           : null,
       pointColor:
           json["pointColor"] == null ? null : colorFromJson(json["pointColor"]),
+      // A null in the list is a cell nobody filled in -- see
+      // ChartData.hasValueAt. Anything else that is not a number is a nought,
+      // which is what a stray string in a pasted column has always been.
       values: raw is List
-          ? [for (var v in raw) v is num ? v.toDouble() : 0.0]
+          ? [
+              for (var v in raw)
+                v == null
+                    ? missingValue
+                    : v is num
+                        ? v.toDouble()
+                        : 0.0
+            ]
           : const [],
     );
   }
@@ -366,9 +388,74 @@ class ChartData {
   final List<String> categories;
   final List<ChartSeries> series;
 
-  const ChartData({this.categories = const [], this.series = const []});
+  /// estimated marks the rows whose figures are worked out rather than looked
+  /// up, by category rather than by series.
+  ///
+  /// By category because that is where the doubt lives. A year is sourced or
+  /// it is not -- an explorer balance, a foundation's own report, a filing --
+  /// and when it is not, every figure for that year came out of the same
+  /// arithmetic. Marking it per series would be the same flag written once
+  /// per column and four chances for them to disagree.
+  ///
+  /// Empty on the charts nobody has marked, which is almost all of them, so a
+  /// chart that never uses this saves the file it always did.
+  final List<bool> estimated;
+
+  const ChartData({
+    this.categories = const [],
+    this.series = const [],
+    this.estimated = const [],
+  });
 
   bool get isEmpty => series.isEmpty || categories.isEmpty;
+
+  ChartData copyWith({
+    List<String>? categories,
+    List<ChartSeries>? series,
+    List<bool>? estimated,
+  }) =>
+      ChartData(
+        categories: categories ?? this.categories,
+        series: series ?? this.series,
+        estimated: estimated ?? this.estimated,
+      );
+
+  /// withRowRemoved takes a row out of the categories, out of every series,
+  /// and out of the estimate marks -- which is three lists that have to stay
+  /// the same length as each other.
+  ChartData withRowRemoved(int row) => ChartData(
+        categories: [...categories]..removeAt(row),
+        series: [
+          for (var s in series)
+            s.copyWith(
+                values: row < s.values.length
+                    ? ([...s.values]..removeAt(row))
+                    : s.values),
+        ],
+        estimated: row < estimated.length
+            ? ([...estimated]..removeAt(row))
+            : estimated,
+      );
+
+  /// withEstimated marks or unmarks one row.
+  ChartData withEstimated(int row, bool value) {
+    var out = [...estimated];
+    while (out.length <= row) {
+      out.add(false);
+    }
+    out[row] = value;
+    return copyWith(estimated: out);
+  }
+
+  /// isEstimated is whether [row]'s figures are worked out rather than looked
+  /// up. False for every row of a chart that does not mark them.
+  bool isEstimated(int row) =>
+      row >= 0 && row < estimated.length && estimated[row];
+
+  /// marksEstimates is whether this chart distinguishes at all, which is what
+  /// decides whether the panel offers the column and whether the key says
+  /// what the two weights mean.
+  bool get marksEstimates => estimated.contains(true);
 
   /// valueAt is the number at [row] of [seriesIndex], or zero where the data
   /// is ragged.
@@ -381,6 +468,16 @@ class ChartData {
     var v = series[seriesIndex].values;
     return row >= 0 && row < v.length ? v[row] : 0;
   }
+
+  /// hasValueAt is whether there is a number there at all.
+  ///
+  /// A cell left empty is not a nought. A fund that did not exist until 2020
+  /// and one that held nothing in 2019 are different facts, and a chart that
+  /// draws both as a bar of zero height says the second about the first. Kept
+  /// as [missingValue] -- a NaN -- so that the values stay a list of doubles
+  /// and every sum, scale and axis that walks them keeps working; what
+  /// changes is that the drawing asks this before it draws.
+  bool hasValueAt(int seriesIndex, int row) => !valueAt(seriesIndex, row).isNaN;
 
   /// ohlcAt is one period of a candlestick chart, or null when there is not
   /// enough to draw one.
@@ -444,8 +541,12 @@ class ChartData {
     return out.toString().trimRight();
   }
 
-  static String _num(double v) =>
-      v == v.roundToDouble() ? v.round().toString() : v.toString();
+  // A gap writes as nothing, which is what parse reads back as a gap.
+  static String _num(double v) => v.isNaN
+      ? ""
+      : v == v.roundToDouble()
+          ? v.round().toString()
+          : v.toString();
 
   /// parse reads a pasted table.
   ///
@@ -482,7 +583,11 @@ class ChartData {
       categories.add(row.isEmpty ? "" : row.first);
       for (var i = 0; i < names.length; i++) {
         var cell = i + 1 < row.length ? row[i + 1] : "";
-        values[i].add(cellNumber(cell) ?? 0);
+        // An empty cell is one nobody filled in, and the chart leaves a hole
+        // where it is. A cell with something unreadable in it is still a
+        // nought: that is a typo in a number, not an absence.
+        values[i]
+            .add(cell.trim().isEmpty ? missingValue : cellNumber(cell) ?? 0);
       }
     }
 
@@ -511,6 +616,9 @@ class ChartData {
   Map<String, dynamic> toJson() => {
         "categories": categories,
         "series": series.map((s) => s.toJson()).toList(),
+        // Only on a chart that marks them, so one that does not saves the
+        // file it always did.
+        if (estimated.contains(true)) "est": estimated,
       };
 
   factory ChartData.fromJson(Map<String, dynamic> json) {
@@ -524,6 +632,9 @@ class ChartData {
                 if (ser[i] is Map<String, dynamic>)
                   ChartSeries.fromJson(ser[i] as Map<String, dynamic>, i),
             ]
+          : const [],
+      estimated: json["est"] is List
+          ? [for (var v in json["est"] as List) v == true]
           : const [],
     );
   }
