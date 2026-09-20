@@ -277,6 +277,15 @@ class ChartSeries {
     bool followChart = false,
     bool writtenLikeChart = false,
     bool oneColour = false,
+
+    /// drawnLikeChart gives back every override about how this series is
+    /// drawn, so it follows the chart's own again.
+    ///
+    /// For the series that *leads* its kind of drawing. Its settings are the
+    /// chart's -- that is what leading means -- so one of its own on top of
+    /// them is a contradiction: the panel writes the chart's value, the
+    /// override goes on winning, and the control reads as broken.
+    bool drawnLikeChart = false,
   }) =>
       ChartSeries(
         name: name ?? this.name,
@@ -285,13 +294,13 @@ class ChartSeries {
         type: followChart ? null : (type ?? this.type),
         numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
         gradient: oneColour ? null : (gradient ?? this.gradient),
-        width: width ?? this.width,
+        width: drawnLikeChart ? 0 : (width ?? this.width),
         delay: delay ?? this.delay,
-        corner: corner ?? this.corner,
-        smooth: smooth ?? this.smooth,
-        points: points ?? this.points,
-        pointSize: pointSize ?? this.pointSize,
-        pointColor: pointColor ?? this.pointColor,
+        corner: drawnLikeChart ? null : (corner ?? this.corner),
+        smooth: drawnLikeChart ? null : (smooth ?? this.smooth),
+        points: drawnLikeChart ? null : (points ?? this.points),
+        pointSize: drawnLikeChart ? null : (pointSize ?? this.pointSize),
+        pointColor: drawnLikeChart ? null : (pointColor ?? this.pointColor),
       );
 
   Map<String, dynamic> toJson() => {

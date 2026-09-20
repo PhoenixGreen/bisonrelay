@@ -261,6 +261,47 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
 
   void _removeRow(int row) => _write(data.withRowRemoved(row));
 
+  /// _moveRow and _moveSeries reorder the grid.
+  ///
+  /// Taken out and put back, which is the only ordering that is right in both
+  /// directions. Inserting first and then removing has to know whether the
+  /// insertion shifted the thing being removed, and getting that wrong leaves
+  /// the grid exactly as it was -- a button that does nothing.
+  void _moveRow(int row, int by) {
+    var to = row + by;
+    if (to < 0 || to >= data.categories.length) return;
+
+    List<T> shifted<T>(List<T> list) {
+      if (row >= list.length) return list;
+      var out = [...list];
+      out.insert(to.clamp(0, out.length - 1), out.removeAt(row));
+      return out;
+    }
+
+    var estimated = [...data.estimated];
+    while (estimated.isNotEmpty && estimated.length < data.categories.length) {
+      estimated.add(false);
+    }
+    _write(data.copyWith(
+      categories: shifted(data.categories),
+      // Every series' values move with the row. A row is one reading per
+      // series, and moving half of it would silently re-label the numbers.
+      series: [
+        for (var s in data.series) s.copyWith(values: shifted(s.values))
+      ],
+      estimated: shifted(estimated),
+    ));
+  }
+
+  void _moveSeries(int series, int by) {
+    var to = series + by;
+    if (to < 0 || to >= data.series.length) return;
+    _openSeries.clear();
+    var out = [...data.series];
+    out.insert(to, out.removeAt(series));
+    _write(data.copyWith(series: out));
+  }
+
   @override
   Widget build(BuildContext context) {
     // The series on their own, for the panel that shows them under the table
@@ -482,8 +523,25 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     // other series drawn the same way follows it until it is given its own.
     var leads = _firstDrawn(kind) == i;
 
+    /// writeStyle writes the chart's own setting, which is what the leading
+    /// series' controls change.
+    ///
+    /// And gives back that series' own overrides at the same time. Leading
+    /// means "my settings are the chart's", so an override on top of them is
+    /// a contradiction the reader cannot see: the panel wrote the chart's
+    /// value, the override went on winning, and the switch read as dead.
     void writeStyle(ChartStyleDefaults next) {
       widget.onStyleChanged?.call(next);
+      if (series.width != 0 ||
+          series.corner != null ||
+          series.smooth != null ||
+          series.points != null ||
+          series.pointSize != null ||
+          series.pointColor != null) {
+        var out = [...data.series];
+        out[i] = series.copyWith(drawnLikeChart: true);
+        widget.onChanged(data.copyWith(series: out));
+      }
       widget.onCommit();
     }
 
@@ -667,57 +725,89 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
       );
     }
 
-    const nameWidth = 86.0;
+    // One width for every column, so the buttons over a series, its name, the
+    // column it is fed from and its numbers all stand in the same column. They
+    // did not: the name cell carried its own remove button inline and the
+    // From dropdown was thirty pixels wider, so three rows that describe the
+    // same series were three different widths and nothing lined up with the
+    // numbers underneath. The table element's grid has always done this; this
+    // one is now laid out the same way.
+    const columnWidth = 92.0;
+    const columnGap = 4.0;
 
-    const valueWidth = 62.0;
+    /// _actions is a row of buttons standing in one column's width.
+    Widget actions(List<Widget> buttons) => SizedBox(
+          width: columnWidth + columnGap,
+          child: Row(mainAxisSize: MainAxisSize.min, children: buttons),
+        );
+
+    // A row of buttons over the columns, since a series is moved and removed
+    // by its own column rather than from a list of names somewhere else.
+    Widget columnButtons() => Row(children: [
+          const SizedBox(width: columnWidth + columnGap),
+          for (var s = 0; s < data.series.length; s++)
+            actions([
+              CanvasIconButton(
+                key: ValueKey("seriesLeft$s"),
+                icon: Icons.chevron_left,
+                tooltip: "Move this series left",
+                onPressed: s == 0 ? null : () => _moveSeries(s, -1),
+              ),
+              CanvasIconButton(
+                key: ValueKey("seriesRight$s"),
+                icon: Icons.chevron_right,
+                tooltip: "Move this series right",
+                onPressed: s == data.series.length - 1
+                    ? null
+                    : () => _moveSeries(s, 1),
+              ),
+              CanvasIconButton(
+                icon: Icons.close,
+                tooltip: "Remove this series",
+                onPressed: () => _removeSeries(s),
+              ),
+            ]),
+        ]);
 
     Widget header() => Row(children: [
-          const SizedBox(width: nameWidth + 4),
+          const SizedBox(width: columnWidth + columnGap),
           for (var s = 0; s < data.series.length; s++)
             Padding(
-              padding: const EdgeInsets.only(right: 4, bottom: 3),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                SizedBox(
-                  width: valueWidth,
-                  child: CanvasGridCell(
-                    value: data.series[s].name,
-                    dense: true,
-                    onChanged: (v) {
-                      var out = [...data.series];
-                      out[s] = out[s].copyWith(name: v);
-                      widget.onChanged(data.copyWith(series: out));
-                    },
-                    onCommit: widget.onCommit,
-                  ),
+              padding: const EdgeInsets.only(right: columnGap, bottom: 3),
+              child: SizedBox(
+                width: columnWidth,
+                child: CanvasGridCell(
+                  value: data.series[s].name,
+                  dense: true,
+                  onChanged: (v) {
+                    var out = [...data.series];
+                    out[s] = out[s].copyWith(name: v);
+                    widget.onChanged(data.copyWith(series: out));
+                  },
+                  onCommit: widget.onCommit,
                 ),
-                // Against the column it removes, which is the only place a
-                // "remove this series" control is unambiguous -- a list of
-                // them somewhere else is a list of names to match up.
-                CanvasIconButton(
-                  icon: Icons.close,
-                  tooltip: "Remove this series",
-                  onPressed: () => _removeSeries(s),
-                ),
-              ]),
+              ),
             ),
         ]);
 
     /// bindings is a row of "where does this series come from", under the
     /// names. Only for a chart with a fetched source: a chart of typed
-    /// numbers has nowhere for a series to come from but the grid itself.
+    /// numbers has nowhere for a series to come from but the grid itself, so
+    /// there is nothing to choose and the row is not drawn at all.
     Widget bindings() => Row(children: [
-          const SizedBox(width: nameWidth + 4),
+          const SizedBox(width: columnWidth + columnGap),
           for (var s = 0; s < data.series.length; s++)
             Padding(
-              padding: const EdgeInsets.only(right: 4, bottom: 4),
+              padding: const EdgeInsets.only(right: columnGap, bottom: 4),
               child: SizedBox(
-                width: valueWidth + 30,
+                width: columnWidth,
                 child: CanvasDropdown<int>(
                   key: ValueKey("chartGridSeries$s"),
-                  label: "From",
+                  label: "",
                   value:
                       s < widget.boundTo.length ? widget.boundTo[s] : _typedIn,
-                  width: valueWidth + 30,
+                  width: columnWidth,
+                  grow: false,
                   options: [
                     (_typedIn, "Typed in"),
                     for (var (c, column) in widget.sourceColumns.indexed)
@@ -743,7 +833,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
 
     Widget row(int i) => Row(children: [
           SizedBox(
-            width: nameWidth,
+            width: columnWidth,
             child: CanvasGridCell(
               value: data.categories[i],
               dense: true,
@@ -756,12 +846,12 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               onCommit: widget.onCommit,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: columnGap),
           for (var s = 0; s < data.series.length; s++)
             Padding(
-              padding: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.only(right: columnGap),
               child: SizedBox(
-                width: valueWidth,
+                width: columnWidth,
                 child: CanvasGridCell(
                   value: _number(data.valueAt(s, i)),
                   dense: true,
@@ -770,6 +860,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                   // is the number it plainly is. Refusing the separators and
                   // charting a nought is the sort of wrong that looks like
                   // the chart's fault rather than the typing's.
+                  //
                   // A cell cleared out is a cell nobody has filled in, not a
                   // nought: the chart leaves a hole there rather than drawing
                   // a bar of no height or a line straight across. Anything
@@ -781,6 +872,21 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                 ),
               ),
             ),
+          // And the row's own buttons on the end of it, where the table
+          // element's are.
+          CanvasIconButton(
+            key: ValueKey("rowUp$i"),
+            icon: Icons.keyboard_arrow_up,
+            tooltip: "Move this row up",
+            onPressed: i == 0 ? null : () => _moveRow(i, -1),
+          ),
+          CanvasIconButton(
+            key: ValueKey("rowDown$i"),
+            icon: Icons.keyboard_arrow_down,
+            tooltip: "Move this row down",
+            onPressed:
+                i == data.categories.length - 1 ? null : () => _moveRow(i, 1),
+          ),
           // Whether this row's figures were looked up or worked out. On the
           // row because that is where the doubt lives: a year is sourced or
           // it is not, and when it is not, every figure in the row came out
@@ -813,6 +919,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            columnButtons(),
             header(),
             if (widget.onBind != null && widget.sourceColumns.isNotEmpty)
               bindings(),
