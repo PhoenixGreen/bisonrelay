@@ -154,6 +154,15 @@ class CanvasStageState extends State<CanvasStage> {
   CounterElement? _pendingCounter;
   int _pendingCounterAt = -1;
 
+  /// _pendingLegend is a chart whose key has been pressed, and
+  /// _pendingLegendAt which series' entry.
+  ///
+  /// The same deferral the other two get: a press on a key that turns into a
+  /// drag moves the chart rather than switching a series off, so which of the
+  /// two happened is known on release.
+  ChartElement? _pendingLegend;
+  int _pendingLegendAt = -1;
+
   /// _settingCounter is the counter whose Set button is being typed into, and
   /// _settingAt which button that is.
   String? _settingCounter;
@@ -939,6 +948,32 @@ class CanvasStageState extends State<CanvasStage> {
         transient: true);
   }
 
+  /// _legendSeriesAt is which series' key entry a document point is on, or -1
+  /// for none.
+  ///
+  /// Off the painter, so the target is exactly what was drawn -- a key's size
+  /// is decided by measuring its own text, and a second opinion about that is
+  /// a second opinion that drifts.
+  int _legendSeriesAt(ChartElement e, Offset doc) {
+    for (var (series, box) in chartLegendRects(e, e.bounds)) {
+      if (box.contains(doc)) return series;
+    }
+    return -1;
+  }
+
+  /// _toggleSeries switches one of a chart's series off, or back on.
+  void _toggleSeries(ChartElement e, int at) {
+    var current = document.elementById(e.id);
+    if (current is! ChartElement) return;
+    if (at < 0 || at >= current.data.series.length) return;
+    var series = [...current.data.series];
+    series[at] = series[at].copyWith(hidden: !series[at].hidden);
+    controller.beginInteraction();
+    controller.replaceElement(
+        current.copyWith(data: current.data.copyWith(series: series)));
+    controller.endInteraction();
+  }
+
   /// _counterButtonAt is which of a counter's buttons a document point is in,
   /// or -1 for none.
   int _counterButtonAt(CounterElement e, Offset doc) {
@@ -1324,6 +1359,22 @@ class CanvasStageState extends State<CanvasStage> {
       if (at >= 0) {
         _pendingCounter = element;
         _pendingCounterAt = at;
+        _beginTransform(_DragMode.move, null);
+        return;
+      }
+    }
+
+    // A chart's key, pressed on the entry for one series, switches that
+    // series off and on. On the same terms as a button and a counter's own
+    // buttons: only while the chart is the thing selected, so a press
+    // anywhere on a chart that is not selected still selects it.
+    if (element is ChartElement &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var at = _legendSeriesAt(element, doc);
+      if (at >= 0) {
+        _pendingLegend = element;
+        _pendingLegendAt = at;
         _beginTransform(_DragMode.move, null);
         return;
       }
@@ -2342,6 +2393,19 @@ class CanvasStageState extends State<CanvasStage> {
       _mode = _DragMode.none;
       _handle = null;
       _pressCounter(counter, counterAt);
+      return;
+    }
+
+    var legend = _pendingLegend;
+    var legendAt = _pendingLegendAt;
+    _pendingLegend = null;
+    _pendingLegendAt = -1;
+    if (legend != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      _toggleSeries(legend, legendAt);
       return;
     }
 

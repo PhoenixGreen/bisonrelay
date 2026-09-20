@@ -248,7 +248,24 @@ void _placeholder(ui.Canvas canvas, Rect rect, ChartElement e) {
 /// It is also where the radial bars get their numbers. They are rings a few
 /// pixels thick with no room to write on and no axis to read against, so a
 /// value written here is the only place it can go.
-List<(Color, String)> _legendEntries(ChartElement e, double reveal) {
+/// LegendEntry is one line of the key: its swatch, its name, and which series
+/// it stands for.
+///
+/// The series index is what makes the key something to press rather than only
+/// to read -- see chartLegendRects. It is -1 where an entry does not stand for
+/// a series at all: a pie's entries are its categories, and a candlestick's
+/// two are "closed up" and "closed down".
+class LegendEntry {
+  final Color colour;
+  final String name;
+  final int series;
+  final bool hidden;
+
+  const LegendEntry(this.colour, this.name,
+      {this.series = -1, this.hidden = false});
+}
+
+List<LegendEntry> _legendEntries(ChartElement e, double reveal) {
   var data = e.data;
   // A candlestick's four series are one mark, so naming them is a key to
   // four things nobody can point at on the chart. What the colours actually
@@ -256,21 +273,25 @@ List<(Color, String)> _legendEntries(ChartElement e, double reveal) {
   // says.
   if (e.type.isCandles && data.series.length >= 4) {
     return [
-      (e.riseColor, "Closed up"),
-      (e.fallColor, "Closed down"),
+      LegendEntry(e.riseColor, "Closed up"),
+      LegendEntry(e.fallColor, "Closed down"),
     ];
   }
   if (!colouredByValue(e.type)) {
-    return [for (var s in data.series) (s.color, s.name)];
+    return [
+      for (var (i, s) in data.series.indexed)
+        LegendEntry(s.color, s.name, series: i, hidden: s.hidden),
+    ];
   }
 
   var values =
       data.series.isEmpty ? const <double>[] : data.series.first.values;
   return [
     for (var i = 0; i < values.length; i++)
-      (
+      LegendEntry(
         sliceColour(e, i),
-        _legendName(e, i, values[i], sliceProgress(e, reveal, i, values.length))
+        _legendName(
+            e, i, values[i], sliceProgress(e, reveal, i, values.length)),
       ),
   ];
 }
@@ -292,7 +313,7 @@ String _legendName(ChartElement e, int i, double value, SliceProgress slice) {
 /// legendEntriesForTest is [_legendEntries], which decides what a legend says
 /// and is worth checking without reading it off a bitmap.
 @visibleForTesting
-List<(Color, String)> legendEntriesForTest(ChartElement e, double reveal) =>
+List<LegendEntry> legendEntriesForTest(ChartElement e, double reveal) =>
     _legendEntries(e, reveal);
 
 /// legendLeavesForTest is what the chart gets once the key has taken its
@@ -313,7 +334,7 @@ Rect legendLeavesForTest(ChartElement e, Rect area, {double reveal = 1}) =>
 /// where the chart goes, where the key goes, and what the stage must hit-test
 /// are the same measurement asked three ways.
 class _LegendLayout {
-  final List<List<(Color, TextPainter)>> rows;
+  final List<List<(LegendEntry, TextPainter)>> rows;
   final double swatch;
   final double gap;
   final double rowHeight;
@@ -343,15 +364,23 @@ _LegendLayout? _measureLegend(ChartElement e, Rect area, double reveal) {
   var room = legend.placement.isSide ? area.width * 0.34 : area.width;
 
   var items = [
-    for (var (colour, name) in entries)
+    for (var entry in entries)
       (
-        colour,
-        layoutText(name, spec, maxWidth: math.max(1, room - swatch - gap))
+        entry,
+        layoutText(
+            entry.name,
+            // A switched-off series is still named, and faintly: there has to
+            // be something to press to bring it back, and a key that drops
+            // the entry is a key that hides the way back in.
+            entry.hidden
+                ? spec.copyWith(color: spec.color.withValues(alpha: 0.4))
+                : spec,
+            maxWidth: math.max(1, room - swatch - gap))
       ),
   ];
 
-  var rows = <List<(Color, TextPainter)>>[];
-  var row = <(Color, TextPainter)>[];
+  var rows = <List<(LegendEntry, TextPainter)>>[];
+  var row = <(LegendEntry, TextPainter)>[];
   var used = 0.0;
   for (var item in items) {
     if (legend.vertical) {
@@ -382,6 +411,60 @@ _LegendLayout? _measureLegend(ChartElement e, Rect area, double reveal) {
 
   return _LegendLayout(
       rows, swatch, gap, rowHeight, between, rowGap, Size(width, height));
+}
+
+/// chartLegendRects is where each of the key's entries was drawn, in the
+/// element's own coordinates, paired with the series it stands for.
+///
+/// Measured by the same function that draws, so what the stage hit-tests is
+/// exactly what the reader can see -- the same arrangement counterButtonRects
+/// has, and for the same reason: a hit area worked out separately is a hit
+/// area that drifts.
+///
+/// Empty for the charts whose key does not stand for series one to one: a
+/// pie's entries are its categories and a candlestick's are up and down, and
+/// neither is a thing that can be switched off.
+List<(int, Rect)> chartLegendRects(ChartElement e, Rect bounds,
+    {double reveal = 1}) {
+  if (!e.showLegend || e.data.series.isEmpty) return const [];
+
+  // The same walk the painter takes: the body, then whatever the title and
+  // the description have left of it. Into a canvas nobody keeps, which is how
+  // legendLeavesForTest asks the same question -- measuring a label means
+  // laying it out, and laying it out is what the drawing does.
+  var body = e.body.rectIn(bounds);
+  var area = body;
+  if (!e.floatingLabels) {
+    var scratch = ui.Canvas(ui.PictureRecorder());
+    area = _flowLabel(scratch, area, body, e.title, e.titleBox, e.titleSpec);
+    area = _flowLabel(scratch, area, body, e.description, e.descriptionBox,
+        descriptionSpec(e));
+  } else {
+    area = bounds;
+  }
+
+  var layout = _measureLegend(e, area, reveal);
+  if (layout == null) return const [];
+
+  var origin = _legendOrigin(e, area, layout.size);
+  var out = <(int, Rect)>[];
+  var y = origin.dy;
+  for (var r in layout.rows) {
+    var x = origin.dx;
+    for (var i = 0; i < r.length; i++) {
+      if (i > 0) x += layout.between;
+      var (entry, painter) = r[i];
+      var width = layout.swatch + layout.gap * 0.6 + painter.width;
+      if (entry.series >= 0) {
+        // The swatch and its name together: a reader aiming at a key aims at
+        // the words as readily as at the colour.
+        out.add((entry.series, Rect.fromLTWH(x, y, width, layout.rowHeight)));
+      }
+      x += width;
+    }
+    y += layout.rowHeight + layout.rowGap;
+  }
+  return out;
 }
 
 /// _legendOrigin is the top left corner the key is drawn from.
@@ -421,13 +504,22 @@ Rect _legend(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     var x = origin.dx;
     for (var i = 0; i < r.length; i++) {
       if (i > 0) x += layout.between;
-      var (colour, painter) = r[i];
+      var (entry, painter) = r[i];
+      var box = RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, y + (layout.rowHeight - layout.swatch) / 2,
+              layout.swatch, layout.swatch),
+          Radius.circular(layout.swatch * 0.25));
+      // Hollow where the series is switched off: an outline says "this one
+      // exists and is not being drawn", which a filled swatch beside a chart
+      // missing that colour cannot.
       canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, y + (layout.rowHeight - layout.swatch) / 2,
-                layout.swatch, layout.swatch),
-            Radius.circular(layout.swatch * 0.25)),
-        Paint()..color = colour,
+        box,
+        entry.hidden
+            ? (Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = math.max(1, layout.swatch * 0.18)
+              ..color = entry.colour.withValues(alpha: entry.colour.a * 0.55))
+            : (Paint()..color = entry.colour),
       );
       painter.paint(
           canvas,

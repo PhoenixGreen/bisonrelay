@@ -241,6 +241,7 @@ void paintCartesian(
     for (var i = 0; i < data.categories.length; i++) {
       var pos = 0.0, neg = 0.0;
       for (var s = 0; s < data.series.length; s++) {
+        if (data.series[s].hidden) continue;
         var v = data.valueAt(s, i);
         // A gap adds nothing to the pile it is missing from.
         if (v.isNaN) continue;
@@ -251,6 +252,11 @@ void paintCartesian(
     }
   } else {
     for (var s in data.series) {
+      // A series nobody is looking at does not get to decide how tall the
+      // axis is. That is the point of switching one off: isolating a pot
+      // worth two hundred thousand against a stream worth five hundred should
+      // actually show the pot.
+      if (s.hidden) continue;
       for (var v in s.values) {
         // A log axis takes its bottom from the smallest number it can
         // describe. Seeded with a zero -- which a row nobody has filled in
@@ -349,6 +355,10 @@ void paintCartesian(
   var plainBarTaken = false;
   for (var i = 0; i < data.series.length; i++) {
     var series = data.series[i];
+    // Switched off from the key. It keeps its place in the table and its
+    // entry in the key -- there has to be something to press to bring it
+    // back -- and is simply not among the things drawn.
+    if (series.hidden) continue;
     var kind = series.typeIn(e.type);
     if (kind.isBar) {
       // "Bars" means one bar per category, so a chart set to it draws its

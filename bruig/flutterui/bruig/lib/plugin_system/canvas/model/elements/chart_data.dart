@@ -149,6 +149,17 @@ class ChartSeries {
   /// style, since there is one axis and it cannot be two things.
   final ChartNumbers? numbers;
 
+  /// hidden takes this series off the chart without taking it out of the
+  /// table.
+  ///
+  /// Pressed on its own entry in the key, which is where a reader is already
+  /// looking when they want one line out of six out of the way -- and what
+  /// makes a published chart something to read rather than only to look at.
+  /// The numbers stay where they are: this is about what is drawn, not about
+  /// what is known, and the axis is re-scaled to what is left so that
+  /// isolating one pot actually shows it.
+  final bool hidden;
+
   /// gradient draws this series in two colours instead of one. Null for the
   /// almost every series that is one colour.
   ///
@@ -208,6 +219,7 @@ class ChartSeries {
     this.type,
     this.numbers,
     this.gradient,
+    this.hidden = false,
     this.width = 0,
     this.delay = 0,
     this.corner,
@@ -267,6 +279,7 @@ class ChartSeries {
     ChartType? type,
     ChartNumbers? numbers,
     GradientSpec? gradient,
+    bool? hidden,
     double? width,
     double? delay,
     double? corner,
@@ -294,6 +307,7 @@ class ChartSeries {
         type: followChart ? null : (type ?? this.type),
         numbers: writtenLikeChart ? null : (numbers ?? this.numbers),
         gradient: oneColour ? null : (gradient ?? this.gradient),
+        hidden: hidden ?? this.hidden,
         width: drawnLikeChart ? 0 : (width ?? this.width),
         delay: delay ?? this.delay,
         corner: drawnLikeChart ? null : (corner ?? this.corner),
@@ -312,6 +326,7 @@ class ChartSeries {
         if (type != null) "type": type!.name,
         if (numbers != null) "numbers": numbers!.toJson(),
         if (gradient != null) "gradient": gradient!.toJson(),
+        if (hidden) "off": true,
         if (width > 0) "width": width,
         if (delay != 0) "delay": delay,
         // Written only where this series has been given its own, so a chart
@@ -342,6 +357,7 @@ class ChartSeries {
               (json["gradient"] as Map<String, dynamic>)["on"] != false
           ? GradientSpec.fromJson(json["gradient"] as Map<String, dynamic>)
           : null,
+      hidden: json["off"] == true,
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
           ? (json["delay"] as num).toDouble().clamp(-1.0, 1.0)

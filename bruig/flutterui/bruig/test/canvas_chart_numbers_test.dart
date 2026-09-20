@@ -197,7 +197,7 @@ void main() {
 
     test("the legend's values are written in the chart's own style", () {
       expect(
-          legendEntriesForTest(pie(const ChartNumbers()), 1).map((k) => k.$2),
+          legendEntriesForTest(pie(const ChartNumbers()), 1).map((k) => k.name),
           ["One: 1.0M", "Two: 2.5M"],
           reason: "automatic, which is what it did before");
 
@@ -206,7 +206,7 @@ void main() {
                   pie(const ChartNumbers(
                       style: NumberStyle.plain, decimals: 0)),
                   1)
-              .map((k) => k.$2),
+              .map((k) => k.name),
           ["One: 1,000,000", "Two: 2,500,000"]);
 
       expect(
@@ -214,7 +214,7 @@ void main() {
                   pie(const ChartNumbers(
                       style: NumberStyle.millions, decimals: 2)),
                   1)
-              .map((k) => k.$2),
+              .map((k) => k.name),
           ["One: 1.00M", "Two: 2.50M"]);
     });
   });

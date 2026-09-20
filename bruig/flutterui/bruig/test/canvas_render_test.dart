@@ -2028,8 +2028,8 @@ void _chartTests() {
       );
 
       var entries = legendEntriesForTest(e, 1);
-      expect(entries.map((k) => k.$2), ["One", "Two", "Three"]);
-      expect(entries.map((k) => k.$1),
+      expect(entries.map((k) => k.name), ["One", "Two", "Three"]);
+      expect(entries.map((k) => k.colour),
           [for (var i = 0; i < 3; i++) sliceColour(e, i)],
           reason: "the swatches are the colours the slices are drawn in");
     });
@@ -2045,12 +2045,12 @@ void _chartTests() {
         data: ChartData.parse("Cat\tShare\nOne\t10\nTwo\t20"),
       );
 
-      expect(
-          legendEntriesForTest(e, 1).map((k) => k.$2), ["One: 10", "Two: 20"]);
+      expect(legendEntriesForTest(e, 1).map((k) => k.name),
+          ["One: 10", "Two: 20"]);
       expect(
           legendEntriesForTest(
                   e.copyWith(legend: e.legend.copyWith(separator: " - ")), 1)
-              .map((k) => k.$2),
+              .map((k) => k.name),
           ["One - 10", "Two - 20"],
           reason: "which one reads best depends on the names");
 
@@ -2060,12 +2060,12 @@ void _chartTests() {
       // be had on its own.
       expect(
           legendEntriesForTest(e.copyWith(legend: const ChartLegend()), 1)
-              .map((k) => k.$2),
+              .map((k) => k.name),
           ["One", "Two"]);
       expect(
           legendEntriesForTest(
                   e.copyWith(showValues: true, legend: const ChartLegend()), 1)
-              .map((k) => k.$2),
+              .map((k) => k.name),
           ["One", "Two"],
           reason: "numbers on the chart do not put numbers in the key");
     });
@@ -2081,13 +2081,13 @@ void _chartTests() {
         animation: const ChartAnimation(
             preset: ChartAnimationPreset.grow, ease: ChartEase.linear),
       );
-      expect(legendEntriesForTest(e, 0.5).single.$2, "One: 5");
-      expect(legendEntriesForTest(e, 1).single.$2, "One: 10");
+      expect(legendEntriesForTest(e, 0.5).single.name, "One: 5");
+      expect(legendEntriesForTest(e, 1).single.name, "One: 10");
     });
 
     test("a bar chart's legend still keys its series", () {
       var e = _two(ChartType.groupedBar).copyWith(showLegend: true);
-      expect(legendEntriesForTest(e, 1).map((k) => k.$2), ["A", "B"]);
+      expect(legendEntriesForTest(e, 1).map((k) => k.name), ["A", "B"]);
     });
 
     test("floating labels leave the chart exactly where it was", () async {
