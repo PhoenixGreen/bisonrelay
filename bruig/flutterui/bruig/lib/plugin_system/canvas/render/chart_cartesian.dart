@@ -954,8 +954,15 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       if (series.band) {
         var next = _nextDrawn(data, s);
         if (next >= 0) {
-          var pair =
-              _bandPath(data, next, points, present, n, xAt, yAt, drawnTo);
+          var pair = _bandPath(
+            data, next, points, present, n, xAt, yAt, drawnTo,
+            // Each edge curved the way the line along it is curved. Drawn as
+            // chords while the lines bowed away from them, the band stood
+            // clear of its own edges everywhere between two readings.
+            series.smoothOn(e.smooth) && kind.usesSmooth,
+            data.series[next].smoothOn(e.smooth) &&
+                data.series[next].typeIn(e.type).usesSmooth,
+          );
           if (pair != null) {
             canvas.drawPath(
                 pair,
@@ -1144,6 +1151,8 @@ Path? _bandPath(
   double Function(int) xAt,
   double Function(double) yAt,
   double drawnTo,
+  bool topSmooth,
+  bool bottomSmooth,
 ) {
   var path = Path();
   var any = false;
@@ -1154,14 +1163,18 @@ Path? _bandPath(
       run = [];
       return;
     }
-    path.moveTo(points[run.first].dx, points[run.first].dy);
-    for (var i in run.skip(1)) {
-      path.lineTo(points[i].dx, points[i].dy);
-    }
-    for (var i in run.reversed) {
-      path.lineTo(xAt(i), yAt(data.valueAt(other, i)));
-    }
-    path.close();
+    // Both edges through the same function the lines themselves are drawn
+    // with, so the shape is bounded by the curves rather than by the chords
+    // between the readings. extendWithPath rather than a second subpath: it
+    // joins the end of the top edge to the start of the bottom one, which is
+    // the right-hand end of the band.
+    var top = _linePath([for (var i in run) points[i]], topSmooth);
+    var bottom = _linePath([
+      for (var i in run.reversed) Offset(xAt(i), yAt(data.valueAt(other, i)))
+    ], bottomSmooth);
+    top.extendWithPath(bottom, Offset.zero);
+    top.close();
+    path.addPath(top, Offset.zero);
     any = true;
     run = [];
   }

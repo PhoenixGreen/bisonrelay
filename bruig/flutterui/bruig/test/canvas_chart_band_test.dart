@@ -19,6 +19,8 @@ const Rect _rect = Rect.fromLTWH(0, 0, 300, 200);
 ChartElement _chart({
   bool band = false,
   bool hideSecond = false,
+  bool smooth = false,
+  List<double> upper = const [9, 9, 9, 9],
   List<double> lower = const [4, 4, 4, 4],
 }) =>
     ChartElement(
@@ -30,7 +32,7 @@ ChartElement _chart({
       showXLabels: false,
       showYLabels: false,
       showPoints: false,
-      smooth: false,
+      smooth: smooth,
       strokeWidth: 2,
       yMin: 0,
       yMax: 12,
@@ -40,7 +42,7 @@ ChartElement _chart({
           ChartSeries(
             name: "Upper",
             color: const Color(0xFFEAE6DA),
-            values: const [9, 9, 9, 9],
+            values: upper,
             band: band,
           ),
           ChartSeries(
@@ -78,6 +80,49 @@ Future<int> _between(ChartElement e) async {
   return n;
 }
 
+/// _gaps is how many columns have a dark row between the top of the upper
+/// line and the top of the band under it.
+///
+/// Which is exactly what a chorded edge leaves behind: the line bows above
+/// the straight run between two readings, and the band stops at the straight
+/// run. Nothing else on these charts can put a hole there.
+Future<int> _gaps(ChartElement e) async {
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.drawRect(_rect, Paint()..color = const Color(0xFF000000));
+  paintChart(canvas, _rect, e);
+  var image = await recorder.endRecording().toImage(_w, _h);
+  var bytes = (await image.toByteData())!;
+  image.dispose();
+
+  bool lit(int x, int y) {
+    var p = bytes.getUint32((y * _w + x) * 4);
+    return ((p >> 24) & 0xFF) > 10 ||
+        ((p >> 16) & 0xFF) > 10 ||
+        ((p >> 8) & 0xFF) > 10;
+  }
+
+  var holed = 0;
+  // Between the readings, where a chord and a curve differ. Not at them,
+  // where the two meet whatever the edge is made of.
+  for (var x in [60, 80, 100, 120, 180, 220, 240]) {
+    var top = -1, bottom = -1;
+    for (var y = 0; y < _h; y++) {
+      if (!lit(x, y)) continue;
+      if (top < 0) top = y;
+      bottom = y;
+    }
+    if (top < 0) continue;
+    for (var y = top; y < bottom; y++) {
+      if (!lit(x, y)) {
+        holed++;
+        break;
+      }
+    }
+  }
+  return holed;
+}
+
 void main() {
   group("a band between two lines", () {
     test("is remembered, and saved", () {
@@ -109,6 +154,23 @@ void main() {
       });
       expect(filled, greaterThan(2000));
       expect(alone, lessThan(50));
+    });
+
+    testWidgets("follows the lines when they are curved", (tester) async {
+      // Both edges were drawn as chords while the lines bowed away from them,
+      // so between every pair of readings the band stood clear of its own
+      // edge and left a stripe of background between the two.
+      late int holed;
+      await tester.runAsync(() async {
+        holed = await _gaps(_chart(
+            band: true,
+            smooth: true,
+            upper: const [3, 11, 11, 3],
+            lower: const [1, 2, 2, 1]));
+      });
+      expect(holed, 0,
+          reason: "$holed of the sampled columns have background showing "
+              "between the line and the band it bounds");
     });
 
     testWidgets("stops where either line has no reading", (tester) async {
