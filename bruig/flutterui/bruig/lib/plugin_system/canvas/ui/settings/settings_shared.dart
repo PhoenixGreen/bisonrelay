@@ -380,6 +380,14 @@ List<Widget> typeGroups(
   ///
   /// The room is still reserved, so the rows line up. See _labelled.
   bool captions = true,
+
+  /// includeAlign offers the two alignment dropdowns behind the button.
+  ///
+  /// Off for a piece of writing whose place is decided for it: a text
+  /// element's item is held to the corner of the box its slot names, so an
+  /// Align dropdown on its row was a control that did nothing -- which is
+  /// worse than no control at all.
+  bool includeAlign = true,
 }) {
   String cap(String name) => captions ? name : "";
   // The colour settings, as a row and as what is behind its button. Built
@@ -618,28 +626,30 @@ List<Widget> typeGroups(
             onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
             onCommit: commit,
           ),
-          CanvasDropdown<TextAlignSpec>(
-            label: "Align",
-            value: spec.align,
-            width: 92,
-            options: [for (var a in TextAlignSpec.values) (a, a.label)],
-            onChanged: (v) {
-              begin();
-              onChanged(spec.copyWith(align: v));
-              commit();
-            },
-          ),
-          CanvasDropdown<VerticalAlignSpec>(
-            label: "Vertical",
-            value: spec.verticalAlign,
-            width: 86,
-            options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
-            onChanged: (v) {
-              begin();
-              onChanged(spec.copyWith(verticalAlign: v));
-              commit();
-            },
-          ),
+          if (includeAlign)
+            CanvasDropdown<TextAlignSpec>(
+              label: "Align",
+              value: spec.align,
+              width: 92,
+              options: [for (var a in TextAlignSpec.values) (a, a.label)],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(align: v));
+                commit();
+              },
+            ),
+          if (includeAlign)
+            CanvasDropdown<VerticalAlignSpec>(
+              label: "Vertical",
+              value: spec.verticalAlign,
+              width: 86,
+              options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+              onChanged: (v) {
+                begin();
+                onChanged(spec.copyWith(verticalAlign: v));
+                commit();
+              },
+            ),
           if (includeCase)
             CanvasDropdown<TextCase>(
               label: "Case",

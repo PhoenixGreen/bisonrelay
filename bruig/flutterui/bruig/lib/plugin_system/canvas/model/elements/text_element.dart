@@ -417,6 +417,7 @@ class TextElement extends CanvasElement {
       autoSize: autoSize,
       columns: columns,
       animation: animation,
+      items: items,
       parts: parts,
       highlight: highlight,
       underline: underline,

@@ -1464,9 +1464,50 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
       ];
 
   return [
-    // The line that adds one, captioned for the run under it. It is here
-    // whether or not there are any: a setting nobody can find is a setting
-    // nobody has.
+    // The pieces themselves, directly under the element's own row, because
+    // they are the same thing: another piece of writing in the same box.
+    // Same row, same button, and nothing on the line that the element's own
+    // row does not have -- where it sits and the button that takes it away
+    // are behind the button with everything else about it.
+    for (var (i, item) in e.items.indexed)
+      ...typeGroups(
+        item.spec,
+        (spec) =>
+            write(e.copyWith(items: withItem(i, item.copyWith(spec: spec)))),
+        begin,
+        commit,
+        // What it says, so a column of rows says which is which.
+        label: item.says,
+        remember: "textItem${item.id}",
+        colourInMore: true,
+        rule: false,
+        // The captions are written once, over the element's own row above.
+        captions: false,
+        // Its place is its slot's to decide, so the two alignment dropdowns
+        // would be controls that do nothing.
+        includeAlign: false,
+        extraMore: [
+          const CanvasLineBreak(),
+          CanvasDropdown<TextSlot>(
+            key: ValueKey("textItemSlot$i"),
+            label: "Where",
+            value: item.slot,
+            width: 104,
+            options: [for (var s in TextSlot.values) (s, s.label)],
+            onChanged: (v) => now(withItem(i, item.copyWith(slot: v))),
+          ),
+          CanvasIconButton(
+            key: ValueKey("textItemRemove$i"),
+            icon: Icons.delete_outline,
+            tooltip: "Take this piece away",
+            onPressed: () => now([
+              for (var (n, it) in e.items.indexed)
+                if (n != i) it,
+            ]),
+          ),
+        ],
+      ),
+    // And the line that adds one, under the pieces it adds to.
     CanvasControlGroup(label: "Items", rule: false, children: [
       CanvasIconButton(
         key: const ValueKey("textAddItem"),
@@ -1484,42 +1525,6 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
             "keeps its own type and its own corner of the box, and the words "
             "are typed on the canvas -- click the piece and type."),
     ]),
-    for (var (i, item) in e.items.indexed)
-      ...typeGroups(
-        item.spec,
-        (spec) =>
-            write(e.copyWith(items: withItem(i, item.copyWith(spec: spec)))),
-        begin,
-        commit,
-        // What it says, so a panel of four rows says which is which.
-        label: item.says,
-        remember: "textItem${item.id}",
-        colourInMore: true,
-        rule: false,
-        // The captions are written once over the first row. Four rows of the
-        // same three controls do not need Font, Size and Weight over each of
-        // them; the room is still kept, so the rows line up.
-        captions: i == 0,
-        rowBefore: [
-          CanvasDropdown<TextSlot>(
-            key: ValueKey("textItemSlot$i"),
-            label: i == 0 ? "Where" : "",
-            value: item.slot,
-            width: 104,
-            options: [for (var s in TextSlot.values) (s, s.label)],
-            onChanged: (v) => now(withItem(i, item.copyWith(slot: v))),
-          ),
-          CanvasIconButton(
-            key: ValueKey("textItemRemove$i"),
-            icon: Icons.close,
-            tooltip: "Take this piece away",
-            onPressed: () => now([
-              for (var (n, it) in e.items.indexed)
-                if (n != i) it,
-            ]),
-          ),
-        ],
-      ),
   ];
 }
 

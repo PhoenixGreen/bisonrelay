@@ -6799,7 +6799,8 @@ void main() {
     testWidgets("a piece is added, placed and taken away from the panel",
         (tester) async {
       // The words are typed on the canvas; everything else about a piece is
-      // here, in the same control the element's own words get.
+      // here. Its row is the element's own row and nothing more, so where it
+      // sits and the button that takes it away are behind its button.
       var controller = await panel(tester);
       expect(textIn(controller).items, isEmpty);
 
@@ -6813,16 +6814,23 @@ void main() {
       expect(textIn(controller).items.first.text, "Text",
           reason: "something to see and to click on the canvas");
 
-      // A second one goes to a free slot rather than on top of the first.
-      await tester.ensureVisible(add);
-      await tester.pumpAndSettle();
-      await tester.tap(add);
-      await tester.pumpAndSettle();
-      expect(textIn(controller).items.length, 2);
-      expect(textIn(controller).items.last.slot,
-          isNot(textIn(controller).items.first.slot));
+      // Open its button, if an earlier test has not left it open -- a
+      // more-button remembers, and remembers across tests. Done while there
+      // is one piece, because two fresh pieces say the same thing and a
+      // caption is how a row is told from the next. Captions are drawn in
+      // capitals, so that is what to look for.
+      var group = find.ancestor(
+          of: find.text(textIn(controller).items.first.says.toUpperCase()),
+          matching: find.byType(CanvasMoreGroup));
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
 
-      // Placed by its slot, which is the first thing on its row.
       var slot = find.byKey(const ValueKey("textItemSlot0"));
       await tester.ensureVisible(slot);
       await tester.pumpAndSettle();
@@ -6832,6 +6840,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(textIn(controller).items.first.slot, TextSlot.middleRight);
 
+      // A second one goes to a free slot rather than on top of the first.
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.length, 2);
+      expect(textIn(controller).items.last.slot,
+          isNot(textIn(controller).items.first.slot));
+
       var remove = find.byKey(const ValueKey("textItemRemove0"));
       await tester.ensureVisible(remove);
       await tester.pumpAndSettle();
@@ -6839,7 +6856,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(textIn(controller).items.length, 1);
       expect(textIn(controller).items.first.slot, isNot(TextSlot.middleRight),
-          reason: "the other one went");
+          reason: "the one that was moved is the one that went");
     });
 
     testWidgets("and each piece's row is the same control the words get",
@@ -6863,8 +6880,7 @@ void main() {
       // finder here is scoped to the piece and the button is opened only if
       // it is shut.
       var group = find.ancestor(
-          of: find.byKey(const ValueKey("textItemSlot0")),
-          matching: find.byType(CanvasMoreGroup));
+          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
       expect(group, findsOneWidget, reason: "the piece has a group of its own");
       var button =
           find.descendant(of: group, matching: find.byIcon(Icons.tune));
@@ -6889,12 +6905,12 @@ void main() {
       expect(textIn(controller).textSpec.fontSize, isNot(11));
     });
 
-    testWidgets("a piece's row holds together at a sidebar's width",
+    testWidgets("a piece is offered where it sits, not an alignment",
         (tester) async {
-      // What must not happen is the slot ending up on a line of its own,
-      // where it reads as belonging to the piece after it -- the same thing
-      // a chart's series row has to avoid. Wrapping *within* a row is what a
-      // CanvasWrap is for and is fine; the slot and the face are the line.
+      // Reported: the alignment dropdowns were there on a piece and did
+      // nothing. They could not: a piece is held to the corner of the box its
+      // slot names, so its place is the slot's to decide. A control that does
+      // nothing is worse than no control.
       var element = TextElement(
         ElementBase(id: newElementId(), width: 400, height: 200),
         text: "Spend or burn",
@@ -6904,15 +6920,55 @@ void main() {
       );
       await panel(tester, element: element);
 
-      var slot = tester.getRect(find.byKey(const ValueKey("textItemSlot0")));
-      var face = tester.getRect(find.descendant(
+      var group = find.ancestor(
+          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.descendant(of: group, matching: find.text("Where")),
+          findsOneWidget);
+      expect(find.descendant(of: group, matching: find.text("Align")),
+          findsNothing);
+      expect(find.descendant(of: group, matching: find.text("Vertical")),
+          findsNothing);
+      // The element's own words keep both -- they fill the box rather than
+      // sitting in a corner of it, and Align says Justify as well -- but they
+      // are behind a button of their own, which this test has not opened.
+    });
+
+    testWidgets("a piece's row is directly under the element's own",
+        (tester) async {
+      // Another piece of writing in the same box belongs with the writing
+      // that is already there, not below the box, the columns and the line.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      await panel(tester, element: element);
+
+      var faces = find.byType(CanvasDropdown<String>);
+      var own = tester.getRect(faces.first);
+      var piece = tester.getRect(find.descendant(
           of: find.ancestor(
-              of: find.byKey(const ValueKey("textItemSlot0")),
-              matching: find.byType(CanvasMoreGroup)),
+              of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
           matching: find.byType(CanvasDropdown<String>)));
-      expect(face.top, closeTo(slot.top, 0.5),
-          reason: "the slot and the face are on one line");
-      expect(face.left, greaterThan(slot.left));
+      var add = tester.getRect(find.byKey(const ValueKey("textAddItem")));
+      var box = tester.getRect(find.text("BOX"));
+
+      expect(piece.top, greaterThan(own.top), reason: "under the words");
+      expect(add.top, greaterThan(piece.top), reason: "and the + under it");
+      expect(box.top, greaterThan(add.top), reason: "the box comes after");
+      expect(piece.left, closeTo(own.left, 0.5),
+          reason: "the same row, starting in the same place");
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

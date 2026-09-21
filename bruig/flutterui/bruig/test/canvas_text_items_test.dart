@@ -106,6 +106,27 @@ void main() {
     });
   });
 
+  group("moving and resizing", () {
+    test("keeps every piece, and everything else about the element", () {
+      // Reported: resizing the box took the items away. An element rebuilt on
+      // a new base is rebuilt field by field -- see TextElement.rebase -- and
+      // a field left off that list is a field a drag silently drops. So this
+      // asks the whole of it rather than the items alone: whatever is added
+      // next is covered too.
+      var e = _card().copyWith(
+        autoSize: true,
+        flowTo: "other",
+      );
+      var before = e.props();
+
+      var wider = e.withBase(width: 900, height: 480, x: 22, y: 33);
+      expect(wider.props(), before,
+          reason: "a resize is about the box, not about what is in it");
+      expect((wider as TextElement).items.length, 2);
+      expect(wider.width, 900);
+    });
+  });
+
   group("what is drawn", () {
     /// _ink is where the blue pixels are: the pieces are blue and the
     /// element's own words are white, so this finds the pieces alone.
@@ -162,10 +183,10 @@ void main() {
   });
 
   testWidgets("a piece's row fits a narrow sidebar", (tester) async {
-    // 300 is about the narrowest anybody leaves the panel, and the row has
-    // more on it than the element's own: the slot it sits in, and a button to
-    // take it away. What must not happen is the slot ending up alone on a
-    // line, where it reads as belonging to the piece after it.
+    // 300 is about the narrowest anybody leaves the panel. The row is the
+    // element's own row -- face, size, weight, and the button -- so what is
+    // being checked is that a second one of those still fits under the first
+    // rather than wrapping into a column of single controls.
     tester.view.physicalSize = const Size(700, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -204,18 +225,17 @@ void main() {
     await tester.pumpAndSettle();
 
     var group = find.ancestor(
-        of: find.byKey(const ValueKey("textItemSlot0")),
-        matching: find.byType(CanvasMoreGroup));
-    var slot = tester.getRect(find.byKey(const ValueKey("textItemSlot0")));
+        of: find.text("01"), matching: find.byType(CanvasMoreGroup));
     var face = tester.getRect(find.descendant(
         of: group, matching: find.byType(CanvasDropdown<String>)));
     var size = tester.getRect(
         find.descendant(of: group, matching: find.byType(CanvasNumberField)));
+    var weight = tester.getRect(
+        find.descendant(of: group, matching: find.byType(CanvasDropdown<int>)));
 
-    expect(face.top, closeTo(slot.top, 0.5),
-        reason: "the slot and the face are on one line");
-    expect(size.top, closeTo(slot.top, 0.5));
-    expect(size.right, lessThanOrEqualTo(300));
+    expect(size.top, closeTo(face.top, 0.5), reason: "one line");
+    expect(weight.top, closeTo(face.top, 0.5));
+    expect(weight.right, lessThanOrEqualTo(300));
   });
 
   group("typing into one", () {
