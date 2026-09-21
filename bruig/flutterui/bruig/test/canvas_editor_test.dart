@@ -2505,6 +2505,65 @@ void main() {
       expect(controller.document.frames, 200);
     });
 
+    testWidgets("and the hold itself reaches nothing but the field",
+        (tester) async {
+      // What made it temperamental: the hold used to drop the focus, to keep
+      // the caret out of the way. Losing the focus calls onCommit, which
+      // closes the undo step, which rebuilds the settings panel -- which can
+      // take the field's own state away in the middle of its gesture. So the
+      // scrub worked or did not depending on what the panel did next.
+      var commits = 0;
+      var value = 10.0;
+      await pump(
+        tester,
+        StatefulBuilder(
+          builder: (context, setState) => CanvasNumberField(
+            key: const ValueKey("held"),
+            label: "Size",
+            value: value,
+            onChanged: (v) => setState(() => value = v),
+            onCommit: () => commits++,
+          ),
+        ),
+      );
+
+      var field = find.byKey(const ValueKey("held"));
+      // Focused first, which is the ordinary way round: a number is clicked,
+      // looked at, and then dragged. That is also the case the old hold broke,
+      // since a field with nothing to lose loses no focus.
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      expect(commits, 0, reason: "clicking into a field finishes nothing");
+
+      var press = await tester.startGesture(tester.getCenter(field));
+      await tester.pump(const Duration(milliseconds: 500));
+      await press.moveBy(const Offset(20, 0));
+      await tester.pump();
+
+      expect(value, 30, reason: "twenty pixels on a whole-number field");
+      expect(commits, 0, reason: "nothing is finished until it is let go");
+
+      await press.up();
+      await tester.pumpAndSettle();
+      expect(commits, 1);
+    });
+
+    testWidgets("and the pointer says so over the box", (tester) async {
+      // The same left-and-right cursor the caption shows, which is the only
+      // thing that says a number can be dragged at all. On the field itself
+      // rather than in a region around it: a text field carries a cursor of
+      // its own and the innermost one wins, so an I-beam would have said
+      // "type here" over the one control that also does something else.
+      var controller = CanvasController(const CanvasDocument(frames: 200));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var box = tester.widget<TextField>(find.descendant(
+          of: find.byKey(const ValueKey("canvasFrames")),
+          matching: find.byType(TextField)));
+      expect(box.mouseCursor, SystemMouseCursors.resizeLeftRight);
+    });
+
     testWidgets("typing into the field still works", (tester) async {
       // The scrub must not have taken the field over.
       var controller = CanvasController(const CanvasDocument(frames: 40));

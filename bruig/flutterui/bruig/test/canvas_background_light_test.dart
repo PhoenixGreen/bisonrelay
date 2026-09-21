@@ -255,6 +255,37 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets("its numbers are dragged as well as typed", (tester) async {
+      // Every number on this panel is the shared field, so holding one and
+      // dragging it runs the value up and down -- the same gesture the
+      // caption above it has, for the rows that have a caption. Checked on a
+      // real panel rather than on the field alone, because what used to break
+      // it was the panel: the hold dropped the focus, the focus called
+      // onCommit, and the rebuild that followed took the field's state away
+      // in the middle of the drag.
+      late ProceduralSpec changed;
+      await show(tester, const ProceduralSpec(density: 0.3),
+          onChanged: (s) => changed = s);
+
+      var field = find.descendant(
+          of: find.ancestor(
+              of: find.text("Density"),
+              matching: find.byType(CanvasNumberField)),
+          matching: find.byType(TextField));
+      await tester.ensureVisible(field);
+      await tester.pumpAndSettle();
+
+      var press = await tester.startGesture(tester.getCenter(field));
+      await tester.pump(const Duration(milliseconds: 500));
+      await press.moveBy(const Offset(20, 0));
+      await tester.pump();
+      await press.up();
+      await tester.pumpAndSettle();
+
+      // A two-decimal field, so twenty pixels is two tenths.
+      expect(changed.density, closeTo(0.5, 1e-9));
+    });
+
     testWidgets("offers the light on every style, not just one",
         (tester) async {
       // It is drawn over the finished pattern, so there is no style it cannot

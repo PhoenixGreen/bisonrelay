@@ -911,6 +911,10 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
   /// per column -- a chart's fourth series has an Offset field with nothing
   /// above it, and on the old arrangement that was a number that could only
   /// be typed.
+  /// Nothing in the hold reaches the panel -- no unfocus, no commit. That is
+  /// what made it temperamental: losing the focus calls onCommit, which closes
+  /// the undo step, which rebuilds the settings panel, which can take this
+  /// field's state away in the middle of its own gesture.
   Timer? _hold;
   bool _scrubbing = false;
   double _from = 0;
@@ -982,63 +986,65 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         min: CanvasControlScope.widthFor(context, widget.width),
         height: controlHeight,
         grow: widget.grow,
-        child: MouseRegion(
-          cursor: _scrubbing
-              ? SystemMouseCursors.resizeLeftRight
-              : MouseCursor.defer,
-          child: Listener(
-            onPointerDown: (event) {
-              _from = widget.value;
-              _startX = event.position.dx;
-              _hold?.cancel();
-              _hold = Timer(_scrubHoldDelay, () {
+        child: Listener(
+          // Translucent, so a press in the room around the digits counts as a
+          // press on the field: the box is a whole row tall and the words sit
+          // in the middle of it.
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (event) {
+            _from = widget.value;
+            _startX = event.position.dx;
+            _hold?.cancel();
+            _hold = Timer(_scrubHoldDelay, () {
+              _hold = null;
+              setState(() => _scrubbing = true);
+            });
+          },
+          onPointerMove: (event) {
+            var travelled = event.position.dx - _startX;
+            if (!_scrubbing) {
+              // Moved before it was held: that is the field's own drag, which
+              // is how a number is selected to be retyped. The allowance is
+              // generous on purpose -- a hand holding still does not, and a
+              // press that gave up over two pixels of drift is a press that
+              // works sometimes.
+              if (travelled.abs() > _scrubHoldSlop) {
+                _hold?.cancel();
                 _hold = null;
-                setState(() => _scrubbing = true);
-                // The caret and any selection go: from here the press is a
-                // dial, and a field being typed into is rewritten from
-                // outside only while it is not focused -- see
-                // didUpdateWidget.
-                _focus.unfocus();
-              });
-            },
-            onPointerMove: (event) {
-              var travelled = event.position.dx - _startX;
-              if (!_scrubbing) {
-                // Moved before it was held: that is the field's own drag,
-                // which is how a number is selected to be retyped.
-                if (travelled.abs() > _scrubHoldSlop) {
-                  _hold?.cancel();
-                  _hold = null;
-                }
-                return;
               }
-              widget.onChanged(_scrubbed(_from, travelled, step,
-                  min: widget.min, max: widget.max));
-            },
-            onPointerUp: (_) => _endScrub(),
-            onPointerCancel: (_) => _endScrub(),
-            child: TextField(
-              controller: _text,
-              focusNode: _focus,
-              style: const TextStyle(fontSize: 12),
-              textAlignVertical: TextAlignVertical.center,
-              keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true, signed: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(
-                    RegExp(r"^-?[0-9]*\.?[0-9]*")),
-              ],
-              decoration: canvasFieldDecoration(theme).copyWith(
-                suffixText: widget.suffix.isEmpty ? null : widget.suffix,
-                suffixStyle: const TextStyle(fontSize: 10),
-              ),
-              onChanged: (raw) {
-                var parsed = double.tryParse(raw);
-                if (parsed == null) return;
-                widget.onChanged(parsed.clamp(widget.min, widget.max));
-              },
-              onSubmitted: (_) => widget.onCommit?.call(),
+              return;
+            }
+            widget.onChanged(_scrubbed(_from, travelled, step,
+                min: widget.min, max: widget.max));
+          },
+          onPointerUp: (_) => _endScrub(),
+          onPointerCancel: (_) => _endScrub(),
+          child: TextField(
+            controller: _text,
+            focusNode: _focus,
+            style: const TextStyle(fontSize: 12),
+            textAlignVertical: TextAlignVertical.center,
+            // Left and right over the whole box, the same as over the caption
+            // and for the same reason: it is the only thing that says the
+            // number can be dragged. Set on the field rather than in a
+            // MouseRegion around it, because a text field carries a cursor of
+            // its own and the innermost one wins.
+            mouseCursor: SystemMouseCursors.resizeLeftRight,
+            keyboardType: const TextInputType.numberWithOptions(
+                decimal: true, signed: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r"^-?[0-9]*\.?[0-9]*")),
+            ],
+            decoration: canvasFieldDecoration(theme).copyWith(
+              suffixText: widget.suffix.isEmpty ? null : widget.suffix,
+              suffixStyle: const TextStyle(fontSize: 10),
             ),
+            onChanged: (raw) {
+              var parsed = double.tryParse(raw);
+              if (parsed == null) return;
+              widget.onChanged(parsed.clamp(widget.min, widget.max));
+            },
+            onSubmitted: (_) => widget.onCommit?.call(),
           ),
         ),
       ),
@@ -1050,7 +1056,7 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
 /// becomes a drag on its value, and _scrubHoldSlop how far the pointer may
 /// stray while it is being held.
 const Duration _scrubHoldDelay = Duration(milliseconds: 350);
-const double _scrubHoldSlop = 4;
+const double _scrubHoldSlop = 14;
 
 /// _scrubbed is where a scrub of [travelled] pixels from [from] has got to.
 ///
