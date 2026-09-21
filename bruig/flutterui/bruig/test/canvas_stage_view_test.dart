@@ -567,6 +567,72 @@ void main() {
     });
   });
 
+  group("an element's grips", () {
+    testWidgets("a press in the middle of a short box moves it",
+        (tester) async {
+      // Reported on a text box: clicking in the middle of it, or on the words
+      // themselves, often resized it instead. A resize grip's target is
+      // seventeen pixels across, so on a box one line high the top and bottom
+      // targets meet in the middle and every press lands on one of them. It is
+      // the text box that has this because it is the element that is routinely
+      // a line high -- and the one whose proportions are unlocked, so it has
+      // all eight grips rather than four corners.
+      var document = const CanvasDocument();
+      var words = TextElement(
+        const ElementBase(
+            id: "t", x: 200, y: 200, width: 320, height: 26, lockAspect: false),
+        text: "a line of words",
+        textSpec: const TextSpec(fontSize: 18),
+      );
+      var controller = CanvasController(document.addElement(words));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var middle = stage.pageRect.topLeft +
+          Offset(words.x + words.width / 2, words.y + words.height / 2) * scale;
+
+      await tester.dragFrom(middle, const Offset(40, 24));
+      await tester.pumpAndSettle();
+
+      var moved = controller.document.elementById("t") as TextElement;
+      expect(moved.width, closeTo(words.width, 0.01),
+          reason: "the middle is not a handle");
+      expect(moved.height, closeTo(words.height, 0.01));
+      expect(moved.x, greaterThan(words.x), reason: "it moved instead");
+      expect(moved.y, greaterThan(words.y));
+    });
+
+    testWidgets("and the edge of the same box still resizes it",
+        (tester) async {
+      // The other half: keeping the middle free must not put the grips out of
+      // reach, or a box a line high could never be made taller.
+      var document = const CanvasDocument();
+      var words = TextElement(
+        const ElementBase(
+            id: "t", x: 200, y: 200, width: 320, height: 26, lockAspect: false),
+        text: "a line of words",
+        textSpec: const TextSpec(fontSize: 18),
+      );
+      var controller = CanvasController(document.addElement(words));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var bottom = stage.pageRect.topLeft +
+          Offset(words.x + words.width / 2, words.y + words.height) * scale;
+
+      await tester.dragFrom(bottom, const Offset(0, 40));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("t") as TextElement;
+      expect(after.height, greaterThan(words.height + 10));
+      expect(after.y, closeTo(words.y, 0.01), reason: "from the bottom edge");
+    });
+  });
+
   group("a chart's placed title", () {
     /// build puts a chart in the middle of the canvas with its title placed.
     ///

@@ -749,6 +749,19 @@ class CanvasStageState extends State<CanvasStage> {
     // CanvasController.showHelpers.
     if (!controller.showHelpers) return null;
 
+    // The middle of an element is not a handle.
+    //
+    // A grip's target is seventeen pixels wide, which is generous because it
+    // sits on the edge of a selection with nothing else near it. On a *short*
+    // element there is something else near it: the grip on the opposite edge.
+    // A text box one line high is thirty pixels tall on screen at best, so the
+    // top and bottom targets met in the middle and every press on the words
+    // resized the box instead of moving it -- the reported "clicking in the
+    // middle of the box often resizes it". It is worst on a text box because
+    // a text box is the thing that is routinely a line high, and it needs the
+    // eight grips because it is the thing whose proportions are not locked.
+    if (_insideCore(stage, bounds, reach)) return null;
+
     StageHandle? best;
     var away = double.infinity;
     for (var handle in StageHandle.values) {
@@ -764,6 +777,30 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
     return best == null ? null : (best, away);
+  }
+
+  /// _insideCore is whether a stage point is far enough inside [bounds] that
+  /// nothing on the outline can have meant it.
+  ///
+  /// Each direction gives up at most a third of the element to its grips, so
+  /// there is always a middle left to press however short the element is: a
+  /// box thirty pixels high keeps ten for the top edge, ten for the bottom and
+  /// ten for itself.
+  bool _insideCore(Offset stage, Rect bounds, double reach) {
+    var on = Offset(bounds.width, bounds.height) * _scale;
+    if (on.dx <= 0 || on.dy <= 0) return false;
+    var keepX = math.min(reach, on.dx / 3);
+    var keepY = math.min(reach, on.dy / 3);
+
+    // In the selection's own frame, so a rotated box keeps its middle too.
+    var d = stage - _toStage(bounds.center);
+    var a = -_rotationOfSelection;
+    var local = a == 0
+        ? d
+        : Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
+            d.dx * math.sin(a) + d.dy * math.cos(a));
+    return local.dx.abs() < on.dx / 2 - keepX &&
+        local.dy.abs() < on.dy / 2 - keepY;
   }
 
   /// _selectedText is the one text element selected on its own, which is the
@@ -885,6 +922,10 @@ class CanvasStageState extends State<CanvasStage> {
     var grips = _flowGrips();
     if (grips == null) return null;
     var reach = flowGripSize / 2 + flowGripHitSlop;
+    // On the same outline as the resize grips, so it keeps off the middle for
+    // the same reason -- see _insideCore.
+    var bounds = _selectionBounds;
+    if (bounds != null && _insideCore(stage, bounds, reach)) return null;
     var out = (stage - grips.outAt).distance;
     var into = (stage - grips.inAt).distance;
     if (out <= reach && out < beat && (!grips.receiving || out <= into)) {
