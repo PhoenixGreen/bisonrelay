@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ ChartElement _chart({
   bool band = false,
   bool hideSecond = false,
   bool smooth = false,
+  ChartAnimation animation = const ChartAnimation(),
   List<double> upper = const [9, 9, 9, 9],
   List<double> lower = const [4, 4, 4, 4],
 }) =>
@@ -33,6 +35,7 @@ ChartElement _chart({
       showYLabels: false,
       showPoints: false,
       smooth: smooth,
+      animation: animation,
       strokeWidth: 2,
       yMin: 0,
       yMax: 12,
@@ -57,11 +60,11 @@ ChartElement _chart({
 
 /// _between is how many pixels are lit in the strip between the two lines,
 /// clear of both strokes.
-Future<int> _between(ChartElement e) async {
+Future<int> _between(ChartElement e, {double reveal = 1}) async {
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
   canvas.drawRect(_rect, Paint()..color = const Color(0xFF000000));
-  paintChart(canvas, _rect, e);
+  paintChart(canvas, _rect, e, reveal: reveal);
   var image = await recorder.endRecording().toImage(_w, _h);
   var bytes = (await image.toByteData())!;
   image.dispose();
@@ -171,6 +174,27 @@ void main() {
       expect(holed, 0,
           reason: "$holed of the sampled columns have background showing "
               "between the line and the band it bounds");
+    });
+
+    testWidgets("arrives with its lines rather than under them",
+        (tester) async {
+      // Drawing it on with the first line was glitchy in two ways at once.
+      // The shape is built out of whole readings, so it stepped across a
+      // category at a time under a line moving smoothly -- and the lines are
+      // staggered, so for the first half of the arrival it was a band with
+      // one edge and nothing on the other.
+      const drawing = ChartAnimation(preset: ChartAnimationPreset.drawOn);
+      late int lines, early, whole;
+      await tester.runAsync(() async {
+        lines = await _between(_chart(animation: drawing), reveal: 0.5);
+        early =
+            await _between(_chart(band: true, animation: drawing), reveal: 0.5);
+        whole =
+            await _between(_chart(band: true, animation: drawing), reveal: 1);
+      });
+      expect(early, lessThan(lines + 50),
+          reason: "$early lit against $lines with no band asked for at all");
+      expect(whole, greaterThan(2000), reason: "and all of it at the end");
     });
 
     testWidgets("stops where either line has no reading", (tester) async {

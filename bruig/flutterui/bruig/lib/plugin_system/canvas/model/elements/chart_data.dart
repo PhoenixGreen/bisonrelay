@@ -63,6 +63,13 @@ enum ChartLineStyle {
 /// result for a gap.
 const double missingValue = double.nan;
 
+/// maxSeriesDelay is how far a series may be offset, in seconds either way.
+///
+/// A guard rail rather than a scale: a canvas is a handful of seconds long
+/// and half a minute is far past anything that lines two series up, but a
+/// typo in the field should not put a series outside the document for good.
+const double maxSeriesDelay = 30;
+
 enum ChartType {
   bar("Bars", "One bar per category"),
   groupedBar("Grouped bars", "Series side by side within each category"),
@@ -218,15 +225,17 @@ class ChartSeries {
   /// colour or there is not.
   final GradientSpec? gradient;
 
-  /// delay shifts this series' arrival, as a fraction of the whole animation:
-  /// positive starts it later, negative starts it sooner. 0 for almost every
-  /// series.
+  /// delay shifts this series' arrival in **seconds**: positive starts it
+  /// later, negative starts it sooner. 0 for almost every series.
   ///
-  /// A fraction rather than seconds, because how long a chart's arrival takes
-  /// is the two keyframes on the timeline and they are dragged about -- an
-  /// offset in seconds would mean something different every time the length
-  /// changed, which is the opposite of what somebody lining two series up
-  /// wants.
+  /// Seconds, and a true shift. It was a fraction of the animation squeezed
+  /// into what was left of the window, and that is a speed control wearing an
+  /// offset's name: a series put back by a third arrived in two thirds of the
+  /// time, so lining two series up made one of them race. Applied by the
+  /// renderer, which asks the element's own keyframes what the chart looked
+  /// like a second and a half ago -- so the series really is playing a second
+  /// and a half late, at the speed everything else is playing at, and it goes
+  /// on arriving after the chart's own arrival has finished.
   ///
   /// It exists because the presets stagger by *item*, and two series drawn
   /// differently do not have the same items: a set of bars is one item per
@@ -297,29 +306,6 @@ class ChartSeries {
   bool pointsOn(bool chartPoints) => points ?? chartPoints;
   double pointSizeOn(double chartSize) => pointSize ?? chartSize;
   Color pointColorOn(Color chartColor) => pointColor ?? chartColor;
-
-  /// revealAt is how far through its own arrival this series is, given how
-  /// far through the whole thing the chart is.
-  ///
-  /// The offset moves the *start* and the series still finishes with the
-  /// chart: delayed by a quarter, it waits a quarter and then has three
-  /// quarters of the window to arrive in. Brought forward by a quarter, it
-  /// starts at once and is done a quarter early.
-  ///
-  /// Squeezed into what is left rather than shifted whole, which is what this
-  /// did first and was wrong: shifted, a series delayed by a quarter was only
-  /// three quarters arrived when the chart stopped animating -- and then the
-  /// chart drew itself complete, so the series appeared to race and jump to
-  /// the end.
-  double revealAt(double reveal) {
-    if (delay == 0) return reveal;
-    // Never the whole window: an offset of one would leave no time at all,
-    // and a series that arrives in no time does not arrive.
-    var shift = delay.clamp(-0.95, 0.95);
-    var window = 1 - shift.abs();
-    var into = shift > 0 ? reveal - shift : reveal;
-    return (into / window).clamp(0.0, 1.0);
-  }
 
   /// typeIn is how this series is actually drawn on a chart of [chartType].
   ChartType typeIn(ChartType chartType) => type ?? chartType;
@@ -422,7 +408,7 @@ class ChartSeries {
       band: json["band"] == true,
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
-          ? (json["delay"] as num).toDouble().clamp(-1.0, 1.0)
+          ? (json["delay"] as num).toDouble().clamp(-maxSeriesDelay, maxSeriesDelay)
           : 0,
       corner: json["corner"] is num ? (json["corner"] as num).toDouble() : null,
       smooth: json["smooth"] is bool ? json["smooth"] as bool : null,

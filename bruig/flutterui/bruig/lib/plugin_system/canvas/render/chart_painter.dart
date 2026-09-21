@@ -37,8 +37,13 @@ import 'package:flutter/painting.dart';
 /// keyframes -- see KeyframeChannel.close. While it is above zero the chart is
 /// drawn with its closing preset, running backwards: the same presets played
 /// in reverse, which is what a chart leaving looks like.
+/// [seriesReveal] is the same number worked out per series, for a chart whose
+/// series have been offset in time -- see ChartSeries.delay. Null where no
+/// series has been, which is nearly every chart. It is the renderer that
+/// works these out, because an offset is a number of seconds and the timeline
+/// is the only thing that knows how long a second is.
 void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
-    {double reveal = 1, double close = 0}) {
+    {double reveal = 1, double close = 0, List<double>? seriesReveal}) {
   if (rect.width <= 8 || rect.height <= 8) return;
 
   // Leaving, once the closing band has started. The exit preset takes the
@@ -49,15 +54,26 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   if (leaving) {
     e = e.copyWith(animation: e.animation.leaving);
     reveal = 1 - close.clamp(0.0, 1.0);
+    // Leaving is one movement for the whole chart: an offset says when a
+    // series arrives, and a chart half of which had gone would read as a
+    // chart with a hole in it rather than as a chart on its way out.
+    seriesReveal = null;
   }
 
   var animation = e.animation;
   var showing = animation.on ? reveal.clamp(0.0, 1.0) : 1.0;
+  // The furthest on of them, for the question "has anything arrived yet": a
+  // series brought forward is arriving while the chart's own reveal is still
+  // nought, and the early return below would have drawn none of it.
+  var furthest = showing;
+  for (var r in seriesReveal ?? const <double>[]) {
+    furthest = math.max(furthest, r.clamp(0.0, 1.0));
+  }
   // Nothing at all yet. Returning rather than drawing zero-height bars,
   // because the axes and the labels arrive with the chart -- a chart whose
   // grid appears a second before anything is in it looks broken rather than
   // early.
-  if (animation.on && showing <= 0) return;
+  if (animation.on && furthest <= 0) return;
   var data = e.data;
   if (data.series.isEmpty) {
     _placeholder(canvas, e.body.rectIn(rect), e);
@@ -116,7 +132,7 @@ void paintChart(ui.Canvas canvas, Rect rect, ChartElement e,
   if (e.type.isCircular) {
     paintCircular(canvas, area, e, showing);
   } else {
-    paintCartesian(canvas, area, e, showing);
+    paintCartesian(canvas, area, e, showing, seriesReveal);
   }
 
   if (clipping) canvas.restore();

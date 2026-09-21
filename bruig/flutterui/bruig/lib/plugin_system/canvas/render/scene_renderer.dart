@@ -277,6 +277,30 @@ void paintDocumentBackdrop(ui.Canvas canvas, CanvasDocument doc,
     _paintDocumentBackground(
         canvas, doc.size.rect, doc, 0, images, null, doc.frameRate.toDouble());
 
+/// chartSeriesReveal is how far each of a chart's series is through its own
+/// arrival, or null where none of them has been offset -- which is nearly
+/// every chart, and is why this costs nothing to have.
+///
+/// Worked out by asking the element's own keyframes what the chart looked
+/// like a second and a half ago, rather than by squeezing a fraction out of
+/// the chart's reveal. That is what makes the offset a shift in time and not
+/// a change of speed: the series plays at the speed everything else does, a
+/// second and a half behind it. It also means a series put back really does
+/// go on arriving after the chart's own arrival has finished -- the keyframes
+/// hold at their last value, so asking for an earlier frame keeps returning
+/// the middle of the arrival until the shift has been paid off.
+List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate) {
+  if (!e.data.series.any((s) => s.delay != 0)) return null;
+  var track = e.track;
+  var rate = frameRate <= 0 ? 1 : frameRate;
+  double at(int f) => track?.at(f).values[KeyframeChannel.reveal] ?? 1;
+  var whole = at(frame);
+  return [
+    for (var s in e.data.series)
+      s.delay == 0 ? whole : at((frame - s.delay * rate).round()),
+  ];
+}
+
 /// paintElement draws one element, with its animation pose applied.
 void paintElement(
   ui.Canvas canvas,
@@ -381,7 +405,10 @@ void paintElement(
           reveal: pose.values[KeyframeChannel.reveal] ?? 1,
           // And how much of it has left again, which is a second pair of
           // keyframes and is zero for every chart that has none.
-          close: pose.values[KeyframeChannel.close] ?? 0);
+          close: pose.values[KeyframeChannel.close] ?? 0,
+          // And how much of each series has arrived, where they have been
+          // offset from one another in time.
+          seriesReveal: chartSeriesReveal(e, frame, frameRate));
     case TableElement e:
       paintArriving(canvas, bounds, e.animation, pose,
           () => paintTable(canvas, bounds, e, images: images));

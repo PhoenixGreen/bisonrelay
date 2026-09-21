@@ -473,14 +473,17 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               CanvasNumberField(
                 key: ValueKey("seriesDelay$i"),
                 label: i == 1 ? "Offset" : "",
-                value: series.delay * 100,
-                min: -100,
-                max: 100,
-                decimals: 0,
-                width: 52,
-                suffix: "%",
-                onChanged: (v) =>
-                    _writeSeries(i, series.copyWith(delay: v / 100)),
+                value: series.delay,
+                min: -maxSeriesDelay,
+                max: maxSeriesDelay,
+                // Seconds, to a tenth: the offset is a shift in time, so the
+                // field says how much time. A tenth is a frame or two, which
+                // is as fine as lining two series up ever needs.
+                decimals: 1,
+                step: 0.1,
+                width: 58,
+                suffix: "s",
+                onChanged: (v) => _writeSeries(i, series.copyWith(delay: v)),
                 onCommit: widget.onCommit,
               ),
             // Nothing behind the button for a series with nothing to set --

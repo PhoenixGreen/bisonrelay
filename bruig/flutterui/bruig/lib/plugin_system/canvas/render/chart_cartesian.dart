@@ -219,8 +219,8 @@ _ValueRange _niceRange(double lo, double hi,
 }
 
 /// paintCartesian draws every type that has an x and a y axis.
-void paintCartesian(
-    ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
+void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
+    [List<double>? seriesReveal]) {
   var data = e.data;
   var horizontal = e.type == ChartType.horizontalBar;
 
@@ -383,13 +383,15 @@ void paintCartesian(
   // reason for putting the two on one pair of axes is to read the line
   // against the bars.
   if (bars.isNotEmpty) {
-    _bars(canvas, plot, range, e, horizontal, bars, reveal);
+    _bars(canvas, plot, range, e, horizontal, bars, reveal, seriesReveal);
   }
   // Candles under the lines for the same reason bars are: the point of
   // putting a moving average over a price chart is to read the line against
   // the candles.
   if (e.type.isCandles) _candles(canvas, plot, range, e, reveal);
-  if (lines.isNotEmpty) _lines(canvas, plot, range, e, lines, reveal);
+  if (lines.isNotEmpty) {
+    _lines(canvas, plot, range, e, lines, reveal, seriesReveal);
+  }
 }
 
 double _widestCategory(List<String> categories, TextSpec spec, Rect area) {
@@ -645,7 +647,8 @@ void _candles(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 /// are side by side: two bar series share a slot however the chart's own type
 /// is set, since drawing them on top of each other would hide one of them.
 void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
-    bool horizontal, List<int> which, double reveal) {
+    bool horizontal, List<int> which, double reveal,
+    [List<double>? seriesReveal]) {
   var data = e.data;
   var slots = data.categories.length;
   if (slots == 0 || which.isEmpty) return;
@@ -721,10 +724,11 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // grouped bars in the same slot arrive together, as a group.
       var colour = series.color;
       var arrived = 1.0;
-      if (e.animation.on && reveal < 1) {
+      if (e.animation.on && (reveal < 1 || seriesReveal != null)) {
         // This series' own place in the animation, which is the whole of it
         // unless it has been shifted. See ChartSeries.delay.
-        var p = e.animation.progressAt(series.revealAt(reveal), i, slots);
+        var p = e.animation
+            .progressAt(_revealOf(seriesReveal, s, reveal), i, slots);
         if (p <= 0) continue;
         switch (e.animation.preset) {
           case ChartAnimationPreset.fadeIn:
@@ -809,7 +813,8 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
 /// Each of them by its *own* type rather than by the chart's, so one series
 /// can be an area and the next a scatter over the same axes.
 void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
-    List<int> which, double reveal) {
+    List<int> which, double reveal,
+    [List<double>? seriesReveal]) {
   var data = e.data;
   var n = data.categories.length;
   if (n == 0) return;
@@ -821,7 +826,9 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       plot.bottom - plot.height * range.fraction(v).clamp(-0.2, 1.2);
 
   var animation = e.animation;
-  var animating = animation.on && reveal < 1;
+  // An offset series is still arriving after the chart's own reveal has
+  // reached one, so the gate cannot be the chart's reveal alone.
+  var animating = animation.on && (reveal < 1 || seriesReveal != null);
 
   for (var at = 0; at < which.length; at++) {
     var s = which[at];
@@ -847,11 +854,18 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
     // as well as along them, so two series fill in together rather than one
     // after the other.
     var perPoint = animation.preset.scrambles && kind == ChartType.scatter;
-    var mine = series.revealAt(reveal);
+    var mine = _revealOf(seriesReveal, s, reveal);
     var progress = animating && !perPoint
         ? animation.progressAt(mine, at, which.length)
         : 1.0;
     if (animating && !perPoint && progress <= 0) continue;
+
+    // Where the readings actually sit, kept before the presets that lift a
+    // line up out of the baseline replace them. The band is drawn between two
+    // settled lines -- its other edge is worked out from the figures and has
+    // never been lifted, so a band built from moving points was a shape with
+    // one edge in mid-air.
+    var seated = points;
 
     var alpha = 1.0;
     if (animating) {
@@ -929,6 +943,12 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // fraction of every stretch at once: a dotted line that appeared whole
       // and faint and then filled in, rather than one drawn on from its
       // start. Clipping to the tip draws exactly what has been reached.
+      // What has a reading, before the drawing has had its say about what has
+      // been reached yet. The band is built from this: its shape only knows
+      // about whole readings, so a band cut off at a line's tip jumped
+      // forward one category at a time under lines that were moving smoothly.
+      var whole = [...present];
+
       var drawnTo = double.infinity;
       if (animating &&
           animation.preset == ChartAnimationPreset.drawOn &&
@@ -953,9 +973,23 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // stand on.
       if (series.band) {
         var next = _nextDrawn(data, s);
-        if (next >= 0) {
+        // A wash between two lines arrives when they have. Faded in over the
+        // last of whichever of the pair is slower rather than drawn on: a
+        // band has no direction of its own -- it is the ground between two
+        // things that do -- and one that filled in with the first line was a
+        // shape with one edge and nothing on the other.
+        var settled = !animating
+            ? 1.0
+            : _bandFade(
+                _revealOf(seriesReveal, s, reveal),
+                next < 0 ? 1.0 : _revealOf(seriesReveal, next, reveal),
+                e,
+                which,
+                at,
+                next);
+        if (next >= 0 && settled > 0) {
           var pair = _bandPath(
-            data, next, points, present, n, xAt, yAt, drawnTo,
+            data, next, seated, whole, n, xAt, yAt, double.infinity,
             // Each edge curved the way the line along it is curved. Drawn as
             // chords while the lines bowed away from them, the band stood
             // clear of its own edges everywhere between two readings.
@@ -964,14 +998,15 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
                 data.series[next].typeIn(e.type).usesSmooth,
           );
           if (pair != null) {
+            var wash = 0.30 * alpha * settled;
             canvas.drawPath(
                 pair,
                 Paint()
                   ..shader = ui.Gradient.linear(
                       Offset(0, plot.top), Offset(0, plot.bottom), [
-                    colour.withValues(alpha: colour.a * 0.30 * alpha),
-                    data.series[next].color.withValues(
-                        alpha: data.series[next].color.a * 0.30 * alpha),
+                    colour.withValues(alpha: colour.a * wash),
+                    data.series[next].color
+                        .withValues(alpha: data.series[next].color.a * wash),
                   ]));
           }
         }
@@ -1136,6 +1171,39 @@ int _nextDrawn(ChartData data, int s) {
   }
   return -1;
 }
+
+/// _bandFade is how much of the band between two lines is showing.
+///
+/// Nought until both of its edges are three quarters of the way on, then in
+/// over what is left of the slower of the two, so the wash is complete
+/// exactly when the lines it lies between are.
+///
+/// It used to be drawn on with the first of its lines, clipped to that line's
+/// tip. That is what "glitchy" meant: the shape is built out of whole
+/// readings, so it stepped forward a category at a time under a line moving
+/// smoothly -- and for half the animation it was a band with one edge, the
+/// other line not having been drawn yet.
+double _bandFade(double mine, double other, ChartElement e, List<int> which,
+    int at, int next) {
+  var animation = e.animation;
+  var here = animation.progressAt(mine, at, which.length);
+  // The other edge need not be one of the lines in this pass: a band between
+  // a line and a set of bars is drawn the same way, and the bars arrive with
+  // the chart rather than in this stagger.
+  var there = which.indexOf(next);
+  var theirs =
+      there < 0 ? 1.0 : animation.progressAt(other, there, which.length);
+  const from = 0.75;
+  var least = math.min(here, theirs);
+  return least <= from ? 0 : ((least - from) / (1 - from)).clamp(0.0, 1.0);
+}
+
+/// _revealOf is how far through its own arrival series [s] is.
+///
+/// The chart's own answer for every series that has not been offset, and for
+/// every chart on which none has -- which is nearly all of them.
+double _revealOf(List<double>? seriesReveal, int s, double reveal) =>
+    seriesReveal != null && s < seriesReveal.length ? seriesReveal[s] : reveal;
 
 /// _bandPath is the closed shape between one line and the next.
 ///

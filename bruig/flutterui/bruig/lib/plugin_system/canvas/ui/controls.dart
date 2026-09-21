@@ -1,5 +1,6 @@
 import 'package:bruig/components/color_picker.dart';
 import 'package:bruig/components/paint_spec.dart';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/storage_manager.dart';
@@ -898,6 +899,23 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
       TextEditingController(text: _format(widget.value));
   final FocusNode _focus = FocusNode();
 
+  /// _hold runs while the number is being pressed, _scrubbing is true once it
+  /// has been held long enough, and _from and _startX are where the drag
+  /// began -- see _ScrubLabel, which does the same arithmetic.
+  ///
+  /// Held rather than dragged, because a field's own drag is how text is
+  /// selected and typing an exact number has to go on working. Holding is
+  /// free: nothing else on a text field means anything by it.
+  ///
+  /// It is here as well as on the caption because a caption is written once
+  /// per column -- a chart's fourth series has an Offset field with nothing
+  /// above it, and on the old arrangement that was a number that could only
+  /// be typed.
+  Timer? _hold;
+  bool _scrubbing = false;
+  double _from = 0;
+  double _startX = 0;
+
   String _format(double v) => widget.decimals == 0
       ? v.round().toString()
       : v.toStringAsFixed(widget.decimals);
@@ -923,14 +941,24 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
 
   @override
   void dispose() {
+    _hold?.cancel();
     _text.dispose();
     _focus.dispose();
     super.dispose();
   }
 
+  void _endScrub() {
+    _hold?.cancel();
+    _hold = null;
+    if (!_scrubbing) return;
+    setState(() => _scrubbing = false);
+    widget.onCommit?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    var step = widget.step ?? math.pow(10, -widget.decimals).toDouble();
     return _labelled(
       theme,
       widget.label,
@@ -949,30 +977,84 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         min: CanvasControlScope.widthFor(context, widget.width),
         height: controlHeight,
         grow: widget.grow,
-        child: TextField(
-          controller: _text,
-          focusNode: _focus,
-          style: const TextStyle(fontSize: 12),
-          textAlignVertical: TextAlignVertical.center,
-          keyboardType: const TextInputType.numberWithOptions(
-              decimal: true, signed: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r"^-?[0-9]*\.?[0-9]*")),
-          ],
-          decoration: canvasFieldDecoration(theme).copyWith(
-            suffixText: widget.suffix.isEmpty ? null : widget.suffix,
-            suffixStyle: const TextStyle(fontSize: 10),
+        child: MouseRegion(
+          cursor: _scrubbing
+              ? SystemMouseCursors.resizeLeftRight
+              : MouseCursor.defer,
+          child: Listener(
+            onPointerDown: (event) {
+              _from = widget.value;
+              _startX = event.position.dx;
+              _hold?.cancel();
+              _hold = Timer(_scrubHoldDelay, () {
+                _hold = null;
+                setState(() => _scrubbing = true);
+                // The caret and any selection go: from here the press is a
+                // dial, and a field being typed into is rewritten from
+                // outside only while it is not focused -- see
+                // didUpdateWidget.
+                _focus.unfocus();
+              });
+            },
+            onPointerMove: (event) {
+              var travelled = event.position.dx - _startX;
+              if (!_scrubbing) {
+                // Moved before it was held: that is the field's own drag,
+                // which is how a number is selected to be retyped.
+                if (travelled.abs() > _scrubHoldSlop) {
+                  _hold?.cancel();
+                  _hold = null;
+                }
+                return;
+              }
+              widget.onChanged(_scrubbed(_from, travelled, step,
+                  min: widget.min, max: widget.max));
+            },
+            onPointerUp: (_) => _endScrub(),
+            onPointerCancel: (_) => _endScrub(),
+            child: TextField(
+              controller: _text,
+              focusNode: _focus,
+              style: const TextStyle(fontSize: 12),
+              textAlignVertical: TextAlignVertical.center,
+              keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true, signed: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(
+                    RegExp(r"^-?[0-9]*\.?[0-9]*")),
+              ],
+              decoration: canvasFieldDecoration(theme).copyWith(
+                suffixText: widget.suffix.isEmpty ? null : widget.suffix,
+                suffixStyle: const TextStyle(fontSize: 10),
+              ),
+              onChanged: (raw) {
+                var parsed = double.tryParse(raw);
+                if (parsed == null) return;
+                widget.onChanged(parsed.clamp(widget.min, widget.max));
+              },
+              onSubmitted: (_) => widget.onCommit?.call(),
+            ),
           ),
-          onChanged: (raw) {
-            var parsed = double.tryParse(raw);
-            if (parsed == null) return;
-            widget.onChanged(parsed.clamp(widget.min, widget.max));
-          },
-          onSubmitted: (_) => widget.onCommit?.call(),
         ),
       ),
     );
   }
+}
+
+/// _scrubHoldDelay is how long a number has to be pressed before the press
+/// becomes a drag on its value, and _scrubHoldSlop how far the pointer may
+/// stray while it is being held.
+const Duration _scrubHoldDelay = Duration(milliseconds: 350);
+const double _scrubHoldSlop = 4;
+
+/// _scrubbed is where a scrub of [travelled] pixels from [from] has got to.
+///
+/// One pixel of travel moves the number by one step, and shift makes it ten
+/// times finer for the last pixel of a nudge.
+double _scrubbed(double from, double travelled, double step,
+    {required double min, required double max}) {
+  var fine = HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
+  return (from + travelled * step * fine).clamp(min, max).toDouble();
 }
 
 /// canvasFieldDecoration is what every field on this panel is drawn with.
@@ -1806,11 +1888,8 @@ class _ScrubLabelState extends State<_ScrubLabel> {
         },
         onPointerMove: (event) {
           if (!_dragging) return;
-          var fine = HardwareKeyboard.instance.isShiftPressed ? 0.1 : 1.0;
-          var travelled = event.position.dx - _startX;
-          var next =
-              (_from + travelled * step * fine).clamp(widget.min, widget.max);
-          widget.onChanged(next.toDouble());
+          widget.onChanged(_scrubbed(_from, event.position.dx - _startX, step,
+              min: widget.min, max: widget.max));
         },
         onPointerUp: (_) {
           if (!_dragging) return;

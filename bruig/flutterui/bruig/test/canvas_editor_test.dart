@@ -2456,6 +2456,42 @@ void main() {
       expect(await dragFromFraction(0.5), 230);
     });
 
+    testWidgets("holding the number itself scrubs it as well", (tester) async {
+      // A caption is written once per column, so a chart's fourth series has
+      // an Offset field with nothing above it to drag -- a number that could
+      // only be typed. Holding the field is the other handle: a press on a
+      // number means nothing else, where a *drag* on one is how text is
+      // selected.
+      var controller = CanvasController(const CanvasDocument(frames: 200));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      var field = find.byKey(const ValueKey("canvasFrames"));
+      var press = await tester.startGesture(tester.getCenter(field));
+      await tester.pump(const Duration(milliseconds: 500));
+      await press.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await press.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.document.frames, 240,
+          reason: "forty pixels, forty frames, the same as the caption");
+    });
+
+    testWidgets("but a drag that was not held leaves the number alone",
+        (tester) async {
+      // That is the field's own drag, which selects the digits to retype
+      // them. Taking it would make an exact number impossible to type over.
+      var controller = CanvasController(const CanvasDocument(frames: 200));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      await tester.drag(
+          find.byKey(const ValueKey("canvasFrames")), const Offset(40, 0));
+      await tester.pumpAndSettle();
+      expect(controller.document.frames, 200);
+    });
+
     testWidgets("typing into the field still works", (tester) async {
       // The scrub must not have taken the field over.
       var controller = CanvasController(const CanvasDocument(frames: 40));
