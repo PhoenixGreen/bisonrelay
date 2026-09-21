@@ -336,7 +336,17 @@ void paintElement(
   if (alpha <= 0.002) return;
 
   var bounds = element.bounds;
-  if (bounds.width <= 0 || bounds.height <= 0) return;
+  // Nothing to draw in no room -- except for a line, which is a stroke from
+  // one corner of its box to the other and so has a box with no height when
+  // it is level and none with no width when it is plumb. paintArriving says
+  // the same thing about the effects; this said the opposite and dropped the
+  // element, so a line dragged flat, or snapped flat against a guide,
+  // vanished. It is still selectable while invisible -- a line is hit-tested
+  // against its stroke rather than its box -- which is the worst way for it
+  // to go.
+  var flat = element is LineElement;
+  if (bounds.width <= 0 && bounds.height <= 0) return;
+  if (!flat && (bounds.width <= 0 || bounds.height <= 0)) return;
 
   // Text riding a line has no transform of its own. Where it is, how it is
   // turned and how big it is are all the line's to decide -- that is the whole

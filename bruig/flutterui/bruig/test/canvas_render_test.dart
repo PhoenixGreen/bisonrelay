@@ -806,9 +806,10 @@ void main() {
           background: const CanvasBackground(),
           elements: [
             LineElement(
-              // A height of its own: paintElement skips an element with an
-              // empty box, so a line whose two corners share a row draws
-              // nothing at all.
+              // A height of its own, so the two ends are told apart by where
+              // they are as well as by what is drawn on them. A line whose
+              // corners share a row draws too -- see "a level line is still a
+              // line" below.
               const ElementBase(id: "l", x: 20, y: 116, width: 180, height: 8),
               strokeWidth: 6,
               endEnd: end,
@@ -816,6 +817,43 @@ void main() {
             ),
           ],
         );
+
+    testWidgets("a level line is still a line", (tester) async {
+      // A line is a stroke from one corner of its box to the other, so a line
+      // dragged flat -- or snapped flat against a guide -- has a box with no
+      // height at all. The renderer skipped every element with an empty box
+      // and took the line with it, while the stage went on hit-testing the
+      // stroke: an invisible line that could still be selected and dragged.
+      var level = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.square, width: 240),
+        background: const CanvasBackground(),
+        elements: [
+          LineElement(
+            const ElementBase(id: "l", x: 20, y: 120, width: 180, height: 0),
+            strokeWidth: 6,
+            endEnd: LineEnd.arrow,
+          ),
+        ],
+      );
+      var drawn = await inkNear(tester, level, const Offset(110, 120), 80);
+      expect(drawn.length, greaterThan(200),
+          reason: "the stroke and its head, not an empty page");
+
+      // And the same line plumb, which is the other way round.
+      var plumb = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.square, width: 240),
+        background: const CanvasBackground(),
+        elements: [
+          LineElement(
+            const ElementBase(id: "l", x: 120, y: 20, width: 0, height: 180),
+            strokeWidth: 6,
+            endEnd: LineEnd.arrow,
+          ),
+        ],
+      );
+      expect((await inkNear(tester, plumb, const Offset(120, 110), 80)).length,
+          greaterThan(200));
+    });
 
     testWidgets("a hollow end is not filled in by the line running through it",
         (tester) async {
