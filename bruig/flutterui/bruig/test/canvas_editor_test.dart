@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/canvas_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -958,6 +959,35 @@ void main() {
   });
 
   group("the timeline", () {
+    testWidgets("the master canvas's length is a reading, not a field",
+        (tester) async {
+      // It is as long as the scenes it covers, worked out rather than kept.
+      // As a field it took a number and put the old one back, which reads as
+      // the field being broken -- reported as "when I change this it reverts
+      // to 3600", alongside the real bug: the run was being clamped to the
+      // limit on one scene, so six scenes of 720 came to 3600 and playing the
+      // whole document stopped in the middle of the sixth.
+      var controller = CanvasController(const CanvasDocument().withScenes([
+        for (var i = 0; i < 6; i++)
+          CanvasScene(id: "s$i", frames: 720, elements: const []),
+      ]).copyWith(
+        master: const CanvasScene(id: "m", name: "Master"),
+        masterOn: true,
+        onMaster: true,
+      ));
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasTimeline(controller: controller));
+
+      expect(find.byKey(const ValueKey("canvasFrames")), findsNothing,
+          reason: "nothing to type into");
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("canvasFramesMaster")),
+              matching: find.text("4320")),
+          findsOneWidget,
+          reason: "six scenes of seven hundred and twenty");
+    });
+
     testWidgets("adds and removes a keyframe for the selected element",
         (tester) async {
       var document = const CanvasDocument(frames: 20);

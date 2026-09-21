@@ -712,20 +712,38 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     ),
                   ),
                 ),
-                CanvasNumberField(
-                  key: const ValueKey("canvasFrames"),
-                  label: "Length",
-                  value: document.frames.toDouble(),
-                  min: 1,
-                  max: maxFrameCount.toDouble(),
-                  width: 68,
-                  onChanged: (v) {
-                    controller.beginInteraction();
-                    controller.apply(document.copyWith(frames: v.round()),
-                        transient: true);
-                  },
-                  onCommit: controller.endInteraction,
-                ),
+                // The master canvas is as long as the scenes it covers, so
+                // there is nothing here to set: it was a field that took a
+                // number and put the old one back, which reads as the field
+                // being broken rather than as the length not being its own.
+                if (document.editingMaster)
+                  Tooltip(
+                    message: "How long the whole sequence runs: every scene "
+                        "end to end. The master canvas is as long as what it "
+                        "covers, so this follows the scenes rather than being "
+                        "set here.",
+                    child: CanvasReadout(
+                      key: const ValueKey("canvasFramesMaster"),
+                      label: "Length",
+                      width: 68,
+                      value: "${document.frames}",
+                    ),
+                  )
+                else
+                  CanvasNumberField(
+                    key: const ValueKey("canvasFrames"),
+                    label: "Length",
+                    value: document.frames.toDouble(),
+                    min: 1,
+                    max: maxFrameCount.toDouble(),
+                    width: 68,
+                    onChanged: (v) {
+                      controller.beginInteraction();
+                      controller.apply(document.copyWith(frames: v.round()),
+                          transient: true);
+                    },
+                    onCommit: controller.endInteraction,
+                  ),
                 CanvasNumberField(
                   key: const ValueKey("canvasFrameRate"),
                   label: "Per second",

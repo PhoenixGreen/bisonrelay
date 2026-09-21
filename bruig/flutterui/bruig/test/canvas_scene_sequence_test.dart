@@ -155,6 +155,38 @@ void main() {
       expect(placeInSequence(document, 14).scene, 1);
     });
 
+    test("six long scenes are six long scenes, not the cap on one", () {
+      // Reported: six scenes of seven hundred and twenty frames, a master
+      // canvas saying the document was three thousand six hundred long, and
+      // playing the whole thing stopping in the middle of the sixth scene.
+      // The run was being clamped to the *scene* limit -- a guard rail on
+      // what one Length field will take, which is a different question from
+      // how long a document of many scenes may be.
+      var many = CanvasDocument(
+        size: const CanvasSize(width: 200, ratio: CanvasRatio.wide),
+      ).withScenes([
+        for (var i = 0; i < 6; i++)
+          CanvasScene(id: "s$i", frames: 720, elements: const []),
+      ]);
+
+      expect(many.sequenceFrames, 4320);
+      expect(many.playFrames, 4320);
+      expect(placeInSequence(many, 4319).scene, 5,
+          reason: "the last frame is in the last scene");
+      expect(placeInSequence(many, 3601).scene, 5,
+          reason: "and so is the frame after the old cap");
+
+      // The master canvas is as long as what it covers.
+      expect(
+          many
+              .copyWith(
+                  master: const CanvasScene(id: "m"),
+                  masterOn: true,
+                  onMaster: true)
+              .frames,
+          4320);
+    });
+
     test("past the end, the last scene holds on its last frame", () {
       var it = _two();
       var after = placeInSequence(it, 999);

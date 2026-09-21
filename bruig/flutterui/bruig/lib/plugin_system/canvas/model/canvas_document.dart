@@ -62,7 +62,21 @@ const int defaultFrameRate = 24;
 /// animation nobody asked for.
 const int defaultFrameCount = 1;
 
+/// maxFrameCount is the longest one canvas may be: two and a half minutes at
+/// twenty-four a second. A guard rail on the Length field rather than a
+/// judgement about how long a scene should be.
 const int maxFrameCount = 3600;
+
+/// maxSequenceFrames is the longest a whole document may run -- every scene
+/// end to end, which is a different question from how long any one of them
+/// may be.
+///
+/// It was the same number, and that is a bug somebody hit with six scenes of
+/// seven hundred and twenty frames: four thousand three hundred and twenty
+/// frames of canvas reported as three thousand six hundred, so playing the
+/// whole document stopped in the middle of the last scene and the master
+/// canvas said it was shorter than the scenes it covers.
+const int maxSequenceFrames = maxFrameCount * 100;
 
 /// CanvasBackground is what is behind everything, covering the whole document.
 ///
@@ -244,7 +258,7 @@ class CanvasDocument {
     for (var i = 0; i < list.length; i++) {
       total += _stepOf(i);
     }
-    return total.clamp(1, maxFrameCount).toInt();
+    return total.clamp(1, maxSequenceFrames).toInt();
   }
 
   /// playFrames is how long this document runs for when it is played or
