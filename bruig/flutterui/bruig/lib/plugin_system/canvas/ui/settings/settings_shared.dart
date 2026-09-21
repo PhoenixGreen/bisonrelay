@@ -353,281 +353,306 @@ List<Widget> typeGroups(
   /// element's marks, which belong with how the words are set rather than
   /// with what they say.
   List<Widget> extraMore = const [],
-}) =>
-    [
-      CanvasMoreGroup(
-          label: label,
-          hideCaption: hideCaption,
-          rule: rule,
-          remember: "${remember}Type",
-          tooltip: "Spacing, alignment and case",
-          row: [
-            CanvasDropdown<String>(
-              label: "Font",
-              value: spec.fontFamily,
-              // The least these three will be, not the width they are. Six
-              // things share this line -- the face, the size, the weight, two
-              // switches and the button -- and the three boxes between them
-              // were asking for two hundred and fifty-four pixels, which is
-              // what pushed the switches onto a line of their own the moment
-              // anybody pulled the sidebar in. They grow back into a wide one.
-              width: 66,
-              options: [for (var f in canvasFonts) (f, f)],
+
+  /// colourInMore puts the colour settings behind the type button instead of
+  /// on a row of their own, so that everything about one piece of writing is
+  /// one line and one button.
+  ///
+  /// For the element that has *several* pieces of writing in it: a text
+  /// element's items are a row each, and a row each plus a colour row each is
+  /// a panel where nothing can be found. Everywhere else the colour keeps its
+  /// own row, because there is only one thing on the element to colour and
+  /// the swatch is worth seeing.
+  bool colourInMore = false,
+}) {
+  // The colour settings, as a row and as what is behind its button. Built
+  // here rather than written twice: they are the same controls whether
+  // they stand as a group of their own or go behind the type button.
+  var colourRow = <Widget>[
+    // What the letters are painted with. The colour is the usual answer
+    // and stays first; a picture or a pattern replaces it, and the
+    // outline and shadow settings under it go on meaning what they mean.
+    if (fill && context != null)
+      CanvasDropdown<TextFillKind>(
+        key: const ValueKey("textFillKind"),
+        label: "Painted with",
+        value: spec.fill.kind,
+        width: 118,
+        options: [for (var k in TextFillKind.values) (k, k.label)],
+        onChanged: (v) {
+          begin();
+          onChanged(spec.copyWith(fill: spec.fill.copyWith(kind: v)));
+          commit();
+        },
+      ),
+    CanvasColorButton(
+      label: "Text",
+      color: spec.color,
+      // The words can fade from one colour to another, across the box
+      // they are drawn in. Not where they are outlined rather than
+      // filled, or where a picture or a pattern is showing through them:
+      // each of those already decides what the letters are painted with.
+      // See TextSpec.fade.
+      gradient: spec.fade,
+      onChanged: (c) {
+        begin();
+        onChanged(spec.copyWith(color: c));
+        commit();
+      },
+      onGradientChanged: (g) {
+        begin();
+        onChanged(
+            g == null ? spec.copyWith(flatText: true) : spec.copyWith(fade: g));
+        commit();
+      },
+    ),
+    CanvasNumberField(
+      label: "Outline",
+      value: spec.outlineWidth,
+      min: 0,
+      max: 60,
+      decimals: 1,
+      width: 54,
+      onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
+      onCommit: commit,
+    ),
+    CanvasColorButton(
+      label: "Line",
+      color: spec.outlineColor,
+      onChanged: (c) {
+        begin();
+        onChanged(spec.copyWith(outlineColor: c));
+        commit();
+      },
+    ),
+  ];
+  var colourMore = <Widget>[
+    if (fill && context != null && spec.fill.kind != TextFillKind.color)
+      ..._fillBits(context, spec, onChanged, begin, commit),
+    CanvasNumberField(
+      label: "Shadow",
+      value: spec.shadowBlur,
+      min: 0,
+      max: 120,
+      width: 54,
+      onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
+      onCommit: commit,
+    ),
+    CanvasColorButton(
+      label: "Colour",
+      color: spec.shadowColor,
+      onChanged: (c) {
+        begin();
+        onChanged(spec.copyWith(shadowColor: c));
+        commit();
+      },
+    ),
+    // Where the light is, not where the shadow goes: one light for a
+    // scene, and the same two numbers on every element in it.
+    CanvasNumberField(
+      key: const ValueKey("textShadowAngle"),
+      label: "Direction",
+      value: spec.shadowAngle,
+      min: 0,
+      max: 360,
+      width: 60,
+      onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      key: const ValueKey("textShadowDistance"),
+      label: "Distance",
+      value: spec.shadowDistance,
+      min: 0,
+      max: 400,
+      decimals: 1,
+      width: 60,
+      onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      key: const ValueKey("textGlow"),
+      label: "Glow",
+      value: spec.glowBlur,
+      min: 0,
+      max: 200,
+      width: 54,
+      onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
+      onCommit: commit,
+    ),
+    CanvasColorButton(
+      label: "Light",
+      color: spec.glowColor,
+      onChanged: (c) {
+        begin();
+        onChanged(spec.copyWith(glowColor: c));
+        commit();
+      },
+    ),
+    if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
+      const CanvasHint(
+          "Direction is where the light is, read like a compass: 0 is "
+          "straight up, 90 to the right. The shadow falls the other way, "
+          "Distance away from the words. At a distance of 0 it sits "
+          "directly underneath them, which is a shadow that reads as a "
+          "glow in its own colour."),
+    if (spec.glowBlur > 0)
+      const CanvasHint(
+          "Glow is light all round the letters, in its own colour, and it "
+          "is drawn behind them — so a picture or a pattern showing "
+          "through the words cannot cut it up, and an outline sits over "
+          "it rather than under it."),
+  ];
+
+  return [
+    CanvasMoreGroup(
+        label: label,
+        hideCaption: hideCaption,
+        rule: rule,
+        remember: "${remember}Type",
+        tooltip: "Spacing, alignment and case",
+        row: [
+          CanvasDropdown<String>(
+            label: "Font",
+            value: spec.fontFamily,
+            // The least these three will be, not the width they are. Six
+            // things share this line -- the face, the size, the weight, two
+            // switches and the button -- and the three boxes between them
+            // were asking for two hundred and fifty-four pixels, which is
+            // what pushed the switches onto a line of their own the moment
+            // anybody pulled the sidebar in. They grow back into a wide one.
+            width: 66,
+            options: [for (var f in canvasFonts) (f, f)],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(fontFamily: v));
+              commit();
+            },
+          ),
+          CanvasNumberField(
+            label: "Size",
+            value: spec.fontSize,
+            min: 1,
+            max: 800,
+            width: 44,
+            onChanged: (v) => onChanged(spec.copyWith(fontSize: v)),
+            onCommit: commit,
+          ),
+          CanvasDropdown<int>(
+            label: "Weight",
+            value: spec.weight,
+            width: 62,
+            options: const [
+              (100, "Thin"),
+              (300, "Light"),
+              (400, "Regular"),
+              (500, "Medium"),
+              (600, "Semibold"),
+              (700, "Bold"),
+              (800, "Extrabold"),
+              (900, "Black"),
+            ],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(weight: v));
+              commit();
+            },
+          ),
+          CanvasIconButton(
+            icon: Icons.format_italic,
+            tooltip: "Italic",
+            active: spec.italic,
+            onPressed: () {
+              begin();
+              onChanged(spec.copyWith(italic: !spec.italic));
+              commit();
+            },
+          ),
+          CanvasIconButton(
+            icon: Icons.format_underlined,
+            tooltip: "Underline",
+            active: spec.underline,
+            onPressed: () {
+              begin();
+              onChanged(spec.copyWith(underline: !spec.underline));
+              commit();
+            },
+          ),
+        ],
+        more: [
+          CanvasNumberField(
+            label: "Letter",
+            value: spec.letterSpacing,
+            min: -50,
+            max: 200,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) => onChanged(spec.copyWith(letterSpacing: v)),
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            label: "Line",
+            value: spec.lineHeight,
+            min: 0.5,
+            max: 5,
+            decimals: 2,
+            width: 54,
+            onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
+            onCommit: commit,
+          ),
+          CanvasDropdown<TextAlignSpec>(
+            label: "Align",
+            value: spec.align,
+            width: 92,
+            options: [for (var a in TextAlignSpec.values) (a, a.label)],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(align: v));
+              commit();
+            },
+          ),
+          CanvasDropdown<VerticalAlignSpec>(
+            label: "Vertical",
+            value: spec.verticalAlign,
+            width: 86,
+            options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
+            onChanged: (v) {
+              begin();
+              onChanged(spec.copyWith(verticalAlign: v));
+              commit();
+            },
+          ),
+          if (includeCase)
+            CanvasDropdown<TextCase>(
+              label: "Case",
+              value: spec.textCase,
+              width: 96,
+              options: [for (var c in TextCase.values) (c, c.label)],
               onChanged: (v) {
                 begin();
-                onChanged(spec.copyWith(fontFamily: v));
+                onChanged(spec.copyWith(textCase: v));
                 commit();
               },
             ),
-            CanvasNumberField(
-              label: "Size",
-              value: spec.fontSize,
-              min: 1,
-              max: 800,
-              width: 44,
-              onChanged: (v) => onChanged(spec.copyWith(fontSize: v)),
-              onCommit: commit,
-            ),
-            CanvasDropdown<int>(
-              label: "Weight",
-              value: spec.weight,
-              width: 62,
-              options: const [
-                (100, "Thin"),
-                (300, "Light"),
-                (400, "Regular"),
-                (500, "Medium"),
-                (600, "Semibold"),
-                (700, "Bold"),
-                (800, "Extrabold"),
-                (900, "Black"),
-              ],
-              onChanged: (v) {
-                begin();
-                onChanged(spec.copyWith(weight: v));
-                commit();
-              },
-            ),
-            CanvasIconButton(
-              icon: Icons.format_italic,
-              tooltip: "Italic",
-              active: spec.italic,
-              onPressed: () {
-                begin();
-                onChanged(spec.copyWith(italic: !spec.italic));
-                commit();
-              },
-            ),
-            CanvasIconButton(
-              icon: Icons.format_underlined,
-              tooltip: "Underline",
-              active: spec.underline,
-              onPressed: () {
-                begin();
-                onChanged(spec.copyWith(underline: !spec.underline));
-                commit();
-              },
-            ),
+          ...extraMore,
+          if (colourInMore) ...[
+            // On a line of their own, so the type settings above them
+            // still read as one run.
+            const CanvasLineBreak(),
+            ...colourRow,
+            ...colourMore,
           ],
-          more: [
-            CanvasNumberField(
-              label: "Letter",
-              value: spec.letterSpacing,
-              min: -50,
-              max: 200,
-              decimals: 1,
-              width: 54,
-              onChanged: (v) => onChanged(spec.copyWith(letterSpacing: v)),
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              label: "Line",
-              value: spec.lineHeight,
-              min: 0.5,
-              max: 5,
-              decimals: 2,
-              width: 54,
-              onChanged: (v) => onChanged(spec.copyWith(lineHeight: v)),
-              onCommit: commit,
-            ),
-            CanvasDropdown<TextAlignSpec>(
-              label: "Align",
-              value: spec.align,
-              width: 92,
-              options: [for (var a in TextAlignSpec.values) (a, a.label)],
-              onChanged: (v) {
-                begin();
-                onChanged(spec.copyWith(align: v));
-                commit();
-              },
-            ),
-            CanvasDropdown<VerticalAlignSpec>(
-              label: "Vertical",
-              value: spec.verticalAlign,
-              width: 86,
-              options: [for (var a in VerticalAlignSpec.values) (a, a.label)],
-              onChanged: (v) {
-                begin();
-                onChanged(spec.copyWith(verticalAlign: v));
-                commit();
-              },
-            ),
-            if (includeCase)
-              CanvasDropdown<TextCase>(
-                label: "Case",
-                value: spec.textCase,
-                width: 96,
-                options: [for (var c in TextCase.values) (c, c.label)],
-                onChanged: (v) {
-                  begin();
-                  onChanged(spec.copyWith(textCase: v));
-                  commit();
-                },
-              ),
-            ...extraMore,
-          ]),
+        ]),
+    if (!colourInMore)
       CanvasMoreGroup(
           label: "Colour",
           rule: rule,
           remember: "${remember}Colour",
           tooltip: "The shadow, the glow, and what shows through the letters",
-          row: [
-            // What the letters are painted with. The colour is the usual answer
-            // and stays first; a picture or a pattern replaces it, and the
-            // outline and shadow settings under it go on meaning what they mean.
-            if (fill && context != null)
-              CanvasDropdown<TextFillKind>(
-                key: const ValueKey("textFillKind"),
-                label: "Painted with",
-                value: spec.fill.kind,
-                width: 118,
-                options: [for (var k in TextFillKind.values) (k, k.label)],
-                onChanged: (v) {
-                  begin();
-                  onChanged(spec.copyWith(fill: spec.fill.copyWith(kind: v)));
-                  commit();
-                },
-              ),
-            CanvasColorButton(
-              label: "Text",
-              color: spec.color,
-              // The words can fade from one colour to another, across the box
-              // they are drawn in. Not where they are outlined rather than
-              // filled, or where a picture or a pattern is showing through them:
-              // each of those already decides what the letters are painted with.
-              // See TextSpec.fade.
-              gradient: spec.fade,
-              onChanged: (c) {
-                begin();
-                onChanged(spec.copyWith(color: c));
-                commit();
-              },
-              onGradientChanged: (g) {
-                begin();
-                onChanged(g == null
-                    ? spec.copyWith(flatText: true)
-                    : spec.copyWith(fade: g));
-                commit();
-              },
-            ),
-            CanvasNumberField(
-              label: "Outline",
-              value: spec.outlineWidth,
-              min: 0,
-              max: 60,
-              decimals: 1,
-              width: 54,
-              onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
-              onCommit: commit,
-            ),
-            CanvasColorButton(
-              label: "Line",
-              color: spec.outlineColor,
-              onChanged: (c) {
-                begin();
-                onChanged(spec.copyWith(outlineColor: c));
-                commit();
-              },
-            ),
-          ],
-          more: [
-            if (fill && context != null && spec.fill.kind != TextFillKind.color)
-              ..._fillBits(context, spec, onChanged, begin, commit),
-            CanvasNumberField(
-              label: "Shadow",
-              value: spec.shadowBlur,
-              min: 0,
-              max: 120,
-              width: 54,
-              onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
-              onCommit: commit,
-            ),
-            CanvasColorButton(
-              label: "Colour",
-              color: spec.shadowColor,
-              onChanged: (c) {
-                begin();
-                onChanged(spec.copyWith(shadowColor: c));
-                commit();
-              },
-            ),
-            // Where the light is, not where the shadow goes: one light for a
-            // scene, and the same two numbers on every element in it.
-            CanvasNumberField(
-              key: const ValueKey("textShadowAngle"),
-              label: "Direction",
-              value: spec.shadowAngle,
-              min: 0,
-              max: 360,
-              width: 60,
-              onChanged: (v) => onChanged(spec.copyWith(shadowAngle: v)),
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("textShadowDistance"),
-              label: "Distance",
-              value: spec.shadowDistance,
-              min: 0,
-              max: 400,
-              decimals: 1,
-              width: 60,
-              onChanged: (v) => onChanged(spec.copyWith(shadowDistance: v)),
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("textGlow"),
-              label: "Glow",
-              value: spec.glowBlur,
-              min: 0,
-              max: 200,
-              width: 54,
-              onChanged: (v) => onChanged(spec.copyWith(glowBlur: v)),
-              onCommit: commit,
-            ),
-            CanvasColorButton(
-              label: "Light",
-              color: spec.glowColor,
-              onChanged: (c) {
-                begin();
-                onChanged(spec.copyWith(glowColor: c));
-                commit();
-              },
-            ),
-            if (spec.shadowDistance > 0 || spec.shadowBlur > 0)
-              const CanvasHint(
-                  "Direction is where the light is, read like a compass: 0 is "
-                  "straight up, 90 to the right. The shadow falls the other way, "
-                  "Distance away from the words. At a distance of 0 it sits "
-                  "directly underneath them, which is a shadow that reads as a "
-                  "glow in its own colour."),
-            if (spec.glowBlur > 0)
-              const CanvasHint(
-                  "Glow is light all round the letters, in its own colour, and it "
-                  "is drawn behind them — so a picture or a pattern showing "
-                  "through the words cannot cut it up, and an outline sits over "
-                  "it rather than under it."),
-          ]),
-    ];
+          row: colourRow,
+          more: colourMore),
+  ];
+}
 
 /// boxGroup is the shared frame controls: the background, the border, the
 /// corners and the room inside.

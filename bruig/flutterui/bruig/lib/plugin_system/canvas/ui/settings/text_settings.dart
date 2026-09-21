@@ -178,6 +178,10 @@ List<Widget> textSettings(
         fill: true,
         context: context,
         remember: "text",
+        // Everything about one piece of writing on one line and behind one
+        // button, because this is the element that has several pieces of
+        // writing in it -- see the items below.
+        colourInMore: true,
         // No lines through this run. The face, the colour, the box, the
         // columns and the line it rides are all one question -- how do these
         // words look -- and a rule between each pair of them made five

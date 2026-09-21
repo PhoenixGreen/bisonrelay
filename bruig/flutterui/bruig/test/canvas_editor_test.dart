@@ -6758,6 +6758,43 @@ void main() {
       expect(places, sorted, reason: "out of order: $headings");
     });
 
+    testWidgets("the colour settings are behind the type button",
+        (tester) async {
+      // One line and one button for one piece of writing. This is the element
+      // that has several pieces of writing in it, and a row each plus a
+      // colour row each is a panel nothing can be found in. Everywhere else
+      // the colour keeps a row of its own -- see the table below.
+      await panel(tester);
+      expect(find.text("COLOUR"), findsNothing,
+          reason: "no group of its own here");
+      expect(find.text("Outline"), findsNothing, reason: "nor its controls");
+
+      var button = find.byTooltip("Spacing, alignment and case");
+      await tester.ensureVisible(button.first);
+      await tester.pumpAndSettle();
+      await tester.tap(button.first);
+      await tester.pumpAndSettle();
+      expect(find.text("Outline"), findsOneWidget);
+      expect(find.byType(CanvasColorButton), findsWidgets);
+    });
+
+    testWidgets("but a shape's label keeps a colour row of its own",
+        (tester) async {
+      var shape = ShapeElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Labelled",
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(shape));
+      addTearDown(controller.dispose);
+      controller.selectOnly(shape.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+
+      expect(find.text("COLOUR"), findsWidgets,
+          reason: "one thing to colour, and the swatch is worth seeing");
+    });
+
     testWidgets("the type settings are out on the panel, not in a section",
         (tester) async {
       // They were behind a heading that was open every time anybody looked.
