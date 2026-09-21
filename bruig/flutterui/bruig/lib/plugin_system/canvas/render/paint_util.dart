@@ -347,124 +347,12 @@ void _paintFillImage(
             ])));
 }
 
-/// iconRoom is the rectangle an icon takes out of a text element's box, and
-/// what is left for the words.
-///
-/// Worked out in one place because two things need the same answer: the
-/// painter, which draws the icon and then the paragraph, and Fit to box,
-/// which sizes the type against the room the words actually have. Fitted
-/// against the whole box with an icon in it, the type would be set to a size
-/// it does not fit at.
-(Rect, Rect) iconRoom(Rect inner, TextIcon icon) {
-  if (!icon.on || inner.width <= 0 || inner.height <= 0) {
-    return (Rect.zero, inner);
-  }
-  var size = math.min(
-      icon.size, icon.place.beside ? inner.width * 0.8 : inner.height * 0.8);
-  // A negative gap eats into the icon's own square instead of adding room
-  // after it, which is what puts the words over the picture. Never past the
-  // far side of it: a step below zero would start the words outside the box
-  // they belong to, which is a paragraph half off the element rather than an
-  // overlap. See TextIcon.gap.
-  var step = math.max(0.0, size + icon.gap);
-
-  double along(double room, double of) => switch (icon.align) {
-        TextIconAlign.start => 0,
-        TextIconAlign.middle => (room - of) / 2,
-        TextIconAlign.end => room - of,
-      };
-
-  switch (icon.place) {
-    case IconPlace.start:
-      return (
-        Rect.fromLTWH(
-            inner.left, inner.top + along(inner.height, size), size, size),
-        Rect.fromLTRB(inner.left + step, inner.top, inner.right, inner.bottom),
-      );
-    case IconPlace.end:
-      return (
-        Rect.fromLTWH(inner.right - size, inner.top + along(inner.height, size),
-            size, size),
-        Rect.fromLTRB(inner.left, inner.top, inner.right - step, inner.bottom),
-      );
-    case IconPlace.over:
-      return (
-        Rect.fromLTWH(
-            inner.left + along(inner.width, size), inner.top, size, size),
-        Rect.fromLTRB(inner.left, inner.top + step, inner.right, inner.bottom),
-      );
-    case IconPlace.under:
-      return (
-        Rect.fromLTWH(inner.left + along(inner.width, size),
-            inner.bottom - size, size, size),
-        Rect.fromLTRB(inner.left, inner.top, inner.right, inner.bottom - step),
-      );
-  }
-}
-
 /// _usable is whether a picture's own size can be scaled to fit a box.
 bool _usable(Size size) =>
     size.width.isFinite &&
     size.height.isFinite &&
     size.width > 0 &&
     size.height > 0;
-
-/// iconLayout is where an icon and the words actually sit, once the words'
-/// own alignment is taken into account.
-///
-/// [iconRoom] splits the box: the icon takes a strip from one side and the
-/// words have the rest. That is the right *width*, and the wrong place for
-/// anything but left-aligned words -- centred text centres itself in what is
-/// left over, so the icon sat against the far edge of the box with a hole
-/// between it and the sentence it belongs to.
-///
-/// So for an icon beside the words the two are treated as one group and the
-/// group is aligned: centred text has the icon immediately before it, both of
-/// them centred together, and right-aligned text has them both against the
-/// right edge.
-///
-/// Columns and justified text keep the whole room, and are meant to: both
-/// fill the width they are given, so there is no group to centre.
-(Rect, Rect) iconLayout(Rect inner, TextIcon icon, String text, TextSpec spec,
-    {int columns = 1, double scale = 1}) {
-  var (box, room) = iconRoom(inner, icon);
-  if (!icon.on ||
-      !icon.place.beside ||
-      columns > 1 ||
-      spec.align == TextAlignSpec.justify ||
-      text.isEmpty ||
-      room.width <= 0) {
-    return (box, room);
-  }
-
-  // How wide the words actually are, measured in the room they have -- so the
-  // lines break where they will break, and the group is as wide as what will
-  // be drawn rather than as wide as the box.
-  var painter = layoutText(text, spec, maxWidth: room.width, scale: scale);
-  var wide = math.min(room.width, painter.width + 1);
-  // The overlap again -- see iconRoom -- kept to the icon's own width, so the
-  // words can sit right across it but no further.
-  var gap = math.max(icon.gap, -box.width);
-  var group = wide + gap + box.width;
-
-  var left = switch (spec.align) {
-    TextAlignSpec.left => inner.left,
-    TextAlignSpec.center => inner.left + (inner.width - group) / 2,
-    TextAlignSpec.right => inner.right - group,
-    TextAlignSpec.justify => inner.left,
-  };
-
-  if (icon.place == IconPlace.start) {
-    return (
-      Rect.fromLTWH(left, box.top, box.width, box.height),
-      Rect.fromLTWH(left + box.width + gap, room.top, wide, room.height),
-    );
-  }
-  return (
-    Rect.fromLTWH(left + wide + gap, box.top, box.width, box.height),
-    Rect.fromLTWH(left, room.top, wide, room.height),
-  );
-}
 
 /// paintTextIcon draws the picture a text element carries.
 ///

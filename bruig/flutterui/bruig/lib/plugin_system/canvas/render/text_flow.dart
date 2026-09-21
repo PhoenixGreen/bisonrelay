@@ -191,12 +191,8 @@ List<TextElement> _chainTo(TextElement e, CanvasDocument doc) {
   return chain;
 }
 
-/// _roomOf is where a box's words go: its bounds, less its padding and
-/// whatever its icon has taken.
-Rect _roomOf(TextElement e) {
-  var inner = e.box.inner(e.bounds);
-  return iconRoom(inner, e.icon).$2;
-}
+/// _roomOf is where a box's words go: its bounds, less its padding.
+Rect _roomOf(TextElement e) => e.box.inner(e.bounds);
 
 /// _specOf is the type a box draws in.
 ///

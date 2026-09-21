@@ -6964,11 +6964,24 @@ void main() {
       var add = tester.getRect(find.byKey(const ValueKey("textAddItem")));
       var box = tester.getRect(find.text("BOX"));
 
+      var ownFont = tester.getRect(find.byWidgetPredicate(
+          (w) => w is CanvasDropdown<String> && w.label == "Font"));
+      var ownWeight = tester.getRect(find.byWidgetPredicate(
+          (w) => w is CanvasDropdown<int> && w.label == "Weight"));
+      var pieceWeight = tester.getRect(find.descendant(
+          of: find.ancestor(
+              of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
+          matching: find.byType(CanvasDropdown<int>)));
+      // The same row, to the pixel: both fill the panel and share what is
+      // left over the same way. Reported when they did not -- the slot and
+      // the bin were on a piece's line, so there was nothing left to share.
+      expect(piece.left, ownFont.left);
+      expect(piece.right, ownFont.right);
+      expect(pieceWeight.left, ownWeight.left);
+      expect(pieceWeight.right, ownWeight.right);
       expect(piece.top, greaterThan(own.top), reason: "under the words");
       expect(add.top, greaterThan(piece.top), reason: "and the + under it");
       expect(box.top, greaterThan(add.top), reason: "the box comes after");
-      expect(piece.left, closeTo(own.left, 0.5),
-          reason: "the same row, starting in the same place");
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

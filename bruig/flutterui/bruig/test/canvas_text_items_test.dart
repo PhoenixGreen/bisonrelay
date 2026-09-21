@@ -80,6 +80,25 @@ void main() {
       expect(rects[0].top, closeTo(e.box.inner(e.bounds).top, 0.01));
     });
 
+    test("a gap keeps the space between two pieces constant", () {
+      // Reported: pieces in different slots are held to different corners,
+      // so a taller box pulls them apart and a short one runs them into each
+      // other. A stack in one slot is the answer, and the gap is what sets
+      // the distance.
+      var items = const [
+        TextItem(id: "a", text: "01", slot: TextSlot.middleLeft),
+        TextItem(id: "b", text: "Spend", slot: TextSlot.middleLeft, gap: 12),
+      ];
+      var small = _card(items: items);
+      var large = small.withBase(width: 1200, height: 900) as TextElement;
+
+      var one = textItemRects(small, small.bounds);
+      var two = textItemRects(large, large.bounds);
+      expect(one[1].top - one[0].bottom, closeTo(12, 0.01));
+      expect(two[1].top - two[0].bottom, closeTo(12, 0.01),
+          reason: "three times the box, the same twelve between them");
+    });
+
     test("and a stack in a bottom slot ends at the bottom", () {
       var e = _card(items: const [
         TextItem(id: "a", text: "One", slot: TextSlot.bottomLeft),

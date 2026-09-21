@@ -539,15 +539,7 @@ void _paintTextBody(
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
-  // An icon takes its room out of the box before the words are laid out in
-  // what is left -- and then the two are placed together, so a centred
-  // sentence has its icon beside it rather than against the edge of the box.
-  // See iconLayout.
   var spec = drawnTextSpec(e, bounds);
-  var (iconBox, room) =
-      iconLayout(inner, e.icon, e.displayText, spec, columns: e.columns.count);
-  inner = room;
-  if (inner.width <= 0 || inner.height <= 0) return;
 
   // A box may be one of a line of them, sharing one piece of text -- see
   // flowFor. What it draws is its own share of that, which for a box on its
@@ -565,12 +557,6 @@ void _paintTextBody(
   var (animation, reveal) = _arrival(e, pose);
   var timings = _partTimings(e, frame, pose);
 
-  // The icon goes on before the words, and travels with them: it is a bullet
-  // or a logo that belongs to the sentence, so a sentence that slides in
-  // takes it along. See TextIcon.animate. Drawn first either way, so a
-  // negative gap puts the words across it rather than under it.
-  _paintIcon(canvas, iconBox, e, spec, flow.text, inner, images,
-      animation: animation, reveal: reveal);
   // On the way out the paragraph goes as one: a part has a moment of its own
   // arriving, and there is no second leaving animation for it to have.
   var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
@@ -688,56 +674,6 @@ void _paintTextBody(
       images: images);
 }
 
-/// _paintIcon draws a text element's icon, carried along by whatever the
-/// words are doing.
-///
-/// The motion is applied to the paragraph's own rectangle rather than to the
-/// icon's, because that is the rectangle the words move by: a slide is a
-/// fraction of the piece that is sliding, so an icon moved by a fraction of
-/// its own little square would travel a fifth as far and come apart from the
-/// sentence it belongs to. [textArea] is the room the words were given, which
-/// is the block's rectangle when they are in columns.
-///
-/// Only the motions that are a transform and an opacity -- see
-/// wholeBlockMotion. An echo's copies or a drawn underline belong to the
-/// words themselves and there is nothing sensible to do to a picture with
-/// them, so the icon simply stays where it is.
-void _paintIcon(ui.Canvas canvas, Rect iconBox, TextElement e, TextSpec spec,
-    String words, Rect textArea, CanvasImageSource? images,
-    {required TextAnimation animation, required double reveal}) {
-  if (!e.icon.on) return;
-  var moving = animation.on && (reveal < 1 || animation.keeps);
-  if (!e.icon.animate || !moving || !movesAsOneBlock(animation)) {
-    paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
-    return;
-  }
-
-  var p = animation.progressAt(reveal, 0, 1);
-  // Not there yet: the icon arrives with the words rather than waiting on the
-  // page for them.
-  if (p <= 0) return;
-
-  var carried = e.columns.isSingle && words.isNotEmpty
-      ? () {
-          var painter = layoutText(words, spec,
-              maxWidth: textArea.width, fillWidth: true);
-          return textOffsetIn(textArea, painter, spec) & painter.size;
-        }()
-      : textArea;
-  var motion = applyMotion(canvas, carried, animation.preset, p,
-      from: animation.scaleFor(animation.preset));
-  if (motion.alpha > 0) {
-    if (motion.alpha < 1) {
-      canvas.saveLayer(iconBox.inflate(iconBox.longestSide),
-          Paint()..color = Color.fromRGBO(0, 0, 0, motion.alpha));
-    }
-    paintTextIcon(canvas, iconBox, e.icon, images, e.textSpec);
-    if (motion.alpha < 1) canvas.restore();
-  }
-  for (var r = 0; r < motion.depth; r++) {
-    canvas.restore();
-  }
-}
 
 /// _arrival is the animation a text element is playing on this frame, and how
 /// far through it is.
@@ -813,7 +749,7 @@ TextSpec drawnTextSpec(TextElement e, Rect bounds) {
   var spec = e.textSpec;
   if (!e.autoSize) return spec;
 
-  var inner = iconRoom(e.box.inner(bounds), e.icon).$2;
+  var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return spec;
 
   // Measured against one column's *width*, since that is the width a line

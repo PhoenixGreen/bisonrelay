@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'dart:io';
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -249,7 +250,7 @@ void main() {
             TextElement(
               const ElementBase(id: "t", width: 200, height: 60),
               text: "With a badge",
-              icon: TextIcon(assetId: icon),
+              items: [TextItem(id: "p", icon: TextIcon(assetId: icon))],
               textSpec: TextSpec(
                   fill: TextFill(kind: TextFillKind.image, assetId: fill)),
             ),

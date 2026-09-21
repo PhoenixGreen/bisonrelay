@@ -21,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
-import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
@@ -833,7 +832,7 @@ class CanvasStageState extends State<CanvasStage> {
     var bounds = _selectionBounds;
     if (bounds == null) return null;
 
-    var inner = iconRoom(e.box.inner(e.bounds), e.icon).$2;
+    var inner = e.box.inner(e.bounds);
     var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
         frame: controller.frame, images: controller.images);
 
@@ -884,7 +883,7 @@ class CanvasStageState extends State<CanvasStage> {
           controller.selection.contains(into.id);
       if (!shown) continue;
 
-      var inner = iconRoom(e.box.inner(e.bounds), e.icon).$2;
+      var inner = e.box.inner(e.bounds);
       var flow = flowFor(e, document, inner, drawnTextSpec(e, e.bounds),
           frame: controller.frame);
       out.add(FlowLine(

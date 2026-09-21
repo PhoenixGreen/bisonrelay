@@ -309,8 +309,6 @@ class TextElement extends CanvasElement {
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
-  /// icon is a picture set beside, above or below the words. See TextIcon.
-  final TextIcon icon;
 
   /// flowTo is the text element the words that do not fit run on into, or ""
   /// for none.
@@ -353,7 +351,6 @@ class TextElement extends CanvasElement {
     this.parts = const [],
     this.highlight,
     this.underline,
-    this.icon = const TextIcon(),
     this.flowTo = "",
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
@@ -364,16 +361,17 @@ class TextElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.text;
 
-  /// assetIds is every stored picture this element refers to: the icon it
-  /// carries, and a picture showing through its letters.
+  /// assetIds is every stored picture this element refers to: the pictures
+  /// among its pieces, and one showing through its letters.
   ///
   /// Without this the sweep that clears out pictures nothing is using any
-  /// more could not see them -- so an icon lasted until the next sweep and
+  /// more could not see them -- so a picture lasted until the next sweep and
   /// was gone by the next time the canvas was opened. Every element that can
   /// name a picture has to answer this. See CanvasStorage.liveAssetIds.
   @override
   Set<String> get assetIds => {
-        if (icon.assetId.isNotEmpty) icon.assetId,
+        for (var item in items)
+          if (item.icon?.assetId.isNotEmpty ?? false) item.icon!.assetId,
         if (textSpec.fill.assetId.isNotEmpty) textSpec.fill.assetId,
       };
 
@@ -421,7 +419,6 @@ class TextElement extends CanvasElement {
       parts: parts,
       highlight: highlight,
       underline: underline,
-      icon: icon,
       flowTo: flowTo,
       document: document,
       documentParts: documentParts,
@@ -441,7 +438,6 @@ class TextElement extends CanvasElement {
     bool clearHighlight = false,
     PartUnderline? underline,
     bool clearUnderline = false,
-    TextIcon? icon,
     String? flowTo,
     TextDocumentRef? document,
     List<TextPart>? documentParts,
@@ -460,7 +456,6 @@ class TextElement extends CanvasElement {
           parts: parts ?? this.parts,
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
           underline: clearUnderline ? null : (underline ?? this.underline),
-          icon: icon ?? this.icon,
           flowTo: flowTo ?? this.flowTo,
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
@@ -484,7 +479,6 @@ class TextElement extends CanvasElement {
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
-        if (icon.on) "icon": icon.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
         if (wrap.toJson().isNotEmpty) "wrap": wrap.toJson(),
         if (document.on) "document": document.toJson(),
@@ -502,11 +496,7 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(json["animation"], TextAnimation.fromJson,
               const TextAnimation()),
-          items: [
-            if (json["items"] case List raw)
-              for (var i in raw)
-                if (i is Map<String, dynamic>) TextItem.fromJson(i),
-          ],
+          items: _itemsFromJson(json),
           parts: _partsFromJson(json),
           highlight: json["highlight"] is Map<String,
                   dynamic>
@@ -519,11 +509,8 @@ class TextElement extends CanvasElement {
                   ? PartUnderline.fromJson(json["underline"] as Map<String,
                       dynamic>)
                   : null,
-          icon:
-              json["icon"] is Map<String,
-                      dynamic>
-                  ? TextIcon.fromJson(json["icon"] as Map<String, dynamic>)
-                  : const TextIcon(),
+          // Not onto the element any more: an icon is a piece, and
+          // _itemsFromJson has already made one of it.
           document:
               json["document"] is Map<String,
                       dynamic>
@@ -546,6 +533,62 @@ class TextElement extends CanvasElement {
           curve: json["curve"] is Map<String, dynamic>
               ? TextOnCurve.fromJson(json["curve"] as Map<String, dynamic>)
               : null);
+}
+
+/// _itemsFromJson reads the pieces, and turns an older document's single
+/// icon into one of them.
+///
+/// An icon was a feature of its own: one per element, with a place, an
+/// alignment and a gap that were all its own rather than the ones the words
+/// use. It is a piece now, like any other -- see TextItem -- so the place and
+/// the alignment it had become the slot they add up to.
+///
+/// It does not lay out quite as it did: an icon *before* the words used to
+/// take its room out of the box and push them along, where a piece sits over
+/// the box in the corner its slot names. A document with one may want a
+/// little left padding to get its old arrangement back, which is one setting
+/// against a feature that had eight.
+List<TextItem> _itemsFromJson(Map<String, dynamic> json) {
+  var items = [
+    if (json["items"] case List raw)
+      for (var i in raw)
+        if (i is Map<String, dynamic>) TextItem.fromJson(i),
+  ];
+  if (json["icon"] case Map<String, dynamic> raw) {
+    var icon = TextIcon.fromJson(raw);
+    if (icon.on) {
+      items.add(TextItem(
+        id: newElementId(),
+        slot: _slotForIcon(icon),
+        icon: icon,
+        gap: 0,
+      ));
+    }
+  }
+  return items;
+}
+
+/// _slotForIcon is the corner an old icon's place and alignment add up to.
+///
+/// Beside the words, the place says which side and the alignment says how far
+/// down; above or below them, the place says how far down and the alignment
+/// says which side. Two questions and nine answers, which is exactly what a
+/// slot is.
+TextSlot _slotForIcon(TextIcon icon) {
+  if (icon.place.beside) {
+    var left = icon.place == IconPlace.start;
+    return switch (icon.align) {
+      TextIconAlign.start => left ? TextSlot.topLeft : TextSlot.topRight,
+      TextIconAlign.middle => left ? TextSlot.middleLeft : TextSlot.middleRight,
+      TextIconAlign.end => left ? TextSlot.bottomLeft : TextSlot.bottomRight,
+    };
+  }
+  var over = icon.place == IconPlace.over;
+  return switch (icon.align) {
+    TextIconAlign.start => over ? TextSlot.topLeft : TextSlot.bottomLeft,
+    TextIconAlign.middle => over ? TextSlot.topCentre : TextSlot.bottomCentre,
+    TextIconAlign.end => over ? TextSlot.topRight : TextSlot.bottomRight,
+  };
 }
 
 /// _partsFromJson reads the parts, and moves an old document's pointed

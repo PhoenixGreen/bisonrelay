@@ -43,7 +43,13 @@ List<Rect> textItemRects(TextElement e, Rect bounds) {
     var sizes = [
       for (var i in mine) _sizeOf(e.items[i], inner.width),
     ];
-    var total = sizes.fold(0.0, (sum, s) => sum + s.height);
+    // Each piece's own room above it, which is what makes the distance
+    // between two of them a constant rather than whatever the box has left
+    // over. See TextItem.gap.
+    var total = 0.0;
+    for (var (n, i) in mine.indexed) {
+      total += sizes[n].height + e.items[i].gap;
+    }
     var top = switch (slot.down) {
       VerticalAlignSpec.top => inner.top,
       VerticalAlignSpec.middle => inner.center.dy - total / 2,
@@ -52,6 +58,7 @@ List<Rect> textItemRects(TextElement e, Rect bounds) {
 
     for (var (n, i) in mine.indexed) {
       var size = sizes[n];
+      top += e.items[i].gap;
       var left = switch (slot.across) {
         TextAlignSpec.left => inner.left,
         TextAlignSpec.center => inner.center.dx - size.width / 2,
@@ -67,8 +74,17 @@ List<Rect> textItemRects(TextElement e, Rect bounds) {
   return out;
 }
 
-/// _sizeOf is how much room one item's words take, given the width they have.
+/// _sizeOf is how much room one piece takes, given the width it has.
+///
+/// A picture is a square of its own size; words are however tall they come
+/// out at the width they are given.
 Size _sizeOf(TextItem item, double maxWidth) {
+  var icon = item.icon;
+  if (icon != null) {
+    if (!icon.on) return Size.zero;
+    var side = math.min(icon.size, maxWidth);
+    return Size(side, icon.size);
+  }
   if (item.text.isEmpty) return Size.zero;
   var painter =
       layoutText(item.text, item.spec, maxWidth: math.max(1, maxWidth));
@@ -99,7 +115,16 @@ void paintTextItems(
   var rects = textItemRects(e, bounds);
   for (var (i, item) in e.items.indexed) {
     var rect = rects[i];
-    if (item.text.isEmpty || rect.isEmpty || item.id == skip) continue;
+    if (rect.isEmpty || item.id == skip) continue;
+
+    var icon = item.icon;
+    if (icon != null) {
+      // Drawn by the same function the element's own icon is drawn by, so a
+      // picture in a box looks the same however it got there.
+      paintTextIcon(canvas, rect, icon, images, item.spec);
+      continue;
+    }
+    if (item.text.isEmpty) continue;
     // The slot decides how the words sit, so the item's own alignment is not
     // asked: a piece held to the right-hand edge is set ragged-left inside
     // its own rectangle, and its rectangle is only as wide as it is.

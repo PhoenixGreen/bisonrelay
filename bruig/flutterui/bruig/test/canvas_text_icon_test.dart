@@ -1,25 +1,23 @@
 import 'dart:ui' as ui;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
-import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// canvas_text_icon_test.dart is the picture a text element carries.
+// canvas_text_icon_test.dart is a picture inside a text element.
 //
-// What matters is the room: an icon takes its space out of the box and the
-// words are laid out in what is left. An icon drawn over the words, or words
-// laid out as though the icon were not there, is the whole feature failing.
+// It was a feature of its own -- one icon per element, with a place, an
+// alignment and a gap that were nobody else's, and a section of the panel to
+// set them in. It is a piece now, like a piece of writing: the same list, the
+// same nine slots, the same row and button. See TextItem.
 
 /// _Pictures hands the painter one flat square, which is enough to say where
 /// an icon was drawn and in what colour.
@@ -79,64 +77,63 @@ Future<Map<int, int>> _ink(TextElement element, CanvasImageSource? images,
   return counts;
 }
 
-TextElement _headline({TextIcon icon = const TextIcon(), bool fit = false}) =>
+TextElement _headline({TextIcon? icon, TextSlot slot = TextSlot.middleLeft}) =>
     TextElement(
       const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 120),
       text: "Headline",
-      autoSize: fit,
       textSpec: const TextSpec(fontSize: 30, color: Color(0xFFFFFFFF)),
-      icon: icon,
+      items: [
+        if (icon != null) TextItem(id: "p", slot: slot, icon: icon),
+      ],
     );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const white = 0xFFFFFFFF;
   const red = 0xFF0000FF;
   const green = 0x00FF00FF;
 
-  group("an icon beside the words", () {
-    testWidgets("is drawn, and takes its room out of the box", (tester) async {
+  group("a picture in a text element", () {
+    testWidgets("is drawn where its slot puts it", (tester) async {
       late Map<int, int> plain;
-      late Map<int, int> withIcon;
+      late Map<int, int> left;
+      late Map<int, int> right;
       await tester.runAsync(() async {
         var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
         plain = await _ink(_headline(), pictures);
-        withIcon = await _ink(
+        left = await _ink(
             _headline(icon: const TextIcon(assetId: "a", size: 60)), pictures);
+        right = await _ink(
+            _headline(
+                icon: const TextIcon(assetId: "a", size: 60),
+                slot: TextSlot.middleRight),
+            pictures);
       });
 
-      expect(plain[red] ?? 0, 0, reason: "no icon, no icon pixels");
-      expect(withIcon[red] ?? 0, greaterThan(2000),
-          reason: "a sixty pixel square");
-      // The words are still there, and in less room than they had.
-      expect(withIcon[white] ?? 0, greaterThan(100));
-      expect(withIcon[white]!, lessThanOrEqualTo(plain[white]!),
-          reason: "the words were pushed into what was left");
+      expect(plain[red] ?? 0, 0, reason: "no picture, no picture pixels");
+      expect(left[red] ?? 0, greaterThan(2000));
+      expect(right[red] ?? 0, left[red],
+          reason: "the same picture, the same ink, in another corner");
     });
 
-    testWidgets("on whichever side it was put", (tester) async {
-      const leftEdge = Rect.fromLTWH(0, 0, 120, 200);
-      const rightEdge = Rect.fromLTWH(280, 0, 120, 200);
-      late int leftWhenFirst;
-      late int rightWhenLast;
+    testWidgets("on the side its slot names", (tester) async {
+      late Map<int, int> onLeft;
+      late Map<int, int> onRight;
       await tester.runAsync(() async {
         var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
-        leftWhenFirst = (await _ink(
-                _headline(icon: const TextIcon(assetId: "a", size: 60)),
-                pictures,
-                within: leftEdge))[red] ??
-            0;
-        rightWhenLast = (await _ink(
-                _headline(
-                    icon: const TextIcon(
-                        assetId: "a", size: 60, place: IconPlace.end)),
-                pictures,
-                within: rightEdge))[red] ??
-            0;
+        // The left-hand third of the element, and the right-hand third.
+        onLeft = await _ink(
+            _headline(icon: const TextIcon(assetId: "a", size: 60)), pictures,
+            within: const Rect.fromLTWH(0, 20, 133, 120));
+        onRight = await _ink(
+            _headline(
+                icon: const TextIcon(assetId: "a", size: 60),
+                slot: TextSlot.middleRight),
+            pictures,
+            within: const Rect.fromLTWH(267, 20, 133, 120));
       });
-      expect(leftWhenFirst, greaterThan(2000));
-      expect(rightWhenLast, greaterThan(2000));
+      expect(onLeft[red] ?? 0, greaterThan(2000));
+      expect(onRight[red] ?? 0, greaterThan(2000));
     });
 
     testWidgets("a tint repaints it in one colour", (tester) async {
@@ -149,191 +146,86 @@ void main() {
                     assetId: "a", size: 60, color: Color(0xFF00FF00))),
             pictures);
       });
-      expect(tinted[red] ?? 0, 0, reason: "not the colour it was drawn in");
       expect(tinted[green] ?? 0, greaterThan(2000));
+      expect(tinted[red] ?? 0, 0, reason: "cut to its own shape and filled");
     });
 
     testWidgets("a drawing with no size of its own still shows",
         (tester) async {
-      // An .svg with no width, height or viewBox has a size of nothing, and
-      // nothing cannot be scaled to fit anything. Drawn from the rasterised
-      // copy instead of not drawn at all.
-      late Map<int, int> ink;
+      // An .svg with no width, height or viewBox cannot be scaled to fit
+      // anything, so the rasterised copy is drawn instead of nothing.
+      late Map<int, int> drawn;
       await tester.runAsync(() async {
         var picture = ui.PictureRecorder();
         ui.Canvas(picture).drawRect(const Rect.fromLTWH(0, 0, 1, 1),
             Paint()..color = const Color(0xFF0000FF));
         var pictures = _Pictures(await _square(const Color(0xFFFF0000)),
             vector: CanvasVector(picture.endRecording(), Size.zero));
-        ink = await _ink(
+        drawn = await _ink(
             _headline(icon: const TextIcon(assetId: "a", size: 60)), pictures);
       });
-      expect(ink[red] ?? 0, greaterThan(2000),
-          reason: "the rasterised copy is drawn");
-    });
-
-    test("and Fit to box measures against the room that is left", () {
-      // Fitted against the whole box, the type would be set to a size it does
-      // not fit at once the icon has taken a third of the width.
-      var inner = const Rect.fromLTWH(0, 0, 400, 100);
-      var (icon, room) =
-          iconRoom(inner, const TextIcon(assetId: "a", size: 60, gap: 20));
-      expect(icon.width, 60);
-      expect(room.left, 80, reason: "the icon and the gap");
-      expect(room.width, 320);
-
-      // Nothing at all when there is no icon.
-      expect(iconRoom(inner, const TextIcon()).$2, inner);
-
-      var over = iconRoom(
-          inner, const TextIcon(assetId: "a", size: 40, place: IconPlace.over));
-      expect(over.$2.top, greaterThan(inner.top));
-      expect(over.$2.width, inner.width,
-          reason: "above takes height, not width");
-    });
-
-    test("and it follows the words' own alignment", () {
-      // The room is the right width and the wrong place for anything but
-      // left-aligned words: centred text centres itself in what is left over,
-      // so the icon sat against the far edge of the box with a hole between
-      // it and the sentence it belongs to.
-      const inner = Rect.fromLTWH(0, 0, 400, 100);
-      const icon = TextIcon(assetId: "a", size: 60, gap: 20);
-      const words = "Headline";
-
-      var left = iconLayout(inner, icon, words,
-          const TextSpec(fontSize: 20, align: TextAlignSpec.left));
-      expect(left.$1.left, 0, reason: "left-aligned words start at the edge");
-      expect(left.$2.left, 80, reason: "the icon and the gap");
-
-      var centre = iconLayout(inner, icon, words,
-          const TextSpec(fontSize: 20, align: TextAlignSpec.center));
-      expect(centre.$2.left, closeTo(centre.$1.right + 20, 0.5),
-          reason: "the gap is the gap, wherever the group is");
-      expect((centre.$1.left + centre.$2.right) / 2, closeTo(200, 1),
-          reason: "and the icon and the words are centred together");
-      expect(centre.$1.left, greaterThan(0),
-          reason: "not against the edge of the box any more");
-
-      var right = iconLayout(inner, icon, words,
-          const TextSpec(fontSize: 20, align: TextAlignSpec.right));
-      expect(right.$2.right, closeTo(400, 1), reason: "against the right edge");
-      expect(right.$2.left, closeTo(right.$1.right + 20, 0.5));
-
-      // An icon after the words follows them the same way.
-      var after = iconLayout(
-          inner,
-          const TextIcon(assetId: "a", size: 60, gap: 20, place: IconPlace.end),
-          words,
-          const TextSpec(fontSize: 20, align: TextAlignSpec.center));
-      expect(after.$1.left, closeTo(after.$2.right + 20, 0.5));
-      expect((after.$2.left + after.$1.right) / 2, closeTo(200, 1));
-    });
-
-    test("except where there is no group to place", () {
-      // Justified text and columns both fill the width they are given.
-      const inner = Rect.fromLTWH(0, 0, 400, 100);
-      const icon = TextIcon(assetId: "a", size: 60, gap: 20);
-      var justified = iconLayout(inner, icon, "Headline",
-          const TextSpec(fontSize: 20, align: TextAlignSpec.justify));
-      expect(justified.$2.width, 320);
-
-      var columned = iconLayout(inner, icon, "Headline",
-          const TextSpec(fontSize: 20, align: TextAlignSpec.center),
-          columns: 3);
-      expect(columned.$2.width, 320);
-    });
-
-    test("a negative gap puts the words over it", () {
-      // The overlay: the words start back inside the icon's own square
-      // instead of after it. Room is taken from the gap, not from the box, so
-      // the words have *more* width than they had -- which is what an
-      // overlapping badge behind a headline needs.
-      const inner = Rect.fromLTWH(0, 0, 400, 120);
-      const icon = TextIcon(assetId: "a", size: 60);
-      var apart = iconRoom(inner, icon).$2;
-      var over = iconRoom(inner, icon.copyWith(gap: -40)).$2;
-      expect(over.width, greaterThan(apart.width));
-      expect(over.left, lessThan(apart.left));
-
-      // And it stops at the icon's far edge: the words sit right across it
-      // and no further, rather than starting outside the box they belong to.
-      var far = iconRoom(inner, icon.copyWith(gap: -500)).$2;
-      expect(far.left, inner.left);
-      expect(far.width, inner.width);
-    });
-
-    testWidgets("travels with the words, unless it is told not to",
-        (tester) async {
-      // An icon is a bullet or a logo that belongs to the sentence, so a
-      // sentence sliding in takes it along. Left behind, it read as a second
-      // element somebody had parked next to one.
-      const leftHalf = Rect.fromLTWH(0, 0, 200, 200);
-      TextElement sliding(TextIcon icon) => TextElement(
-            const ElementBase(id: "t", x: 0, y: 20, width: 400, height: 120),
-            text: "Headline",
-            textSpec: const TextSpec(fontSize: 30, color: Color(0xFFFFFFFF)),
-            icon: icon,
-            animation: const TextAnimation(
-                preset: TextAnimationPreset.slideRight, ease: ChartEase.linear),
-          ).withBase(
-            track: ElementTrack([
-              const Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0.25}),
-            ]),
-          ) as TextElement;
-
-      late int moved;
-      late int stayed;
-      await tester.runAsync(() async {
-        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
-        moved = (await _ink(
-                sliding(const TextIcon(assetId: "a", size: 60)), pictures,
-                within: leftHalf))[red] ??
-            0;
-        stayed = (await _ink(
-                sliding(const TextIcon(assetId: "a", size: 60, animate: false)),
-                pictures,
-                within: leftHalf))[red] ??
-            0;
-      });
-
-      // Coming in from the right, a quarter of the way through: the icon that
-      // travels with the words is still out to the right of where it rests.
-      expect(stayed, greaterThan(2000),
-          reason: "told to stay put, it is where it will end up");
-      expect(moved, lessThan(stayed),
-          reason: "it should be travelling with the sentence");
+      expect(drawn[red] ?? 0, greaterThan(2000));
     });
 
     test("it survives being saved", () {
       var element = _headline(
-          icon: const TextIcon(
-        assetId: "badge",
-        place: IconPlace.under,
-        size: 80,
-        color: Color(0xFF00FF00),
-        gap: 4,
-        align: TextIconAlign.end,
-        outlineWidth: 3,
-        animate: false,
-        underline: PartUnderline(style: PartLineStyle.marker),
-      ));
+        icon: const TextIcon(
+          assetId: "badge",
+          size: 80,
+          color: Color(0xFF00FF00),
+          outlineWidth: 3,
+          underline: PartUnderline(style: PartLineStyle.marker),
+        ),
+        slot: TextSlot.bottomRight,
+      );
       var back = elementFromJson(element.toJson()) as TextElement;
-      expect(back.icon.assetId, "badge");
-      expect(back.icon.place, IconPlace.under);
-      expect(back.icon.size, 80);
-      expect(back.icon.color, const Color(0xFF00FF00));
-      expect(back.icon.align, TextIconAlign.end);
-      expect(back.icon.outlineWidth, 3);
-      expect(back.icon.gap, 4);
-      // Written either way, since it is on by default: an icon told to stay
-      // put would otherwise have saved nothing and come back moving.
-      expect(back.icon.animate, isFalse);
-      expect(const TextIcon(assetId: "a").animate, isTrue);
-      expect(back.icon.underline!.style, PartLineStyle.marker);
+      var piece = back.items.single;
+      expect(piece.icon!.assetId, "badge");
+      expect(piece.icon!.size, 80);
+      expect(piece.icon!.color, const Color(0xFF00FF00));
+      expect(piece.icon!.outlineWidth, 3);
+      expect(piece.icon!.underline!.style, PartLineStyle.marker);
+      expect(piece.slot, TextSlot.bottomRight);
 
-      // And an element with no icon writes none.
-      expect(_headline().toJson().containsKey("icon"), isFalse);
+      // And an element with no picture writes none.
+      expect(_headline().toJson().containsKey("items"), isFalse);
+    });
+
+    test("an older document's icon opens as a piece", () {
+      // An icon was a feature of its own, with a place and an alignment that
+      // were nobody else's. The two of them add up to one of the nine slots.
+      TextElement opened(Map<String, dynamic> icon) => elementFromJson({
+            "kind": "text",
+            "id": "t",
+            "w": 400.0,
+            "h": 120.0,
+            "text": "Headline",
+            "icon": icon,
+          }) as TextElement;
+
+      var start = opened({"assetId": "a", "size": 40.0});
+      expect(start.items.single.icon!.assetId, "a");
+      expect(start.items.single.icon!.size, 40);
+      expect(start.items.single.slot, TextSlot.middleLeft,
+          reason: "before the words, lined up with the middle of them");
+
+      expect(
+          opened({"assetId": "a", "place": "end", "align": "end"})
+              .items
+              .single
+              .slot,
+          TextSlot.bottomRight);
+      expect(opened({"assetId": "a", "place": "over"}).items.single.slot,
+          TextSlot.topCentre);
+      expect(
+          opened({"assetId": "a", "place": "under", "align": "start"})
+              .items
+              .single
+              .slot,
+          TextSlot.bottomLeft);
+
+      // An icon that was never given a picture is not a piece at all.
+      expect(opened({"size": 40.0}).items, isEmpty);
     });
   });
 }
