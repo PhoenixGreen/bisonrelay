@@ -934,7 +934,12 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
     // The field is only rewritten from outside while it is not being typed
     // into. Rewriting it under the cursor moves the caret to the end on every
     // keystroke, which makes it impossible to edit the middle of a number.
-    if (!_focus.hasFocus && widget.value != old.value) {
+    //
+    // Being scrubbed counts as not being typed into, and has to be said
+    // explicitly: pressing the field is what gives it the focus in the first
+    // place, so a scrub that started with a press was a number running up and
+    // down on the canvas with the old figure still sitting in the box.
+    if ((_scrubbing || !_focus.hasFocus) && widget.value != old.value) {
       _text.text = _format(widget.value);
     }
   }

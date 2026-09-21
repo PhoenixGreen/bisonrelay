@@ -2467,15 +2467,28 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
 
       var field = find.byKey(const ValueKey("canvasFrames"));
+      String shown() => tester
+          .widget<TextField>(
+              find.descendant(of: field, matching: find.byType(TextField)))
+          .controller!
+          .text;
+
       var press = await tester.startGesture(tester.getCenter(field));
       await tester.pump(const Duration(milliseconds: 500));
       await press.moveBy(const Offset(40, 0));
       await tester.pump();
-      await press.up();
-      await tester.pumpAndSettle();
 
       expect(controller.document.frames, 240,
           reason: "forty pixels, forty frames, the same as the caption");
+      // While it is still being dragged: pressing the field is what gives it
+      // the focus, and a field with the focus is not rewritten from outside
+      // -- so the number ran up and down on the canvas with the old figure
+      // still sitting in the box.
+      expect(shown(), "240", reason: "and the box says what the value is");
+
+      await press.up();
+      await tester.pumpAndSettle();
+      expect(shown(), "240");
     });
 
     testWidgets("but a drag that was not held leaves the number alone",
