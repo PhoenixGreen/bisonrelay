@@ -160,6 +160,10 @@ class StagePainter extends CustomPainter {
   /// at once is the same sentence twice, half a pixel apart.
   final String? editingText;
 
+  /// editingItem is which of that element's pieces has the editor on it, so
+  /// the rest of the card goes on being drawn under it.
+  final String? editingItem;
+
   /// showHandles is false for something whose size and angle belong to
   /// another element -- text riding a line. The outline is still drawn, so it
   /// is clear what is selected; the eight squares and the rotate ring are not,
@@ -218,6 +222,7 @@ class StagePainter extends CustomPainter {
     required this.chartLabels,
     required this.tableColumns,
     required this.editingText,
+    required this.editingItem,
     required this.preview,
     required this.previewOn,
     required this.liveStroke,
@@ -279,7 +284,10 @@ class StagePainter extends CustomPainter {
         frame: frame,
         images: images,
         hoveredButton: hoveredButton,
-        skipElement: editingText,
+        // The whole element only while its own paragraph is being typed
+        // into; one piece of it while a piece is.
+        skipElement: editingItem == null ? editingText : null,
+        skipTextItem: editingItem,
         counterValue: counterValue,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
@@ -956,6 +964,7 @@ class StagePainter extends CustomPainter {
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingText != editingText ||
+      old.editingItem != editingItem ||
       !identical(old.preview, preview) ||
       old.previewOn != previewOn ||
       old.liveStroke.length != liveStroke.length ||

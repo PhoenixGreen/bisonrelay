@@ -28,6 +28,7 @@ import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
+import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
@@ -111,6 +112,12 @@ void paintCanvasDocument(
   /// painting the words underneath as well shows the sentence twice.
   String? skipElement,
 
+  /// skipTextItem is one of a text element's extra pieces, left out for the
+  /// same reason: its words have a field of their own over them while they
+  /// are being typed. The element itself goes on being drawn -- a card with
+  /// one piece being edited is still a card.
+  String? skipTextItem,
+
   /// backgrounds is the editor's cache of generated backgrounds. Null for the
   /// exporter, which renders each frame once and wants exact pixels at a size
   /// of its own choosing. See ProceduralCache.
@@ -148,6 +155,7 @@ void paintCanvasDocument(
         editing: editing,
         hoveredButton: hoveredButton,
         skipElement: skipElement,
+        skipTextItem: skipTextItem,
         counterValue: counterValue,
         counterPressed: counterPressed,
         counterRunning: counterRunning);
@@ -158,6 +166,7 @@ void paintCanvasDocument(
       editing: editing,
       hoveredButton: hoveredButton,
       skipElement: skipElement,
+      skipTextItem: skipTextItem,
       counterValue: counterValue,
       counterPressed: counterPressed,
       counterRunning: counterRunning);
@@ -177,6 +186,7 @@ void _paintScene(
   bool editing = false,
   String? hoveredButton,
   String? skipElement,
+  String? skipTextItem,
   double Function(CounterElement)? counterValue,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
@@ -200,6 +210,7 @@ void _paintScene(
         images: images,
         editing: editing,
         document: doc,
+        skipTextItem: skipTextItem,
         counterValue: counterValue,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
@@ -314,6 +325,10 @@ void paintElement(
   /// into a file. Only a guide path reads it -- see _paintPath.
   bool editing = false,
 
+  /// skipTextItem is the one of this element's pieces not to draw, because it
+  /// has an editor open over it. See CanvasTextEditor.
+  String? skipTextItem,
+
   /// document is needed only by text that has been attached to a line, which
   /// has to go and find it. Null elsewhere -- a thumbnail of one element has
   /// no document to look in, and text on a curve simply falls back to its own
@@ -362,7 +377,8 @@ void paintElement(
         Paint()
           ..color =
               const Color(0xFF000000).withValues(alpha: alpha.toDouble()));
-    _paintText(canvas, bounds, element, document, pose: pose, frame: frame);
+    _paintText(canvas, bounds, element, document,
+        pose: pose, frame: frame, skipItem: skipTextItem);
     canvas.restore();
     return;
   }
@@ -398,7 +414,7 @@ void paintElement(
   switch (element) {
     case TextElement e:
       _paintText(canvas, bounds, e, document,
-          pose: pose, frame: frame, images: images);
+          pose: pose, frame: frame, images: images, skipItem: skipTextItem);
     case ShapeElement e:
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintShape(canvas, bounds, e));
@@ -470,6 +486,28 @@ void paintElement(
 // --------------------------------------------------------------------------
 
 void _paintText(
+    ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
+    {Keyframe pose = Keyframe.rest,
+    int frame = 0,
+    CanvasImageSource? images,
+    String? skipItem}) {
+  _paintTextBody(canvas, bounds, e, doc,
+      pose: pose, frame: frame, images: images);
+  // The extra pieces of writing, over the paragraph and inside the same box.
+  // Out here rather than at the end of the body, because the body returns
+  // from half a dozen places -- riding a line, nothing arrived yet, wrapped
+  // round something, in columns -- and an item is drawn whichever of those
+  // the element's own words took.
+  //
+  // Except on a line: a text element riding a curve has no box to put them
+  // in, which is the same reason it draws no background and no border.
+  if (e.items.isEmpty || _curveFor(e, doc, frame) != null) return;
+  var (animation, reveal) = _arrival(e, pose);
+  paintTextItems(canvas, bounds, e,
+      animation: animation, reveal: reveal, images: images, skip: skipItem);
+}
+
+void _paintTextBody(
     ui.Canvas canvas, Rect bounds, TextElement e, CanvasDocument? doc,
     {Keyframe pose = Keyframe.rest, int frame = 0, CanvasImageSource? images}) {
   // Text on a curve has no box of its own to fill or frame: it belongs to the

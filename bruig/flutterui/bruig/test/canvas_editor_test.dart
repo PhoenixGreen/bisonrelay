@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -6793,6 +6794,125 @@ void main() {
 
       expect(find.text("COLOUR"), findsWidgets,
           reason: "one thing to colour, and the swatch is worth seeing");
+    });
+
+    testWidgets("a piece is added, placed and taken away from the panel",
+        (tester) async {
+      // The words are typed on the canvas; everything else about a piece is
+      // here, in the same control the element's own words get.
+      var controller = await panel(tester);
+      expect(textIn(controller).items, isEmpty);
+
+      var add = find.byKey(const ValueKey("textAddItem"));
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).items.length, 1);
+      expect(textIn(controller).items.first.text, "Text",
+          reason: "something to see and to click on the canvas");
+
+      // A second one goes to a free slot rather than on top of the first.
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.length, 2);
+      expect(textIn(controller).items.last.slot,
+          isNot(textIn(controller).items.first.slot));
+
+      // Placed by its slot, which is the first thing on its row.
+      var slot = find.byKey(const ValueKey("textItemSlot0"));
+      await tester.ensureVisible(slot);
+      await tester.pumpAndSettle();
+      await tester.tap(slot);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Middle right").last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.first.slot, TextSlot.middleRight);
+
+      var remove = find.byKey(const ValueKey("textItemRemove0"));
+      await tester.ensureVisible(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.length, 1);
+      expect(textIn(controller).items.first.slot, isNot(TextSlot.middleRight),
+          reason: "the other one went");
+    });
+
+    testWidgets("and each piece's row is the same control the words get",
+        (tester) async {
+      // Face, size, weight and a button holding the rest -- not a second set
+      // of controls that happen to do the same things.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+      expect(find.text("01"), findsOneWidget,
+          reason: "the row is captioned with what the piece says");
+
+      // The piece's own group, and only that: a more-button tapped open in an
+      // earlier test of this file is still open in this one -- which changes
+      // both what the panel holds and what the buttons are called -- so every
+      // finder here is scoped to the piece and the button is opened only if
+      // it is shut.
+      var group = find.ancestor(
+          of: find.byKey(const ValueKey("textItemSlot0")),
+          matching: find.byType(CanvasMoreGroup));
+      expect(group, findsOneWidget, reason: "the piece has a group of its own");
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(find.descendant(of: group, matching: find.text("Outline")),
+          findsOneWidget,
+          reason: "the piece has its own colour behind its own button");
+
+      // And changing it writes to the piece, not to the element.
+      var size =
+          find.descendant(of: group, matching: find.byType(CanvasNumberField));
+      await tester.ensureVisible(size.first);
+      await tester.pumpAndSettle();
+      await tester.enterText(size.first, "11");
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.first.spec.fontSize, 11);
+      expect(textIn(controller).textSpec.fontSize, isNot(11));
+    });
+
+    testWidgets("a piece's row holds together at a sidebar's width",
+        (tester) async {
+      // What must not happen is the slot ending up on a line of its own,
+      // where it reads as belonging to the piece after it -- the same thing
+      // a chart's series row has to avoid. Wrapping *within* a row is what a
+      // CanvasWrap is for and is fine; the slot and the face are the line.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      await panel(tester, element: element);
+
+      var slot = tester.getRect(find.byKey(const ValueKey("textItemSlot0")));
+      var face = tester.getRect(find.descendant(
+          of: find.ancestor(
+              of: find.byKey(const ValueKey("textItemSlot0")),
+              matching: find.byType(CanvasMoreGroup)),
+          matching: find.byType(CanvasDropdown<String>)));
+      expect(face.top, closeTo(slot.top, 0.5),
+          reason: "the slot and the face are on one line");
+      expect(face.left, greaterThan(slot.left));
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

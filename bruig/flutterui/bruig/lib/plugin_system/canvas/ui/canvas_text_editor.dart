@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/writing_tools/writing_tools.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +37,15 @@ import 'package:flutter/services.dart';
 class CanvasTextEditor extends StatefulWidget {
   final TextElement element;
 
+  /// item is the one of the element's extra pieces being typed into, or null
+  /// for the element's own paragraph.
+  ///
+  /// It brings its own words and its own type, and it is given a rectangle of
+  /// its own -- so the box's padding and the room an icon has taken are not
+  /// applied here: those put the *paragraph* where it goes, and the piece is
+  /// already where it goes. See textItemRects.
+  final TextItem? item;
+
   /// rect is where the element's box is on the stage, unrotated.
   final Rect rect;
 
@@ -49,6 +59,7 @@ class CanvasTextEditor extends StatefulWidget {
 
   const CanvasTextEditor({
     required this.element,
+    this.item,
     required this.rect,
     required this.scale,
     required this.onChanged,
@@ -68,8 +79,8 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   /// With no provider enabled it behaves exactly like a plain controller, so
   /// there is nothing to switch on here and nothing to check -- a canvas on a
   /// machine with the writing tools off is the editor it always was.
-  late final TextEditingController _text =
-      WritingTextEditingController(text: widget.element.text);
+  late final TextEditingController _text = WritingTextEditingController(
+      text: widget.item?.text ?? widget.element.text);
   final FocusNode _focus = FocusNode();
 
   @override
@@ -128,12 +139,22 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
   @override
   Widget build(BuildContext context) {
     var e = widget.element;
+    var item = widget.item;
     // The type it is *drawn* in, which with Fit to box on is not the type it
     // is set in. Clicking into a fitted paragraph and having the letters
     // change size is the editor answering a question the canvas has already
     // answered differently, and it makes the thing hard to edit -- which is
     // the one job an editor has.
-    var spec = drawnTextSpec(e, e.bounds);
+    //
+    // A piece is set in its own type, and held to the edge its slot holds it
+    // to -- which is how it is drawn, and the only way the words do not move
+    // as they are typed.
+    var spec = item == null
+        ? drawnTextSpec(e, e.bounds)
+        : item.spec.copyWith(
+            align: item.slot.across,
+            verticalAlign: VerticalAlignSpec.top,
+          );
     var scale = widget.scale;
 
     return Positioned(
@@ -148,7 +169,7 @@ class _CanvasTextEditorState extends State<CanvasTextEditor> {
           // words are typed where they will be drawn. Without the second
           // part, clicking into a headline with an icon beside it moved the
           // words on top of it for as long as the editor was open.
-          padding: _room(e, scale),
+          padding: item == null ? _room(e, scale) : EdgeInsets.zero,
           child: Align(
             alignment: switch (spec.verticalAlign) {
               VerticalAlignSpec.top => Alignment.topCenter,

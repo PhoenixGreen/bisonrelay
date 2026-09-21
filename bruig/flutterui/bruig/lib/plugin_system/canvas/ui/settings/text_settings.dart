@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -211,6 +212,7 @@ List<Widget> textSettings(
             done: commit,
           ),
         ]),
+    ..._itemRows(context, e, write, begin, commit),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
         remember: "text", rule: false),
     // One line, so no section round it. A heading with a chevron on it, for
@@ -1439,6 +1441,106 @@ List<Widget> _markBits({
           "and Away how far under the letters it sits."),
     ],
   ];
+}
+
+/// _itemRows are the element's extra pieces of writing: one row each, in the
+/// same control the element's own words get, with the slot it sits in at the
+/// front of the line and its own button at the end.
+///
+/// The same control on purpose. An item is a piece of writing like any other
+/// -- it has a face, a size, a weight and a colour -- so a second set of
+/// controls that happened to do the same things would be a second set to
+/// learn and a second one to keep in step.
+List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
+    VoidCallback begin, VoidCallback commit) {
+  void now(List<TextItem> items) {
+    begin();
+    write(e.copyWith(items: items));
+    commit();
+  }
+
+  List<TextItem> withItem(int at, TextItem next) => [
+        for (var (i, item) in e.items.indexed) i == at ? next : item,
+      ];
+
+  return [
+    // The line that adds one, captioned for the run under it. It is here
+    // whether or not there are any: a setting nobody can find is a setting
+    // nobody has.
+    CanvasControlGroup(label: "Items", rule: false, children: [
+      CanvasIconButton(
+        key: const ValueKey("textAddItem"),
+        icon: Icons.add,
+        tooltip: "Another piece of writing in this box, in a place of its own",
+        onPressed: () => now([
+          ...e.items,
+          TextItem.fresh(_freeSlot(e), e.textSpec),
+        ]),
+      ),
+      if (e.items.isEmpty)
+        const CanvasHint(
+            "A card is one element: a number over a title, a line of small "
+            "print under it, a name against the right-hand edge. Each piece "
+            "keeps its own type and its own corner of the box, and the words "
+            "are typed on the canvas -- click the piece and type."),
+    ]),
+    for (var (i, item) in e.items.indexed)
+      ...typeGroups(
+        item.spec,
+        (spec) =>
+            write(e.copyWith(items: withItem(i, item.copyWith(spec: spec)))),
+        begin,
+        commit,
+        // What it says, so a panel of four rows says which is which.
+        label: item.says,
+        remember: "textItem${item.id}",
+        colourInMore: true,
+        rule: false,
+        // The captions are written once over the first row. Four rows of the
+        // same three controls do not need Font, Size and Weight over each of
+        // them; the room is still kept, so the rows line up.
+        captions: i == 0,
+        rowBefore: [
+          CanvasDropdown<TextSlot>(
+            key: ValueKey("textItemSlot$i"),
+            label: i == 0 ? "Where" : "",
+            value: item.slot,
+            width: 104,
+            options: [for (var s in TextSlot.values) (s, s.label)],
+            onChanged: (v) => now(withItem(i, item.copyWith(slot: v))),
+          ),
+          CanvasIconButton(
+            key: ValueKey("textItemRemove$i"),
+            icon: Icons.close,
+            tooltip: "Take this piece away",
+            onPressed: () => now([
+              for (var (n, it) in e.items.indexed)
+                if (n != i) it,
+            ]),
+          ),
+        ],
+      ),
+  ];
+}
+
+/// _freeSlot is where the next piece goes: the first slot nothing is in, so
+/// two pieces added one after another do not land on top of each other.
+TextSlot _freeSlot(TextElement e) {
+  var taken = {for (var item in e.items) item.slot};
+  for (var slot in const [
+    TextSlot.topLeft,
+    TextSlot.bottomLeft,
+    TextSlot.middleRight,
+    TextSlot.topRight,
+    TextSlot.bottomRight,
+    TextSlot.topCentre,
+    TextSlot.bottomCentre,
+    TextSlot.middleLeft,
+    TextSlot.middleCentre,
+  ]) {
+    if (!taken.contains(slot)) return slot;
+  }
+  return TextSlot.topLeft;
 }
 
 /// _iconSection is the picture a text element carries.

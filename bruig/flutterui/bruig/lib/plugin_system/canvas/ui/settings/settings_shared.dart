@@ -364,7 +364,24 @@ List<Widget> typeGroups(
   /// own row, because there is only one thing on the element to colour and
   /// the swatch is worth seeing.
   bool colourInMore = false,
+
+  /// rowBefore is put at the front of the type row, before the face.
+  ///
+  /// For the caller that has something of its own to say about *which* piece
+  /// of writing this row is: a text element's items each carry the slot they
+  /// sit in and a button to take them away, and they are the first thing on
+  /// the line because they are what tells one row from the next.
+  List<Widget> rowBefore = const [],
+
+  /// captions draws the controls' own captions. Off for the second and later
+  /// of a run of these -- a list of items is a column of the same controls,
+  /// and the words Font, Size and Weight written over every row is the same
+  /// three words four times.
+  ///
+  /// The room is still reserved, so the rows line up. See _labelled.
+  bool captions = true,
 }) {
+  String cap(String name) => captions ? name : "";
   // The colour settings, as a row and as what is behind its button. Built
   // here rather than written twice: they are the same controls whether
   // they stand as a group of their own or go behind the type button.
@@ -512,8 +529,9 @@ List<Widget> typeGroups(
         remember: "${remember}Type",
         tooltip: "Spacing, alignment and case",
         row: [
+          ...rowBefore,
           CanvasDropdown<String>(
-            label: "Font",
+            label: cap("Font"),
             value: spec.fontFamily,
             // The least these three will be, not the width they are. Six
             // things share this line -- the face, the size, the weight, two
@@ -530,7 +548,7 @@ List<Widget> typeGroups(
             },
           ),
           CanvasNumberField(
-            label: "Size",
+            label: cap("Size"),
             value: spec.fontSize,
             min: 1,
             max: 800,
@@ -539,7 +557,7 @@ List<Widget> typeGroups(
             onCommit: commit,
           ),
           CanvasDropdown<int>(
-            label: "Weight",
+            label: cap("Weight"),
             value: spec.weight,
             width: 62,
             options: const [

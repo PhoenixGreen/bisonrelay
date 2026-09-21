@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -281,6 +282,15 @@ class TextElement extends CanvasElement {
   /// animation is how the words arrive. See [TextAnimation].
   final TextAnimation animation;
 
+  /// items are the extra pieces of writing in this element's box, each in a
+  /// slot of its own. See [TextItem].
+  ///
+  /// Empty for nearly every text element. They exist for the one that is a
+  /// card rather than a paragraph: a number, a title, a line of small print
+  /// and a name in the corner, which used to be four elements and a shape
+  /// that had to be moved together.
+  final List<TextItem> items;
+
   /// parts are the runs of this text that are drawn differently -- a word in
   /// another colour, a phrase in bold. See [TextPart].
   ///
@@ -339,6 +349,7 @@ class TextElement extends CanvasElement {
     this.autoSize = false,
     this.columns = const TextColumns(),
     this.animation = const TextAnimation(),
+    this.items = const [],
     this.parts = const [],
     this.highlight,
     this.underline,
@@ -423,6 +434,7 @@ class TextElement extends CanvasElement {
     bool? autoSize,
     TextColumns? columns,
     TextAnimation? animation,
+    List<TextItem>? items,
     List<TextPart>? parts,
     PartHighlight? highlight,
     bool clearHighlight = false,
@@ -443,6 +455,7 @@ class TextElement extends CanvasElement {
           autoSize: autoSize ?? this.autoSize,
           columns: columns ?? this.columns,
           animation: animation ?? this.animation,
+          items: items ?? this.items,
           parts: parts ?? this.parts,
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
           underline: clearUnderline ? null : (underline ?? this.underline),
@@ -466,6 +479,7 @@ class TextElement extends CanvasElement {
         // and opened with it on again.
         if (columns.says) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
+        if (items.isNotEmpty) "items": [for (var i in items) i.toJson()],
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (highlight != null) "highlight": highlight!.toJson(),
         if (underline != null) "underline": underline!.toJson(),
@@ -487,6 +501,11 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(json["animation"], TextAnimation.fromJson,
               const TextAnimation()),
+          items: [
+            if (json["items"] case List raw)
+              for (var i in raw)
+                if (i is Map<String, dynamic>) TextItem.fromJson(i),
+          ],
           parts: _partsFromJson(json),
           highlight: json["highlight"] is Map<String,
                   dynamic>

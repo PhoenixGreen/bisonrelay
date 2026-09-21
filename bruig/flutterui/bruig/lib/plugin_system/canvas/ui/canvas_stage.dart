@@ -23,6 +23,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/text_items.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
@@ -282,6 +285,15 @@ class CanvasStageState extends State<CanvasStage> {
   /// Held by id rather than by element, because the element is replaced on
   /// every keystroke and a held copy would be one character behind.
   String? _editingText;
+
+  /// _editingItem is which of that element's extra pieces is being typed
+  /// into, by its own id, or null for the element's own paragraph.
+  ///
+  /// The words of an item are typed on the canvas like every other words on
+  /// the canvas: click the piece and type into it where it is drawn. A field
+  /// in the settings panel would be a second place to type, at a size and a
+  /// face that are not the ones it will be read at. See TextItem.
+  String? _editingItem;
 
   /// _nodeIndex is which point of the selected path is being dragged, and
   /// _nodeHandleOut says which of its two handles when the drag is a handle.
@@ -903,6 +915,25 @@ class CanvasStageState extends State<CanvasStage> {
     return centre +
         Offset(local.dx * math.cos(a) - local.dy * math.sin(a),
             local.dx * math.sin(a) + local.dy * math.cos(a));
+  }
+
+  /// _textItemAt is which of a text element's extra pieces a document point
+  /// is on, or null for none.
+  ///
+  /// Off the same function that draws them, so what is clicked is what can be
+  /// seen -- see textItemRects.
+  TextItem? _textItemAt(TextElement e, Offset doc) {
+    if (e.items.isEmpty) return null;
+    var bounds = e.boundsAt(controller.frame);
+    var rects = textItemRects(e, bounds);
+    // Backwards: the last one drawn is the one on top, and two pieces put in
+    // the same slot overlap only where one of them was dragged there.
+    for (var i = e.items.length - 1; i >= 0; i--) {
+      if (!rects[i].isEmpty && rects[i].inflate(2).contains(doc)) {
+        return e.items[i];
+      }
+    }
+    return null;
   }
 
   /// _hitFlowGrip is which flow grip is under the pointer, if either.
@@ -1537,7 +1568,12 @@ class CanvasStageState extends State<CanvasStage> {
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
-      setState(() => _editingText = element.id);
+      setState(() {
+        _editingText = element.id;
+        // Whichever piece the second click landed on -- its own words, or
+        // the element's when it landed on neither.
+        _editingItem = _textItemAt(element, doc)?.id;
+      });
       _mode = _DragMode.none;
       return;
     }
@@ -2800,6 +2836,7 @@ class CanvasStageState extends State<CanvasStage> {
                         chartLabels: _selectedChartLabels(),
                         tableColumns: _selectedTableColumns(),
                         editingText: _editingText,
+                        editingItem: _editingItem,
                         preview: _preview,
                         previewOn: _previewPlacement(),
                         liveStroke: _liveCanvas,
@@ -2905,17 +2942,36 @@ class CanvasStageState extends State<CanvasStage> {
     var element = document.elementById(id);
     if (element is! TextElement) return null;
 
-    var box = _editorRect ??= _editorBoxFor(element);
+    // One of the element's own pieces, where the second click landed on one.
+    // It is held open by *its* id: the element is replaced on every keystroke
+    // and the list is rebuilt with it, so a position in the list would be a
+    // different piece the moment one was added or taken away.
+    var itemId = _editingItem;
+    var at = itemId == null
+        ? -1
+        : element.items.indexWhere((item) => item.id == itemId);
+    var item = at < 0 ? null : element.items[at];
+
+    var box = _editorRect ??= item == null
+        ? _editorBoxFor(element)
+        : _itemEditorBoxFor(element, at);
     var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
-      key: ValueKey("edit-$id"),
+      key: ValueKey("edit-$id-${item?.id ?? ""}"),
       element: element,
+      item: item,
       rect: Rect.fromLTWH(
           topLeft.dx, topLeft.dy, box.width * _scale, box.height * _scale),
       scale: _scale,
       onChanged: (text) {
         controller.beginInteraction();
-        controller.replaceElement(element.copyWith(text: text),
+        controller.replaceElement(
+            item == null
+                ? element.copyWith(text: text)
+                : element.copyWith(items: [
+                    for (var (i, it) in element.items.indexed)
+                      i == at ? it.copyWith(text: text) : it,
+                  ]),
             transient: true);
       },
       onDone: () {
@@ -2923,11 +2979,39 @@ class CanvasStageState extends State<CanvasStage> {
         if (mounted) {
           setState(() {
             _editingText = null;
+            _editingItem = null;
             _editorRect = null;
           });
         }
       },
     );
+  }
+
+  /// _itemEditorBoxFor is the rectangle an item's editor opens in: where the
+  /// piece is drawn, with room to type into.
+  ///
+  /// A piece that says "01" is a box twenty pixels wide, and a box twenty
+  /// pixels wide is nowhere to write a word. It is grown from the edge the
+  /// slot holds it to, so the words stay where they are while there is room
+  /// for the next ones -- a piece against the right-hand edge grows to the
+  /// left.
+  Rect _itemEditorBoxFor(TextElement element, int at) {
+    var bounds = element.boundsAt(controller.frame);
+    var rect = textItemRects(element, bounds)[at];
+    var item = element.items[at];
+    var inner = element.box.inner(bounds);
+    if (rect.isEmpty) rect = Rect.fromLTWH(inner.left, inner.top, 0, 0);
+
+    var line = item.spec.fontSize * item.spec.lineHeight;
+    var width = math.max(rect.width, math.max(line * 6, inner.width * 0.4));
+    width = math.min(width, inner.width);
+    var height = math.max(rect.height, line * 1.4);
+    var left = switch (item.slot.across) {
+      TextAlignSpec.right => rect.right - width,
+      TextAlignSpec.center => rect.center.dx - width / 2,
+      _ => rect.left,
+    };
+    return Rect.fromLTWH(left, rect.top, width, height);
   }
 
   /// _editorBoxFor is the rectangle the editor opens in.
