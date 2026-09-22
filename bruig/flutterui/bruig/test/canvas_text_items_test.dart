@@ -99,6 +99,52 @@ void main() {
           reason: "three times the box, the same twelve between them");
     });
 
+    test("the first piece's gap is the room to the edge it is held to", () {
+      // Reported: the gap only worked on the second piece. It was "the room
+      // above" in every slot, and room above the top of a stack that is
+      // pinned by its *bottom* moves nothing at all.
+      var inner = _card().box.inner(_card().bounds);
+
+      var top = _card(items: const [
+        TextItem(id: "a", text: "One", slot: TextSlot.topLeft, gap: 10),
+        TextItem(id: "b", text: "Two", slot: TextSlot.topLeft, gap: 4),
+      ]);
+      var up = textItemRects(top, top.bounds);
+      expect(up[0].top, closeTo(inner.top + 10, 0.01),
+          reason: "ten down from the top of the box");
+      expect(up[1].top - up[0].bottom, closeTo(4, 0.01));
+
+      var bottom = _card(items: const [
+        TextItem(id: "a", text: "One", slot: TextSlot.bottomLeft, gap: 10),
+        TextItem(id: "b", text: "Two", slot: TextSlot.bottomLeft, gap: 4),
+      ]);
+      var down = textItemRects(bottom, bottom.bounds);
+      expect(down[1].bottom, closeTo(inner.bottom - 10, 0.01),
+          reason: "and ten up from the bottom of it");
+      expect(down[1].top - down[0].bottom, closeTo(4, 0.01));
+    });
+
+    test("a side of its own overrides that room, and moves it sideways", () {
+      var e = _card(items: const [
+        TextItem(
+            id: "a",
+            text: "One",
+            slot: TextSlot.topLeft,
+            gap: 10,
+            sideL: 24,
+            sideT: 6),
+        TextItem(
+            id: "b", text: "Two", slot: TextSlot.middleRight, sideR: 18),
+      ]);
+      var inner = e.box.inner(e.bounds);
+      var rects = textItemRects(e, e.bounds);
+
+      expect(rects[0].left, closeTo(inner.left + 24, 0.01), reason: "Left");
+      expect(rects[0].top, closeTo(inner.top + 6, 0.01),
+          reason: "Top, in place of the gap");
+      expect(rects[1].right, closeTo(inner.right - 18, 0.01), reason: "Right");
+    });
+
     test("and a stack in a bottom slot ends at the bottom", () {
       var e = _card(items: const [
         TextItem(id: "a", text: "One", slot: TextSlot.bottomLeft),

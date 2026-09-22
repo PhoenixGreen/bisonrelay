@@ -43,29 +43,36 @@ List<Rect> textItemRects(TextElement e, Rect bounds) {
     var sizes = [
       for (var i in mine) _sizeOf(e.items[i], inner.width),
     ];
-    // Each piece's own room above it, which is what makes the distance
-    // between two of them a constant rather than whatever the box has left
-    // over. See TextItem.gap.
-    var total = 0.0;
+
+    // The stack's own height: every piece, and the room between each of them
+    // and the one before. The first piece's room is not in it -- that is the
+    // distance from the *edge* the slot holds the stack to, and it is applied
+    // to the stack rather than inside it, so that it means something at the
+    // bottom of the box as well as at the top. See TextItem.gap.
+    var lead = e.items[mine.first].roomBefore(slot.down);
+    var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
+      if (n == 0) continue;
       total += sizes[n].height + e.items[i].gap;
     }
     var top = switch (slot.down) {
-      VerticalAlignSpec.top => inner.top,
-      VerticalAlignSpec.middle => inner.center.dy - total / 2,
-      VerticalAlignSpec.bottom => inner.bottom - total,
+      VerticalAlignSpec.top => inner.top + lead,
+      VerticalAlignSpec.middle => inner.center.dy - total / 2 + lead,
+      VerticalAlignSpec.bottom => inner.bottom - total - lead,
     };
 
     for (var (n, i) in mine.indexed) {
+      var item = e.items[i];
       var size = sizes[n];
-      top += e.items[i].gap;
+      if (n > 0) top += item.gap;
       var left = switch (slot.across) {
-        TextAlignSpec.left => inner.left,
-        TextAlignSpec.center => inner.center.dx - size.width / 2,
-        TextAlignSpec.right => inner.right - size.width,
+        TextAlignSpec.left => inner.left + item.roomLeft,
+        TextAlignSpec.center =>
+          inner.center.dx - size.width / 2 + item.roomLeft - item.roomRight,
+        TextAlignSpec.right => inner.right - size.width - item.roomRight,
         // Justified words fill the line they are on, so there is nothing to
         // hold to an edge: it reads as left, which is what it looks like.
-        TextAlignSpec.justify => inner.left,
+        TextAlignSpec.justify => inner.left + item.roomLeft,
       };
       out[i] = Rect.fromLTWH(left, top, size.width, size.height);
       top += size.height;

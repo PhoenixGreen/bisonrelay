@@ -1490,25 +1490,8 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
           includeAlign: false,
           extraMore: [
             const CanvasLineBreak(),
-            CanvasDropdown<TextSlot>(
-              key: ValueKey("textItemSlot$i"),
-              label: "Where",
-              value: item.slot,
-              width: 104,
-              options: [for (var s in TextSlot.values) (s, s.label)],
-              onChanged: (v) => now(withItem(i, item.copyWith(slot: v))),
-            ),
-            CanvasNumberField(
-              key: ValueKey("textItemGap$i"),
-              label: "Gap",
-              value: item.gap,
-              min: -400,
-              max: 400,
-              width: 56,
-              onChanged: (v) =>
-                  write(e.copyWith(items: withItem(i, item.copyWith(gap: v)))),
-              onCommit: commit,
-            ),
+            ..._placeBits(e, i, item, write, begin, commit),
+            const CanvasLineBreak(),
             CanvasIconButton(
               key: ValueKey("textItemRemove$i"),
               icon: Icons.delete_outline,
@@ -1551,6 +1534,81 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
             "the other, as far apart as their Gap says however big the box "
             "is."),
     ]),
+  ];
+}
+
+/// _placeBits are the controls every piece has behind its button, whether it
+/// is words or a picture: where it sits, and how much room it keeps.
+///
+/// One list rather than two, because "where does this go" is the same
+/// question of both and answering it twice is how the two drift apart.
+List<Widget> _placeBits(TextElement e, int at, TextItem item,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  void put(TextItem next, {bool live = false}) {
+    begin();
+    write(e.copyWith(items: [
+      for (var (i, it) in e.items.indexed) i == at ? next : it,
+    ]));
+    if (!live) commit();
+  }
+
+  return [
+    CanvasDropdown<TextSlot>(
+      key: ValueKey("textItemSlot$at"),
+      label: "Where",
+      value: item.slot,
+      width: 104,
+      options: [for (var s in TextSlot.values) (s, s.label)],
+      onChanged: (v) => put(item.copyWith(slot: v)),
+    ),
+    CanvasNumberField(
+      key: ValueKey("textItemGap$at"),
+      label: "Gap",
+      value: item.gap,
+      min: -400,
+      max: 400,
+      width: 56,
+      onChanged: (v) => put(item.copyWith(gap: v), live: true),
+      onCommit: commit,
+    ),
+    CanvasToggle(
+      key: ValueKey("textItemSides$at"),
+      label: "Each side",
+      value: item.hasSides,
+      onChanged: (v) => put(v
+          ? item.copyWith(
+              sideL: item.sideL ?? 0,
+              sideT: item.sideT ?? item.gap,
+              sideR: item.sideR ?? 0,
+              sideB: item.sideB ?? item.gap)
+          : item.copyWith(clearSides: true)),
+    ),
+    if (item.hasSides) ...[
+      const CanvasLineBreak(),
+      for (var (label, value, set)
+          in <(String, double, TextItem Function(double))>[
+        ("Left", item.sideL ?? 0, (v) => item.copyWith(sideL: v)),
+        ("Top", item.sideT ?? 0, (v) => item.copyWith(sideT: v)),
+        ("Right", item.sideR ?? 0, (v) => item.copyWith(sideR: v)),
+        ("Bottom", item.sideB ?? 0, (v) => item.copyWith(sideB: v)),
+      ])
+        CanvasNumberField(
+          key: ValueKey("textItem$label$at"),
+          label: label,
+          value: value,
+          min: -400,
+          max: 400,
+          width: 54,
+          onChanged: (v) => put(set(v), live: true),
+          onCommit: commit,
+        ),
+      const CanvasHint(
+          "The room this piece keeps from each edge of the box. The slot says "
+          "which of them it is held to, so a piece in the top left answers to "
+          "Left and Top and a piece in the middle right to Right. Gap is the "
+          "everyday one: the room above a piece in a stack, and the room "
+          "between the stack and the edge it is held to."),
+    ],
   ];
 }
 
@@ -1632,30 +1690,7 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
         ),
     ],
     more: [
-      CanvasDropdown<TextSlot>(
-        key: ValueKey("textItemSlot$at"),
-        label: "Where",
-        value: item.slot,
-        width: 104,
-        options: [for (var s in TextSlot.values) (s, s.label)],
-        onChanged: (v) => put(item.copyWith(slot: v)),
-      ),
-      CanvasNumberField(
-        key: ValueKey("textItemGap$at"),
-        label: "Gap",
-        value: item.gap,
-        min: -400,
-        max: 400,
-        width: 56,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(items: [
-            for (var (i, it) in e.items.indexed)
-              i == at ? item.copyWith(gap: v) : it,
-          ]));
-        },
-        onCommit: commit,
-      ),
+      ..._placeBits(e, at, item, write, begin, commit),
       const CanvasLineBreak(),
       CanvasNumberField(
         label: "Outline",

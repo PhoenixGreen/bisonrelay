@@ -100,7 +100,16 @@ class TextItem {
   /// used -- and the one that could do less had the whole section.
   final TextIcon? icon;
 
-  /// gap is the room above this piece, in design units.
+  /// gap is the room between this piece and whatever is before it, in design
+  /// units: the piece above it in its slot, or -- for the first piece in a
+  /// slot -- the edge of the box the slot holds it to.
+  ///
+  /// Which edge depends on the slot, and that is the point: at the top it is
+  /// the room above the stack, at the bottom the room below it. It used to be
+  /// "the room above" in every slot, which made it do nothing at all on the
+  /// first piece of a bottom stack -- the stack is pinned by its bottom, so
+  /// room above the top of it moves nothing. Reported as "the gap only works
+  /// for the second piece".
   ///
   /// What it buys is a *constant* distance. Two pieces in different slots are
   /// held to different corners of the box, so the space between them is
@@ -115,6 +124,38 @@ class TextItem {
   /// in three.
   final double gap;
 
+  /// sideL..sideB are each side's own room, for the piece that wants a
+  /// different distance from one edge than [gap] gives it -- or any distance
+  /// at all from the sides, which a gap has nothing to say about.
+  ///
+  /// Null is "whatever the gap says", which for the sides is nothing. Kept as
+  /// four nullable numbers rather than four numbers, so a piece that has
+  /// never been given one is a piece the panel does not have to show them
+  /// for: they are behind a switch, and the switch is off until somebody
+  /// needs them. The same shape BoxSpec's per-side padding has, and for the
+  /// same reason.
+  final double? sideL;
+  final double? sideT;
+  final double? sideR;
+  final double? sideB;
+
+  /// hasSides is whether any side has been given its own room.
+  bool get hasSides =>
+      sideL != null || sideT != null || sideR != null || sideB != null;
+
+  /// roomAcross is the distance this piece keeps from the left-hand or the
+  /// right-hand edge of the box, by which side its slot holds it to.
+  double get roomLeft => sideL ?? 0;
+  double get roomRight => sideR ?? 0;
+
+  /// roomBefore is the distance the *stack* keeps from the edge it is held
+  /// to, which is this piece's own where it is the first of them.
+  double roomBefore(VerticalAlignSpec down) => switch (down) {
+        VerticalAlignSpec.top => sideT ?? gap,
+        VerticalAlignSpec.bottom => sideB ?? gap,
+        VerticalAlignSpec.middle => gap,
+      };
+
   const TextItem({
     required this.id,
     this.text = "",
@@ -122,6 +163,10 @@ class TextItem {
     this.slot = TextSlot.topLeft,
     this.icon,
     this.gap = 0,
+    this.sideL,
+    this.sideT,
+    this.sideR,
+    this.sideB,
   });
 
   /// isIcon is whether this piece is a picture.
@@ -155,6 +200,11 @@ class TextItem {
     TextSlot? slot,
     TextIcon? icon,
     double? gap,
+    double? sideL,
+    double? sideT,
+    double? sideR,
+    double? sideB,
+    bool clearSides = false,
   }) =>
       TextItem(
         id: id,
@@ -163,6 +213,10 @@ class TextItem {
         slot: slot ?? this.slot,
         icon: icon ?? this.icon,
         gap: gap ?? this.gap,
+        sideL: clearSides ? null : (sideL ?? this.sideL),
+        sideT: clearSides ? null : (sideT ?? this.sideT),
+        sideR: clearSides ? null : (sideR ?? this.sideR),
+        sideB: clearSides ? null : (sideB ?? this.sideB),
       );
 
   /// says is what the settings panel calls this item: its own words, cut
@@ -179,6 +233,10 @@ class TextItem {
         if (text.isNotEmpty) "t": text,
         "slot": slot.name,
         if (gap != 0) "gap": gap,
+        if (sideL != null) "gapL": sideL,
+        if (sideT != null) "gapT": sideT,
+        if (sideR != null) "gapR": sideR,
+        if (sideB != null) "gapB": sideB,
         if (icon != null) "icon": icon!.toJson(),
         "spec": spec.toJson(),
       };
@@ -192,6 +250,10 @@ class TextItem {
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
             : 0,
+        sideL: _side(json["gapL"]),
+        sideT: _side(json["gapT"]),
+        sideR: _side(json["gapR"]),
+        sideB: _side(json["gapB"]),
         icon: json["icon"] is Map<String, dynamic>
             ? TextIcon.fromJson((json["icon"] as Map).cast<String, dynamic>())
             : null,
@@ -200,3 +262,7 @@ class TextItem {
             : const TextSpec(),
       );
 }
+
+/// _side reads one side's own room, or null where it has none.
+double? _side(Object? raw) =>
+    raw is num ? raw.toDouble().clamp(-400.0, 400.0) : null;

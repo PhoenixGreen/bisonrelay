@@ -6942,6 +6942,58 @@ void main() {
       // are behind a button of their own, which this test has not opened.
     });
 
+    testWidgets("each side is offered, and only when it is asked for",
+        (tester) async {
+      // Gap is the everyday one. A piece that wants a different distance from
+      // one edge, or any distance at all from the sides, says so behind a
+      // switch -- off until somebody needs it, because four more numbers on
+      // every piece is four more to read past.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft, gap: 8),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+
+      var group = find.ancestor(
+          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      expect(
+          find.descendant(of: group, matching: find.text("Left")), findsNothing,
+          reason: "not until it is asked for");
+
+      var sides = find.byKey(const ValueKey("textItemSides0"));
+      await tester.ensureVisible(sides);
+      await tester.pumpAndSettle();
+      await tester.tap(sides);
+      await tester.pumpAndSettle();
+
+      for (var side in ["Left", "Top", "Right", "Bottom"]) {
+        expect(find.descendant(of: group, matching: find.text(side)),
+            findsOneWidget);
+      }
+      var piece = textIn(controller).items.first;
+      expect(piece.hasSides, isTrue);
+      expect(piece.sideT, 8, reason: "started from the gap it had");
+      expect(piece.sideL, 0);
+
+      // And switched off again, the piece goes back to its gap alone.
+      await tester.tap(sides);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.first.hasSides, isFalse);
+      expect(textIn(controller).items.first.gap, 8);
+    });
+
     testWidgets("a piece's row is directly under the element's own",
         (tester) async {
       // Another piece of writing in the same box belongs with the writing
