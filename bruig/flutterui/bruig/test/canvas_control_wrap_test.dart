@@ -192,12 +192,12 @@ void main() {
           width: width);
     }
 
-    testWidgets("holds all five settings and the button in a narrow sidebar",
+    testWidgets("holds all four settings and the button in a narrow sidebar",
         (tester) async {
-      // The face, the size, the weight, italic, underline and the button that
-      // opens the rest. The first dropdown asked for a hundred and eighteen
-      // pixels, which is what pushed the two switches onto a line of their
-      // own the moment anybody pulled the sidebar in.
+      // The face, the size, the weight, the colour and the button that opens
+      // the rest. The first dropdown asked for a hundred and eighteen pixels,
+      // which is what pushed the last of them onto a line of their own the
+      // moment anybody pulled the sidebar in.
       await text(tester, 300);
 
       // The whole control, not the caption or the icon inside it: a caption
@@ -212,8 +212,9 @@ void main() {
       for (var (what, of) in <(String, Finder)>[
         ("Size", box(find.text("Size"), CanvasNumberField)),
         ("Weight", box(find.text("Weight"), CanvasDropdown<int>)),
-        ("Italic", box(find.byTooltip("Italic"), CanvasIconButton)),
-        ("Underline", box(find.byTooltip("Underline"), CanvasIconButton)),
+        // The colour, which is where the two switches used to be: it is
+        // changed again and again where they are set once. See typeGroups.
+        ("the colour", find.byType(CanvasColorButton).first),
         ("the button", find.byKey(const ValueKey("more-textType"))),
       ]) {
         expect(tester.getRect(of).top, closeTo(top, 0.5),

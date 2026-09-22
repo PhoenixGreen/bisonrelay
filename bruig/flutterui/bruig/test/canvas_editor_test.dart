@@ -6975,12 +6975,11 @@ void main() {
       expect(textIn(controller).slot, isNull);
     });
 
-    testWidgets("each side is offered, and only when it is asked for",
+    testWidgets("a piece keeps two numbers for where it sits, side by side",
         (tester) async {
-      // Gap is the everyday one. A piece that wants a different distance from
-      // one edge, or any distance at all from the sides, says so behind a
-      // switch -- off until somebody needs it, because four more numbers on
-      // every piece is four more to read past.
+      // Gap down the box and Left/right across it. Both go either way from
+      // zero, so four of them -- one per side -- was four fields saying what
+      // two say, and a switch to hide them was a switch over nothing.
       var element = TextElement(
         ElementBase(id: newElementId(), width: 400, height: 200),
         text: "Spend or burn",
@@ -7001,30 +7000,18 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      expect(
-          find.descendant(of: group, matching: find.text("Left")), findsNothing,
-          reason: "not until it is asked for");
+      var gap = find.byKey(const ValueKey("textItemGap0"));
+      var side = find.byKey(const ValueKey("textItemSide0"));
+      expect(gap, findsOneWidget);
+      expect(side, findsOneWidget, reason: "not behind a switch of its own");
+      expect(tester.getRect(side).top, closeTo(tester.getRect(gap).top, 0.5),
+          reason: "side by side");
 
-      var sides = find.byKey(const ValueKey("textItemSides0"));
-      await tester.ensureVisible(sides);
+      await tester.ensureVisible(side);
       await tester.pumpAndSettle();
-      await tester.tap(sides);
+      await tester.enterText(side, "14");
       await tester.pumpAndSettle();
-
-      for (var side in ["Left", "Top", "Right", "Bottom"]) {
-        expect(find.descendant(of: group, matching: find.text(side)),
-            findsOneWidget);
-      }
-      var piece = textIn(controller).items.first;
-      expect(piece.hasSides, isTrue);
-      expect(piece.sideT, 8, reason: "started from the gap it had");
-      expect(piece.sideL, 0);
-
-      // And switched off again, the piece goes back to its gap alone.
-      await tester.tap(sides);
-      await tester.pumpAndSettle();
-      expect(textIn(controller).items.first.hasSides, isFalse);
-      expect(textIn(controller).items.first.gap, 8);
+      expect(textIn(controller).items.first.side, 14);
     });
 
     testWidgets("a piece's row is directly under the element's own",
@@ -7067,6 +7054,65 @@ void main() {
       expect(piece.top, greaterThan(own.top), reason: "under the words");
       expect(add.top, greaterThan(piece.top), reason: "and the + under it");
       expect(box.top, greaterThan(add.top), reason: "the box comes after");
+    });
+
+    testWidgets("the colour is on the row and the switches are behind it",
+        (tester) async {
+      // What colour the words are is the first thing anybody changes about
+      // them and the last thing that should be behind a button. Italic and
+      // the face's own underline are set once, so they have swapped places
+      // with it.
+      await panel(tester);
+      var own = find.ancestor(
+          of: find.byWidgetPredicate(
+              (w) => w is CanvasDropdown<String> && w.label == "Font"),
+          matching: find.byType(CanvasMoreGroup));
+
+      var face = tester.getRect(find.byWidgetPredicate(
+          (w) => w is CanvasDropdown<String> && w.label == "Font"));
+      // The first of them: with the button open there are more swatches
+      // behind it -- the outline's, the shadow's, the glow's -- and the one
+      // on the row is the one in front.
+      var swatch = tester.getRect(find
+          .descendant(of: own, matching: find.byType(CanvasColorButton))
+          .first);
+      expect(swatch.top, closeTo(face.top, 0.5),
+          reason: "the swatch is on the row with the face");
+
+      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(
+          find.descendant(of: own, matching: find.byIcon(Icons.format_italic)),
+          findsOneWidget,
+          reason: "italic is behind the button now");
+      expect(find.text("Outline"), findsWidgets,
+          reason: "and the rest of the colour settings are first back here");
+    });
+
+    testWidgets("and there is one underline, not two", (tester) async {
+      // The face's own underline and a drawn one under the words are two
+      // switches called Underline on one panel. The one that can do more --
+      // a colour, a width, a distance under the letters -- is the one kept.
+      await panel(tester);
+      var own = find.ancestor(
+          of: find.byWidgetPredicate(
+              (w) => w is CanvasDropdown<String> && w.label == "Font"),
+          matching: find.byType(CanvasMoreGroup));
+      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.byIcon(Icons.format_underlined), findsNothing);
+      expect(find.text("Underline"), findsOneWidget);
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

@@ -124,37 +124,15 @@ class TextItem {
   /// in three.
   final double gap;
 
-  /// sideL..sideB are each side's own room, for the piece that wants a
-  /// different distance from one edge than [gap] gives it -- or any distance
-  /// at all from the sides, which a gap has nothing to say about.
+  /// side is the room this piece keeps from the edge its slot holds it to
+  /// sideways: to the right of a piece held to the left, to the left of one
+  /// held to the right, and rightwards for one in the middle.
   ///
-  /// Null is "whatever the gap says", which for the sides is nothing. Kept as
-  /// four nullable numbers rather than four numbers, so a piece that has
-  /// never been given one is a piece the panel does not have to show them
-  /// for: they are behind a switch, and the switch is off until somebody
-  /// needs them. The same shape BoxSpec's per-side padding has, and for the
-  /// same reason.
-  final double? sideL;
-  final double? sideT;
-  final double? sideR;
-  final double? sideB;
-
-  /// hasSides is whether any side has been given its own room.
-  bool get hasSides =>
-      sideL != null || sideT != null || sideR != null || sideB != null;
-
-  /// roomAcross is the distance this piece keeps from the left-hand or the
-  /// right-hand edge of the box, by which side its slot holds it to.
-  double get roomLeft => sideL ?? 0;
-  double get roomRight => sideR ?? 0;
-
-  /// roomBefore is the distance the *stack* keeps from the edge it is held
-  /// to, which is this piece's own where it is the first of them.
-  double roomBefore(VerticalAlignSpec down) => switch (down) {
-        VerticalAlignSpec.top => sideT ?? gap,
-        VerticalAlignSpec.bottom => sideB ?? gap,
-        VerticalAlignSpec.middle => gap,
-      };
+  /// One number rather than a left and a right, because it already goes both
+  /// ways -- a piece held to the left and moved by minus ten is ten further
+  /// left, which is the only thing a Left field could have said. Four of
+  /// them, one per side, was four fields saying what two say.
+  final double side;
 
   const TextItem({
     required this.id,
@@ -163,10 +141,7 @@ class TextItem {
     this.slot = TextSlot.topLeft,
     this.icon,
     this.gap = 0,
-    this.sideL,
-    this.sideT,
-    this.sideR,
-    this.sideB,
+    this.side = 0,
   });
 
   /// isIcon is whether this piece is a picture.
@@ -200,11 +175,7 @@ class TextItem {
     TextSlot? slot,
     TextIcon? icon,
     double? gap,
-    double? sideL,
-    double? sideT,
-    double? sideR,
-    double? sideB,
-    bool clearSides = false,
+    double? side,
   }) =>
       TextItem(
         id: id,
@@ -213,10 +184,7 @@ class TextItem {
         slot: slot ?? this.slot,
         icon: icon ?? this.icon,
         gap: gap ?? this.gap,
-        sideL: clearSides ? null : (sideL ?? this.sideL),
-        sideT: clearSides ? null : (sideT ?? this.sideT),
-        sideR: clearSides ? null : (sideR ?? this.sideR),
-        sideB: clearSides ? null : (sideB ?? this.sideB),
+        side: side ?? this.side,
       );
 
   /// says is what the settings panel calls this item: its own words, cut
@@ -233,10 +201,7 @@ class TextItem {
         if (text.isNotEmpty) "t": text,
         "slot": slot.name,
         if (gap != 0) "gap": gap,
-        if (sideL != null) "gapL": sideL,
-        if (sideT != null) "gapT": sideT,
-        if (sideR != null) "gapR": sideR,
-        if (sideB != null) "gapB": sideB,
+        if (side != 0) "side": side,
         if (icon != null) "icon": icon!.toJson(),
         "spec": spec.toJson(),
       };
@@ -250,10 +215,12 @@ class TextItem {
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)
             : 0,
-        sideL: _side(json["gapL"]),
-        sideT: _side(json["gapT"]),
-        sideR: _side(json["gapR"]),
-        sideB: _side(json["gapB"]),
+        // gapL and gapR are what the four-sided version wrote, for the day
+        // that one existed.
+        side: _side(json["side"]) ??
+            _side(json["gapL"]) ??
+            _side(json["gapR"]) ??
+            0,
         icon: json["icon"] is Map<String, dynamic>
             ? TextIcon.fromJson((json["icon"] as Map).cast<String, dynamic>())
             : null,

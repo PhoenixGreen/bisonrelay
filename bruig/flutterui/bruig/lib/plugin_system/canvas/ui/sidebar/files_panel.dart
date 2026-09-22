@@ -512,11 +512,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             _action(theme, Icons.save_outlined, "Save canvas", _saveAs)
           else
             _action(theme, Icons.add_box_outlined, "New canvas", _newCanvas),
-          if (_folder.isEmpty)
-            _action(theme, Icons.create_new_folder_outlined, "New folder",
-                _newFolder),
-          // Icons only: the two least used, and the two whose meaning
-          // survives without a word beside them.
+          // Icons only: the least used, and the ones whose meaning survives
+          // without a word beside them. A folder is made once a project and
+          // the icon for it is the one every file list uses.
           //
           // Save is here even though a saved canvas writes itself out after
           // three seconds of quiet and again on the way out. Both of those
@@ -525,6 +523,9 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
           if (controller.name != null)
             _iconAction(theme, Icons.save_outlined,
                 controller.dirty ? "Save now" : "Saved", _saveNow),
+          if (_folder.isEmpty)
+            _iconAction(theme, Icons.create_new_folder_outlined, "New folder",
+                _newFolder),
           _iconAction(theme, Icons.file_open_outlined,
               "Open a canvas from a file", _import),
         ]),

@@ -183,6 +183,10 @@ List<Widget> textSettings(
         // button, because this is the element that has several pieces of
         // writing in it -- see the items below.
         colourInMore: true,
+        // The words carry a drawn underline of their own -- see the marks
+        // behind this button -- so the face's own underline switch would be
+        // the second one called Underline on this panel.
+        includeUnderline: false,
         // No lines through this run. The face, the colour, the box, the
         // columns and the line it rides are all one question -- how do these
         // words look -- and a rule between each pair of them made five
@@ -1594,44 +1598,19 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       onChanged: (v) => put(item.copyWith(gap: v), live: true),
       onCommit: commit,
     ),
-    CanvasToggle(
-      key: ValueKey("textItemSides$at"),
-      label: "Each side",
-      value: item.hasSides,
-      onChanged: (v) => put(v
-          ? item.copyWith(
-              sideL: item.sideL ?? 0,
-              sideT: item.sideT ?? item.gap,
-              sideR: item.sideR ?? 0,
-              sideB: item.sideB ?? item.gap)
-          : item.copyWith(clearSides: true)),
+    CanvasNumberField(
+      key: ValueKey("textItemSide$at"),
+      // Both ways round from one number: away from the edge the slot holds
+      // it to, or back past it. Two fields here, not four -- see
+      // TextItem.side.
+      label: "Left/right",
+      value: item.side,
+      min: -2000,
+      max: 2000,
+      width: 66,
+      onChanged: (v) => put(item.copyWith(side: v), live: true),
+      onCommit: commit,
     ),
-    if (item.hasSides) ...[
-      const CanvasLineBreak(),
-      for (var (label, value, set)
-          in <(String, double, TextItem Function(double))>[
-        ("Left", item.sideL ?? 0, (v) => item.copyWith(sideL: v)),
-        ("Top", item.sideT ?? 0, (v) => item.copyWith(sideT: v)),
-        ("Right", item.sideR ?? 0, (v) => item.copyWith(sideR: v)),
-        ("Bottom", item.sideB ?? 0, (v) => item.copyWith(sideB: v)),
-      ])
-        CanvasNumberField(
-          key: ValueKey("textItem$label$at"),
-          label: label,
-          value: value,
-          min: -400,
-          max: 400,
-          width: 54,
-          onChanged: (v) => put(set(v), live: true),
-          onCommit: commit,
-        ),
-      const CanvasHint(
-          "The room this piece keeps from each edge of the box. The slot says "
-          "which of them it is held to, so a piece in the top left answers to "
-          "Left and Top and a piece in the middle right to Right. Gap is the "
-          "everyday one: the room above a piece in a stack, and the room "
-          "between the stack and the edge it is held to."),
-    ],
   ];
 }
 

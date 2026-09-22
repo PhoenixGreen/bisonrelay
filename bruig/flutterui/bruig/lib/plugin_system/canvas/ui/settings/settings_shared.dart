@@ -388,11 +388,69 @@ List<Widget> typeGroups(
   /// Align dropdown on its row was a control that did nothing -- which is
   /// worse than no control at all.
   bool includeAlign = true,
+
+  /// includeUnderline offers the underline switch.
+  ///
+  /// Off for the element that has a *drawn* underline as well -- a text
+  /// element's marks, which can be a colour, a width and a distance under the
+  /// words rather than whatever the face does. Two switches called Underline
+  /// in one panel is one of them too many, and the one that can do more is
+  /// the one to keep.
+  bool includeUnderline = true,
 }) {
   String cap(String name) => captions ? name : "";
   // The colour settings, as a row and as what is behind its button. Built
   // here rather than written twice: they are the same controls whether
   // they stand as a group of their own or go behind the type button.
+  // The swatch alone. Where the colour has been folded in behind the type
+  // button it goes on the *row* instead: what colour the words are is the
+  // first thing anybody changes about them and the last thing that should be
+  // behind a button, and a swatch is small enough to sit on a full line.
+  var swatch = CanvasColorButton(
+    label: "Colour",
+    color: spec.color,
+    gradient: spec.fade,
+    onChanged: (c) {
+      begin();
+      onChanged(spec.copyWith(color: c));
+      commit();
+    },
+    onGradientChanged: (g) {
+      begin();
+      onChanged(
+          g == null ? spec.copyWith(flatText: true) : spec.copyWith(fade: g));
+      commit();
+    },
+  );
+
+  // Italic and underline. On the row where the colour is not -- there is room
+  // for two switches there -- and behind the button where it is, since the
+  // colour has taken their place and they are set once where a colour is
+  // changed again and again.
+  var slanted = <Widget>[
+    CanvasIconButton(
+      icon: Icons.format_italic,
+      tooltip: "Italic",
+      active: spec.italic,
+      onPressed: () {
+        begin();
+        onChanged(spec.copyWith(italic: !spec.italic));
+        commit();
+      },
+    ),
+    if (includeUnderline)
+      CanvasIconButton(
+        icon: Icons.format_underlined,
+        tooltip: "Underline",
+        active: spec.underline,
+        onPressed: () {
+          begin();
+          onChanged(spec.copyWith(underline: !spec.underline));
+          commit();
+        },
+      ),
+  ];
+
   var colourRow = <Widget>[
     // What the letters are painted with. The colour is the usual answer
     // and stays first; a picture or a pattern replaces it, and the
@@ -410,27 +468,11 @@ List<Widget> typeGroups(
           commit();
         },
       ),
-    CanvasColorButton(
-      label: "Text",
-      color: spec.color,
-      // The words can fade from one colour to another, across the box
-      // they are drawn in. Not where they are outlined rather than
-      // filled, or where a picture or a pattern is showing through them:
-      // each of those already decides what the letters are painted with.
-      // See TextSpec.fade.
-      gradient: spec.fade,
-      onChanged: (c) {
-        begin();
-        onChanged(spec.copyWith(color: c));
-        commit();
-      },
-      onGradientChanged: (g) {
-        begin();
-        onChanged(
-            g == null ? spec.copyWith(flatText: true) : spec.copyWith(fade: g));
-        commit();
-      },
-    ),
+    // The words can fade from one colour to another, across the box they are
+    // drawn in. Not where they are outlined rather than filled, or where a
+    // picture or a pattern is showing through them: each of those already
+    // decides what the letters are painted with. See TextSpec.fade.
+    if (!colourInMore) swatch,
     CanvasNumberField(
       label: "Outline",
       value: spec.outlineWidth,
@@ -584,28 +626,21 @@ List<Widget> typeGroups(
               commit();
             },
           ),
-          CanvasIconButton(
-            icon: Icons.format_italic,
-            tooltip: "Italic",
-            active: spec.italic,
-            onPressed: () {
-              begin();
-              onChanged(spec.copyWith(italic: !spec.italic));
-              commit();
-            },
-          ),
-          CanvasIconButton(
-            icon: Icons.format_underlined,
-            tooltip: "Underline",
-            active: spec.underline,
-            onPressed: () {
-              begin();
-              onChanged(spec.copyWith(underline: !spec.underline));
-              commit();
-            },
-          ),
+          // The colour, where it has been folded in behind the button: what
+          // colour the words are belongs on the line with the face and the
+          // size, not behind anything.
+          if (colourInMore) swatch,
+          if (!colourInMore) ...slanted,
         ],
         more: [
+          // The colour first, because it is the most of what is back here.
+          if (colourInMore) ...[
+            ...colourRow,
+            ...colourMore,
+            const CanvasLineBreak(),
+            ...slanted,
+            const CanvasLineBreak(),
+          ],
           CanvasNumberField(
             label: "Letter",
             value: spec.letterSpacing,
@@ -663,13 +698,6 @@ List<Widget> typeGroups(
               },
             ),
           ...extraMore,
-          if (colourInMore) ...[
-            // On a line of their own, so the type settings above them
-            // still read as one run.
-            const CanvasLineBreak(),
-            ...colourRow,
-            ...colourMore,
-          ],
         ]),
     if (!colourInMore)
       CanvasMoreGroup(

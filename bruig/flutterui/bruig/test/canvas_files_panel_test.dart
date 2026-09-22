@@ -198,9 +198,9 @@ void main() {
     await pump(tester, canvases: ["Match plan"], controller: saved);
 
     expect(find.text("New canvas"), findsOneWidget);
-    expect(find.text("New folder"), findsOneWidget);
-    // Icon only, so it is found by what it says on hover rather than by a
-    // label it does not carry.
+    // Icons only, so they are found by what they say on hover rather than by
+    // a label they do not carry.
+    expect(find.byTooltip("New folder"), findsOneWidget);
     expect(find.byTooltip("Open a canvas from a file"), findsOneWidget);
 
     // They are below the list, which is the thing somebody came here to read.
@@ -216,8 +216,10 @@ void main() {
     expect(find.text("Save"), findsNothing);
     expect(find.byTooltip("Save as a new canvas"), findsNothing);
     expect(find.byTooltip("Refresh the list"), findsNothing);
-    expect(find.byTooltip("New folder"), findsNothing,
-        reason: "it is a labelled chip at the bottom now, not an icon on top");
+    // New folder is still here, but at the bottom with the rest of the
+    // things that make something: the toolbar it used to sit on is gone.
+    expect(tester.getTopLeft(find.byTooltip("New folder")).dy,
+        greaterThan(tester.getBottomLeft(find.text("Match plan")).dy));
   });
 
   testWidgets("a canvas with nowhere to save itself is offered a Save",

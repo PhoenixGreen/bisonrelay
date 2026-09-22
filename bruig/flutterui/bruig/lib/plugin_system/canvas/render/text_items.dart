@@ -69,10 +69,9 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
       ? _sizeOfText(e.text, drawnTextSpec(e, bounds), inner.width)
       : _sizeOf(e.items[i - 1], inner.width);
   double gapOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
-  double leadOf(int i, VerticalAlignSpec down) =>
-      i == 0 ? 0 : e.items[i - 1].roomBefore(down);
-  double leftRoom(int i) => i == 0 ? 0 : e.items[i - 1].roomLeft;
-  double rightRoom(int i) => i == 0 ? 0 : e.items[i - 1].roomRight;
+  double leadOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
+  // Sideways, away from the edge the slot holds this piece to.
+  double sideOf(int i) => i == 0 ? 0 : e.items[i - 1].side;
 
   var out = List<Rect>.filled(e.items.length + 1, Rect.zero);
   for (var slot in TextSlot.values) {
@@ -89,7 +88,7 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
     // distance from the *edge* the slot holds the stack to, and it is applied
     // to the stack rather than inside it, so that it means something at the
     // bottom of the box as well as at the top. See TextItem.gap.
-    var lead = leadOf(mine.first, slot.down);
+    var lead = leadOf(mine.first);
     var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
       if (n == 0) continue;
@@ -104,14 +103,14 @@ List<Rect> _blockRects(TextElement e, Rect bounds) {
     for (var (n, i) in mine.indexed) {
       var size = sizes[n];
       if (n > 0) top += gapOf(i);
+      var side = sideOf(i);
       var left = switch (slot.across) {
-        TextAlignSpec.left => inner.left + leftRoom(i),
-        TextAlignSpec.center =>
-          inner.center.dx - size.width / 2 + leftRoom(i) - rightRoom(i),
-        TextAlignSpec.right => inner.right - size.width - rightRoom(i),
+        TextAlignSpec.left => inner.left + side,
+        TextAlignSpec.center => inner.center.dx - size.width / 2 + side,
+        TextAlignSpec.right => inner.right - size.width - side,
         // Justified words fill the line they are on, so there is nothing to
         // hold to an edge: it reads as left, which is what it looks like.
-        TextAlignSpec.justify => inner.left + leftRoom(i),
+        TextAlignSpec.justify => inner.left + side,
       };
       out[i] = Rect.fromLTWH(left, top, size.width, size.height);
       top += size.height;

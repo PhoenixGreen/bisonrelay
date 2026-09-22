@@ -125,24 +125,25 @@ void main() {
       expect(down[1].top - down[0].bottom, closeTo(4, 0.01));
     });
 
-    test("a side of its own overrides that room, and moves it sideways", () {
+    test("and the side number moves it away from the edge it is held to", () {
       var e = _card(items: const [
-        TextItem(
-            id: "a",
-            text: "One",
-            slot: TextSlot.topLeft,
-            gap: 10,
-            sideL: 24,
-            sideT: 6),
-        TextItem(id: "b", text: "Two", slot: TextSlot.middleRight, sideR: 18),
+        TextItem(id: "a", text: "One", slot: TextSlot.topLeft, side: 24),
+        TextItem(id: "b", text: "Two", slot: TextSlot.middleRight, side: 18),
       ]);
       var inner = e.box.inner(e.bounds);
       var rects = textItemRects(e, e.bounds);
 
-      expect(rects[0].left, closeTo(inner.left + 24, 0.01), reason: "Left");
-      expect(rects[0].top, closeTo(inner.top + 6, 0.01),
-          reason: "Top, in place of the gap");
-      expect(rects[1].right, closeTo(inner.right - 18, 0.01), reason: "Right");
+      expect(rects[0].left, closeTo(inner.left + 24, 0.01),
+          reason: "held to the left, so away from it is rightwards");
+      expect(rects[1].right, closeTo(inner.right - 18, 0.01),
+          reason: "and held to the right, the other way");
+
+      // One number doing both jobs: below zero it goes back past the edge.
+      var back = _card(items: const [
+        TextItem(id: "a", text: "One", slot: TextSlot.topLeft, side: -10),
+      ]);
+      expect(textItemRects(back, back.bounds).single.left,
+          closeTo(inner.left - 10, 0.01));
     });
 
     test("and a stack in a bottom slot ends at the bottom", () {
