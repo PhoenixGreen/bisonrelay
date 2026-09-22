@@ -25,35 +25,75 @@ import 'package:flutter/material.dart';
 /// middle for a middle one. Nine slots is enough places for a card, and two
 /// items in one slot drawn over each other would be a card with a mistake in
 /// it that the panel could not explain.
-List<Rect> textItemRects(TextElement e, Rect bounds) {
-  if (e.items.isEmpty) return const [];
+List<Rect> textItemRects(TextElement e, Rect bounds) =>
+    _blockRects(e, bounds).skip(1).toList();
+
+/// textBodyRect is where the element's own words go when they have been given
+/// a slot, or null when they fill the box as usual. See TextElement.slot.
+Rect? textBodyRect(TextElement e, Rect bounds) {
+  if (!bodyIsBlock(e)) return null;
+  var rect = _blockRects(e, bounds).first;
+  return rect.isEmpty ? null : rect;
+}
+
+/// bodyIsBlock is whether the element's own words are one of the blocks in a
+/// slot rather than the paragraph filling the box.
+///
+/// Not while they are set as something other than one block in this box: on a
+/// line they have no box, in columns they are several blocks, and flowing on
+/// into another box they are one paragraph across two of them.
+bool bodyIsBlock(TextElement e) =>
+    e.slot != null &&
+    e.curve == null &&
+    e.columns.isSingle &&
+    e.flowTo.isEmpty &&
+    e.text.isNotEmpty;
+
+/// _blockRects is every block this element draws: the element's own words
+/// first -- whether or not they are in a slot, so that the answer is always
+/// the same shape -- and then the pieces.
+List<Rect> _blockRects(TextElement e, Rect bounds) {
+  var body = bodyIsBlock(e);
+  if (e.items.isEmpty && !body) {
+    return [Rect.zero, for (var _ in e.items) Rect.zero];
+  }
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) {
-    return [for (var _ in e.items) Rect.zero];
+    return [Rect.zero, for (var _ in e.items) Rect.zero];
   }
 
-  var out = List<Rect>.filled(e.items.length, Rect.zero);
+  // The blocks, by the slot each is in. Index 0 is the element's own words.
+  TextSlot? slotOf(int i) =>
+      i == 0 ? (body ? e.slot : null) : e.items[i - 1].slot;
+  Size sizeOf(int i) => i == 0
+      ? _sizeOfText(e.text, drawnTextSpec(e, bounds), inner.width)
+      : _sizeOf(e.items[i - 1], inner.width);
+  double gapOf(int i) => i == 0 ? 0 : e.items[i - 1].gap;
+  double leadOf(int i, VerticalAlignSpec down) =>
+      i == 0 ? 0 : e.items[i - 1].roomBefore(down);
+  double leftRoom(int i) => i == 0 ? 0 : e.items[i - 1].roomLeft;
+  double rightRoom(int i) => i == 0 ? 0 : e.items[i - 1].roomRight;
+
+  var out = List<Rect>.filled(e.items.length + 1, Rect.zero);
   for (var slot in TextSlot.values) {
     var mine = [
-      for (var (i, item) in e.items.indexed)
-        if (item.slot == slot) i,
+      for (var i = 0; i < out.length; i++)
+        if (slotOf(i) == slot) i,
     ];
     if (mine.isEmpty) continue;
 
-    var sizes = [
-      for (var i in mine) _sizeOf(e.items[i], inner.width),
-    ];
+    var sizes = [for (var i in mine) sizeOf(i)];
 
     // The stack's own height: every piece, and the room between each of them
     // and the one before. The first piece's room is not in it -- that is the
     // distance from the *edge* the slot holds the stack to, and it is applied
     // to the stack rather than inside it, so that it means something at the
     // bottom of the box as well as at the top. See TextItem.gap.
-    var lead = e.items[mine.first].roomBefore(slot.down);
+    var lead = leadOf(mine.first, slot.down);
     var total = sizes.first.height;
     for (var (n, i) in mine.indexed) {
       if (n == 0) continue;
-      total += sizes[n].height + e.items[i].gap;
+      total += sizes[n].height + gapOf(i);
     }
     var top = switch (slot.down) {
       VerticalAlignSpec.top => inner.top + lead,
@@ -62,23 +102,29 @@ List<Rect> textItemRects(TextElement e, Rect bounds) {
     };
 
     for (var (n, i) in mine.indexed) {
-      var item = e.items[i];
       var size = sizes[n];
-      if (n > 0) top += item.gap;
+      if (n > 0) top += gapOf(i);
       var left = switch (slot.across) {
-        TextAlignSpec.left => inner.left + item.roomLeft,
+        TextAlignSpec.left => inner.left + leftRoom(i),
         TextAlignSpec.center =>
-          inner.center.dx - size.width / 2 + item.roomLeft - item.roomRight,
-        TextAlignSpec.right => inner.right - size.width - item.roomRight,
+          inner.center.dx - size.width / 2 + leftRoom(i) - rightRoom(i),
+        TextAlignSpec.right => inner.right - size.width - rightRoom(i),
         // Justified words fill the line they are on, so there is nothing to
         // hold to an edge: it reads as left, which is what it looks like.
-        TextAlignSpec.justify => inner.left + item.roomLeft,
+        TextAlignSpec.justify => inner.left + leftRoom(i),
       };
       out[i] = Rect.fromLTWH(left, top, size.width, size.height);
       top += size.height;
     }
   }
   return out;
+}
+
+/// _sizeOfText is how tall and wide a run of words comes out at a width.
+Size _sizeOfText(String text, TextSpec spec, double maxWidth) {
+  if (text.isEmpty) return Size.zero;
+  var painter = layoutText(text, spec, maxWidth: math.max(1, maxWidth));
+  return Size(math.min(painter.width, maxWidth), painter.height);
 }
 
 /// _sizeOf is how much room one piece takes, given the width it has.
@@ -92,10 +138,7 @@ Size _sizeOf(TextItem item, double maxWidth) {
     var side = math.min(icon.size, maxWidth);
     return Size(side, icon.size);
   }
-  if (item.text.isEmpty) return Size.zero;
-  var painter =
-      layoutText(item.text, item.spec, maxWidth: math.max(1, maxWidth));
-  return Size(math.min(painter.width, maxWidth), painter.height);
+  return _sizeOfText(item.text, item.spec, maxWidth);
 }
 
 /// paintTextItems draws them, after the element's own paragraph and inside

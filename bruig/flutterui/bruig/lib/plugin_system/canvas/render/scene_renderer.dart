@@ -539,6 +539,13 @@ void _paintTextBody(
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
+  // Given a slot, the element's own words are a block in the box like any
+  // piece rather than the paragraph filling it -- which is what lets them
+  // stack with the pieces instead of being drawn over them. See
+  // TextElement.slot.
+  inner = textBodyRect(e, bounds) ?? inner;
+  if (inner.width <= 0 || inner.height <= 0) return;
+
   var spec = drawnTextSpec(e, bounds);
 
   // A box may be one of a line of them, sharing one piece of text -- see
@@ -673,7 +680,6 @@ void _paintTextBody(
       asOne: leaving,
       images: images);
 }
-
 
 /// _arrival is the animation a text element is playing on this frame, and how
 /// far through it is.

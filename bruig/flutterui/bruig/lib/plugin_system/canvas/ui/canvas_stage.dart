@@ -2951,9 +2951,8 @@ class CanvasStageState extends State<CanvasStage> {
         : element.items.indexWhere((item) => item.id == itemId);
     var item = at < 0 ? null : element.items[at];
 
-    var box = _editorRect ??= item == null
-        ? _editorBoxFor(element)
-        : _itemEditorBoxFor(element, at);
+    var box = _editorRect ??=
+        item == null ? _editorBoxFor(element) : _itemEditorBoxFor(element, at);
     var topLeft = _toStage(box.topLeft);
     return CanvasTextEditor(
       key: ValueKey("edit-$id-${item?.id ?? ""}"),
@@ -2988,12 +2987,6 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _itemEditorBoxFor is the rectangle an item's editor opens in: where the
   /// piece is drawn, with room to type into.
-  ///
-  /// A piece that says "01" is a box twenty pixels wide, and a box twenty
-  /// pixels wide is nowhere to write a word. It is grown from the edge the
-  /// slot holds it to, so the words stay where they are while there is room
-  /// for the next ones -- a piece against the right-hand edge grows to the
-  /// left.
   Rect _itemEditorBoxFor(TextElement element, int at) {
     var bounds = element.boundsAt(controller.frame);
     var rect = textItemRects(element, bounds)[at];
@@ -3001,11 +2994,21 @@ class CanvasStageState extends State<CanvasStage> {
     var inner = element.box.inner(bounds);
     if (rect.isEmpty) rect = Rect.fromLTWH(inner.left, inner.top, 0, 0);
 
-    var line = item.spec.fontSize * item.spec.lineHeight;
+    return _grownForTyping(rect, item.slot.across, inner,
+        item.spec.fontSize * item.spec.lineHeight);
+  }
+
+  /// _grownForTyping is a block's rectangle with room to write in.
+  ///
+  /// A piece that says "01" is a box twenty pixels wide, and twenty pixels is
+  /// nowhere to write a word. It grows from the edge its slot holds it to, so
+  /// the words stay where they are while there is room for the next ones.
+  Rect _grownForTyping(
+      Rect rect, TextAlignSpec across, Rect inner, double line) {
     var width = math.max(rect.width, math.max(line * 6, inner.width * 0.4));
     width = math.min(width, inner.width);
     var height = math.max(rect.height, line * 1.4);
-    var left = switch (item.slot.across) {
+    var left = switch (across) {
       TextAlignSpec.right => rect.right - width,
       TextAlignSpec.center => rect.center.dx - width / 2,
       _ => rect.left,
@@ -3026,6 +3029,21 @@ class CanvasStageState extends State<CanvasStage> {
   /// grown about its own centre so what is already there stays put.
   Rect _editorBoxFor(TextElement element) {
     var box = _visualBounds(element);
+    // The element's own words in a slot are a block in the box, so the editor
+    // opens over the block rather than over the whole box -- otherwise typing
+    // into a title moved it to the middle of the card for as long as the
+    // editor was open. See TextElement.slot.
+    if (bodyIsBlock(element)) {
+      var bounds = element.boundsAt(controller.frame);
+      var rect = textBodyRect(element, bounds);
+      if (rect != null) {
+        return _grownForTyping(
+            rect,
+            element.slot!.across,
+            element.box.inner(bounds),
+            element.textSpec.fontSize * element.textSpec.lineHeight);
+      }
+    }
     if (element.curve == null) return box;
 
     var line = element.textSpec.fontSize * element.textSpec.lineHeight;

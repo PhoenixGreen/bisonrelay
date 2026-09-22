@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
@@ -133,8 +134,7 @@ void main() {
             gap: 10,
             sideL: 24,
             sideT: 6),
-        TextItem(
-            id: "b", text: "Two", slot: TextSlot.middleRight, sideR: 18),
+        TextItem(id: "b", text: "Two", slot: TextSlot.middleRight, sideR: 18),
       ]);
       var inner = e.box.inner(e.bounds);
       var rects = textItemRects(e, e.bounds);
@@ -168,6 +168,60 @@ void main() {
       expect(back.items.first.slot, TextSlot.topLeft);
       expect(back.items.last.spec.fontSize, 20);
       expect(back.items.last.id, "p", reason: "its own id, kept");
+    });
+  });
+
+  group("the element's own words", () {
+    test("fill the box unless they are given a slot", () {
+      var plain = _card();
+      expect(plain.slot, isNull);
+      expect(textBodyRect(plain, plain.bounds), isNull,
+          reason: "the paragraph is the box, as it always was");
+    });
+
+    test("and stack with the pieces when they are", () {
+      // Reported with a screenshot: a title and the paragraph under it were
+      // drawn over each other. The paragraph was a piece held to the top of
+      // the box and the title filled the box, so nothing made them a stack.
+      var card = _card(items: const [
+        TextItem(
+            id: "note",
+            text: "Master Block Vote. What is not spent is never minted.",
+            slot: TextSlot.topLeft,
+            gap: 0,
+            spec: TextSpec(fontSize: 12)),
+      ]).copyWith(slot: TextSlot.topLeft);
+
+      var body = textBodyRect(card, card.bounds)!;
+      var note = textItemRects(card, card.bounds).single;
+      var inner = card.box.inner(card.bounds);
+
+      expect(body.top, closeTo(inner.top, 0.01), reason: "the title first");
+      expect(note.top, closeTo(body.bottom, 0.01),
+          reason: "and the paragraph directly under it, at a gap of nought");
+      expect(body.height, lessThan(inner.height),
+          reason: "as tall as the words, not as tall as the box");
+    });
+
+    test("but not while they are columns or a chain", () {
+      // Those are arrangements of the whole box; a slot is a corner of it.
+      var slotted = _card().copyWith(slot: TextSlot.middleLeft);
+      expect(bodyIsBlock(slotted), isTrue);
+      expect(
+          bodyIsBlock(slotted.copyWith(columns: const TextColumns(count: 2))),
+          isFalse);
+      expect(bodyIsBlock(slotted.copyWith(flowTo: "next")), isFalse);
+      expect(bodyIsBlock(slotted.copyWith(text: "")), isFalse);
+    });
+
+    test("and the slot survives being saved", () {
+      var card = _card().copyWith(slot: TextSlot.bottomRight);
+      var back =
+          CanvasDocument.decode(CanvasDocument(elements: [card]).encode())!
+              .elements
+              .single as TextElement;
+      expect(back.slot, TextSlot.bottomRight);
+      expect(_card().toJson().containsKey("slot"), isFalse);
     });
   });
 

@@ -282,6 +282,22 @@ class TextElement extends CanvasElement {
   /// animation is how the words arrive. See [TextAnimation].
   final TextAnimation animation;
 
+  /// slot is where the element's own words sit, or null for the box.
+  ///
+  /// Null is what nearly every text element is and what every one of them was:
+  /// the words fill the box, wrap inside it, take columns and flow on into the
+  /// next box. Given a slot they behave like a piece instead -- as wide as
+  /// they come out and held to the corner the slot names -- which is what lets
+  /// them *stack* with the pieces. A title with a paragraph under it and no
+  /// gap between them is one slot and two blocks; before this the paragraph
+  /// was a piece held to the top of the box and the words filled the box, so
+  /// the two were drawn over each other.
+  ///
+  /// Ignored where the words are not a block in the box to begin with: on a
+  /// line, in columns, or flowing on into another box. Those are arrangements
+  /// of the whole box, and a slot is a corner of it.
+  final TextSlot? slot;
+
   /// items are the extra pieces of writing in this element's box, each in a
   /// slot of its own. See [TextItem].
   ///
@@ -347,6 +363,7 @@ class TextElement extends CanvasElement {
     this.autoSize = false,
     this.columns = const TextColumns(),
     this.animation = const TextAnimation(),
+    this.slot,
     this.items = const [],
     this.parts = const [],
     this.highlight,
@@ -415,6 +432,7 @@ class TextElement extends CanvasElement {
       autoSize: autoSize,
       columns: columns,
       animation: animation,
+      slot: slot,
       items: items,
       parts: parts,
       highlight: highlight,
@@ -432,6 +450,8 @@ class TextElement extends CanvasElement {
     bool? autoSize,
     TextColumns? columns,
     TextAnimation? animation,
+    TextSlot? slot,
+    bool clearSlot = false,
     List<TextItem>? items,
     List<TextPart>? parts,
     PartHighlight? highlight,
@@ -452,6 +472,7 @@ class TextElement extends CanvasElement {
           autoSize: autoSize ?? this.autoSize,
           columns: columns ?? this.columns,
           animation: animation ?? this.animation,
+          slot: clearSlot ? null : (slot ?? this.slot),
           items: items ?? this.items,
           parts: parts ?? this.parts,
           highlight: clearHighlight ? null : (highlight ?? this.highlight),
@@ -475,6 +496,7 @@ class TextElement extends CanvasElement {
         // and opened with it on again.
         if (columns.says) "columns": columns.toJson(),
         if (animation.on || animation.closes) "animation": animation.toJson(),
+        if (slot != null) "slot": slot!.name,
         if (items.isNotEmpty) "items": [for (var i in items) i.toJson()],
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],
         if (highlight != null) "highlight": highlight!.toJson(),
@@ -496,6 +518,9 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(json["animation"], TextAnimation.fromJson,
               const TextAnimation()),
+          slot: json["slot"] is String
+              ? TextSlot.fromName(json["slot"] as String?)
+              : null,
           items: _itemsFromJson(json),
           parts: _partsFromJson(json),
           highlight: json["highlight"] is Map<String,

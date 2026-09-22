@@ -190,6 +190,29 @@ List<Widget> textSettings(
         rule: false,
         extraMore: [
           const CanvasLineBreak(),
+          // Where the element's own words go. "Fills the box" is what a text
+          // element has always been; a slot makes them a block like a piece,
+          // which is what lets a title and the paragraph under it stack
+          // rather than being drawn over each other.
+          CanvasDropdown<String>(
+            key: const ValueKey("textBodySlot"),
+            label: "Where",
+            value: e.slot?.name ?? "",
+            width: 116,
+            options: [
+              ("", "Fills the box"),
+              for (var s in TextSlot.values) (s.name, s.label),
+            ],
+            onChanged: (v) => now(v.isEmpty
+                ? e.copyWith(clearSlot: true)
+                : e.copyWith(slot: TextSlot.fromName(v))),
+          ),
+          if (e.slot != null && (!e.columns.isSingle || e.flowTo.isNotEmpty))
+            const CanvasHint(
+                "Columns and a chain of boxes are arrangements of the whole "
+                "box, so the words fill it while either is on and the slot "
+                "waits."),
+          const CanvasLineBreak(),
           ..._markBits(
             highlight: e.highlight,
             underline: e.underline,

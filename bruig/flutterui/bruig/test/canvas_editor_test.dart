@@ -6942,6 +6942,39 @@ void main() {
       // are behind a button of their own, which this test has not opened.
     });
 
+    testWidgets("the element's own words can be given a slot too",
+        (tester) async {
+      // Which is what lets a title and the paragraph under it stack instead
+      // of being drawn over each other.
+      var controller = await panel(tester);
+      expect(textIn(controller).slot, isNull, reason: "the box, by default");
+
+      var where = find.byKey(const ValueKey("textBodySlot"));
+      if (where.evaluate().isEmpty) {
+        var button = find.byTooltip("Spacing, alignment and case");
+        await tester.ensureVisible(button.first);
+        await tester.pumpAndSettle();
+        await tester.tap(button.first);
+        await tester.pumpAndSettle();
+      }
+
+      await tester.ensureVisible(where);
+      await tester.pumpAndSettle();
+      await tester.tap(where);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Top left").last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).slot, TextSlot.topLeft);
+
+      await tester.ensureVisible(where);
+      await tester.pumpAndSettle();
+      await tester.tap(where);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Fills the box").last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).slot, isNull);
+    });
+
     testWidgets("each side is offered, and only when it is asked for",
         (tester) async {
       // Gap is the everyday one. A piece that wants a different distance from
