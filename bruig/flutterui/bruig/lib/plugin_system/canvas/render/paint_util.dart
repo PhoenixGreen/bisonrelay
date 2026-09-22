@@ -363,7 +363,7 @@ void paintTextIcon(ui.Canvas canvas, Rect box, TextIcon icon,
     CanvasImageSource? images, TextSpec spec) {
   if (!icon.on || box.width <= 0 || box.height <= 0) return;
 
-  paintBox(canvas, box, icon.box);
+  paintBox(canvas, box, icon.box, images);
   var inner = icon.box.inner(box);
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -1104,7 +1104,8 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 }
 
 /// paintBox draws a [BoxSpec]: the fill, then the border, both rounded.
-void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box) {
+void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
+    [CanvasImageSource? images]) {
   if (rect.width <= 0 || rect.height <= 0) return;
   if (box.fill.a > 0) {
     canvas.drawRRect(
@@ -1113,6 +1114,13 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box) {
           ..color = box.fill
           ..shader =
               PaintSpec(box.fill, gradient: box.fillFade).shaderFor(rect));
+  }
+  // A picture or a pattern over that, cut to the box's own shape -- the same
+  // cut the letters get, since it is the same question of a different shape.
+  // See TextFill and paintThroughText.
+  if (box.painted.on) {
+    paintThroughText(canvas, rect, box.painted, images,
+        () => canvas.drawRRect(box.rounded(rect), Paint()));
   }
   if (!box.hasBorder) return;
 

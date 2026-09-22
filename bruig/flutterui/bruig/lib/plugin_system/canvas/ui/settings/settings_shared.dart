@@ -455,7 +455,7 @@ List<Widget> typeGroups(
     // What the letters are painted with. The colour is the usual answer
     // and stays first; a picture or a pattern replaces it, and the
     // outline and shadow settings under it go on meaning what they mean.
-    if (fill && context != null)
+    if (fill && context != null) ...[
       CanvasDropdown<TextFillKind>(
         key: const ValueKey("textFillKind"),
         label: "Painted with",
@@ -468,6 +468,16 @@ List<Widget> typeGroups(
           commit();
         },
       ),
+      // What that answer needs, on the line with the answer: choosing a
+      // picture is the next thing anybody does after saying "a picture", and
+      // it was two lines further down under the outline.
+      if (spec.fill.kind != TextFillKind.color)
+        ..._fillBits(context, spec.fill,
+            (f) => onChanged(spec.copyWith(fill: f)), begin, commit),
+      // The outline starts a line of its own either way, so that what is on
+      // the first line is always "what are these letters painted with".
+      const CanvasLineBreak(),
+    ],
     // The words can fade from one colour to another, across the box they are
     // drawn in. Not where they are outlined rather than filled, or where a
     // picture or a pattern is showing through them: each of those already
@@ -494,10 +504,8 @@ List<Widget> typeGroups(
         commit();
       },
     ),
-  ];
-  var colourMore = <Widget>[
-    if (fill && context != null && spec.fill.kind != TextFillKind.color)
-      ..._fillBits(context, spec, onChanged, begin, commit),
+    // The shadow's amount and colour with them: four controls, two of each,
+    // and the same shape twice reads as one line rather than as four things.
     CanvasNumberField(
       label: "Shadow",
       value: spec.shadowBlur,
@@ -507,8 +515,6 @@ List<Widget> typeGroups(
       onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
       onCommit: commit,
     ),
-    // The shadow's own colour, against the number that casts it. Captioned
-    // "Colour" it read as the colour of the words, which is on the row above.
     CanvasColorButton(
       color: spec.shadowColor,
       onChanged: (c) {
@@ -517,6 +523,8 @@ List<Widget> typeGroups(
         commit();
       },
     ),
+  ];
+  var colourMore = <Widget>[
     // Where the light is, not where the shadow goes: one light for a
     // scene, and the same two numbers on every element in it.
     CanvasNumberField(
@@ -735,7 +743,13 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         String fillLabel = "Fill",
         String remember = "box",
         bool rule = true,
-        ValueChanged<BoxSpec>? onPadding}) =>
+        ValueChanged<BoxSpec>? onPadding,
+
+        /// fill offers a picture or a pattern behind the box instead of a
+        /// colour, the same three answers the letters have. [context] is what
+        /// a picture is chosen with, so it is required wherever this is on.
+        bool fill = false,
+        BuildContext? context}) =>
     // The colours and one number each for the border, the corners and the
     // room inside; the twelve that set a side or a corner on its own are
     // behind the button. Laid out flat this was three lines of five numbers,
@@ -794,6 +808,32 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
               part: SidePart.all),
         ],
         more: [
+          // What the box is painted with, where the caller offers the choice:
+          // the same three answers the letters have, because it is the same
+          // question of a different shape. Behind the button like the
+          // letters' own, and for the same reason -- it is chosen once, where
+          // the row in front is the things that are changed again and again.
+          // The colour keeps its swatch out there either way: a picture
+          // behind a box is drawn over whatever colour is under it.
+          if (fill && context != null) ...[
+            CanvasDropdown<TextFillKind>(
+              key: ValueKey("${remember}BoxFillKind"),
+              label: "Painted with",
+              value: box.painted.kind,
+              width: 118,
+              options: [for (var k in TextFillKind.values) (k, k.label)],
+              onChanged: (v) {
+                begin();
+                onChanged(box.copyWith(painted: box.painted.copyWith(kind: v)));
+                commit();
+              },
+            ),
+            if (box.painted.on)
+              ..._fillBits(context, box.painted,
+                  (f) => onChanged(box.copyWith(painted: f)), begin, commit,
+                  keyPrefix: "${remember}Box"),
+            const CanvasLineBreak(),
+          ],
           // A line each for the border, the corners and the sides. Wrapped into
           // whatever room the panel had, they came out as one row of unrelated
           // numbers with a corner on the end of the border's line.
@@ -909,22 +949,24 @@ Widget boxed(BuildContext context, Widget child) {
 /// would be two lists of styles to keep level with each other.
 List<Widget> _fillBits(
   BuildContext context,
-  TextSpec spec,
-  ValueChanged<TextSpec> onChanged,
+  TextFill fill,
+  ValueChanged<TextFill> onChanged,
   VoidCallback begin,
-  VoidCallback commit,
-) {
-  var fill = spec.fill;
+  VoidCallback commit, {
+  /// keyPrefix names the controls, since a panel can now carry two sets of
+  /// them: what the letters are painted with and what their box is.
+  String keyPrefix = "text",
+}) {
   void now(TextFill next) {
     begin();
-    onChanged(spec.copyWith(fill: next));
+    onChanged(next);
     commit();
   }
 
   return [
     if (fill.kind == TextFillKind.image) ...[
       CanvasIconButton(
-        key: const ValueKey("textFillPicture"),
+        key: ValueKey("${keyPrefix}FillPicture"),
         icon: fill.assetId.isEmpty
             ? Icons.add_photo_alternate
             : Icons.image_outlined,
@@ -937,7 +979,7 @@ List<Widget> _fillBits(
         },
       ),
       CanvasIconButton(
-        key: const ValueKey("textFillLibrary"),
+        key: ValueKey("${keyPrefix}FillLibrary"),
         icon: Icons.photo_library_outlined,
         tooltip: "Use a picture you have already added",
         onPressed: () async {
@@ -954,7 +996,7 @@ List<Widget> _fillBits(
     ],
     if (fill.kind == TextFillKind.pattern)
       CanvasDropdown<ProceduralStyle>(
-        key: const ValueKey("textFillPattern"),
+        key: ValueKey("${keyPrefix}FillPattern"),
         label: "Pattern",
         value: fill.pattern.style,
         width: 150,
@@ -996,8 +1038,8 @@ List<Widget> _fillBits(
         max: 1,
         decimals: 2,
         width: 58,
-        onChanged: (v) => onChanged(spec.copyWith(
-            fill: fill.copyWith(pattern: fill.pattern.copyWith(density: v)))),
+        onChanged: (v) => onChanged(
+            (fill.copyWith(pattern: fill.pattern.copyWith(density: v)))),
         onCommit: commit,
       ),
       CanvasNumberField(
@@ -1007,8 +1049,8 @@ List<Widget> _fillBits(
         max: 0.4,
         decimals: 3,
         width: 62,
-        onChanged: (v) => onChanged(spec.copyWith(
-            fill: fill.copyWith(pattern: fill.pattern.copyWith(scale: v)))),
+        onChanged: (v) => onChanged(
+            (fill.copyWith(pattern: fill.pattern.copyWith(scale: v)))),
         onCommit: commit,
       ),
       CanvasNumberField(
@@ -1018,8 +1060,8 @@ List<Widget> _fillBits(
         max: 180,
         decimals: 0,
         width: 58,
-        onChanged: (v) => onChanged(spec.copyWith(
-            fill: fill.copyWith(pattern: fill.pattern.copyWith(rotation: v)))),
+        onChanged: (v) => onChanged(
+            (fill.copyWith(pattern: fill.pattern.copyWith(rotation: v)))),
         onCommit: commit,
       ),
       CanvasIconButton(
@@ -1037,13 +1079,12 @@ List<Widget> _fillBits(
         max: 20,
         decimals: 2,
         width: 58,
-        onChanged: (v) =>
-            onChanged(spec.copyWith(fill: fill.copyWith(zoom: v))),
+        onChanged: (v) => onChanged(fill.copyWith(zoom: v)),
         onCommit: commit,
       ),
     if (fill.on)
       CanvasToggle(
-        key: const ValueKey("textFillLocked"),
+        key: ValueKey("${keyPrefix}FillLocked"),
         label: "Lock to the words",
         value: fill.locked,
         onChanged: (v) => now(fill.copyWith(locked: v)),

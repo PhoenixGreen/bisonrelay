@@ -167,6 +167,45 @@ void main() {
       expect(drawn[red] ?? 0, greaterThan(2000));
     });
 
+    testWidgets("and a box can be painted with one too", (tester) async {
+      // The same question of a different shape: what is this filled with. A
+      // box that could only be a colour meant a card with a photograph behind
+      // it was a picture element under a text element, lined up by hand.
+      late Map<int, int> plain;
+      late Map<int, int> painted;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        var e = TextElement(
+          const ElementBase(id: "t", x: 40, y: 40, width: 320, height: 120),
+          text: "Headline",
+          textSpec: const TextSpec(fontSize: 30, color: Color(0xFFFFFFFF)),
+          box: const BoxSpec(padding: 10),
+        );
+        plain = await _ink(e, pictures);
+        painted = await _ink(
+            e.copyWith(
+                box: e.box.copyWith(
+                    painted: const TextFill(
+                        kind: TextFillKind.image, assetId: "a"))),
+            pictures);
+      });
+
+      expect(plain[red] ?? 0, 0, reason: "a box with no picture behind it");
+      expect(painted[red] ?? 0, greaterThan(2000),
+          reason: "and one with: the box's own rectangle, filled");
+    });
+
+    test("a box's picture survives being saved", () {
+      var box = const BoxSpec(padding: 4).copyWith(
+          painted: const TextFill(
+              kind: TextFillKind.pattern, zoom: 1.5, tile: true));
+      var back = BoxSpec.fromJson(box.toJson());
+      expect(back.painted.kind, TextFillKind.pattern);
+      expect(back.painted.zoom, 1.5);
+      // And a box painted with nothing but a colour saves what it always did.
+      expect(const BoxSpec().toJson().containsKey("painted"), isFalse);
+    });
+
     test("it survives being saved", () {
       var element = _headline(
         icon: const TextIcon(

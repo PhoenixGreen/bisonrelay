@@ -440,7 +440,7 @@ void paintElement(
           () => paintTable(canvas, bounds, e, images: images));
     case ButtonElement e:
       paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintButton(canvas, bounds, e, hovered));
+          () => _paintButton(canvas, bounds, e, hovered, images));
     case CounterElement e:
       // Keyed, the number is whatever the timeline says here; live, it is
       // whatever the thing running it says -- and in a picture, where nothing
@@ -535,7 +535,7 @@ void _paintTextBody(
     return;
   }
 
-  paintBox(canvas, bounds, e.box);
+  paintBox(canvas, bounds, e.box, images);
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -1215,7 +1215,7 @@ void _paintLineEnd(
 
 void _paintImage(
     ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images) {
-  paintBox(canvas, bounds, e.box);
+  paintBox(canvas, bounds, e.box, images);
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -1654,11 +1654,11 @@ List<double>? _colorMatrix(double sat, double bri) {
   ];
 }
 
-void _paintButton(
-    ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered) {
+void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
+    CanvasImageSource? images) {
   var box = e.box;
   if (hovered && e.hoverFill.a > 0) box = box.copyWith(fill: e.hoverFill);
-  paintBox(canvas, bounds, box);
+  paintBox(canvas, bounds, box, images);
 
   var spec = e.textSpec;
   if (hovered && e.hoverTextColor.a > 0) {

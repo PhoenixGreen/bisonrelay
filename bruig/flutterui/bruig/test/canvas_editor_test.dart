@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -7187,6 +7188,74 @@ void main() {
         expect(top, closeTo(tops.first, 0.5),
             reason: "all five on one line: $tops");
       }
+    });
+
+    testWidgets(
+        "a picture's own controls sit with the choice that asked for it",
+        (tester) async {
+      // Choosing a picture is the next thing anybody does after saying "a
+      // picture", so the two buttons are on the line with Painted with -- not
+      // two lines down under the outline. And the outline starts a line of
+      // its own either way, so the first line is always "what are these
+      // letters painted with".
+      var controller = await panel(tester);
+      var own = find.ancestor(
+          of: find.byWidgetPredicate(
+              (w) => w is CanvasDropdown<String> && w.label == "Font"),
+          matching: find.byType(CanvasMoreGroup));
+      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      var kind = find.byKey(const ValueKey("textFillKind"));
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Picture").last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).textSpec.fill.kind, TextFillKind.image);
+
+      var choose = find.byKey(const ValueKey("textFillPicture"));
+      expect(choose, findsOneWidget);
+      expect(tester.getRect(choose).top, closeTo(tester.getRect(kind).top, 0.5),
+          reason: "on the line with the choice that asked for it");
+
+      var outline = find.ancestor(
+          of: find.text("Outline"), matching: find.byType(CanvasNumberField));
+      expect(tester.getRect(outline).top,
+          greaterThan(tester.getRect(kind).bottom - 0.5),
+          reason: "and the outline starts a line of its own");
+    });
+
+    testWidgets("the box can be painted with a picture or a pattern too",
+        (tester) async {
+      // The same question of a different shape, so the same three answers --
+      // behind the box's own button, where a thing chosen once belongs.
+      var controller = await panel(tester);
+      var kind = find.byKey(const ValueKey("textBoxFillKind"));
+      if (kind.evaluate().isEmpty) {
+        var button = find.byKey(const ValueKey("more-textBox"));
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Pattern").last);
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).box.painted.kind, TextFillKind.pattern);
+      expect(find.byKey(const ValueKey("textBoxFillPattern")), findsOneWidget,
+          reason: "and what that answer needs is on the line with it");
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

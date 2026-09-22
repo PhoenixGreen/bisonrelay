@@ -687,6 +687,19 @@ class Room {
 class BoxSpec {
   /// fill is what is painted behind whatever the box holds: the background.
   final Color fill;
+
+  /// painted is a picture or a pattern behind it instead, cut to the box's
+  /// own shape and its corners.
+  ///
+  /// The same spec the letters are painted with -- see TextFill -- because it
+  /// is the same question asked of a different shape: what is this filled
+  /// with, how big is it, and does it repeat. A second one for boxes would be
+  /// a second list of kinds to keep level with the first.
+  ///
+  /// A colour is the default and the ordinary answer, and [fill] is still
+  /// what draws it: this is what covers the box when the answer is not a
+  /// colour.
+  final TextFill painted;
   final double borderWidth;
   final Color borderColor;
 
@@ -732,6 +745,7 @@ class BoxSpec {
 
   const BoxSpec({
     this.fill = const Color(0x00000000),
+    this.painted = const TextFill(),
     this.borderWidth = 0,
     this.bwL,
     this.bwT,
@@ -887,6 +901,7 @@ class BoxSpec {
 
   BoxSpec copyWith({
     Color? fill,
+    TextFill? painted,
     double? borderWidth,
     double? bwL,
     double? bwT,
@@ -910,6 +925,7 @@ class BoxSpec {
   }) =>
       BoxSpec(
         fill: fill ?? this.fill,
+        painted: painted ?? this.painted,
         borderWidth: borderWidth ?? this.borderWidth,
         bwL: bwL ?? this.bwL,
         bwT: bwT ?? this.bwT,
@@ -932,6 +948,7 @@ class BoxSpec {
 
   Map<String, dynamic> toJson() => {
         "fill": colorToJson(fill),
+        if (painted.on) "painted": painted.toJson(),
         if (fillFade != null) "fillFade": fillFade!.toJson(),
         if (borderFade != null) "borderFade": borderFade!.toJson(),
         if (borderWidth > 0) "bw": borderWidth,
@@ -958,6 +975,10 @@ class BoxSpec {
 
   factory BoxSpec.fromJson(Map<String, dynamic> json) => BoxSpec(
         fill: colorFromJson(json["fill"], const Color(0x00000000)),
+        painted: json["painted"] is Map
+            ? TextFill.fromJson(
+                (json["painted"] as Map).cast<String, dynamic>())
+            : const TextFill(),
         fillFade: json["fillFade"] is Map
             ? GradientSpec.fromJson(
                 (json["fillFade"] as Map).cast<String, dynamic>())

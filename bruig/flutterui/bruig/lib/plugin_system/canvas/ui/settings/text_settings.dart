@@ -241,7 +241,7 @@ List<Widget> textSettings(
         ]),
     ..._itemRows(context, e, write, begin, commit),
     boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "text", rule: false),
+        remember: "text", rule: false, fill: true, context: context),
     // One line, so no section round it. A heading with a chevron on it, for
     // a number and a switch, is more furniture than setting -- and what is
     // behind it only grows to five controls on a box that has been given
