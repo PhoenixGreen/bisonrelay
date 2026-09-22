@@ -1669,6 +1669,100 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       onChanged: (v) => put(item.copyWith(side: v), live: true),
       onCommit: commit,
     ),
+    const CanvasLineBreak(),
+    // What is behind the piece. The colour is the switch: with nothing
+    // painted there is no shape to round and no room to keep inside it, so
+    // the rest waits until there is one.
+    CanvasColorButton(
+      key: ValueKey("textItemFill$at"),
+      label: "Background",
+      color: item.box.fill,
+      gradient: item.box.fillFade,
+      onChanged: (c) => put(item.copyWith(box: item.box.copyWith(fill: c))),
+      onGradientChanged: (g) => put(item.copyWith(
+          box: g == null
+              ? item.box.copyWith(flatFill: true)
+              : item.box.copyWith(fillFade: g))),
+    ),
+    if (item.box.fill.a > 0) ...[
+      CanvasNumberField(
+        key: ValueKey("textItemRound$at"),
+        label: "Round",
+        value: item.box.borderRadius,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) => put(
+            item.copyWith(box: item.box.copyWith(borderRadius: v)),
+            live: true),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: ValueKey("textItemPad$at"),
+        label: "Inside",
+        value: item.box.padding,
+        min: 0,
+        max: 400,
+        width: 54,
+        onChanged: (v) =>
+            put(item.copyWith(box: item.box.copyWith(padding: v)), live: true),
+        onCommit: commit,
+      ),
+      // And each corner and each side on its own, for the chip that is
+      // rounded at one end or sits closer to the words on one side. One
+      // number does both jobs until it does not.
+      const CanvasLineBreak(),
+      for (var (label, value, set)
+          in <(String, double?, double Function(BoxSpec))>[
+        ("TL", item.box.radTL, (b) => b.corners.tl ?? b.borderRadius),
+        ("TR", item.box.radTR, (b) => b.corners.tr ?? b.borderRadius),
+        ("BR", item.box.radBR, (b) => b.corners.br ?? b.borderRadius),
+        ("BL", item.box.radBL, (b) => b.corners.bl ?? b.borderRadius),
+      ])
+        CanvasNumberField(
+          key: ValueKey("textItemRound$label$at"),
+          label: label,
+          value: value ?? set(item.box),
+          min: 0,
+          max: 400,
+          width: 46,
+          onChanged: (v) => put(
+              item.copyWith(
+                  box: switch (label) {
+                "TL" => item.box.copyWith(radTL: v),
+                "TR" => item.box.copyWith(radTR: v),
+                "BR" => item.box.copyWith(radBR: v),
+                _ => item.box.copyWith(radBL: v),
+              }),
+              live: true),
+          onCommit: commit,
+        ),
+      const CanvasLineBreak(),
+      for (var (label, value) in <(String, double?)>[
+        ("Left", item.box.padL),
+        ("Top", item.box.padT),
+        ("Right", item.box.padR),
+        ("Bottom", item.box.padB),
+      ])
+        CanvasNumberField(
+          key: ValueKey("textItemPad$label$at"),
+          label: label,
+          value: value ?? item.box.padding,
+          min: 0,
+          max: 400,
+          width: 54,
+          onChanged: (v) => put(
+              item.copyWith(
+                  box: switch (label) {
+                "Left" => item.box.copyWith(padL: v),
+                "Top" => item.box.copyWith(padT: v),
+                "Right" => item.box.copyWith(padR: v),
+                _ => item.box.copyWith(padB: v),
+              }),
+              live: true),
+          onCommit: commit,
+        ),
+    ],
   ];
 }
 

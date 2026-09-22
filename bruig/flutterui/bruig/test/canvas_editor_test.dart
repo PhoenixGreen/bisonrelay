@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
@@ -7256,6 +7257,107 @@ void main() {
       expect(textIn(controller).box.painted.kind, TextFillKind.pattern);
       expect(find.byKey(const ValueKey("textBoxFillPattern")), findsOneWidget,
           reason: "and what that answer needs is on the line with it");
+
+      // A picture, which is *not* on until one has been chosen -- and the
+      // buttons that choose one are these, so they cannot wait for it.
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Picture").last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).box.painted.on, isFalse,
+          reason: "nothing named yet");
+      expect(find.byKey(const ValueKey("textBoxFillPicture")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textBoxFillLibrary")), findsOneWidget);
+    });
+
+    testWidgets("a piece is offered a background once it has a colour",
+        (tester) async {
+      // The colour is the switch: with nothing painted behind the words there
+      // is no shape to round and no room to keep inside it.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+
+      var group = find.ancestor(
+          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.byKey(const ValueKey("textItemFill0")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textItemRound0")), findsNothing,
+          reason: "nothing to round until something is painted");
+
+      // Painted, and the rest comes with it: the corners and the room
+      // inside, evenly and one at a time.
+      controller.replaceElement(element.copyWith(items: [
+        element.items.first
+            .copyWith(box: const BoxSpec(fill: Color(0xFF223344))),
+      ]));
+      await tester.pumpAndSettle();
+
+      for (var key in [
+        "textItemRound0",
+        "textItemPad0",
+        "textItemRoundTL0",
+        "textItemPadLeft0",
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
+      }
+    });
+
+    testWidgets("a pattern can be put back to how it started", (tester) async {
+      // A pattern nobody likes any more is quicker to start again than to
+      // put back a colour, a density, a size and a turn at a time.
+      var controller = await panel(tester);
+      var own = find.ancestor(
+          of: find.byWidgetPredicate(
+              (w) => w is CanvasDropdown<String> && w.label == "Font"),
+          matching: find.byType(CanvasMoreGroup));
+      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      var kind = find.byKey(const ValueKey("textFillKind"));
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Pattern").last);
+      await tester.pumpAndSettle();
+
+      var seed = find.byKey(const ValueKey("textFillSeed"));
+      await tester.ensureVisible(seed);
+      await tester.pumpAndSettle();
+      await tester.tap(seed);
+      await tester.tap(seed);
+      await tester.pumpAndSettle();
+      var stirred = textIn(controller).textSpec.fill.pattern;
+      expect(stirred.seed, isNot(const ProceduralSpec().seed));
+
+      var reset = find.byKey(const ValueKey("textFillReset"));
+      await tester.ensureVisible(reset);
+      await tester.pumpAndSettle();
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+
+      var back = textIn(controller).textSpec.fill.pattern;
+      expect(back.seed, const ProceduralSpec().seed);
+      expect(back.style, stirred.style, reason: "the style it was, though");
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

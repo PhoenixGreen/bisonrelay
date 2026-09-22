@@ -131,13 +131,22 @@ Size _sizeOfText(String text, TextSpec spec, double maxWidth) {
 /// A picture is a square of its own size; words are however tall they come
 /// out at the width they are given.
 Size _sizeOf(TextItem item, double maxWidth) {
+  // The room the background takes is the piece's too: the words are drawn
+  // inside it, so a chip with ten pixels of padding is twenty wider and
+  // twenty taller than the words in it.
+  var pad = item.box.pad;
+  var inside = math.max(1.0, maxWidth - pad.left - pad.right);
+
   var icon = item.icon;
   if (icon != null) {
     if (!icon.on) return Size.zero;
-    var side = math.min(icon.size, maxWidth);
-    return Size(side, icon.size);
+    var side = math.min(icon.size, inside);
+    return Size(side + pad.left + pad.right, icon.size + pad.top + pad.bottom);
   }
-  return _sizeOfText(item.text, item.spec, maxWidth);
+  var words = _sizeOfText(item.text, item.spec, inside);
+  if (words.isEmpty) return Size.zero;
+  return Size(
+      words.width + pad.left + pad.right, words.height + pad.top + pad.bottom);
 }
 
 /// paintTextItems draws them, after the element's own paragraph and inside
@@ -166,11 +175,16 @@ void paintTextItems(
     var rect = rects[i];
     if (rect.isEmpty || item.id == skip) continue;
 
+    // What is behind it, if anything, and then the piece inside that.
+    paintBox(canvas, rect, item.box, images);
+    var inner = item.box.inner(rect);
+    if (inner.width <= 0 || inner.height <= 0) continue;
+
     var icon = item.icon;
     if (icon != null) {
       // Drawn by the same function the element's own icon is drawn by, so a
       // picture in a box looks the same however it got there.
-      paintTextIcon(canvas, rect, icon, images, item.spec);
+      paintTextIcon(canvas, inner, icon, images, item.spec);
       continue;
     }
     if (item.text.isEmpty) continue;
@@ -184,7 +198,7 @@ void paintTextItems(
         align: item.slot.across,
         verticalAlign: VerticalAlignSpec.top,
       ),
-      rect,
+      inner,
       animation: animation,
       reveal: reveal,
       images: images,

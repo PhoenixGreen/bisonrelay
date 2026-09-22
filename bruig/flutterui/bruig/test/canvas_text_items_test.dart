@@ -146,6 +146,23 @@ void main() {
           closeTo(inner.left - 10, 0.01));
     });
 
+    test("a background takes its own room around the words", () {
+      var plain = _card(items: const [
+        TextItem(id: "a", text: "01", slot: TextSlot.topLeft),
+      ]);
+      var chipped = _card(items: [
+        const TextItem(id: "a", text: "01", slot: TextSlot.topLeft)
+            .copyWith(box: const BoxSpec(padding: 10, fill: Color(0xFF223344))),
+      ]);
+
+      var bare = textItemRects(plain, plain.bounds).single;
+      var chip = textItemRects(chipped, chipped.bounds).single;
+      expect(chip.width, closeTo(bare.width + 20, 0.01));
+      expect(chip.height, closeTo(bare.height + 20, 0.01));
+      expect(chip.topLeft, bare.topLeft,
+          reason: "held to the same corner, and grown inwards from it");
+    });
+
     test("and a stack in a bottom slot ends at the bottom", () {
       var e = _card(items: const [
         TextItem(id: "a", text: "One", slot: TextSlot.bottomLeft),
@@ -415,6 +432,47 @@ void main() {
       expect(after.items.last.text, "Decred");
       expect(after.text, "Spend or burn",
           reason: "the element's own words are untouched");
+    });
+
+    testWidgets("a piece outside the box can still be reached", (tester) async {
+      // A gap or a side can put a piece outside the box it belongs to.
+      // Nothing clips it, so it is plainly there on the canvas -- and the
+      // ordinary hit test asks the box, so it could be seen and not touched.
+      var card = _card(items: const [
+        TextItem(
+            id: "p",
+            text: "Dash",
+            slot: TextSlot.middleRight,
+            side: -120,
+            spec: TextSpec(fontSize: 20)),
+      ]);
+      var controller = CanvasController(CanvasDocument(
+        size: const CanvasSize(width: 800, ratio: CanvasRatio.wide),
+      ).addElement(card));
+      addTearDown(controller.dispose);
+      controller.selectOnly("c");
+      var stage = await pump(tester, controller);
+
+      var rect = textItemRects(card, card.bounds).single;
+      expect(card.bounds.contains(rect.center), isFalse,
+          reason: "the piece is outside its own element");
+
+      var at = stage.toStagePoint(rect.center);
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget,
+          reason: "the second click opened it for typing");
+      await tester.enterText(find.byType(TextField), "Decred");
+      await tester.pumpAndSettle();
+      expect(
+          (controller.document.elementById("c") as TextElement)
+              .items
+              .single
+              .text,
+          "Decred");
     });
 
     testWidgets("and a second click anywhere else types into the element",

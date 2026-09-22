@@ -916,6 +916,14 @@ class CanvasStageState extends State<CanvasStage> {
             local.dx * math.sin(a) + local.dy * math.cos(a));
   }
 
+  /// _textPieceOwner is the selected text element, where one of its pieces is
+  /// under the pointer and its own box is not.
+  TextElement? _textPieceOwner(Offset doc) {
+    var element = controller.selected;
+    if (element is! TextElement || element.locked) return null;
+    return _textItemAt(element, doc) == null ? null : element;
+  }
+
   /// _textItemAt is which of a text element's extra pieces a document point
   /// is on, or null for none.
   ///
@@ -1438,7 +1446,12 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
 
-    var element = _hitElement(doc);
+    // A piece of the selected text element counts as that element, wherever
+    // it is drawn. A gap or a side can put one outside the box it belongs to
+    // -- nothing clips it, so it is plainly there on the canvas -- and the
+    // ordinary hit test asks the box, so a piece out there could be seen and
+    // not touched.
+    var element = _hitElement(doc) ?? _textPieceOwner(doc);
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.marquee;

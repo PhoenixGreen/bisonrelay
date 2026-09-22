@@ -828,7 +828,11 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
                 commit();
               },
             ),
-            if (box.painted.on)
+            // Asked by the *kind*, not by whether the fill is on: a picture
+            // is not on until one has been chosen, and the buttons that
+            // choose one are these. Guarded by `on`, saying "a picture" hid
+            // the only way to name it.
+            if (box.painted.kind != TextFillKind.color)
               ..._fillBits(context, box.painted,
                   (f) => onChanged(box.copyWith(painted: f)), begin, commit,
                   keyPrefix: "${remember}Box"),
@@ -1065,10 +1069,21 @@ List<Widget> _fillBits(
         onCommit: commit,
       ),
       CanvasIconButton(
+        key: ValueKey("${keyPrefix}FillSeed"),
         icon: Icons.casino_outlined,
         tooltip: "Another one like it",
         onPressed: () => now(fill.copyWith(
             pattern: fill.pattern.copyWith(seed: fill.pattern.seed + 1))),
+      ),
+      // Back to the settings the style arrives with, keeping the style
+      // itself: a pattern nobody likes any more is quicker to start again
+      // than to put back a colour, a density, a size and a turn at a time.
+      CanvasIconButton(
+        key: ValueKey("${keyPrefix}FillReset"),
+        icon: Icons.restart_alt,
+        tooltip: "Put this pattern back to how it started",
+        onPressed: () => now(
+            fill.copyWith(pattern: ProceduralSpec(style: fill.pattern.style))),
       ),
     ],
     if (fill.on)

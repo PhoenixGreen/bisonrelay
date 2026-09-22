@@ -124,6 +124,19 @@ class TextItem {
   /// in three.
   final double gap;
 
+  /// box is what is drawn behind this piece: a colour, its corners and the
+  /// room between it and the words inside it.
+  ///
+  /// The same spec every other box on a canvas uses -- see BoxSpec -- so a
+  /// chip behind a number is rounded and padded by the same two settings a
+  /// card is, and each corner and each side can be set on its own where the
+  /// even ones are not enough.
+  ///
+  /// Empty by default, which draws nothing: the fill is transparent and the
+  /// padding is nought, so a piece with no background takes exactly the room
+  /// its words take.
+  final BoxSpec box;
+
   /// side is the room this piece keeps from the edge its slot holds it to
   /// sideways: to the right of a piece held to the left, to the left of one
   /// held to the right, and rightwards for one in the middle.
@@ -140,6 +153,7 @@ class TextItem {
     this.spec = const TextSpec(),
     this.slot = TextSlot.topLeft,
     this.icon,
+    this.box = const BoxSpec(padding: 0),
     this.gap = 0,
     this.side = 0,
   });
@@ -174,6 +188,7 @@ class TextItem {
     TextSpec? spec,
     TextSlot? slot,
     TextIcon? icon,
+    BoxSpec? box,
     double? gap,
     double? side,
   }) =>
@@ -183,6 +198,7 @@ class TextItem {
         spec: spec ?? this.spec,
         slot: slot ?? this.slot,
         icon: icon ?? this.icon,
+        box: box ?? this.box,
         gap: gap ?? this.gap,
         side: side ?? this.side,
       );
@@ -203,6 +219,8 @@ class TextItem {
         if (gap != 0) "gap": gap,
         if (side != 0) "side": side,
         if (icon != null) "icon": icon!.toJson(),
+        if (box.fill.a > 0 || box.hasBorder || box.padding != 0)
+          "box": box.toJson(),
         "spec": spec.toJson(),
       };
 
@@ -221,6 +239,9 @@ class TextItem {
             _side(json["gapL"]) ??
             _side(json["gapR"]) ??
             0,
+        box: json["box"] is Map<String, dynamic>
+            ? BoxSpec.fromJson((json["box"] as Map).cast<String, dynamic>())
+            : const BoxSpec(padding: 0),
         icon: json["icon"] is Map<String, dynamic>
             ? TextIcon.fromJson((json["icon"] as Map).cast<String, dynamic>())
             : null,
