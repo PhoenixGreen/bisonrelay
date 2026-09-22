@@ -227,24 +227,6 @@ class _CanvasWrapParentData extends ContainerBoxParentData<RenderBox> {
   bool restart = false;
 }
 
-/// CanvasBlockBreak ends a line and starts the sharing out again.
-///
-/// A line break that also says "what follows is a different piece of panel".
-/// The room left over is shared by the smallest amount any line can afford,
-/// so that the lines of a group come out in the same columns -- and on its
-/// own that meant opening a button at the end of a row could make that row
-/// narrower, because the line it revealed afforded less.
-///
-/// [CanvasMoreGroup] puts one of these in front of what its button reveals.
-/// An ordinary [CanvasLineBreak] does not start a new block, because the
-/// second line of a group is still the same group.
-class CanvasBlockBreak extends StatelessWidget {
-  const CanvasBlockBreak({super.key});
-
-  @override
-  Widget build(BuildContext context) => const CanvasLineBreak();
-}
-
 class _CanvasWrapRestart extends ParentDataWidget<_CanvasWrapParentData> {
   const _CanvasWrapRestart({required super.child});
 
@@ -445,6 +427,24 @@ class CanvasWrap extends StatelessWidget {
               child,
         ],
       );
+}
+
+/// CanvasBlockBreak ends a line and starts the sharing out again.
+///
+/// A line break that also says "what follows is a different piece of panel".
+/// The room left over is shared by the smallest amount any line can afford,
+/// so that the lines of a group come out in the same columns -- and on its
+/// own that meant opening a button at the end of a row could make that row
+/// narrower, because the line it revealed afforded less.
+///
+/// [CanvasMoreGroup] puts one of these in front of what its button reveals.
+/// An ordinary [CanvasLineBreak] does not start a new block, because the
+/// second line of a group is still the same group.
+class CanvasBlockBreak extends StatelessWidget {
+  const CanvasBlockBreak({super.key});
+
+  @override
+  Widget build(BuildContext context) => const CanvasLineBreak();
 }
 
 /// CanvasGrowable is a control that will take some of the room left over on
@@ -726,12 +726,19 @@ class CanvasControlGroup extends StatelessWidget {
   /// line carries a button of its own.
   final bool rule;
 
+  /// below goes under the group's own line of controls, inside its gap and
+  /// above its rule. For the settings a button on that line has opened -- see
+  /// CanvasMoreGroup -- which are part of the group and have to sit inside
+  /// it rather than in a group of their own.
+  final Widget? below;
+
   const CanvasControlGroup({
     required this.label,
     required this.children,
     this.hideCaption = false,
     this.captionGap = canvasCaptionGap,
     this.rule = true,
+    this.below,
     super.key,
   });
 
@@ -782,6 +789,7 @@ class CanvasControlGroup extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: children,
                 ),
+                if (below != null) below!,
               ],
             ),
             Padding(
@@ -832,6 +840,7 @@ class CanvasControlGroup extends StatelessWidget {
           // as well is four pixels a control, which is what pushed a row that
           // had been measured to fit onto two lines.
           CanvasWrap(runSpacing: canvasRowGap, children: children),
+          if (below != null) below!,
           if (rule) const CanvasGroupRule(),
         ],
       ),
@@ -1248,38 +1257,66 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
   }
 
   @override
-  Widget build(BuildContext context) => CanvasControlGroup(
-        label: widget.label,
-        hideCaption: widget.hideCaption,
-        rule: widget.rule,
-        children: [
-          ...widget.row,
-          if (widget.more.isNotEmpty)
-            CanvasIconButton(
-              key: ValueKey("more-${widget.remember ?? widget.label}"),
-              icon: _open ? Icons.expand_less : Icons.tune,
-              tooltip: _open ? "Hide these settings" : widget.tooltip,
-              active: _open,
-              onPressed: _toggle,
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return CanvasControlGroup(
+      label: widget.label,
+      hideCaption: widget.hideCaption,
+      rule: widget.rule,
+      // What the button opened, on a ground of its own.
+      //
+      // A tint rather than a line under it, which is what this was. Opened,
+      // these settings run straight into whatever is below them, and a reader
+      // who has scrolled past the button has nothing saying which of the
+      // controls in front of them came out of it -- a line at the foot says
+      // where they stop and nothing says where they start. The ground says
+      // both at once, and says it while the eye is still on the button.
+      //
+      // It is a line of layout of its own as well: what is revealed shares
+      // out the room left over among itself, so opening this cannot narrow
+      // the row the button sits on.
+      below: !_open
+          ? null
+          : Padding(
+              key: const ValueKey("more-ground"),
+              padding: const EdgeInsets.only(top: canvasRowGap),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(canvasMoreInset,
+                    canvasMoreInset, canvasMoreInset - 3, canvasMoreInset),
+                decoration: BoxDecoration(
+                  // The ground a boxed section is drawn on, a little stronger:
+                  // this one has to be read against the panel from the corner
+                  // of the eye while the pointer is still on the button.
+                  color: theme.colors.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  border: Border.all(
+                      color:
+                          theme.colors.outlineVariant.withValues(alpha: 0.55)),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child:
+                    CanvasWrap(runSpacing: canvasRowGap, children: widget.more),
+              ),
             ),
-          if (_open) ...[
-            // A block break, not a plain one: what is revealed shares out the
-            // room left over on its own, so opening this cannot narrow the row
-            // the button sits on.
-            const CanvasBlockBreak(),
-            ...widget.more,
-            // And a line across the foot of what was revealed. Opened, these
-            // settings run straight into whatever is below them, and a reader
-            // who has scrolled past the button has nothing telling them where
-            // one group's overflow stops and the next group starts. Heavier
-            // than the rule between groups on purpose: it is closing something
-            // that was opened, which is a different thing from dividing two
-            // things that were always there.
-            const CanvasMoreEnd(),
-          ],
-        ],
-      );
+      children: [
+        ...widget.row,
+        if (widget.more.isNotEmpty)
+          CanvasIconButton(
+            key: ValueKey("more-${widget.remember ?? widget.label}"),
+            icon: _open ? Icons.expand_less : Icons.tune,
+            tooltip: _open ? "Hide these settings" : widget.tooltip,
+            active: _open,
+            onPressed: _toggle,
+          ),
+      ],
+    );
+  }
 }
+
+/// canvasMoreInset is the room inside the ground an opened more-settings area
+/// is drawn on.
+const double canvasMoreInset = 8;
 
 /// CanvasGroupRule is the line between one group of settings and the next.
 ///
@@ -1299,27 +1336,6 @@ class CanvasGroupRule extends StatelessWidget {
                 .colors
                 .outlineVariant
                 .withValues(alpha: 0.45)),
-      );
-}
-
-/// CanvasMoreEnd is the line across the foot of an opened more-settings area.
-class CanvasMoreEnd extends StatelessWidget {
-  const CanvasMoreEnd({super.key});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: canvasRowGap, bottom: 1),
-        child: Container(
-          width: double.infinity,
-          height: 2,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(1),
-            color: ThemeNotifier.of(context)
-                .colors
-                .outlineVariant
-                .withValues(alpha: 0.9),
-          ),
-        ),
       );
 }
 

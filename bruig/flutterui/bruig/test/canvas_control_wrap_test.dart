@@ -434,13 +434,15 @@ void main() {
   });
 
   group("an opened more-settings area", () {
-    testWidgets("is closed off by a line across the foot of it",
-        (tester) async {
+    testWidgets("is drawn on a ground of its own", (tester) async {
       // Opened, these settings run straight into whatever is below them, and
-      // a reader who has scrolled past the button has nothing saying where
-      // one group's overflow stops and the next group starts.
+      // a reader who has scrolled past the button has nothing saying which of
+      // the controls in front of them came out of it. A line at the foot --
+      // which is what this was -- says where they stop and nothing says where
+      // they start.
       await panel(tester, width: 420);
-      expect(find.byType(CanvasMoreEnd), findsNothing);
+      Finder ground() => find.byKey(const ValueKey("more-ground"));
+      expect(ground(), findsNothing);
 
       var button = find.byKey(const ValueKey("more-chartGridMore"));
       await tester.ensureVisible(button);
@@ -448,18 +450,21 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
 
-      expect(find.byType(CanvasMoreEnd), findsOneWidget);
-      var line = tester.getRect(find.byType(CanvasMoreEnd));
+      expect(ground(), findsOneWidget);
+      var area = tester.getRect(ground());
       var lines = tester.getRect(find.byKey(const ValueKey("chartAxisSteps")));
-      expect(line.top, greaterThan(lines.bottom - 0.5),
-          reason: "under the settings it closes off");
-      expect(line.width, greaterThan(300),
-          reason: "the width of the panel, not of a control: $line");
+      expect(area.top, lessThan(lines.top),
+          reason: "the settings it holds are inside it");
+      expect(area.bottom, greaterThan(lines.bottom));
+      expect(area.width, greaterThan(300),
+          reason: "the width of the panel, not of a control: $area");
+      expect(tester.getRect(button).bottom, lessThanOrEqualTo(area.top),
+          reason: "and it starts under the button that opened it");
 
       // Shut it again: an open button stays open for the rest of the file.
       await tester.tap(button);
       await tester.pumpAndSettle();
-      expect(find.byType(CanvasMoreEnd), findsNothing);
+      expect(ground(), findsNothing);
     });
   });
 

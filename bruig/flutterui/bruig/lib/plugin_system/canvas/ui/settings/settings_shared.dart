@@ -638,8 +638,6 @@ List<Widget> typeGroups(
             ...colourRow,
             ...colourMore,
             const CanvasLineBreak(),
-            ...slanted,
-            const CanvasLineBreak(),
           ],
           CanvasNumberField(
             label: "Letter",
@@ -697,6 +695,9 @@ List<Widget> typeGroups(
                 commit();
               },
             ),
+          // The two switches at the end of the line the spacing is on, where
+          // the colour has taken their place on the row above.
+          if (colourInMore) ...slanted,
           ...extraMore,
         ]),
     if (!colourInMore)

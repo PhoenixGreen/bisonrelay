@@ -38,8 +38,10 @@ change to the element, and without it an area shuts itself the moment anybody
 uses what is inside it. Name it after the element and the group, not after the
 label alone, so a chart's Grid and a table's Grid do not share one answer.
 
-An opened area closes with a `CanvasMoreEnd` rule automatically. Do not add
-one by hand.
+An opened area is drawn on a ground of its own automatically -- a tinted
+rectangle under the row, so what the button revealed can be told from what was
+always there. Do not draw one by hand, and do not put a rule at the foot of
+it: that is what this replaced.
 
 ## Sections, groups and rules
 
