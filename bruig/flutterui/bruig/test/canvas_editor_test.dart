@@ -1,5 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -7113,6 +7114,79 @@ void main() {
 
       expect(find.byIcon(Icons.format_underlined), findsNothing);
       expect(find.text("Underline"), findsOneWidget);
+    });
+
+    testWidgets("a part is there to fill in before anything is added",
+        (tester) async {
+      // Pressing a plus to be shown the controls, and only then being able to
+      // use them, is a step that exists because the list is empty -- which is
+      // not a thing the reader did. The row is there in its own default
+      // state, and setting something on it is what adds it.
+      var controller = await panel(tester);
+      expect(textIn(controller).parts, isEmpty);
+
+      // A section heading is drawn in capitals.
+      var heading = find.text("PARTS OF THE TEXT");
+      await tester.ensureVisible(heading);
+      await tester.pumpAndSettle();
+      if (find.byKey(const ValueKey("partBold0")).evaluate().isEmpty) {
+        await tester.tap(heading);
+        await tester.pumpAndSettle();
+      }
+
+      var bold = find.byKey(const ValueKey("partBold0"));
+      expect(bold, findsOneWidget, reason: "a row, before the plus was used");
+      expect(textIn(controller).parts, isEmpty,
+          reason: "and nothing written until it is");
+
+      await tester.ensureVisible(bold);
+      await tester.pumpAndSettle();
+      await tester.tap(bold);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).parts.length, 1);
+      var part = textIn(controller).parts.first;
+      expect(part.weight, isNotNull);
+      expect(
+          part.weight! >= 600, isNot(textIn(controller).textSpec.weight >= 600),
+          reason: "the switch turned, whichever way it was pointing");
+    });
+
+    testWidgets("and its switches are buttons, so the row is one line",
+        (tester) async {
+      // Bold, italic, an outline and the two marks: five words in a column is
+      // a column, and five buttons is a line.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        parts: const [TextPart(from: 1, to: 2)],
+      );
+      await panel(tester, element: element);
+
+      // A section heading is drawn in capitals.
+      var heading = find.text("PARTS OF THE TEXT");
+      await tester.ensureVisible(heading);
+      await tester.pumpAndSettle();
+      if (find.byKey(const ValueKey("partBold0")).evaluate().isEmpty) {
+        await tester.tap(heading);
+        await tester.pumpAndSettle();
+      }
+
+      var tops = <double>[];
+      for (var key in [
+        "partBold0",
+        "partItalic0",
+        "partOutline0",
+        "part0HighlightOn",
+        "part0UnderlineOn",
+      ]) {
+        var button = find.byKey(ValueKey(key));
+        expect(button, findsOneWidget, reason: key);
+        tops.add(tester.getRect(button).top);
+      }
+      for (var top in tops) {
+        expect(top, closeTo(tops.first, 0.5),
+            reason: "all five on one line: $tops");
+      }
     });
 
     testWidgets("the type settings are out on the panel, not in a section",

@@ -1561,7 +1561,7 @@ class CanvasColorButton extends StatelessWidget {
   final double? labelWidth;
 
   const CanvasColorButton({
-    required this.label,
+    this.label = "",
     required this.color,
     required this.onChanged,
     this.gradient,

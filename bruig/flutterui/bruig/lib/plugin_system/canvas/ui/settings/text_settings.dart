@@ -584,8 +584,14 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
     commit();
   }
 
+  // The row is there before anything has been added, in its own default
+  // state, and setting anything on it is what adds it. Pressing a plus to be
+  // shown the controls, and only then being able to use them, is a step that
+  // exists because the list is empty -- which is not a thing the reader did.
+  var shown = e.parts.isEmpty ? const [TextPart()] : e.parts;
+
   List<TextPart> replacing(int index, TextPart part) => [
-        for (var i = 0; i < e.parts.length; i++) i == index ? part : e.parts[i],
+        for (var i = 0; i < shown.length; i++) i == index ? part : shown[i],
       ];
 
   return CanvasExpander(
@@ -598,7 +604,7 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
           "tenth to the end — and what is different about them. Counted from "
           "one, and \"to\" left at nothing means to the end, so a part still "
           "means what it said after the words are edited."),
-      for (var (i, part) in e.parts.indexed)
+      for (var (i, part) in shown.indexed)
         CanvasControlGroup(label: part.says, children: [
           CanvasDropdown<TextUnit>(
             label: "Counting",
@@ -640,26 +646,40 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             color: part.color ?? e.textSpec.color,
             onChanged: (c) => set(replacing(i, part.copyWith(color: c))),
           ),
-          CanvasToggle(
-            label: "Bold",
-            value: (part.weight ?? e.textSpec.weight) >= 600,
-            onChanged: (v) =>
-                set(replacing(i, part.copyWith(weight: v ? 700 : 400))),
+          // Icons, not switches with words: a part carries five of them --
+          // bold, italic, an outline, and the two marks -- and five words in
+          // a column is a column. The words are on the tooltips.
+          CanvasIconButton(
+            key: ValueKey("partBold$i"),
+            icon: Icons.format_bold,
+            tooltip: "Bold",
+            active: (part.weight ?? e.textSpec.weight) >= 600,
+            onPressed: () => set(replacing(
+                i,
+                part.copyWith(
+                    weight: (part.weight ?? e.textSpec.weight) >= 600
+                        ? 400
+                        : 700))),
           ),
-          CanvasToggle(
-            label: "Italic",
-            value: part.italic ?? e.textSpec.italic,
-            onChanged: (v) => set(replacing(i, part.copyWith(italic: v))),
+          CanvasIconButton(
+            key: ValueKey("partItalic$i"),
+            icon: Icons.format_italic,
+            tooltip: "Italic",
+            active: part.italic ?? e.textSpec.italic,
+            onPressed: () => set(replacing(
+                i, part.copyWith(italic: !(part.italic ?? e.textSpec.italic)))),
           ),
           // An outline on these words alone: a heavier one than the rest of
           // the headline has, a different colour, or -- at nothing -- none at
           // all inside a headline that otherwise has one.
-          CanvasToggle(
-            label: "Outline",
-            value: part.outlineWidth != null,
-            onChanged: (v) => set(replacing(
+          CanvasIconButton(
+            key: ValueKey("partOutline$i"),
+            icon: Icons.font_download_outlined,
+            tooltip: "Outline these words",
+            active: part.outlineWidth != null,
+            onPressed: () => set(replacing(
                 i,
-                v
+                part.outlineWidth == null
                     ? part.copyWith(
                         outlineWidth: e.textSpec.outlineWidth > 0
                             ? e.textSpec.outlineWidth
@@ -695,6 +715,7 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
             underline: part.underline,
             textColor: part.color ?? e.textSpec.color,
             keyPrefix: "part$i",
+            icons: true,
             setHighlight: (h) => set(replacing(
                 i,
                 h == null
@@ -873,14 +894,15 @@ Widget _partsSection(TextElement e, SettingsWrite write, VoidCallback begin,
               done: commit,
             ),
           const CanvasLineBreak(),
-          CanvasIconButton(
-            icon: Icons.delete_outline,
-            tooltip: "Remove this part",
-            onPressed: () => set([
-              for (var j = 0; j < e.parts.length; j++)
-                if (j != i) e.parts[j],
-            ]),
-          ),
+          if (e.parts.isNotEmpty)
+            CanvasIconButton(
+              icon: Icons.delete_outline,
+              tooltip: "Remove this part",
+              onPressed: () => set([
+                for (var j = 0; j < e.parts.length; j++)
+                  if (j != i) e.parts[j],
+              ]),
+            ),
         ]),
       CanvasControlGroup(label: "Add", hideCaption: true, children: [
         CanvasIconButton(
@@ -1338,22 +1360,49 @@ List<Widget> _markBits({
   required void Function(PartHighlight) liveHighlight,
   required void Function(PartUnderline) liveUnderline,
   required VoidCallback done,
+
+  /// icons draws the two switches as buttons rather than as words.
+  ///
+  /// For the row that carries five of them -- a part of the text -- where
+  /// five words is a column rather than a line. The element's own marks have
+  /// room for the words.
+  bool icons = false,
 }) {
   return [
     // A mark that is simply there, as opposed to one being drawn on by
     // an animation. Off until it is asked for: most parts are a colour
     // and nothing else, and two rows of padding fields under every one
     // of them would bury that.
-    CanvasToggle(
-      label: "Highlight",
-      value: highlight != null,
-      onChanged: (v) => setHighlight(v ? const PartHighlight() : null),
-    ),
-    CanvasToggle(
-      label: "Underline",
-      value: underline != null,
-      onChanged: (v) => setUnderline(v ? const PartUnderline() : null),
-    ),
+    if (icons)
+      CanvasIconButton(
+        key: ValueKey("${keyPrefix}HighlightOn"),
+        icon: Icons.format_color_fill,
+        tooltip: "Highlight these words",
+        active: highlight != null,
+        onPressed: () =>
+            setHighlight(highlight == null ? const PartHighlight() : null),
+      )
+    else
+      CanvasToggle(
+        label: "Highlight",
+        value: highlight != null,
+        onChanged: (v) => setHighlight(v ? const PartHighlight() : null),
+      ),
+    if (icons)
+      CanvasIconButton(
+        key: ValueKey("${keyPrefix}UnderlineOn"),
+        icon: Icons.format_underlined,
+        tooltip: "Underline these words",
+        active: underline != null,
+        onPressed: () =>
+            setUnderline(underline == null ? const PartUnderline() : null),
+      )
+    else
+      CanvasToggle(
+        label: "Underline",
+        value: underline != null,
+        onChanged: (v) => setUnderline(v ? const PartUnderline() : null),
+      ),
     if (highlight != null) ...[
       const CanvasLineBreak(),
       CanvasColorButton(
@@ -1530,37 +1579,46 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
             ),
           ],
         ),
-    // And the line that adds one, under the pieces it adds to.
-    CanvasControlGroup(label: "Items", rule: false, children: [
-      CanvasIconButton(
-        key: const ValueKey("textAddItem"),
-        icon: Icons.add,
-        tooltip: "Another piece of writing in this box, in a place of its own",
-        onPressed: () => now([
-          ...e.items,
-          TextItem.fresh(_freeSlot(e), e.textSpec),
+    // And the line that adds one, under the pieces it adds to. No caption:
+    // the rows above it are captioned with what each of them says, and a
+    // heading over a line of two buttons is a word doing nothing. The gap
+    // above it is the one every group leaves under itself.
+    CanvasControlGroup(
+        label: "Items",
+        hideCaption: true,
+        rule: false,
+        children: [
+          CanvasIconButton(
+            key: const ValueKey("textAddItem"),
+            icon: Icons.add,
+            tooltip:
+                "Another piece of writing in this box, in a place of its own",
+            onPressed: () => now([
+              ...e.items,
+              TextItem.fresh(_freeSlot(e), e.textSpec),
+            ]),
+          ),
+          // A picture is a piece like any other: the same list, the same slots,
+          // the same row and button. It was a section of its own with a place, an
+          // alignment and a gap that were nobody else's.
+          CanvasIconButton(
+            key: const ValueKey("textAddPicture"),
+            icon: Icons.add_photo_alternate_outlined,
+            tooltip: "A picture in this box, in a place of its own",
+            onPressed: () =>
+                now([...e.items, TextItem.freshIcon(_freeSlot(e))]),
+          ),
+          if (e.items.isEmpty)
+            const CanvasHint(
+                "A card is one element: a number over a title, a line of small "
+                "print under it, a name against the right-hand edge. Each piece "
+                "keeps its own type, and the words are typed on the canvas -- "
+                "click the piece and type.\n\nTwo pieces in different slots are "
+                "held to different corners, so the space between them is the "
+                "box's to decide. Two in the same slot are a stack: one under "
+                "the other, as far apart as their Gap says however big the box "
+                "is."),
         ]),
-      ),
-      // A picture is a piece like any other: the same list, the same slots,
-      // the same row and button. It was a section of its own with a place, an
-      // alignment and a gap that were nobody else's.
-      CanvasIconButton(
-        key: const ValueKey("textAddPicture"),
-        icon: Icons.add_photo_alternate_outlined,
-        tooltip: "A picture in this box, in a place of its own",
-        onPressed: () => now([...e.items, TextItem.freshIcon(_freeSlot(e))]),
-      ),
-      if (e.items.isEmpty)
-        const CanvasHint(
-            "A card is one element: a number over a title, a line of small "
-            "print under it, a name against the right-hand edge. Each piece "
-            "keeps its own type, and the words are typed on the canvas -- "
-            "click the piece and type.\n\nTwo pieces in different slots are "
-            "held to different corners, so the space between them is the "
-            "box's to decide. Two in the same slot are a stack: one under "
-            "the other, as far apart as their Gap says however big the box "
-            "is."),
-    ]),
   ];
 }
 

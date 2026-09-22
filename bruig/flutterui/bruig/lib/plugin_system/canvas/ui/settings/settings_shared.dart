@@ -483,8 +483,10 @@ List<Widget> typeGroups(
       onChanged: (v) => onChanged(spec.copyWith(outlineWidth: v)),
       onCommit: commit,
     ),
+    // No caption of its own: it is the outline's colour, and it sits against
+    // the number that says how thick the outline is. "Outline" and "Line" on
+    // two controls in a row reads as two settings about two different lines.
     CanvasColorButton(
-      label: "Line",
       color: spec.outlineColor,
       onChanged: (c) {
         begin();
@@ -505,8 +507,9 @@ List<Widget> typeGroups(
       onChanged: (v) => onChanged(spec.copyWith(shadowBlur: v)),
       onCommit: commit,
     ),
+    // The shadow's own colour, against the number that casts it. Captioned
+    // "Colour" it read as the colour of the words, which is on the row above.
     CanvasColorButton(
-      label: "Colour",
       color: spec.shadowColor,
       onChanged: (c) {
         begin();
@@ -636,6 +639,10 @@ List<Widget> typeGroups(
           // The colour first, because it is the most of what is back here.
           if (colourInMore) ...[
             ...colourRow,
+            // The shadow and the glow on a line of their own, under the
+            // colour and the outline: six controls run on from four is one
+            // row of ten that wraps wherever it happens to fill up.
+            const CanvasLineBreak(),
             ...colourMore,
             const CanvasLineBreak(),
           ],
