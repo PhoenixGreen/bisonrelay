@@ -973,12 +973,11 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
   // it is filling rather than of whatever rectangle the caller happened to
   // hand down.
   var area = path.getBounds();
-  if (e.fill.a > 0) {
-    canvas.drawPath(
-        path,
-        Paint()
-          ..color = e.fill
-          ..shader = PaintSpec(e.fill, gradient: e.fillFade).shaderFor(area));
+  // A fade of its own counts as a fill: the flat colour may have been turned
+  // all the way down on the way to setting one. See PaintSpec.shows.
+  var filled = PaintSpec(e.fill, gradient: e.fillFade);
+  if (filled.shows) {
+    canvas.drawPath(path, filled.into(Paint(), area));
   }
   // A picture or a pattern inside it, cut to the outline -- the same cut the
   // letters and a box get, of a third shape. See TextFill.
@@ -986,16 +985,16 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
     paintThroughText(
         canvas, area, e.painted, images, () => canvas.drawPath(path, Paint()));
   }
-  if (e.strokeWidth > 0 && e.strokeColor.a > 0) {
+  var stroked = PaintSpec(e.strokeColor, gradient: e.strokeFade);
+  if (e.strokeWidth > 0 && stroked.shows) {
     canvas.drawPath(
         path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = e.strokeWidth
-          ..strokeJoin = StrokeJoin.round
-          ..color = e.strokeColor
-          ..shader =
-              PaintSpec(e.strokeColor, gradient: e.strokeFade).shaderFor(area));
+        stroked.into(
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = e.strokeWidth
+              ..strokeJoin = StrokeJoin.round,
+            area));
   }
 
   if (e.text.isNotEmpty) {
@@ -1072,14 +1071,14 @@ void _paintLine(ui.Canvas canvas, LineElement e) {
     path.quadraticBezierTo(control.dx, control.dy, e.end.dx, e.end.dy);
   }
 
-  var paint = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = e.strokeWidth
-    ..color = e.color
-    // Across the whole line, so a stroke that fades runs from one end of it
-    // to the other whichever way the line is pointing.
-    ..shader = PaintSpec(e.color, gradient: e.fade).shaderFor(path.getBounds())
-    ..strokeCap = e.cap.flutter;
+  // Across the whole line, so a stroke that fades runs from one end of it to
+  // the other whichever way the line is pointing.
+  var paint = PaintSpec(e.color, gradient: e.fade).into(
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = e.strokeWidth
+        ..strokeCap = e.cap.flutter,
+      path.getBounds());
 
   // Measured rather than worked out by hand. A path metric gives the exact
   // position *and* direction at any distance along the curve, which is the one
@@ -1704,14 +1703,14 @@ void _paintPath(ui.Canvas canvas, Rect bounds, PathElement e, bool editing) {
   }
   if (e.closed) path.close();
 
-  var paint = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = e.strokeWidth
-    ..color = e.color
-    // Across the whole path, so a stroke that fades fades along its length
-    // rather than each segment starting the gradient again.
-    ..shader = PaintSpec(e.color, gradient: e.fade).shaderFor(path.getBounds())
-    ..strokeCap = e.cap.flutter;
+  // Across the whole path, so a stroke that fades fades along its length
+  // rather than each segment starting the gradient again.
+  var paint = PaintSpec(e.color, gradient: e.fade).into(
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = e.strokeWidth
+        ..strokeCap = e.cap.flutter,
+      path.getBounds());
 
   canvas.drawPath(e.dash > 0 ? dashPath(path, e.dash, e.dash) : path, paint);
 

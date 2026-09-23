@@ -485,6 +485,11 @@ class _AppColorPickerState extends State<AppColorPicker> {
     _opened = widget.color;
     _gradient = widget.gradient;
     _openedGradient = widget.gradient;
+    // Opened on whichever way of choosing is in use: a swatch that is already
+    // a fade opens on the fade. Otherwise the tab that shows what is set is
+    // the one tab nobody is on, and the first thing a picker does is make
+    // the colour in hand look like a flat one.
+    if (widget.gradient != null && _fades) _mode = ColorPickerMode.gradient;
     _take(widget.color);
     _readWheel();
     _readThird();
@@ -1291,7 +1296,10 @@ class _AppColorPickerState extends State<AppColorPicker> {
             key: const ValueKey("gradientPreview"),
             paint: PaintSpec(widget.color, gradient: g),
             width: width,
-            height: width * 0.52,
+            // Shorter than the colour square: the fade and the square that
+            // picks its colours are both on this tab now, and a full-height
+            // preview pushed the square off the bottom of the dialog.
+            height: width * 0.34,
             outline: theme.outlineVariant,
           ),
           const SizedBox(height: 8),
@@ -1357,6 +1365,17 @@ class _AppColorPickerState extends State<AppColorPicker> {
           ]),
           const SizedBox(height: 6),
           Text(g == null ? "One colour" : _editingName(g), style: label),
+          // And the square to choose that colour with, right here.
+          //
+          // The three colour tabs have always edited whichever point is
+          // picked -- see _say -- but having to leave the fade to use them
+          // meant choosing a colour without seeing the fade it is in, which
+          // is the one thing this tab is for. The same field and the same
+          // bars, so there is one place that knows how a colour is picked.
+          const SizedBox(height: 10),
+          _field(theme, width),
+          const SizedBox(height: 12),
+          ..._fieldBars(theme, width),
           if (g != null) ...[
             const SizedBox(height: 10),
             // Which way it runs. A radial one runs outwards from the middle
@@ -3156,8 +3175,6 @@ class _GradientBarState extends State<_GradientBar> {
   /// they are small, they are only there while their point is selected, and
   /// the point itself is a much bigger thing to hit.
   void _grab(double x) {
-    debugPrint(
-        "GRAB x=\$x handles=\${_biasHandles} editing=\${widget.editing}");
     for (var (stop, at) in _biasHandles) {
       if ((_xOf(at) - x).abs() <= 7) {
         setState(() {

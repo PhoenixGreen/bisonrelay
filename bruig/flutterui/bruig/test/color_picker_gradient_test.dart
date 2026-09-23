@@ -188,6 +188,55 @@ void main() {
         reason: "the first colour is not what was being edited");
   });
 
+  testWidgets("opens on the fade when the swatch already has one",
+      (tester) async {
+    // The tab that shows what is set should not be the one tab nobody is on.
+    // Opened on the sliders, the first thing the picker did to a swatch that
+    // fades was show it as a flat colour.
+    await show(tester,
+        paint: const PaintSpec(Color(0xFF3D7EFF),
+            gradient: GradientSpec(to: Color(0xFFFF3DAA))),
+        onChanged: (_) {});
+    expect(find.byKey(const ValueKey("gradientBar")), findsOneWidget,
+        reason: "without anybody having to find the tab");
+  });
+
+  testWidgets("and on the sliders where there is no fade", (tester) async {
+    await show(tester,
+        paint: const PaintSpec(Color(0xFF3D7EFF)), onChanged: (_) {});
+    expect(find.byKey(const ValueKey("gradientBar")), findsNothing);
+    expect(find.byKey(const ValueKey("colorShade")), findsOneWidget);
+  });
+
+  testWidgets("the colour square is on the fade's own tab", (tester) async {
+    // Choosing a colour for a point used to mean leaving the fade to do it,
+    // which is choosing a colour without seeing what it is in.
+    PaintSpec? said;
+    await show(tester,
+        paint: const PaintSpec(Color(0xFF3D7EFF),
+            gradient: GradientSpec(to: Color(0xFFFF3DAA))),
+        onChanged: (p) => said = p);
+
+    var square = find.byKey(const ValueKey("colorShade"));
+    expect(square, findsOneWidget, reason: "on the gradient tab it opened on");
+
+    // Pointed at the second colour, and then picked in the square.
+    var bar = tester.getRect(find.byKey(const ValueKey("gradientBar")));
+    await tester.tapAt(Offset(bar.right - 4, bar.center.dy));
+    await tester.pumpAndSettle();
+    expect(find.text("Editing the second colour"), findsOneWidget);
+
+    var at = tester.getRect(square);
+    await tester.tapAt(Offset(at.left + at.width * 0.2, at.top + 4));
+    await tester.pumpAndSettle();
+
+    expect(said, isNotNull, reason: "the square said something");
+    expect(said!.gradient!.to, isNot(const Color(0xFFFF3DAA)),
+        reason: "and it landed on the point that was picked out");
+    expect(said!.color, const Color(0xFF3D7EFF),
+        reason: "not on the colour that was not");
+  });
+
   testWidgets("dragging the handles moves where the fade happens",
       (tester) async {
     PaintSpec? said;

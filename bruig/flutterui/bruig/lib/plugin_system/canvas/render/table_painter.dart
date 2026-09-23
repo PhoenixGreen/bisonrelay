@@ -44,15 +44,14 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   // Both fills are shaded across the whole table, not across the band or the
   // cell being filled: a table that fades should fade once from top to
   // bottom, not restart on every row.
-  var cells = PaintSpec(e.cellFill, gradient: e.cellFade).shaderFor(rect);
-  var header = PaintSpec(e.headerFill, gradient: e.headerFade).shaderFor(rect);
+  var cellPaint = PaintSpec(e.cellFill, gradient: e.cellFade);
+  var headerPaint = PaintSpec(e.headerFill, gradient: e.headerFade);
+  var header = headerPaint.shaderFor(rect);
 
-  if (e.cellFill.a > 0) {
-    canvas.drawRect(
-        rect,
-        Paint()
-          ..color = e.cellFill
-          ..shader = cells);
+  // A fade of its own counts as a fill, and where there is one the paint is
+  // left opaque: a paint's alpha multiplies its shader. See PaintSpec.into.
+  if (cellPaint.shows) {
+    canvas.drawRect(rect, cellPaint.into(Paint(), rect));
   }
 
   // Row fills first, so the grid and the text land on top of them rather than
@@ -67,12 +66,12 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
     } else if (e.zebra && ((e.headerRow ? r - 1 : r).isOdd)) {
       fill = e.zebraFill;
     }
-    if (fill != null && fill.a > 0) {
+    if (fill != null && (fill.a > 0 || (isHeader && header != null))) {
       canvas.drawRect(
           Rect.fromLTWH(rect.left, y, rect.width, h),
-          Paint()
-            ..color = fill
-            ..shader = isHeader ? header : null);
+          isHeader
+              ? headerPaint.into(Paint(), rect)
+              : (Paint()..color = fill));
     }
     y += h;
   }
@@ -83,13 +82,11 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
   // so on a table whose header type and cell type had been made to match it
   // did nothing anybody could see. The header *row* has had a fill all along,
   // and a header column is the same idea turned ninety degrees.
-  if (e.headerColumn && e.headerFill.a > 0 && widths.isNotEmpty) {
+  if (e.headerColumn && headerPaint.shows && widths.isNotEmpty) {
     var top = rect.top + (e.headerRow ? heights.first : 0);
     canvas.drawRect(
         Rect.fromLTRB(rect.left, top, rect.left + widths.first, rect.bottom),
-        Paint()
-          ..color = e.headerFill
-          ..shader = header);
+        headerPaint.into(Paint(), rect));
   }
 
   // A rule with no word to look for is drawn as one box around everything it

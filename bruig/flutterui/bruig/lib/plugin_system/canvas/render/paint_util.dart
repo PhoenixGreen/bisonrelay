@@ -307,10 +307,8 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
             (fill.overlay.a > 0 || fill.overlayFade != null)) {
           canvas.drawRect(
               reach,
-              Paint()
-                ..color = fill.overlay
-                ..shader = PaintSpec(fill.overlay, gradient: fill.overlayFade)
-                    .shaderFor(frame)
+              PaintSpec(fill.overlay, gradient: fill.overlayFade)
+                  .into(Paint(), frame)
                 ..blendMode = fill.blend.flutter);
         }
       }
@@ -615,11 +613,9 @@ void _paintPartHighlight(ui.Canvas canvas, Rect box, PartHighlight mark) {
     box.right + mark.padRight,
     box.bottom + mark.padBottom,
   );
-  var paint = Paint()
-    ..color = mark.color
-    // Across the band, so a highlighter that fades fades along the words it
-    // is behind rather than restarting on each one.
-    ..shader = PaintSpec(mark.color, gradient: mark.fade).shaderFor(band);
+  // Across the band, so a highlighter that fades fades along the words it is
+  // behind rather than restarting on each one.
+  var paint = PaintSpec(mark.color, gradient: mark.fade).into(Paint(), band);
   if (mark.radius <= 0) {
     canvas.drawRect(band, paint);
     return;
@@ -633,15 +629,14 @@ void _paintPartUnderline(
   var width = math.max(0.1, mark.width);
   var y = box.bottom + mark.away;
   var line = Rect.fromLTRB(box.left, y - width / 2, box.right, y + width / 2);
-  var paint = Paint()
-    ..color = mark.color ?? fallback
-    // Along the line, so a fade runs its length rather than its thickness.
-    ..shader =
-        PaintSpec(mark.color ?? fallback, gradient: mark.fade).shaderFor(line)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = width
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round;
+  // Along the line, so a fade runs its length rather than its thickness.
+  var paint = PaintSpec(mark.color ?? fallback, gradient: mark.fade).into(
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+      line);
 
   // The phase is taken from where the line is, so the same word underlined
   // twice on one canvas wobbles the same way both times and an exported
@@ -1145,13 +1140,9 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
     [CanvasImageSource? images]) {
   if (rect.width <= 0 || rect.height <= 0) return;
-  if (box.fill.a > 0) {
-    canvas.drawRRect(
-        box.rounded(rect),
-        Paint()
-          ..color = box.fill
-          ..shader =
-              PaintSpec(box.fill, gradient: box.fillFade).shaderFor(rect));
+  var filled = PaintSpec(box.fill, gradient: box.fillFade);
+  if (filled.shows) {
+    canvas.drawRRect(box.rounded(rect), filled.into(Paint(), rect));
   }
   // A picture or a pattern over that, cut to the box's own shape -- the same
   // cut the letters get, since it is the same question of a different shape.
@@ -1162,10 +1153,8 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
   }
   if (!box.hasBorder) return;
 
-  var paint = Paint()
-    ..color = box.borderColor
-    ..shader =
-        PaintSpec(box.borderColor, gradient: box.borderFade).shaderFor(rect);
+  var paint = PaintSpec(box.borderColor, gradient: box.borderFade)
+      .into(Paint(), rect);
 
   var even = box.evenBorder;
   if (even != null) {

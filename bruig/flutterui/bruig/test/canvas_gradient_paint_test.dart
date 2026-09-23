@@ -123,6 +123,80 @@ void main() {
     await fadesDown(tester, (canvas) => paintTable(canvas, area, e));
   });
 
+  /// brightest is the most colour anywhere on row [y]: the sum of the red
+  /// and the blue, which is how strongly the fade has actually landed.
+  Future<int> brightest(void Function(ui.Canvas) draw, int y) async {
+    var row = await rowOf(draw, y);
+    var most = 0;
+    for (var p in row) {
+      var lit = ((p >> 24) & 0xFF) + ((p >> 8) & 0xFF);
+      if (lit > most) most = lit;
+    }
+    return most;
+  }
+
+  testWidgets("a fade is not dimmed by the colour it replaced",
+      (tester) async {
+    // A paint's own alpha multiplies whatever its shader draws, so the flat
+    // colour left on the paint was knocking the whole fade back by it: the
+    // transparency set on the sliders tab was being applied on top of a
+    // gradient whose own colours had already said what they were.
+    var faded = const ShapeElement(
+      ElementBase(id: "s", width: 120, height: 120),
+      fill: Color(0x403D7EFF),
+    ).copyWith(fillFade: _fade);
+    var solid = const ShapeElement(
+      ElementBase(id: "s", width: 120, height: 120),
+      fill: _from,
+    ).copyWith(fillFade: _fade);
+
+    late int dim;
+    late int full;
+    await tester.runAsync(() async {
+      dim = await brightest((canvas) => paintElement(canvas, faded, 0), 108);
+      full = await brightest((canvas) => paintElement(canvas, solid, 0), 108);
+    });
+    expect(full, greaterThan(300), reason: "the second colour, at full");
+    // Not quite the full reading: at the bottom the fade still carries a
+    // little of the first colour, which is now a transparent one. Nowhere
+    // near the quarter the paint's alpha was knocking it down to.
+    expect(dim, greaterThan(full * 0.85),
+        reason: "and nearly all of it at the end the first colour is not at");
+  });
+
+  testWidgets("and a fade shows even where that colour has nothing left",
+      (tester) async {
+    // Turning the colour all the way down is what somebody on their way to
+    // the gradient tab may well have done. A painter that asked only whether
+    // the flat colour had any alpha in it drew nothing at all.
+    var shape = const ShapeElement(
+      ElementBase(id: "s", width: 120, height: 120),
+      fill: Color(0x00000000),
+    ).copyWith(fillFade: _fade);
+    const box = BoxSpec(fill: Color(0x00000000), fillFade: _fade);
+    var table = const TableElement(
+      ElementBase(id: "t", width: 120, height: 120),
+      rows: [
+        ["a", "b"],
+        ["c", "d"],
+      ],
+      headerRow: false,
+      cellFill: Color(0x00000000),
+    ).copyWith(cellFade: _fade);
+
+    late List<int> drawn;
+    await tester.runAsync(() async {
+      drawn = [
+        await brightest((canvas) => paintElement(canvas, shape, 0), 108),
+        await brightest((canvas) => paintBox(canvas, area, box), 108),
+        await brightest((canvas) => paintTable(canvas, area, table), 108),
+      ];
+    });
+    for (var lit in drawn) {
+      expect(lit, greaterThan(300), reason: "all three drew the fade: $drawn");
+    }
+  });
+
   testWidgets("and a flat colour stays flat", (tester) async {
     // The other half of every one of these: no second colour, no fade.
     const e = ShapeElement(

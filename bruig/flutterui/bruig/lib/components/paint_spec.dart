@@ -381,6 +381,34 @@ class PaintSpec {
     return ui.Gradient.linear(a, b, colours, places);
   }
 
+  /// into sets [paint]'s colour and its shader together, which is the only
+  /// safe way to give a paint both.
+  ///
+  /// A paint's own alpha multiplies whatever its shader draws. So a flat
+  /// colour left on a paint that has been given a fade dims every stop of
+  /// that fade by it -- and a colour turned all the way down, which is what
+  /// somebody who set the transparency on the sliders tab and then went to
+  /// the gradient tab has left behind, makes the whole fade disappear.
+  ///
+  /// Where there is a shader the paint is opaque and the ramp carries each
+  /// stop's own alpha; where there is none the colour is the colour.
+  Paint into(Paint paint, Rect area, {double alpha = 1}) {
+    var shader = shaderFor(area, alpha: alpha);
+    paint.shader = shader;
+    paint.color = shader != null
+        ? const Color(0xFF000000)
+        : (alpha >= 1 ? color : color.withValues(alpha: color.a * alpha));
+    return paint;
+  }
+
+  /// shows is whether there is anything to draw: a colour with something in
+  /// it, or a fade, whose own colours decide.
+  ///
+  /// The pair that goes with [into]: a painter that asked only whether the
+  /// flat colour had any alpha left drew nothing at all for a gradient set
+  /// over a colour turned down to nothing.
+  bool get shows => color.a > 0 || gradient != null;
+
   /// toJson is an int when this is one colour and a map when it fades, so a
   /// document written before gradients existed still reads, and one written
   /// after it stays as small as it was for the colours that never fade.

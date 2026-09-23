@@ -73,6 +73,15 @@ Color sliceColour(ChartElement e, int i) {
 ui.Shader? seriesShader(ChartSeries series, Rect area, {double alpha = 1}) =>
     series.paint.shaderFor(area, alpha: alpha);
 
+/// underShader is the colour to give a paint that has been handed a shader.
+///
+/// Opaque, always: a paint's own alpha multiplies whatever its shader draws,
+/// so leaving the flat colour on a paint that is being drawn with a fade
+/// applies that alpha twice -- once in the ramp and again over the top of it.
+/// The flat colour is what is used when there is no shader to draw instead.
+ui.Color underShader(ui.Color flat, ui.Shader? shader) =>
+    shader == null ? flat : const ui.Color(0xFF000000);
+
 /// colouredByValue is whether a type takes its colours from the values rather
 /// than from the series they are in.
 bool colouredByValue(ChartType type) =>

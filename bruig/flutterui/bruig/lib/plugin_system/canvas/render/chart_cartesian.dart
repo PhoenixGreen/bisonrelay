@@ -775,12 +775,16 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // series is a gradient on each of its bars, which is what a chart of
       // bars fading into the background looks like. Across the plot they
       // would each be a different flat colour.
+      var barShader = seriesShader(series, bar,
+          alpha: series.color.a == 0 ? 1 : colour.a / series.color.a);
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
           Paint()
-            ..color = colour
-            ..shader = seriesShader(series, bar,
-                alpha: series.color.a == 0 ? 1 : colour.a / series.color.a));
+            // Opaque under a shader: the ramp already carries the arrival's
+            // fade, and a paint's alpha would apply it a second time. See
+            // underShader.
+            ..color = underShader(colour, barShader)
+            ..shader = barShader);
 
       if (e.showValues && v != 0) {
         // Counting up with the bar. Clamped to the real value even when the
@@ -1044,7 +1048,7 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
         ..strokeWidth = weight
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
-        ..color = colour
+        ..color = underShader(colour, shader)
         // Across the plot, so the line changes colour along its length
         // rather than each segment being its own gradient.
         ..shader = shader;
@@ -1077,7 +1081,9 @@ void _lines(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
               // nothing at all without one. See ChartLineStyle.pattern.
               ..strokeCap = pattern == null ? StrokeCap.butt : StrokeCap.round
               ..strokeJoin = StrokeJoin.round
-              ..color = colour.withValues(alpha: colour.a * estimatedFade * 2)
+              ..color = underShader(
+                  colour.withValues(alpha: colour.a * estimatedFade * 2),
+                  shader)
               ..shader = shader);
         if (clipped) canvas.restore();
       }
