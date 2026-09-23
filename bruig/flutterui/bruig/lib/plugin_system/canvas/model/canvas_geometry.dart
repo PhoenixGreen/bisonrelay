@@ -28,6 +28,11 @@ enum CanvasRatio {
   classic("4:3", 4 / 3),
   portrait("3:4", 3 / 4),
   square("1:1", 1),
+
+  // The tallest shape a feed will show without cropping it, which is what an
+  // advertisement in one is drawn to. Named for the job: 4:5 on its own says
+  // nothing about why it is the shape to pick.
+  feedAd("4:5 · Feed ad", 4 / 5),
   banner("21:9", 21 / 9),
   wideBanner("3:1", 3),
 

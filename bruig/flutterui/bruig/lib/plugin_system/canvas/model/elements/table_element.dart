@@ -228,6 +228,24 @@ class TableCellStyle {
         nudgeY: nudgeY ?? this.nudgeY,
       );
 
+  /// scaledBy is this style at [by] times the size.
+  ///
+  /// Everything here that is a measurement, and nothing that is a fraction:
+  /// fontScale multiplies a size that is being scaled already, and scaling
+  /// it too would square the change.
+  TableCellStyle scaledBy(double by) => copyWith(
+        letterSpacing: letterSpacing * by,
+        letterWidth: letterWidth * by,
+        borderWidth: borderWidth * by,
+        radius: radius * by,
+        inset: inset * by,
+        textPad: textPad * by,
+        minWidth: minWidth * by,
+        minHeight: minHeight * by,
+        nudgeX: nudgeX * by,
+        nudgeY: nudgeY * by,
+      );
+
   Map<String, dynamic> toJson() => {
         if (background.a > 0) "bg": colorToJson(background),
         if (textColor.a > 0) "fg": colorToJson(textColor),
@@ -910,6 +928,33 @@ class TableElement extends CanvasElement {
 
   @override
   CanvasElement rebase(ElementBase base) => _copy(base);
+
+  /// scaledBy is the type, the room and the rules at [by] times the size.
+  ///
+  /// The columns and the rows are fractions of the box and follow it on their
+  /// own; the type, the padding, the rules between the cells and the chips a
+  /// rule draws are measurements, and they stayed the size they were while
+  /// the table round them changed. Holding the proportions has to hold those
+  /// too, exactly as it does on a text element -- otherwise a table dragged
+  /// to half the size is a table with the same words in half the room.
+  /// See CanvasElement.scaledBy.
+  @override
+  CanvasElement scaledBy(double by) => copyWith(
+        cellSpec: cellSpec.scaledBy(by),
+        headerSpec: headerSpec.scaledBy(by),
+        cellPadding: cellPadding * by,
+        // Only where a side has been given a figure of its own: null means
+        // "take the even padding", and a null here means "leave it alone".
+        padTop: padTop == null ? null : padTop! * by,
+        padRight: padRight == null ? null : padRight! * by,
+        padBottom: padBottom == null ? null : padBottom! * by,
+        padLeft: padLeft == null ? null : padLeft! * by,
+        gridWidth: gridWidth * by,
+        cornerRadius: cornerRadius * by,
+        rules: [
+          for (var rule in rules) rule.copyWith(style: rule.style.scaledBy(by))
+        ],
+      );
 
   TableElement copyWith({
     List<List<String>>? rows,

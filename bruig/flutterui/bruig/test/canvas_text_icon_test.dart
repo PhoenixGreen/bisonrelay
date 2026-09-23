@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -341,6 +342,73 @@ void main() {
           reason: "and the same inside a shape");
     });
 
+    testWidgets("and it can be knocked back, so it is a ground",
+        (tester) async {
+      // A picture or a pattern used behind words has no alpha of its own --
+      // a colour has one in the picker and a photograph has none -- so
+      // without this there is no way to have the picture sit *behind* the
+      // writing rather than compete with it.
+      late Map<int, int> full;
+      late Map<int, int> half;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        const painted = TextFill(kind: TextFillKind.image, assetId: "a");
+        var e = ShapeElement(
+          const ElementBase(id: "s", x: 40, y: 40, width: 200, height: 100),
+          fill: const Color(0x00000000),
+          painted: painted,
+        );
+        full = await _ink(e, pictures);
+        half = await _ink(
+            e.copyWith(painted: painted.copyWith(opacity: 0.5)), pictures);
+      });
+
+      expect(full[red] ?? 0, greaterThan(2000), reason: "all of it to start");
+      expect(half[red] ?? 0, 0, reason: "and none of it left at full strength");
+      // Half a red picture over a black ground is a dark red, and nothing
+      // else on this canvas is.
+      var dimmed = half.entries
+          .where((e) => e.value > 2000 && e.key != 0x000000FF)
+          .toList();
+      expect(dimmed, hasLength(1), reason: "one colour, half way there: $half");
+      expect((dimmed.single.key >> 24) & 0xFF, closeTo(128, 4),
+          reason: "half the red");
+      expect((dimmed.single.key >> 16) & 0xFF, 0, reason: "and no more green");
+    });
+
+    testWidgets("and an overlay can fade from one colour to another",
+        (tester) async {
+      // Like every other swatch in the panel: an overlay that runs across
+      // the picture is how a photograph is faded into a ground.
+      late Map<int, int> faded;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        faded = await _ink(
+            ShapeElement(
+              const ElementBase(id: "s", x: 40, y: 40, width: 200, height: 100),
+              painted: const TextFill(
+                  kind: TextFillKind.image,
+                  assetId: "a",
+                  blend: OverlayBlend.wash,
+                  overlay: Color(0xFF00FF00),
+                  overlayFade: GradientSpec(to: Color(0xFF0000FF), angle: 90)),
+            ),
+            pictures);
+      });
+
+      // Counted by which way each pixel leans rather than by the exact end
+      // colours: a fade reaches those at one column of pixels each.
+      var greener = 0, bluer = 0;
+      faded.forEach((pixel, count) {
+        var g = (pixel >> 16) & 0xFF, b = (pixel >> 8) & 0xFF;
+        if (g > b + 40) greener += count;
+        if (b > g + 40) bluer += count;
+      });
+      expect(greener, greaterThan(2000), reason: "green at one end: $faded");
+      expect(bluer, greaterThan(2000), reason: "blue at the other");
+      expect(faded[red] ?? 0, 0, reason: "and the picture washed over");
+    });
+
     test("and an overlay of nothing changes nothing", () {
       // None is the default and a colour with no alpha is nothing to lay on,
       // so neither reaches the canvas -- which is what keeps a blend mode
@@ -366,6 +434,10 @@ void main() {
       var overlaidBack = TextFill.fromJson(overlaid.toJson());
       expect(overlaidBack.blend, OverlayBlend.multiply);
       expect(overlaidBack.overlay, const Color(0x8000FF00));
+      var back2 = TextFill.fromJson(fill.copyWith(opacity: 0.25).toJson());
+      expect(back2.opacity, 0.25);
+      expect(fill.toJson().containsKey("opacity"), isFalse,
+          reason: "and one nobody has touched writes nothing about it");
       // And one nobody has touched writes nothing about it.
       expect(
           const TextFill(kind: TextFillKind.image, assetId: "a")

@@ -323,8 +323,9 @@ abstract class CanvasElement {
   /// can stand for what happened to both sides.
   ///
   /// The default is to change nothing, which is right for every element whose
-  /// contents are already fractions of its box: a chart, a table, a picture.
-  /// A text element is the one that is not. See TextElement.scaledBy.
+  /// contents are already fractions of its box: a chart, a picture. The ones
+  /// that carry measurements say so -- see TextElement.scaledBy and
+  /// TableElement.scaledBy.
   CanvasElement scaledBy(double by) => this;
 
   /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller

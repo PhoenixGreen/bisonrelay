@@ -1036,7 +1036,14 @@ List<Widget> fillBits(
             key: ValueKey("${keyPrefix}FillOverlay"),
             label: "Colour",
             color: fill.overlay,
+            // And two colours to fade between, like every other swatch: an
+            // overlay that runs from one colour to another across the
+            // picture is how a photograph is faded into a ground.
+            gradient: fill.overlayFade,
             onChanged: (c) => now(fill.copyWith(overlay: c)),
+            onGradientChanged: (g) => now(g == null
+                ? fill.copyWith(flatOverlay: true)
+                : fill.copyWith(overlayFade: g)),
           ),
         CanvasNumberField(
           key: ValueKey("${keyPrefix}FillSaturation"),
@@ -1150,6 +1157,21 @@ List<Widget> fillBits(
             fill.copyWith(pattern: ProceduralSpec(style: fill.pattern.style))),
       ),
     ],
+    // How much of it lands, for both kinds: a picture or a pattern knocked
+    // back is a ground rather than a thing competing with the words. A
+    // colour needs none of this -- its own alpha is in the picker.
+    if (fill.on)
+      CanvasNumberField(
+        key: ValueKey("${keyPrefix}FillOpacity"),
+        label: "Opacity",
+        value: fill.opacity,
+        min: 0,
+        max: 1,
+        decimals: 2,
+        width: 58,
+        onChanged: (v) => onChanged(fill.copyWith(opacity: v)),
+        onCommit: commit,
+      ),
     if (fill.on)
       CanvasNumberField(
         label: "Zoom",

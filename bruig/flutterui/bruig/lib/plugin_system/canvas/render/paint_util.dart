@@ -234,7 +234,18 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
       .inflate(box.shortestSide * 0.5 + 8);
   canvas.saveLayer(area, Paint());
   words();
-  canvas.saveLayer(area, Paint()..blendMode = ui.BlendMode.srcIn);
+  // srcIn cuts what is drawn here to the shape under it, and the layer's own
+  // alpha is how much of it lands: a picture knocked back to a quarter is a
+  // ground for words to sit on rather than a thing competing with them. The
+  // alpha goes on the layer rather than on each thing drawn in it, so a
+  // pattern's ground and its ink fade together instead of the ink showing
+  // through the ground.
+  var through = fill.opacity.clamp(0.0, 1.0);
+  canvas.saveLayer(
+      area,
+      Paint()
+        ..blendMode = ui.BlendMode.srcIn
+        ..color = ui.Color.fromRGBO(0, 0, 0, through));
 
   // Zoomed about the middle: 1 fits what is drawn across the words, 2 shows a
   // quarter of it at twice the size.
@@ -292,11 +303,14 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
         // reach, so there is no transparent ground here for a separable mode
         // to leave its colour on -- and the srcIn above cuts the lot back to
         // the shape it is showing through anyway.
-        if (fill.blend != OverlayBlend.none && fill.overlay.a > 0) {
+        if (fill.blend != OverlayBlend.none &&
+            (fill.overlay.a > 0 || fill.overlayFade != null)) {
           canvas.drawRect(
               reach,
               Paint()
                 ..color = fill.overlay
+                ..shader = PaintSpec(fill.overlay, gradient: fill.overlayFade)
+                    .shaderFor(frame)
                 ..blendMode = fill.blend.flutter);
         }
       }

@@ -638,6 +638,53 @@ void main() {
       expect(after.items.single.gap, closeTo(10, 0.2));
     });
 
+    testWidgets("and a locked table is scaled the same way", (tester) async {
+      // The same switch has to mean the same thing on a table: the columns
+      // and the rows are fractions and follow the box on their own, but the
+      // type, the padding and the rules between the cells are measurements
+      // and stayed the size they were.
+      var table = TableElement(
+        const ElementBase(
+            id: "t", x: 100, y: 100, width: 400, height: 200, lockAspect: true),
+        rows: const [
+          ["Team", "Points"],
+          ["Leeds", "42"],
+        ],
+        cellSpec: const TextSpec(fontSize: 40),
+        headerSpec: const TextSpec(fontSize: 48),
+        cellPadding: 12,
+        gridWidth: 4,
+        cornerRadius: 8,
+        columnWidths: const [0.7, 0.3],
+        rules: const [
+          TableRule(column: "Points", style: TableCellStyle(inset: 6)),
+        ],
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(table));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      var stage = await pump(tester, controller);
+
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var from = stage.pageRect.topLeft +
+          Offset(table.x + table.width, table.y + table.height) * scale;
+      await tester.dragFrom(from, Offset(-200 * scale, -100 * scale));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("t") as TableElement;
+      expect(after.width, closeTo(200, 1));
+      expect(after.cellSpec.fontSize, closeTo(20, 0.2),
+          reason: "half the box, half the type");
+      expect(after.headerSpec.fontSize, closeTo(24, 0.2));
+      expect(after.cellPadding, closeTo(6, 0.2));
+      expect(after.gridWidth, closeTo(2, 0.1));
+      expect(after.cornerRadius, closeTo(4, 0.2));
+      expect(after.rules.single.style.inset, closeTo(3, 0.2));
+      expect(after.columnWidths, const [0.7, 0.3],
+          reason: "fractions of the box are already proportional");
+    });
+
     testWidgets("and the edge of the same box still resizes it",
         (tester) async {
       // The other half: keeping the middle free must not put the grips out of

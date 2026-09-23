@@ -313,6 +313,21 @@ void main() {
     // Rounded rather than truncated: truncating leaves half a pixel of
     // background along the bottom edge of every export.
     expect(const CanvasSize(ratio: CanvasRatio.wide, width: 1281).height, 721);
+    // The tallest a feed will show without cropping: 1080 across, 1350 down.
+    expect(const CanvasSize(ratio: CanvasRatio.feedAd, width: 1080).height,
+        1350);
+  });
+
+  test("a shape saved by name comes back as itself", () {
+    // The shapes are saved by name, so a value added in the middle of the
+    // list does not renumber the ones after it -- and one that never made it
+    // into the dropdown is a shape nobody can pick.
+    for (var ratio in CanvasRatio.values) {
+      var document = CanvasDocument(size: CanvasSize(ratio: ratio, width: 800));
+      var back = CanvasDocument.decode(document.encode());
+      expect(back!.size.ratio, ratio, reason: ratio.label);
+      expect(ratio.label.trim(), isNotEmpty);
+    }
   });
 
   test("every preset builds, encodes and reloads", () {

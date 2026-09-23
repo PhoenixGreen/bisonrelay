@@ -166,6 +166,20 @@ class TextFill {
   final Color overlay;
   final OverlayBlend blend;
 
+  /// overlayFade fades the overlay from one colour to another across what it
+  /// is laid on, the way every other colour in the panel can fade. Null is
+  /// the flat colour.
+  final GradientSpec? overlayFade;
+
+  /// opacity is how much of what is painted here actually lands: 1 is all of
+  /// it, 0 none.
+  ///
+  /// What a picture or a pattern used behind something needs and a colour
+  /// does not -- a colour has an alpha of its own in the picker, and a
+  /// photograph has none. Knocking the picture back is how it becomes a
+  /// ground for words to sit on rather than a thing competing with them.
+  final double opacity;
+
   /// locked carries what shows through the words along with them while they
   /// are arriving, instead of leaving it pinned to the box.
   ///
@@ -192,6 +206,8 @@ class TextFill {
     this.brightness = 1,
     this.overlay = const Color(0x00000000),
     this.blend = OverlayBlend.none,
+    this.overlayFade,
+    this.opacity = 1,
     this.locked = false,
   });
 
@@ -213,6 +229,13 @@ class TextFill {
     double? brightness,
     Color? overlay,
     OverlayBlend? blend,
+    GradientSpec? overlayFade,
+    double? opacity,
+
+    /// flatOverlay takes the fade away rather than replacing it, since a null
+    /// passed to [overlayFade] means "leave it alone" like every other null
+    /// here.
+    bool flatOverlay = false,
   }) =>
       TextFill(
         kind: kind ?? this.kind,
@@ -226,6 +249,8 @@ class TextFill {
         brightness: brightness ?? this.brightness,
         overlay: overlay ?? this.overlay,
         blend: blend ?? this.blend,
+        overlayFade: flatOverlay ? null : (overlayFade ?? this.overlayFade),
+        opacity: opacity ?? this.opacity,
       );
 
   Map<String, dynamic> toJson() => {
@@ -240,6 +265,8 @@ class TextFill {
         if (brightness != 1) "bri": brightness,
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (blend != OverlayBlend.none) "blend": blend.name,
+        if (overlayFade != null) "overlayFade": overlayFade!.toJson(),
+        if (opacity != 1) "opacity": opacity,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
@@ -256,6 +283,10 @@ class TextFill {
         brightness: jsonDouble(json["bri"], 1).clamp(0.0, 3.0),
         overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
         blend: OverlayBlend.fromName(json["blend"] as String?),
+        overlayFade: json["overlayFade"] is Map<String, dynamic>
+            ? GradientSpec.fromJson(json["overlayFade"] as Map<String, dynamic>)
+            : null,
+        opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
       );
 }
 

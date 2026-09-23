@@ -7364,6 +7364,23 @@ void main() {
       expect(textIn(controller).textSpec.fill.blend, OverlayBlend.multiply);
       expect(find.byKey(const ValueKey("textFillOverlay")), findsOneWidget,
           reason: "and now a colour to lay");
+      expect(
+          tester
+              .widget<CanvasColorButton>(
+                  find.byKey(const ValueKey("textFillOverlay")))
+              .onGradientChanged,
+          isNotNull,
+          reason: "and two to fade between, like every other swatch");
+
+      // And how much of the picture lands at all, which a colour does not
+      // need -- its alpha is in the picker -- and a photograph has no other
+      // way to get.
+      var opacity = find.byKey(const ValueKey("textFillOpacity"));
+      await tester.ensureVisible(opacity);
+      await tester.pumpAndSettle();
+      await tester.enterText(opacity, "0.25");
+      await tester.pumpAndSettle();
+      expect(textIn(controller).textSpec.fill.opacity, 0.25);
     });
 
     testWidgets("the box can be painted with a picture or a pattern too",
