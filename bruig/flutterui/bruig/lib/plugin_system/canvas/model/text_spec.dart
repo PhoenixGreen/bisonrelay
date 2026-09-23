@@ -828,6 +828,7 @@ class BoxSpec {
   /// through copyWith they would have survived it.
   BoxSpec withCorners(Corners corners) => BoxSpec(
       fill: fill,
+      painted: painted,
       borderWidth: borderWidth,
       bwL: bwL,
       bwT: bwT,
@@ -849,6 +850,7 @@ class BoxSpec {
 
   BoxSpec withRoom(Room room) => BoxSpec(
       fill: fill,
+      painted: painted,
       borderWidth: borderWidth,
       bwL: bwL,
       bwT: bwT,
@@ -873,6 +875,7 @@ class BoxSpec {
   /// not a copyWith.
   BoxSpec withBorders(Room room) => BoxSpec(
       fill: fill,
+      painted: painted,
       borderWidth: room.all,
       bwL: room.l,
       bwT: room.t,

@@ -7295,7 +7295,7 @@ void main() {
       }
 
       expect(find.byKey(const ValueKey("textItemFill0")), findsOneWidget);
-      expect(find.byKey(const ValueKey("textItemRound0")), findsNothing,
+      expect(find.byKey(const ValueKey("textItem0Radius")), findsNothing,
           reason: "nothing to round until something is painted");
 
       // Painted, and the rest comes with it: the corners and the room
@@ -7306,11 +7306,13 @@ void main() {
       ]));
       await tester.pumpAndSettle();
 
+      // The same controls every other box gets, from the same place: the one
+      // number and the four beside it, for the corners and for the room.
       for (var key in [
-        "textItemRound0",
-        "textItemPad0",
-        "textItemRoundTL0",
-        "textItemPadLeft0",
+        "textItem0Radius",
+        "textItem0Radius↖",
+        "textItem0Padding",
+        "textItem0PadLeft",
       ]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }

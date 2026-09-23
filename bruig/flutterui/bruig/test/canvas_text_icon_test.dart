@@ -206,6 +206,39 @@ void main() {
       expect(const BoxSpec().toJson().containsKey("painted"), isFalse);
     });
 
+    test("and it keeps it when a corner or a side is set", () {
+      // withCorners and withRoom build a box field by field rather than
+      // through copyWith, on purpose -- setting all four corners to one
+      // number means forgetting the three that had their own. A field left
+      // off that list is a field that rounding a corner throws away, which
+      // is what happened to the picture.
+      var box = const BoxSpec(padding: 4).copyWith(
+          painted: const TextFill(kind: TextFillKind.image, assetId: "a"));
+      expect(box.withCorners(box.corners.withEven(8)).painted.assetId, "a");
+      expect(box.withRoom(box.pad.withEven(6)).painted.assetId, "a");
+      expect(box.withBorders(box.pad.withEven(2)).painted.assetId, "a");
+    });
+
+    test("an even radius forgets the corners that had their own", () {
+      // Reported as "the round setting doesn't appear to be working": three
+      // corners had been set on their own, so the number that sets all four
+      // was being overruled by every one of them.
+      var uneven = const BoxSpec()
+          .withCorners(const Corners(all: 0, tl: 0, tr: 10, br: 10, bl: 0));
+      expect(uneven.corners.even, isNull, reason: "they differ");
+
+      var round = uneven.withCorners(uneven.corners.withEven(12));
+      expect(round.corners.even, 12);
+      for (var corner in [
+        round.corners.topLeft,
+        round.corners.topRight,
+        round.corners.bottomRight,
+        round.corners.bottomLeft,
+      ]) {
+        expect(corner, 12);
+      }
+    });
+
     test("it survives being saved", () {
       var element = _headline(
         icon: const TextIcon(
