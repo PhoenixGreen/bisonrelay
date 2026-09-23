@@ -2386,6 +2386,41 @@ void main() {
           270);
     });
 
+    testWidgets("choosing a stroke colour gives the shape a stroke",
+        (tester) async {
+      // A shape arrives with a stroke 0 wide, and a stroke 0 wide is not
+      // drawn however it is coloured -- so the swatch called Colour was a
+      // setting that did nothing at all until a number was typed into the
+      // box beside it. Asking for a colour is asking for a line.
+      var controller = await panel(tester, shapeOf(ShapeKind.star));
+      expect((controller.document.elements.single as ShapeElement).strokeWidth,
+          0,
+          reason: "otherwise this test is not asking anything");
+
+      var colour = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Colour");
+      expect(colour, findsOneWidget);
+      tester.widget<CanvasColorButton>(colour).onChanged(const Color(0xFF00FF00));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as ShapeElement;
+      expect(after.strokeColor, const Color(0xFF00FF00));
+      expect(after.strokeWidth, greaterThan(0), reason: "and a line to see it on");
+    });
+
+    testWidgets("but leaves a stroke it already has alone", (tester) async {
+      var controller = await panel(
+          tester,
+          ShapeElement(const ElementBase(id: "s", width: 200, height: 120),
+              shape: ShapeKind.star, strokeWidth: 12));
+      var colour = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Colour");
+      tester.widget<CanvasColorButton>(colour).onChanged(const Color(0xFF00FF00));
+      await tester.pumpAndSettle();
+      expect((controller.document.elements.single as ShapeElement).strokeWidth,
+          12);
+    });
+
     testWidgets("the curl appears only for a curved tail", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble));
       await tail(tester);
@@ -7285,6 +7320,50 @@ void main() {
       expect(tester.getRect(outline).top,
           greaterThan(tester.getRect(kind).bottom - 0.5),
           reason: "and the outline starts a line of its own");
+    });
+
+    testWidgets("a picture showing through gets a picture element's Look",
+        (tester) async {
+      // The same two settings, under the same two names and in the same
+      // order: Filter and Overlay. A Look that was named differently and had
+      // half of it missing was a second answer to a question that has one.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        textSpec: const TextSpec(
+            fill: TextFill(kind: TextFillKind.image, assetId: "abcdefghij12")),
+      );
+      var controller = await panel(tester, element: element);
+      var own = find.ancestor(
+          of: find.byWidgetPredicate(
+              (w) => w is CanvasDropdown<String> && w.label == "Font"),
+          matching: find.byType(CanvasMoreGroup));
+      var button = find.descendant(of: own, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      var filter = find.byKey(const ValueKey("textFillLook"));
+      var overlay = find.byKey(const ValueKey("textFillBlend"));
+      expect(tester.widget<CanvasDropdown<ImageFilterPreset>>(filter).label,
+          "Filter");
+      expect(tester.widget<CanvasDropdown<OverlayBlend>>(overlay).label,
+          "Overlay");
+      // And no colour to choose until there is something to lay it with.
+      expect(find.byKey(const ValueKey("textFillOverlay")), findsNothing);
+
+      await tester.ensureVisible(overlay);
+      await tester.pumpAndSettle();
+      await tester.tap(overlay);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(OverlayBlend.multiply.label).last);
+      await tester.pumpAndSettle();
+      expect(textIn(controller).textSpec.fill.blend, OverlayBlend.multiply);
+      expect(find.byKey(const ValueKey("textFillOverlay")), findsOneWidget,
+          reason: "and now a colour to lay");
     });
 
     testWidgets("the box can be painted with a picture or a pattern too",

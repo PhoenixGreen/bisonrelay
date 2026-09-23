@@ -300,6 +300,57 @@ void main() {
           reason: "but still a picture, in greys");
     });
 
+    testWidgets("and an overlay tints it, the way it tints a picture",
+        (tester) async {
+      // The other half of a picture element's Look, on a picture showing
+      // through something else: a named filter cannot put a photograph into
+      // the palette, and an overlay can.
+      late Map<int, int> plain;
+      late Map<int, int> washed;
+      late Map<int, int> shape;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        const painted = TextFill(kind: TextFillKind.image, assetId: "a");
+        var e = TextElement(
+          const ElementBase(id: "t", x: 40, y: 40, width: 320, height: 120),
+          text: "Headline",
+          box: const BoxSpec(padding: 10, painted: painted),
+        );
+        plain = await _ink(e, pictures);
+        washed = await _ink(
+            e.copyWith(
+                box: e.box.copyWith(
+                    painted: painted.copyWith(
+                        blend: OverlayBlend.wash,
+                        overlay: const Color(0xFF00FF00)))),
+            pictures);
+        // And in a shape, which paints its picture through the same door.
+        shape = await _ink(
+            ShapeElement(
+              const ElementBase(id: "s", x: 40, y: 40, width: 200, height: 100),
+              painted: painted.copyWith(
+                  blend: OverlayBlend.wash, overlay: const Color(0xFF00FF00)),
+            ),
+            pictures);
+      });
+
+      expect(plain[red] ?? 0, greaterThan(2000), reason: "red to begin with");
+      expect(washed[red] ?? 0, 0, reason: "and none of it left");
+      expect(washed[green] ?? 0, greaterThan(2000), reason: "washed green");
+      expect(shape[green] ?? 0, greaterThan(2000),
+          reason: "and the same inside a shape");
+    });
+
+    test("and an overlay of nothing changes nothing", () {
+      // None is the default and a colour with no alpha is nothing to lay on,
+      // so neither reaches the canvas -- which is what keeps a blend mode
+      // from being applied to every picture in the document.
+      const fill = TextFill(kind: TextFillKind.image, assetId: "a");
+      expect(fill.blend, OverlayBlend.none);
+      expect(fill.overlay.a, 0);
+      expect(fill.toJson().containsKey("blend"), isFalse);
+    });
+
     test("and the look survives being saved", () {
       var fill = const TextFill(kind: TextFillKind.image, assetId: "a")
           .copyWith(
@@ -310,6 +361,11 @@ void main() {
       expect(back.filter, ImageFilterPreset.sepia);
       expect(back.saturation, 0.4);
       expect(back.brightness, 0.8);
+      var overlaid = fill.copyWith(
+          blend: OverlayBlend.multiply, overlay: const Color(0x8000FF00));
+      var overlaidBack = TextFill.fromJson(overlaid.toJson());
+      expect(overlaidBack.blend, OverlayBlend.multiply);
+      expect(overlaidBack.overlay, const Color(0x8000FF00));
       // And one nobody has touched writes nothing about it.
       expect(
           const TextFill(kind: TextFillKind.image, assetId: "a")

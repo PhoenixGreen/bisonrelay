@@ -156,6 +156,16 @@ class TextFill {
   final double saturation;
   final double brightness;
 
+  /// overlay is a colour laid over the picture and blend is how, which is the
+  /// second half of what a picture element calls its Look.
+  ///
+  /// The same pair, with the same meaning: a photograph showing through a
+  /// headline wants to be tinted to the palette exactly as often as one in a
+  /// frame does, and Filter on its own cannot do it. The colour is only laid
+  /// where there is picture -- see paintThroughText.
+  final Color overlay;
+  final OverlayBlend blend;
+
   /// locked carries what shows through the words along with them while they
   /// are arriving, instead of leaving it pinned to the box.
   ///
@@ -180,6 +190,8 @@ class TextFill {
     this.filter = ImageFilterPreset.none,
     this.saturation = 1,
     this.brightness = 1,
+    this.overlay = const Color(0x00000000),
+    this.blend = OverlayBlend.none,
     this.locked = false,
   });
 
@@ -199,6 +211,8 @@ class TextFill {
     ImageFilterPreset? filter,
     double? saturation,
     double? brightness,
+    Color? overlay,
+    OverlayBlend? blend,
   }) =>
       TextFill(
         kind: kind ?? this.kind,
@@ -210,6 +224,8 @@ class TextFill {
         filter: filter ?? this.filter,
         saturation: saturation ?? this.saturation,
         brightness: brightness ?? this.brightness,
+        overlay: overlay ?? this.overlay,
+        blend: blend ?? this.blend,
       );
 
   Map<String, dynamic> toJson() => {
@@ -222,6 +238,8 @@ class TextFill {
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (saturation != 1) "sat": saturation,
         if (brightness != 1) "bri": brightness,
+        if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
+        if (blend != OverlayBlend.none) "blend": blend.name,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
@@ -236,6 +254,8 @@ class TextFill {
         filter: ImageFilterPreset.fromName(json["filter"] as String?),
         saturation: jsonDouble(json["sat"], 1).clamp(0.0, 3.0),
         brightness: jsonDouble(json["bri"], 1).clamp(0.0, 3.0),
+        overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
+        blend: OverlayBlend.fromName(json["blend"] as String?),
       );
 }
 

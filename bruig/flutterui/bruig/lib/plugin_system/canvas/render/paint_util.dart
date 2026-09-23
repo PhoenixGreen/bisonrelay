@@ -283,6 +283,22 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
             colorMatrix(fill.saturation, fill.brightness));
         _paintFillImage(canvas, reach, frame, image, fill.tile,
             matrix == null ? null : ColorFilter.matrix(matrix));
+
+        // And the overlay over it, the other half of a picture element's
+        // Look. Inside this layer, where the only thing under the colour is
+        // the picture: a blend mode blends against whatever is already on the
+        // canvas, and outside the layer that would be the background and
+        // every element drawn before this one. The picture covers the whole
+        // reach, so there is no transparent ground here for a separable mode
+        // to leave its colour on -- and the srcIn above cuts the lot back to
+        // the shape it is showing through anyway.
+        if (fill.blend != OverlayBlend.none && fill.overlay.a > 0) {
+          canvas.drawRect(
+              reach,
+              Paint()
+                ..color = fill.overlay
+                ..blendMode = fill.blend.flutter);
+        }
       }
     case TextFillKind.color:
       break;

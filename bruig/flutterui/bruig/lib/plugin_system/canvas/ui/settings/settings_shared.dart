@@ -1011,35 +1011,52 @@ List<Widget> fillBits(
           onChanged: (v) => now(fill.copyWith(tile: v)),
         ),
         // What a picture element calls its Look, on the picture that is
-        // showing through something else. The same three, because it is the
-        // same picture and the same question about it.
+        // showing through something else: the named filter and the overlay,
+        // with the same names and in the same order, because it is the same
+        // picture and the same question about it. The two sliders a picture
+        // element keeps beside its Fit follow them.
         CanvasDropdown<ImageFilterPreset>(
           key: ValueKey("${keyPrefix}FillLook"),
-          label: "Look",
+          label: "Filter",
           value: fill.filter,
           width: 106,
           options: [for (var f in ImageFilterPreset.values) (f, f.label)],
           onChanged: (v) => now(fill.copyWith(filter: v)),
         ),
+        CanvasDropdown<OverlayBlend>(
+          key: ValueKey("${keyPrefix}FillBlend"),
+          label: "Overlay",
+          value: fill.blend,
+          width: 106,
+          options: [for (var b in OverlayBlend.values) (b, b.label)],
+          onChanged: (v) => now(fill.copyWith(blend: v)),
+        ),
+        if (fill.blend != OverlayBlend.none)
+          CanvasColorButton(
+            key: ValueKey("${keyPrefix}FillOverlay"),
+            label: "Colour",
+            color: fill.overlay,
+            onChanged: (c) => now(fill.copyWith(overlay: c)),
+          ),
         CanvasNumberField(
           key: ValueKey("${keyPrefix}FillSaturation"),
-          label: "Colour",
+          label: "Saturation",
           value: fill.saturation,
           min: 0,
           max: 3,
           decimals: 2,
-          width: 54,
+          width: 62,
           onChanged: (v) => onChanged(fill.copyWith(saturation: v)),
           onCommit: commit,
         ),
         CanvasNumberField(
           key: ValueKey("${keyPrefix}FillBrightness"),
-          label: "Light",
+          label: "Brightness",
           value: fill.brightness,
           min: 0,
           max: 3,
           decimals: 2,
-          width: 54,
+          width: 62,
           onChanged: (v) => onChanged(fill.copyWith(brightness: v)),
           onCommit: commit,
         ),

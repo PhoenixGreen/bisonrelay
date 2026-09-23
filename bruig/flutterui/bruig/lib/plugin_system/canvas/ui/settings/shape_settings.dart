@@ -2,10 +2,18 @@ import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // shape settings.dart is a shape's settings.
+
+/// _strokeToSee is the width to give a shape that is being stroked for the
+/// first time: enough to see on a big shape, not enough to swallow a small
+/// one.
+double _strokeToSee(ShapeElement e) =>
+    (math.min(e.width, e.height) * 0.015).clamp(1.0, 6.0);
 
 List<Widget> shapeSettings(
         BuildContext context,
@@ -68,20 +76,33 @@ List<Widget> shapeSettings(
               onChanged: (v) => write(e.copyWith(strokeWidth: v)),
               onCommit: commit,
             ),
+            // The stroke's colour, and -- on a shape that has no stroke yet
+            // -- a stroke to put it on.
+            //
+            // A shape arrives with a width of 0, and a stroke 0 wide is not
+            // drawn however it is coloured: choosing a colour here was a
+            // setting that did nothing, over and over, until somebody
+            // happened to type a number into the box beside it. Asking for a
+            // colour is asking for a line, so this gives it one.
             CanvasColorButton(
               label: "Colour",
               color: e.strokeColor,
               gradient: e.strokeFade,
               onChanged: (c) {
                 begin();
-                write(e.copyWith(strokeColor: c));
+                write(e.copyWith(
+                    strokeColor: c,
+                    strokeWidth: e.strokeWidth > 0 ? null : _strokeToSee(e)));
                 commit();
               },
               onGradientChanged: (g) {
                 begin();
                 write(g == null
                     ? e.copyWith(flatStroke: true)
-                    : e.copyWith(strokeFade: g));
+                    : e.copyWith(
+                        strokeFade: g,
+                        strokeWidth:
+                            e.strokeWidth > 0 ? null : _strokeToSee(e)));
                 commit();
               },
             ),
