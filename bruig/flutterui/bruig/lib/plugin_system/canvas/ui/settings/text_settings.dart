@@ -175,7 +175,12 @@ List<Widget> textSettings(
     // should not mean first making a part that covers it.
     ...typeGroups(
         e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
-        hideCaption: true,
+        // Captioned with what the element is called, once it carries pieces:
+        // a run of captioned rows with an uncaptioned one at the top of it
+        // reads as the pieces belonging to something unnamed. On its own the
+        // panel's header has already said it.
+        label: e.name,
+        hideCaption: e.items.isEmpty,
         fill: true,
         context: context,
         remember: "text",
@@ -1638,6 +1643,17 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
   }
 
   return [
+    // What to call this row. The caption says what the piece says otherwise,
+    // which names a picture "Picture" however many of them there are.
+    CanvasTextField(
+      key: ValueKey("textItemName$at"),
+      label: "Called",
+      value: item.name,
+      hint: item.isIcon ? "Picture" : "the words",
+      width: 96,
+      onChanged: (v) => put(item.copyWith(name: v), live: true),
+      onCommit: commit,
+    ),
     CanvasDropdown<TextSlot>(
       key: ValueKey("textItemSlot$at"),
       label: "Where",
@@ -1691,19 +1707,37 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       // second set to keep level with the first -- and the second set had
       // "TL" where the first has an arrow, and an even number that could not
       // forget a corner that had been set on its own.
+      // The two even numbers beside the colour they belong to, and the four
+      // corners and the four sides on lines of their own under it -- which is
+      // the shape these controls take everywhere else on the panel.
       ...cornerFields(
           item.box.corners,
           (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
           commit,
           label: "Round",
-          prefix: "textItem$at"),
-      const CanvasLineBreak(),
+          prefix: "textItem$at",
+          part: SidePart.all),
       ...roomFields(
           item.box.pad,
           (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
           commit,
           label: "Inside",
-          prefix: "textItem$at"),
+          prefix: "textItem$at",
+          part: SidePart.all),
+      const CanvasLineBreak(),
+      ...cornerFields(
+          item.box.corners,
+          (c) => put(item.copyWith(box: item.box.withCorners(c)), live: true),
+          commit,
+          prefix: "textItem$at",
+          part: SidePart.sides),
+      const CanvasLineBreak(),
+      ...roomFields(
+          item.box.pad,
+          (r) => put(item.copyWith(box: item.box.withRoom(r)), live: true),
+          commit,
+          prefix: "textItem$at",
+          part: SidePart.sides),
     ],
   ];
 }

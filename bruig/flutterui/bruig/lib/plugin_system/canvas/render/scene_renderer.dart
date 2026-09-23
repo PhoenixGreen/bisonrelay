@@ -417,7 +417,7 @@ void paintElement(
           pose: pose, frame: frame, images: images, skipItem: skipTextItem);
     case ShapeElement e:
       paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintShape(canvas, bounds, e));
+          () => _paintShape(canvas, bounds, e, images));
     case LineElement e:
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintLine(canvas, _bowed(e, pose)));
@@ -953,7 +953,8 @@ Offset _quadratic(Offset a, Offset control, Offset b, double t) {
   );
 }
 
-void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
+void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e,
+    [CanvasImageSource? images]) {
   var rect = bounds;
   if (e.shape.isRegular) {
     var side = rect.shortestSide;
@@ -977,6 +978,12 @@ void _paintShape(ui.Canvas canvas, Rect bounds, ShapeElement e) {
         Paint()
           ..color = e.fill
           ..shader = PaintSpec(e.fill, gradient: e.fillFade).shaderFor(area));
+  }
+  // A picture or a pattern inside it, cut to the outline -- the same cut the
+  // letters and a box get, of a third shape. See TextFill.
+  if (e.painted.on) {
+    paintThroughText(
+        canvas, area, e.painted, images, () => canvas.drawPath(path, Paint()));
   }
   if (e.strokeWidth > 0 && e.strokeColor.a > 0) {
     canvas.drawPath(

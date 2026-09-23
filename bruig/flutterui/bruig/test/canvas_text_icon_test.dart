@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
@@ -49,7 +50,11 @@ Future<ui.Image> _square(Color color) async {
   return recorder.endRecording().toImage(20, 20);
 }
 
-Future<Map<int, int>> _ink(TextElement element, CanvasImageSource? images,
+Future<Map<int, int>> _inkOf(
+        CanvasElement element, CanvasImageSource? images) =>
+    _ink(element, images);
+
+Future<Map<int, int>> _ink(CanvasElement element, CanvasImageSource? images,
     {Rect? within}) async {
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
@@ -237,6 +242,32 @@ void main() {
       ]) {
         expect(corner, 12);
       }
+    });
+
+    testWidgets("and a shape can be filled with one, cut to its outline",
+        (tester) async {
+      late Map<int, int> plain;
+      late Map<int, int> painted;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        var shape = ShapeElement(
+          const ElementBase(id: "s", x: 40, y: 20, width: 200, height: 120),
+          shape: ShapeKind.ellipse,
+          fill: const Color(0xFF223344),
+        );
+        plain = await _inkOf(shape, pictures);
+        painted = await _inkOf(
+            shape.copyWith(
+                painted:
+                    const TextFill(kind: TextFillKind.image, assetId: "a")),
+            pictures);
+      });
+
+      expect(plain[red] ?? 0, 0);
+      expect(painted[red] ?? 0, greaterThan(2000));
+      // Cut to the ellipse: a corner of its bounding box is not filled.
+      expect(painted[red]! < 200 * 120, isTrue,
+          reason: "an ellipse is smaller than the box round it");
     });
 
     test("it survives being saved", () {

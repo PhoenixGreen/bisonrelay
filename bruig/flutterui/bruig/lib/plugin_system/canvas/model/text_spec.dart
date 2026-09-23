@@ -387,6 +387,20 @@ class TextSpec {
   FontWeight get fontWeight =>
       FontWeight.values[((weight ~/ 100) - 1).clamp(0, 8)];
 
+  /// scaledBy is this type at [by] times the size: the point size and
+  /// everything measured in design units with it.
+  ///
+  /// Not the line height, which is a multiple of the point size and so scales
+  /// with it, and not a colour or a weight, which have no size to scale.
+  TextSpec scaledBy(double by) => copyWith(
+        fontSize: fontSize * by,
+        letterSpacing: letterSpacing * by,
+        outlineWidth: outlineWidth * by,
+        shadowBlur: shadowBlur * by,
+        shadowDistance: shadowDistance * by,
+        glowBlur: glowBlur * by,
+      );
+
   Map<String, dynamic> toJson() => {
         "font": fontFamily,
         "size": fontSize,
@@ -550,6 +564,15 @@ class Corners {
   /// withEven sets all four at once, forgetting whatever they had.
   Corners withEven(double radius) => Corners(all: radius);
 
+  /// scaledBy is all four at [by] times the size, overrides and all.
+  Corners scaledBy(double by) => Corners(
+        all: all * by,
+        tl: tl == null ? null : tl! * by,
+        tr: tr == null ? null : tr! * by,
+        br: br == null ? null : br! * by,
+        bl: bl == null ? null : bl! * by,
+      );
+
   Corners copyWith(
           {double? all, double? tl, double? tr, double? br, double? bl}) =>
       Corners(
@@ -645,6 +668,15 @@ class Room {
       left == top && top == right && right == bottom ? left : null;
 
   Room withEven(double pad) => Room(all: pad);
+
+  /// scaledBy is all four at [by] times the size, overrides and all.
+  Room scaledBy(double by) => Room(
+        all: all * by,
+        l: l == null ? null : l! * by,
+        t: t == null ? null : t! * by,
+        r: r == null ? null : r! * by,
+        b: b == null ? null : b! * by,
+      );
 
   Room copyWith({double? all, double? l, double? t, double? r, double? b}) =>
       Room(
@@ -818,6 +850,12 @@ class BoxSpec {
   /// insetRounded is a rectangle the padding has already been taken off, with
   /// corners that stay concentric with the box's own.
   RRect insetRounded(Rect within) => corners.inside(within, pad);
+
+  /// scaledBy is this box at [by] times the size: its corners, the room
+  /// inside it and how thick its border is drawn.
+  BoxSpec scaledBy(double by) => withCorners(corners.scaledBy(by))
+      .withRoom(pad.scaledBy(by))
+      .withBorders(borders.scaledBy(by));
 
   /// withCorners and withRoom replace the whole of one of them, overrides
   /// and all.

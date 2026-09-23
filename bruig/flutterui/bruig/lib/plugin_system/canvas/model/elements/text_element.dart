@@ -325,7 +325,6 @@ class TextElement extends CanvasElement {
   final PartHighlight? highlight;
   final PartUnderline? underline;
 
-
   /// flowTo is the text element the words that do not fit run on into, or ""
   /// for none.
   ///
@@ -424,6 +423,19 @@ class TextElement extends CanvasElement {
   /// baked into [text].
   String get displayText => textSpec.textCase.apply(text);
 
+  /// scaledBy is the words, the pieces and the box at [by] times the size,
+  /// so that holding the proportions holds them of what is inside as well.
+  ///
+  /// Not the text on a curve's offset, which is a fraction of the line it
+  /// rides, and not the columns' count. See CanvasElement.scaledBy.
+  @override
+  CanvasElement scaledBy(double by) => copyWith(
+        textSpec: textSpec.scaledBy(by),
+        box: box.scaledBy(by),
+        items: [for (var item in items) item.scaledBy(by)],
+        columns: columns.copyWith(gap: columns.gap * by),
+      );
+
   @override
   CanvasElement rebase(ElementBase base) => TextElement(base,
       text: text,
@@ -518,16 +530,18 @@ class TextElement extends CanvasElement {
           autoSize: jsonBool(json["autoSize"], false),
           animation: jsonSpec(json["animation"], TextAnimation.fromJson,
               const TextAnimation()),
-          slot: json["slot"] is String
+          slot: json[
+                  "slot"] is String
               ? TextSlot.fromName(json["slot"] as String?)
               : null,
           items: _itemsFromJson(json),
           parts: _partsFromJson(json),
-          highlight: json["highlight"] is Map<String,
-                  dynamic>
-              ? PartHighlight.fromJson(json["highlight"] as Map<String,
-                  dynamic>)
-              : null,
+          highlight:
+              json["highlight"] is Map<String,
+                      dynamic>
+                  ? PartHighlight.fromJson(json["highlight"] as Map<String,
+                      dynamic>)
+                  : null,
           underline:
               json["underline"] is Map<String,
                       dynamic>

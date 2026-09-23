@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
@@ -602,6 +603,39 @@ void main() {
       expect(moved.height, closeTo(words.height, 0.01));
       expect(moved.x, greaterThan(words.x), reason: "it moved instead");
       expect(moved.y, greaterThan(words.y));
+    });
+
+    testWidgets("a locked text element is scaled by a resize, not stretched",
+        (tester) async {
+      // The whole of what the lock is for: the type, the spacing and the
+      // pieces change with the box rather than staying the size they were.
+      var words = TextElement(
+        const ElementBase(
+            id: "t", x: 100, y: 100, width: 400, height: 200, lockAspect: true),
+        text: "Spend or burn",
+        textSpec: const TextSpec(fontSize: 40),
+        items: const [
+          TextItem(id: "p", text: "01", slot: TextSlot.topLeft, gap: 20),
+        ],
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(words));
+      addTearDown(controller.dispose);
+      controller.selectOnly("t");
+      var stage = await pump(tester, controller);
+
+      // The bottom-right corner, dragged in to halve the width.
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var from = stage.pageRect.topLeft +
+          Offset(words.x + words.width, words.y + words.height) * scale;
+      await tester.dragFrom(from, Offset(-200 * scale, -100 * scale));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("t") as TextElement;
+      expect(after.width, closeTo(200, 1));
+      expect(after.textSpec.fontSize, closeTo(20, 0.2),
+          reason: "half the box, half the type");
+      expect(after.items.single.gap, closeTo(10, 0.2));
     });
 
     testWidgets("and the edge of the same box still resizes it",

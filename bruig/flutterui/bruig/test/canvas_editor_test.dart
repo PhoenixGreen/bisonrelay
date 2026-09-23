@@ -7362,6 +7362,78 @@ void main() {
       expect(back.style, stirred.style, reason: "the style it was, though");
     });
 
+    testWidgets("a piece can be given a name to find it by", (tester) async {
+      // Every picture piece said "Picture", so a card with three of them had
+      // three rows called the same thing.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "p", icon: TextIcon(assetId: "a")),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+      expect(find.text("PICTURE"), findsOneWidget,
+          reason: "before it is named");
+
+      var group = find.ancestor(
+          of: find.text("PICTURE"), matching: find.byType(CanvasMoreGroup));
+      var button =
+          find.descendant(of: group, matching: find.byIcon(Icons.tune));
+      if (button.evaluate().isNotEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      var name = find.byKey(const ValueKey("textItemName0"));
+      await tester.ensureVisible(name);
+      await tester.pumpAndSettle();
+      await tester.enterText(name, "Leeds badge");
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).items.single.name, "Leeds badge");
+      expect(find.text("LEEDS BADGE"), findsOneWidget);
+      expect(find.text("PICTURE"), findsNothing);
+    });
+
+    testWidgets("a shape can be painted with a picture or a pattern",
+        (tester) async {
+      // The same three answers the letters and a box have, cut to a third
+      // shape -- behind the button, where a thing chosen once belongs.
+      var shape = ShapeElement(
+        ElementBase(id: newElementId(), width: 300, height: 200),
+      );
+      var controller =
+          CanvasController(const CanvasDocument().addElement(shape));
+      addTearDown(controller.dispose);
+      controller.selectOnly(shape.id);
+      await pump(tester, CanvasDesignPanel(controller: controller));
+      await tester.pumpAndSettle();
+
+      var kind = find.byKey(const ValueKey("shapeFillKind"));
+      if (kind.evaluate().isEmpty) {
+        var button = find.byKey(const ValueKey("more-shapeMore"));
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Picture").last);
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.whereType<ShapeElement>().single;
+      expect(after.painted.kind, TextFillKind.image);
+      expect(find.byKey(const ValueKey("shapeFillPicture")), findsOneWidget,
+          reason: "and the buttons that name one are with the choice");
+    });
+
     testWidgets("the type settings are out on the panel, not in a section",
         (tester) async {
       // They were behind a heading that was open every time anybody looked.

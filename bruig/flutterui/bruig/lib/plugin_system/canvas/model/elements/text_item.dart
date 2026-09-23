@@ -80,6 +80,14 @@ class TextItem {
 
   final String text;
 
+  /// name is what the panel calls this piece, where somebody has named it.
+  ///
+  /// The row is captioned with what the piece *says* otherwise, which is the
+  /// right answer for words and no answer at all for a picture -- every
+  /// picture piece said "Picture", so a card with three of them had three
+  /// rows called the same thing. A name is how you find the one you meant.
+  final String name;
+
   /// spec is how this piece is set. Its own from top to bottom rather than
   /// the element's with overrides: the number and the title of a card have
   /// nothing in common but the box they are in.
@@ -150,6 +158,7 @@ class TextItem {
   const TextItem({
     required this.id,
     this.text = "",
+    this.name = "",
     this.spec = const TextSpec(),
     this.slot = TextSlot.topLeft,
     this.icon,
@@ -185,6 +194,7 @@ class TextItem {
 
   TextItem copyWith({
     String? text,
+    String? name,
     TextSpec? spec,
     TextSlot? slot,
     TextIcon? icon,
@@ -195,6 +205,7 @@ class TextItem {
       TextItem(
         id: id,
         text: text ?? this.text,
+        name: name ?? this.name,
         spec: spec ?? this.spec,
         slot: slot ?? this.slot,
         icon: icon ?? this.icon,
@@ -203,9 +214,24 @@ class TextItem {
         side: side ?? this.side,
       );
 
+  /// scaledBy is this piece at [by] times the size: its type, the room it
+  /// keeps, and whatever is behind it.
+  ///
+  /// The slot is untouched -- it is a corner of the box, which does not
+  /// change size -- and so is what it says.
+  TextItem scaledBy(double by) => copyWith(
+        spec: spec.scaledBy(by),
+        icon: icon?.copyWith(
+            size: icon!.size * by, outlineWidth: icon!.outlineWidth * by),
+        box: box.scaledBy(by),
+        gap: gap * by,
+        side: side * by,
+      );
+
   /// says is what the settings panel calls this item: its own words, cut
   /// short, or the slot it is in when it has none yet.
   String get says {
+    if (name.trim().isNotEmpty) return name.trim();
     if (isIcon) return "Picture";
     var one = text.trim().split("\n").first.trim();
     if (one.isEmpty) return slot.label;
@@ -215,6 +241,7 @@ class TextItem {
   Map<String, dynamic> toJson() => {
         "id": id,
         if (text.isNotEmpty) "t": text,
+        if (name.isNotEmpty) "name": name,
         "slot": slot.name,
         if (gap != 0) "gap": gap,
         if (side != 0) "side": side,
@@ -229,6 +256,7 @@ class TextItem {
             ? json["id"] as String
             : newElementId(),
         text: json["t"] is String ? json["t"] as String : "",
+        name: json["name"] is String ? json["name"] as String : "",
         slot: TextSlot.fromName(json["slot"] as String?),
         gap: json["gap"] is num
             ? (json["gap"] as num).toDouble().clamp(-400.0, 400.0)

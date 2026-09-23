@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -110,6 +111,29 @@ List<Widget> shapeSettings(
             ],
           ],
           more: [
+            // What the shape is painted with: a colour, a picture or a
+            // pattern, cut to its own outline. The same three answers the
+            // letters and a box have, because it is the same question of a
+            // third shape -- and behind the button, where a thing chosen once
+            // belongs. The colour keeps its swatch on the row: a picture is
+            // drawn over whatever is under it.
+            CanvasDropdown<TextFillKind>(
+              key: const ValueKey("shapeFillKind"),
+              label: "Painted with",
+              value: e.painted.kind,
+              width: 118,
+              options: [for (var k in TextFillKind.values) (k, k.label)],
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(painted: e.painted.copyWith(kind: v)));
+                commit();
+              },
+            ),
+            if (e.painted.kind != TextFillKind.color)
+              ...fillBits(context, e.painted,
+                  (f) => write(e.copyWith(painted: f)), begin, commit,
+                  keyPrefix: "shape"),
+            const CanvasLineBreak(),
             // The same four the frame round a picture has, and the same controls.
             // Only for the shapes that have corners: a circle has none, and a
             // field that does nothing is worse than no field.

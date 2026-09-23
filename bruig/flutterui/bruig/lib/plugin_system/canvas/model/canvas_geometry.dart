@@ -31,6 +31,12 @@ enum CanvasRatio {
   banner("21:9", 21 / 9),
   wideBanner("3:1", 3),
 
+  // Print shapes, named for what they are for rather than for their numbers:
+  // somebody looking for a poster is not looking for 2:3.
+  poster("2:3 · Poster", 2 / 3),
+  photo("3:2 · Photo print", 3 / 2),
+  wideStrip("5:2 · Banner", 5 / 2),
+
   // Paper. A3, A4 and A5 are the same shape -- halving an A-size folds it in
   // half, which is the whole point of the series -- so they are one ratio and
   // the difference between them is a width. The names are all in the label

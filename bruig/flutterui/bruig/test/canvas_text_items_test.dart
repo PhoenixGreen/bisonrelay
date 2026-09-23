@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -261,6 +262,52 @@ void main() {
           reason: "a resize is about the box, not about what is in it");
       expect((wider as TextElement).items.length, 2);
       expect(wider.width, 900);
+    });
+  });
+
+  group("holding the proportions", () {
+    test("scales the type, the spacing and the pieces with the box", () {
+      // Reported: the lock moved the pieces about and left them the size they
+      // were, so a card dragged to half the size was a small box with
+      // full-sized writing in it. "The proportions are held" has to mean of
+      // what is inside as well, or it is not worth a switch.
+      var card = _card(items: const [
+        TextItem(
+            id: "a",
+            text: "01",
+            slot: TextSlot.topLeft,
+            gap: 10,
+            side: 6,
+            spec: TextSpec(fontSize: 20)),
+      ]).copyWith(box: const BoxSpec(padding: 12, borderRadius: 4));
+
+      var half = card.scaledBy(0.5) as TextElement;
+      expect(half.textSpec.fontSize, card.textSpec.fontSize / 2);
+      expect(half.box.pad.left, 6);
+      expect(half.box.corners.topLeft, 2);
+
+      var piece = half.items.single;
+      expect(piece.spec.fontSize, 10);
+      expect(piece.gap, 5);
+      expect(piece.side, 3);
+      expect(piece.slot, TextSlot.topLeft, reason: "a corner is a corner");
+      expect(piece.text, "01", reason: "and the words are the words");
+    });
+
+    test("and a picture piece with them", () {
+      var card = _card(items: [
+        TextItem(id: "p", icon: const TextIcon(assetId: "a", size: 40)),
+      ]);
+      expect((card.scaledBy(2) as TextElement).items.single.icon!.size, 80);
+    });
+
+    test("but an element that is fractions of its box is left alone", () {
+      // A chart, a table, a picture: what is inside them is already measured
+      // against the box, so scaling it again would scale it twice.
+      var chart = ChartElement(
+          const ElementBase(id: "c", width: 200, height: 100),
+          data: ChartData.parse("Cat\tA\nx\t1"));
+      expect(identical(chart.scaledBy(0.5), chart), isTrue);
     });
   });
 

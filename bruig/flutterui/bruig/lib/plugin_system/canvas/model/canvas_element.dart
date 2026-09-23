@@ -314,6 +314,19 @@ abstract class CanvasElement {
   /// there is nowhere else to forget.
   Set<String> get assetIds => const {};
 
+  /// scaledBy is this element with everything inside it sized by [by].
+  ///
+  /// The type, the spacing, the room inside a box: the things that are in
+  /// design units and would otherwise stay the size they were while the box
+  /// round them changed. Only asked while the proportions are being held --
+  /// see ElementBase.lockAspect -- because it is only then that one number
+  /// can stand for what happened to both sides.
+  ///
+  /// The default is to change nothing, which is right for every element whose
+  /// contents are already fractions of its box: a chart, a table, a picture.
+  /// A text element is the one that is not. See TextElement.scaledBy.
+  CanvasElement scaledBy(double by) => this;
+
   /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller
   /// changing one property writes one line rather than three.
   CanvasElement withBase({

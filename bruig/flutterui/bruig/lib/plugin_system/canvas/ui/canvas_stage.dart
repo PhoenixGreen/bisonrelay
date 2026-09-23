@@ -325,6 +325,10 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _startVisual is the box the handles were on. See _beginTransform.
   Map<String, Rect> _startVisual = {};
+
+  /// _startElements are the selected elements as they were when the drag
+  /// began, for a resize that scales what is inside them.
+  Map<String, CanvasElement> _startElements = {};
   Map<String, double> _startRotation = {};
   Offset _startPan = Offset.zero;
   Rect? _marquee;
@@ -2135,6 +2139,13 @@ class CanvasStageState extends State<CanvasStage> {
     _startBounds = {
       for (var e in controller.selectedElements) e.id: e.bounds,
     };
+    // And the elements themselves as they were, for the resize that scales
+    // what is inside them: the factor is measured from the start of the drag,
+    // so it has to be applied to the element as it was at the start of the
+    // drag or every frame scales what the last one already did.
+    _startElements = {
+      for (var e in controller.selectedElements) e.id: e,
+    };
     // Where each element *is* on this frame, which is what a move works from.
     //
     // Kept apart from the resting bounds above, which is what a resize works
@@ -2436,6 +2447,13 @@ class CanvasStageState extends State<CanvasStage> {
       var real = _startBounds[entry.key] ?? start;
       var sx = start.width == 0 ? 1.0 : (right - left) / start.width;
       var sy = start.height == 0 ? 1.0 : (bottom - top) / start.height;
+      // Holding the proportions means holding them of everything in there:
+      // the type, the spacing, the room inside a chip. Resized without it,
+      // the box changes and what is in it stays the size it was, which is
+      // what "the proportions are held" has to mean to be worth a switch.
+      // From the element as it was when the drag began -- see _startElements.
+      var from = _startElements[entry.key] ?? element;
+      element = keep ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
         x: left + (real.left - start.left) * sx,
         y: top + (real.top - start.top) * sy,

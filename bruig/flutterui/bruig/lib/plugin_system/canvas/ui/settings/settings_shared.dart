@@ -472,7 +472,7 @@ List<Widget> typeGroups(
       // picture is the next thing anybody does after saying "a picture", and
       // it was two lines further down under the outline.
       if (spec.fill.kind != TextFillKind.color)
-        ..._fillBits(context, spec.fill,
+        ...fillBits(context, spec.fill,
             (f) => onChanged(spec.copyWith(fill: f)), begin, commit),
       // The outline starts a line of its own either way, so that what is on
       // the first line is always "what are these letters painted with".
@@ -833,7 +833,7 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
             // choose one are these. Guarded by `on`, saying "a picture" hid
             // the only way to name it.
             if (box.painted.kind != TextFillKind.color)
-              ..._fillBits(context, box.painted,
+              ...fillBits(context, box.painted,
                   (f) => onChanged(box.copyWith(painted: f)), begin, commit,
                   keyPrefix: "${remember}Box"),
             const CanvasLineBreak(),
@@ -951,7 +951,13 @@ Widget boxed(BuildContext context, Widget child) {
 /// same colours, the same sliders -- because it is exactly the same thing
 /// drawn in a different shape. Writing a second set of patterns for text
 /// would be two lists of styles to keep level with each other.
-List<Widget> _fillBits(
+/// fillBits are the controls one kind of fill needs: the two buttons that
+/// choose a picture, or the pattern's own style and colours.
+///
+/// Public, because three things can be painted with one now -- the letters, a
+/// box and a shape -- and a second copy of these is a second copy to keep
+/// level with the first.
+List<Widget> fillBits(
   BuildContext context,
   TextFill fill,
   ValueChanged<TextFill> onChanged,

@@ -83,7 +83,11 @@ CanvasElement newElement(
 
   switch (kind) {
     case ElementKind.text:
-      return TextElement(base,
+      // Proportions held to begin with, like a picture's -- and for a nearer
+      // reason: holding them scales the type, the spacing and the pieces with
+      // the box, which is what dragging a corner of a card is meant to do.
+      // Let go of, the box changes and what is in it stays the size it was.
+      return TextElement(base.copyWith(lockAspect: true),
           text: "Text",
           textSpec: TextSpec(
             fontSize: unit * 1.6,

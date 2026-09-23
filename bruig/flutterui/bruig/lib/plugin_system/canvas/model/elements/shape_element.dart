@@ -162,6 +162,13 @@ class SpeechBubbleSpec {
 class ShapeElement extends CanvasElement {
   final ShapeKind shape;
   final Color fill;
+
+  /// painted is a picture or a pattern inside the shape instead of a flat
+  /// colour, cut to the shape's own outline.
+  ///
+  /// The same spec the letters and a box are painted with -- see TextFill --
+  /// because it is the same question asked of a third shape.
+  final TextFill painted;
   final Color strokeColor;
 
   /// fillFade and strokeFade are the second colours, when the fill or the
@@ -248,6 +255,7 @@ class ShapeElement extends CanvasElement {
     this.text = "",
     this.textSpec = const TextSpec(fontSize: 24, weight: 700),
     this.bubble = const SpeechBubbleSpec(),
+    this.painted = const TextFill(),
     this.animation = const ElementAnimation(),
   });
 
@@ -290,6 +298,7 @@ class ShapeElement extends CanvasElement {
       text: text,
       textSpec: textSpec,
       bubble: bubble,
+      painted: painted,
       animation: animation);
 
   ShapeElement copyWith({
@@ -316,6 +325,7 @@ class ShapeElement extends CanvasElement {
     String? text,
     TextSpec? textSpec,
     SpeechBubbleSpec? bubble,
+    TextFill? painted,
     ElementAnimation? animation,
 
     /// clearCorners and clearRoom take the four overrides as given, nulls
@@ -347,12 +357,14 @@ class ShapeElement extends CanvasElement {
           text: text ?? this.text,
           textSpec: textSpec ?? this.textSpec,
           bubble: bubble ?? this.bubble,
+          painted: painted ?? this.painted,
           animation: animation ?? this.animation);
 
   @override
   Map<String, dynamic> props() => {
         "shape": shape.name,
         "fill": colorToJson(fill),
+        if (painted.on) "painted": painted.toJson(),
         if (fillFade != null) "fillFade": fillFade!.toJson(),
         if (strokeFade != null) "strokeFade": strokeFade!.toJson(),
         if (strokeWidth > 0) "sw": strokeWidth,
@@ -379,6 +391,10 @@ class ShapeElement extends CanvasElement {
       ShapeElement(b,
           shape: ShapeKind.fromName(json["shape"] as String?),
           fill: colorFromJson(json["fill"], const Color(0xFF3D7EFF)),
+          painted: json["painted"] is Map
+              ? TextFill.fromJson(
+                  (json["painted"] as Map).cast<String, dynamic>())
+              : const TextFill(),
           fillFade:
               json["fillFade"]
                       is Map
