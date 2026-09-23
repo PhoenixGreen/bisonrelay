@@ -767,23 +767,28 @@ Widget boxGroup(BoxSpec box, ValueChanged<BoxSpec> onChanged,
         remember: "${remember}Box",
         tooltip: "Each side and each corner on its own",
         row: [
-          CanvasColorButton(
-            label: fillLabel,
-            color: box.fill,
-            gradient: box.fillFade,
-            onChanged: (c) {
-              begin();
-              onChanged(box.copyWith(fill: c));
-              commit();
-            },
-            onGradientChanged: (g) {
-              begin();
-              onChanged(g == null
-                  ? box.copyWith(flatFill: true)
-                  : box.copyWith(fillFade: g));
-              commit();
-            },
-          ),
+          // Only where the box is painted with a colour. A picture or a
+          // pattern is drawn over the whole of it, so the swatch sat there
+          // doing nothing visible -- and a colour control that changes
+          // nothing is worse than no colour control.
+          if (box.painted.kind == TextFillKind.color)
+            CanvasColorButton(
+              label: fillLabel,
+              color: box.fill,
+              gradient: box.fillFade,
+              onChanged: (c) {
+                begin();
+                onChanged(box.copyWith(fill: c));
+                commit();
+              },
+              onGradientChanged: (g) {
+                begin();
+                onChanged(g == null
+                    ? box.copyWith(flatFill: true)
+                    : box.copyWith(fillFade: g));
+                commit();
+              },
+            ),
           CanvasColorButton(
             label: "Colour",
             color: box.borderColor,

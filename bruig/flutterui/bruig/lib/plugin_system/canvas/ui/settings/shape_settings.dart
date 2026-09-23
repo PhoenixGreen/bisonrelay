@@ -49,23 +49,28 @@ List<Widget> shapeSettings(
                 commit();
               },
             ),
-            CanvasColorButton(
-              label: "Fill",
-              color: e.fill,
-              gradient: e.fillFade,
-              onChanged: (c) {
-                begin();
-                write(e.copyWith(fill: c));
-                commit();
-              },
-              onGradientChanged: (g) {
-                begin();
-                write(g == null
-                    ? e.copyWith(flatFill: true)
-                    : e.copyWith(fillFade: g));
-                commit();
-              },
-            ),
+            // Only where the shape is painted with a colour. A picture or a
+            // pattern fills the whole outline, so the swatch was a control
+            // that changed nothing you could see. The stroke's colour beside
+            // it stays either way: the outline is drawn over the picture.
+            if (e.painted.kind == TextFillKind.color)
+              CanvasColorButton(
+                label: "Fill",
+                color: e.fill,
+                gradient: e.fillFade,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(fill: c));
+                  commit();
+                },
+                onGradientChanged: (g) {
+                  begin();
+                  write(g == null
+                      ? e.copyWith(flatFill: true)
+                      : e.copyWith(fillFade: g));
+                  commit();
+                },
+              ),
             CanvasNumberField(
               label: "Stroke",
               value: e.strokeWidth,

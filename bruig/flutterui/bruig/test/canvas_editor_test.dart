@@ -2386,6 +2386,39 @@ void main() {
           270);
     });
 
+    testWidgets("the fill swatch goes away while a picture is over it",
+        (tester) async {
+      // The same as the box next door: a picture or a pattern fills the whole
+      // outline, so the swatch changed nothing you could see. The stroke's
+      // colour stays either way -- the outline is drawn over the picture.
+      var controller = await panel(tester, shapeOf(ShapeKind.star));
+      var fill = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Fill");
+      var stroke = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Colour");
+      expect(fill, findsOneWidget);
+
+      var kind = find.byKey(const ValueKey("shapeFillKind"));
+      if (kind.evaluate().isEmpty) {
+        var button = find.byKey(const ValueKey("more-shapeMore"));
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Pattern").last);
+      await tester.pumpAndSettle();
+
+      expect((controller.document.elements.single as ShapeElement).painted.kind,
+          TextFillKind.pattern);
+      expect(fill, findsNothing, reason: "the pattern decides now");
+      expect(stroke, findsOneWidget, reason: "but the outline is still drawn");
+    });
+
     testWidgets("choosing a stroke colour gives the shape a stroke",
         (tester) async {
       // A shape arrives with a stroke 0 wide, and a stroke 0 wide is not
@@ -7456,6 +7489,42 @@ void main() {
           reason: "nothing named yet");
       expect(find.byKey(const ValueKey("textBoxFillPicture")), findsOneWidget);
       expect(find.byKey(const ValueKey("textBoxFillLibrary")), findsOneWidget);
+    });
+
+    testWidgets("and its colour goes away while a picture is over it",
+        (tester) async {
+      // A picture or a pattern is drawn across the whole box, so the swatch
+      // beside it changed nothing anybody could see -- which reads as a
+      // broken control rather than as one that has been overruled.
+      var controller = await panel(tester);
+      var fill = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Fill");
+      expect(fill, findsOneWidget, reason: "a colour to begin with");
+
+      var kind = find.byKey(const ValueKey("textBoxFillKind"));
+      if (kind.evaluate().isEmpty) {
+        var button = find.byKey(const ValueKey("more-textBox"));
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Pattern").last);
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).box.painted.kind, TextFillKind.pattern);
+      expect(fill, findsNothing, reason: "the pattern decides now");
+
+      // And back again when the colour is what decides.
+      await tester.tap(kind);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Colour").last);
+      await tester.pumpAndSettle();
+      expect(fill, findsOneWidget);
     });
 
     testWidgets("a piece is offered a background once it has a colour",
