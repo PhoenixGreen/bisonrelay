@@ -522,6 +522,48 @@ void main() {
           "Decred");
     });
 
+    testWidgets("and reached without finding the box first", (tester) async {
+      // The first click out there has to select the element, or there is no
+      // second click to open it with. Asking only the *selected* element
+      // meant a piece outside its box could be reached only by clicking the
+      // box first -- and on a card whose writing is all outside the box
+      // there is nothing else to click.
+      var card = _card(items: const [
+        TextItem(
+            id: "p",
+            text: "Dash",
+            slot: TextSlot.middleRight,
+            side: -120,
+            spec: TextSpec(fontSize: 20)),
+      ]);
+      var controller = CanvasController(CanvasDocument(
+        size: const CanvasSize(width: 800, ratio: CanvasRatio.wide),
+      ).addElement(card));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      expect(controller.selection, isEmpty, reason: "nothing chosen yet");
+
+      var at = stage.toStagePoint(textItemRects(card, card.bounds).single.center);
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"c"},
+          reason: "the piece is the element, wherever it is drawn");
+
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.enterText(find.byType(TextField), "Decred");
+      await tester.pumpAndSettle();
+      expect(
+          (controller.document.elementById("c") as TextElement)
+              .items
+              .single
+              .text,
+          "Decred");
+    });
+
     testWidgets("and a second click anywhere else types into the element",
         (tester) async {
       var card = _card();

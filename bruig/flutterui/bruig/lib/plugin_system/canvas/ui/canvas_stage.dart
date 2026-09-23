@@ -920,12 +920,27 @@ class CanvasStageState extends State<CanvasStage> {
             local.dx * math.sin(a) + local.dy * math.cos(a));
   }
 
-  /// _textPieceOwner is the selected text element, where one of its pieces is
-  /// under the pointer and its own box is not.
+  /// _textPieceOwner is the text element with a piece under the pointer,
+  /// where its own box is not.
+  ///
+  /// Any text element, not only the selected one. A piece pushed outside its
+  /// box by a gap or a side is the only thing of that element anywhere near
+  /// the pointer, so asking the selected element alone meant a first click
+  /// out there found nothing at all: no selection, so no second click to open
+  /// it for typing, and a piece out there could only be reached by finding
+  /// the box first. On some cards there is nothing else to click -- the words
+  /// outside the box are all there is to edit.
+  ///
+  /// Front to back, like the ordinary hit test: the last drawn is on top.
   TextElement? _textPieceOwner(Offset doc) {
-    var element = controller.selected;
-    if (element is! TextElement || element.locked) return null;
-    return _textItemAt(element, doc) == null ? null : element;
+    for (var i = document.elements.length - 1; i >= 0; i--) {
+      var element = document.elements[i];
+      if (element is! TextElement || element.locked || !element.visible) {
+        continue;
+      }
+      if (_textItemAt(element, doc) != null) return element;
+    }
+    return null;
   }
 
   /// _textItemAt is which of a text element's extra pieces a document point
