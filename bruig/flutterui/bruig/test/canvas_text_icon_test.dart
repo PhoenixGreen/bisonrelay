@@ -270,6 +270,54 @@ void main() {
           reason: "an ellipse is smaller than the box round it");
     });
 
+    testWidgets("a fill's look is the look a picture element has",
+        (tester) async {
+      // Greyscale is greyscale wherever the picture is: in a frame, behind a
+      // box, or showing through the letters.
+      late Map<int, int> plain;
+      late Map<int, int> grey;
+      await tester.runAsync(() async {
+        var pictures = _Pictures(await _square(const Color(0xFFFF0000)));
+        var e = TextElement(
+          const ElementBase(id: "t", x: 40, y: 40, width: 320, height: 120),
+          text: "Headline",
+          box: const BoxSpec(
+              padding: 10,
+              painted: TextFill(kind: TextFillKind.image, assetId: "a")),
+        );
+        plain = await _ink(e, pictures);
+        grey = await _ink(
+            e.copyWith(
+                box: e.box.copyWith(
+                    painted: e.box.painted
+                        .copyWith(filter: ImageFilterPreset.greyscale))),
+            pictures);
+      });
+
+      expect(plain[red] ?? 0, greaterThan(2000), reason: "red to begin with");
+      expect(grey[red] ?? 0, 0, reason: "and no red left in it");
+      expect(grey.keys.where((p) => (p >> 8) != 0).length, greaterThan(1),
+          reason: "but still a picture, in greys");
+    });
+
+    test("and the look survives being saved", () {
+      var fill = const TextFill(kind: TextFillKind.image, assetId: "a")
+          .copyWith(
+              filter: ImageFilterPreset.sepia,
+              saturation: 0.4,
+              brightness: 0.8);
+      var back = TextFill.fromJson(fill.toJson());
+      expect(back.filter, ImageFilterPreset.sepia);
+      expect(back.saturation, 0.4);
+      expect(back.brightness, 0.8);
+      // And one nobody has touched writes nothing about it.
+      expect(
+          const TextFill(kind: TextFillKind.image, assetId: "a")
+              .toJson()
+              .containsKey("filter"),
+          isFalse);
+    });
+
     test("it survives being saved", () {
       var element = _headline(
         icon: const TextIcon(

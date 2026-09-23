@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -144,6 +145,17 @@ class TextFill {
   /// tile repeats a picture instead of covering the words with one copy.
   final bool tile;
 
+  /// filter is the named look a picture is drawn with -- greyscale, sepia,
+  /// faded -- and saturation and brightness are the two sliders beside it.
+  ///
+  /// The same three a picture element has, with the same meanings: both
+  /// sliders are multipliers and 1 is "as it came in". It is the same picture
+  /// and the same question about it -- a photograph showing through a
+  /// headline wants to be knocked back exactly as often as one in a frame.
+  final ImageFilterPreset filter;
+  final double saturation;
+  final double brightness;
+
   /// locked carries what shows through the words along with them while they
   /// are arriving, instead of leaving it pinned to the box.
   ///
@@ -165,6 +177,9 @@ class TextFill {
     this.pattern = const ProceduralSpec(),
     this.zoom = 1,
     this.tile = false,
+    this.filter = ImageFilterPreset.none,
+    this.saturation = 1,
+    this.brightness = 1,
     this.locked = false,
   });
 
@@ -181,6 +196,9 @@ class TextFill {
     double? zoom,
     bool? tile,
     bool? locked,
+    ImageFilterPreset? filter,
+    double? saturation,
+    double? brightness,
   }) =>
       TextFill(
         kind: kind ?? this.kind,
@@ -189,6 +207,9 @@ class TextFill {
         zoom: zoom ?? this.zoom,
         tile: tile ?? this.tile,
         locked: locked ?? this.locked,
+        filter: filter ?? this.filter,
+        saturation: saturation ?? this.saturation,
+        brightness: brightness ?? this.brightness,
       );
 
   Map<String, dynamic> toJson() => {
@@ -198,6 +219,9 @@ class TextFill {
         if (zoom != 1) "zoom": zoom,
         if (tile) "tile": true,
         if (locked) "locked": true,
+        if (filter != ImageFilterPreset.none) "filter": filter.name,
+        if (saturation != 1) "sat": saturation,
+        if (brightness != 1) "bri": brightness,
       };
 
   factory TextFill.fromJson(Map<String, dynamic> json) => TextFill(
@@ -209,6 +233,9 @@ class TextFill {
         zoom: jsonDouble(json["zoom"], 1).clamp(0.05, 20),
         tile: jsonBool(json["tile"], false),
         locked: jsonBool(json["locked"], false),
+        filter: ImageFilterPreset.fromName(json["filter"] as String?),
+        saturation: jsonDouble(json["sat"], 1).clamp(0.0, 3.0),
+        brightness: jsonDouble(json["bri"], 1).clamp(0.0, 3.0),
       );
 }
 

@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
@@ -1003,12 +1004,46 @@ List<Widget> fillBits(
           if (id != null) now(fill.copyWith(assetId: id));
         },
       ),
-      if (fill.assetId.isNotEmpty)
+      if (fill.assetId.isNotEmpty) ...[
         CanvasToggle(
           label: "Tile",
           value: fill.tile,
           onChanged: (v) => now(fill.copyWith(tile: v)),
         ),
+        // What a picture element calls its Look, on the picture that is
+        // showing through something else. The same three, because it is the
+        // same picture and the same question about it.
+        CanvasDropdown<ImageFilterPreset>(
+          key: ValueKey("${keyPrefix}FillLook"),
+          label: "Look",
+          value: fill.filter,
+          width: 106,
+          options: [for (var f in ImageFilterPreset.values) (f, f.label)],
+          onChanged: (v) => now(fill.copyWith(filter: v)),
+        ),
+        CanvasNumberField(
+          key: ValueKey("${keyPrefix}FillSaturation"),
+          label: "Colour",
+          value: fill.saturation,
+          min: 0,
+          max: 3,
+          decimals: 2,
+          width: 54,
+          onChanged: (v) => onChanged(fill.copyWith(saturation: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: ValueKey("${keyPrefix}FillBrightness"),
+          label: "Light",
+          value: fill.brightness,
+          min: 0,
+          max: 3,
+          decimals: 2,
+          width: 54,
+          onChanged: (v) => onChanged(fill.copyWith(brightness: v)),
+          onCommit: commit,
+        ),
+      ],
     ],
     if (fill.kind == TextFillKind.pattern)
       CanvasDropdown<ProceduralStyle>(

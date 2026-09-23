@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/image_look.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -276,7 +277,12 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
     case TextFillKind.image:
       var image = images?.resolve(fill.assetId, const BackgroundRemoval());
       if (image != null) {
-        _paintFillImage(canvas, reach, frame, image, fill.tile);
+        // The same named look and the same two sliders a picture element
+        // has, as one matrix -- see image_look.dart.
+        var matrix = combineMatrices(presetMatrix(fill.filter),
+            colorMatrix(fill.saturation, fill.brightness));
+        _paintFillImage(canvas, reach, frame, image, fill.tile,
+            matrix == null ? null : ColorFilter.matrix(matrix));
       }
     case TextFillKind.color:
       break;
@@ -293,8 +299,8 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
 ///
 /// [reach] is everywhere that has to be covered -- the frame the picture is
 /// sized to, grown to take in wherever the words go while they arrive.
-void _paintFillImage(
-    ui.Canvas canvas, Rect reach, Rect frame, ui.Image image, bool tile) {
+void _paintFillImage(ui.Canvas canvas, Rect reach, Rect frame, ui.Image image,
+    bool tile, ColorFilter? look) {
   var size = Size(image.width.toDouble(), image.height.toDouble());
   if (size.isEmpty) return;
 
@@ -305,6 +311,7 @@ void _paintFillImage(
     canvas.drawRect(
         reach,
         Paint()
+          ..colorFilter = look
           ..shader = ui.ImageShader(
               image,
               ui.TileMode.repeated,
@@ -333,6 +340,7 @@ void _paintFillImage(
       reach,
       Paint()
         ..filterQuality = FilterQuality.medium
+        ..colorFilter = look
         ..shader = ui.ImageShader(
             image,
             ui.TileMode.clamp,
