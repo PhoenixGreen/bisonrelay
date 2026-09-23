@@ -564,6 +564,44 @@ void main() {
           "Decred");
     });
 
+    testWidgets("even where it sits against the element's own edge",
+        (tester) async {
+      // The resize handles are on that outline and answer anything within
+      // their reach of it, so the second click -- the one that opens the
+      // piece for typing -- started a resize instead. Whether it did came
+      // down to how far out the piece happened to sit, which is a piece that
+      // can be typed into only sometimes.
+      for (var x in [402.0, 406.0, 412.0, 440.0]) {
+        var card = _card(items: const [
+          TextItem(
+              id: "p",
+              text: "Dash",
+              slot: TextSlot.middleRight,
+              side: -80,
+              spec: TextSpec(fontSize: 20)),
+        ]);
+        var controller = CanvasController(CanvasDocument(
+          size: const CanvasSize(width: 800, ratio: CanvasRatio.wide),
+        ).addElement(card));
+        var stage = await pump(tester, controller);
+        expect(card.bounds.contains(Offset(x, 100)), isFalse,
+            reason: "$x is outside the box, on the piece");
+
+        var at = stage.toStagePoint(Offset(x, 100));
+        await tester.tapAt(at);
+        await tester.pumpAndSettle();
+        await tester.tapAt(at);
+        await tester.pump(const Duration(milliseconds: 40));
+        await tester.tapAt(at);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(TextField), findsOneWidget, reason: "at $x");
+        expect((controller.document.elementById("c") as TextElement).width, 400,
+            reason: "and nothing was resized on the way, at $x");
+        controller.dispose();
+      }
+    });
+
     testWidgets("and a second click anywhere else types into the element",
         (tester) async {
       var card = _card();

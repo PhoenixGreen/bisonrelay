@@ -943,6 +943,25 @@ class CanvasStageState extends State<CanvasStage> {
     return null;
   }
 
+  /// _looseTextPiece is a text element with a piece under the pointer that is
+  /// drawn *outside* the element's own box.
+  ///
+  /// It beats the resize handles. A piece pushed out by a gap or a side sits
+  /// against the outline the handles are on, and a handle answers anything
+  /// within its reach of it -- so the press that should have opened the piece
+  /// for typing started a resize instead, and did so or not depending on how
+  /// far out the piece happened to sit. Reported as the piece being editable
+  /// only sometimes.
+  ///
+  /// Only outside the box. Inside it the outline is what the press near the
+  /// edge means: that is the element's own edge and resizing is what it is
+  /// for -- see _insideCore, which keeps the middle rather than the outside.
+  TextElement? _looseTextPiece(Offset doc) {
+    var owner = _textPieceOwner(doc);
+    if (owner == null) return null;
+    return owner.boundsAt(controller.frame).contains(doc) ? null : owner;
+  }
+
   /// _textItemAt is which of a text element's extra pieces a document point
   /// is on, or null for none.
   ///
@@ -1344,41 +1363,47 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A flow grip, before the resize handles -- but only where it is the
-    // nearer of the two. They sit on the same outline, and on a short box the
-    // grip lands on top of the middle handle.
-    var nearest = _nearestHandle(stage);
-    if (_hitFlowGrip(stage, beat: nearest?.$2 ?? double.infinity)
-        case var grip?) {
-      var selected = document.elementById(controller.selection.first);
-      // A locked connector still shows: it is how a chain is read. It simply
-      // does not answer the pointer, which is what keeps four boxes' worth of
-      // words from being disconnected by a drag that missed a resize handle.
-      if (controller.lockJoins) return;
-      // Dragging the incoming grip takes hold of the link that arrives here,
-      // which belongs to the box in front of this one. The loose end is what
-      // moves; where it is dropped is what it means.
-      var from = grip.out
-          ? controller.selection.first
-          : (selected is TextElement
-              ? flowSourceOf(selected, document)?.id
-              : null);
-      if (from != null) {
-        setState(() {
-          _flowFrom = from;
-          _flowAt = stage;
-          _mode = _DragMode.flow;
-        });
+    // Neither the flow grips nor the resize handles, where the press is on a
+    // piece of writing drawn outside its own box: the piece is the thing
+    // being aimed at and it sits on the outline they are both on. See
+    // _looseTextPiece.
+    if (_looseTextPiece(doc) == null) {
+      // A flow grip, before the resize handles -- but only where it is the
+      // nearer of the two. They sit on the same outline, and on a short box the
+      // grip lands on top of the middle handle.
+      var nearest = _nearestHandle(stage);
+      if (_hitFlowGrip(stage, beat: nearest?.$2 ?? double.infinity)
+          case var grip?) {
+        var selected = document.elementById(controller.selection.first);
+        // A locked connector still shows: it is how a chain is read. It simply
+        // does not answer the pointer, which is what keeps four boxes' worth of
+        // words from being disconnected by a drag that missed a resize handle.
+        if (controller.lockJoins) return;
+        // Dragging the incoming grip takes hold of the link that arrives here,
+        // which belongs to the box in front of this one. The loose end is what
+        // moves; where it is dropped is what it means.
+        var from = grip.out
+            ? controller.selection.first
+            : (selected is TextElement
+                ? flowSourceOf(selected, document)?.id
+                : null);
+        if (from != null) {
+          setState(() {
+            _flowFrom = from;
+            _flowAt = stage;
+            _mode = _DragMode.flow;
+          });
+          return;
+        }
+      }
+
+      var handle = nearest?.$1;
+      if (handle != null) {
+        _beginTransform(
+            handle == StageHandle.rotate ? _DragMode.rotate : _DragMode.resize,
+            handle);
         return;
       }
-    }
-
-    var handle = nearest?.$1;
-    if (handle != null) {
-      _beginTransform(
-          handle == StageHandle.rotate ? _DragMode.rotate : _DragMode.resize,
-          handle);
-      return;
     }
 
     // The retouching brush, before anything else -- while it is on, a drag is
