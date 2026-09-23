@@ -275,6 +275,12 @@ class ShapeElement extends CanvasElement {
   bool get padded =>
       pad.left > 0 || pad.top > 0 || pad.right > 0 || pad.bottom > 0;
 
+  /// assetIds is the picture this shape is painted with, where it has one.
+  /// Without it the sweep takes the picture away and the shape opens empty.
+  @override
+  Set<String> get assetIds =>
+      painted.assetId.isEmpty ? const {} : {painted.assetId};
+
   @override
   CanvasElement rebase(ElementBase base) => ShapeElement(base,
       shape: shape,

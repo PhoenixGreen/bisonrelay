@@ -726,6 +726,15 @@ class CanvasControlGroup extends StatelessWidget {
   /// line carries a button of its own.
   final bool rule;
 
+  /// onRename makes the caption a name that can be changed: double-click it
+  /// and type, which is the gesture that renames a file, a scene and a layer
+  /// everywhere else in this app.
+  ///
+  /// Null for the groups whose caption is a heading rather than a name. A
+  /// heading that could be typed into is a heading somebody will type into by
+  /// accident.
+  final ValueChanged<String>? onRename;
+
   /// below goes under the group's own line of controls, inside its gap and
   /// above its rule. For the settings a button on that line has opened -- see
   /// CanvasMoreGroup -- which are part of the group and have to sit inside
@@ -739,21 +748,24 @@ class CanvasControlGroup extends StatelessWidget {
     this.captionGap = canvasCaptionGap,
     this.rule = true,
     this.below,
+    this.onRename,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var caption = Text(
-      label.toUpperCase(),
-      style: TextStyle(
-        fontSize: 9,
-        letterSpacing: 0.7,
-        fontWeight: FontWeight.w600,
-        color: theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
-      ),
+    var style = TextStyle(
+      fontSize: 9,
+      letterSpacing: 0.7,
+      fontWeight: FontWeight.w600,
+      color: theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
     );
+    Widget caption = Text(label.toUpperCase(), style: style);
+    if (onRename != null) {
+      caption =
+          _RenamableCaption(label: label, style: style, onRename: onRename!);
+    }
 
     // Along the band the groups sit side by side, so what separates them is
     // room to the right and a line between them -- not a rule underneath,
@@ -1230,6 +1242,10 @@ class CanvasMoreGroup extends StatefulWidget {
   /// tells anybody whether it is worth pressing.
   final String tooltip;
 
+  /// onRename makes the caption a name that can be typed into. See
+  /// CanvasControlGroup.onRename.
+  final ValueChanged<String>? onRename;
+
   const CanvasMoreGroup({
     required this.label,
     required this.row,
@@ -1238,6 +1254,7 @@ class CanvasMoreGroup extends StatefulWidget {
     this.hideCaption = false,
     this.rule = true,
     this.remember,
+    this.onRename,
     super.key,
   });
 
@@ -1263,6 +1280,7 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
       label: widget.label,
       hideCaption: widget.hideCaption,
       rule: widget.rule,
+      onRename: widget.onRename,
       // What the button opened, on a ground of its own.
       //
       // A tint rather than a line under it, which is what this was. Opened,
@@ -1310,6 +1328,94 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
             onPressed: _toggle,
           ),
       ],
+    );
+  }
+}
+
+/// _RenamableCaption is a group's caption that can be typed into.
+///
+/// Double-click and type, which is how a file, a scene and a layer are all
+/// renamed. A single click would be a trap -- these captions sit above
+/// controls people are aiming at -- and a field that is always a field would
+/// make a panel of headings look like a form.
+class _RenamableCaption extends StatefulWidget {
+  final String label;
+  final TextStyle style;
+  final ValueChanged<String> onRename;
+
+  const _RenamableCaption(
+      {required this.label, required this.style, required this.onRename});
+
+  @override
+  State<_RenamableCaption> createState() => _RenamableCaptionState();
+}
+
+class _RenamableCaptionState extends State<_RenamableCaption> {
+  bool _typing = false;
+  late final TextEditingController _text =
+      TextEditingController(text: widget.label);
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _typing) _finish();
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    _text.text = widget.label;
+    _text.selection =
+        TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+    setState(() => _typing = true);
+    _focus.requestFocus();
+  }
+
+  void _finish() {
+    if (!_typing) return;
+    setState(() => _typing = false);
+    widget.onRename(_text.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    if (!_typing) {
+      return MouseRegion(
+        cursor: SystemMouseCursors.text,
+        child: GestureDetector(
+          onDoubleTap: _start,
+          child: Tooltip(
+            message: "Double-click to rename",
+            waitDuration: const Duration(milliseconds: 700),
+            child: Text(widget.label.toUpperCase(), style: widget.style),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      width: 160,
+      height: controlLabelHeight + 6,
+      child: TextField(
+        controller: _text,
+        focusNode: _focus,
+        autofocus: true,
+        style: TextStyle(fontSize: 10, color: theme.colors.onSurface),
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        ),
+        onSubmitted: (_) => _finish(),
+        onTapOutside: (_) => _finish(),
+      ),
     );
   }
 }

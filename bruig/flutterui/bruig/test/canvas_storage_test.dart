@@ -242,6 +242,8 @@ void main() {
       // canvas was opened there was nothing to draw.
       var icon = (await CanvasAssets.save(List.filled(64, 5)))!;
       var fill = (await CanvasAssets.save(List.filled(64, 6)))!;
+      var behind = (await CanvasAssets.save(List.filled(64, 7)))!;
+      var inShape = (await CanvasAssets.save(List.filled(64, 8)))!;
 
       await CanvasStorage.save(
           "",
@@ -253,6 +255,14 @@ void main() {
               items: [TextItem(id: "p", icon: TextIcon(assetId: icon))],
               textSpec: TextSpec(
                   fill: TextFill(kind: TextFillKind.image, assetId: fill)),
+              // And one behind the box, which is not the same picture and is
+              // just as easy to forget.
+              box: BoxSpec(
+                  painted: TextFill(kind: TextFillKind.image, assetId: behind)),
+            ),
+            ShapeElement(
+              const ElementBase(id: "s", width: 100, height: 100),
+              painted: TextFill(kind: TextFillKind.image, assetId: inShape),
             ),
           ]));
 
@@ -261,6 +271,10 @@ void main() {
           reason: "the icon the headline carries");
       expect(await CanvasAssets.load(fill), isNotNull,
           reason: "and the picture showing through its letters");
+      expect(await CanvasAssets.load(behind), isNotNull,
+          reason: "and the one behind its box");
+      expect(await CanvasAssets.load(inShape), isNotNull,
+          reason: "and the one filling the shape");
     });
 
     test("a picture two canvases share survives either being deleted",

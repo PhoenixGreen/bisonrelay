@@ -279,6 +279,11 @@ class CounterElement extends CanvasElement {
   /// buttons are for and what makes it an instrument rather than a picture.
   bool get live => !keyed;
 
+  /// assetIds is the pictures its boxes are painted with. See
+  /// BoxSpec.assetIds.
+  @override
+  Set<String> get assetIds => {...box.assetIds, ...buttonBox.assetIds};
+
   @override
   CanvasElement rebase(ElementBase base) => CounterElement(base,
       from: from,

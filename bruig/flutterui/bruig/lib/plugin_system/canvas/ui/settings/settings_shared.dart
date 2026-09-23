@@ -397,6 +397,11 @@ List<Widget> typeGroups(
   /// in one panel is one of them too many, and the one that can do more is
   /// the one to keep.
   bool includeUnderline = true,
+
+  /// onRename makes the group's caption a name that can be typed into, for
+  /// the callers whose caption is a name rather than a heading: a text
+  /// element's pieces, and the element itself.
+  ValueChanged<String>? onRename,
 }) {
   String cap(String name) => captions ? name : "";
   // The colour settings, as a row and as what is behind its button. Built
@@ -587,6 +592,7 @@ List<Widget> typeGroups(
         label: label,
         hideCaption: hideCaption,
         rule: rule,
+        onRename: onRename,
         remember: "${remember}Type",
         tooltip: "Spacing, alignment and case",
         row: [

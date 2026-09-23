@@ -2610,6 +2610,60 @@ void main() {
     });
   });
 
+  group("cropping a picture", () {
+    test("trims the frame, so what is left stays where it was", () {
+      // Reported as "some kind of strange zoom which is very hard to
+      // control": the crop showed less of the picture in the same box, so
+      // the rest was re-fitted to fill the frame. What a crop means to
+      // anybody using one is that the edge moves in and takes that strip
+      // with it.
+      var picture = ImageElement(
+        const ElementBase(id: "p", x: 100, y: 50, width: 400, height: 200),
+        assetId: "a",
+      );
+
+      // A quarter off the left: the left edge moves in by a quarter of the
+      // frame, and the right edge does not move at all.
+      var cropped = picture.croppedTo(const ImageCrop(left: 0.25));
+      expect(cropped.x, closeTo(200, 0.01));
+      expect(cropped.width, closeTo(300, 0.01));
+      expect(cropped.x + cropped.width, closeTo(500, 0.01),
+          reason: "the right-hand edge is where it was");
+      expect(cropped.y, 50, reason: "and nothing happened to the height");
+      expect(cropped.height, 200);
+
+      // And a second crop is measured against what is showing now, not
+      // against the whole picture: another quarter off the left of what is
+      // left takes a quarter of *this* frame.
+      var again = cropped.croppedTo(const ImageCrop(left: 0.5));
+      expect(again.x, closeTo(300, 0.01));
+      expect(again.width, closeTo(200, 0.01));
+    });
+
+    test("and giving it all back puts the frame back", () {
+      var picture = ImageElement(
+        const ElementBase(id: "p", x: 100, y: 50, width: 400, height: 200),
+        assetId: "a",
+      );
+      var cropped = picture
+          .croppedTo(const ImageCrop(left: 0.25, bottom: 0.5))
+          .croppedTo(const ImageCrop());
+      expect(cropped.x, closeTo(100, 0.01));
+      expect(cropped.width, closeTo(400, 0.01));
+      expect(cropped.height, closeTo(200, 0.01));
+    });
+
+    test("but not to nothing", () {
+      var picture = ImageElement(
+        const ElementBase(id: "p", width: 40, height: 40),
+        assetId: "a",
+      );
+      var flat = picture.croppedTo(const ImageCrop(left: 0.99));
+      expect(flat.width, 40, reason: "the frame is left alone");
+      expect(flat.crop.left, 0.99, reason: "and the crop is still written");
+    });
+  });
+
   group("the image settings", () {
     Future<CanvasController> panel(
         WidgetTester tester, ImageElement image) async {
@@ -7396,6 +7450,38 @@ void main() {
       expect(textIn(controller).items.single.name, "Leeds badge");
       expect(find.text("LEEDS BADGE"), findsOneWidget);
       expect(find.text("PICTURE"), findsNothing);
+    });
+
+    testWidgets("or renamed by double-clicking the caption itself",
+        (tester) async {
+      // Which is the gesture a file, a scene and a layer are all renamed by,
+      // and the one anybody tries first.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "p", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+
+      var caption = find.text("01");
+      await tester.ensureVisible(caption);
+      await tester.pumpAndSettle();
+      await tester.tap(caption);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tap(caption);
+      await tester.pumpAndSettle();
+
+      var field =
+          find.ancestor(of: find.text("01"), matching: find.byType(TextField));
+      expect(field, findsOneWidget, reason: "it opened for typing");
+      await tester.enterText(field, "The number");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(textIn(controller).items.single.name, "The number");
+      expect(find.text("THE NUMBER"), findsOneWidget);
     });
 
     testWidgets("a shape can be painted with a picture or a pattern",

@@ -851,6 +851,15 @@ class BoxSpec {
   /// corners that stay concentric with the box's own.
   RRect insetRounded(Rect within) => corners.inside(within, pad);
 
+  /// assetIds is the picture this box is painted with, where it has one.
+  ///
+  /// Every element that carries a box has to fold this into its own answer --
+  /// see CanvasElement.assetIds -- or the sweep that clears out pictures
+  /// nothing is using any more takes it away, and the canvas opens next time
+  /// with the box empty. Which is exactly what happened.
+  Set<String> get assetIds =>
+      painted.assetId.isEmpty ? const {} : {painted.assetId};
+
   /// scaledBy is this box at [by] times the size: its corners, the room
   /// inside it and how thick its border is drawn.
   BoxSpec scaledBy(double by) => withCorners(corners.scaledBy(by))

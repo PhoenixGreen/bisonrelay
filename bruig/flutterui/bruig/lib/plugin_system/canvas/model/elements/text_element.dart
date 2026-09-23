@@ -386,9 +386,13 @@ class TextElement extends CanvasElement {
   /// name a picture has to answer this. See CanvasStorage.liveAssetIds.
   @override
   Set<String> get assetIds => {
-        for (var item in items)
+        for (var item in items) ...{
           if (item.icon?.assetId.isNotEmpty ?? false) item.icon!.assetId,
+          ...item.box.assetIds,
+          ...?item.icon?.box.assetIds,
+        },
         if (textSpec.fill.assetId.isNotEmpty) textSpec.fill.assetId,
+        ...box.assetIds,
       };
 
   /// drawnParts are the parts the painter works from: the element's own

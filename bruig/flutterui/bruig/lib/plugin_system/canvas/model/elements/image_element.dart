@@ -649,7 +649,50 @@ class ImageElement extends CanvasElement {
   ElementKind get kind => ElementKind.image;
 
   @override
-  Set<String> get assetIds => assetId.isEmpty ? const {} : {assetId};
+  Set<String> get assetIds => {
+        if (assetId.isNotEmpty) assetId,
+        // And whatever its frame is painted with. See BoxSpec.assetIds.
+        ...box.assetIds,
+      };
+
+  /// croppedTo is this element with [next] as its crop and its own box
+  /// trimmed to match, so the picture that is left stays exactly where it was
+  /// on the canvas.
+  ///
+  /// What a crop means to anybody using one: the left edge moves in and takes
+  /// that strip of picture with it. Written as the crop alone it meant "show
+  /// less of the picture in the same box", so the rest was re-fitted to fill
+  /// the frame and the whole picture appeared to zoom -- reported as "some
+  /// kind of strange zoom which is very hard to control".
+  ///
+  /// The arithmetic is the frame's, not the picture's: the box shows
+  /// [crop.width] of the picture across its own width, so a strip of the
+  /// picture is worth that much of the box.
+  ImageElement croppedTo(ImageCrop next) {
+    var was = crop;
+    if (was.width <= 0 || was.height <= 0) {
+      return copyWith(crop: next);
+    }
+    var perX = width / was.width;
+    var perY = height / was.height;
+
+    var left = x + (next.left - was.left) * perX;
+    var right = x + width - (was.right - next.right) * perX;
+    var top = y + (next.top - was.top) * perY;
+    var bottom = y + height - (was.bottom - next.bottom) * perY;
+
+    // Never inside out, and never so small it cannot be grabbed again.
+    const least = 8.0;
+    if (right - left < least || bottom - top < least) {
+      return copyWith(crop: next);
+    }
+    return copyWith(crop: next).withBase(
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    ) as ImageElement;
+  }
 
   /// hasImage is whether there is anything to draw. An element with no
   /// picture yet is drawn as a placeholder rather than as nothing, so it can

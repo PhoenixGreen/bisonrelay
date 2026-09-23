@@ -181,6 +181,8 @@ List<Widget> textSettings(
         // panel's header has already said it.
         label: e.name,
         hideCaption: e.items.isEmpty,
+        // The element's own name, which is what the layer list shows.
+        onRename: (v) => now(e.withBase(name: v) as TextElement),
         fill: true,
         context: context,
         remember: "text",
@@ -1559,8 +1561,10 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
               write(e.copyWith(items: withItem(i, item.copyWith(spec: spec)))),
           begin,
           commit,
-          // What it says, so a column of rows says which is which.
+          // What it says, so a column of rows says which is which -- and a
+          // name of its own where one has been typed over it.
           label: item.says,
+          onRename: (v) => now(withItem(i, item.copyWith(name: v))),
           remember: "textItem${item.id}",
           colourInMore: true,
           rule: false,
@@ -1772,6 +1776,7 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
 
   return CanvasMoreGroup(
     label: item.says,
+    onRename: (v) => put(item.copyWith(name: v)),
     rule: false,
     remember: "textItem${item.id}",
     tooltip: "Where it sits, its colour, its box and its line",

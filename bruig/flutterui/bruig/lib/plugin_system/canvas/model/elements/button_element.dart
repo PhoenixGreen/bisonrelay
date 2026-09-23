@@ -135,6 +135,11 @@ class ButtonElement extends CanvasElement {
   @override
   ElementKind get kind => ElementKind.button;
 
+  /// assetIds is the picture its box is painted with, where it has one. See
+  /// BoxSpec.assetIds -- left out, the sweep takes the picture away.
+  @override
+  Set<String> get assetIds => box.assetIds;
+
   @override
   CanvasElement rebase(ElementBase base) => ButtonElement(base,
       label: label,

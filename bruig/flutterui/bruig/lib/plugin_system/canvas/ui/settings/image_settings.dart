@@ -521,14 +521,17 @@ List<Widget> imageSettings(
             value: value,
             onChanged: (v) {
               begin();
-              write(e.copyWith(crop: apply(v)));
+              // The frame is trimmed with the crop, so the picture that is
+              // left stays where it is instead of being re-fitted into the
+              // same box -- see ImageElement.croppedTo.
+              write(e.croppedTo(apply(v)));
             },
             onCommit: commit,
           ),
         CanvasIconButton(
           icon: Icons.crop_free,
           tooltip: "Show the whole picture again",
-          onPressed: () => now(e.copyWith(crop: const ImageCrop())),
+          onPressed: () => now(e.croppedTo(const ImageCrop())),
         ),
       ]),
     if (e.hasImage)
