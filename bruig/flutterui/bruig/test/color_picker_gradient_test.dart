@@ -408,6 +408,38 @@ void main() {
     expect(said!.gradient!.end, 1.0);
   });
 
+  testWidgets("a point can still be picked up on a tight fade",
+      (tester) async {
+    // The thin handles sit midway along the spans either side of the point
+    // that is selected, so on a fade between two colours close together they
+    // are a few pixels from the point itself -- and while any touch within
+    // seven pixels of a handle went to the handle, that point could not be
+    // picked up at all.
+    PaintSpec? said;
+    await show(tester,
+        paint: const PaintSpec(Color(0xFF3D7EFF),
+            gradient:
+                GradientSpec(to: Color(0xFFFF3DAA), start: 0.5, end: 0.53)),
+        onChanged: (p) => said = p);
+    await tester.tap(gradientTab);
+    await tester.pumpAndSettle();
+
+    // The second point is selected, so both its handles are out; the first
+    // point sits at 0.5, with the handle for the span into the second only a
+    // few pixels to its right.
+    var bar = tester.getRect(find.byKey(const ValueKey("gradientBar")));
+    await tester.tapAt(Offset(bar.right - 4, bar.center.dy));
+    await tester.pumpAndSettle();
+    expect(find.text("Editing the second colour"), findsOneWidget);
+
+    await tester.tapAt(Offset(bar.left + bar.width * 0.5, bar.center.dy));
+    await tester.pumpAndSettle();
+    expect(find.text("Editing the first colour"), findsOneWidget,
+        reason: "the point, not the handle beside it");
+    expect(said?.gradient?.toBias ?? 0.5, 0.5,
+        reason: "and nothing was dragged on the way");
+  });
+
   testWidgets("and there is no handle before the first colour", (tester) async {
     // A span belongs to the colour it runs into, and nothing runs into the
     // first one.

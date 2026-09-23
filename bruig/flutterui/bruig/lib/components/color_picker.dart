@@ -3171,12 +3171,28 @@ class _GradientBarState extends State<_GradientBar> {
     return out;
   }
 
-  /// _grab picks whatever is nearest the touch. The thin handles win a tie:
-  /// they are small, they are only there while their point is selected, and
-  /// the point itself is a much bigger thing to hit.
+  /// _grab picks whatever is nearest the touch, and a point wins a tie.
+  ///
+  /// The thin handles used to win any touch within seven pixels of them,
+  /// which made a point unreachable exactly when it mattered: the handles sit
+  /// midway along the spans either side of the selected point, so on a tight
+  /// fade -- two colours close together, which is most of what anybody sets
+  /// -- they are a few pixels from the point itself and swallowed every
+  /// attempt to pick it up. A point is the bigger thing and the thing being
+  /// reached for nearly every time, so it is only beaten by a handle that is
+  /// genuinely nearer.
   void _grab(double x) {
-    for (var (stop, at) in _biasHandles) {
-      if ((_xOf(at) - x).abs() <= 7) {
+    var at = _at(x);
+    var places = _places;
+    var nearest = 0;
+    for (var i = 1; i < places.length; i++) {
+      if ((at - places[i]).abs() < (at - places[nearest]).abs()) nearest = i;
+    }
+    var toStop = (_xOf(places[nearest]) - x).abs();
+
+    for (var (stop, handle) in _biasHandles) {
+      var away = (_xOf(handle) - x).abs();
+      if (away <= 7 && away < toStop) {
         setState(() {
           _dragging = stop;
           _kind = _Held.bias;
@@ -3184,12 +3200,7 @@ class _GradientBarState extends State<_GradientBar> {
         return;
       }
     }
-    var at = _at(x);
-    var places = _places;
-    var nearest = 0;
-    for (var i = 1; i < places.length; i++) {
-      if ((at - places[i]).abs() < (at - places[nearest]).abs()) nearest = i;
-    }
+
     setState(() {
       _dragging = nearest;
       _kind = _Held.stop;

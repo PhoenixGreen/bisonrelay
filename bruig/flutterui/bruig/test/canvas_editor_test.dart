@@ -2421,6 +2421,44 @@ void main() {
           12);
     });
 
+    testWidgets("a colour and a fade set in one visit both land",
+        (tester) async {
+      // Two writes to the same element, and the panel's controls are built
+      // from the element as it was when it was last laid out -- so written in
+      // one frame the second was built on the same stale copy and undid the
+      // first. Reported as a gradient point's opacity not sticking.
+      var controller = await panel(tester, shapeOf(ShapeKind.star));
+      var fill = find.byWidgetPredicate(
+          (w) => w is CanvasColorButton && w.label == "Fill");
+      await tester.ensureVisible(fill);
+      await tester.pumpAndSettle();
+      await tester.tap(fill);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey("colorModegradient")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("gradientAdd")));
+      await tester.pumpAndSettle();
+
+      // Back to the first point, and its opacity turned down.
+      var bar = tester.getRect(find.byKey(const ValueKey("gradientBar")));
+      await tester.tapAt(Offset(bar.left + 4, bar.center.dy));
+      await tester.pumpAndSettle();
+      var slider =
+          tester.getRect(find.byKey(const ValueKey("gradientOpacity")));
+      await tester.dragFrom(Offset(slider.right - 20, slider.center.dy),
+          Offset(-slider.width / 2, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text("Select"));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elements.single as ShapeElement;
+      expect(after.fillFade, isNotNull, reason: "the fade was set");
+      expect(after.fill.a, lessThan(0.9),
+          reason: "and so was the first colour's opacity");
+    });
+
     testWidgets("the curl appears only for a curved tail", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble));
       await tail(tester);

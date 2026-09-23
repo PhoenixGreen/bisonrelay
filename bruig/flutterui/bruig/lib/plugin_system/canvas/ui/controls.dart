@@ -1640,7 +1640,7 @@ class CanvasSlider extends StatelessWidget {
 /// its colours are not the active theme's and should not be tied to it. What
 /// it does borrow is the theme editor's picker, so the two feel like the same
 /// app.
-class CanvasColorButton extends StatelessWidget {
+class CanvasColorButton extends StatefulWidget {
   final String label;
   final Color color;
   final bool allowAlpha;
@@ -1678,31 +1678,62 @@ class CanvasColorButton extends StatelessWidget {
   });
 
   @override
+  State<CanvasColorButton> createState() => _CanvasColorButtonState();
+}
+
+class _CanvasColorButtonState extends State<CanvasColorButton> {
+  /// _pick opens the picker and writes back whatever it answers with.
+  ///
+  /// The colour and the fade are written one after the other, and where both
+  /// have moved the second is left until the next frame. They are two
+  /// separate writes to the same element, and a settings panel's controls
+  /// are built from the element as it was when the panel was last laid out
+  /// -- so two writes in one frame are both built on the same stale copy and
+  /// the second undoes the first. Reported as a gradient point's opacity not
+  /// sticking: setting a fade and a colour in one visit to the picker kept
+  /// the fade and threw the colour away. After the frame the panel has been
+  /// rebuilt, and `widget` is the new one, whose callbacks are closed over
+  /// what the first write left.
+  Future<void> _pick() async {
+    var picked = await pickPaint(
+      context,
+      initial: PaintSpec(widget.color, gradient: widget.gradient),
+      allowAlpha: widget.allowAlpha,
+      fades: widget.onGradientChanged != null,
+    );
+    if (picked == null || !mounted) return;
+    var colourMoved = picked.color != widget.color;
+    var fadeMoved = picked.gradient != widget.gradient;
+    if (colourMoved) widget.onChanged(picked.color);
+    if (!fadeMoved) return;
+    if (!colourMoved) {
+      widget.onGradientChanged?.call(picked.gradient);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onGradientChanged?.call(picked.gradient);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    var label = widget.label;
+    var color = widget.color;
+    var gradient = widget.gradient;
+    var labelWidth = widget.labelWidth;
     return _labelled(
       theme,
       label,
       cap: labelWidth,
       Tooltip(
-        message: onGradientChanged == null
+        message: widget.onGradientChanged == null
             ? "Choose a colour"
             : "Choose a colour, or two to fade between",
         child: InkWell(
           borderRadius: BorderRadius.circular(4),
-          onTap: () async {
-            var picked = await pickPaint(
-              context,
-              initial: PaintSpec(color, gradient: gradient),
-              allowAlpha: allowAlpha,
-              fades: onGradientChanged != null,
-            );
-            if (picked == null) return;
-            if (picked.color != color) onChanged(picked.color);
-            if (picked.gradient != gradient) {
-              onGradientChanged?.call(picked.gradient);
-            }
-          },
+          onTap: _pick,
           child: Container(
             width: 30,
             height: controlHeight,
