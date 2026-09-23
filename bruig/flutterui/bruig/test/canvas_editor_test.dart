@@ -7527,6 +7527,44 @@ void main() {
       expect(fill, findsOneWidget);
     });
 
+    testWidgets("a middle slot says why its block moves as the words change",
+        (tester) async {
+      // Reported as the gap growing when text was taken out: a middle slot
+      // centres the stack, so half of whatever the words lose is given back
+      // above it. The setting is doing what it says, and the panel is where
+      // that can be said.
+      var centredHint = find.byWidgetPredicate((w) =>
+          w is CanvasHint && w.message.contains("keeps this block centred"));
+      var middle = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(
+              id: "n", text: "Master Block Vote", slot: TextSlot.middleLeft),
+        ],
+      );
+      await panel(tester, element: middle);
+      var button = find.byKey(const ValueKey("more-textItemnType"));
+      expect(button, findsOneWidget, reason: "the piece's own button");
+      if (find.byKey(const ValueKey("textItemGap0")).evaluate().isEmpty) {
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      // A hint is a question mark with a tooltip, so it is found by what it
+      // has to say rather than by what is written on the panel.
+      expect(centredHint, findsOneWidget);
+
+      // And nothing to say about a slot that holds it to an edge, where the
+      // gap means what somebody setting a gap expects.
+      await panel(tester,
+          element: middle.copyWith(items: [
+            middle.items.single.copyWith(slot: TextSlot.topLeft),
+          ]));
+      expect(centredHint, findsNothing);
+    });
+
     testWidgets("a piece is offered a background once it has a colour",
         (tester) async {
       // The colour is the switch: with nothing painted behind the words there

@@ -223,6 +223,7 @@ List<Widget> textSettings(
                 "Columns and a chain of boxes are arrangements of the whole "
                 "box, so the words fill it while either is on and the slot "
                 "waits."),
+          if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
           const CanvasLineBreak(),
           ..._markBits(
             highlight: e.highlight,
@@ -1636,6 +1637,20 @@ List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
 ///
 /// One list rather than two, because "where does this go" is the same
 /// question of both and answering it twice is how the two drift apart.
+/// _middleSlotHint is why a block in a middle slot seems to move as its
+/// words change.
+///
+/// Reported as the gap growing when text was taken out: a middle slot centres
+/// the stack, so half of whatever the words lose is given back at the top.
+/// It is doing what it says; what the person wanted was the block held under
+/// the words above it, which is what a slot shared with them does.
+const _middleSlotHint = CanvasHint(
+    "A middle slot keeps this block centred, and the gap moves the whole "
+    "stack from there — so taking words out lets it settle back down, which "
+    "reads as the gap growing. For a fixed distance under the words above "
+    "it, give it the same slot as them: blocks in one slot stack, each held "
+    "its own gap below the one before.");
+
 List<Widget> _placeBits(TextElement e, int at, TextItem item,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   void put(TextItem next, {bool live = false}) {
@@ -1689,6 +1704,8 @@ List<Widget> _placeBits(TextElement e, int at, TextItem item,
       onChanged: (v) => put(item.copyWith(side: v), live: true),
       onCommit: commit,
     ),
+    if (!item.isIcon && item.slot.down == VerticalAlignSpec.middle)
+      _middleSlotHint,
     const CanvasLineBreak(),
     // What is behind the piece. The colour is the switch: with nothing
     // painted there is no shape to round and no room to keep inside it, so
