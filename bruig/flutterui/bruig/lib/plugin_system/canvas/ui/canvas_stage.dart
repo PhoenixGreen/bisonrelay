@@ -2439,54 +2439,74 @@ class CanvasStageState extends State<CanvasStage> {
           delta.dx * math.sin(a) + delta.dy * math.cos(a));
     }
 
+    // One box for the whole drag: the selection's own, and every element
+    // mapped through it.
+    //
+    // Each element used to take the raw delta on its own edges, so three
+    // things resized together each grew by the same number of pixels
+    // whatever size they were, and the gaps between them never changed at
+    // all -- which is the "multi-element scaling acts very strange" of the
+    // report. Through one box, the sizes and the gaps come out in the same
+    // proportion, which is what dragging the corner of a group means.
+    Rect? group;
+    for (var box in _startVisual.values) {
+      group = group == null ? box : group.expandToInclude(box);
+    }
+    if (group == null) return;
+    var several = _startVisual.length > 1;
+
+    var left = group.left + (handle.movesLeft ? delta.dx : 0);
+    var right = group.right + (handle.movesRight ? delta.dx : 0);
+    var top = group.top + (handle.movesTop ? delta.dy : 0);
+    var bottom = group.bottom + (handle.movesBottom ? delta.dy : 0);
+
+    // Shift keeps the proportions, driven by whichever axis moved further so
+    // that a corner drag feels like one gesture rather than two. A picture
+    // asks for the same thing without the key being held, and then Shift is
+    // how it is let go of -- see CanvasElement.keepsAspect. Several things at
+    // once are held by default whatever they are: a group pulled out of shape
+    // is every gap in it pulled out of shape, and nobody drags the corner of
+    // a group meaning that.
+    var first = document.elementById(_startVisual.keys.first);
+    var keep = several
+        ? !_shiftHeld
+        : ((first?.keepsAspect ?? false) ? !_shiftHeld : _shiftHeld);
+    if (keep && group.height > 0) {
+      var aspect = group.width / group.height;
+      if ((right - left).abs() > (bottom - top).abs() * aspect) {
+        var height = (right - left).abs() / aspect;
+        handle.movesTop ? top = bottom - height : bottom = top + height;
+      } else {
+        var width = (bottom - top).abs() * aspect;
+        handle.movesLeft ? left = right - width : right = left + width;
+      }
+    }
+
+    // Minimums rather than allowing a selection to be dragged inside out. A
+    // negative width is a rectangle that draws nothing and cannot be grabbed
+    // again, which is a way to lose an element with no way back.
+    const minimum = 8.0;
+    if (right - left < minimum) {
+      handle.movesLeft ? left = right - minimum : right = left + minimum;
+    }
+    if (bottom - top < minimum) {
+      handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
+    }
+
+    var sx = group.width == 0 ? 1.0 : (right - left) / group.width;
+    var sy = group.height == 0 ? 1.0 : (bottom - top) / group.height;
+
     var next = document;
     for (var entry in _startVisual.entries) {
       var element = next.elementById(entry.key);
       if (element == null || element.locked) continue;
-      // Against the box the handles are actually on. For a line or a path that
-      // is larger than the element's own rectangle, and dragging a corner of a
-      // box while a different rectangle resized underneath is what made a
-      // curved line feel like it was fighting the pointer.
+      // Against the box the handles are actually on. For a line or a path
+      // that is larger than the element's own rectangle, and dragging a
+      // corner of a box while a different rectangle resized underneath is
+      // what made a curved line feel like it was fighting the pointer.
       var start = entry.value;
-
-      var left = start.left + (handle.movesLeft ? delta.dx : 0);
-      var right = start.right + (handle.movesRight ? delta.dx : 0);
-      var top = start.top + (handle.movesTop ? delta.dy : 0);
-      var bottom = start.bottom + (handle.movesBottom ? delta.dy : 0);
-
-      // Shift keeps the proportions, driven by whichever axis moved further so
-      // that a corner drag feels like one gesture rather than two. A picture
-      // asks for the same thing without the key being held, and then Shift is
-      // how it is let go of -- see CanvasElement.keepsAspect.
-      var keep = element.keepsAspect ? !_shiftHeld : _shiftHeld;
-      if (keep && start.height > 0) {
-        var aspect = start.width / start.height;
-        if ((right - left).abs() > (bottom - top).abs() * aspect) {
-          var height = (right - left).abs() / aspect;
-          handle.movesTop ? top = bottom - height : bottom = top + height;
-        } else {
-          var width = (bottom - top).abs() * aspect;
-          handle.movesLeft ? left = right - width : right = left + width;
-        }
-      }
-
-      // Minimums rather than allowing an element to be dragged inside out.
-      // A negative width is a rectangle that draws nothing and cannot be
-      // grabbed again, which is a way to lose an element with no way back.
-      const minimum = 8.0;
-      if (right - left < minimum) {
-        handle.movesLeft ? left = right - minimum : right = left + minimum;
-      }
-      if (bottom - top < minimum) {
-        handle.movesTop ? top = bottom - minimum : bottom = top + minimum;
-      }
-
-      // The handle box has been resized; the element's own rectangle follows
-      // it in the same proportion. For everything except a line, a path and
-      // curved text the two boxes are identical and this is the identity.
       var real = _startBounds[entry.key] ?? start;
-      var sx = start.width == 0 ? 1.0 : (right - left) / start.width;
-      var sy = start.height == 0 ? 1.0 : (bottom - top) / start.height;
+
       // Holding the proportions means holding them of everything in there:
       // the type, the spacing, the room inside a chip. Resized without it,
       // the box changes and what is in it stays the size it was, which is
@@ -2495,8 +2515,8 @@ class CanvasStageState extends State<CanvasStage> {
       var from = _startElements[entry.key] ?? element;
       element = keep ? from.scaledBy(sx) : element;
       next = next.withElement(element.withBase(
-        x: left + (real.left - start.left) * sx,
-        y: top + (real.top - start.top) * sy,
+        x: left + (real.left - group.left) * sx,
+        y: top + (real.top - group.top) * sy,
         width: math.max(1, real.width * sx),
         height: math.max(1, real.height * sy),
       ));

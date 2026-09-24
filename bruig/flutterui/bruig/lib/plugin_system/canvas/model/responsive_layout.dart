@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -57,10 +58,127 @@ String shapeTag(String key) {
 
 /// canvasScale is how much a design made for one page is sized by for
 /// another -- the smaller of the two ratios, so it fits across and down.
+///
+/// The measure for a *thing being dropped on a page* -- a preset, an element
+/// laid out for a shape it has not been seen on. Seeding a whole shape uses
+/// [seedFor] instead, which measures the design rather than the page.
 double canvasScale(CanvasSize from, CanvasSize to) {
   if (from.width <= 0 || from.height <= 0) return 1;
   var by = math.min(to.width / from.width, to.height / from.height);
   return (by - 1).abs() < 0.001 ? 1 : by;
+}
+
+/// ShapeSeed is how a design is placed on a shape nobody has laid it out on.
+class ShapeSeed {
+  /// by is how much everything is sized by.
+  final double by;
+
+  /// block is the design's own bounds on the page being left: everything
+  /// except what covers the page.
+  final Rect block;
+
+  /// at is where the scaled block's top-left corner goes on the new page.
+  final Offset at;
+
+  /// page is the page being opened.
+  final Size page;
+
+  const ShapeSeed(
+      {required this.by,
+      required this.block,
+      required this.at,
+      required this.page});
+}
+
+/// coversPage is whether an element is the page rather than something on it:
+/// a photograph behind everything, a colour wash, a frame.
+///
+/// They are seeded by covering the new page rather than by being scaled with
+/// the design, which is the difference between a backdrop and a card.
+bool coversPage(CanvasElement element, CanvasSize page) {
+  var slack = math.max(page.width, page.height) * 0.02;
+  return element.x <= slack &&
+      element.y <= slack &&
+      element.x + element.width >= page.width - slack &&
+      element.y + element.height >= page.height - slack;
+}
+
+/// seedFor works out how a scene's design moves onto another shape of page.
+///
+/// Measured against the *design* rather than against the page, which is the
+/// whole difference between this and scaling everything by the ratio of the
+/// two pages. A 4:5 feed card taken to 16:9 has the same width and less than
+/// half the height, so by the page it would be shrunk to 45% -- a table and a
+/// score bug that filled the card left as postage stamps in a corner of the
+/// new one, which is what was reported.
+///
+/// What it does instead: the design keeps its size, and is only made smaller
+/// where the new page cannot hold it. Never larger -- type grown to fill a
+/// bigger page is type nobody chose -- and it lands where it sat before, as a
+/// fraction of the page, so a block at the bottom stays at the bottom.
+ShapeSeed seedFor(
+    List<CanvasElement> elements, CanvasSize from, CanvasSize to) {
+  var page = Size(to.width.toDouble(), to.height.toDouble());
+
+  Rect? block;
+  for (var e in elements) {
+    if (coversPage(e, from)) continue;
+    var box = Rect.fromLTWH(e.x, e.y, e.width, e.height);
+    block = block == null ? box : block.expandToInclude(box);
+  }
+  if (block == null || block.width <= 0 || block.height <= 0) {
+    return ShapeSeed(
+        by: 1, block: Rect.zero, at: Offset.zero, page: page);
+  }
+
+  var by = math.min(
+      1.0, math.min(page.width / block.width, page.height / block.height));
+  var sized = Size(block.width * by, block.height * by);
+
+  // Where it sat, as a fraction of the page it sat on: a block across the
+  // bottom of a feed card is across the bottom of the screen too.
+  var centre = Offset(
+    block.center.dx / math.max(1, from.width) * page.width,
+    block.center.dy / math.max(1, from.height) * page.height,
+  );
+  var at = Offset(centre.dx - sized.width / 2, centre.dy - sized.height / 2);
+
+  // And nudged back on where that would hang it off an edge. A design that
+  // fits the page should be on the page.
+  at = Offset(
+    at.dx.clamp(
+        math.min(0, page.width - sized.width), math.max(0, page.width - sized.width)),
+    at.dy.clamp(math.min(0, page.height - sized.height),
+        math.max(0, page.height - sized.height)),
+  );
+  return ShapeSeed(by: by, block: block, at: at, page: page);
+}
+
+/// seeded is [layout] placed on the new page by [seed].
+ElementLayout seeded(ElementLayout layout, ShapeSeed seed, bool covers) {
+  if (covers) {
+    // The backdrop is the page, whatever shape the page is.
+    return ElementLayout(
+      x: 0,
+      y: 0,
+      width: seed.page.width,
+      height: seed.page.height,
+      visible: layout.visible,
+      typeScale: layout.typeScale,
+      text: layout.text,
+      ownText: layout.ownText,
+    );
+  }
+  return ElementLayout(
+    x: seed.at.dx + (layout.x - seed.block.left) * seed.by,
+    y: seed.at.dy + (layout.y - seed.block.top) * seed.by,
+    width: math.max(1, layout.width * seed.by),
+    height: math.max(1, layout.height * seed.by),
+    visible: layout.visible,
+    typeScale: layout.typeScale * seed.by,
+    text: layout.text,
+    ownText: layout.ownText,
+  );
 }
 
 /// withLayoutsFor is [element] given a layout for every shape in [targets],
@@ -108,7 +226,8 @@ CanvasSize sizeForShape(String key, CanvasSize like) {
 /// away, so the first visit lands on something that already looks like the
 /// design. The type comes down with the box: seeded without that, a headline
 /// keeps the size it had on the larger page and runs out of the frame.
-CanvasElement movedTo(CanvasElement element, String from, String to, double by) {
+CanvasElement movedTo(CanvasElement element, String from, String to,
+    {required ShapeSeed seed, required bool covers}) {
   var layouts = {...element.base.layouts};
   var words = element is TextElement ? element.text : null;
   var ownHere = element.base.ownText;
@@ -134,8 +253,7 @@ CanvasElement movedTo(CanvasElement element, String from, String to, double by) 
   var next = layouts.remove(to) ??
       // A new shape follows the others' words: a headline shortened for the
       // narrow page is that page's business, not the next one's.
-      layouts[from]!
-          .scaledBy(by)
+      seeded(layouts[from]!, seed, covers)
           .copyWith(text: shared, ownText: false);
 
   var moved = element.withBase(

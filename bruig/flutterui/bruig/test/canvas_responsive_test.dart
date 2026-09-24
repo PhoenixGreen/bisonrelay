@@ -41,17 +41,73 @@ void main() {
 
   group("switching shape", () {
     test("keeps the shape being left, and seeds the one being opened", () {
-      // 1000x1250 (4:5) to 1000x562 (16:9): the smaller ratio is the height,
-      // so the design comes down by 562/1250.
+      // 1000x1250 (4:5) to 1000x562 (16:9). The design is a 400x200 box,
+      // which the new page holds without shrinking -- so it keeps its size
+      // and lands where it sat, nudged back on where that would hang it off
+      // the top. Measured against the design rather than against the page:
+      // by the page this would have come down to 45%, which is what left a
+      // card as a postage stamp in the corner.
       var tall = documentAt(CanvasRatio.feedAd);
       var wide = tall.forShape(sizeOf(CanvasRatio.wide));
 
-      var by = sizeOf(CanvasRatio.wide).height / sizeOf(CanvasRatio.feedAd).height;
-      expect(shapeIn(wide).width, closeTo(400 * by, 0.5),
-          reason: "seeded by scaling what was left behind");
-      expect(shapeIn(wide).x, closeTo(100 * by, 0.5));
+      expect(shapeIn(wide).width, 400, reason: "it fits, so it is not shrunk");
+      expect(shapeIn(wide).height, 200);
+      expect(shapeIn(wide).x, closeTo(100, 0.5), reason: "where it sat");
+      expect(shapeIn(wide).y, greaterThanOrEqualTo(0),
+          reason: "and on the page");
       expect(shapeIn(wide).base.layouts.keys, contains("feedAd"),
           reason: "and the 4:5 is put away, not thrown away");
+    });
+
+    test("and is made smaller only where the new page cannot hold it", () {
+      // A design wider than the page it is being taken to comes down until
+      // it fits, and no further.
+      var doc = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000),
+        elements: [
+          ShapeElement(const ElementBase(
+              id: "s", x: 100, y: 100, width: 1600, height: 400)),
+        ],
+      );
+      var wide = doc.forShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+
+      expect(shapeIn(wide).width, closeTo(1000, 1),
+          reason: "as wide as the page and no wider");
+      expect(shapeIn(wide).height, closeTo(250, 1), reason: "in proportion");
+    });
+
+    test("what covers the page goes on covering it", () {
+      // A photograph behind everything is the page rather than something on
+      // it: scaled with the design it would leave a band of nothing down the
+      // side of the new shape.
+      var doc = CanvasDocument(
+        size: sizeOf(CanvasRatio.feedAd),
+        elements: [
+          ShapeElement(ElementBase(
+              id: "back",
+              width: sizeOf(CanvasRatio.feedAd).width.toDouble(),
+              height: sizeOf(CanvasRatio.feedAd).height.toDouble())),
+          ShapeElement(const ElementBase(
+              id: "card", x: 100, y: 900, width: 800, height: 300)),
+        ],
+      );
+
+      var wide = doc.forShape(sizeOf(CanvasRatio.wide));
+      var back = wide.elementById("back")!;
+      expect(back.width, sizeOf(CanvasRatio.wide).width);
+      expect(back.height, sizeOf(CanvasRatio.wide).height);
+      expect(back.x, 0);
+      expect(back.y, 0);
+
+      // And the card is not shrunk to the page's ratio because the backdrop
+      // is large: the backdrop is left out of the design's own block.
+      var card = wide.elementById("card")!;
+      expect(card.width, 800, reason: "not shrunk to the page's own ratio");
+      // It sat against the bottom of the tall page and sits against the
+      // bottom of the wide one: a block that would hang off an edge is
+      // nudged back on.
+      expect(card.y + card.height,
+          closeTo(sizeOf(CanvasRatio.wide).height.toDouble(), 1));
     });
 
     test("and gives it back untouched on the way home", () {
@@ -113,9 +169,9 @@ void main() {
 
       var wide = doc.forShape(sizeOf(CanvasRatio.wide));
       var logo = wide.master!.elements.single;
-      var by = canvasScale(sizeOf(CanvasRatio.feedAd), sizeOf(CanvasRatio.wide));
-      expect(logo.width, closeTo(200 * by, 0.5));
-      expect(logo.base.layouts.keys, contains("feedAd"));
+      expect(logo.base.layouts.keys, contains("feedAd"),
+          reason: "put away like everything else");
+      expect(logo.base.layouts["feedAd"]!.x, 40, reason: "as it was left");
     });
 
     test("a width change is not a shape change", () {
@@ -214,16 +270,33 @@ void main() {
           ],
         );
 
-    test("comes down with the box when a shape is seeded", () {
-      // Seeded without this, a headline keeps the size it had on the larger
-      // page and runs out of the frame -- which is the whole complaint
-      // presets had, arriving here by another door.
+    test("comes down with the box where the box comes down", () {
+      // A headline too wide for the page it is taken to is made smaller, and
+      // the type with it: scaled without that it keeps the size it had on
+      // the larger page and runs out of the frame.
+      var doc = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000),
+        elements: [
+          TextElement(
+            const ElementBase(id: "t", width: 1600, height: 400),
+            text: "Spend or burn",
+            textSpec: const TextSpec(fontSize: 60),
+          ),
+        ],
+      );
+      var wide =
+          doc.forShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+
+      expect(wordsIn(wide).width, closeTo(1000, 1));
+      expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * 0.625, 0.5));
+      expect(wordsIn(wide).base.typeScale, closeTo(0.625, 0.01));
+    });
+
+    test("and is left alone where the design fits as it is", () {
       var doc = headline(CanvasRatio.feedAd);
       var wide = doc.forShape(sizeOf(CanvasRatio.wide));
-      var by = canvasScale(sizeOf(CanvasRatio.feedAd), sizeOf(CanvasRatio.wide));
-
-      expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * by, 0.5));
-      expect(wordsIn(wide).base.typeScale, closeTo(by, 0.001));
+      expect(wordsIn(wide).textSpec.fontSize, 60);
+      expect(wordsIn(wide).base.typeScale, 1);
     });
 
     test("and each shape keeps its own", () {

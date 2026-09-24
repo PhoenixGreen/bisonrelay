@@ -638,6 +638,41 @@ void main() {
       expect(after.items.single.gap, closeTo(10, 0.2));
     });
 
+    testWidgets("several things resize as one group, gaps and all",
+        (tester) async {
+      // Each element used to take the raw drag on its own edges, so three
+      // things resized together each grew by the same number of pixels
+      // whatever size they were and the gaps between them never changed --
+      // reported as multi-element scaling acting very strange.
+      var left = ShapeElement(
+          const ElementBase(id: "a", x: 100, y: 100, width: 100, height: 100));
+      var right = ShapeElement(
+          const ElementBase(id: "b", x: 300, y: 100, width: 100, height: 100));
+      var controller = CanvasController(
+          const CanvasDocument().addElement(left).addElement(right));
+      addTearDown(controller.dispose);
+      controller.selectOnly("a");
+      controller.toggleSelected("b");
+      var stage = await pump(tester, controller);
+
+      // The group's box is 100..400 across; halve it by dragging the
+      // bottom-right corner in.
+      var scale = stage.pageRect.width / controller.document.size.width;
+      var from = stage.pageRect.topLeft + const Offset(400, 200) * scale;
+      await tester.dragFrom(from, const Offset(-150, -100) * scale);
+      await tester.pumpAndSettle();
+
+      var a = controller.document.elementById("a")!;
+      var b = controller.document.elementById("b")!;
+      expect(a.width, closeTo(50, 1), reason: "half the size");
+      expect(b.width, closeTo(50, 1));
+      // The gap between them was 100 and is now 50: the space shrinks with
+      // the things either side of it.
+      expect(b.x - (a.x + a.width), closeTo(50, 1.5));
+      expect(a.x, closeTo(100, 1), reason: "the corner held still stays put");
+      expect(a.y, closeTo(100, 1));
+    });
+
     testWidgets("and a locked table is scaled the same way", (tester) async {
       // The same switch has to mean the same thing on a table: the columns
       // and the rows are fractions and follow the box on their own, but the

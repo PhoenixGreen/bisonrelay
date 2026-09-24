@@ -697,10 +697,17 @@ class CanvasDocument {
   CanvasDocument forShape(CanvasSize next) {
     var from = shapeKey(size), to = shapeKey(next);
     if (from == to) return copyWith(size: next);
-    var by = canvasScale(size, next);
 
-    CanvasScene moved(CanvasScene scene) => scene.copyWith(
-        elements: [for (var e in scene.elements) movedTo(e, from, to, by)]);
+    // Worked out per scene, because it is the scene's design that is being
+    // placed: the block it occupies, how much of it the new page can hold,
+    // and where on the new page it sat before. See seedFor.
+    CanvasScene moved(CanvasScene scene) {
+      var seed = seedFor(scene.elements, size, next);
+      return scene.copyWith(elements: [
+        for (var e in scene.elements)
+          movedTo(e, from, to, seed: seed, covers: coversPage(e, size)),
+      ]);
+    }
 
     var shared = master == null ? null : moved(master!);
     return withScenes([for (var scene in allScenes) moved(scene)], at: at)
