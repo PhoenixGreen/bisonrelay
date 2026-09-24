@@ -313,6 +313,15 @@ void main() {
     });
   });
 
+  test("a shape's short name tells the files apart", () {
+    // What names one file per shape when a canvas is published at all of
+    // them: "card-16x9.png" beside "card-4x5.png".
+    expect(shapeTag("wide"), "16x9");
+    expect(shapeTag("feedAd"), "4x5", reason: "the words after it are dropped");
+    expect(shapeTag("square"), "1x1");
+    expect(shapeTag("a4"), "A4");
+  });
+
   group("the file", () {
     test("carries the layouts and the targets through a save", () {
       var controller = CanvasController(documentAt(CanvasRatio.feedAd));

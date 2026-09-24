@@ -42,6 +42,19 @@ String shapeLabel(String key) {
   return key;
 }
 
+/// shapeTag is a short name for a shape, safe in a filename.
+///
+/// What tells three files apart when a canvas is published at every shape it
+/// is designed for: "card-16x9.png" beside "card-4x5.png". The ratio's label
+/// without the words after it, and with the colon a filename cannot carry
+/// turned into an x.
+String shapeTag(String key) {
+  var label = shapeLabel(key);
+  var cut = label.indexOf(" ·");
+  if (cut > 0) label = label.substring(0, cut);
+  return label.replaceAll(":", "x").replaceAll(" ", "");
+}
+
 /// canvasScale is how much a design made for one page is sized by for
 /// another -- the smaller of the two ratios, so it fits across and down.
 double canvasScale(CanvasSize from, CanvasSize to) {

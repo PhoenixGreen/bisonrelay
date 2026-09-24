@@ -95,6 +95,44 @@ Future<String?> saveToDisk(CanvasExport export, String suggestedName) async {
   }
 }
 
+/// saveAllToDisk writes one file per shape into a folder the reader chooses.
+///
+/// A folder asked for once rather than a save dialog per shape: publishing a
+/// canvas at the three shapes it was designed for is one action, and three
+/// dialogs in a row is three chances to put the set in three places.
+///
+/// Answers with the folder, or null where the reader cancelled. A shape whose
+/// file could not be written is left out of [written] rather than stopping
+/// the rest: two files saved is better than none.
+Future<({String folder, List<String> written})?> saveAllToDisk(
+  List<({String tag, CanvasExport export})> shapes,
+  String suggestedName,
+) async {
+  if (shapes.isEmpty) return null;
+  try {
+    var folder = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: "Where to put the ${shapes.length} files");
+    if (folder == null) return null;
+
+    var written = <String>[];
+    for (var shape in shapes) {
+      var name =
+          "$suggestedName-${shape.tag}${extensionFor(shape.export.mime)}";
+      try {
+        await File(path.join(folder, name))
+            .writeAsBytes(shape.export.data, flush: true);
+        written.add(name);
+      } catch (exception) {
+        debugPrint("Unable to write $name: $exception");
+      }
+    }
+    return (folder: folder, written: written);
+  } catch (exception) {
+    debugPrint("Unable to save the canvas to disk: $exception");
+    return null;
+  }
+}
+
 /// sendToChat posts the canvas into a chat as an inline embed.
 ///
 /// Refuses rather than truncating when the result is over the wire limit: a

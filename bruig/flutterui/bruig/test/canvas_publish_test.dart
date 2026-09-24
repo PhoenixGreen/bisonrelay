@@ -65,6 +65,39 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  group("a canvas laid out for several shapes", () {
+    CanvasDocument responsive() => const CanvasDocument(
+          size: CanvasSize(ratio: CanvasRatio.feedAd, width: 1000),
+          targets: ["feedAd", "wide"],
+        );
+
+    testWidgets("offers to publish every one of them", (tester) async {
+      await open(tester, document: responsive());
+      var every = find.byKey(const ValueKey("publishEveryShape"));
+      expect(every, findsOneWidget);
+      await tester.ensureVisible(every);
+      await tester.pumpAndSettle();
+      expect(find.textContaining("4x5, 16x9"), findsOneWidget,
+          reason: "and says which shapes they are");
+    });
+
+    testWidgets("but not to the places that hold one publication",
+        (tester) async {
+      // The library and Files keep one record per canvas, so three shapes
+      // there would be three things claiming to be the same publication.
+      await open(tester, document: responsive());
+      await tester.tap(find.text("Add to the post library"));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("publishEveryShape")), findsNothing);
+    });
+
+    testWidgets("and a canvas made for one shape is not asked",
+        (tester) async {
+      await open(tester);
+      expect(find.byKey(const ValueKey("publishEveryShape")), findsNothing);
+    });
+  });
+
   group("with no encoder on the machine", () {
     setUp(() => useFfmpegForTest(null));
     tearDown(forgetFfmpegForTest);

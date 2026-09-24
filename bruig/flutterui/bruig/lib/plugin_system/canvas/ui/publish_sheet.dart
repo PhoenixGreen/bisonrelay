@@ -11,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -151,6 +153,15 @@ class _PublishSheetState extends State<_PublishSheet> {
   bool _pdf = false;
   PdfPaper _paper = PdfPaper.canvas;
   PdfOrientation _orientation = PdfOrientation.auto;
+
+  /// _everyShape is whether to publish the canvas at every shape it is being
+  /// designed for rather than only the one on screen.
+  ///
+  /// Offered for a file and for a chat, which are the two destinations that
+  /// can hold several: the library and Files keep one publish record per
+  /// canvas, so three shapes there would be three things claiming to be the
+  /// same publication. See CanvasDocument.targets.
+  bool _everyShape = false;
 
   bool _dither = true;
   int _colors = 256;
@@ -328,12 +339,13 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// picture the canvas draws, at a different size. Only the GIF reports
   /// progress, because it is the only one where there is any to report: a
   /// still is one frame and is done before a progress line could be read.
-  Future<CanvasExport?> _render() async {
+  Future<CanvasExport?> _render({CanvasDocument? of}) async {
+    var document = of ?? _document;
     switch (_as) {
       case PublishAs.image:
         if (_pdf) {
           return renderPdf(
-            _document,
+            document,
             frame: _frame,
             scale: _scale,
             images: widget.images,
@@ -342,7 +354,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           );
         }
         return renderImage(
-          _document,
+          document,
           frame: _frame,
           scale: _scale,
           images: widget.images,
@@ -350,7 +362,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         );
       case PublishAs.animation:
         return renderGif(
-          _document,
+          document,
           scale: _scale,
           images: widget.images,
           dither: _dither,
@@ -364,7 +376,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         );
       case PublishAs.video:
         return renderVideo(
-          _document,
+          document,
           scale: _scale,
           images: widget.images,
           format: _videoFormat,
@@ -385,16 +397,16 @@ class _PublishSheetState extends State<_PublishSheet> {
         // placeholder where every photograph had been, because the ids in it
         // pointed at a store only the sender had. A canvas with no pictures
         // stays the plain readable JSON it has always been.
-        if (_document.assetIds.isEmpty) {
+        if (document.assetIds.isEmpty) {
           return CanvasExport(
-            utf8.encode(_document.encode()),
+            utf8.encode(document.encode()),
             "application/json",
             width: widget.document.size.exportWidth,
             height: widget.document.size.exportHeight,
           );
         }
         return CanvasExport(
-          await packCanvas(_document),
+          await packCanvas(document),
           bundleMime,
           width: widget.document.size.exportWidth,
           height: widget.document.size.exportHeight,
@@ -427,6 +439,15 @@ class _PublishSheetState extends State<_PublishSheet> {
       if (_as == PublishAs.video) {
         setState(() => _progress = "Encoding the video…");
       }
+      // Every shape it is laid out for, each rendered from the document laid
+      // out for that shape -- see CanvasDocument.forShape. The one on screen
+      // is in the list like any other, and comes out the same as it would on
+      // its own.
+      if (_everyShape && _canPublishEveryShape) {
+        await _publishEveryShape(snackbar);
+        return;
+      }
+
       var export = await _render();
       if (!mounted) return;
       if (export == null) {
@@ -491,6 +512,68 @@ class _PublishSheetState extends State<_PublishSheet> {
         });
       }
     }
+  }
+
+  /// _canPublishEveryShape is whether the choice is worth offering: a canvas
+  /// laid out for more than one shape, going somewhere that can hold several.
+  bool get _canPublishEveryShape =>
+      widget.document.targets.length > 1 &&
+      (_to == PublishTo.file || _to == PublishTo.chat);
+
+  /// _publishEveryShape renders the canvas once per shape and sends the lot.
+  ///
+  /// A folder asked for once for files, and one message per shape for a chat.
+  /// Reported as a set: "three of three", so a shape that failed to render is
+  /// not a silent gap in what was meant to be a matching set.
+  Future<void> _publishEveryShape(SnackBarModel snackbar) async {
+    var here = widget.document.size;
+    var made = <({String tag, CanvasExport export})>[];
+
+    for (var key in widget.document.targets) {
+      if (!mounted) return;
+      var tag = shapeTag(key);
+      setState(() => _progress = "Rendering $tag…");
+      var laid = _document.forShape(sizeForShape(key, here));
+      var export = await _render(of: laid);
+      if (export != null) made.add((tag: tag, export: export));
+    }
+    if (!mounted) return;
+    if (made.isEmpty) {
+      snackbar.error(_as == PublishAs.video && !_ffmpeg
+          ? ffmpegHelp
+          : "Unable to render the canvas.");
+      return;
+    }
+
+    var asked = widget.document.targets.length;
+    if (_to == PublishTo.file) {
+      var saved = await saveAllToDisk(made, _suggestedName);
+      if (!mounted) return;
+      // A cancelled folder chooser is not a failure.
+      if (saved == null) return;
+      snackbar.success("Saved ${saved.written.length} of $asked shapes to "
+          "${saved.folder}.");
+    } else {
+      var chat = _chat;
+      if (chat == null) {
+        snackbar.error("Choose a chat to send it to.");
+        return;
+      }
+      var sent = 0;
+      for (var shape in made) {
+        var problem = await sendToChat(chat, shape.export,
+            caption: _caption.isEmpty ? shape.tag : "$_caption — ${shape.tag}");
+        if (problem == null) {
+          sent++;
+        } else if (mounted) {
+          snackbar.error("${shape.tag}: $problem");
+        }
+      }
+      if (!mounted) return;
+      if (sent == 0) return;
+      snackbar.success("Sent $sent of $asked shapes to ${chat.nick}.");
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   /// _remember keeps what a publish produced, both on screen and on disk.
@@ -596,6 +679,21 @@ class _PublishSheetState extends State<_PublishSheet> {
                   icon: option.icon,
                   onTap: _busy ? null : () => setState(() => _to = option),
                 ),
+              if (_canPublishEveryShape) ...[
+                const SizedBox(height: 4),
+                CanvasToggle(
+                  key: const ValueKey("publishEveryShape"),
+                  label: "Every shape (${widget.document.targets.length})",
+                  value: _everyShape,
+                  onChanged: _busy
+                      ? (_) {}
+                      : (v) => setState(() => _everyShape = v),
+                ),
+                _note(
+                    theme,
+                    "One file per shape this canvas is laid out for, each at "
+                    "its own layout: ${widget.document.targets.map(shapeTag).join(", ")}."),
+              ],
               if (_to == PublishTo.chat) ..._chatControls(theme),
               if (_to == PublishTo.library)
                 Padding(
