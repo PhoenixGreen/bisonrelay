@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -159,6 +160,18 @@ class CanvasDocument {
   final CanvasScene? master;
   final bool masterOn;
 
+  /// targets are the shapes this document is being designed for, by ratio
+  /// key -- see shapeKey.
+  ///
+  /// Empty for a document made for one shape, which is most of them. Adding a
+  /// shape here is what starts a responsive design: every element gains a
+  /// layout for it, seeded from the shape being looked at and then the
+  /// reader's to adjust. See forShape.
+  ///
+  /// A list rather than a set so the order is the reader's, and a list of
+  /// keys rather than of CanvasRatio so a custom shape can be one of them.
+  final List<String> targets;
+
   /// onMaster is whether the master canvas is the one being edited.
   ///
   /// A document-level fact rather than a flag in the editor, and that is what
@@ -207,6 +220,7 @@ class CanvasDocument {
     this.master,
     this.masterOn = false,
     this.onMaster = false,
+    this.targets = const [],
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -581,6 +595,7 @@ class CanvasDocument {
     bool clearMaster = false,
     bool? masterOn,
     bool? onMaster,
+    List<String>? targets,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
@@ -638,6 +653,7 @@ class CanvasDocument {
       master: shared,
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
+      targets: targets ?? this.targets,
     );
   }
 
@@ -662,7 +678,33 @@ class CanvasDocument {
       master: master,
       masterOn: masterOn,
       onMaster: onMaster,
+      targets: targets,
     );
+  }
+
+  /// forShape is this document laid out for another shape of page.
+  ///
+  /// The one place a shape change goes through. Every element puts away the
+  /// place and size it was showing under the shape being left, and takes out
+  /// the ones belonging to the shape being opened -- or, on a shape nobody
+  /// has worked on yet, a scaled copy of what was just put away. Everything
+  /// else in the editor goes on reading elements the way it always has, which
+  /// is what makes this cheap. See responsive_layout.dart.
+  ///
+  /// The master canvas is laid out with the rest: it is a canvas, and a
+  /// design that is responsive everywhere except the thing drawn under all of
+  /// it is not responsive.
+  CanvasDocument forShape(CanvasSize next) {
+    var from = shapeKey(size), to = shapeKey(next);
+    if (from == to) return copyWith(size: next);
+    var by = canvasScale(size, next);
+
+    CanvasScene moved(CanvasScene scene) => scene.copyWith(
+        elements: [for (var e in scene.elements) movedTo(e, from, to, by)]);
+
+    var shared = master == null ? null : moved(master!);
+    return withScenes([for (var scene in allScenes) moved(scene)], at: at)
+        .copyWith(size: next, master: shared);
   }
 
   /// withScene replaces one scene.
@@ -795,7 +837,21 @@ class CanvasDocument {
   }
 
   CanvasDocument addElement(CanvasElement element) =>
-      copyWith(elements: [...elements, element]);
+      copyWith(elements: [...elements, laidOut(element)]);
+
+  /// laidOut is [element] given a layout on every shape this document is
+  /// designed for, seeded from the shape being looked at.
+  ///
+  /// Everything that puts an element on the canvas goes through addElement,
+  /// so this is the one place that has to know: a card added while the 16:9
+  /// is open is on the 4:5 as well, scaled to it, rather than having to be
+  /// built once per shape.
+  CanvasElement laidOut(CanvasElement element) => withLayoutsFor(
+        element,
+        size,
+        targets,
+        sizeOf: (key) => sizeForShape(key, size),
+      );
 
   /// removeElement takes an element out, and takes the references to it with
   /// it.
@@ -844,6 +900,7 @@ class CanvasDocument {
       if (actions.isNotEmpty)
         "actions": actions.map((a) => a.toJson()).toList(),
       "elements": elements.map((e) => e.toJson()).toList(),
+      if (targets.isNotEmpty) "targets": targets,
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
         if (sceneAt != 0) "sceneAt": at,
@@ -947,6 +1004,11 @@ class CanvasDocument {
           : null,
       masterOn: jsonBool(json["masterOn"], false),
       onMaster: jsonBool(json["onMaster"], false),
+      targets: [
+        if (json["targets"] is List)
+          for (var t in json["targets"] as List)
+            if (t is String) t,
+      ],
     );
   }
 

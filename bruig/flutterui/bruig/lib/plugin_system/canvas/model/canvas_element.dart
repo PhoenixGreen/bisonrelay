@@ -129,6 +129,22 @@ class ElementBase {
   /// track is this element's animation, or null when it does not move.
   final ElementTrack? track;
 
+  /// layouts is where this element sits on each of the *other* shapes the
+  /// document is being designed for, by ratio -- see ElementLayout and
+  /// CanvasDocument.targets.
+  ///
+  /// The shape being looked at is not in here: its numbers are x, y, width
+  /// and height above, live, so that every painter, every handle and every
+  /// settings field goes on reading the element the way it always has.
+  /// Changing the document's shape puts the live numbers away under the
+  /// shape being left and takes out the ones belonging to the shape being
+  /// opened. See CanvasDocument.forShape.
+  ///
+  /// Only the place and the size. What the element *is* -- its words, its
+  /// colours, its data, how it arrives -- is one thing across every shape,
+  /// so that a headline fixed on the square is fixed on the banner too.
+  final Map<String, ElementLayout> layouts;
+
   const ElementBase({
     required this.id,
     this.name = "",
@@ -142,6 +158,7 @@ class ElementBase {
     this.locked = false,
     this.lockAspect = false,
     this.track,
+    this.layouts = const {},
   });
 
   ElementBase copyWith({
@@ -158,6 +175,7 @@ class ElementBase {
     bool? lockAspect,
     ElementTrack? track,
     bool clearTrack = false,
+    Map<String, ElementLayout>? layouts,
   }) =>
       ElementBase(
         id: id ?? this.id,
@@ -172,6 +190,7 @@ class ElementBase {
         locked: locked ?? this.locked,
         lockAspect: lockAspect ?? this.lockAspect,
         track: clearTrack ? null : (track ?? this.track),
+        layouts: layouts ?? this.layouts,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -191,6 +210,12 @@ class ElementBase {
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
+      layouts: {
+        if (json["layouts"] is Map)
+          for (var e in (json["layouts"] as Map).entries)
+            if (e.value is Map<String, dynamic>)
+              "${e.key}": ElementLayout.fromJson(e.value as Map<String, dynamic>),
+      },
     );
   }
 
@@ -213,7 +238,83 @@ class ElementBase {
         // would make that impossible to tell.
         "aspect": lockAspect,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
+        if (layouts.isNotEmpty)
+          "layouts": {
+            for (var e in layouts.entries) e.key: e.value.toJson(),
+          },
       };
+}
+
+/// ElementLayout is where an element sits on one shape of the canvas.
+///
+/// The place and the size and nothing else. A document designed for several
+/// shapes -- a 4:5 for a feed, a 16:9 for a screen -- is one set of elements
+/// laid out several ways, not several documents to keep in step.
+///
+/// [visible] is part of the layout because "not on this one" is a layout
+/// decision: a wide strip across the top of a banner has no business on a
+/// tall canvas, and squeezing it is not the answer.
+class ElementLayout {
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+  final bool visible;
+
+  const ElementLayout({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+    this.visible = true,
+  });
+
+  /// of is the layout an element is showing at the moment.
+  factory ElementLayout.of(ElementBase base) => ElementLayout(
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+        visible: base.visible,
+      );
+
+  /// scaledBy is this layout on a page [by] times the size.
+  ElementLayout scaledBy(double by) => ElementLayout(
+        x: x * by,
+        y: y * by,
+        width: math.max(1, width * by),
+        height: math.max(1, height * by),
+        visible: visible,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "x": x,
+        "y": y,
+        "w": width,
+        "h": height,
+        if (!visible) "visible": false,
+      };
+
+  factory ElementLayout.fromJson(Map<String, dynamic> json) => ElementLayout(
+        x: _d(json["x"], 0),
+        y: _d(json["y"], 0),
+        width: _d(json["w"], 200),
+        height: _d(json["h"], 100),
+        visible: _b(json["visible"], true),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ElementLayout &&
+          other.x == x &&
+          other.y == y &&
+          other.width == width &&
+          other.height == height &&
+          other.visible == visible;
+
+  @override
+  int get hashCode => Object.hash(x, y, width, height, visible);
 }
 
 /// jsonSpec reads a nested value object -- a TextSpec, a BoxSpec, a
@@ -343,6 +444,7 @@ abstract class CanvasElement {
     bool? lockAspect,
     ElementTrack? track,
     bool clearTrack = false,
+    Map<String, ElementLayout>? layouts,
   }) =>
       rebase(base.copyWith(
         name: name,
@@ -357,6 +459,7 @@ abstract class CanvasElement {
         lockAspect: lockAspect,
         track: track,
         clearTrack: clearTrack,
+        layouts: layouts,
       ));
 
   /// withId returns a copy under a new id, for duplicating an element.

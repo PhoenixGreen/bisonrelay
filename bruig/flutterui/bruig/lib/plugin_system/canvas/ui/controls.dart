@@ -1791,6 +1791,57 @@ class _SwatchPainter extends CustomPainter {
 }
 
 /// CanvasToggle is a switch with a label, for the many booleans.
+/// CanvasChip is a named thing on a line, with a cross to take it off.
+///
+/// For the shapes a document is being laid out for: a row of short names is
+/// how a set is read at a glance, and a dropdown would hide the very thing
+/// the row is there to say.
+class CanvasChip extends StatelessWidget {
+  final String label;
+
+  /// here marks the one being looked at.
+  final bool here;
+
+  /// onRemove is null for a chip that cannot be taken off.
+  final VoidCallback? onRemove;
+
+  const CanvasChip(
+      {required this.label, this.here = false, this.onRemove, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Container(
+      margin: const EdgeInsets.only(right: 4, bottom: 2),
+      padding: const EdgeInsets.only(left: 8, right: 2, top: 3, bottom: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: here ? theme.colors.secondaryContainer : null,
+        border: Border.all(
+            color: here ? theme.colors.primary : theme.colors.outlineVariant),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(label, style: const TextStyle(fontSize: 11)),
+        if (onRemove case var remove?)
+          Tooltip(
+            message: "Stop laying out for $label",
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: remove,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.close,
+                    size: 12, color: theme.colors.onSurfaceVariant),
+              ),
+            ),
+          )
+        else
+          const SizedBox(width: 6),
+      ]),
+    );
+  }
+}
+
 class CanvasToggle extends StatelessWidget {
   final String label;
   final bool value;

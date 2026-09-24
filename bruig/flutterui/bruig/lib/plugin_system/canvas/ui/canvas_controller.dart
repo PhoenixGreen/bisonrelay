@@ -5,7 +5,9 @@ import 'dart:ui' show Offset, Rect;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -1643,6 +1645,86 @@ class CanvasController extends ChangeNotifier {
         ));
     apply(_document.copyWith(onMaster: false).withScenes(list, at: at));
     _afterSceneChange();
+  }
+
+  /// setShape changes the shape of the page, keeping the layout of the shape
+  /// being left.
+  ///
+  /// The one route a ratio change takes. Both shapes join the document's
+  /// targets, which is what marks them in the ratio list and what a new
+  /// element is laid out for -- a document that has been designed at two
+  /// shapes is a responsive document, and there is nothing else it could
+  /// mean. A document that has only ever been one shape keeps an empty list,
+  /// so nothing is marked and nothing is carried.
+  void setShape(CanvasSize next, {int? frameRate}) {
+    var was = _document.size;
+    if (shapeKey(was) == shapeKey(next) && frameRate == null) {
+      apply(_document.copyWith(size: next));
+      return;
+    }
+    var moved = _document.forShape(next);
+    if (frameRate != null) moved = moved.copyWith(frameRate: frameRate);
+
+    var targets = [...moved.targets];
+    for (var key in [shapeKey(was), shapeKey(next)]) {
+      if (!targets.contains(key)) targets.add(key);
+    }
+    apply(moved.copyWith(targets: targets.length > 1 ? targets : const []));
+  }
+
+  /// forgetShape drops a shape from the document's targets, and the layouts
+  /// kept for it.
+  ///
+  /// For a shape looked at once and not wanted: it is marked in the list and
+  /// laid out for on every new element until it is said to be over.
+  void forgetShape(String key) {
+    if (key == shapeKey(_document.size)) return;
+    var left = [
+      for (var t in _document.targets)
+        if (t != key) t
+    ];
+    CanvasElement dropped(CanvasElement e) => e.base.layouts.containsKey(key)
+        ? e.withBase(layouts: {...e.base.layouts}..remove(key))
+        : e;
+    CanvasScene scene(CanvasScene s) =>
+        s.copyWith(elements: [for (var e in s.elements) dropped(e)]);
+
+    var next = _document.master == null
+        ? _document
+        : _document.copyWith(master: scene(_document.master!));
+    apply(next
+        .withScenes([for (var s in next.allScenes) scene(s)], at: next.at)
+        .copyWith(targets: left.length > 1 ? left : const []));
+  }
+
+  /// resetShape lays this shape out again from another one, by scale.
+  ///
+  /// The way back from an arrangement that has been dragged into a mess: it
+  /// is the same seeding the first visit to a shape gets.
+  void resetShape(String from) {
+    var here = _document.size;
+    var was = sizeForShape(from, here);
+    var by = canvasScale(was, here);
+    CanvasElement seeded(CanvasElement e) {
+      var had = e.base.layouts[from];
+      if (had == null) return e;
+      var next = had.scaledBy(by);
+      return e.withBase(
+        x: next.x,
+        y: next.y,
+        width: next.width,
+        height: next.height,
+        visible: next.visible,
+      );
+    }
+
+    CanvasScene scene(CanvasScene s) =>
+        s.copyWith(elements: [for (var e in s.elements) seeded(e)]);
+    var next = _document.master == null
+        ? _document
+        : _document.copyWith(master: scene(_document.master!));
+    apply(next.withScenes([for (var s in next.allScenes) scene(s)],
+        at: next.at));
   }
 
   /// addScenes puts [scenes] in after the one being looked at, and goes to

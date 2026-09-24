@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -674,8 +675,17 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           key: const ValueKey("canvasRatio"),
           label: "Ratio",
           value: document.size.ratio,
-          width: 96,
-          options: [for (var r in CanvasRatio.values) (r, r.label)],
+          width: 116,
+          // A dot against the shapes this document is being designed for, so
+          // the list says which of them have a layout waiting behind it. See
+          // CanvasDocument.targets.
+          options: [
+            for (var r in CanvasRatio.values)
+              (
+                r,
+                document.targets.contains(r.name) ? "• ${r.label}" : r.label
+              ),
+          ],
           onChanged: (v) {
             // A shape change carries its own frame rate with it, but only
             // where nobody has chosen one: going from a screen to a page
@@ -685,8 +695,11 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             if (rate == defaultFrameRateFor(document.size.ratio)) {
               rate = defaultFrameRateFor(v);
             }
-            write(document.copyWith(
-                size: document.size.copyWith(ratio: v), frameRate: rate));
+            // Through the controller, which keeps the layout of the shape
+            // being left and takes out the one belonging to the shape being
+            // opened. See CanvasController.setShape.
+            controller.setShape(document.size.copyWith(ratio: v),
+                frameRate: rate);
           },
         ),
         // The sizes that have a name *in this shape*, beside the box that
@@ -812,6 +825,46 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       // and scaled on the way out, so publishing at 4K gives the same picture
       // with four times the pixels. Off, it is a page: the design keeps its
       // scale and there is more room around it.
+      // The shapes this one design is being laid out for, and the way back
+      // out of one. Only once there are two: a document made for a single
+      // shape has no layouts to keep, and a group saying so would be a line
+      // about a thing that is not happening.
+      if (document.targets.length > 1)
+        CanvasControlGroup(label: "Layouts", children: [
+          for (var key in document.targets)
+            CanvasChip(
+              key: ValueKey("layoutTarget:$key"),
+              label: shapeLabel(key),
+              here: key == shapeKey(document.size),
+              // The shape being looked at cannot be dropped -- it is the one
+              // on screen -- and it is the one that offers to be laid out
+              // again from another.
+              onRemove: key == shapeKey(document.size)
+                  ? null
+                  : () => controller.forgetShape(key),
+            ),
+          CanvasDropdown<String>(
+            key: const ValueKey("layoutResetFrom"),
+            label: "Lay out again from",
+            value: "",
+            width: 150,
+            options: [
+              ("", "Choose a shape"),
+              for (var key in document.targets)
+                if (key != shapeKey(document.size)) (key, shapeLabel(key)),
+            ],
+            onChanged: (v) {
+              if (v.isNotEmpty) controller.resetShape(v);
+            },
+          ),
+          const CanvasHint(
+              "One design, laid out for each of these shapes. What an element "
+              "is — its words, its colours, how it arrives — is the same on "
+              "all of them; where it sits and how big it is belongs to the "
+              "shape you set it on. A shape you have not opened yet is laid "
+              "out by scaling the one you are on, so it starts looking like "
+              "the design rather than like a heap in the corner."),
+        ]),
       CanvasControlGroup(label: "Scaling", children: [
         CanvasToggle(
           key: const ValueKey("canvasScalesDesign"),
