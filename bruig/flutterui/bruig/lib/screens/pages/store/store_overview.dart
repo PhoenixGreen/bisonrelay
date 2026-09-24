@@ -233,26 +233,33 @@ class _ProductRow extends StatelessWidget {
       if (product.disabled) "not on sale",
     ];
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(product.disabled
-          ? Icons.visibility_off_outlined
-          : Icons.sell_outlined),
-      title: Txt.M(product.title),
-      subtitle: Txt.S(parts.join(" · "), color: TextColor.onSurfaceVariant),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: "Edit ${product.title}",
-          onPressed: onEdit,
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18),
-          tooltip: "Delete ${product.title}",
-          onPressed: onDelete,
-        ),
-      ]),
-      onTap: onEdit,
+    // A Material of its own for the row to paint into -- see the same wrap on
+    // the contact rows in visit.dart. A ListTile paints its background and
+    // its tap ripple on the nearest Material above it, and a themed content
+    // area is a coloured box between the two.
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(product.disabled
+            ? Icons.visibility_off_outlined
+            : Icons.sell_outlined),
+        title: Txt.M(product.title),
+        subtitle: Txt.S(parts.join(" · "), color: TextColor.onSurfaceVariant),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            tooltip: "Edit ${product.title}",
+            onPressed: onEdit,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18),
+            tooltip: "Delete ${product.title}",
+            onPressed: onDelete,
+          ),
+        ]),
+        onTap: onEdit,
+      ),
     );
   }
 }

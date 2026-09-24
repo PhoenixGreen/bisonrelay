@@ -183,28 +183,39 @@ class _ContactRow extends StatelessWidget {
       subtitle = "$subtitle · heard from ${relativeTime(info.lastSeen!)}";
     }
 
-    return ListTile(
-      leading: UserAvatarFromID(client, chat.id, disableTooltip: true),
-      title: Txt.M(chat.nick),
-      subtitle: Txt.S(subtitle, color: TextColor.onSurfaceVariant),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        _StatusChip(info.status),
-        const SizedBox(width: 8),
-        if (info.status.rechecking)
+    // A Material of its own for the row to paint into.
+    //
+    // A ListTile draws its background and its tap ripple on the nearest
+    // Material above it, and the content area of a themed screen is a
+    // coloured box between the two -- so the ripple was painted behind that
+    // colour and never seen, and Flutter said so on every row it built.
+    // Transparent, so it paints nothing itself: its only job is to be that
+    // nearest Material.
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        leading: UserAvatarFromID(client, chat.id, disableTooltip: true),
+        title: Txt.M(chat.nick),
+        subtitle: Txt.S(subtitle, color: TextColor.onSurfaceVariant),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          _StatusChip(info.status),
+          const SizedBox(width: 8),
+          if (info.status.rechecking)
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 18),
+              tooltip: "Check for a site",
+              onPressed: onCheck,
+            ),
           IconButton(
-            icon: const Icon(Icons.refresh, size: 18),
-            tooltip: "Check for a site",
-            onPressed: onCheck,
+            icon: const Icon(Icons.arrow_forward, size: 18),
+            tooltip: info.status.visitable
+                ? "Open ${chat.nick}'s site"
+                : "${chat.nick} answered that they host nothing",
+            onPressed: info.status.visitable ? onVisit : null,
           ),
-        IconButton(
-          icon: const Icon(Icons.arrow_forward, size: 18),
-          tooltip: info.status.visitable
-              ? "Open ${chat.nick}'s site"
-              : "${chat.nick} answered that they host nothing",
-          onPressed: info.status.visitable ? onVisit : null,
-        ),
-      ]),
-      onTap: info.status.visitable ? onVisit : null,
+        ]),
+        onTap: info.status.visitable ? onVisit : null,
+      ),
     );
   }
 }

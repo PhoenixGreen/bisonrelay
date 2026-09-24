@@ -64,67 +64,76 @@ class SiteRow extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var kind = item.isPartial ? "fragment" : "page";
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(item.isPartial
-          ? Icons.dashboard_customize_outlined
-          : (item.isIndex ? Icons.home_outlined : Icons.description_outlined)),
-      title: Row(children: [
-        Flexible(child: Txt.M(item.name)),
-        const SizedBox(width: 8),
-        // Deliberately drawn for every state including the settled one: a
-        // row with no marking reads as "no information" rather than
-        // "published and current".
-        _StateChip(item.state, warn: item.isIndex && !item.state.live),
-      ]),
-      subtitle: _subtitle(),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (onPreview != null)
+    // A Material of its own for the row to paint into -- see the same wrap on
+    // the contact rows in visit.dart. A ListTile paints its background and
+    // its tap ripple on the nearest Material above it, and a themed content
+    // area is a coloured box between the two.
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(item.isPartial
+            ? Icons.dashboard_customize_outlined
+            : (item.isIndex
+                ? Icons.home_outlined
+                : Icons.description_outlined)),
+        title: Row(children: [
+          Flexible(child: Txt.M(item.name)),
+          const SizedBox(width: 8),
+          // Deliberately drawn for every state including the settled one: a
+          // row with no marking reads as "no information" rather than
+          // "published and current".
+          _StateChip(item.state, warn: item.isIndex && !item.state.live),
+        ]),
+        subtitle: _subtitle(),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (onPreview != null)
+            IconButton(
+              icon: const Icon(Icons.visibility_outlined, size: 18),
+              // Preview fetches from the site, which is the point: it is what
+              // a visitor gets, not what the editor holds. So a page that is
+              // not published has nothing to show, and says so rather than
+              // opening an empty browser.
+              tooltip: item.state.live
+                  ? "Preview ${item.name}"
+                  : "Publish ${item.name} to preview it",
+              onPressed: item.state.live ? onPreview : null,
+            ),
+          // Publish is offered whenever the served copy is not what the
+          // document says -- both "never published" and "written since",
+          // which are the two cases where a visitor is not reading this.
+          if (item.state != PagePublishState.published)
+            IconButton(
+              icon: const Icon(Icons.publish_outlined, size: 18),
+              tooltip: item.state == PagePublishState.draft
+                  ? "Publish ${item.name}"
+                  : "Publish update to ${item.name}",
+              color: theme.colors.primary,
+              onPressed: onPublish,
+            ),
+          if (item.state.live)
+            IconButton(
+              icon: const Icon(Icons.visibility_off_outlined, size: 18),
+              tooltip: "Unpublish ${item.name}",
+              onPressed: onUnpublish,
+            ),
           IconButton(
-            icon: const Icon(Icons.visibility_outlined, size: 18),
-            // Preview fetches from the site, which is the point: it is what
-            // a visitor gets, not what the editor holds. So a page that is
-            // not published has nothing to show, and says so rather than
-            // opening an empty browser.
-            tooltip: item.state.live
-                ? "Preview ${item.name}"
-                : "Publish ${item.name} to preview it",
-            onPressed: item.state.live ? onPreview : null,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            tooltip: "Edit ${item.name}",
+            onPressed: onEdit,
           ),
-        // Publish is offered whenever the served copy is not what the
-        // document says -- both "never published" and "written since",
-        // which are the two cases where a visitor is not reading this.
-        if (item.state != PagePublishState.published)
-          IconButton(
-            icon: const Icon(Icons.publish_outlined, size: 18),
-            tooltip: item.state == PagePublishState.draft
-                ? "Publish ${item.name}"
-                : "Publish update to ${item.name}",
-            color: theme.colors.primary,
-            onPressed: onPublish,
-          ),
-        if (item.state.live)
-          IconButton(
-            icon: const Icon(Icons.visibility_off_outlined, size: 18),
-            tooltip: "Unpublish ${item.name}",
-            onPressed: onUnpublish,
-          ),
-        IconButton(
-          icon: const Icon(Icons.edit_outlined, size: 18),
-          tooltip: "Edit ${item.name}",
-          onPressed: onEdit,
-        ),
-        // No delete for the front page: a site with no front page cannot be
-        // visited at all, so taking it down is Unpublish's job, where it can
-        // be put back.
-        if (!item.isIndex)
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            tooltip: "Delete $kind ${item.name}",
-            onPressed: onDelete,
-          ),
-      ]),
-      onTap: onEdit,
+          // No delete for the front page: a site with no front page cannot be
+          // visited at all, so taking it down is Unpublish's job, where it can
+          // be put back.
+          if (!item.isIndex)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              tooltip: "Delete $kind ${item.name}",
+              onPressed: onDelete,
+            ),
+        ]),
+        onTap: onEdit,
+      ),
     );
   }
 }
