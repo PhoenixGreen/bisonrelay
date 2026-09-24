@@ -3311,33 +3311,22 @@ void main() {
 
     testWidgets("the presets list says what it is for", (tester) async {
       // The list is never blank. With nothing saved it offers to save this
-      // design, and with something to choose it says so -- an empty box at
-      // the top of every element's settings says nothing at all.
-      var controller = await panel(tester);
+      // design -- an empty box at the top of every element's settings says
+      // nothing at all -- and nothing to rename or throw away until
+      // something has been chosen.
+      //
+      // Nothing ships with the app any more, so this is what a fresh
+      // install shows. What a saved one does is in
+      // canvas_element_presets_test, where there is a temp folder to save
+      // into.
+      await panel(tester);
       var list = find.byKey(const ValueKey("elementPresets"));
       await tester.ensureVisible(list);
       await tester.pumpAndSettle();
-      expect(find.text("Choose a preset"), findsOneWidget,
-          reason: "a table has a built-in design to start from");
 
-      // Nothing chosen yet, so there is nothing to rename or throw away.
-      expect(find.byKey(const ValueKey("elementPresetRename")), findsNothing);
-      expect(find.byKey(const ValueKey("elementPresetRemove")), findsNothing);
-
-      await tester.tap(list);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Football table").last);
-      await tester.pumpAndSettle();
-      // It replaces what is being edited, which is a question first: this
-      // table has rows somebody typed.
-      await tester.tap(find.text("Use the preset"));
-      await tester.pumpAndSettle();
-      expect(tableIn(controller).rows.length, greaterThan(2));
-
-      // The list now says which design this one came from, so that the two
-      // buttons beside it have something to act on. A built-in is not the
-      // reader's to rename, so it still offers neither.
-      expect(find.text("Football table"), findsWidgets);
+      expect(find.text("Save this design"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementPresetSave")), findsOneWidget,
+          reason: "and the button that does it");
       expect(find.byKey(const ValueKey("elementPresetRename")), findsNothing);
       expect(find.byKey(const ValueKey("elementPresetRemove")), findsNothing);
     });

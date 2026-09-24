@@ -37,33 +37,30 @@ void main() {
   });
 
   group("what ships with the app", () {
-    test("includes the football table, ready to be put on a canvas", () {
-      var presets = builtinElementPresets;
-      var table = presets.firstWhere((p) => p.name == "Football table");
-      expect(table.kind, ElementKind.table);
-      expect(table.builtIn, isTrue);
-
-      var made = table.build();
-      expect(made, isA<TableElement>());
-      var rows = (made as TableElement).rows;
-      expect(rows.length, greaterThan(10),
-          reason: "a league table, with its rows");
-      expect(rows.first.length, greaterThan(3), reason: "and its columns");
+    test("is nothing: a design is saved from a canvas it was made on", () {
+      // There was a football league table here. It carried no page, so it
+      // arrived at whatever size it had been saved at -- which is what
+      // presets being sized to the canvas they land on was written to fix.
+      // Saving it again from a real canvas gives it one.
+      expect(builtinElementPresets, isEmpty);
     });
 
-    test("and each build is its own element", () {
-      // Two sharing an id would be one element as far as selection,
-      // keyframes and flow links are concerned.
-      var table = builtinElementPresets.first;
-      expect(table.build().id, isNot(table.build().id));
+    test("but a design that did ship would not be the reader's to lose", () {
+      // The rule is kept ready rather than written again for the next one.
+      var shipped = const ElementPreset(
+        id: "x",
+        name: "Shipped",
+        kind: ElementKind.table,
+        element: {},
+        builtIn: true,
+      );
+      expect(shipped.copyWith(name: "Mine").builtIn, isTrue);
     });
 
-    test("which cannot be renamed or deleted", () async {
+    test("and a saved one cannot be confused for one", () async {
       var store = ElementPresetStore.instance;
       await store.load();
-      var table = store.forKind(ElementKind.table).first;
-      expect(await store.rename(table, "Mine"), isFalse);
-      expect(await store.remove(table), isFalse);
+      expect(store.presets.where((p) => p.builtIn), isEmpty);
     });
   });
 
