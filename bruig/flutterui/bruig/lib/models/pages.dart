@@ -274,6 +274,24 @@ class PagesModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// openAt is which section the screen opens on, set without telling
+  /// anybody.
+  ///
+  /// For the section named in the route arguments, which is read while the
+  /// screen is being built for the first time. Nothing has drawn the old
+  /// value yet, so there is nothing to tell -- and telling listeners during
+  /// a build marks widgets that have already been built dirty, which is the
+  /// "setState() or markNeedsBuild() called during build" the Pages section
+  /// logged every time it was opened from another screen.
+  ///
+  /// Everything after that first build goes through [tab], which notifies
+  /// like any other change.
+  void openAt(int v) {
+    if (v != pagesTabVisit) _openSections.add(v);
+    _tab = v;
+    _browsing = false;
+  }
+
   /// openSections are the sections open as tabs, beside the open pages.
   ///
   /// Visit is never one. It is where a page or a section is opened from --

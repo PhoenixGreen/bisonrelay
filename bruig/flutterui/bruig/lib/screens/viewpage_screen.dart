@@ -187,12 +187,28 @@ class _ViewPageScreenState extends State<ViewPageScreen> {
     }
   }
 
+  /// _tookRouteTab is whether the section named in the route arguments has
+  /// been taken. Once per visit: the argument says where to open, not where
+  /// to stay, and re-applying it would drag the reader back to it.
+  bool _tookRouteTab = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Which section to open on, as the screen is first built rather than
+    // while it builds. It used to be set in build(), and the setter tells
+    // its listeners -- so opening Pages from anywhere else marked widgets
+    // that had already been built dirty, and the frame was half stale. See
+    // PagesModel.openAt, which is the same change with nothing told.
+    if (_tookRouteTab) return;
+    var args = ModalRoute.of(context)?.settings.arguments;
+    if (args is! PageTabs) return;
+    _tookRouteTab = true;
+    pages.openAt(args.tabIndex);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (ModalRoute.of(context)!.settings.arguments != null) {
-      final args = ModalRoute.of(context)!.settings.arguments as PageTabs;
-      pages.tab = args.tabIndex;
-    }
 
     // The width the layout below will see, which is what decides whether a
     // sidebar can be a column at all -- not the width of the browser bar,

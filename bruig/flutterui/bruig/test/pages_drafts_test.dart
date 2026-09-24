@@ -1,3 +1,4 @@
+import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
@@ -23,6 +24,42 @@ void main() {
   /// screen for the same reason, and now live on the two models that own
   /// what is being written.
   StoreModel shop() => StoreModel(model());
+
+  group('opening on a section', () {
+    test('the one the route named is taken without telling anybody', () {
+      // The screen reads the route argument as it is first built, and a
+      // model that told its listeners there marked widgets that had already
+      // been built dirty -- "setState() called during build", twice, every
+      // time Pages was opened from another screen.
+      var m = model();
+      var notes = 0;
+      m.addListener(() => notes++);
+
+      m.openAt(pagesTabStore);
+      expect(m.tab, pagesTabStore);
+      expect(m.browsing, isFalse);
+      expect(m.openSections, contains(pagesTabStore),
+          reason: "and it is one of the open tabs, as choosing it would be");
+      expect(notes, 0, reason: "nothing has drawn the old value yet");
+    });
+
+    test('and Visit is still never a tab of its own', () {
+      var m = model();
+      m.openAt(pagesTabVisit);
+      expect(m.tab, pagesTabVisit);
+      expect(m.openSections, isEmpty);
+    });
+
+    test('everything after that notifies as usual', () {
+      var m = model();
+      var notes = 0;
+      m.openAt(pagesTabStore);
+      m.addListener(() => notes++);
+
+      m.tab = pagesTabMySite;
+      expect(notes, 1);
+    });
+  });
 
   group('a page draft', () {
     test('is kept as it is typed, and is there on the way back', () {
