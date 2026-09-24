@@ -88,6 +88,74 @@ void main() {
     expect(controller.document.at, 0);
   });
 
+  testWidgets("a scene is renamed by clicking its name twice", (tester) async {
+    // The way a file is renamed everywhere else. It used to be on the row's
+    // menu, which is a long way round for something this common.
+    var controller = await panel(tester);
+    var name = find.text("Scene 1");
+
+    await tester.tap(name);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(name);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsOneWidget,
+        reason: "the name opened for typing");
+    await tester.enterText(find.byType(TextField), "Opening");
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(controller.document.allScenes.first.name, "Opening");
+  });
+
+  testWidgets("one click on the name only chooses the scene", (tester) async {
+    // And it does so at once: a double-click recognizer would hold every
+    // press on this row back until its window had passed.
+    var controller = await panel(tester, document: const CanvasDocument());
+    await tester.tap(find.byTooltip("New scene"));
+    await tester.pumpAndSettle();
+    expect(controller.document.at, 1);
+
+    await tester.tap(find.text("Scene 1"));
+    await tester.pump();
+    expect(controller.document.at, 0, reason: "chosen on the first click");
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets("a scene is copied from one canvas and pasted into another",
+      (tester) async {
+    // What Copy is for: the clipboard outlives the document, so the scene
+    // can be pasted into whichever canvas is opened next.
+    var controller = await panel(tester);
+    controller.addElement(
+        ShapeElement(const ElementBase(id: "s", width: 10, height: 10)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip("More").first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Copy"));
+    await tester.pumpAndSettle();
+    expect(find.text("Rename…"), findsNothing,
+        reason: "renaming is the name's own job now");
+
+    // A different document, the way opening another canvas is.
+    var other = await panel(tester, document: const CanvasDocument());
+    expect(other.document.allScenes.length, 1);
+    await tester.tap(find.byTooltip("Paste the copied scene"));
+    await tester.pumpAndSettle();
+
+    expect(other.document.allScenes.length, 2);
+    expect(other.document.allScenes[1].elements.length, 1,
+        reason: "what was on the scene came with it");
+    expect(other.document.allScenes[1].elements.first.id, isNot("s"),
+        reason: "and it is a copy, not the same element twice");
+  });
+
+  testWidgets("with nothing copied there is nothing to paste", (tester) async {
+    CanvasController.forgetCopiedScene();
+    await panel(tester);
+    expect(find.byTooltip("Paste the copied scene"), findsNothing);
+  });
+
   testWidgets("an edit lands on the scene being shown", (tester) async {
     // Which is the whole point of the list: the canvas you are on is the one
     // the rest of the editor is editing.

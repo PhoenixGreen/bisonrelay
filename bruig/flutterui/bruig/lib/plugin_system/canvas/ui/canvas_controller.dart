@@ -1598,6 +1598,53 @@ class CanvasController extends ChangeNotifier {
     _afterSceneChange();
   }
 
+  /// _sceneClipboard is the scene last copied, held the way an element's copy
+  /// is: static, in memory, for as long as the app runs.
+  ///
+  /// Static is the point -- it is what makes a scene copied from one canvas
+  /// paste into another, which is the whole reason the row has a Copy on it.
+  /// Not the system clipboard, for the reason given on [_clipboard]: a canvas
+  /// scene has no sensible text form, and putting JSON there would replace
+  /// whatever the reader had copied from somewhere else.
+  static CanvasScene? _sceneClipboard;
+
+  /// hasCopiedScene is whether there is a scene waiting to be pasted.
+  static bool get hasCopiedScene => _sceneClipboard != null;
+
+  /// forgetCopiedScene empties it. For a test that needs to start from
+  /// nothing copied, since the clipboard is deliberately static.
+  @visibleForTesting
+  static void forgetCopiedScene() => _sceneClipboard = null;
+
+  /// copyScene takes a copy of one, to be pasted into this canvas or another.
+  void copyScene(int index) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    _sceneClipboard = list[index];
+    notifyListeners();
+  }
+
+  /// pasteScene puts the copied scene in after the one being looked at.
+  ///
+  /// A fresh scene and fresh elements rather than the copy itself: two
+  /// documents sharing an id is two documents whose scenes cannot be told
+  /// apart, and a paste into the canvas it was copied from would be a second
+  /// row naming the first one's elements.
+  void pasteScene() {
+    var from = _sceneClipboard;
+    if (from == null) return;
+    var list = [..._document.allScenes];
+    var at = (_document.sceneAt + 1).clamp(0, list.length).toInt();
+    list.insert(
+        at,
+        from.copyWith(
+          id: newSceneId(),
+          elements: [for (var e in from.elements) e.withId(newElementId())],
+        ));
+    apply(_document.copyWith(onMaster: false).withScenes(list, at: at));
+    _afterSceneChange();
+  }
+
   void removeScene(int index) {
     apply(_document.copyWith(onMaster: false).removeScene(index));
     _afterSceneChange();

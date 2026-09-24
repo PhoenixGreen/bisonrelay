@@ -59,6 +59,30 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     });
   }
 
+  /// _lastNameClick is when a scene's name was last pressed, and which row,
+  /// for spotting the second click of a pair.
+  DateTime _lastNameClick = DateTime.fromMillisecondsSinceEpoch(0);
+  int _lastNameRow = -1;
+
+  /// _nameClicked opens the name for typing on the second click of a pair.
+  ///
+  /// The rename is opened after the frame the click landed in, because it
+  /// replaces the very widget the pointer is inside: done in the middle of
+  /// dispatching the press, the framework is left looking up a widget that
+  /// has already gone.
+  void _nameClicked(int index, CanvasScene scene) {
+    var now = DateTime.now();
+    var second = _lastNameRow == index &&
+        now.difference(_lastNameClick) < const Duration(milliseconds: 400);
+    _lastNameRow = index;
+    _lastNameClick = now;
+    if (!second) return;
+    _lastNameRow = -1;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startRename(index, scene);
+    });
+  }
+
   void _commitRename() {
     var at = _renaming;
     if (at == null) return;
@@ -91,6 +115,11 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
           Expanded(child: _master(theme)),
           const SizedBox(width: 4),
           _rowButton(theme, Icons.add, "New scene", controller.addScene),
+          // Only once something has been copied: a paste button with
+          // nothing behind it does nothing, and this row is narrow.
+          if (CanvasController.hasCopiedScene)
+            _rowButton(theme, Icons.content_paste_go, "Paste the copied scene",
+                controller.pasteScene),
           _rowButton(
             theme,
             _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,
@@ -196,10 +225,12 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(6),
-        // No double-tap to rename. An InkWell that listens for one holds
-        // every single tap back until the window has passed, which would put
+        // No double-tap recognizer anywhere on this row. One here holds
+        // every single tap back until the double-click window has passed --
         // a fifth of a second between pressing a scene and seeing it -- and
-        // the menu on the row renames it without costing that.
+        // one on the name alone still shares the arena with this and with
+        // the menu button, which then opened late as well. The second click
+        // on the name is counted by hand instead: see _nameClicked.
         onTap: () => controller.goToScene(index),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -225,9 +256,15 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                         onSubmitted: (_) => _commitRename(),
                         onTapOutside: (_) => _commitRename(),
                       )
-                    : Text(scene.saysAt(index),
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12)),
+                    : Listener(
+                        // Not a gesture detector: a Listener is not in the
+                        // gesture arena, so nothing else on the row is held
+                        // back by it. See _nameClicked.
+                        onPointerDown: (_) => _nameClicked(index, scene),
+                        child: Text(scene.saysAt(index),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12)),
+                      ),
               ),
               // A scene that holds is one that does not run on into the
               // next, which is worth saying in the list: it is the
@@ -372,8 +409,11 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
       context: context,
       position: where,
       items: [
-        const PopupMenuItem(value: "rename", child: Text("Rename…")),
         const PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
+        // Copied here and pasted into whichever canvas is open next, which
+        // is what carries a scene from one document to another. No Rename:
+        // the name itself is double-clicked.
+        const PopupMenuItem(value: "copy", child: Text("Copy")),
         PopupMenuItem(
           value: "holds",
           child: Text(scene.holds
@@ -387,8 +427,8 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     if (!mounted) return;
 
     switch (chose) {
-      case "rename":
-        _startRename(index, scene);
+      case "copy":
+        controller.copyScene(index);
       case "duplicate":
         controller.duplicateScene(index);
       case "holds":

@@ -498,28 +498,88 @@ class _PanelStackState extends State<PanelStack> {
       var share = open.isEmpty ? 0.0 : math.max(_minBody, room / open.length);
       _share = share;
 
-      return Column(children: [
+      // What each open panel is given, worked out together so the column
+      // fills the sidebar exactly and never asks for more than it has.
+      //
+      // Every one of them taking the height it was last dragged to is what
+      // pushed the bottom panel off the screen: four panels remembering two
+      // hundred pixels each in a sidebar with six hundred is eight hundred
+      // pixels of column, and Flutter draws the overflow stripe across the
+      // last of them. See _bodyHeights.
+      var heights = _bodyHeights(open, places, share, room);
+      var scrolls = heights.values.fold(0.0, (a, b) => a + b) > room + 0.5;
+
+      var column = Column(children: [
         for (var (i, place) in places.indexed) ...[
           if (i > 0) _divider(theme, place.first),
           _header(theme, place, showing[i], i),
           if (_isOpen(showing[i].id))
-            // The last open panel takes what is left rather than a remembered
-            // height, so the column always fills the sidebar exactly and there
-            // is never a strip of nothing at the bottom.
-            if (showing[i].id == open.last.id)
-              Expanded(child: _body(showing[i]))
-            else
-              SizedBox(
-                // The place's height, not the tab's: a group of tabs is one
-                // box that different panels take turns inside.
-                height: math.min(
-                    math.max(_minBody, _heights[place.first.id] ?? share),
-                    math.max(_minBody, room)),
-                child: _body(showing[i]),
-              ),
+            SizedBox(
+              // The place's height, not the tab's: a group of tabs is one
+              // box that different panels take turns inside.
+              height: heights[showing[i].id] ?? math.max(_minBody, share),
+              child: _body(showing[i]),
+            ),
         ],
       ]);
+
+      // Room for every open panel to be usable, or the lot scrolls. A
+      // sidebar too short to hold what has been opened in it is the one case
+      // where something has to go off the bottom, and it can be reached
+      // again by scrolling rather than by shutting a panel blind.
+      return scrolls
+          ? SingleChildScrollView(
+              key: const ValueKey("panelStackScroll"), child: column)
+          : column;
     });
+  }
+
+  /// _bodyHeights is how tall each open panel's body is drawn, by panel id.
+  ///
+  /// The rules, in order:
+  ///
+  /// - every open panel gets the height it was last dragged to, and the last
+  ///   of them takes whatever is left, so the column fills the sidebar and
+  ///   there is never a strip of nothing at the bottom;
+  /// - where those heights come to more than there is room for, the ones
+  ///   above the last are scaled down together, keeping their proportions,
+  ///   until the last one has its minimum;
+  /// - and where even a minimum each is more than the sidebar can hold, they
+  ///   all take that minimum and the stack scrolls. Shrinking further would
+  ///   make every panel useless to save the one at the bottom.
+  Map<String, double> _bodyHeights(List<StackPanel> open,
+      List<List<StackPanel>> places, double share, double room) {
+    if (open.isEmpty) return const {};
+
+    // The place a panel is showing in decides its height -- see _heights.
+    var placeOf = <String, String>{
+      for (var place in places)
+        for (var panel in place) panel.id: place.first.id,
+    };
+    double wanted(StackPanel panel) => math.max(
+        _minBody, _heights[placeOf[panel.id] ?? panel.id] ?? share);
+
+    var least = open.length * _minBody;
+    if (least > room) {
+      return {for (var panel in open) panel.id: _minBody};
+    }
+
+    var above = open.sublist(0, open.length - 1);
+    var asked = above.fold(0.0, (sum, panel) => sum + wanted(panel));
+    var spare = room - _minBody;
+    // Scaled down together where they ask for more than is left, so that the
+    // one at the bottom keeps a body to be seen in.
+    var scale = asked > spare && asked > 0 ? spare / asked : 1.0;
+
+    var out = <String, double>{};
+    var used = 0.0;
+    for (var panel in above) {
+      var height = math.max(_minBody, wanted(panel) * scale);
+      out[panel.id] = height;
+      used += height;
+    }
+    out[open.last.id] = math.max(_minBody, room - used);
+    return out;
   }
 
   Widget _body(StackPanel panel) => ClipRect(
