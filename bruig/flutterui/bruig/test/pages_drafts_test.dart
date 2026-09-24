@@ -2,6 +2,7 @@ import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/pages.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/models/resources.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 // stepping over to Chat -- silently, and with nothing to undo it with. The
 // drafts live on PagesModel now, which outlives the screen, and these pin
 // that they are neither lost nor quietly notified away.
+
+/// _Hosting answers the hosting question without golib, so the notification
+/// this is about can be watched.
+class _Hosting extends PagesModel {
+  _Hosting() : super(ResourcesModel(runStream: false));
+
+  @override
+  Future<PagesHostStatus> fetchHost() async => PagesHostStatus(
+      PagesHostConfig(pagesHostModePages, "", "/pages", "ln", "", 0, ""),
+      true,
+      "",
+      "", const []);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +72,39 @@ void main() {
 
       m.tab = pagesTabMySite;
       expect(notes, 1);
+    });
+  });
+
+  group('loading the hosting config', () {
+    testWidgets('does not tell anybody while the frame is being built',
+        (tester) async {
+      // It is asked for from a section's initState, which runs inside the
+      // build -- so raising the loading flag there marked widgets that had
+      // already been built dirty: "setState() called during build", every
+      // time Pages was opened.
+      var m = _Hosting();
+      var notes = 0;
+      m.addListener(() => notes++);
+
+      var duringBuild = -1;
+      await tester.pumpWidget(Builder(builder: (context) {
+        m.loadHost();
+        duringBuild = notes;
+        return const SizedBox();
+      }));
+
+      expect(duringBuild, 0, reason: "nothing told mid-build");
+      await tester.pumpAndSettle();
+      expect(notes, greaterThan(0), reason: "and told once the frame was over");
+      expect(m.loadingHost, isFalse, reason: "the load finished");
+    });
+
+    test('and tells straight away when no frame is being built', () {
+      var m = _Hosting();
+      var notes = 0;
+      m.addListener(() => notes++);
+      m.loadHost();
+      expect(notes, 1, reason: "outside a frame there is nothing to wait for");
     });
   });
 

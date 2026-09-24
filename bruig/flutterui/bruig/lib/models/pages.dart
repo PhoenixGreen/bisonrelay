@@ -5,6 +5,7 @@ import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/models/resources.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:golib_plugin/definitions.dart';
 import 'package:golib_plugin/golib_plugin.dart';
 
@@ -252,11 +253,37 @@ class PagesModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _gone = true;
     resources.removeFetchListener(_onFetched);
     for (var t in _timeouts.values) {
       t.cancel();
     }
     super.dispose();
+  }
+
+  /// _gone is whether this has been disposed, for the notification below:
+  /// it may be waiting for a frame that outlives the model.
+  bool _gone = false;
+
+  /// _tellAfterTheFrame tells listeners, waiting for the frame to be over
+  /// where one is being built.
+  ///
+  /// The loading flag is raised the moment the hosting config is asked for,
+  /// and it is asked for from a section's initState -- which runs while the
+  /// frame is being built. Telling listeners there marks widgets that have
+  /// already been built dirty, which is a "setState() called during build"
+  /// every time Pages is opened from another screen. Nothing is lost by
+  /// waiting: the flag is read on the next frame either way.
+  void _tellAfterTheFrame() {
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      notifyListeners();
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_gone) return;
+      notifyListeners();
+    });
   }
 
   // ---- navigation ----
@@ -562,7 +589,9 @@ class PagesModel extends ChangeNotifier {
 
   Future<void> _load() async {
     _loadingHost = true;
-    notifyListeners();
+    // Asked for from a section's initState, which is inside the frame being
+    // built -- see _tellAfterTheFrame.
+    _tellAfterTheFrame();
     try {
       _host = await fetchHost();
       _hostError = null;
