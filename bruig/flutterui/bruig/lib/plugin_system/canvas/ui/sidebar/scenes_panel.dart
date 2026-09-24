@@ -447,7 +447,8 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     var name = await askForPresetName(context, "Save this scene as a preset",
         initial: scene.saysAt(index));
     if (name == null || name.trim().isEmpty) return;
-    var saved = await SavedPresetStore.scenes.save(name, scene.toJson());
+    var saved = await SavedPresetStore.scenes.save(name, scene.toJson(),
+        madeOn: document.size.size);
     if (saved == null) {
       snackbar.error("Unable to save the preset.");
       return;

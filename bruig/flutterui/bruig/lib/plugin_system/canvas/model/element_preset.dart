@@ -1,5 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'dart:ui';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 
 // element_preset.dart is a design somebody wants again.
 //
@@ -32,12 +35,18 @@ class ElementPreset {
   /// renamed or deleted: they are not the reader's to lose.
   final bool builtIn;
 
+  /// madeOn is the page this was designed on, so it can be sized to the page
+  /// it is dropped on. Null for a preset saved before this was kept, and for
+  /// the built-in ones, which are written in no particular size.
+  final Size? madeOn;
+
   const ElementPreset({
     required this.id,
     required this.name,
     required this.kind,
     required this.element,
     this.builtIn = false,
+    this.madeOn,
   });
 
   /// build is a fresh element from this preset, under a new id.
@@ -47,12 +56,22 @@ class ElementPreset {
   /// and the second would quietly take the first's place.
   CanvasElement build() => elementFromJson({...element, "id": newElementId()});
 
+  /// buildFor is the same element sized to a page [on] big and put in the
+  /// middle of it.
+  ///
+  /// The size is the point: a headline made for a banner arrives on a square
+  /// canvas at the banner's scale otherwise, which is off the side of the
+  /// page. See presetScale.
+  CanvasElement buildFor(Size on) =>
+      centredOn(scaledElement(build(), presetScale(madeOn, on)), on);
+
   ElementPreset copyWith({String? name}) => ElementPreset(
         id: id,
         name: name ?? this.name,
         kind: kind,
         element: element,
         builtIn: builtIn,
+        madeOn: madeOn,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +79,7 @@ class ElementPreset {
         "name": name,
         "kind": kind.name,
         "element": element,
+        if (madeOn case var made?) "madeOn": sizeToJson(made),
       };
 
   factory ElementPreset.fromJson(Map<String, dynamic> json,
@@ -75,5 +95,6 @@ class ElementPreset {
             ? json["element"] as Map<String, dynamic>
             : const {},
         builtIn: builtIn,
+        madeOn: sizeFromJson(json["madeOn"]),
       );
 }

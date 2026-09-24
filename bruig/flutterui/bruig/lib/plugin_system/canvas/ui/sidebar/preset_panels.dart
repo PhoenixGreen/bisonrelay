@@ -48,6 +48,9 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
     if (mounted) setState(() {});
   }
 
+  /// _page is the canvas a preset is arriving on.
+  Size _page() => widget.controller.document.size.size;
+
   @override
   Widget build(BuildContext context) {
     var presets = store.presets;
@@ -65,7 +68,11 @@ class _ScenePresetsPanelState extends State<ScenePresetsPanel> {
             name: preset.name,
             icon: Icons.movie_outlined,
             says: _says(preset),
-            onUse: () => widget.controller.addScenes(preset.buildScenes()),
+            // Sized to the page it is arriving on: a scene designed on a
+            // banner and dropped on a square canvas otherwise arrives at the
+            // banner's scale, hanging off the side. See presetScale.
+            onUse: () =>
+                widget.controller.addScenes(preset.buildScenes(on: _page())),
             onRename: (name) => store.rename(preset, name),
             onDelete: () => store.remove(preset),
           ),
@@ -117,6 +124,9 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
     if (mounted) setState(() {});
   }
 
+  /// _page is the canvas a preset is arriving on.
+  Size _page() => widget.controller.document.size.size;
+
   @override
   Widget build(BuildContext context) {
     var all = store.presets;
@@ -160,7 +170,11 @@ class _ElementPresetsPanelState extends State<ElementPresetsPanel> {
             name: preset.name,
             icon: iconForKind(preset.kind),
             says: preset.kind.label,
-            onUse: () => widget.controller.addElement(preset.build()),
+            // Sized to the page it is arriving on, and put in the middle of
+            // it: a headline made for a 1920-wide banner arrives 1920 wide
+            // otherwise, which is the "presets come in too big" of the
+            // report. See ElementPreset.buildFor.
+            onUse: () => widget.controller.addElement(preset.buildFor(_page())),
             // The ones that ship with the app are not the reader's to lose.
             onRename:
                 preset.builtIn ? null : (name) => store.rename(preset, name),
@@ -208,6 +222,9 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
     if (mounted) setState(() {});
   }
 
+  /// _page is the canvas a preset is arriving on.
+  Size _page() => widget.controller.document.size.size;
+
   @override
   Widget build(BuildContext context) {
     var presets = store.presets;
@@ -232,7 +249,7 @@ class _SavedCanvasPresetsState extends State<SavedCanvasPresets> {
           },
           extra: {
             "Add its scenes to this canvas": () =>
-                widget.controller.addScenes(preset.buildScenes()),
+                widget.controller.addScenes(preset.buildScenes(on: _page())),
           },
           onRename: (name) => store.rename(preset, name),
           onDelete: () => store.remove(preset),

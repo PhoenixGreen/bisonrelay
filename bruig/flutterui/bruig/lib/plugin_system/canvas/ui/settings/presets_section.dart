@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
+import 'package:bruig/plugin_system/canvas/model/preset_scaling.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -95,7 +96,11 @@ class _PresetsSectionState extends State<_PresetsSection> {
   Future<void> _use(ElementPreset preset) async {
     if (_touched && !await _confirm(preset)) return;
 
-    var made = preset.build();
+    // Sized to this page. A design saved on a banner and used on a square
+    // canvas arrives at the banner's scale otherwise -- see presetScale --
+    // and its place here is the element's own, below.
+    var made = scaledElement(preset.build(),
+        presetScale(preset.madeOn, widget.controller.document.size.size));
     var here = widget.element;
     // Where the element already is, and the preset's own size: a design is a
     // shape as much as it is a set of colours, and one dropped into the box
@@ -226,7 +231,11 @@ class _PresetsSectionState extends State<_PresetsSection> {
               var name =
                   await _ask("Save as a preset", initial: widget.element.name);
               if (name == null || name.trim().isEmpty) return;
-              await store.save(name, widget.element);
+              // With the page it was designed on, so that dropping it on a
+              // canvas of another size brings it in at the scale it was
+              // saved at rather than the size it happened to be.
+              await store.save(name, widget.element,
+                  madeOn: widget.controller.document.size.size);
               if (mounted) setState(() => _chosen = name);
             },
           ),

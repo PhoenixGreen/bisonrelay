@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/saved_preset.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -83,7 +84,8 @@ class SavedPresetStore extends ChangeNotifier {
   /// [data] is copied on the way in. A preset is a copy and not a link: the
   /// scene it was taken from goes on being edited, and none of that may reach
   /// what was saved.
-  Future<SavedPreset?> save(String name, Map<String, dynamic> data) async {
+  Future<SavedPreset?> save(String name, Map<String, dynamic> data,
+      {Size? madeOn}) async {
     var clean = name.trim();
     if (clean.isEmpty) return null;
     await load();
@@ -94,6 +96,7 @@ class SavedPresetStore extends ChangeNotifier {
       kind: kind,
       data: jsonDecode(jsonEncode(data)) as Map<String, dynamic>,
       made: DateTime.now(),
+      madeOn: madeOn,
     );
     if (!await _write(preset)) return null;
 

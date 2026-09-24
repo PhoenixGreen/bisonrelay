@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_element_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 
@@ -86,7 +88,11 @@ class ElementPresetStore extends ChangeNotifier {
   }
 
   /// save keeps [element] under [name], and returns the preset it made.
-  Future<ElementPreset?> save(String name, CanvasElement element) async {
+  ///
+  /// [madeOn] is the page it was designed on, kept so that it can be sized to
+  /// the page it is dropped on later -- see presetScale.
+  Future<ElementPreset?> save(String name, CanvasElement element,
+      {Size? madeOn}) async {
     var clean = name.trim();
     if (clean.isEmpty) return null;
     await load();
@@ -103,6 +109,7 @@ class ElementPresetStore extends ChangeNotifier {
         ..remove("x")
         ..remove("y")
         ..remove("track"),
+      madeOn: madeOn,
     );
     if (!await _write(preset)) return null;
 
