@@ -129,6 +129,23 @@ class ElementBase {
   /// track is this element's animation, or null when it does not move.
   final ElementTrack? track;
 
+  /// typeScale is how much the element's own measurements -- its type, its
+  /// spacing, the room inside its box -- have been sized by for the shape
+  /// being looked at.
+  ///
+  /// Bookkeeping for the shape switch rather than a setting in its own
+  /// right, and the reason it has to be written down: moving to another
+  /// shape has to *undo* this one's scaling before applying that one's, and
+  /// the scaled numbers themselves cannot say what they were scaled by.
+  ///
+  /// It is also the knob a design needs on a narrow page, where the type that
+  /// was right across a banner is a word a line. See ElementLayout.typeScale.
+  final double typeScale;
+
+  /// ownText is whether the shape being looked at has words of its own --
+  /// see ElementLayout.ownText.
+  final bool ownText;
+
   /// layouts is where this element sits on each of the *other* shapes the
   /// document is being designed for, by ratio -- see ElementLayout and
   /// CanvasDocument.targets.
@@ -159,6 +176,8 @@ class ElementBase {
     this.lockAspect = false,
     this.track,
     this.layouts = const {},
+    this.typeScale = 1,
+    this.ownText = false,
   });
 
   ElementBase copyWith({
@@ -176,6 +195,8 @@ class ElementBase {
     ElementTrack? track,
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
+    double? typeScale,
+    bool? ownText,
   }) =>
       ElementBase(
         id: id ?? this.id,
@@ -191,6 +212,8 @@ class ElementBase {
         lockAspect: lockAspect ?? this.lockAspect,
         track: clearTrack ? null : (track ?? this.track),
         layouts: layouts ?? this.layouts,
+        typeScale: typeScale ?? this.typeScale,
+        ownText: ownText ?? this.ownText,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -210,6 +233,8 @@ class ElementBase {
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
+      typeScale: _d(json["typeScale"], 1),
+      ownText: _b(json["ownText"], false),
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -238,6 +263,8 @@ class ElementBase {
         // would make that impossible to tell.
         "aspect": lockAspect,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
+        if (typeScale != 1) "typeScale": typeScale,
+        if (ownText) "ownText": true,
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),
@@ -261,21 +288,52 @@ class ElementLayout {
   final double height;
   final bool visible;
 
+  /// typeScale is how much the element's own measurements are sized by on
+  /// this shape -- see ElementBase.typeScale.
+  ///
+  /// Part of the layout because it is a layout decision: a headline that
+  /// carries a banner is a word a line on a tall page, and the answer is
+  /// smaller type there rather than different words.
+  final double typeScale;
+
+  /// text is the words this shape shows. Null for everything that is not a
+  /// text element.
+  ///
+  /// Kept on every shape, its own or not, so that going to a shape with its
+  /// own words and back again gives the others theirs. [ownText] is what
+  /// tells the two apart.
+  final String? text;
+
+  /// ownText is whether those words are this shape's own.
+  ///
+  /// The one thing scaling cannot fix: type half the size still wraps where
+  /// the page is narrow, and a headline that takes two lines across a banner
+  /// takes four down a feed. Somewhere there has to be a place to say "on
+  /// this one, fewer words" -- and everywhere else goes on sharing one set,
+  /// so a typo is still fixed once.
+  final bool ownText;
+
   const ElementLayout({
     required this.x,
     required this.y,
     required this.width,
     required this.height,
     this.visible = true,
+    this.typeScale = 1,
+    this.text,
+    this.ownText = false,
   });
 
   /// of is the layout an element is showing at the moment.
-  factory ElementLayout.of(ElementBase base) => ElementLayout(
+  factory ElementLayout.of(ElementBase base, {String? text}) => ElementLayout(
         x: base.x,
         y: base.y,
         width: base.width,
         height: base.height,
         visible: base.visible,
+        typeScale: base.typeScale,
+        text: text,
+        ownText: base.ownText,
       );
 
   /// scaledBy is this layout on a page [by] times the size.
@@ -285,6 +343,24 @@ class ElementLayout {
         width: math.max(1, width * by),
         height: math.max(1, height * by),
         visible: visible,
+        // The design inside the box comes down with the box, or a headline
+        // seeded onto a smaller page keeps the type it had on the larger one
+        // and runs out of the frame.
+        typeScale: typeScale * by,
+        text: text,
+        ownText: ownText,
+      );
+
+  ElementLayout copyWith({double? typeScale, String? text, bool? ownText}) =>
+      ElementLayout(
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        visible: visible,
+        typeScale: typeScale ?? this.typeScale,
+        text: text ?? this.text,
+        ownText: ownText ?? this.ownText,
       );
 
   Map<String, dynamic> toJson() => {
@@ -293,6 +369,9 @@ class ElementLayout {
         "w": width,
         "h": height,
         if (!visible) "visible": false,
+        if (typeScale != 1) "typeScale": typeScale,
+        if (text != null) "text": text,
+        if (ownText) "ownText": true,
       };
 
   factory ElementLayout.fromJson(Map<String, dynamic> json) => ElementLayout(
@@ -301,6 +380,9 @@ class ElementLayout {
         width: _d(json["w"], 200),
         height: _d(json["h"], 100),
         visible: _b(json["visible"], true),
+        typeScale: _d(json["typeScale"], 1),
+        text: json["text"] is String ? json["text"] as String : null,
+        ownText: _b(json["ownText"], false),
       );
 
   @override
@@ -311,10 +393,14 @@ class ElementLayout {
           other.y == y &&
           other.width == width &&
           other.height == height &&
-          other.visible == visible;
+          other.visible == visible &&
+          other.typeScale == typeScale &&
+          other.text == text &&
+          other.ownText == ownText;
 
   @override
-  int get hashCode => Object.hash(x, y, width, height, visible);
+  int get hashCode =>
+      Object.hash(x, y, width, height, visible, typeScale, text, ownText);
 }
 
 /// jsonSpec reads a nested value object -- a TextSpec, a BoxSpec, a
@@ -445,6 +531,8 @@ abstract class CanvasElement {
     ElementTrack? track,
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
+    double? typeScale,
+    bool? ownText,
   }) =>
       rebase(base.copyWith(
         name: name,
@@ -460,6 +548,8 @@ abstract class CanvasElement {
         track: track,
         clearTrack: clearTrack,
         layouts: layouts,
+        typeScale: typeScale,
+        ownText: ownText,
       ));
 
   /// withId returns a copy under a new id, for duplicating an element.

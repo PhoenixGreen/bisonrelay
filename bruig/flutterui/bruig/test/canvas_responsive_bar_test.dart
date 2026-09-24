@@ -4,6 +4,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -17,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 // one.
 
 void main() {
+  // The element settings' half: the two controls that only exist while a
+  // document is being laid out for more than one shape.
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   Future<CanvasController> bar(WidgetTester tester) async {
@@ -78,6 +83,28 @@ void main() {
     expect(find.text("1:1"), findsWidgets, reason: "and this one is not");
   });
 
+  testWidgets("a shape can take another's layout, by scale", (tester) async {
+    var controller = await bar(tester);
+    controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+    await tester.pumpAndSettle();
+
+    // Dragged into a mess on the 16:9.
+    controller.replaceElement(controller.document.elements.single
+        .withBase(x: 900, y: 900, width: 20, height: 20));
+    await tester.pumpAndSettle();
+
+    var field = find.byKey(const ValueKey("layoutResetFrom"));
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Choose a shape"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("4:5 · Feed ad").last);
+    await tester.pumpAndSettle();
+
+    expect(controller.document.elements.single.x, isNot(900),
+        reason: "laid out again from the 4:5");
+  });
+
   testWidgets("the Layouts group lists them and can give one up",
       (tester) async {
     var controller = await bar(tester);
@@ -90,9 +117,71 @@ void main() {
     await tester.ensureVisible(chip);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.descendant(of: chip, matching: find.byIcon(Icons.close)));
+    await tester
+        .tap(find.descendant(of: chip, matching: find.byIcon(Icons.close)));
     await tester.pumpAndSettle();
     expect(controller.document.targets, isEmpty,
         reason: "one shape left is not a responsive document");
+  });
+
+  testWidgets("the element settings offer type and words per shape",
+      (tester) async {
+    var controller = CanvasController(CanvasDocument(
+      size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000),
+      elements: [
+        TextElement(const ElementBase(id: "t", width: 400, height: 100),
+            text: "Spend or burn", textSpec: const TextSpec(fontSize: 60)),
+      ],
+    ));
+    addTearDown(controller.dispose);
+    controller.selectOnly("t");
+
+    tester.view.physicalSize = const Size(600, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    Future<void> show() async {
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: CanvasDesignPanel(controller: controller)),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    // On a document made for one shape there is nothing to say.
+    await show();
+    expect(find.byKey(const ValueKey("elementTypeScale")), findsNothing);
+    expect(find.byKey(const ValueKey("textOwnWordsHere")), findsNothing);
+
+    controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+    await show();
+
+    var type = find.byKey(const ValueKey("elementTypeScale"));
+    expect(type, findsOneWidget);
+    await tester.ensureVisible(type);
+    await tester.pumpAndSettle();
+    await tester.enterText(type, "0.5");
+    await tester.pump();
+
+    var words = controller.document.elements.single as TextElement;
+    expect(words.base.typeScale, 0.5);
+    expect(words.textSpec.fontSize, lessThan(60),
+        reason: "the type came down with the number");
+
+    var own = find.byKey(const ValueKey("textOwnWordsHere"));
+    await tester.ensureVisible(own);
+    await tester.pumpAndSettle();
+    await tester.tap(own);
+    await tester.pumpAndSettle();
+    expect((controller.document.elements.single as TextElement).base.ownText,
+        isTrue);
   });
 }

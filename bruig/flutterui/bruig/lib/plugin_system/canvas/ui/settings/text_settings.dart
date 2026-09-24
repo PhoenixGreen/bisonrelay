@@ -52,6 +52,20 @@ List<Widget> textSettings(
         value: e.autoSize,
         onChanged: (v) => now(e.copyWith(autoSize: v)),
       ),
+      // Words of this shape's own, for a document being laid out for several.
+      //
+      // The one thing scaling cannot do: type half the size still wraps where
+      // the page is narrow, so a headline that takes two lines across a
+      // banner takes four down a feed and the answer is fewer words rather
+      // than smaller ones. Off, this element says the same thing everywhere
+      // and a typo is still fixed once.
+      if (controller.document.targets.length > 1)
+        CanvasToggle(
+          key: const ValueKey("textOwnWordsHere"),
+          label: "Own words here",
+          value: e.base.ownText,
+          onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
+        ),
       // Words from the Writing library rather than typed on the canvas.
       // Beside Fit to box because it is the same kind of question --
       // where the words and their size come from -- and because it is

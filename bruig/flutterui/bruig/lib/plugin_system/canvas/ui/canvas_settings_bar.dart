@@ -845,7 +845,7 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             ),
           CanvasDropdown<String>(
             key: const ValueKey("layoutResetFrom"),
-            label: "Lay out again from",
+            label: "Copy layout from",
             value: "",
             width: 150,
             options: [
@@ -860,10 +860,13 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           const CanvasHint(
               "One design, laid out for each of these shapes. What an element "
               "is — its words, its colours, how it arrives — is the same on "
-              "all of them; where it sits and how big it is belongs to the "
-              "shape you set it on. A shape you have not opened yet is laid "
-              "out by scaling the one you are on, so it starts looking like "
-              "the design rather than like a heap in the corner."),
+              "all of them; where it sits, how big it is and how big its own "
+              "type is belong to the shape you set them on. A shape you have "
+              "not opened yet is laid out by scaling the one you are on, so "
+              "it starts looking like the design rather than like a heap in "
+              "the corner — and copying another shape's layout here does the "
+              "same thing again, for when this one has been dragged into a "
+              "mess."),
         ]),
       CanvasControlGroup(label: "Scaling", children: [
         CanvasToggle(

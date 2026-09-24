@@ -307,6 +307,46 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           onCommit: commit,
         ),
         poseDot,
+        // How big this element's own design is on this shape of page, for a
+        // document being laid out for several. Only then: on a canvas made
+        // for one shape it is a number that can only ever be 1.
+        //
+        // It scales what is inside the box -- the type, the spacing, the room
+        // in a chip -- and leaves the box where it is, which is what a
+        // headline that carries a banner and is a word a line on a feed
+        // actually needs. See ElementBase.typeScale.
+        if (controller.document.targets.length > 1) ...[
+          const CanvasLineBreak(),
+          CanvasNumberField(
+            key: const ValueKey("elementTypeScale"),
+            label: "Type here",
+            value: e.base.typeScale,
+            min: 0.05,
+            max: 10,
+            decimals: 2,
+            width: 72,
+            onChanged: (v) {
+              if (v <= 0 || e.base.typeScale <= 0) return;
+              begin();
+              write(e
+                  .scaledBy(v / e.base.typeScale)
+                  .withBase(
+                    x: e.x,
+                    y: e.y,
+                    width: e.width,
+                    height: e.height,
+                    typeScale: v,
+                  ));
+            },
+            onCommit: commit,
+          ),
+          const CanvasHint(
+              "How big this element's own design is on the shape of page you "
+              "are on: the type, the spacing and the room inside it. The box "
+              "stays where you put it. Every other shape keeps its own "
+              "number, and what the element *is* — its words, its colours — "
+              "is the same on all of them."),
+        ],
       ]);
 }
 

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 
 // responsive_layout.dart is one design laid out for several shapes.
@@ -86,19 +87,81 @@ CanvasSize sizeForShape(String key, CanvasSize like) {
 /// movedTo is [element] showing the layout it has for [to], with what it was
 /// showing put away under [from].
 ///
-/// The one step of a shape change, for one element. A shape nobody has worked
-/// on yet is seeded by scaling what was just put away, so the first visit
-/// lands on something that already looks like the design.
+/// The one step of a shape change, for one element, and it moves three
+/// things: where the element sits, how much its own measurements have been
+/// scaled by, and -- for words -- which set this shape shows.
+///
+/// A shape nobody has worked on yet is seeded by scaling what was just put
+/// away, so the first visit lands on something that already looks like the
+/// design. The type comes down with the box: seeded without that, a headline
+/// keeps the size it had on the larger page and runs out of the frame.
 CanvasElement movedTo(CanvasElement element, String from, String to, double by) {
   var layouts = {...element.base.layouts};
-  layouts[from] = ElementLayout.of(element.base);
-  var next = layouts.remove(to) ?? layouts[from]!.scaledBy(by);
-  return element.withBase(
+  var words = element is TextElement ? element.text : null;
+  var ownHere = element.base.ownText;
+
+  // What is on screen belongs to the shape being left.
+  layouts[from] = ElementLayout.of(element.base, text: words);
+
+  // Where this shape was following the others, they are all showing the same
+  // words, so they all take what has been typed. Done on the way out rather
+  // than on every keystroke: one place, and nothing to keep in step while
+  // somebody is typing.
+  if (!ownHere && words != null) {
+    for (var key in layouts.keys.toList()) {
+      if (!layouts[key]!.ownText) {
+        layouts[key] = layouts[key]!.copyWith(text: words);
+      }
+    }
+  }
+
+  // The words every shape that has not been given its own is showing.
+  var shared = _shared(layouts) ?? words;
+
+  var next = layouts.remove(to) ??
+      // A new shape follows the others' words: a headline shortened for the
+      // narrow page is that page's business, not the next one's.
+      layouts[from]!
+          .scaledBy(by)
+          .copyWith(text: shared, ownText: false);
+
+  var moved = element.withBase(
     x: next.x,
     y: next.y,
     width: next.width,
     height: next.height,
     visible: next.visible,
     layouts: layouts,
+    typeScale: next.typeScale,
+    ownText: next.ownText,
   );
+
+  // The design inside the box, brought to this shape's scale. Undoing this
+  // shape's scaling before applying that one's is the reason the number is
+  // written down at all: scaled numbers cannot say what they were scaled by.
+  var was = element.base.typeScale;
+  if (next.typeScale != was && was > 0) {
+    moved = moved.scaledBy(next.typeScale / was).withBase(
+          x: next.x,
+          y: next.y,
+          width: next.width,
+          height: next.height,
+          typeScale: next.typeScale,
+        );
+  }
+
+  if (moved is TextElement) {
+    var say = next.ownText ? next.text : shared;
+    if (say != null && say != moved.text) moved = moved.copyWith(text: say);
+  }
+  return moved;
+}
+
+/// _shared is the words the shapes that have not been given their own are
+/// showing, or null where none of them has any.
+String? _shared(Map<String, ElementLayout> layouts) {
+  for (var layout in layouts.values) {
+    if (!layout.ownText && layout.text != null) return layout.text;
+  }
+  return null;
 }

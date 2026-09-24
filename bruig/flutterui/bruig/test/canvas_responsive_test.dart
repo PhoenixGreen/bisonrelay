@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,11 @@ import 'package:flutter_test/flutter_test.dart';
 // switching back and forth loses nothing, that the first visit to a shape is
 // seeded rather than empty, and that the two halves of "one design" stay
 // joined.
+
+/// _Let is a small "and then" for reading a chain of document changes.
+extension _Let<T> on T {
+  R let<R>(R Function(T) f) => f(this);
+}
 
 void main() {
   CanvasSize sizeOf(CanvasRatio ratio) =>
@@ -192,6 +198,119 @@ void main() {
     expect(shapeKey(sizeOf(CanvasRatio.wide)),
         shapeKey(sizeOf(CanvasRatio.wide).copyWith(width: 4000)),
         reason: "and the width is the resolution, not the shape");
+  });
+
+  group("the design inside the box", () {
+    TextElement wordsIn(CanvasDocument d) => d.elements.single as TextElement;
+
+    CanvasDocument headline(CanvasRatio ratio) => CanvasDocument(
+          size: sizeOf(ratio),
+          elements: [
+            TextElement(
+              const ElementBase(id: "t", x: 0, y: 0, width: 800, height: 200),
+              text: "Spend or burn",
+              textSpec: const TextSpec(fontSize: 60),
+            ),
+          ],
+        );
+
+    test("comes down with the box when a shape is seeded", () {
+      // Seeded without this, a headline keeps the size it had on the larger
+      // page and runs out of the frame -- which is the whole complaint
+      // presets had, arriving here by another door.
+      var doc = headline(CanvasRatio.feedAd);
+      var wide = doc.forShape(sizeOf(CanvasRatio.wide));
+      var by = canvasScale(sizeOf(CanvasRatio.feedAd), sizeOf(CanvasRatio.wide));
+
+      expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * by, 0.5));
+      expect(wordsIn(wide).base.typeScale, closeTo(by, 0.001));
+    });
+
+    test("and each shape keeps its own", () {
+      var doc = headline(CanvasRatio.feedAd).forShape(sizeOf(CanvasRatio.wide));
+      // Pulled down a notch on the wide one, the way the panel does it.
+      var here = wordsIn(doc);
+      doc = doc.withElement(here
+          .scaledBy(0.5 / here.base.typeScale)
+          .withBase(typeScale: 0.5) as TextElement);
+
+      var back = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(wordsIn(back).textSpec.fontSize, closeTo(60, 0.5),
+          reason: "the 4:5 is as it was");
+      expect(wordsIn(back).base.typeScale, 1);
+
+      var again = back.forShape(sizeOf(CanvasRatio.wide));
+      expect(again.elements.single.base.typeScale, 0.5);
+      expect(wordsIn(again).textSpec.fontSize, closeTo(30, 0.5),
+          reason: "and the 16:9 is as it was left");
+    });
+  });
+
+  group("words", () {
+    TextElement wordsIn(CanvasDocument d) => d.elements.single as TextElement;
+
+    CanvasDocument headline(String text) => CanvasDocument(
+          size: sizeOf(CanvasRatio.feedAd),
+          elements: [
+            TextElement(
+              const ElementBase(id: "t", width: 800, height: 200),
+              text: text,
+            ),
+          ],
+        );
+
+    test("are shared until a shape is given its own", () {
+      var doc = headline("The long headline")
+          .forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsIn(doc).text, "The long headline");
+
+      // Typed on the 16:9, where this element has no words of its own: every
+      // other shape is saying the same thing, so they all take it.
+      doc = doc.withElement(wordsIn(doc).copyWith(text: "A better headline"));
+      var back = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(wordsIn(back).text, "A better headline");
+    });
+
+    test("and a shape with its own keeps them, and leaves the rest alone", () {
+      var doc = headline("The long headline")
+          .forShape(sizeOf(CanvasRatio.wide));
+
+      // Own words on the 16:9.
+      doc = doc.withElement(wordsIn(doc)
+          .withBase(ownText: true)
+          .let((e) => (e as TextElement).copyWith(text: "Short")));
+
+      var tall = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(wordsIn(tall).text, "The long headline",
+          reason: "the shapes that share go on sharing");
+      expect(wordsIn(tall).base.ownText, isFalse);
+
+      var wide = tall.forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsIn(wide).text, "Short", reason: "and this one keeps its own");
+      expect(wordsIn(wide).base.ownText, isTrue);
+
+      // Editing the shared words does not touch the one with its own.
+      var edited = wide
+          .forShape(sizeOf(CanvasRatio.feedAd))
+          .let((d) => d.withElement(wordsIn(d).copyWith(text: "Longer still")))
+          .forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsIn(edited).text, "Short");
+      expect(
+          wordsIn(edited.forShape(sizeOf(CanvasRatio.feedAd))).text,
+          "Longer still");
+    });
+
+    test("a new shape follows the shared words, not one shape's own", () {
+      var doc = headline("The long headline")
+          .forShape(sizeOf(CanvasRatio.wide));
+      doc = doc.withElement(wordsIn(doc)
+          .withBase(ownText: true)
+          .let((e) => (e as TextElement).copyWith(text: "Short")));
+
+      var square = doc.forShape(sizeOf(CanvasRatio.square));
+      expect(wordsIn(square).text, "The long headline");
+      expect(wordsIn(square).base.ownText, isFalse);
+    });
   });
 
   group("the file", () {
