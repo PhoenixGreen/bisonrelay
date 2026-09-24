@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,7 +25,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 // the things somebody actually does with this panel.
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    // The pair is counted against the real clock, so a loaded machine can
+    // put a second of real time between two taps made back to back.
+    DoubleClick.window = const Duration(minutes: 1);
+  });
 
   Future<CanvasController> panel(WidgetTester tester,
       {CanvasDocument? document}) async {
@@ -94,8 +100,10 @@ void main() {
     var controller = await panel(tester);
     var name = find.text("Scene 1");
 
+    // No pause between them: the second click is counted against the real
+    // clock, so a test that waits for a fake fifty milliseconds is a test
+    // that fails on a loaded machine.
     await tester.tap(name);
-    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(name);
     await tester.pumpAndSettle();
 

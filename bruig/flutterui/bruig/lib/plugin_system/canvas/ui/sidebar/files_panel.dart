@@ -7,6 +7,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
@@ -710,6 +712,30 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     );
   }
 
+  /// _saveAsPreset keeps a saved canvas in the Presets sidebar.
+  ///
+  /// Read from the file rather than from whatever is in the editor, so that
+  /// "save that one" means the saved version even while something else is
+  /// open and half-edited -- the same rule publishing follows.
+  Future<void> _saveAsPreset(CanvasEntry entry) async {
+    var snackbar = SnackBarModel.of(context);
+    var name = await askForPresetName(context, "Save this canvas as a preset",
+        initial: entry.name);
+    if (name == null || name.trim().isEmpty) return;
+    var document = await CanvasStorage.load(entry.folder, entry.name);
+    if (document == null) {
+      snackbar.error("Unable to read ${entry.name}.");
+      return;
+    }
+    var saved =
+        await SavedPresetStore.canvases.save(name, document.toJson());
+    if (saved == null) {
+      snackbar.error("Unable to save the preset.");
+      return;
+    }
+    snackbar.success("Saved ${saved.name} to Presets › Canvas.");
+  }
+
   /// _openRowMenu shows the row's menu under the button that was tapped.
   ///
   /// showMenu by hand rather than a PopupMenuButton, which wraps itself in a
@@ -740,6 +766,11 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             ]
           : const [
               PopupMenuItem(value: "publish", child: Text("Publish…")),
+              // Kept in the Presets sidebar to start other canvases from.
+              // A copy of the file as it is now: editing it afterwards
+              // leaves the preset as it was.
+              PopupMenuItem(
+                  value: "preset", child: Text("Save canvas as preset")),
               PopupMenuItem(value: "duplicate", child: Text("Duplicate")),
               PopupMenuItem(value: "rename", child: Text("Rename…")),
               PopupMenuItem(value: "move", child: Text("Move to…")),
@@ -750,6 +781,8 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
     switch (choice) {
       case "publish":
         widget.onPublish(entry.folder, entry.name);
+      case "preset":
+        await _saveAsPreset(entry);
       case "duplicate":
         await _duplicate(entry);
       case "rename":

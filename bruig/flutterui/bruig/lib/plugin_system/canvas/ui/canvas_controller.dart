@@ -1645,6 +1645,21 @@ class CanvasController extends ChangeNotifier {
     _afterSceneChange();
   }
 
+  /// addScenes puts [scenes] in after the one being looked at, and goes to
+  /// the first of them.
+  ///
+  /// What a saved scene or a saved canvas is dropped into a document with:
+  /// one scene from the first, every scene from the second. The ids are the
+  /// caller's to make fresh -- see SavedPreset.buildScenes, which does.
+  void addScenes(List<CanvasScene> scenes) {
+    if (scenes.isEmpty) return;
+    var list = [..._document.allScenes];
+    var at = (_document.sceneAt + 1).clamp(0, list.length).toInt();
+    list.insertAll(at, scenes);
+    apply(_document.copyWith(onMaster: false).withScenes(list, at: at));
+    _afterSceneChange();
+  }
+
   void removeScene(int index) {
     apply(_document.copyWith(onMaster: false).removeScene(index));
     _afterSceneChange();

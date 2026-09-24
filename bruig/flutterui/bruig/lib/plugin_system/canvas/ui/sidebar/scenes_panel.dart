@@ -3,7 +3,11 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -59,10 +63,9 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     });
   }
 
-  /// _lastNameClick is when a scene's name was last pressed, and which row,
-  /// for spotting the second click of a pair.
-  DateTime _lastNameClick = DateTime.fromMillisecondsSinceEpoch(0);
-  int _lastNameRow = -1;
+  /// _nameClicks counts the second click of a pair on a scene's name. See
+  /// DoubleClick, and the note on the row about why it is counted by hand.
+  final DoubleClick _nameClicks = DoubleClick();
 
   /// _nameClicked opens the name for typing on the second click of a pair.
   ///
@@ -71,13 +74,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   /// dispatching the press, the framework is left looking up a widget that
   /// has already gone.
   void _nameClicked(int index, CanvasScene scene) {
-    var now = DateTime.now();
-    var second = _lastNameRow == index &&
-        now.difference(_lastNameClick) < const Duration(milliseconds: 400);
-    _lastNameRow = index;
-    _lastNameClick = now;
-    if (!second) return;
-    _lastNameRow = -1;
+    if (!_nameClicks.isSecond(index)) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startRename(index, scene);
     });
@@ -414,6 +411,10 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         // is what carries a scene from one document to another. No Rename:
         // the name itself is double-clicked.
         const PopupMenuItem(value: "copy", child: Text("Copy")),
+        // Kept for good, in the Presets sidebar, as a copy: the scene goes
+        // on being edited and none of that reaches the preset.
+        const PopupMenuItem(
+            value: "preset", child: Text("Save scene as preset")),
         PopupMenuItem(
           value: "holds",
           child: Text(scene.holds
@@ -429,6 +430,8 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     switch (chose) {
       case "copy":
         controller.copyScene(index);
+      case "preset":
+        await _saveAsPreset(index, scene);
       case "duplicate":
         controller.duplicateScene(index);
       case "holds":
@@ -436,6 +439,20 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
       case "delete":
         controller.removeScene(index);
     }
+  }
+
+  /// _saveAsPreset keeps this scene in the Presets sidebar.
+  Future<void> _saveAsPreset(int index, CanvasScene scene) async {
+    var snackbar = SnackBarModel.of(context);
+    var name = await askForPresetName(context, "Save this scene as a preset",
+        initial: scene.saysAt(index));
+    if (name == null || name.trim().isEmpty) return;
+    var saved = await SavedPresetStore.scenes.save(name, scene.toJson());
+    if (saved == null) {
+      snackbar.error("Unable to save the preset.");
+      return;
+    }
+    snackbar.success("Saved ${saved.name} to Presets › Scene.");
   }
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,

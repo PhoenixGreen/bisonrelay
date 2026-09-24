@@ -352,7 +352,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// The document is handed in already built rather than built here, so the
   /// panel's preview and the working copy are separate objects -- editing the
   /// new canvas must not change the thumbnail beside it.
-  Future<void> _openPreset(CanvasPreset preset, CanvasDocument document) async {
+  Future<void> _openPreset(
+      CanvasPreset? preset, CanvasDocument document) async {
     if (!await _confirmDiscard()) return;
     _controller.load(document);
     if (mounted) {
@@ -452,8 +453,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
                         onNew: _newCanvas,
                         showing: _panel == CanvasPanel.files,
                       ),
-                    CanvasPanel.presets =>
-                      CanvasPresetsPanel(onChoose: _openPreset),
+                    CanvasPanel.presets => CanvasPresetsSidebar(
+                        controller: _controller,
+                        onChoose: _openPreset,
+                      ),
                     CanvasPanel.design =>
                       CanvasDesignPanel(controller: _controller),
                   },

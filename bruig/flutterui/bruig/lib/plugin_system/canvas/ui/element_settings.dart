@@ -70,10 +70,11 @@ List<Widget> elementSettings(
     // Not boxed. A rule round it made two rows -- a caption and a line with
     // a list and a button on it -- look like a section that had been left
     // open, which is the one thing it is not.
-    if (element is TextElement ||
-        element is ChartElement ||
-        element is TableElement)
-      presetsSection(context, controller, element),
+    // Every kind of element, not the three it started with: a counter set
+    // up the way somebody wants counters, or a shape they use on every
+    // canvas, is exactly as worth keeping as a table -- and the Presets
+    // sidebar lists what has been saved whatever kind it is.
+    presetsSection(context, controller, element),
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),

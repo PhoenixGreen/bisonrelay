@@ -824,6 +824,10 @@ void main() {
       var controller = await panel(tester);
       var before = [for (var p in teamIn(controller).players) (p.dx, p.dy)];
 
+      // Scrolled to first: every element carries a Presets line at the top
+      // of its settings now, so what is below it starts lower down.
+      await tester.ensureVisible(find.text("4-4-2").first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text("4-4-2").first);
       await tester.pumpAndSettle();
       await tester.tap(find.text("4-3-3").last);
@@ -2799,6 +2803,8 @@ void main() {
       var controller = await panel(tester, filled());
       expect(find.byTooltip("Replace this picture"), findsOneWidget);
 
+      await tester.ensureVisible(find.byTooltip("Take the picture out"));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip("Take the picture out"));
       await tester.pumpAndSettle();
       expect((controller.document.elements.single as ImageElement).hasImage,
@@ -3501,15 +3507,25 @@ void main() {
       expect(find.text(hint), findsOneWidget);
     });
 
-    testWidgets("so do the presets", (tester) async {
-      await pump(tester, CanvasPresetsPanel(onChoose: (_, __) {}));
+    testWidgets("so do the presets, on each of the three lists",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(
+          tester,
+          CanvasPresetsSidebar(
+              controller: controller, onChoose: (_, __) {}));
 
-      expect(find.text("PRESETS"), findsOneWidget,
-          reason: "a heading to hang the question mark off");
+      // Three panels in a stack now, like the Design sidebar: a canvas to
+      // start from, a scene to add, an element to drop on.
+      for (var heading in ["CANVAS", "SCENE", "ELEMENT"]) {
+        expect(find.text(heading), findsOneWidget, reason: heading);
+      }
       expect(
           shown(tester),
-          contains("Start from one of these, then change whatever you like "
-              "and save your own copy."));
+          contains("A whole document to start from. Tap one to begin a new "
+              "canvas, or use its menu to add its scenes to the canvas "
+              "already open."));
     });
 
     testWidgets("and the element settings, on their panel's own header",
