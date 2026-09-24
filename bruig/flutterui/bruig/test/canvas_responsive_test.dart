@@ -183,6 +183,17 @@ void main() {
     });
   });
 
+  test("a custom shape is one shape, whatever it is set to", () {
+    // Keyed by the numbers, typing a new aspect would leave the document
+    // pointing at a shape nothing is laid out for.
+    var custom = const CanvasSize(
+        ratio: CanvasRatio.custom, width: 1000, customRatio: 1.5);
+    expect(shapeKey(custom), shapeKey(custom.copyWith(customRatio: 0.8)));
+    expect(shapeKey(sizeOf(CanvasRatio.wide)),
+        shapeKey(sizeOf(CanvasRatio.wide).copyWith(width: 4000)),
+        reason: "and the width is the resolution, not the shape");
+  });
+
   group("the file", () {
     test("carries the layouts and the targets through a save", () {
       var controller = CanvasController(documentAt(CanvasRatio.feedAd));

@@ -25,16 +25,16 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 /// shapeKey names a shape in an element's layouts and in a document's
 /// targets.
 ///
-/// The ratio's own name, except for a custom one, which is named by its
-/// numbers: two documents at 16:9 mean the same thing by it whatever width
-/// they are drawn at, and two custom shapes do not.
-String shapeKey(CanvasSize size) => size.ratio == CanvasRatio.custom
-    ? "custom:${size.width}x${size.height}"
-    : size.ratio.name;
+/// The ratio's own name, and "custom" for a custom one whatever numbers it is
+/// set to. Keyed by the numbers instead, typing a new aspect would leave the
+/// document pointing at a shape nothing is laid out for -- and two different
+/// custom shapes in one design is not a thing anybody has asked for. The
+/// width is deliberately not in the key either: it is the document's
+/// resolution rather than its shape.
+String shapeKey(CanvasSize size) => size.ratio.name;
 
 /// shapeLabel is what that key is called in a list.
 String shapeLabel(String key) {
-  if (key.startsWith("custom:")) return "Custom ${key.substring(7)}";
   for (var ratio in CanvasRatio.values) {
     if (ratio.name == key) return ratio.label;
   }
@@ -77,13 +77,6 @@ CanvasElement withLayoutsFor(
 /// part of its shape: designing the same canvas at 4:5 and at 16:9 should not
 /// change how many pixels it publishes at.
 CanvasSize sizeForShape(String key, CanvasSize like) {
-  if (key.startsWith("custom:")) {
-    var parts = key.substring(7).split("x");
-    var w = double.tryParse(parts.first) ?? like.width.toDouble();
-    var h = parts.length > 1 ? double.tryParse(parts[1]) ?? w : w;
-    return like.copyWith(
-        ratio: CanvasRatio.custom, customRatio: h == 0 ? 1 : w / h);
-  }
   for (var ratio in CanvasRatio.values) {
     if (ratio.name == key) return like.copyWith(ratio: ratio);
   }
