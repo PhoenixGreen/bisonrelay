@@ -212,6 +212,7 @@ class _WritingComposerState extends State<WritingComposer> {
   /// refreshProductState works out whether a product sends this document,
   /// and whether buyers have what it currently says.
   Future<void> refreshProductState() async {
+    if (!mounted) return;
     var name = _library.openName;
     if (name == null) return;
     var sold = StoreGoods.productFor(_store.products, name);
@@ -256,6 +257,9 @@ class _WritingComposerState extends State<WritingComposer> {
   }
 
   Future<void> refreshPageState() async {
+    // Reached from a listener on the pages model and from a debounce timer,
+    // either of which can fire after this composer has gone.
+    if (!mounted) return;
     unawaited(refreshProductState());
     if (!isPage) {
       if (pageState != PagePublishState.draft && mounted) {
@@ -378,11 +382,13 @@ class _WritingComposerState extends State<WritingComposer> {
       previewContent, {for (var a in _pages.assets) a.path: a.size});
 
   void recalcEstimatedSize() async {
+    if (!mounted) return;
     var snackbar = SnackBarModel.of(context);
     if (_debounceSizeCalc?.isActive ?? false) _debounceSizeCalc!.cancel();
     _debounceSizeCalc = Timer(const Duration(milliseconds: 500), () async {
       try {
         var estSize = await Golib.estimatePostSize(post.getFullContent());
+        if (!mounted) return;
         setState(() {
           estimatedSize = estSize;
         });
@@ -397,6 +403,10 @@ class _WritingComposerState extends State<WritingComposer> {
   String _lastContent = "";
 
   void contentChanged() async {
+    // The controller outlives nothing now -- see dispose -- but it is held
+    // by the library while this is alive, so the guard stays: a write from
+    // there in the same frame as this going away would otherwise land here.
+    if (!mounted) return;
     // Before the early return below: a selection change is exactly what this
     // needs to hear about, and exactly what that return is there to skip.
     _rememberCaret();
@@ -552,9 +562,23 @@ class _WritingComposerState extends State<WritingComposer> {
     titleFocus.dispose();
     contentFocus.dispose();
     titleCtrl.dispose();
+    pageCtrl.removeListener(_rememberScroll);
     pageCtrl.dispose();
     // Flush before the controller goes: the pending write reads its text.
     _postLibrary?.flush();
+    // And then let go of it altogether.
+    //
+    // The library holds this controller so it can write an opened document
+    // into it, and the controller holds this composer's listeners -- so a
+    // document opened from My Site after the composer had gone set text on
+    // a live controller, which called a dead composer, which asked for a
+    // context it no longer had. Three of the four crashes in that report
+    // were that one chain.
+    _postLibrary?.stopWatching(contentCtrl);
+    contentCtrl
+      ..removeListener(contentChanged)
+      ..removeListener(refreshPageStateSoon)
+      ..dispose();
     super.dispose();
   }
 
@@ -577,9 +601,6 @@ class _WritingComposerState extends State<WritingComposer> {
         offset: post.caret.clamp(0, contentCtrl.text.length));
     contentCtrl.addListener(contentChanged);
     _loadPartials();
-    // Typing is what moves a published page to "edited", so the menu has to
-    // follow the text as well as the document.
-    contentCtrl.addListener(refreshPageStateSoon);
     // Typing is what moves a published page to "edited", so the menu has to
     // follow the text as well as the document.
     contentCtrl.addListener(refreshPageStateSoon);
@@ -615,6 +636,11 @@ class _WritingComposerState extends State<WritingComposer> {
       // was stale happened to be rebuilt.
       _pagesModel = Provider.of<PagesModel>(context, listen: false)
         ..addListener(refreshPageState);
+      // Held like the others, and for the same reason: what reads it runs
+      // from a listener and from a timer, either of which can arrive after
+      // this composer has gone -- and a provider lookup then is a lookup
+      // through a context that is no longer in the tree.
+      _storeModel = Provider.of<StoreModel>(context, listen: false);
 
       _postLibrary = Provider.of<PostLibraryModel>(context, listen: false)
         ..watch(contentCtrl)

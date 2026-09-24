@@ -126,6 +126,20 @@ class PostLibraryModel extends ChangeNotifier {
     }
   }
 
+  /// stopWatching lets go of [editor], but only if it is still the one being
+  /// watched.
+  ///
+  /// For a composer on its way out. A model still holding a dead
+  /// controller goes on writing into it -- and that controller's listeners
+  /// belong to the composer that has gone, which then reach for a context
+  /// they no longer have. Guarded on identity, because a new composer may
+  /// already have taken over by the time the old one is disposed.
+  void stopWatching(TextEditingController editor) {
+    if (!identical(editor, _editor)) return;
+    _editor?.removeListener(_onEdited);
+    _editor = null;
+  }
+
   PostEntry? _pendingOpen;
 
   /// requestOpen opens a document, or arranges to as soon as there is an

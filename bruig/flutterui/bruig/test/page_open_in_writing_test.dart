@@ -71,6 +71,43 @@ void main() {
     expect(editor.text, "# About me");
   });
 
+  test('a composer on its way out is let go of', () async {
+    // The model holds the composer's controller so it can write an opened
+    // document into it, and that controller holds the composer's listeners.
+    // Still held after the composer had gone, opening a page from My Site
+    // set text on a live controller, which called a dead composer, which
+    // reached for a context it no longer had -- three crashes in one
+    // report, all of that one chain.
+    var model = PostLibraryModel();
+    var editor = TextEditingController();
+    model.watch(editor);
+    model.stopWatching(editor);
+
+    // Nothing to open into, so the request waits instead of writing into a
+    // controller nobody is watching any more.
+    await model.requestOpen(pagesFolderName, "about");
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(model.openName, isNull);
+    expect(editor.text, isEmpty);
+  });
+
+  test('and not the one that has taken over from it', () async {
+    // The composers overlap: the new one is built before the old one is
+    // disposed, so the old one letting go must not take the new one's
+    // controller with it.
+    var model = PostLibraryModel();
+    var going = TextEditingController();
+    var arriving = TextEditingController();
+    model.watch(going);
+    model.watch(arriving);
+    model.stopWatching(going);
+
+    await model.requestOpen(pagesFolderName, "about");
+    await _settled(model);
+    expect(model.openName, "about");
+    expect(arriving.text, "# About me");
+  });
+
   test('a second editor does not reopen what was already handled', () async {
     var model = PostLibraryModel();
     await model.requestOpen(pagesFolderName, "about");
