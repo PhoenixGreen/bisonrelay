@@ -22,19 +22,32 @@ import 'package:flutter/foundation.dart';
 // wants exact pixels at a size of its choosing and renders each frame once
 // anyway.
 
-/// ProceduralCache is one background, rasterised.
+/// ProceduralCache is a few backgrounds, rasterised.
 ///
-/// One rather than a map of them, deliberately. There is a single canvas open
-/// at a time and its background changes when somebody edits it -- a cache of
-/// several would be several megabytes of pixels kept for designs nobody is
-/// looking at any more.
+/// It held exactly one, on the grounds that there is a single canvas open at a
+/// time. That stopped being true twice over: facing pages draw two canvases
+/// side by side, and a transition draws the scene leaving and the scene
+/// arriving together for its whole length. Put through a cache of one, each
+/// of them threw the other's picture away and made it again -- a generated
+/// backdrop is the most expensive thing on a canvas, and doing it two or
+/// three times a frame is what a flicker and a crawling page turn both are.
+///
+/// So: a few, oldest out first. Three, because three is what is on screen at
+/// once in the worst case -- the leaf beside the one being worked on, the
+/// page leaving and the page arriving -- and each of these is megabytes of
+/// pixels, so there is no sense keeping designs nobody is looking at.
 class ProceduralCache extends ChangeNotifier {
-  ui.Image? _image;
-  String? _for;
+  /// _keep is how many are held. See the class comment for why it is three.
+  static const int _keep = 3;
 
-  /// _making is the key currently being rasterised, so a slow generator is
-  /// not started again on every frame while the first one is still running.
-  String? _making;
+  /// _images is the rasters, least recently asked for first. A LinkedHashMap
+  /// by virtue of being a plain Dart map: re-inserting a key moves it to the
+  /// end, which is the whole of the eviction order.
+  final Map<String, ui.Image> _images = {};
+
+  /// _making is the keys being rasterised, so a slow generator is not started
+  /// again on every frame while the first one is still running.
+  final Set<String> _making = {};
 
   bool _disposed = false;
 
@@ -99,21 +112,30 @@ class ProceduralCache extends ChangeNotifier {
     if (size.width < 1 || size.height < 1) return null;
 
     var key = keyFor(spec, size, time, images);
-    if (key == _for) return _image;
-    if (key != _making) _make(spec, size, time, key, images);
+    var held = _images.remove(key);
+    if (held != null) {
+      // Back to the end of the queue: asked for is asked for, whether or not
+      // it had to be made.
+      _images[key] = held;
+      return held;
+    }
+    if (!_making.contains(key)) _make(spec, size, time, key, images);
 
-    var last = _image;
-    if (last != null &&
-        last.width == size.width.round().clamp(1, 8192) &&
-        last.height == size.height.round().clamp(1, 8192)) {
-      return last;
+    // A picture of another design at the right size, while this one is being
+    // made. Only at the size asked for: a picture of the right design at the
+    // wrong shape is a stretched background, which is something anybody can
+    // see.
+    var wide = size.width.round().clamp(1, 8192);
+    var high = size.height.round().clamp(1, 8192);
+    for (var last in _images.values.toList().reversed) {
+      if (last.width == wide && last.height == high) return last;
     }
     return null;
   }
 
   Future<void> _make(ProceduralSpec spec, ui.Size size, double time, String key,
       CanvasImageSource? images) async {
-    _making = key;
+    _making.add(key);
     try {
       var recorder = ui.PictureRecorder();
       var canvas = ui.Canvas(recorder);
@@ -132,22 +154,28 @@ class ProceduralCache extends ChangeNotifier {
         image.dispose();
         return;
       }
-      // Whatever was there goes: it is a picture of a design nobody is
-      // looking at any more, and these are megabytes each.
-      _image?.dispose();
-      _image = image;
-      _for = key;
+      _images.remove(key)?.dispose();
+      _images[key] = image;
+      // The oldest goes once there are more than there is any use for: these
+      // are megabytes each, and a picture of a design nobody is looking at is
+      // a picture nobody wants.
+      while (_images.length > _keep) {
+        var oldest = _images.keys.first;
+        _images.remove(oldest)?.dispose();
+      }
       notifyListeners();
     } finally {
-      if (_making == key) _making = null;
+      _making.remove(key);
     }
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _image?.dispose();
-    _image = null;
+    for (var image in _images.values) {
+      image.dispose();
+    }
+    _images.clear();
     super.dispose();
   }
 }

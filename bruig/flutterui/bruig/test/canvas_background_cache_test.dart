@@ -78,12 +78,44 @@ void main() {
       expect(next, isNotNull);
       expect(next, isNot(same(first)), reason: "and then it is the new one");
 
-      // One canvas is open at a time, so one picture is kept: going back to
-      // the design before it is a fresh raster, with the newest picture
-      // standing in while that is made.
-      expect(cache.imageFor(spec, size, 0), same(next));
+      // And the one before it is still held. A few are kept rather than one,
+      // because there is no longer a single canvas open at a time: facing
+      // pages draw two side by side, and a transition draws the scene leaving
+      // and the scene arriving together for its whole length. Going back to a
+      // design that is still in the cache costs nothing.
+      expect(cache.imageFor(spec, size, 0), same(first),
+          reason: "the design before it was kept, not thrown away");
+    });
+
+    testWidgets("but only a few, oldest out first", (tester) async {
+      // Three, which is what is on screen at once in the worst case: the leaf
+      // beside the one being worked on, the page leaving and the page
+      // arriving. These are megabytes each, so there is no sense keeping
+      // designs nobody is looking at.
+      var cache = ProceduralCache();
+      addTearDown(cache.dispose);
+      var spec = bannerCanvas().background.spec;
+      const size = Size(400, 225);
+
+      var specs = [for (var i = 0; i < 4; i++) spec.copyWith(seed: 100 + i)];
+      for (var one in specs) {
+        cache.imageFor(one, size, 0);
+        await settle(tester);
+      }
+
+      // The last three are held and answer at once.
+      var held = [for (var one in specs.skip(1)) cache.imageFor(one, size, 0)];
+      expect(held.every((i) => i != null), isTrue);
+      expect(held.toSet().length, 3, reason: "three different pictures");
+
+      // The first is gone. Asking for it hands back the newest picture as a
+      // stand-in of the right size -- which is how a cache miss looks from
+      // outside -- and the real one arrives a raster later.
+      expect(cache.imageFor(specs.first, size, 0), same(held.last));
       await settle(tester);
-      expect(cache.imageFor(spec, size, 0), isNot(same(next)));
+      var again = cache.imageFor(specs.first, size, 0);
+      expect(again, isNot(same(held.last)));
+      expect(again, isNotNull);
     });
 
     testWidgets("and so is a different size", (tester) async {

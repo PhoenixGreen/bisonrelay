@@ -150,11 +150,6 @@ class StagePainter extends CustomPainter {
   /// be a second page's paper over the one being worked on.
   final bool facingShown;
 
-  /// facingBackgrounds is the neighbour's own rasterised background. See
-  /// CanvasStage._facingBackgrounds: two canvases through one cache is a
-  /// background generated twice a frame.
-  final ProceduralCache? facingBackgrounds;
-
   /// selectedPath is the selected element when it is a path, whose points and
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
@@ -254,7 +249,6 @@ class StagePainter extends CustomPainter {
     this.facing,
     this.facingOnLeft = false,
     this.facingShown = false,
-    this.facingBackgrounds,
     required this.showHandles,
     required this.showHelpers,
     this.flowGrips,
@@ -296,7 +290,6 @@ class StagePainter extends CustomPainter {
           // The background arrives after the frame that asked for it, the
           // same way a picture does, and nothing else changes when it does.
           if (backgrounds != null) backgrounds,
-          if (facingBackgrounds != null) facingBackgrounds,
         ]));
 
   @override
@@ -335,24 +328,27 @@ class StagePainter extends CustomPainter {
         : document.goToScene(beside).copyWith(onMaster: false);
     var aside = facingOnLeft ? docSize.width : -docSize.width;
 
-    /// neighbour draws that leaf where it sits, whole.
-    void neighbour() {
+    /// neighbour draws that leaf where it sits.
+    ///
+    /// [held] clips it to its own page. Off, an element that hangs over the
+    /// gutter carries on across, which is the whole of what a spread is for.
+    /// On for the length of a turn: the other leaf is moving then, and an
+    /// overhang glued over a page that is sliding out from under it is a
+    /// piece of picture left hanging in the air.
+    void neighbour({bool held = false}) {
       if (over == null) return;
       canvas.save();
       canvas.translate(aside, 0);
+      if (held) canvas.clipRect(Offset.zero & docSize);
       if (facingShown) {
         canvas.save();
         canvas.clipRect(Offset.zero & docSize);
         paintCanvasDocument(canvas, over,
             part: CanvasPaintPart.backdrop,
             images: images,
-            backgrounds: facingBackgrounds);
+            backgrounds: backgrounds);
         canvas.restore();
       }
-      // Not clipped to its own leaf. An element that hangs over the gutter is
-      // the whole of what a spread is for, and clipping it at the page edge
-      // is what made a picture pulled across from the other page vanish the
-      // moment that page stopped being the one open.
       paintCanvasDocument(canvas, over,
           part: CanvasPaintPart.contents, images: images);
       canvas.restore();
@@ -363,15 +359,10 @@ class StagePainter extends CustomPainter {
       // document and it is not what is changing, so a transition that made it
       // disappear was showing half of a spread turning into half of another.
       //
-      // Two caches: for the length of a transition two scenes are drawn every
-      // frame, and one cache between them is a backdrop generated from
-      // scratch twice a frame. The neighbour goes without one here, having
-      // lent its cache to the scene arriving.
-      neighbour();
+      // Held to its own leaf for the length of it -- see neighbour.
+      neighbour(held: true);
       paintSequenceFrame(canvas, document, at,
-          images: images,
-          backgrounds: backgrounds,
-          nextBackgrounds: facingBackgrounds);
+          images: images, backgrounds: backgrounds);
       canvas.restore();
       canvas.restore();
       return;
@@ -388,7 +379,7 @@ class StagePainter extends CustomPainter {
         paintCanvasDocument(canvas, over,
             part: CanvasPaintPart.backdrop,
             images: images,
-            backgrounds: facingBackgrounds);
+            backgrounds: backgrounds);
         canvas.restore();
       }
       paintCanvasDocument(canvas, document,

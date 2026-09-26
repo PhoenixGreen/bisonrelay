@@ -411,7 +411,6 @@ class CanvasStageState extends State<CanvasStage> {
     _previewDebounce?.cancel();
     _legendHold?.cancel();
     _backgrounds.dispose();
-    _facingBackgrounds.dispose();
     _scroll.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
@@ -2868,17 +2867,12 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _backgrounds is the generated background, rasterised once and kept
   /// while the design and the size hold still. See ProceduralCache.
+  /// One cache for every canvas on screen. It holds a few rasters rather than
+  /// one, which is what lets the leaf beside this one, the page leaving and
+  /// the page arriving all keep theirs -- see ProceduralCache. It was three
+  /// caches for a while, and the trouble with that is that whoever adds a
+  /// fourth canvas has to know to make a fourth.
   final ProceduralCache _backgrounds = ProceduralCache();
-
-  /// _facingBackgrounds is the same, for the page drawn beside this one.
-  ///
-  /// Its own cache and not a second entry in the first: a ProceduralCache
-  /// holds exactly one rasterised background, on the grounds that there is
-  /// one canvas open at a time. With facing pages there are two, and put
-  /// through one cache each paint threw the other one's picture away and
-  /// generated it again -- which is a background being made from scratch
-  /// twice a frame, and looks on screen like a flicker.
-  final ProceduralCache _facingBackgrounds = ProceduralCache();
 
   /// _hoverAt is where the pointer last was, in stage coordinates. Kept so
   /// the cursor can say what is under it -- a ruler, in particular.
@@ -3070,7 +3064,6 @@ class CanvasStageState extends State<CanvasStage> {
                     child: CustomPaint(
                       painter: StagePainter(
                         backgrounds: _backgrounds,
-                        facingBackgrounds: _facingBackgrounds,
                         page: _pageRect,
                         view: _viewRect,
                         facing: _facingPage,
