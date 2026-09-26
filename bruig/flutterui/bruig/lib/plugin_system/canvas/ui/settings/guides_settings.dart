@@ -1,10 +1,8 @@
 import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 // guides_settings.dart is the grid, the guides, the rulers and the snapping,
 // as a panel that opens off the settings bar.
@@ -20,33 +18,25 @@ import 'package:provider/provider.dart';
 // looked at. Closing it gets the strip back.
 
 /// canvasGuidesSettings is the whole panel.
-List<Widget> canvasGuidesSettings(CanvasController controller,
-    {CanvasPreferences? prefs}) {
+///
+/// Five groups, each of which can be shut -- they are set up once and then
+/// left alone, and the three you are not using are what makes the strip
+/// scroll. What is shut is remembered across a restart.
+List<Widget> canvasGuidesSettings(CanvasController controller) {
   var guides = controller.document.guides;
   void set(CanvasGuides next) =>
       controller.apply(controller.document.copyWith(guides: next));
 
   return [
-    // Whether the bar carries switches for these three at all. Here rather
-    // than in the bar, because it is a question about the tools -- do you use
-    // a grid, do you use guides -- and this line is where those tools are
-    // set up. Somebody who does not use them should not have to find the
-    // switches in order to be rid of them.
-    if (prefs != null)
-      CanvasControlGroup(label: "In the bar", children: [
-        CanvasToggle(
-          key: const ValueKey("guidesInTheBar"),
-          label: "Switches in the bar",
-          value: prefs.markSwitches,
-          onChanged: (v) => prefs.markSwitches = v,
-        ),
-      ]),
     // "Every" sets the spacing for the grid and the ruler together. They are
     // one measurement of the page shown two ways, and when they disagreed --
     // a ruler picking its own round numbers by zoom, a grid on its own
     // spacing -- reading a position off the ruler meant counting squares on
     // the grid to find it.
-    CanvasControlGroup(label: "Grid and rulers", children: [
+    CanvasFoldingGroup(
+        label: "Grid and rulers",
+        remember: "guidesGrid",
+        children: [
       CanvasToggle(
         label: "Show a grid",
         value: guides.showGrid,
@@ -77,7 +67,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
           "to, and neither is exported — a grid is for building the design, "
           "not part of it."),
     ]),
-    CanvasControlGroup(label: "Guides", children: [
+    CanvasFoldingGroup(label: "Guides", remember: "guidesGuides", children: [
       CanvasIconButton(
         icon: Icons.swap_horiz,
         tooltip: "Add a vertical guide down the middle",
@@ -116,7 +106,10 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
           "you are working against. "
           "${guides.guides.length} at the moment."),
     ]),
-    CanvasControlGroup(label: "Snapping", children: [
+    CanvasFoldingGroup(
+        label: "Snapping",
+        remember: "guidesSnapping",
+        children: [
       CanvasToggle(
         label: "Snap",
         value: guides.snap,
@@ -170,7 +163,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
     // Lining several things up with each other, which snapping cannot do:
     // snapping catches one thing as it passes another, and these move
     // everything chosen at once and exactly.
-    CanvasControlGroup(label: "Align", children: [
+    CanvasFoldingGroup(label: "Align", remember: "guidesAlign", children: [
       for (var align in CanvasAlign.values)
         CanvasIconButton(
           key: ValueKey("align${align.name}"),
@@ -208,7 +201,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
           : "Lined up against the box the chosen elements make between them, "
               "so the outermost ones stay where they are."),
     ]),
-    CanvasControlGroup(label: "Rulers", children: [
+    CanvasFoldingGroup(label: "Rulers", remember: "guidesRulers", children: [
       for (var (label, on, apply)
           in <(String, bool, CanvasRulers Function(bool))>[
         ("Top", guides.rulers.top, (v) => guides.rulers.copyWith(top: v)),
@@ -225,6 +218,16 @@ List<Widget> canvasGuidesSettings(CanvasController controller,
           value: on,
           onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
         ),
+      // Shown or hidden without forgetting which edges were asked for, which
+      // is the whole of what this is for. It was in the bar and nowhere else,
+      // so a canvas saved with the rulers hidden had no way back to them once
+      // the bar stopped carrying switches.
+      CanvasToggle(
+        key: const ValueKey("guidesShowRulers"),
+        label: "Show",
+        value: guides.showRulers,
+        onChanged: (v) => set(guides.copyWith(showRulers: v)),
+      ),
       const CanvasHint(
           "Rulers sit against the edges of the canvas and are numbered from "
           "its top-left corner, at the spacing set above — every few of them "
@@ -265,7 +268,6 @@ class _CanvasGuidesPanelState extends State<CanvasGuidesPanel> {
 
   @override
   Widget build(BuildContext context) => CanvasSettingsStrip(
-        groups: (context) => canvasGuidesSettings(controller,
-            prefs: Provider.of<CanvasPreferences>(context)),
+        groups: (context) => canvasGuidesSettings(controller),
       );
 }

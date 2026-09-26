@@ -748,6 +748,20 @@ class CanvasControlGroup extends StatelessWidget {
   /// it rather than in a group of their own.
   final Widget? below;
 
+  /// folded says this group can be shut, and whether it is. Null for the
+  /// groups that are always open, which is most of them.
+  ///
+  /// Shut, the caption stays and the controls go. The caption is what there
+  /// is to press to get them back, so it cannot go with them -- and it is
+  /// what says which group this is, which is the whole of what a shut group
+  /// has left to say. See CanvasFoldingGroup, which remembers the answer.
+  final bool? folded;
+
+  /// onFold is the press on the caption. Required wherever [folded] is set:
+  /// a group that shows a chevron and does not move is worse than one with
+  /// no chevron at all.
+  final VoidCallback? onFold;
+
   const CanvasControlGroup({
     required this.label,
     required this.children,
@@ -756,6 +770,8 @@ class CanvasControlGroup extends StatelessWidget {
     this.rule = true,
     this.below,
     this.onRename,
+    this.folded,
+    this.onFold,
     super.key,
   });
 
@@ -773,6 +789,25 @@ class CanvasControlGroup extends StatelessWidget {
       caption =
           _RenamableCaption(label: label, style: style, onRename: onRename!);
     }
+    // A chevron in front of the words, and the whole caption is the target.
+    // A nine-pixel row of grey capitals is a small thing to hit, and the
+    // chevron alone would be smaller still.
+    if (folded != null) {
+      caption = InkWell(
+        onTap: onFold,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(1, 2, 4, 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(folded! ? Icons.chevron_right : Icons.expand_more,
+                size: 13, color: style.color),
+            const SizedBox(width: 2),
+            caption,
+          ]),
+        ),
+      );
+    }
+    var shut = folded == true;
 
     // Along the band the groups sit side by side, so what separates them is
     // room to the right and a line between them -- not a rule underneath,
@@ -802,13 +837,14 @@ class CanvasControlGroup extends StatelessWidget {
                 // it and a readout are three -- and aligned at the top they
                 // sat at three different heights on a strip whose whole job
                 // is to be one line.
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: children,
-                ),
-                if (below != null) below!,
+                if (!shut)
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: children,
+                  ),
+                if (below != null && !shut) below!,
               ],
             ),
             Padding(
@@ -858,8 +894,8 @@ class CanvasControlGroup extends StatelessWidget {
           // padding, as it did under the Wrap this replaced. Adding a gap here
           // as well is four pixels a control, which is what pushed a row that
           // had been measured to fit onto two lines.
-          CanvasWrap(runSpacing: canvasRowGap, children: children),
-          if (below != null) below!,
+          if (!shut) CanvasWrap(runSpacing: canvasRowGap, children: children),
+          if (below != null && !shut) below!,
           if (rule) const CanvasGroupRule(),
         ],
       ),
@@ -2353,32 +2389,54 @@ class CanvasExpander extends StatefulWidget {
   State<CanvasExpander> createState() => _CanvasExpanderState();
 }
 
-class _CanvasExpanderState extends State<CanvasExpander> {
-  /// _remembered is every named section's state, for this run of the app.
-  static final Map<String, bool> _remembered = {};
+/// _rememberedSections is every named section's open state, for this run of
+/// the app.
+///
+/// In memory as well as on disk, and that is the point rather than an
+/// optimisation: a settings panel is rebuilt from scratch whenever the
+/// selection changes, and a fresh State reads a stored preference
+/// asynchronously -- so a section opened, deselected and selected again was
+/// shut for as long as it took the answer to come back off disk, which is
+/// every time anybody looked.
+///
+/// Shared by [CanvasExpander] and [CanvasFoldingGroup], which are the same
+/// question -- is this part of the panel open -- asked of two shapes of
+/// heading.
+final Map<String, bool> _rememberedSections = {};
 
-  late bool _open = _remembered[widget.remember] ?? widget.initiallyOpen;
+/// _restoreSection reads a section's state off disk into the map, and tells
+/// [then] if it turns out to differ from what is on screen.
+Future<void> _restoreSection(String key, ValueChanged<bool> then) async {
+  var saved = await StorageManager.readData("canvasSection.$key");
+  if (saved is! bool) return;
+  _rememberedSections[key] = saved;
+  then(saved);
+}
+
+/// _keepSection writes one down.
+void _keepSection(String? key, bool open) {
+  if (key == null) return;
+  _rememberedSections[key] = open;
+  StorageManager.saveData("canvasSection.$key", open);
+}
+
+class _CanvasExpanderState extends State<CanvasExpander> {
+  late bool _open = _rememberedSections[widget.remember] ?? widget.initiallyOpen;
 
   @override
   void initState() {
     super.initState();
     var key = widget.remember;
-    if (key != null && !_remembered.containsKey(key)) _restore(key);
-  }
-
-  Future<void> _restore(String key) async {
-    var saved = await StorageManager.readData("canvasSection.$key");
-    if (saved is! bool) return;
-    _remembered[key] = saved;
-    if (mounted) setState(() => _open = saved);
+    if (key != null && !_rememberedSections.containsKey(key)) {
+      _restoreSection(key, (open) {
+        if (mounted) setState(() => _open = open);
+      });
+    }
   }
 
   void _toggle() {
     setState(() => _open = !_open);
-    var key = widget.remember;
-    if (key == null) return;
-    _remembered[key] = _open;
-    StorageManager.saveData("canvasSection.$key", _open);
+    _keepSection(widget.remember, _open);
   }
 
   @override
@@ -2772,4 +2830,73 @@ class _CanvasWatchState<T> extends State<CanvasWatch<T>> {
 
   @override
   Widget build(BuildContext context) => widget.builder(context, _value);
+}
+
+/// CanvasFoldingGroup is a control group that can be shut.
+///
+/// The same group as [CanvasControlGroup] -- the caption, the rule, the same
+/// layout in a sidebar and in a strip -- with a chevron on the caption and
+/// the controls put away behind it. For a panel that is five groups of
+/// switches set up once and then left alone: shutting the three you are not
+/// using is what turns a strip that scrolls sideways into one that fits.
+///
+/// [remember] names where the answer is kept, so a group shut stays shut
+/// across a rebuild and across a restart -- the same store CanvasExpander
+/// uses, because it is the same question.
+class CanvasFoldingGroup extends StatefulWidget {
+  final String label;
+  final List<Widget> children;
+
+  /// remember is the name the open state is kept under.
+  final String remember;
+
+  /// startShut is what a group nobody has touched does. False: a panel that
+  /// opens with everything put away is a panel that has to be opened five
+  /// times before it says anything.
+  final bool startShut;
+
+  final bool rule;
+  final Widget? below;
+
+  const CanvasFoldingGroup({
+    required this.label,
+    required this.children,
+    required this.remember,
+    this.startShut = false,
+    this.rule = true,
+    this.below,
+    super.key,
+  });
+
+  @override
+  State<CanvasFoldingGroup> createState() => _CanvasFoldingGroupState();
+}
+
+class _CanvasFoldingGroupState extends State<CanvasFoldingGroup> {
+  late bool _shut = !(_rememberedSections[widget.remember] ?? !widget.startShut);
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_rememberedSections.containsKey(widget.remember)) {
+      _restoreSection(widget.remember, (open) {
+        if (mounted) setState(() => _shut = !open);
+      });
+    }
+  }
+
+  void _toggle() {
+    setState(() => _shut = !_shut);
+    _keepSection(widget.remember, !_shut);
+  }
+
+  @override
+  Widget build(BuildContext context) => CanvasControlGroup(
+        label: widget.label,
+        rule: widget.rule,
+        below: widget.below,
+        folded: _shut,
+        onFold: _toggle,
+        children: widget.children,
+      );
 }

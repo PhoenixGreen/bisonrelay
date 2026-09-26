@@ -23,7 +23,6 @@ class CanvasPreferences extends ChangeNotifier {
   static const _lastNameKey = "canvasLastName";
   static const _allowFetchingKey = "canvasAllowFetching";
   static const _fitKey = "canvasFit";
-  static const _markSwitchesKey = "canvasMarkSwitches";
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
 
@@ -90,24 +89,6 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// markSwitches is whether the bar offers the grid, the guides and the
-  /// rulers as switches.
-  ///
-  /// Remembered, unlike the other things the bar can be told to hide. Those
-  /// are about the canvas in front of you -- whether these handles are in the
-  /// way this minute; this one is about which tools you use at all, and being
-  /// asked that again at every launch is the distraction it was turned off to
-  /// avoid.
-  bool get markSwitches => _markSwitches;
-  bool _markSwitches = true;
-
-  set markSwitches(bool value) {
-    if (_markSwitches == value) return;
-    _markSwitches = value;
-    StorageManager.saveBool(_markSwitchesKey, value);
-    notifyListeners();
-  }
-
   /// timeline is whether the transport and the strip under the canvas are
   /// showing.
   ///
@@ -152,8 +133,6 @@ class CanvasPreferences extends ChangeNotifier {
     _allowFetching =
         await StorageManager.readBool(_allowFetchingKey, defaultVal: false);
     _fit = await StorageManager.readString(_fitKey);
-    _markSwitches =
-        await StorageManager.readBool(_markSwitchesKey, defaultVal: true);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
     notifyListeners();

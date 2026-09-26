@@ -4,8 +4,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
-import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
@@ -13,7 +11,6 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 // canvas_settings_bar.dart is the band of controls above the canvas, and the
 // panel of canvas settings that drops out of it.
@@ -356,53 +353,6 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
         ],
       );
 
-  /// _marks are the switches for the grid, the guides and the rulers.
-  ///
-  /// Each appears only when there is something for it to show: no guides have
-  /// been dragged out, no ruler edge has been asked for, and the switch is a
-  /// button that does nothing. The grid is always there to be shown, so its
-  /// switch always is.
-  List<Widget> _marks(ThemeNotifier theme) {
-    var guides = controller.document.guides;
-    void set(CanvasGuides next) =>
-        controller.apply(controller.document.copyWith(guides: next));
-
-    // Whether these are offered at all is a preference, set on the line that
-    // sets the three tools up -- see canvasGuidesSettings. Somebody who does
-    // not use a grid should not have to press anything here to be rid of the
-    // switches for it.
-    var shown = Provider.of<CanvasPreferences>(context).markSwitches;
-    return [
-      if (shown) ...[
-        _barButton(theme,
-            icon: guides.showGrid ? Icons.grid_on : Icons.grid_off,
-            tooltip: guides.showGrid ? "Hide the grid" : "Show the grid",
-            active: guides.showGrid,
-            onPressed: () => set(guides.copyWith(showGrid: !guides.showGrid))),
-        if (guides.guides.isNotEmpty)
-          _barButton(theme,
-              icon: guides.showGuides
-                  ? Icons.straighten
-                  : Icons.straighten_outlined,
-              tooltip:
-                  guides.showGuides ? "Hide the guides" : "Show the guides",
-              active: guides.showGuides,
-              onPressed: () =>
-                  set(guides.copyWith(showGuides: !guides.showGuides))),
-        if (guides.rulers.any)
-          _barButton(theme,
-              icon: guides.showRulers
-                  ? Icons.square_foot
-                  : Icons.square_foot_outlined,
-              tooltip:
-                  guides.showRulers ? "Hide the rulers" : "Show the rulers",
-              active: guides.showRulers,
-              onPressed: () =>
-                  set(guides.copyWith(showRulers: !guides.showRulers))),
-      ],
-    ];
-  }
-
   /// _hasJoins is whether any text box on this canvas flows into another.
   bool get _hasJoins {
     var document = controller.document;
@@ -423,12 +373,11 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
   Widget _actions(ThemeNotifier theme) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // The measuring furniture: each of the three shown or hidden, and
-          // then the line that sets them all up. A switch for a thing that
-          // has not been set up is a switch that does nothing, so the grid,
-          // the guides and the rulers each appear here only once there is
-          // something to show.
-          ..._marks(theme),
+          // The measuring furniture, all of it behind one button. The bar
+          // used to carry switches for the grid, the guides and the rulers as
+          // well, with a preference for whether it did -- but the panel is
+          // where those three are set up, and a switch up here is the same
+          // switch a scroll away from the settings it belongs with.
           _barButton(theme,
               icon: Icons.grid_4x4,
               tooltip: "Grid, guides, rulers and snapping",

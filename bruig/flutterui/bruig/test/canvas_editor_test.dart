@@ -1367,15 +1367,6 @@ void main() {
       expect(later.timeline, isFalse, reason: "until it has read the disk");
     });
 
-    test("and whether the bar carries the grid switches", () {
-      SharedPreferences.setMockInitialValues({});
-      var prefs = CanvasPreferences();
-      addTearDown(prefs.dispose);
-      expect(prefs.markSwitches, isTrue,
-          reason: "there until somebody says otherwise");
-      prefs.markSwitches = false;
-      expect(prefs.markSwitches, isFalse);
-    });
   });
 
   group("the settings section", () {
@@ -1981,14 +1972,13 @@ void main() {
   });
 
   group("the area outside the canvas", () {
-    testWidgets("the grid, the guides and the rulers each have a switch",
+    testWidgets("the grid, the guides and the rulers are not in the bar",
         (tester) async {
-      // And a switch for a thing that has not been set up is a switch that
-      // does nothing, so each appears only once there is something to show.
+      // They were, with a preference for whether they were -- but the panel
+      // behind the one button is where those three are set up, and a switch
+      // up here is the same switch a scroll away from its own settings.
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      var quiet = CanvasPreferences();
-      addTearDown(quiet.dispose);
       await pump(
           tester,
           CanvasSettingsBar(
@@ -2000,44 +1990,14 @@ void main() {
             onToggleGuides: () {},
             timelineOpen: true,
             onToggleTimeline: () {},
-          ),
-          prefs: quiet);
+          ));
 
-      expect(find.byTooltip("Show the grid"), findsOneWidget,
-          reason: "there is always a grid to show");
-
-      // Whether they are offered at all is a preference, set on the line that
-      // sets the three tools up: somebody who does not use a grid should not
-      // have to press anything in the bar to be rid of the switches for it.
-      quiet.markSwitches = false;
-      await tester.pumpAndSettle();
       expect(find.byTooltip("Show the grid"), findsNothing);
-      expect(
-          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget,
-          reason: "the line that sets them up is still a button away");
-      quiet.markSwitches = true;
-      await tester.pumpAndSettle();
       expect(find.byTooltip("Show the guides"), findsNothing);
       expect(find.byTooltip("Show the rulers"), findsNothing);
-
-      await tester.tap(find.byTooltip("Show the grid"));
-      await tester.pumpAndSettle();
-      expect(controller.document.guides.showGrid, isTrue);
-      expect(find.byTooltip("Hide the grid"), findsOneWidget);
-
-      // Once there are guides and a ruler edge, their switches turn up.
-      controller.apply(controller.document.copyWith(
-          guides: controller.document.guides.copyWith(
-        guides: const [CanvasGuide(axis: GuideAxis.vertical, at: 100)],
-        rulers: const CanvasRulers(top: true),
-      )));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip("Hide the guides"), findsOneWidget);
-      await tester.tap(find.byTooltip("Hide the rulers"));
-      await tester.pumpAndSettle();
-      expect(controller.document.guides.showRulers, isFalse,
-          reason: "hidden without forgetting which edges they were on");
-      expect(controller.document.guides.rulers.top, isTrue);
+      expect(
+          find.byTooltip("Grid, guides, rulers and snapping"), findsOneWidget,
+          reason: "the panel that sets them up is still one button");
     });
 
     testWidgets("the join switches are only there when there is a join",
@@ -5827,6 +5787,63 @@ void main() {
       await tester.tap(find.byTooltip("Remove every guide"));
       await tester.pumpAndSettle();
       expect(controller.document.guides.guides, isEmpty);
+    });
+
+    // Five groups of switches set up once and then left alone. Shutting the
+    // ones you are not using is what turns a strip that scrolls sideways
+    // into one that fits.
+    //
+    // Align rather than one of the others, because a group's open state is
+    // remembered in a map that outlives a test: a failure between shutting
+    // one and opening it again leaves it shut for the rest of the file, and
+    // this is the group nothing else in here looks inside.
+    testWidgets("a group can be shut, and its caption is what opens it again",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      var spread = find.byKey(const ValueKey("spreadAcross"));
+      expect(spread, findsOneWidget,
+          reason: "a panel that opens with everything put away says nothing");
+
+      // The strip scrolls sideways, so a caption at the far end of it is at
+      // coordinates outside the viewport until it is scrolled to.
+      await tester.ensureVisible(find.text("ALIGN"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("ALIGN"));
+      await tester.pumpAndSettle();
+      expect(spread, findsNothing);
+      expect(find.text("ALIGN"), findsOneWidget,
+          reason: "the caption is what there is left to press");
+      expect(find.text("Snap"), findsOneWidget,
+          reason: "and the other groups are untouched");
+
+      await tester.ensureVisible(find.text("ALIGN"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("ALIGN"));
+      await tester.pumpAndSettle();
+      expect(spread, findsOneWidget);
+    });
+
+    // It was in the bar and nowhere else, so a canvas saved with the rulers
+    // hidden had no way back to them once the bar stopped carrying switches.
+    testWidgets("the rulers are shown and hidden from the panel",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, CanvasGuidesPanel(controller: controller));
+
+      expect(controller.document.guides.showRulers, isTrue);
+      // The strip scrolls sideways and Rulers is the last group on it, so a
+      // tap at its coordinates lands outside the viewport.
+      await tester.ensureVisible(find.byKey(const ValueKey("guidesShowRulers")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("guidesShowRulers")));
+      await tester.pumpAndSettle();
+      expect(controller.document.guides.showRulers, isFalse);
+      expect(controller.document.guides.rulers.top, isFalse,
+          reason: "hidden without forgetting which edges were asked for");
     });
   });
 
