@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -308,6 +309,49 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           onCommit: commit,
         ),
         poseDot,
+        // A counter on a document of pages can be the page number, and this
+        // is where it is said. Beside what the element *is* on this page
+        // rather than three controls into the counter's own settings, which
+        // is where it was and where nobody found it -- and next to "Own on
+        // A4", because the two are the same sort of question: what does this
+        // element do on the leaf it is drawn on.
+        if (e is CounterElement && controller.document.isPages) ...[
+          const CanvasLineBreak(gap: 8),
+          CanvasToggle(
+            key: const ValueKey("counterIsPageNumber"),
+            label: "Page number",
+            value: e.isPageNumber,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(
+                  source: v ? CounterSource.page : CounterSource.run));
+              commit();
+            },
+          ),
+          // And which edge it sits against, for the page number that belongs
+          // on the outside of the leaf. See CounterElement.mirrored.
+          if (e.isPageNumber)
+            CanvasToggle(
+              key: const ValueKey("counterMirrored"),
+              label: "Mirror on left pages",
+              value: e.mirrored,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(mirrored: v));
+                commit();
+              },
+            ),
+          CanvasHint(e.isPageNumber
+              ? "The number of the page it is drawn on. On the master canvas "
+                  "it gives every page its own number. Mirrored, it moves to "
+                  "the matching place on the other edge for a left-hand page, "
+                  "so the number sits on the outside of the leaf on both "
+                  "sides of a spread — something already centred stays where "
+                  "it is, because the mirror of the middle is the middle."
+              : "Turn this on and the counter shows the number of the page "
+                  "it is drawn on instead of counting. Put one on the master "
+                  "canvas and every page wears it."),
+        ],
         // What this element does on this shape of page, for a document being
         // laid out for several. Only then: on a canvas made for one shape
         // there is one design and nothing to say about it.

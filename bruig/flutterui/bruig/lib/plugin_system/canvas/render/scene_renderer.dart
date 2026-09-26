@@ -352,6 +352,22 @@ void paintElement(
   if (alpha <= 0.002) return;
 
   var bounds = element.bounds;
+
+  // A page number that sits on the outside edge of the leaf. Mirrored about
+  // the middle of the page rather than nudged by a figure somebody types, so
+  // that the two sides of a spread match however it is placed -- and so that
+  // one already in the middle stays there, the mirror of the centre being the
+  // centre. See CounterElement.mirrored.
+  if (element is CounterElement &&
+      element.mirrored &&
+      element.isPageNumber &&
+      document != null &&
+      document.pageIsLeftHand) {
+    var page = document.size.rect;
+    bounds = Rect.fromLTWH(page.left + page.right - bounds.right, bounds.top,
+        bounds.width, bounds.height);
+  }
+
   // Nothing to draw in no room -- except for a line, which is a stroke from
   // one corner of its box to the other and so has a box with no height when
   // it is level and none with no width when it is plumb. paintArriving says
@@ -443,6 +459,12 @@ void paintElement(
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintButton(canvas, bounds, e, hovered, images));
     case CounterElement e:
+      // A page number on a page that has none is not drawn at all. It used to
+      // fall back to the counter's start value, so a cover wore a 1 -- and
+      // because that 1 was the same whatever the numbering said, turning
+      // "Covers count" and "Number on covers" on and off did nothing
+      // visible, which is how both settings came to look broken.
+      if (e.isPageNumber && document?.pageNumber == null) break;
       // Keyed, the number is whatever the timeline says here; live, it is
       // whatever the thing running it says -- and in a picture, where nothing
       // is running, it is where the count starts. A live counter exported as
@@ -468,7 +490,7 @@ void paintElement(
               // different number on every leaf, which is the whole of what
               // makes it a page number. See CounterSource.page.
               e.isPageNumber
-                  ? (document?.pageNumber?.toDouble() ?? e.from)
+                  ? (document?.pageNumber ?? 0).toDouble()
                   : e.live
                       ? (counterValue?.call(e) ?? e.from)
                       : (pose.values[KeyframeChannel.count] ?? e.from),

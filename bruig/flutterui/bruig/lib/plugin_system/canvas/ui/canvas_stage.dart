@@ -411,6 +411,7 @@ class CanvasStageState extends State<CanvasStage> {
     _previewDebounce?.cancel();
     _legendHold?.cancel();
     _backgrounds.dispose();
+    _facingBackgrounds.dispose();
     _scroll.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
@@ -445,7 +446,14 @@ class CanvasStageState extends State<CanvasStage> {
   double get _fitScale {
     var size = document.size.size;
     if (size.width <= 0 || size.height <= 0) return 1;
-    var byWidth = (_visible.width - _stageMargin * 2) / size.width;
+    // A spread is two pages across and one page down, so it is the width
+    // that has to make room and nothing else. Halving the fitted scale
+    // instead -- which is what this did -- halves the height as well, and on
+    // a canvas fitted whole (where the height is what decides) that is a
+    // spread drawn at half the size it should be, with the room it gave up
+    // left empty either side.
+    var across = size.width * (_facingPage != null ? 2 : 1);
+    var byWidth = (_visible.width - _stageMargin * 2) / across;
     // Fit to width ignores the height entirely, which is the whole point: a
     // 9:16 story fitted whole is a narrow strip down the middle of a wide
     // window with most of the screen empty either side of it.
@@ -455,10 +463,6 @@ class CanvasStageState extends State<CanvasStage> {
     // The overspill has to fit on screen too, so the page gives up the room
     // for it rather than the margin being eaten into.
     if (controller.showOverspill) fit /= 1 + _overspillFraction * 2;
-    // And so does the page beside it. Two leaves across the room one was in,
-    // which is what a spread is and what makes seeing one worth half the
-    // size.
-    if (_facingPage != null) fit /= 2;
     return fit.isFinite && fit > 0 ? fit : 1;
   }
 
@@ -514,6 +518,19 @@ class CanvasStageState extends State<CanvasStage> {
   /// so the neighbour is drawn to its right.
   bool get _facingOnLeft => document.facingIsLeft(document.at) ?? false;
 
+  /// _onFacingPage is whether a point on the stage is over the leaf drawn
+  /// beside the one being edited.
+  ///
+  /// Measured against the edited page's own frame rather than against the
+  /// neighbour's: the two are the same size and share an edge, so "past the
+  /// spine" is the whole of the question.
+  bool _onFacingPage(Offset stage) {
+    if (_facingPage == null) return false;
+    var page = _pageRect;
+    if (stage.dy < page.top || stage.dy > page.bottom) return false;
+    return _facingOnLeft ? stage.dx > page.right : stage.dx < page.left;
+  }
+
   /// _pageRect is the canvas's frame on screen, and it does not move.
   ///
   /// This is the whole shape of the view. The frame is always the fitted size,
@@ -524,8 +541,16 @@ class CanvasStageState extends State<CanvasStage> {
   /// left to tell you where the canvas ended.
   Rect get _pageRect {
     var size = document.size.size * _fitScale;
+    // The *spread* is what sits in the middle of the window, and the page
+    // being edited takes its own half of it. Centring the edited page
+    // instead put the spread half a leaf off to one side -- and moved the
+    // whole thing across the window every time the page being worked on
+    // changed sides, which is the one thing a page of a book does not do.
+    var across = _facingPage == null
+        ? 0.0
+        : (_facingOnLeft ? -size.width / 2 : size.width / 2);
     return Rect.fromCenter(
-      center: Offset(_viewport.width / 2, _viewport.height / 2),
+      center: Offset(_viewport.width / 2 + across, _viewport.height / 2),
       width: size.width,
       height: size.height,
     );
@@ -623,6 +648,12 @@ class CanvasStageState extends State<CanvasStage> {
   /// contentRect is the document as drawn inside that frame.
   @visibleForTesting
   Rect get contentRect => _origin & _scaledSize;
+
+  /// spreadRect is the frame the page and the leaf beside it fill together,
+  /// which is what sits in the middle of the window while facing pages are
+  /// showing. The page's own frame where there is no leaf beside it.
+  @visibleForTesting
+  Rect get spreadRect => _viewRect;
 
   /// flowGrips is where a selected text box's overflow dots are and what they
   /// say, for the tests that drag one onto another box. Painted rather than
@@ -1346,6 +1377,21 @@ class CanvasStageState extends State<CanvasStage> {
     _travelled = false;
     var doc = _toDocument(stage);
     _dragStart = doc;
+
+    // A press on the facing page opens it. It is the page you are looking
+    // at, so it is the page you mean -- and with nothing else on that half of
+    // the spread to press, a click that did nothing was the whole of what
+    // happened there.
+    //
+    // Before the pan check on purpose: panning is a drag, and this is a
+    // press. Before the hit test too, because the elements of the *edited*
+    // page are the only ones it knows about, and one hanging over the spine
+    // would otherwise be picked up by a press meant for the leaf beside it.
+    if (_facingPage case var beside? when _onFacingPage(stage)) {
+      controller.goToScene(beside);
+      _mode = _DragMode.none;
+      return;
+    }
 
     // The pan tool and the middle button pan. Space used to as well, and no
     // longer does: it plays and stops now, which is worth more on a page for
@@ -2813,6 +2859,16 @@ class CanvasStageState extends State<CanvasStage> {
   /// while the design and the size hold still. See ProceduralCache.
   final ProceduralCache _backgrounds = ProceduralCache();
 
+  /// _facingBackgrounds is the same, for the page drawn beside this one.
+  ///
+  /// Its own cache and not a second entry in the first: a ProceduralCache
+  /// holds exactly one rasterised background, on the grounds that there is
+  /// one canvas open at a time. With facing pages there are two, and put
+  /// through one cache each paint threw the other one's picture away and
+  /// generated it again -- which is a background being made from scratch
+  /// twice a frame, and looks on screen like a flicker.
+  final ProceduralCache _facingBackgrounds = ProceduralCache();
+
   /// _hoverAt is where the pointer last was, in stage coordinates. Kept so
   /// the cursor can say what is under it -- a ruler, in particular.
   Offset _hoverAt = Offset.zero;
@@ -3003,6 +3059,7 @@ class CanvasStageState extends State<CanvasStage> {
                     child: CustomPaint(
                       painter: StagePainter(
                         backgrounds: _backgrounds,
+                        facingBackgrounds: _facingBackgrounds,
                         page: _pageRect,
                         view: _viewRect,
                         facing: _facingPage,

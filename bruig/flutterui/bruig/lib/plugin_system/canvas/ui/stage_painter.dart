@@ -141,6 +141,11 @@ class StagePainter extends CustomPainter {
   /// neighbour goes to its right.
   final bool facingOnLeft;
 
+  /// facingBackgrounds is the neighbour's own rasterised background. See
+  /// CanvasStage._facingBackgrounds: two canvases through one cache is a
+  /// background generated twice a frame.
+  final ProceduralCache? facingBackgrounds;
+
   /// selectedPath is the selected element when it is a path, whose points and
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
@@ -239,6 +244,7 @@ class StagePainter extends CustomPainter {
     required this.view,
     this.facing,
     this.facingOnLeft = false,
+    this.facingBackgrounds,
     required this.showHandles,
     required this.showHelpers,
     this.flowGrips,
@@ -280,6 +286,7 @@ class StagePainter extends CustomPainter {
           // The background arrives after the frame that asked for it, the
           // same way a picture does, and nothing else changes when it does.
           if (backgrounds != null) backgrounds,
+          if (facingBackgrounds != null) facingBackgrounds,
         ]));
 
   @override
@@ -304,8 +311,15 @@ class StagePainter extends CustomPainter {
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
     if (previewAt case var at?) {
+      // Two caches: for the length of a transition two scenes are drawn
+      // every frame, and one cache between them is a backdrop generated
+      // from scratch twice a frame. The second is the one the facing page
+      // uses when there is no transition running -- they never both want it
+      // at once, because the neighbour is not drawn during a preview.
       paintSequenceFrame(canvas, document, at,
-          images: images, backgrounds: backgrounds);
+          images: images,
+          backgrounds: backgrounds,
+          nextBackgrounds: facingBackgrounds);
       canvas.restore();
       canvas.restore();
       return;
@@ -317,7 +331,7 @@ class StagePainter extends CustomPainter {
       canvas.translate(facingOnLeft ? docSize.width : -docSize.width, 0);
       canvas.clipRect(Offset.zero & docSize);
       paintCanvasDocument(canvas, document.goToScene(beside),
-          images: images, backgrounds: backgrounds);
+          images: images, backgrounds: facingBackgrounds);
       // Held back a little from the page in front of it. Not dimmed to
       // uselessness -- the point of a spread is to see the two together --
       // but enough that it is plain which of the two the editor is on.

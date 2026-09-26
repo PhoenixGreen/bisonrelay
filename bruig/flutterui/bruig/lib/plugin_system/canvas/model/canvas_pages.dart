@@ -201,6 +201,15 @@ int? facingPage(List<PageCover> covers, int index) {
   return beside;
 }
 
+/// pageIsLeft is whether the leaf at [index] is a left-hand page.
+///
+/// The document's own structure, not the view: the first leaf is a right-hand
+/// page, and they alternate from there. So it is the same answer whether or
+/// not facing pages are being shown, which is what a page number printed on
+/// the outside edge needs -- the number's side is a fact about the leaf, and
+/// switching the editor's view must not move it.
+bool pageIsLeft(int index) => index > 0 && index.isOdd;
+
 /// leftOfSpread is whether the page at [index] is the left-hand leaf of a
 /// spread. Null where it has no facing page at all.
 bool? leftOfSpread(List<PageCover> covers, int index) {

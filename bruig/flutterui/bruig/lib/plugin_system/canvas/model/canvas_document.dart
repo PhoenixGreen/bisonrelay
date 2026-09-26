@@ -388,6 +388,10 @@ class CanvasDocument {
   /// number drawn on the master canvas reads. See CounterSource.page.
   int? get pageNumber => pageNumberAt(at);
 
+  /// pageIsLeft is whether the page being edited is a left-hand leaf, which
+  /// is what a mirrored page number is drawn from. See CounterElement.mirrored.
+  bool get pageIsLeftHand => isPages && pageIsLeft(at);
+
   /// facingAt is the page shown beside the one at [index] while facing pages
   /// are on, or null where it stands alone.
   int? facingAt(int index) =>

@@ -112,12 +112,23 @@ void paintSequenceFrame(
   int at, {
   CanvasImageSource? images,
   ProceduralCache? backgrounds,
+
+  /// nextBackgrounds is a second cache, for the scene arriving over the one
+  /// leaving.
+  ///
+  /// A ProceduralCache holds one rasterised background, because there is one
+  /// canvas open at a time -- and for the length of a transition there are
+  /// two. Put through one cache, each of them threw the other's picture away
+  /// and generated it again, twice for every frame of the transition: a
+  /// generated backdrop is the most expensive thing on a canvas, and that is
+  /// what made a page turn crawl.
+  ProceduralCache? nextBackgrounds,
 }) {
   var place = placeInSequence(doc, at);
   var scenes = doc.allScenes;
   if (scenes.isEmpty) return;
 
-  void drawScene(int index, int frame) {
+  void drawScene(int index, int frame, {ProceduralCache? cache}) {
     // Each scene with its own backdrop -- see CanvasDocument.backgroundOf.
     // Drawn from the document's own, every scene in the run wore whichever
     // one was edited last.
@@ -128,7 +139,7 @@ void paintSequenceFrame(
             .copyWith(onMaster: false, background: doc.backgroundOf(index)),
         frame: frame,
         images: images,
-        backgrounds: backgrounds);
+        backgrounds: cache ?? backgrounds);
   }
 
   if (!place.changing) {
@@ -146,7 +157,8 @@ void paintSequenceFrame(
     over,
     t,
     from: () => drawScene(place.scene, place.frame),
-    to: () => drawScene(place.next, place.nextFrame),
+    to: () => drawScene(place.next, place.nextFrame,
+        cache: nextBackgrounds ?? backgrounds),
   );
 }
 

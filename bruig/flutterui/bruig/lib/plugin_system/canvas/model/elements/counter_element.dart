@@ -188,6 +188,20 @@ class CounterElement extends CanvasElement {
   final double rate;
   final bool loop;
 
+  /// mirrored puts a page number on the outside edge of the leaf.
+  ///
+  /// A printed page number sits away from the spine, which means the same
+  /// element has to be at one side of a right-hand page and at the other
+  /// side of a left-hand one. Drawn mirrored about the middle of the page
+  /// rather than moved by a distance somebody types, so that the two sides
+  /// of a spread match however the number is placed -- and so that a number
+  /// already in the middle stays in the middle, because the mirror of the
+  /// centre is the centre.
+  ///
+  /// Only read for a page number, and only on a left-hand leaf. See
+  /// CanvasDocument.pageIsLeft.
+  final bool mirrored;
+
   /// running is whether a live counter is counting before anybody presses
   /// anything. A clock on a page should be going when the page opens; a
   /// stopwatch should not.
@@ -240,6 +254,7 @@ class CounterElement extends CanvasElement {
     this.fit = true,
     this.keyed = true,
     this.source = CounterSource.run,
+    this.mirrored = false,
     this.rate = 1,
     this.loop = false,
     this.running = false,
@@ -347,6 +362,7 @@ class CounterElement extends CanvasElement {
     bool? fit,
     bool? keyed,
     CounterSource? source,
+    bool? mirrored,
     double? rate,
     bool? loop,
     bool? running,
@@ -375,6 +391,7 @@ class CounterElement extends CanvasElement {
           fit: fit ?? this.fit,
           keyed: keyed ?? this.keyed,
           source: source ?? this.source,
+          mirrored: mirrored ?? this.mirrored,
           rate: rate ?? this.rate,
           loop: loop ?? this.loop,
           running: running ?? this.running,
@@ -404,6 +421,7 @@ class CounterElement extends CanvasElement {
         if (!fit) "noFit": true,
         if (!keyed) "live": true,
         if (source != CounterSource.run) "source": source.name,
+        if (mirrored) "mirrored": true,
         if (rate != 1) "rate": rate,
         if (loop) "loop": true,
         if (running) "running": true,
@@ -447,6 +465,7 @@ class CounterElement extends CanvasElement {
         fit: !jsonBool(json["noFit"], false),
         keyed: !jsonBool(json["live"], false),
         source: CounterSource.fromName(json["source"] as String?),
+        mirrored: jsonBool(json["mirrored"], false),
         rate: jsonDouble(json["rate"], 1),
         loop: jsonBool(json["loop"], false),
         running: jsonBool(json["running"], false),

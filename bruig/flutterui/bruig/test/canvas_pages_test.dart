@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -174,16 +175,32 @@ void main() {
           [PageCover.none, PageCover.front, PageCover.back]);
     });
 
-    // It was a setting three controls into the counter's panel, and nobody
-    // found it. On a document of pages the counter *is* a page number, and
-    // the chip that adds one says so.
-    test("adding a counter to a document of pages gives a page number", () {
+    // A counter is a counter wherever it is added: a page that carries a
+    // countdown or a total is a page like any other. The switch that turns
+    // one into a page number is in its settings.
+    test("a counter added to a document of pages is still a counter", () {
       var made = newElement(ElementKind.counter, pages(2));
-      expect((made as CounterElement).source, CounterSource.page);
+      expect((made as CounterElement).source, CounterSource.run);
+    });
 
-      var other = newElement(ElementKind.counter, const CanvasDocument());
-      expect((other as CounterElement).source, CounterSource.run,
-          reason: "a set of scenes has no page for it to number");
+    // A left-hand leaf carries its number on the other edge, so that the
+    // number is on the outside of the page on both sides of a spread.
+    test("a mirrored page number swaps sides on a left-hand page", () {
+      expect(pageIsLeft(0), isFalse, reason: "the first leaf is a right page");
+      expect(pageIsLeft(1), isTrue);
+      expect(pageIsLeft(2), isFalse);
+      expect(pages(4).copyWith(sceneAt: 1).pageIsLeftHand, isTrue);
+      expect(pages(4).copyWith(sceneAt: 2).pageIsLeftHand, isFalse);
+      expect(const CanvasDocument().pageIsLeftHand, isFalse,
+          reason: "a set of scenes has no left-hand leaf");
+    });
+
+    test("and the mirror is written down and read back", () {
+      var number = CounterElement(const ElementBase(id: "n"),
+          source: CounterSource.page, mirrored: true);
+      var back = elementFromJson(number.toJson()) as CounterElement;
+      expect(back.mirrored, isTrue);
+      expect(back.source, CounterSource.page);
     });
 
     test("a page number is read off the page, not run or keyed", () {
@@ -391,6 +408,93 @@ void main() {
 
       expect(find.text("PAGES"), findsWidgets);
       expect(find.text("SCENES"), findsNothing);
+    });
+  });
+
+  // The view while two leaves are showing. What it is easy to get wrong is
+  // that a spread is twice as wide and exactly as tall.
+  group("the spread on the stage", () {
+    const viewport = Size(1200, 800);
+
+    Future<CanvasStageState> stage(
+        WidgetTester tester, CanvasController controller) async {
+      var key = GlobalKey<CanvasStageState>();
+      tester.view.physicalSize = viewport;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: viewport.width,
+              height: viewport.height,
+              child: CanvasStage(key: key, controller: controller),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return key.currentState!;
+    }
+
+    CanvasController facing(int at) {
+      var controller = CanvasController(
+          pages(6).copyWith(pages: const PagesSpec(facing: true), sceneAt: at));
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    testWidgets("is twice as wide and exactly as tall as one page",
+        (tester) async {
+      // Halving the fitted scale halves the height too, and on a canvas
+      // fitted whole -- where the height is what decides -- that is a spread
+      // drawn at half the size it should be.
+      var alone = await stage(tester, CanvasController(pages(6)));
+      var oneHigh = alone.pageRect.height;
+
+      var pair = await stage(tester, facing(1));
+      expect(pair.spreadRect.width, closeTo(pair.pageRect.width * 2, 0.5));
+      expect(pair.spreadRect.height, closeTo(pair.pageRect.height, 0.5));
+      expect(pair.pageRect.height, lessThanOrEqualTo(oneHigh));
+      // The number that matters. Halving the fitted scale gave exactly half,
+      // and in a window this shape two A4 leaves side by side still fit
+      // across, so the height should not have come down at all.
+      expect(pair.pageRect.height, greaterThan(oneHigh / 2 + 1),
+          reason: "it is the width that has to make room, not the height");
+    });
+
+    testWidgets("sits in the middle of the window, whichever page is open",
+        (tester) async {
+      var left = await stage(tester, facing(1));
+      var middleOfLeft = left.spreadRect.center.dx;
+      expect(middleOfLeft, closeTo(viewport.width / 2, 1),
+          reason: "the spread is centred, not the page being edited");
+      expect(left.pageRect.right, closeTo(middleOfLeft, 1),
+          reason: "an odd page is the left leaf, against the spine");
+
+      var right = await stage(tester, facing(2));
+      expect(right.spreadRect.center.dx, closeTo(middleOfLeft, 1),
+          reason: "and it does not move when the other leaf is opened");
+      expect(right.pageRect.left, closeTo(middleOfLeft, 1));
+    });
+
+    testWidgets("and pressing the other leaf opens it", (tester) async {
+      var controller = facing(1);
+      var view = await stage(tester, controller);
+      expect(controller.document.at, 1);
+
+      // A press on the right-hand half, which is page two.
+      await tester.tapAt(Offset(view.pageRect.right + view.pageRect.width / 2,
+          view.pageRect.center.dy));
+      await tester.pumpAndSettle();
+      expect(controller.document.at, 2);
+      expect(controller.selection, isEmpty,
+          reason: "opening a page is not selecting something on it");
     });
   });
 }
