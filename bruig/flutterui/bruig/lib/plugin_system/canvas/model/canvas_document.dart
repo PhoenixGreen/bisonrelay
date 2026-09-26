@@ -386,11 +386,35 @@ class CanvasDocument {
 
   /// pageNumber is the number on the page being edited, which is what a page
   /// number drawn on the master canvas reads. See CounterSource.page.
-  int? get pageNumber => pageNumberAt(at);
+  ///
+  /// On the master canvas itself it is never null. The master is the place a
+  /// page number is *put*, and a number that is not drawn is an element that
+  /// cannot be found, let alone moved -- which is what happened opening the
+  /// master from a front cover, a page that carries no number at all. So the
+  /// master borrows the first number the document actually prints, and falls
+  /// back to where the numbering starts when it prints none.
+  int? get pageNumber {
+    var here = pageNumberAt(at);
+    if (here != null || !editingMaster) return here;
+    for (var i = 0; i < allScenes.length; i++) {
+      var number = pageNumberAt(i);
+      if (number != null) return number;
+    }
+    return pages.startAt;
+  }
 
-  /// pageIsLeft is whether the page being edited is a left-hand leaf, which
-  /// is what a mirrored page number is drawn from. See CounterElement.mirrored.
-  bool get pageIsLeftHand => isPages && pageIsLeft(at);
+  /// pageIsLeftHand is whether the page being edited is a left-hand leaf,
+  /// which is what a mirrored page number is drawn from. See
+  /// CounterElement.mirrored.
+  ///
+  /// Never on the master canvas, whichever page was open before it. What is
+  /// on the master is being *placed*, and a mirrored element is drawn on the
+  /// opposite side of the page from the box that is dragged to move it --
+  /// so it jumped away from the pointer, and which way it jumped depended on
+  /// the page somebody happened to leave. The master is placed as a
+  /// right-hand page and the left-hand pages mirror it, which is one answer
+  /// rather than two.
+  bool get pageIsLeftHand => isPages && !editingMaster && pageIsLeft(at);
 
   /// facingAt is the page shown beside the one at [index] while facing pages
   /// are on, or null where it stands alone.

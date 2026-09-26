@@ -141,6 +141,15 @@ class StagePainter extends CustomPainter {
   /// neighbour goes to its right.
   final bool facingOnLeft;
 
+  /// facingShown is whether the neighbour has room of its own on screen.
+  ///
+  /// Off while the canvas is fitted to the width, where there is one page in
+  /// the window -- and the neighbour is still drawn then, because a picture
+  /// laid across the gutter is part of what this page looks like. What it
+  /// loses is its own backdrop and its half of the frame: drawn, there would
+  /// be a second page's paper over the one being worked on.
+  final bool facingShown;
+
   /// facingBackgrounds is the neighbour's own rasterised background. See
   /// CanvasStage._facingBackgrounds: two canvases through one cache is a
   /// background generated twice a frame.
@@ -244,6 +253,7 @@ class StagePainter extends CustomPainter {
     required this.view,
     this.facing,
     this.facingOnLeft = false,
+    this.facingShown = false,
     this.facingBackgrounds,
     required this.showHandles,
     required this.showHelpers,
@@ -310,20 +320,6 @@ class StagePainter extends CustomPainter {
     canvas.save();
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
-    if (previewAt case var at?) {
-      // Two caches: for the length of a transition two scenes are drawn
-      // every frame, and one cache between them is a backdrop generated
-      // from scratch twice a frame. The second is the one the facing page
-      // uses when there is no transition running -- they never both want it
-      // at once, because the neighbour is not drawn during a preview.
-      paintSequenceFrame(canvas, document, at,
-          images: images,
-          backgrounds: backgrounds,
-          nextBackgrounds: facingBackgrounds);
-      canvas.restore();
-      canvas.restore();
-      return;
-    }
     // The leaf beside this one. Both backdrops go down first and both sets
     // of contents over the top of them, so that a picture placed on one page
     // and pulled across the gutter is seen on the other -- drawn a whole page
@@ -338,24 +334,21 @@ class StagePainter extends CustomPainter {
         ? null
         : document.goToScene(beside).copyWith(onMaster: false);
     var aside = facingOnLeft ? docSize.width : -docSize.width;
-    if (over != null) {
-      canvas.save();
-      canvas.translate(aside, 0);
-      canvas.clipRect(Offset.zero & docSize);
-      paintCanvasDocument(canvas, over,
-          part: CanvasPaintPart.backdrop,
-          images: images,
-          backgrounds: facingBackgrounds);
-      canvas.restore();
-    }
 
-    if (over != null) {
-      paintCanvasDocument(canvas, document,
-          part: CanvasPaintPart.backdrop,
-          images: images,
-          backgrounds: backgrounds);
+    /// neighbour draws that leaf where it sits, whole.
+    void neighbour() {
+      if (over == null) return;
       canvas.save();
       canvas.translate(aside, 0);
+      if (facingShown) {
+        canvas.save();
+        canvas.clipRect(Offset.zero & docSize);
+        paintCanvasDocument(canvas, over,
+            part: CanvasPaintPart.backdrop,
+            images: images,
+            backgrounds: facingBackgrounds);
+        canvas.restore();
+      }
       // Not clipped to its own leaf. An element that hangs over the gutter is
       // the whole of what a spread is for, and clipping it at the page edge
       // is what made a picture pulled across from the other page vanish the
@@ -363,15 +356,62 @@ class StagePainter extends CustomPainter {
       paintCanvasDocument(canvas, over,
           part: CanvasPaintPart.contents, images: images);
       canvas.restore();
+    }
+
+    if (previewAt case var at?) {
+      // The spread stays up while the turn plays. It is the other half of the
+      // document and it is not what is changing, so a transition that made it
+      // disappear was showing half of a spread turning into half of another.
+      //
+      // Two caches: for the length of a transition two scenes are drawn every
+      // frame, and one cache between them is a backdrop generated from
+      // scratch twice a frame. The neighbour goes without one here, having
+      // lent its cache to the scene arriving.
+      neighbour();
+      paintSequenceFrame(canvas, document, at,
+          images: images,
+          backgrounds: backgrounds,
+          nextBackgrounds: facingBackgrounds);
+      canvas.restore();
+      canvas.restore();
+      return;
+    }
+    if (over != null) {
+      // This page's own paper goes down between the two, so that the
+      // neighbour's backdrop is under it and the neighbour's overhang is over
+      // it. That order is the whole of what makes a picture across the gutter
+      // work.
+      if (facingShown) {
+        canvas.save();
+        canvas.translate(aside, 0);
+        canvas.clipRect(Offset.zero & docSize);
+        paintCanvasDocument(canvas, over,
+            part: CanvasPaintPart.backdrop,
+            images: images,
+            backgrounds: facingBackgrounds);
+        canvas.restore();
+      }
+      paintCanvasDocument(canvas, document,
+          part: CanvasPaintPart.backdrop,
+          images: images,
+          backgrounds: backgrounds);
+      canvas.save();
+      canvas.translate(aside, 0);
+      paintCanvasDocument(canvas, over,
+          part: CanvasPaintPart.contents, images: images);
+      canvas.restore();
 
       // The spine, drawn on the join: two pages meeting edge to edge with
-      // nothing between them read as one canvas twice as wide.
-      var join = facingOnLeft ? docSize.width : 0.0;
-      canvas.drawRect(
-        Rect.fromLTWH(join - docSize.width * 0.003, 0, docSize.width * 0.006,
-            docSize.height),
-        Paint()..color = const Color(0x22000000),
-      );
+      // nothing between them read as one canvas twice as wide. Only where
+      // there are two of them on screen.
+      if (facingShown) {
+        var join = facingOnLeft ? docSize.width : 0.0;
+        canvas.drawRect(
+          Rect.fromLTWH(join - docSize.width * 0.003, 0, docSize.width * 0.006,
+              docSize.height),
+          Paint()..color = const Color(0x22000000),
+        );
+      }
     }
 
     paintCanvasDocument(canvas, document,
@@ -402,7 +442,7 @@ class StagePainter extends CustomPainter {
     // tint over half of any picture laid across the gutter, which is the one
     // thing the spread view is there to show. Drawn after the contents, or an
     // element against the page edge hides it.
-    if (over != null) {
+    if (over != null && facingShown) {
       canvas.drawRect(
         (Offset.zero & docSize).deflate(docSize.width * 0.002),
         Paint()
@@ -1107,6 +1147,7 @@ class StagePainter extends CustomPainter {
       old.view != view ||
       old.facing != facing ||
       old.facingOnLeft != facingOnLeft ||
+      old.facingShown != facingShown ||
       old.showHelpers != showHelpers ||
       old.showHandles != showHandles ||
       old.flowGrips != flowGrips ||

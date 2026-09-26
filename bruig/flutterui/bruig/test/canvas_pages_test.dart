@@ -203,6 +203,30 @@ void main() {
       expect(back.source, CounterSource.page);
     });
 
+    // Every move and every resize goes through rebase, so a field left out
+    // of it is a setting that switches itself off the first time the element
+    // is dragged.
+    test("the mirror survives the number being moved", () {
+      var number = CounterElement(const ElementBase(id: "n"),
+          source: CounterSource.page, mirrored: true);
+      var moved = number.withBase(x: 40, y: 90) as CounterElement;
+      expect(moved.mirrored, isTrue);
+      expect(moved.source, CounterSource.page);
+      expect(moved.x, 40);
+    });
+
+    // A cover carries no number, so the master opened from one had nothing
+    // to draw -- an element that cannot be seen cannot be placed.
+    test("the master always has a number to show", () {
+      var doc = pages(3, covers: [PageCover.front]);
+      expect(doc.pageNumberAt(0), isNull);
+      var master = doc.copyWith(
+          master: const CanvasScene(id: "m"), masterOn: true, onMaster: true);
+      expect(master.editingMaster, isTrue);
+      expect(master.pageNumber, 1,
+          reason: "the first number the document actually prints");
+    });
+
     test("a page number is read off the page, not run or keyed", () {
       var number = CounterElement(const ElementBase(id: "n"),
           source: CounterSource.page);
@@ -328,12 +352,18 @@ void main() {
       return found;
     }
 
-    test("and the flap is paper, not the page mirrored", () async {
+    test("and the turned corner is paper, not the page mirrored", () async {
       // The back of a printed sheet is the sheet. Reflecting the design onto
       // it would be the page's own contents shown mirrored, which no
       // document does -- and would read as neither side being right.
-      expect(await paperPixels(await turned(0.45)), greaterThan(300),
-          reason: "the folded corner is lying over the page");
+      //
+      // One small fold, the size of a hand, rather than one the size of the
+      // page: a crease swept right across leaves blank paper over everything,
+      // which is a white wipe and not a turn.
+      expect(await paperPixels(await turned(0.45)), greaterThan(60),
+          reason: "the turned corner is lying over the page");
+      expect(await paperPixels(await turned(0.45)), lessThan(600),
+          reason: "a corner, not the whole leaf");
       expect(await paperPixels(await turned(0)), lessThan(40),
           reason: "and nothing is folded before it starts");
     });
@@ -553,8 +583,12 @@ void main() {
       expect(controller.onMaster, isTrue);
       expect(view.spreadRect.width, closeTo(view.pageRect.width * 2, 0.5),
           reason: "the master is a page of the document, not a page alone");
-      expect(controller.document.pageIsLeftHand, isTrue,
-          reason: "it is being drawn where page two was");
+      // Placed as a right-hand page, whichever page was open before. What is
+      // on the master is being put somewhere, and a mirrored element is drawn
+      // on the opposite side of the page from the box that moves it.
+      expect(controller.document.pageIsLeftHand, isFalse);
+      expect(controller.document.pageNumber, isNotNull,
+          reason: "and it has a number to show, or there is nothing to place");
     });
 
     testWidgets("and pressing the other leaf opens it", (tester) async {

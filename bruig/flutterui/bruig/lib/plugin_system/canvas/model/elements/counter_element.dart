@@ -334,6 +334,10 @@ class CounterElement extends CanvasElement {
       fit: fit,
       keyed: keyed,
       source: source,
+      // Every move and every resize comes through rebase. Left out here, the
+      // mirror switched itself off the first time the number was dragged --
+      // which looked like a setting that would not stay on.
+      mirrored: mirrored,
       rate: rate,
       loop: loop,
       running: running,

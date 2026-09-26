@@ -264,139 +264,116 @@ void paintTransition(
   }
 }
 
-/// _pageTurn peels the corner of the leaf back and slides the pages across.
+/// _pageTurn slides the leaf off towards the spine, its free corner turned up.
 ///
-/// It was a rotation about the spine with perspective on it, which is what a
-/// page really does and looked wrong at every size: a whole leaf standing on
-/// its edge over a flat page reads as a glitch rather than as paper, and on
-/// one page there is nowhere for it to land.
+/// Three goes at this. A rotation about the spine with perspective on it is
+/// what a page really does and looked wrong at every size -- a whole leaf
+/// standing on its edge over a flat page reads as a glitch rather than as
+/// paper. A corner peeling up the diagonal read better, but carried the
+/// design upwards, which a turning page does not. An upright crease sweeping
+/// across is the same fold done sideways, and its flap grows until it is the
+/// width of the page: blank paper covering everything, which is a white wipe.
 ///
-/// This is the other way of drawing the same thing, and the cheap one. A
-/// straight fold sweeps across the page from the near corner to the far one.
-/// What is in front of the fold has been lifted, so the page underneath shows
-/// there; the lifted part is folded *back* over what is left, which is the
-/// same region reflected in the fold line -- that reflection is the whole
-/// trick, and it is why the flap grows, turns into a band and shrinks again
-/// exactly as a dog-ear does.
-///
-/// The near corner is the bottom of the free edge, away from the spine: the
-/// corner a hand actually takes hold of.
+/// What is left is the simple one. The leaf travels across, the page under it
+/// comes the last of the way to meet it, and the corner it is being carried
+/// by is turned up -- one small fold, the size of a hand, rather than a fold
+/// the size of the page. Two polygons, two gradients and a translate: there
+/// is nothing in here for a slow frame to be spent on.
 void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
     {required void Function() from, required void Function() to}) {
   var ease = t.clamp(0.0, 1.0);
 
-  // Hinged on the left by default, which is a document reading left to right,
-  // so the free edge and the corner are on the right.
+  // Hinged on the left by default, which is a document reading left to right:
+  // the free edge is on the right and the leaf travels towards the spine.
   var onLeft = over.way != SceneTransitionWay.right;
-  var travel = page.width * 0.1;
+  var away = onLeft ? -1.0 : 1.0;
 
-  // The page arriving, coming the last of the way. It travels less than the
-  // leaf over it, which is what gives the two of them depth.
+  // The page arriving, coming the last of the way. It travels a tenth of what
+  // the leaf over it does, which is what gives the two of them depth.
   canvas.save();
-  canvas.translate((onLeft ? 1 : -1) * travel * (1 - ease) * 0.4, 0);
+  canvas.translate(-away * page.width * 0.1 * (1 - ease), 0);
   to();
   canvas.restore();
   if (ease >= 0.999) return;
 
-  // The fold: a line square to the diagonal, swept from the near corner to
-  // the far one. Everything past it has been lifted.
-  var near = Offset(onLeft ? page.right : page.left, page.bottom);
-  var far = Offset(onLeft ? page.left : page.right, page.top);
-  var span = far - near;
-  var length = span.distance;
-  if (length <= 0) return;
-  var u = span / length;
-  // A little past the far corner at the end, so the last of the leaf leaves
-  // the page rather than shrinking to a point on it.
-  var at = near + u * (length * ease * 1.04);
-
-  var kept = _cut(
-      [page.topLeft, page.topRight, page.bottomRight, page.bottomLeft], at, u);
-  var lifted = _cut(
-      [page.topLeft, page.topRight, page.bottomRight, page.bottomLeft], at, -u);
-  if (kept.length < 3) return;
-
   canvas.save();
-  // Held to the page. The flap is folded back over the leaf and reaches past
-  // its far edge, and the slide carries the rest of it over the near one --
-  // on a canvas that is one page, both of those are off the paper. Clipped
-  // here rather than by whoever is drawing, so that the editor and the export
-  // show the same turn.
   canvas.clipRect(page);
-  canvas.translate((onLeft ? -1 : 1) * travel * ease, 0);
+  canvas.translate(away * page.width * ease, 0);
 
-  // What is left of the leaf.
+  // The turned corner, at the bottom of the free edge: the corner a hand
+  // actually takes hold of. It opens as the leaf starts to move and closes as
+  // it goes, so the page is whole at both ends of the turn.
+  var open = math.sin(ease * math.pi);
+  var fold = math.min(page.width, page.height) * 0.16 * open;
+  var corner = Offset(onLeft ? page.right : page.left, page.bottom);
+  var sign = onLeft ? -1.0 : 1.0;
+  var creaseTop = Offset(corner.dx, corner.dy - fold);
+  var creaseEnd = Offset(corner.dx + sign * fold, corner.dy);
+
+  var leaf = Path()
+    ..addRect(page)
+    ..addPolygon([creaseTop, creaseEnd, corner], true)
+    ..fillType = PathFillType.evenOdd;
+
   canvas.save();
-  canvas.clipPath(Path()..addPolygon(kept, true));
+  canvas.clipPath(leaf);
   from();
   canvas.restore();
 
-  if (lifted.length >= 3) {
-    // The lifted part, folded back over the page: the same region reflected
-    // in the fold line.
-    var flap = [
-      for (var point in lifted)
-        point - u * ((point - at).dx * u.dx + (point - at).dy * u.dy) * 2,
-    ];
-    var shape = Path()..addPolygon(flap, true);
-
-    // Its shadow first, on the page it is lying on.
-    var depth = page.shortestSide * 0.035;
+  if (fold > 0.5) {
+    // The back of the corner: the cut-out triangle reflected in its crease,
+    // which lands on the page. Paper rather than a picture -- the back of a
+    // printed sheet is the sheet.
+    var flap = Path()
+      ..addPolygon([
+        creaseTop,
+        creaseEnd,
+        Offset(corner.dx + sign * fold, corner.dy - fold),
+      ], true);
     canvas.drawPath(
-      shape.shift(Offset(-u.dx, -u.dy) * depth * 0.4),
-      Paint()
-        ..color = const Color(0x00000000).withValues(alpha: 0.28)
-        ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, depth * 0.6),
-    );
-
-    // The back of the sheet. Paper rather than a picture: the back of a
-    // printed page is the sheet, and reflecting the design onto it would be
-    // the page's own contents shown mirrored, which no document does.
-    // Lit across the fold, so the crease is the bright edge and the far side
-    // of the flap falls away.
-    canvas.drawPath(
-      shape,
+      flap,
       Paint()
         ..shader = ui.Gradient.linear(
-          at,
-          at + u * (length * 0.5),
-          [const Color(0xFFF7F5F1), const Color(0xFFC8C3BA)],
+          creaseTop,
+          creaseEnd,
+          [const Color(0xFFFAF8F5), const Color(0xFFC6C1B8)],
         ),
     );
-
-    // The crease, so the fold has an edge rather than a change of colour.
-    var crease = _cut(kept, at, -u);
-    if (crease.length >= 2) {
-      canvas.drawLine(
-        crease.first,
-        crease.last,
-        Paint()
-          ..strokeWidth = math.max(1, page.shortestSide * 0.002)
-          ..color = const Color(0x2E000000),
-      );
-    }
+    canvas.drawLine(
+      creaseTop,
+      creaseEnd,
+      Paint()
+        ..strokeWidth = math.max(1, page.shortestSide * 0.002)
+        ..color = const Color(0x2E000000),
+    );
   }
+
+  // The shadow the leaf throws on the page it is uncovering. On the edge it
+  // is travelling *away* from -- the gap opens behind it, so that is the edge
+  // with the new page beside it, and the shadow falls out of the leaf onto
+  // that page.
+  //
+  // A gradient band rather than a blurred path: the same picture, and it
+  // costs a rectangle. A mask filter over a shape this size cost more than
+  // everything else in the frame put together, which is what made the turn
+  // crawl.
+  var edge = onLeft ? page.right : page.left;
+  var out = -away;
+  var depth = page.width * 0.05;
+  canvas.drawRect(
+    Rect.fromLTRB(math.min(edge, edge + out * depth), page.top,
+        math.max(edge, edge + out * depth), page.bottom),
+    Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(edge, page.top),
+        Offset(edge + out * depth, page.top),
+        [
+          const Color(0x00000000).withValues(alpha: 0.32),
+          const Color(0x00000000),
+        ],
+      ),
+  );
   canvas.restore();
-}
-
-/// _cut is the part of a polygon on one side of a line: the points where
-/// (x - [at]) . [n] is positive, with the edges trimmed where they cross.
-///
-/// Sutherland and Hodgman against a single half-plane, which is all the page
-/// turn needs -- the fold is one line and the page is one rectangle.
-List<Offset> _cut(List<Offset> poly, Offset at, Offset n) {
-  double side(Offset p) => (p.dx - at.dx) * n.dx + (p.dy - at.dy) * n.dy;
-  var out = <Offset>[];
-  for (var i = 0; i < poly.length; i++) {
-    var a = poly[i], b = poly[(i + 1) % poly.length];
-    var da = side(a), db = side(b);
-    if (da >= 0) out.add(a);
-    if ((da >= 0) != (db >= 0)) {
-      var k = da / (da - db);
-      out.add(Offset(a.dx + (b.dx - a.dx) * k, a.dy + (b.dy - a.dy) * k));
-    }
-  }
-  return out;
 }
 
 /// _drawCover paints the overlay's own shape over the join.

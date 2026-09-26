@@ -343,11 +343,14 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
             ),
           CanvasHint(e.isPageNumber
               ? "The number of the page it is drawn on. On the master canvas "
-                  "it gives every page its own number. Mirrored, it moves to "
-                  "the matching place on the other edge for a left-hand page, "
-                  "so the number sits on the outside of the leaf on both "
-                  "sides of a spread — something already centred stays where "
-                  "it is, because the mirror of the middle is the middle."
+                  "it gives every page its own number, and shows the first "
+                  "number the document prints so that there is something "
+                  "there to place. Mirrored, it moves to the matching place "
+                  "on the other edge for a left-hand page, so the number sits "
+                  "on the outside of the leaf on both sides of a spread — "
+                  "something already centred stays where it is, because the "
+                  "mirror of the middle is the middle. You place it here as a "
+                  "right-hand page; open a left-hand one to see it mirrored."
               : "Turn this on and the counter shows the number of the page "
                   "it is drawn on instead of counting. Put one on the master "
                   "canvas and every page wears it."),

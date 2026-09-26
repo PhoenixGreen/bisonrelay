@@ -452,7 +452,7 @@ class CanvasStageState extends State<CanvasStage> {
     // a canvas fitted whole (where the height is what decides) that is a
     // spread drawn at half the size it should be, with the room it gave up
     // left empty either side.
-    var across = size.width * (_facingPage != null ? 2 : 1);
+    var across = size.width * (_spreadShown ? 2 : 1);
     var byWidth = (_visible.width - _stageMargin * 2) / across;
     // Fit to width ignores the height entirely, which is the whole point: a
     // 9:16 story fitted whole is a narrow strip down the middle of a wide
@@ -477,7 +477,7 @@ class CanvasStageState extends State<CanvasStage> {
     // The neighbour's half of the spread, added on its own side. The edited
     // page keeps its frame and its origin, so nothing the pointer does has to
     // know that there is a second leaf on screen at all.
-    if (_facingPage != null) {
+    if (_spreadShown) {
       page = _facingOnLeft
           ? Rect.fromLTWH(page.left, page.top, page.width * 2, page.height)
           : Rect.fromLTWH(
@@ -512,14 +512,18 @@ class CanvasStageState extends State<CanvasStage> {
   /// it cannot be selected, moved or typed into, because it is not the canvas
   /// being edited. Everything the pointer does goes on going to the page in
   /// front of you, which is why this changes so little.
-  int? get _facingPage {
-    // Not while the canvas is fitted to the width. That mode exists to fill
-    // the window with the page being worked on -- it ignores the height
-    // entirely for exactly that reason -- and a spread in it is the working
-    // page at half the width, which is the opposite of what was asked for.
-    if (controller.fit == CanvasFit.width) return null;
-    return document.facingAt(document.at);
-  }
+  int? get _facingPage => document.facingAt(document.at);
+
+  /// _spreadShown is whether room is given to the leaf beside this one.
+  ///
+  /// Not the same question as whether that leaf is *drawn*. Fitted to the
+  /// width there is no spread -- that mode exists to fill the window with the
+  /// page being worked on, and a spread in it is that page at half the width
+  /// -- but the neighbour's contents are still drawn, because a picture laid
+  /// across the gutter is part of what this page looks like and it did not
+  /// stop being so when the view changed.
+  bool get _spreadShown =>
+      _facingPage != null && controller.fit != CanvasFit.width;
 
   /// _facingOnLeft is whether the page being worked on is the left-hand leaf,
   /// so the neighbour is drawn to its right.
@@ -532,7 +536,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// neighbour's: the two are the same size and share an edge, so "past the
   /// spine" is the whole of the question.
   bool _onFacingPage(Offset stage) {
-    if (_facingPage == null) return false;
+    if (!_spreadShown) return false;
     var page = _pageRect;
     if (stage.dy < page.top || stage.dy > page.bottom) return false;
     return _facingOnLeft ? stage.dx > page.right : stage.dx < page.left;
@@ -553,7 +557,7 @@ class CanvasStageState extends State<CanvasStage> {
     // instead put the spread half a leaf off to one side -- and moved the
     // whole thing across the window every time the page being worked on
     // changed sides, which is the one thing a page of a book does not do.
-    var across = _facingPage == null
+    var across = !_spreadShown
         ? 0.0
         : (_facingOnLeft ? -size.width / 2 : size.width / 2);
     return Rect.fromCenter(
@@ -3071,6 +3075,7 @@ class CanvasStageState extends State<CanvasStage> {
                         view: _viewRect,
                         facing: _facingPage,
                         facingOnLeft: _facingOnLeft,
+                        facingShown: _spreadShown,
                         document: document,
                         frame: controller.frame,
                         previewAt: controller.previewAt,

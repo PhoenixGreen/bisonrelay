@@ -398,10 +398,11 @@ class SceneTransition {
       SceneTransitionKind.halftone || SceneTransitionKind.tiles => 20,
       SceneTransitionKind.blinds || SceneTransitionKind.barn => 16,
       SceneTransitionKind.clock || SceneTransitionKind.band => 18,
-      // A turned page is slower than a cut and quicker than paint: about
-      // three-quarters of a second at film's rate, which is how long a hand
-      // takes over it.
-      SceneTransitionKind.pageTurn => 18,
+      // A turned page is slower than a cut and quicker than paint: half a
+      // second at film's rate, which is about how long a hand takes over it.
+      // It was three-quarters, and read as a document waiting rather than as
+      // a page being turned.
+      SceneTransitionKind.pageTurn => 12,
       _ => 14,
     };
     // How many pieces this one is made of. A number that means something
