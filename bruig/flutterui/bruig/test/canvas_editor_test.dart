@@ -375,12 +375,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 30);
 
-      // And anything else in the box beside it, which then says Custom rather
-      // than borrowing a name that would be untrue.
-      await tester.enterText(find.byKey(const ValueKey("canvasRate")), "25");
+      // And anything else through the list's own Custom entry, which then
+      // names the rate rather than borrowing a name that would be untrue.
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Custom…").last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, "25");
+      await tester.tap(find.text("OK"));
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 25);
       expect(find.text("Custom · 25"), findsOneWidget);
+
+      // And the custom entry is the one that is set, never a list of every
+      // number anybody has ever typed.
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("60 fps").last);
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 60);
+      expect(find.text("Custom · 25"), findsNothing);
     });
 
     testWidgets("and follows the shape until somebody chooses one",
@@ -400,7 +414,9 @@ void main() {
 
       // But a rate somebody has chosen is theirs, and changing the shape does
       // not overrule it.
-      await tester.enterText(find.byKey(const ValueKey("canvasRate")), "12");
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("12 fps").last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("canvasRatio")));
       await tester.pumpAndSettle();
@@ -653,11 +669,11 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       // Nothing selected: the list, and no settings under it.
-      expect(find.text("Fit to box"), findsNothing);
+      expect(find.byKey(const ValueKey("textFitToBox")), findsNothing);
 
       controller.selectOnly(element.id);
       await tester.pumpAndSettle();
-      expect(find.text("Fit to box"), findsWidgets);
+      expect(find.byKey(const ValueKey("textFitToBox")), findsWidgets);
     });
 
     testWidgets("the background is the bottom layer, and selectable",
@@ -7802,17 +7818,25 @@ void main() {
         (tester) async {
       // They were behind a heading that was open every time anybody looked.
       var controller = await panel(tester);
-      expect(find.text("Fit to box"), findsOneWidget);
+      var fit = find.byKey(const ValueKey("textFitToBox"));
+      expect(fit, findsOneWidget);
       expect(find.text("Font"), findsOneWidget);
       expect(find.text("BOX"), findsOneWidget);
 
       // Scrolled to first: with four panels in the column the settings can
       // start below the fold, and a tap outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("Fit to box"));
+      await tester.ensureVisible(fit);
       await tester.pumpAndSettle();
-      await tester.tap(find.text("Fit to box"));
+      await tester.tap(fit);
       await tester.pumpAndSettle();
       expect(textIn(controller).autoSize, isTrue);
+
+      // And the switches on that first line are icons with a sentence each,
+      // not five captions on three lines of a narrow sidebar.
+      expect(find.text("Fit to box"), findsNothing);
+      expect(find.text("Wrap text"), findsNothing);
+      expect(find.byTooltip(RegExp("^Fit to box —")), findsOneWidget);
+      expect(find.byTooltip(RegExp("^Wrap text —")), findsOneWidget);
     });
 
     testWidgets(
@@ -7901,12 +7925,13 @@ void main() {
       );
       var controller = await panel(tester, element: reading);
 
-      expect(find.text("From document"), findsOneWidget);
+      var from = find.byKey(const ValueKey("textFromDocument"));
+      expect(from, findsOneWidget);
       // Below the fold now that the presets are above it, and a tap at a
       // point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("From document"));
+      await tester.ensureVisible(from);
       await tester.pumpAndSettle();
-      await tester.tap(find.text("From document"));
+      await tester.tap(from);
       await tester.pumpAndSettle();
 
       expect(textIn(controller).document.on, isFalse);
@@ -7934,12 +7959,12 @@ void main() {
       controller.selectOnly("head");
       await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.pumpAndSettle();
-      expect(find.text("From document"), findsOneWidget,
+      expect(find.byKey(const ValueKey("textFromDocument")), findsOneWidget,
           reason: "the box the words belong to still chooses");
 
       controller.selectOnly("tail");
       await tester.pumpAndSettle();
-      expect(find.text("From document"), findsNothing);
+      expect(find.byKey(const ValueKey("textFromDocument")), findsNothing);
     });
 
     testWidgets("and the columns section still works once it is opened",

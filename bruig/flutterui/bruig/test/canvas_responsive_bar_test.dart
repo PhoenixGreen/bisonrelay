@@ -189,6 +189,14 @@ void main() {
     expect(controller.document.elements.single.base.shared, isNotNull,
         reason: "the shared design is kept aside, not thrown away");
 
+    // Air between the two, so that "Scale inside" does not read as a third
+    // line of the position numbers. The break between them carries a gap of
+    // its own on top of the run spacing every wrapped line gets.
+    var betweenRows = tester.getTopLeft(type).dy -
+        tester.getBottomLeft(find.byKey(const ValueKey("elementAngle"))).dy;
+    expect(betweenRows, greaterThanOrEqualTo(8),
+        reason: "it is a different question, not a longer answer");
+
     var own = find.byKey(const ValueKey("textOwnWordsHere"));
     await tester.ensureVisible(own);
     await tester.pumpAndSettle();

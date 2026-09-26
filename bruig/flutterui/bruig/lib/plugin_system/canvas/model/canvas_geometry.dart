@@ -152,9 +152,18 @@ List<CanvasSizePreset> sizePresetsFor(CanvasRatio ratio) => [
 /// Offered as a short list rather than a number on its own, because the
 /// numbers that matter are four: twelve for something light, twenty-four for
 /// film, thirty for a screen recording and sixty for something smooth. The
-/// box beside the list still takes any other number -- a canvas is somebody
+/// list's Custom entry still takes any other number -- a canvas is somebody
 /// else's to make.
 const List<int> canvasFrameRates = [1, 12, 24, 30, 60];
+
+/// minFrameRate and maxFrameRate bound a rate typed by hand.
+///
+/// One is a still, which is the fewest frames a second there can be. The
+/// ceiling is where a canvas stops being something a player will show and
+/// starts being an export nobody asked for: twice sixty is already past
+/// every screen this runs on.
+const int minFrameRate = 1;
+const int maxFrameRate = 120;
 
 /// A page is a page: one frame a second, because a printed sheet has no
 /// frames to have a rate between. A screen starts at twenty-four, which is

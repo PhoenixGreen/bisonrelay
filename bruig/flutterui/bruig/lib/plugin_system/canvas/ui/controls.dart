@@ -138,12 +138,19 @@ class CanvasControlScope extends InheritedWidget {
 /// take a whole line and tall enough to take none of it, which is how a Wrap
 /// is told where a line ends.
 ///
+/// [gap] puts air between the two lines, for a break that separates two
+/// different questions rather than one long answer. A break of no height
+/// costs nothing and the two lines sit one run apart; a break with a height
+/// is a line of its own, so the air is that height *plus* a run either side.
+/// A few pixels is enough to read as a gap -- see the position group, where
+/// it is what stops "Scale inside" looking like part of the Opacity row.
 class CanvasLineBreak extends StatelessWidget {
-  const CanvasLineBreak({super.key});
+  final double gap;
+  const CanvasLineBreak({this.gap = 0, super.key});
 
   @override
   Widget build(BuildContext context) =>
-      const SizedBox(width: double.infinity, height: 0);
+      SizedBox(width: double.infinity, height: gap);
 }
 
 /// CanvasSeparator is a rule across a row of controls, with air either side.

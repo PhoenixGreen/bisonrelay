@@ -312,7 +312,10 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         // laid out for several. Only then: on a canvas made for one shape
         // there is one design and nothing to say about it.
         if (controller.document.targets.length > 1) ...[
-          const CanvasLineBreak(),
+          // Air, not just a break: what follows is about this ratio rather
+          // than about the element, and with the ordinary break it read as a
+          // third line of the position group.
+          const CanvasLineBreak(gap: 8),
           // How big everything inside the box is on this shape. It leaves the
           // box where it is and scales what it holds -- the type, the
           // spacing, the padding, the room in a chip -- which is what a

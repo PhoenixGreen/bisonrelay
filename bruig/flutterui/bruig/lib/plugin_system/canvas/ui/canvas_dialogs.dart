@@ -1,4 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // canvas_dialogs.dart is the questions the canvas asks before doing
 // something there is no undo for.
@@ -37,3 +39,43 @@ Future<bool> askToConfirm(
       ),
     ) ??
     false;
+
+/// askForFrameRate asks how many frames a second, with [initial] filled in.
+///
+/// The Rate dropdown's Custom entry, rather than a box beside it. A number
+/// field that is only wanted once a canvas is being given an unusual rate sat
+/// on the band forever, saying the same thing the dropdown beside it already
+/// said -- and the two together were two controls for one number, where
+/// typing in one silently renamed the other.
+Future<int?> askForFrameRate(BuildContext context, {required int initial}) {
+  var text = TextEditingController(text: "$initial");
+  int? answer() {
+    return int.tryParse(text.text.trim())?.clamp(minFrameRate, maxFrameRate);
+  }
+
+  return showDialog<int>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Frames a second"),
+      content: TextField(
+        controller: text,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: false),
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(
+            labelText: "Rate",
+            helperText: "$minFrameRate to $maxFrameRate",
+            suffixText: "fps"),
+        onSubmitted: (_) => Navigator.of(context).pop(answer()),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Cancel")),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(answer()),
+            child: const Text("OK")),
+      ],
+    ),
+  );
+}

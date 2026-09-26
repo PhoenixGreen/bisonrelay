@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -42,15 +43,24 @@ List<Widget> textSettings(
     // neither, so writing a headline meant typing it here and looking over
     // there.
     //
-    // Where the words come from and how they are set: three switches on one
+    // Where the words come from and how they are set: the switches on one
     // line, with whatever each of them needs underneath. Wrap was a group of
     // its own with a heading, for one switch and the two questions it brings
     // with it.
+    //
+    // Icons rather than words, alone among the panel's switches, because
+    // there are five of them and a sidebar narrow enough to be worth having
+    // put them on three lines. Each says what it is on the way past -- the
+    // tooltip is the sentence the label never had room for.
     CanvasControlGroup(label: "Text", hideCaption: true, children: [
-      CanvasToggle(
-        label: "Fit to box",
-        value: e.autoSize,
-        onChanged: (v) => now(e.copyWith(autoSize: v)),
+      CanvasIconButton(
+        key: const ValueKey("textFitToBox"),
+        icon: Icons.fit_screen_outlined,
+        tooltip: "Fit to box — the type is sized so that the words fill the "
+            "box, however many of them there are. The Size setting then says "
+            "what it is sized from rather than what it is drawn at.",
+        active: e.autoSize,
+        onPressed: () => now(e.copyWith(autoSize: !e.autoSize)),
       ),
       // Words of this shape's own, for a document being laid out for several.
       //
@@ -60,11 +70,20 @@ List<Widget> textSettings(
       // than smaller ones. Off, this element says the same thing everywhere
       // and a typo is still fixed once.
       if (controller.document.targets.length > 1)
-        CanvasToggle(
+        CanvasIconButton(
           key: const ValueKey("textOwnWordsHere"),
-          label: "Own words here",
-          value: e.base.ownText,
-          onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
+          icon: Icons.call_split,
+          tooltip: "Own words on "
+              "${shapeShort(shapeKey(controller.document.size))} — this ratio "
+              "gets wording of its own, and typing here changes nothing on "
+              "the others. For the headline that is four words across a "
+              "banner and two down a feed: type half the size still wraps "
+              "where the page is narrow, so the answer is fewer words rather "
+              "than smaller ones. Off, the element says the same thing "
+              "everywhere and a typo is fixed once.",
+          active: e.base.ownText,
+          onPressed: () =>
+              now(e.withBase(ownText: !e.base.ownText) as TextElement),
         ),
       // Words from the Writing library rather than typed on the canvas.
       // Beside Fit to box because it is the same kind of question --
@@ -79,11 +98,15 @@ List<Widget> textSettings(
       // document, where every box in it looks like somewhere to attach
       // another one.
       if (flowSourceOf(e, controller.document) == null)
-        CanvasToggle(
+        CanvasIconButton(
           key: const ValueKey("textFromDocument"),
-          label: "From document",
-          value: e.document.on,
-          onChanged: (v) async {
+          icon: Icons.description_outlined,
+          tooltip: "From document — the words come from a document in the "
+              "Writing library instead of being typed on the canvas, and are "
+              "read again as it is edited.",
+          active: e.document.on,
+          onPressed: () async {
+            var v = !e.document.on;
             if (!v) {
               // Back to what was typed here before the document took the
               // words over. Left showing the document's words, the switch
@@ -107,7 +130,10 @@ List<Widget> textSettings(
       if (e.document.on) ...[
         CanvasIconButton(
           key: const ValueKey("textDocumentPick"),
-          icon: Icons.description_outlined,
+          // Not the document icon: that one is the switch two along, and two
+          // buttons on one line with the same picture are one button drawn
+          // twice.
+          icon: Icons.folder_open_outlined,
           tooltip: "Choose another document",
           onPressed: () async {
             var picked = await pickLibraryDocument(context);
@@ -123,12 +149,16 @@ List<Widget> textSettings(
           },
         ),
         CanvasReadout(label: "Document", value: e.document.says),
-        CanvasToggle(
+        CanvasIconButton(
           key: const ValueKey("textDocumentMarkdown"),
-          label: "Markdown",
-          value: e.document.markdown,
-          onChanged: (v) async {
-            now(e.copyWith(document: e.document.copyWith(markdown: v)));
+          icon: Icons.format_quote_outlined,
+          tooltip: "Markdown — honour the marks in the document. Off, the "
+              "words arrive as plain text with every mark stripped.",
+          active: e.document.markdown,
+          onPressed: () async {
+            now(e.copyWith(
+                document: e.document
+                    .copyWith(markdown: !e.document.markdown)));
             await refreshTextDocuments(controller);
           },
         ),
@@ -144,11 +174,13 @@ List<Widget> textSettings(
       // Words set around whatever overlaps the box. On the line with the
       // other two because it is the same kind of question -- how these
       // words are laid out -- and it brings two of its own with it.
-      CanvasToggle(
+      CanvasIconButton(
         key: const ValueKey("textWrap"),
-        label: "Wrap text",
-        value: e.wrap.on,
-        onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
+        icon: Icons.wrap_text,
+        tooltip: "Wrap text — the words are set around whatever overlaps the "
+            "box rather than running under it.",
+        active: e.wrap.on,
+        onPressed: () => now(e.copyWith(wrap: e.wrap.copyWith(on: !e.wrap.on))),
       ),
       if (e.wrap.on) ...[
         const CanvasLineBreak(),

@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/canvas_sidebar.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -51,6 +52,12 @@ import 'package:provider/provider.dart';
 // describe. See canvas_timeline.dart.
 
 /// CanvasSettingsBar is the settings band.
+/// _typeARate is the Rate list's Custom entry.
+///
+/// Not a rate, so it cannot collide with one: every real rate is at least
+/// one, and zero is already the entry naming the rate that *is* set.
+const int _typeARate = -1;
+
 class CanvasSettingsBar extends StatefulWidget {
   final CanvasController controller;
 
@@ -772,32 +779,35 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           value: canvasFrameRates.contains(document.frameRate)
               ? document.frameRate
               : 0,
-          width: 104,
+          width: 118,
           options: [
-            // "Custom" only while it is one: a list saying a name for 25fps
-            // would be saying something untrue, and the number is in the box
-            // beside it either way.
+            // The rate somebody has typed, at the top and only while it is
+            // theirs. Choosing one of the named rates leaves the list with
+            // nothing to say about a number nothing is set to any more, so
+            // the entry goes on its own -- there is never more than one
+            // custom rate to keep.
             if (!canvasFrameRates.contains(document.frameRate))
               (0, "Custom · ${document.frameRate}"),
             for (var rate in canvasFrameRates)
               (rate, rate == 1 ? "Still · 1" : "$rate fps"),
+            (_typeARate, "Custom…"),
           ],
-          onChanged: (v) {
+          onChanged: (v) async {
+            // Re-choosing the rate already set: nothing to do, and writing
+            // it would be an undo step for an edit nobody made.
             if (v == 0) return;
-            write(document.copyWith(frameRate: v));
+            if (v != _typeARate) {
+              write(document.copyWith(frameRate: v));
+              return;
+            }
+            var typed =
+                await askForFrameRate(context, initial: document.frameRate);
+            if (typed == null) return;
+            // The document as it is *now*: the one captured when the list was
+            // built is a frame old by the time the dialog closes, and a shape
+            // changed behind the dialog would be written back out of it.
+            write(controller.document.copyWith(frameRate: typed));
           },
-        ),
-        CanvasNumberField(
-          key: const ValueKey("canvasRate"),
-          label: "fps",
-          value: document.frameRate.toDouble(),
-          min: 1,
-          max: 120,
-          decimals: 0,
-          width: 52,
-          onChanged: (v) =>
-              edit(document.copyWith(frameRate: v.round().clamp(1, 120))),
-          onCommit: controller.endInteraction,
         ),
         if (document.size.ratio == CanvasRatio.custom)
           CanvasNumberField(
