@@ -201,6 +201,12 @@ class CanvasDocument {
   /// frameRate belongs to the document rather than to a scene: it is how fast
   /// the whole thing plays, and two scenes running at different speeds would
   /// be two films.
+  ///
+  /// Bounded by minFrameRate and maxFrameRate, which is where the settings
+  /// bar's Custom entry is bounded too. It used to be clamped at sixty here
+  /// and offered to a hundred and twenty there, so a canvas typed at ninety
+  /// came back as sixty with nothing said -- the field that asked for it and
+  /// the document that kept it disagreed, and the document won quietly.
   final int frameRate;
 
   final List<TimelineAction> _actions;
@@ -644,7 +650,8 @@ class CanvasDocument {
               ? _frames
               : (frames ?? _frames).clamp(1, maxFrameCount).toInt())
           : 1,
-      frameRate: (frameRate ?? this.frameRate).clamp(1, 60),
+      frameRate: (frameRate ?? this.frameRate)
+          .clamp(minFrameRate, maxFrameRate),
       actions: list.isEmpty
           ? (onIt && shared != null ? _actions : (actions ?? _actions))
           : const [],
@@ -1002,7 +1009,8 @@ class CanvasDocument {
       estimate: jsonSpec(
           json["estimate"], CanvasEstimate.fromJson, const CanvasEstimate()),
       frames: scenes.isEmpty ? frames : 1,
-      frameRate: jsonInt(json["frameRate"], defaultFrameRate).clamp(1, 60),
+      frameRate: jsonInt(json["frameRate"], defaultFrameRate)
+          .clamp(minFrameRate, maxFrameRate),
       actions: scenes.isEmpty ? actions : const [],
       scenes: scenes,
       sceneAt: jsonInt(json["sceneAt"], 0),

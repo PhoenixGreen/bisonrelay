@@ -395,6 +395,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 60);
       expect(find.text("Custom · 25"), findsNothing);
+
+      // A rate above the list's highest is still a rate. The document used to
+      // clamp at sixty while the box asked for up to a hundred and twenty, so
+      // ninety came back as sixty with nothing said.
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Custom…").last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, "90");
+      await tester.tap(find.text("OK"));
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, 90);
+      expect(find.text("Custom · 90"), findsOneWidget);
+
+      // And past the ceiling is the ceiling, not the old sixty.
+      await tester.tap(find.byKey(const ValueKey("canvasRatePreset")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Custom…").last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, "400");
+      await tester.tap(find.text("OK"));
+      await tester.pumpAndSettle();
+      expect(controller.document.frameRate, maxFrameRate);
     });
 
     testWidgets("and follows the shape until somebody chooses one",

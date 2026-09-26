@@ -41,4 +41,25 @@ void main() {
     expect(canvasFrameRates.contains(document.frameRate), isFalse,
         reason: "so the list shows Custom beside the number");
   });
+
+  // Above the highest rate on the list, which is not the highest rate there
+  // is. The document clamped at sixty while the Custom box asked for up to a
+  // hundred and twenty, so a canvas typed at ninety came back as sixty with
+  // nothing said about it.
+  test("a rate above the list is kept, up to the ceiling", () {
+    expect(const CanvasDocument().copyWith(frameRate: 90).frameRate, 90);
+    expect(const CanvasDocument().copyWith(frameRate: maxFrameRate).frameRate,
+        maxFrameRate);
+    expect(const CanvasDocument().copyWith(frameRate: 400).frameRate,
+        maxFrameRate);
+    expect(const CanvasDocument().copyWith(frameRate: 0).frameRate,
+        minFrameRate);
+  });
+
+  // And it survives being written down and read back, which is the half a
+  // clamp on the way in can still undo.
+  test("and comes back off disk the same", () {
+    var saved = const CanvasDocument().copyWith(frameRate: 90).toJson();
+    expect(CanvasDocument.fromJson(saved).frameRate, 90);
+  });
 }
