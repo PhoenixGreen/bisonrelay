@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -52,8 +53,9 @@ void main() {
       expect(controller.document.kind, CanvasKind.pages);
       expect(controller.document.size.ratio, CanvasRatio.a4);
       expect(controller.document.size.width, a4PageWidth);
-      expect(controller.document.frameRate, 1,
-          reason: "a printed sheet has no frames to have a rate between");
+      expect(controller.document.frameRate, 24,
+          reason: "pages turn, and a turn at one frame a second takes "
+              "eighteen seconds");
     });
 
     test("and leaves a canvas already on paper alone", () {
@@ -88,6 +90,28 @@ void main() {
       controller.setKind(CanvasKind.scenes);
       expect(controller.document.size.ratio, CanvasRatio.a4,
           reason: "a switch that threw a layout away is one nobody presses");
+    });
+
+    // At one frame a second a turn of eighteen frames takes eighteen
+    // seconds, and playing a document through looked like playback that
+    // never ended.
+    test("and putting a document of pages on paper keeps its rate", () {
+      var controller = CanvasController(pages(2));
+      addTearDown(controller.dispose);
+      expect(defaultRateFor(CanvasRatio.a4, CanvasKind.pages), 24);
+      expect(defaultRateFor(CanvasRatio.a4, CanvasKind.scenes), 1,
+          reason: "a printed scene really is a still");
+      expect(controller.document.frameRate, 24);
+    });
+
+    test("but a rate somebody typed is theirs", () {
+      var controller = CanvasController(const CanvasDocument(
+        size: CanvasSize(ratio: CanvasRatio.wide, width: 1920),
+        frameRate: 30,
+      ));
+      addTearDown(controller.dispose);
+      controller.setKind(CanvasKind.pages);
+      expect(controller.document.frameRate, 30);
     });
 
     test("pages turn, scenes cut", () {
@@ -150,6 +174,18 @@ void main() {
           [PageCover.none, PageCover.front, PageCover.back]);
     });
 
+    // It was a setting three controls into the counter's panel, and nobody
+    // found it. On a document of pages the counter *is* a page number, and
+    // the chip that adds one says so.
+    test("adding a counter to a document of pages gives a page number", () {
+      var made = newElement(ElementKind.counter, pages(2));
+      expect((made as CounterElement).source, CounterSource.page);
+
+      var other = newElement(ElementKind.counter, const CanvasDocument());
+      expect((other as CounterElement).source, CounterSource.run,
+          reason: "a set of scenes has no page for it to number");
+    });
+
     test("a page number is read off the page, not run or keyed", () {
       var number = CounterElement(const ElementBase(id: "n"),
           source: CounterSource.page);
@@ -164,17 +200,40 @@ void main() {
       expect(pages(4).facingAt(1), isNull);
     });
 
-    // The first body page is on the right on its own, as a bound document
-    // opens, and then two at a time.
-    test("pair as a bound document does", () {
+    // The first leaf stands alone and everything after it pairs. A cover
+    // *is* the first leaf, so marking one must not put two single pages at
+    // the front of the document -- which is what it did.
+    test("the first leaf stands alone and the rest pair from there", () {
       var doc = pages(6, covers: [PageCover.front])
           .copyWith(pages: const PagesSpec(facing: true));
-      expect(doc.facingAt(0), isNull, reason: "a cover has nothing beside it");
-      expect(doc.facingAt(1), isNull, reason: "page one opens alone");
-      expect(doc.facingAt(2), 3);
-      expect(doc.facingAt(3), 2);
-      expect(doc.facingIsLeft(2), isTrue);
-      expect(doc.facingIsLeft(3), isFalse);
+      expect(doc.facingAt(0), isNull, reason: "the cover is the first leaf");
+      expect(doc.facingAt(1), 2, reason: "and pairing starts straight after");
+      expect(doc.facingAt(2), 1);
+      expect(doc.facingAt(3), 4);
+      expect(doc.facingIsLeft(1), isTrue);
+      expect(doc.facingIsLeft(2), isFalse);
+    });
+
+    test("and the same rule with no cover at all", () {
+      var doc = pages(5).copyWith(pages: const PagesSpec(facing: true));
+      expect(doc.facingAt(0), isNull, reason: "page one opens alone");
+      expect(doc.facingAt(1), 2);
+      expect(doc.facingAt(3), 4);
+    });
+
+    // A cover breaks the pair it lands in: the leaf that would have faced it
+    // stands alone rather than facing the outside of the document.
+    test("a cover breaks the pair it lands in", () {
+      var doc = pages(5, covers: [
+        PageCover.none,
+        PageCover.none,
+        PageCover.none,
+        PageCover.none,
+        PageCover.back
+      ]).copyWith(pages: const PagesSpec(facing: true));
+      expect(doc.facingAt(1), 2);
+      expect(doc.facingAt(3), isNull, reason: "4 is the back cover");
+      expect(doc.facingAt(4), isNull);
     });
 
     test("and never pair with a cover", () {
@@ -184,8 +243,8 @@ void main() {
         PageCover.none,
         PageCover.back
       ]).copyWith(pages: const PagesSpec(facing: true));
-      expect(doc.facingAt(1), 2);
-      expect(doc.facingAt(3), isNull);
+      expect(doc.facingAt(1), 2, reason: "the pair before it is untouched");
+      expect(doc.facingAt(3), isNull, reason: "the back has nothing beside it");
     });
   });
 

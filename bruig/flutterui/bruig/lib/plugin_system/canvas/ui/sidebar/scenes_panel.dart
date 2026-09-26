@@ -293,9 +293,11 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
               // A scene that holds is one that does not run on into the
               // next, which is worth saying in the list: it is the
               // difference between a sequence and a set of stills.
-              if (!document.isPages && scene.holds)
+              if (scene.holds)
                 Tooltip(
-                  message: "Playback stops at the end of this scene",
+                  message: document.isPages
+                      ? "Playing the document stops at this page"
+                      : "Playback stops at the end of this scene",
                   child: Icon(Icons.pause_circle_outline,
                       size: 13, color: theme.colors.onSurfaceVariant),
                 ),
@@ -460,13 +462,14 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                 ? "Not the back cover"
                 : "Make this the back cover"),
           ),
-        if (!document.isPages)
-          PopupMenuItem(
-            value: "holds",
-            child: Text(scene.holds
-                ? "Run on into the next scene"
-                : "Stop at the end of this scene"),
-          ),
+        PopupMenuItem(
+          value: "holds",
+          child: Text(document.isPages
+              ? (scene.holds ? "Read on to the next page" : "Stop at this page")
+              : (scene.holds
+                  ? "Run on into the next scene"
+                  : "Stop at the end of this scene")),
+        ),
         if (count > 1)
           const PopupMenuItem(value: "delete", child: Text("Delete")),
       ],

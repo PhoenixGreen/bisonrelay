@@ -178,38 +178,33 @@ int? pageNumberFor(List<PageCover> covers, int index, PagesSpec spec) {
 /// facingPage is the page shown beside the one at [index], or null where it is
 /// shown alone.
 ///
-/// A cover is alone, because the outside of a document has nothing beside it.
-/// After that the pages pair up as a bound document does -- the first body
-/// page on the right on its own, then two at a time -- so that a page drawn on
-/// the left in the editor is on the left when it is read.
+/// One rule, and it is the whole of it: **the first leaf of the document
+/// stands alone, and everything after it pairs two at a time.** A front cover
+/// is simply the first leaf; without one, page one takes that place, which is
+/// how a bound document opens either way.
+///
+/// It was written as "covers stand outside, and the body pairs from its own
+/// first page" -- which put a cover alone *and* page one alone, two single
+/// leaves at the front, and was reported as the bug it is. Counting covers
+/// separately made the rule impossible to state without saying "and then"
+/// twice.
+///
+/// A pair containing a cover is broken, both of them standing alone: the back
+/// of a document has nothing beside it, and a leaf paired with a cover would
+/// be a page facing the outside of the book.
 int? facingPage(List<PageCover> covers, int index) {
-  if (index < 0 || index >= covers.length) return null;
+  if (index <= 0 || index >= covers.length) return null;
   if (covers[index].isCover) return null;
-  var place = pagePlace(covers, index);
-  if (place == null || place == 0) return null;
-  // Even places sit on the right of a spread and odd ones on the left, once
-  // the lone first page has been counted out.
-  var beside = place.isEven ? index - 1 : index + 1;
-  if (beside < 0 || beside >= covers.length) return null;
+  var beside = index.isOdd ? index + 1 : index - 1;
+  if (beside <= 0 || beside >= covers.length) return null;
   if (covers[beside].isCover) return null;
   return beside;
 }
 
-/// pagesOnTheLeft is whether the page at [index] is the left-hand leaf of a
+/// leftOfSpread is whether the page at [index] is the left-hand leaf of a
 /// spread. Null where it has no facing page at all.
 bool? leftOfSpread(List<PageCover> covers, int index) {
   var beside = facingPage(covers, index);
   if (beside == null) return null;
   return beside > index;
-}
-
-/// pagePlace is how far into the body a page is, counting covers out: 0 for
-/// the first body page, 1 for the next. Null for a cover.
-int? pagePlace(List<PageCover> covers, int index) {
-  if (index < 0 || index >= covers.length || covers[index].isCover) return null;
-  var place = 0;
-  for (var at = 0; at < index; at++) {
-    if (!covers[at].isCover) place++;
-  }
-  return place;
 }

@@ -132,6 +132,20 @@ CanvasElement newElement(
           ));
 
     case ElementKind.counter:
+      // On a document of pages this is a page number, because that is what a
+      // number on a page is. It was a setting three controls into the
+      // counter's panel and nobody found it: an element that has to be
+      // hunted for is an element nobody knows exists. The dropdown is still
+      // there for the counter that is meant to be a clock.
+      if (document.isPages) {
+        return CounterElement(base,
+            source: CounterSource.page,
+            from: 1,
+            to: 1,
+            numberSpec:
+                TextSpec(fontSize: unit * 1.1, align: TextAlignSpec.center),
+            box: const BoxSpec());
+      }
       // A hundred, counting up from nothing, written plainly. Every other
       // element arrives with something obviously placeholder in it; the
       // placeholder here is the count itself, which is the one thing that

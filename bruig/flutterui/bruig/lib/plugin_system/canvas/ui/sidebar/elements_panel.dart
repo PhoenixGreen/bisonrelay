@@ -78,7 +78,8 @@ class CanvasElementsPanel extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (var kind in _addable) _AddChip(controller, kind),
+              for (var kind in _addable)
+                _AddChip(controller, kind, pages: controller.document.isPages),
             ],
           ),
         ],
@@ -89,7 +90,22 @@ class _AddChip extends StatelessWidget {
   final CanvasController controller;
   final ElementKind kind;
 
-  const _AddChip(this.controller, this.kind);
+  /// pages is whether this document is leaves rather than moments, which
+  /// changes what one of these chips is called: a number on a page is a page
+  /// number, and naming it Counter is what made it impossible to find.
+  final bool pages;
+
+  const _AddChip(this.controller, this.kind, {this.pages = false});
+
+  /// _label and _hint are what this chip says, which is not always the
+  /// element kind's own name.
+  String get _label =>
+      pages && kind == ElementKind.counter ? "Page number" : kind.label;
+
+  String get _hint => pages && kind == ElementKind.counter
+      ? "The number of the page it is on. Put one on the master canvas and "
+          "every page wears it"
+      : _hintForKind(kind);
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +122,7 @@ class _AddChip extends StatelessWidget {
         Icon(iconForKind(kind), size: 20, color: theme.colors.onSurfaceVariant),
         const SizedBox(height: 4),
         Text(
-          kind.label,
+          _label,
           style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
           textAlign: TextAlign.center,
         ),
@@ -114,7 +130,7 @@ class _AddChip extends StatelessWidget {
     );
 
     return Tooltip(
-      message: "${kind.label} — ${_hintForKind(kind)}\n"
+      message: "$_label — $_hint\n"
           "Click to add, or drag onto the canvas",
       child: Draggable<ElementKind>(
         data: kind,

@@ -1702,23 +1702,27 @@ class CanvasController extends ChangeNotifier {
     var next = onPaper
         ? size
         : size.copyWith(ratio: CanvasRatio.a4, width: a4PageWidth);
-    var rate = onPaper ? null : defaultFrameRateFor(CanvasRatio.a4);
+
+    // Pages turn, so a document of them runs at film's rate rather than at a
+    // printed sheet's one frame a second -- see defaultRateFor. Only where
+    // the rate is still whatever the shape gave it: a rate somebody typed is
+    // theirs.
+    var rate = _document.frameRate == defaultFrameRateFor(size.ratio)
+        ? defaultRateFor(next.ratio, kind)
+        : null;
 
     // Through setShape, which is the one place a shape change goes: it puts
     // away the layout of the shape being left and takes out the one being
     // opened. Written straight into the document the elements would keep the
     // numbers they had on a screen.
-    if (!onPaper) {
-      // One undo step for the whole of it. Calling this a document and then
-      // pressing undo twice -- once for the kind and once for the paper it
-      // brought with it -- is two steps for one decision.
-      beginInteraction();
-      setShape(next, frameRate: rate);
-      apply(_document.copyWith(kind: kind));
-      endInteraction();
-      return;
-    }
-    apply(_document.copyWith(kind: kind));
+    //
+    // One undo step for the whole of it. Calling this a document and then
+    // pressing undo twice -- once for the kind and once for the paper it
+    // brought with it -- is two steps for one decision.
+    beginInteraction();
+    if (!onPaper) setShape(next, frameRate: rate);
+    apply(_document.copyWith(kind: kind, frameRate: onPaper ? rate : null));
+    endInteraction();
   }
 
   /// forgetShape drops a shape from the document's targets, and the layouts

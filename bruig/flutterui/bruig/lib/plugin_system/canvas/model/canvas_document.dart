@@ -44,6 +44,18 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 /// already falls back when a field is missing or the wrong type.
 const int canvasFormatVersion = 1;
 
+/// defaultRateFor is how fast a document of this shape and this kind runs.
+///
+/// A page is a still -- see defaultFrameRateFor -- right up until pages start
+/// turning. At one frame a second a turn of eighteen frames takes eighteen
+/// seconds, and playing a document through looked like playback that never
+/// ended; it was playback at reading speed, which is not the same thing and
+/// is far worse to watch. So a document of pages runs at film's rate like
+/// everything else, and it is the number of frames a page is held for that
+/// says how long it is looked at.
+int defaultRateFor(CanvasRatio ratio, CanvasKind kind) =>
+    kind.isPages ? defaultFrameRate : defaultFrameRateFor(ratio);
+
 /// defaultFrameRate is what a new document plays at.
 ///
 /// Twenty-four, which is film's rate and what a canvas that moves is usually

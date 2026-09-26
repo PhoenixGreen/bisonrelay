@@ -684,8 +684,11 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             // should stop the document being twenty-four frames a second,
             // and should not overrule somebody who has typed 30.
             var rate = document.frameRate;
-            if (rate == defaultFrameRateFor(document.size.ratio)) {
-              rate = defaultFrameRateFor(v);
+            if (rate == defaultRateFor(document.size.ratio, document.kind)) {
+              // Through defaultRateFor rather than the shape alone: putting a
+              // document of pages onto A4 must not drop it to one frame a
+              // second, because its pages turn.
+              rate = defaultRateFor(v, document.kind);
             }
             // Through the controller, which keeps the layout of the shape
             // being left and takes out the one belonging to the shape being
