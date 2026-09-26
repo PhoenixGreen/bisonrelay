@@ -308,44 +308,58 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           onCommit: commit,
         ),
         poseDot,
-        // How big this element's own design is on this shape of page, for a
-        // document being laid out for several. Only then: on a canvas made
-        // for one shape it is a number that can only ever be 1.
-        //
-        // It scales what is inside the box -- the type, the spacing, the room
-        // in a chip -- and leaves the box where it is, which is what a
-        // headline that carries a banner and is a word a line on a feed
-        // actually needs. See ElementBase.typeScale.
+        // What this element does on this shape of page, for a document being
+        // laid out for several. Only then: on a canvas made for one shape
+        // there is one design and nothing to say about it.
         if (controller.document.targets.length > 1) ...[
           const CanvasLineBreak(),
-          CanvasNumberField(
-            key: const ValueKey("elementTypeScale"),
-            label: "Type here",
-            value: e.base.typeScale,
-            min: 0.05,
-            max: 10,
-            decimals: 2,
-            width: 72,
-            onChanged: (v) {
-              if (v <= 0 || e.base.typeScale <= 0) return;
-              begin();
-              write(e
-                  .scaledBy(v / e.base.typeScale)
-                  .withBase(
-                    x: e.x,
-                    y: e.y,
-                    width: e.width,
-                    height: e.height,
-                    typeScale: v,
-                  ));
-            },
-            onCommit: commit,
-          ),
+          // How big everything inside the box is on this shape. It leaves the
+          // box where it is and scales what it holds -- the type, the
+          // spacing, the padding, the room in a chip -- which is what a
+          // headline that carries a banner on a screen and is a word on a
+          // line on a feed actually needs. See ElementBase.typeScale.
+          //
+          // Only where it does something. On a picture, a shape or a chart
+          // scaledBy changes nothing -- the contents are already fractions of
+          // the box -- so the field was a number that moved while the canvas
+          // stayed still, which is what was reported.
+          if (e.scalesInside) ...[
+            CanvasNumberField(
+              key: const ValueKey("elementTypeScale"),
+              label: "Scale inside",
+              value: e.base.typeScale,
+              min: 0.05,
+              max: 10,
+              decimals: 2,
+              width: 84,
+              onChanged: (v) {
+                if (v <= 0 || e.base.typeScale <= 0) return;
+                begin();
+                write(e
+                    .scaledBy(v / e.base.typeScale)
+                    .withBase(
+                      x: e.x,
+                      y: e.y,
+                      width: e.width,
+                      height: e.height,
+                      typeScale: v,
+                    ));
+              },
+              onCommit: commit,
+            ),
+            CanvasHint(
+                "Everything inside the box at once, on the shape of page you "
+                "are on: the type, the line spacing, the padding, the corners "
+                "and the rules. The box itself stays where you put it. Type "
+                "size on its own is the Type group's Size — this is that and "
+                "the room round it together, which is what keeps a design "
+                "looking like itself at another size."),
+          ],
           // And the way out of sharing altogether, for the element the one
           // design cannot carry.
           CanvasToggle(
             key: const ValueKey("elementOwnDesign"),
-            label: "Its own here",
+            label: "Own on ${shapeShort(shapeKey(controller.document.size))}",
             value: e.base.ownDesign,
             onChanged: (v) {
               begin();
@@ -356,15 +370,17 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
             },
           ),
           CanvasHint(e.base.ownDesign
-              ? "This element is its own on this shape: nothing done to it on "
-                  "another shape reaches it here, and nothing done here "
-                  "reaches them. Switch it off and it goes back to the design "
-                  "the shapes share, laid out for this one."
-              : "How big this element's own design is on the shape of page "
-                  "you are on: the type, the spacing and the room inside it. "
-                  "The box stays where you put it. What the element *is* — "
-                  "its words, its colours, its settings — is the same on "
-                  "every shape until you give it its own here."),
+              ? "This element is its own on ${shapeLabel(shapeKey(controller.document.size))}: "
+                  "nothing done to it on another ratio reaches it here, and "
+                  "nothing done here reaches them. Switch it off and it goes "
+                  "back to the design the ratios share, laid out for this one."
+              : "Give this element its own settings on "
+                  "${shapeLabel(shapeKey(controller.document.size))} alone. "
+                  "Everything an element *is* — its words, its colours, its "
+                  "data, its settings — is shared by every ratio; only where "
+                  "it sits and how big it is belong to one. Switch this on "
+                  "and this ratio gets a copy of the element to change "
+                  "freely, and the shared one is kept for the others."),
         ],
       ]);
 }

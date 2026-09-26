@@ -52,11 +52,19 @@ String shapeLabel(String key) {
 /// is designed for: "card-16x9.png" beside "card-4x5.png". The ratio's label
 /// without the words after it, and with the colon a filename cannot carry
 /// turned into an x.
-String shapeTag(String key) {
+String shapeTag(String key) =>
+    shapeShort(key).replaceAll(":", "x").replaceAll(" ", "");
+
+/// shapeShort is a shape's name with nothing after it: "4:5" rather than
+/// "4:5 · Feed ad".
+///
+/// What a control names itself after when it belongs to one shape — a switch
+/// reading "Own on 4:5" — where the words after the numbers are what the
+/// dropdown is for and would be the whole of a narrow sidebar's line.
+String shapeShort(String key) {
   var label = shapeLabel(key);
   var cut = label.indexOf(" ·");
-  if (cut > 0) label = label.substring(0, cut);
-  return label.replaceAll(":", "x").replaceAll(" ", "");
+  return cut > 0 ? label.substring(0, cut) : label;
 }
 
 /// canvasScale is how much a design made for one page is sized by for

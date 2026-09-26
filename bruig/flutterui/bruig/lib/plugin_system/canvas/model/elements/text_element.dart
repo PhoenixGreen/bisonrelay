@@ -433,6 +433,9 @@ class TextElement extends CanvasElement {
   /// Not the text on a curve's offset, which is a fraction of the line it
   /// rides, and not the columns' count. See CanvasElement.scaledBy.
   @override
+  bool get scalesInside => true;
+
+  @override
   CanvasElement scaledBy(double by) => copyWith(
         textSpec: textSpec.scaledBy(by),
         box: box.scaledBy(by),

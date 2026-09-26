@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -195,5 +196,52 @@ void main() {
     await tester.pumpAndSettle();
     expect((controller.document.elements.single as TextElement).base.ownText,
         isTrue);
+  });
+
+  // Scaling inside is offered where there is something inside to scale. A
+  // picture's contents are already fractions of its box, so the field was a
+  // number that moved while nothing on the canvas did.
+  testWidgets("a picture is offered its own design but not a scale inside",
+      (tester) async {
+    var controller = CanvasController(CanvasDocument(
+      size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000),
+      elements: [ImageElement(const ElementBase(id: "i", width: 400, height: 300))],
+    ));
+    addTearDown(controller.dispose);
+    controller.selectOnly("i");
+    controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+
+    tester.view.physicalSize = const Size(600, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(
+            create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(
+            create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+        home: Scaffold(body: CanvasDesignPanel(controller: controller)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey("elementTypeScale")), findsNothing,
+        reason: "scaledBy changes nothing on a picture");
+    expect(find.byKey(const ValueKey("elementOwnDesign")), findsOneWidget,
+        reason: "but it can still be its own on this ratio");
+    // Named for the ratio it belongs to, which is the whole of what the
+    // switch means.
+    expect(find.text("Own on 16:9"), findsOneWidget);
+  });
+
+  test("only the elements with measurements inside say they scale", () {
+    expect(TextElement(const ElementBase(id: "t"), text: "x").scalesInside,
+        isTrue);
+    expect(ShapeElement(const ElementBase(id: "s")).scalesInside, isFalse);
+    expect(ImageElement(const ElementBase(id: "i")).scalesInside, isFalse);
   });
 }

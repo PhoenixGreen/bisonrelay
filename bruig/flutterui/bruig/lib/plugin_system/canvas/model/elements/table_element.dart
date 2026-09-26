@@ -939,6 +939,9 @@ class TableElement extends CanvasElement {
   /// to half the size is a table with the same words in half the room.
   /// See CanvasElement.scaledBy.
   @override
+  bool get scalesInside => true;
+
+  @override
   CanvasElement scaledBy(double by) => copyWith(
         cellSpec: cellSpec.scaledBy(by),
         headerSpec: headerSpec.scaledBy(by),

@@ -607,6 +607,18 @@ abstract class CanvasElement {
   /// TableElement.scaledBy.
   CanvasElement scaledBy(double by) => this;
 
+  /// scalesInside is whether [scaledBy] does anything to this element.
+  ///
+  /// Asked by the settings panel, which offers a field for the number an
+  /// element is scaled inside by on the shape of page being looked at -- see
+  /// ElementBase.typeScale. A picture, a shape or a chart is already
+  /// fractions of its box, so that field was a number that moved and changed
+  /// nothing on screen, which is worse than not offering it.
+  ///
+  /// Said here rather than worked out by scaling an element and comparing,
+  /// because an element has no value equality to compare with.
+  bool get scalesInside => false;
+
   /// withBase is [ElementBase.copyWith] plumbed through [rebase], so a caller
   /// changing one property writes one line rather than three.
   CanvasElement withBase({
