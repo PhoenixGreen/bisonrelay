@@ -178,6 +178,16 @@ void main() {
     expect(words.textSpec.fontSize, lessThan(60),
         reason: "the type came down with the number");
 
+    // And the way out of sharing the design altogether.
+    var detach = find.byKey(const ValueKey("elementOwnDesign"));
+    await tester.ensureVisible(detach);
+    await tester.pumpAndSettle();
+    await tester.tap(detach);
+    await tester.pumpAndSettle();
+    expect(controller.document.elements.single.base.ownDesign, isTrue);
+    expect(controller.document.elements.single.base.shared, isNotNull,
+        reason: "the shared design is kept aside, not thrown away");
+
     var own = find.byKey(const ValueKey("textOwnWordsHere"));
     await tester.ensureVisible(own);
     await tester.pumpAndSettle();

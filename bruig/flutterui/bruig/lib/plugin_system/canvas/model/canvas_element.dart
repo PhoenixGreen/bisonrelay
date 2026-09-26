@@ -146,6 +146,31 @@ class ElementBase {
   /// see ElementLayout.ownText.
   final bool ownText;
 
+  /// ownDesign is whether this element is its own on the shape being looked
+  /// at rather than the one the shapes share.
+  ///
+  /// Off, an element is one thing laid out several ways: its colours, its
+  /// type and its settings are the same everywhere and only its place, its
+  /// size and how much that design has been scaled by belong to the shape.
+  /// That is what keeps a typo fixed once and a colour changed once.
+  ///
+  /// On, this shape keeps a copy of the whole element and nothing done to it
+  /// anywhere else reaches this one. For the case the shared design cannot
+  /// carry: a headline that is a different size *and* a different weight on
+  /// the narrow page, a chart that is a bar on one shape and a line on
+  /// another.
+  final bool ownDesign;
+
+  /// shared is the design the shapes share, kept aside while a shape is
+  /// showing one of its own.
+  ///
+  /// The element itself is whatever the shape being looked at shows, so
+  /// without this the shared design is gone the moment a detached shape is
+  /// opened: there is one set of settings and the detached shape is using
+  /// it. Null while nothing is detached, which is nearly every element --
+  /// then the element *is* the shared design. See ownDesign.
+  final Map<String, dynamic>? shared;
+
   /// layouts is where this element sits on each of the *other* shapes the
   /// document is being designed for, by ratio -- see ElementLayout and
   /// CanvasDocument.targets.
@@ -178,6 +203,8 @@ class ElementBase {
     this.layouts = const {},
     this.typeScale = 1,
     this.ownText = false,
+    this.ownDesign = false,
+    this.shared,
   });
 
   ElementBase copyWith({
@@ -197,6 +224,9 @@ class ElementBase {
     Map<String, ElementLayout>? layouts,
     double? typeScale,
     bool? ownText,
+    bool? ownDesign,
+    Map<String, dynamic>? shared,
+    bool clearShared = false,
   }) =>
       ElementBase(
         id: id ?? this.id,
@@ -214,6 +244,8 @@ class ElementBase {
         layouts: layouts ?? this.layouts,
         typeScale: typeScale ?? this.typeScale,
         ownText: ownText ?? this.ownText,
+        ownDesign: ownDesign ?? this.ownDesign,
+        shared: clearShared ? null : (shared ?? this.shared),
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -235,6 +267,10 @@ class ElementBase {
           : null,
       typeScale: _d(json["typeScale"], 1),
       ownText: _b(json["ownText"], false),
+      ownDesign: _b(json["ownDesign"], false),
+      shared: json["shared"] is Map<String, dynamic>
+          ? json["shared"] as Map<String, dynamic>
+          : null,
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -265,6 +301,8 @@ class ElementBase {
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
         if (typeScale != 1) "typeScale": typeScale,
         if (ownText) "ownText": true,
+        if (ownDesign) "ownDesign": true,
+        if (shared != null) "shared": shared,
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),
@@ -304,6 +342,21 @@ class ElementLayout {
   /// tells the two apart.
   final String? text;
 
+  /// own is this element's whole design on this shape, for one that has been
+  /// detached here -- see ElementBase.ownDesign. Null means it follows the
+  /// design the shapes share.
+  final Map<String, dynamic>? own;
+
+  /// framing and crop are a picture's own on this shape, always.
+  ///
+  /// Not part of the shared design and not something anybody has to ask for:
+  /// which part of a photograph is showing, and how much of it, is a decision
+  /// about a frame -- and the frame is a different shape on every one of
+  /// these. A portrait cropped to sit beside a headline on a feed card is the
+  /// wrong crop for the same headline across a screen.
+  final Map<String, dynamic>? framing;
+  final Map<String, dynamic>? crop;
+
   /// ownText is whether those words are this shape's own.
   ///
   /// The one thing scaling cannot fix: type half the size still wraps where
@@ -322,10 +375,20 @@ class ElementLayout {
     this.typeScale = 1,
     this.text,
     this.ownText = false,
+    this.own,
+    this.framing,
+    this.crop,
   });
 
   /// of is the layout an element is showing at the moment.
-  factory ElementLayout.of(ElementBase base, {String? text}) => ElementLayout(
+  factory ElementLayout.of(
+    ElementBase base, {
+    String? text,
+    Map<String, dynamic>? own,
+    Map<String, dynamic>? framing,
+    Map<String, dynamic>? crop,
+  }) =>
+      ElementLayout(
         x: base.x,
         y: base.y,
         width: base.width,
@@ -334,6 +397,9 @@ class ElementLayout {
         typeScale: base.typeScale,
         text: text,
         ownText: base.ownText,
+        own: own,
+        framing: framing,
+        crop: crop,
       );
 
   /// scaledBy is this layout on a page [by] times the size.
@@ -349,9 +415,20 @@ class ElementLayout {
         typeScale: typeScale * by,
         text: text,
         ownText: ownText,
+        own: own,
+        framing: framing,
+        crop: crop,
       );
 
-  ElementLayout copyWith({double? typeScale, String? text, bool? ownText}) =>
+  ElementLayout copyWith({
+    double? typeScale,
+    String? text,
+    bool? ownText,
+    Map<String, dynamic>? own,
+    Map<String, dynamic>? framing,
+    Map<String, dynamic>? crop,
+    bool clearOwn = false,
+  }) =>
       ElementLayout(
         x: x,
         y: y,
@@ -361,6 +438,9 @@ class ElementLayout {
         typeScale: typeScale ?? this.typeScale,
         text: text ?? this.text,
         ownText: ownText ?? this.ownText,
+        own: clearOwn ? null : (own ?? this.own),
+        framing: framing ?? this.framing,
+        crop: crop ?? this.crop,
       );
 
   Map<String, dynamic> toJson() => {
@@ -372,6 +452,9 @@ class ElementLayout {
         if (typeScale != 1) "typeScale": typeScale,
         if (text != null) "text": text,
         if (ownText) "ownText": true,
+        if (own != null) "own": own,
+        if (framing != null) "framing": framing,
+        if (crop != null) "crop": crop,
       };
 
   factory ElementLayout.fromJson(Map<String, dynamic> json) => ElementLayout(
@@ -383,6 +466,15 @@ class ElementLayout {
         typeScale: _d(json["typeScale"], 1),
         text: json["text"] is String ? json["text"] as String : null,
         ownText: _b(json["ownText"], false),
+        own: json["own"] is Map<String, dynamic>
+            ? json["own"] as Map<String, dynamic>
+            : null,
+        framing: json["framing"] is Map<String, dynamic>
+            ? json["framing"] as Map<String, dynamic>
+            : null,
+        crop: json["crop"] is Map<String, dynamic>
+            ? json["crop"] as Map<String, dynamic>
+            : null,
       );
 
   @override
@@ -533,6 +625,9 @@ abstract class CanvasElement {
     Map<String, ElementLayout>? layouts,
     double? typeScale,
     bool? ownText,
+    bool? ownDesign,
+    Map<String, dynamic>? shared,
+    bool clearShared = false,
   }) =>
       rebase(base.copyWith(
         name: name,
@@ -550,6 +645,9 @@ abstract class CanvasElement {
         layouts: layouts,
         typeScale: typeScale,
         ownText: ownText,
+        ownDesign: ownDesign,
+        shared: shared,
+        clearShared: clearShared,
       ));
 
   /// withId returns a copy under a new id, for duplicating an element.

@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
@@ -489,6 +490,107 @@ void main() {
         closeTo(sizes[0], 0.5),
         closeTo(sizes[1], 0.5),
       ]);
+    });
+  });
+
+  group("an element given its own design on a shape", () {
+    TextElement wordsOf(CanvasDocument d, String id) =>
+        d.elementById(id)! as TextElement;
+
+    CanvasDocument two() => CanvasDocument(
+          size: sizeOf(CanvasRatio.feedAd),
+          elements: [
+            TextElement(
+              const ElementBase(id: "t", width: 400, height: 200),
+              text: "Spend or burn",
+              textSpec: const TextSpec(fontSize: 60, weight: 400),
+            ),
+          ],
+        ).forShape(sizeOf(CanvasRatio.wide));
+
+    test("keeps what is done to it, and takes nothing from elsewhere", () {
+      var doc = two();
+      // Detached on the 16:9 and made bold there.
+      doc = doc.withElement(detachedHere(wordsOf(doc, "t")));
+      doc = doc.withElement(wordsOf(doc, "t").copyWith(
+          textSpec: wordsOf(doc, "t").textSpec.copyWith(weight: 900)));
+
+      // The 4:5 is untouched by that.
+      var tall = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(wordsOf(tall, "t").textSpec.weight, 400);
+      expect(wordsOf(tall, "t").base.ownDesign, isFalse);
+
+      // Changed on the shared shape...
+      tall = tall.withElement(wordsOf(tall, "t").copyWith(
+          textSpec: wordsOf(tall, "t").textSpec.copyWith(weight: 100)));
+
+      // ...and the detached shape still has its own.
+      var wide = tall.forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsOf(wide, "t").textSpec.weight, 900);
+      expect(wordsOf(wide, "t").base.ownDesign, isTrue);
+    });
+
+    test("and goes back to the shared design when it is switched off", () {
+      var doc = two();
+      doc = doc.withElement(detachedHere(wordsOf(doc, "t")));
+      doc = doc.withElement(wordsOf(doc, "t").copyWith(
+          textSpec: wordsOf(doc, "t").textSpec.copyWith(weight: 900)));
+      doc = doc
+          .forShape(sizeOf(CanvasRatio.feedAd))
+          .forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsOf(doc, "t").textSpec.weight, 900);
+
+      // Switched off, and away and back: the shared design again.
+      doc = doc.withElement(sharedAgain(wordsOf(doc, "t")));
+      doc = doc
+          .forShape(sizeOf(CanvasRatio.feedAd))
+          .forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsOf(doc, "t").textSpec.weight, 400);
+    });
+  });
+
+  group("a picture's framing and crop", () {
+    ImageElement pictureOf(CanvasDocument d) =>
+        d.elements.single as ImageElement;
+
+    CanvasDocument withPicture() => CanvasDocument(
+          size: sizeOf(CanvasRatio.feedAd),
+          elements: [
+            const ImageElement(
+              ElementBase(id: "p", width: 400, height: 500),
+              assetId: "a",
+            ),
+          ],
+        ).forShape(sizeOf(CanvasRatio.wide));
+
+    test("belong to the shape, without anything being detached", () {
+      // Which part of a photograph is showing is a decision about a frame,
+      // and the frame is a different shape on every one of these.
+      var doc = withPicture();
+      doc = doc.withElement(pictureOf(doc).copyWith(
+        framing: const ImageFraming(x: 0, zoom: 2),
+        crop: const ImageCrop(left: 0.25),
+      ));
+
+      var tall = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(pictureOf(tall).framing.zoom, 1, reason: "the 4:5 is as it was");
+      expect(pictureOf(tall).crop.left, 0);
+      expect(pictureOf(tall).base.ownDesign, isFalse,
+          reason: "and nothing had to be detached for it");
+
+      var wide = tall.forShape(sizeOf(CanvasRatio.wide));
+      expect(pictureOf(wide).framing.zoom, 2);
+      expect(pictureOf(wide).framing.x, 0);
+      expect(pictureOf(wide).crop.left, 0.25);
+    });
+
+    test("and the picture itself is still one picture", () {
+      var doc = withPicture();
+      doc = doc.withElement(pictureOf(doc).copyWith(fit: ImageFit.contain));
+      var tall = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(pictureOf(tall).fit, ImageFit.contain,
+          reason: "how it fits is part of the shared design");
+      expect(pictureOf(tall).assetId, "a");
     });
   });
 

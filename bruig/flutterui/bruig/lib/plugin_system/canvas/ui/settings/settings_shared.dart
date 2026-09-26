@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -340,12 +341,30 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
             },
             onCommit: commit,
           ),
-          const CanvasHint(
-              "How big this element's own design is on the shape of page you "
-              "are on: the type, the spacing and the room inside it. The box "
-              "stays where you put it. Every other shape keeps its own "
-              "number, and what the element *is* — its words, its colours — "
-              "is the same on all of them."),
+          // And the way out of sharing altogether, for the element the one
+          // design cannot carry.
+          CanvasToggle(
+            key: const ValueKey("elementOwnDesign"),
+            label: "Its own here",
+            value: e.base.ownDesign,
+            onChanged: (v) {
+              begin();
+              // The shared design is kept aside as this one is detached, and
+              // put back the moment it is not -- see detachedHere.
+              write(v ? detachedHere(e) : sharedAgain(e));
+              commit();
+            },
+          ),
+          CanvasHint(e.base.ownDesign
+              ? "This element is its own on this shape: nothing done to it on "
+                  "another shape reaches it here, and nothing done here "
+                  "reaches them. Switch it off and it goes back to the design "
+                  "the shapes share, laid out for this one."
+              : "How big this element's own design is on the shape of page "
+                  "you are on: the type, the spacing and the room inside it. "
+                  "The box stays where you put it. What the element *is* — "
+                  "its words, its colours, its settings — is the same on "
+                  "every shape until you give it its own here."),
         ],
       ]);
 }

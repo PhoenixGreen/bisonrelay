@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart'
+    show elementFromJson;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 
@@ -244,7 +247,69 @@ CanvasSize sizeForShape(String key, CanvasSize like) {
 /// by the *difference* between the two, because the element carries one set
 /// of measurements for every shape and they are currently at the scale of the
 /// shape being left -- see ElementBase.typeScale.
-CanvasElement showing(CanvasElement element, ElementLayout layout) {
+/// detachedHere is [element] given a design of its own on the shape being
+/// looked at, with the shared one kept aside.
+///
+/// Kept aside at the moment of detaching, because from then on the element
+/// *is* this shape's design and there is nowhere else the shared one could
+/// be read from. See ElementBase.shared.
+CanvasElement detachedHere(CanvasElement element) => element.withBase(
+      ownDesign: true,
+      shared: element.base.shared ?? element.toJson(),
+    );
+
+/// sharedAgain is [element] back on the design the shapes share, at once
+/// rather than on the next shape change.
+///
+/// What is on screen is this shape's own copy, so switching the toggle off
+/// has to put the shared design back or the copy would quietly become the
+/// shared one the next time the shape is left.
+CanvasElement sharedAgain(CanvasElement element) {
+  var shared = element.base.shared;
+  if (shared == null) return element.withBase(ownDesign: false);
+  // The shared copy is kept: another shape may still be detached, and
+  // movedTo drops it once none is.
+  return elementFromJson({...shared, "id": element.id}).withBase(
+    layouts: element.base.layouts,
+    ownDesign: false,
+    shared: shared,
+  );
+}
+
+CanvasElement showing(CanvasElement element, ElementLayout layout,
+    {Map<String, dynamic>? shared}) {
+  var base = element.base;
+
+  // A design this shape keeps for itself is taken back whole, under the
+  // element's own id: nothing done to it on another shape reaches here. See
+  // ElementBase.ownDesign.
+  if (layout.own case var own?) {
+    element = elementFromJson({...own, "id": element.id}).withBase(
+      layouts: base.layouts,
+      ownDesign: true,
+      shared: shared,
+    );
+  } else if (base.ownDesign && shared != null) {
+    // And a shape that shares takes the shared design back, which is the
+    // only copy of it while a detached shape is the one on screen.
+    element = elementFromJson({...shared, "id": element.id}).withBase(
+      layouts: base.layouts,
+      ownDesign: false,
+      shared: shared,
+    );
+  }
+
+  // And a picture's framing and crop, which belong to this shape whether or
+  // not the rest of the design does -- the frame is a different shape here.
+  if (element is ImageElement) {
+    element = element.copyWith(
+      framing: layout.framing == null
+          ? null
+          : ImageFraming.fromJson(layout.framing!),
+      crop: layout.crop == null ? null : ImageCrop.fromJson(layout.crop!),
+    );
+  }
+
   var was = element.base.typeScale;
   var moved = element.withBase(
     x: layout.x,
@@ -270,9 +335,28 @@ CanvasElement movedTo(CanvasElement element, String from, String to,
   var layouts = {...element.base.layouts};
   var words = element is TextElement ? element.text : null;
   var ownHere = element.base.ownText;
+  var picture = element is ImageElement ? element : null;
 
-  // What is on screen belongs to the shape being left.
-  layouts[from] = ElementLayout.of(element.base, text: words);
+  // What is on screen belongs to the shape being left -- its place and size,
+  // the design where this shape keeps its own, and a picture's framing and
+  // crop, which belong to the shape either way.
+  var detached = element.base.ownDesign;
+  layouts[from] = ElementLayout.of(
+    element.base,
+    text: words,
+    own: detached ? element.toJson() : null,
+    framing: picture?.framing.toJson(),
+    crop: picture?.crop.toJson(),
+  );
+
+  // The design the shapes share. Refreshed on the way out of a shape that is
+  // sharing it -- that element *is* the shared design -- and left alone on
+  // the way out of one that is not, whose changes are its own.
+  var sharedDesign = detached ? element.base.shared : element.toJson();
+  // Nothing detached anywhere means there is nothing to keep aside: the
+  // element is the design, and a second copy in the file would be a copy to
+  // keep in step.
+  var anyOwn = layouts.values.any((l) => l.own != null);
 
   // Where this shape was following the others, they are all showing the same
   // words, so they all take what has been typed. Done on the way out rather
@@ -295,7 +379,12 @@ CanvasElement movedTo(CanvasElement element, String from, String to,
       seeded(layouts[from]!, seed, covers)
           .copyWith(text: shared, ownText: false);
 
-  var moved = showing(element, next).withBase(layouts: layouts);
+  var keepsShared = anyOwn || next.own != null;
+  var moved = showing(element, next, shared: sharedDesign).withBase(
+    layouts: layouts,
+    shared: keepsShared ? sharedDesign : null,
+    clearShared: !keepsShared,
+  );
 
   if (moved is TextElement) {
     var say = next.ownText ? next.text : shared;
