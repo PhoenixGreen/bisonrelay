@@ -1704,22 +1704,25 @@ class CanvasController extends ChangeNotifier {
   void resetShape(String from) {
     var here = _document.size;
     var was = sizeForShape(from, here);
-    var by = canvasScale(was, here);
-    CanvasElement seeded(CanvasElement e) {
-      var had = e.base.layouts[from];
-      if (had == null) return e;
-      var next = had.scaledBy(by);
-      return e.withBase(
-        x: next.x,
-        y: next.y,
-        width: next.width,
-        height: next.height,
-        visible: next.visible,
-      );
-    }
 
-    CanvasScene scene(CanvasScene s) =>
-        s.copyWith(elements: [for (var e in s.elements) seeded(e)]);
+    CanvasScene scene(CanvasScene s) {
+      // Laid out from the other shape exactly as a first visit to this one
+      // would have been: the same block, the same measure, the same place.
+      // Seeded by the layout's own scale alone it moved the boxes and left
+      // the design inside them at this shape's size.
+      var had = [
+        for (var e in s.elements)
+          if (e.base.layouts[from] case var layout?)
+            showing(e, layout)
+          else
+            e,
+      ];
+      var seed = seedFor(had, was, here);
+      return s.copyWith(elements: [
+        for (var e in had)
+          showing(e, seeded(ElementLayout.of(e.base), seed, coversPage(e, was))),
+      ]);
+    }
     var next = _document.master == null
         ? _document
         : _document.copyWith(master: scene(_document.master!));

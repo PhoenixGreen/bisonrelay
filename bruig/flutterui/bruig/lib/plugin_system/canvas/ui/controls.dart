@@ -1567,8 +1567,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
                         for (var (_, text) in options)
                           Align(
                             alignment: Alignment.centerLeft,
-                            child:
-                                Text(text, overflow: TextOverflow.ellipsis),
+                            child: Text(text, overflow: TextOverflow.ellipsis),
                           ),
                       ],
               items: [
@@ -1835,33 +1834,49 @@ extension _MarkedOptions<T> on CanvasDropdown<T> {
   /// _markedOption is an option that is already in use: a background behind
   /// it, and a cross where it can be given up.
   Widget _markedOption(ThemeNotifier theme, T value, String text) => Builder(
-        builder: (context) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            color: theme.colors.secondaryContainer,
+        // Across the whole row rather than a pill around the words: what is
+        // marked is the row, and a band the width of the text reads as a
+        // label stuck on one.
+        //
+        // A menu item is laid out inside the menu's own side padding, so the
+        // background is drawn wider than the slot it is given and let to
+        // overflow it. The padding is the framework's _kMenuItemPadding,
+        // which is not exported; 16 a side is what it has always been, and
+        // being a few pixels out would show as a band slightly too narrow
+        // rather than as anything broken.
+        builder: (context) => LayoutBuilder(
+          builder: (context, constraints) => OverflowBox(
+            maxWidth: double.infinity,
+            alignment: Alignment.center,
+            child: Container(
+              width: constraints.maxWidth.isFinite
+                  ? constraints.maxWidth + 32
+                  : null,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              color: theme.colors.secondaryContainer,
+              child: Row(children: [
+                Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
+                if (onRemove case var remove?) ...[
+                  const SizedBox(width: 4),
+                  Tooltip(
+                    message: removeTip?.call(value) ?? "Remove",
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      // The menu is closed by hand: the cross is inside the row,
+                      // so the row's own tap never runs and the menu would be
+                      // left open over a list that has just changed.
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        remove(value);
+                      },
+                      child: Icon(Icons.close,
+                          size: 13, color: theme.colors.onSecondaryContainer),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
           ),
-          child: Row(children: [
-            Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
-            if (onRemove case var remove?) ...[
-              const SizedBox(width: 4),
-              Tooltip(
-                message: removeTip?.call(value) ?? "Remove",
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  // The menu is closed by hand: the cross is inside the row,
-                  // so the row's own tap never runs and the menu would be
-                  // left open over a list that has just changed.
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    remove(value);
-                  },
-                  child: Icon(Icons.close,
-                      size: 13, color: theme.colors.onSecondaryContainer),
-                ),
-              ),
-            ],
-          ]),
         ),
       );
 }

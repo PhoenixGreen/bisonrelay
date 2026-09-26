@@ -237,6 +237,34 @@ CanvasSize sizeForShape(String key, CanvasSize like) {
 /// away, so the first visit lands on something that already looks like the
 /// design. The type comes down with the box: seeded without that, a headline
 /// keeps the size it had on the larger page and runs out of the frame.
+/// showing is [element] wearing [layout]: its place, its size, and its own
+/// design brought to that layout's scale.
+///
+/// The one place a layout is put on an element. The design has to be scaled
+/// by the *difference* between the two, because the element carries one set
+/// of measurements for every shape and they are currently at the scale of the
+/// shape being left -- see ElementBase.typeScale.
+CanvasElement showing(CanvasElement element, ElementLayout layout) {
+  var was = element.base.typeScale;
+  var moved = element.withBase(
+    x: layout.x,
+    y: layout.y,
+    width: layout.width,
+    height: layout.height,
+    visible: layout.visible,
+    typeScale: layout.typeScale,
+    ownText: layout.ownText,
+  );
+  if (layout.typeScale == was || was <= 0) return moved;
+  return moved.scaledBy(layout.typeScale / was).withBase(
+        x: layout.x,
+        y: layout.y,
+        width: layout.width,
+        height: layout.height,
+        typeScale: layout.typeScale,
+      );
+}
+
 CanvasElement movedTo(CanvasElement element, String from, String to,
     {required ShapeSeed seed, required bool covers}) {
   var layouts = {...element.base.layouts};
@@ -267,30 +295,7 @@ CanvasElement movedTo(CanvasElement element, String from, String to,
       seeded(layouts[from]!, seed, covers)
           .copyWith(text: shared, ownText: false);
 
-  var moved = element.withBase(
-    x: next.x,
-    y: next.y,
-    width: next.width,
-    height: next.height,
-    visible: next.visible,
-    layouts: layouts,
-    typeScale: next.typeScale,
-    ownText: next.ownText,
-  );
-
-  // The design inside the box, brought to this shape's scale. Undoing this
-  // shape's scaling before applying that one's is the reason the number is
-  // written down at all: scaled numbers cannot say what they were scaled by.
-  var was = element.base.typeScale;
-  if (next.typeScale != was && was > 0) {
-    moved = moved.scaledBy(next.typeScale / was).withBase(
-          x: next.x,
-          y: next.y,
-          width: next.width,
-          height: next.height,
-          typeScale: next.typeScale,
-        );
-  }
+  var moved = showing(element, next).withBase(layouts: layouts);
 
   if (moved is TextElement) {
     var say = next.ownText ? next.text : shared;

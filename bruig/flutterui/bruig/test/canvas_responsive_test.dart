@@ -247,18 +247,25 @@ void main() {
     });
 
     test("and a shape can be laid out again from another", () {
+      // The same seeding a first visit gets -- the block measured, scaled by
+      // how much the page changed, put where it sat. Anything else and the
+      // way back from a mess would be a third arrangement nobody asked for.
       var controller = CanvasController(documentAt(CanvasRatio.feedAd));
       addTearDown(controller.dispose);
       controller.setShape(sizeOf(CanvasRatio.wide));
+      var seeded = shapeIn(controller.document);
 
       // Dragged into a mess on the 16:9.
       controller.replaceElement(
           shapeIn(controller.document).withBase(x: 900, y: 900, width: 20));
       controller.resetShape("feedAd");
 
-      var by = canvasScale(sizeOf(CanvasRatio.feedAd), sizeOf(CanvasRatio.wide));
-      expect(shapeIn(controller.document).x, closeTo(100 * by, 0.5));
-      expect(shapeIn(controller.document).width, closeTo(400 * by, 0.5));
+      var back = shapeIn(controller.document);
+      expect(back.x, closeTo(seeded.x, 0.5));
+      expect(back.y, closeTo(seeded.y, 0.5));
+      expect(back.width, closeTo(seeded.width, 0.5));
+      expect(back.height, closeTo(seeded.height, 0.5));
+      expect(back.base.typeScale, closeTo(seeded.base.typeScale, 0.01));
     });
   });
 
@@ -401,6 +408,88 @@ void main() {
     expect(shapeTag("feedAd"), "4x5", reason: "the words after it are dropped");
     expect(shapeTag("square"), "1x1");
     expect(shapeTag("a4"), "A4");
+  });
+
+  group("resizing on one shape", () {
+    TextElement wordsOf(CanvasDocument d) => d.elements.single as TextElement;
+
+    CanvasDocument card(CanvasRatio ratio) => CanvasDocument(
+          size: sizeOf(ratio),
+          elements: [
+            TextElement(
+              const ElementBase(
+                  id: "t", x: 100, y: 100, width: 400, height: 200),
+              text: "Spend or burn",
+              textSpec: const TextSpec(fontSize: 60),
+            ),
+          ],
+        );
+
+    test("does not reach the other shapes", () {
+      // Scaling the design on one shape used to leave typeScale describing
+      // the design as it was before, so going to another shape undid the
+      // scaling by the wrong amount -- elements resized together came back
+      // at different sizes. Reported with screenshots of a table and a badge
+      // at two different scales.
+      var doc = card(CanvasRatio.feedAd).forShape(sizeOf(CanvasRatio.wide));
+      var onWide = wordsOf(doc);
+      var seeded = onWide.textSpec.fontSize;
+
+      // Scaled up on the 16:9, the way the stage does it: the design and the
+      // number that says how much it has been scaled by, together.
+      doc = doc.withElement(onWide
+          .scaledBy(2)
+          .withBase(typeScale: onWide.base.typeScale * 2) as TextElement);
+      expect(wordsOf(doc).textSpec.fontSize, closeTo(seeded * 2, 0.5));
+
+      // The 4:5 is exactly as it was left.
+      var back = doc.forShape(sizeOf(CanvasRatio.feedAd));
+      expect(wordsOf(back).textSpec.fontSize, closeTo(60, 0.5));
+      expect(wordsOf(back).width, 400);
+
+      // And the 16:9 still has what was done to it.
+      var again = back.forShape(sizeOf(CanvasRatio.wide));
+      expect(wordsOf(again).textSpec.fontSize, closeTo(seeded * 2, 0.5));
+    });
+
+    test("and two elements scaled together stay in step", () {
+      var doc = CanvasDocument(
+        size: sizeOf(CanvasRatio.feedAd),
+        elements: [
+          TextElement(
+            const ElementBase(id: "a", width: 400, height: 200),
+            text: "One",
+            textSpec: const TextSpec(fontSize: 60),
+          ),
+          TextElement(
+            const ElementBase(id: "b", x: 500, width: 200, height: 100),
+            text: "Two",
+            textSpec: const TextSpec(fontSize: 30),
+          ),
+        ],
+      ).forShape(sizeOf(CanvasRatio.wide));
+
+      // Both scaled by the same amount on the wide shape.
+      for (var id in ["a", "b"]) {
+        var e = doc.elementById(id)! as TextElement;
+        doc = doc.withElement(
+            e.scaledBy(1.5).withBase(typeScale: e.base.typeScale * 1.5)
+                as TextElement);
+      }
+      var sizes = [
+        for (var e in doc.elements) (e as TextElement).textSpec.fontSize,
+      ];
+
+      var back = doc
+          .forShape(sizeOf(CanvasRatio.feedAd))
+          .forShape(sizeOf(CanvasRatio.wide));
+      expect([
+        for (var e in back.elements) (e as TextElement).textSpec.fontSize,
+      ], [
+        closeTo(sizes[0], 0.5),
+        closeTo(sizes[1], 0.5),
+      ]);
+    });
   });
 
   group("the file", () {

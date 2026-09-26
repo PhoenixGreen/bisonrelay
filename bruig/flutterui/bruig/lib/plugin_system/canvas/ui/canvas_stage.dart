@@ -2523,6 +2523,17 @@ class CanvasStageState extends State<CanvasStage> {
         y: top + (real.top - group.top) * sy,
         width: math.max(1, real.width * sx),
         height: math.max(1, real.height * sy),
+        // What the design inside the box has been scaled by, written down
+        // where the shape switch can read it.
+        //
+        // A document laid out for several shapes carries one set of
+        // measurements and a number per shape saying how much they have been
+        // scaled by -- see ElementBase.typeScale. Scaling the design here
+        // without saying so left that number describing the design as it was
+        // before the drag, so going to another shape undid the drag by the
+        // wrong amount: elements that had been resized together came back at
+        // different sizes.
+        typeScale: keep ? from.base.typeScale * sx : null,
       ));
     }
     controller.apply(next, transient: true);
