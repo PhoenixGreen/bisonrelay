@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -1672,6 +1673,54 @@ class CanvasController extends ChangeNotifier {
     apply(moved.copyWith(targets: targets.length > 1 ? targets : const []));
   }
 
+  /// setKind is whether this document is scenes or pages.
+  ///
+  /// Not just a flag: choosing pages says what shape the canvas is, how fast
+  /// it runs and what happens between two of them, and somebody who has said
+  /// "this is a document" should not then have to say "and A4" and "and one
+  /// frame a second" and "and a page turn". So the three follow -- but only
+  /// where they have not been decided already: a canvas that is on A4 and is
+  /// then called a document is a canvas somebody has already shaped, and a
+  /// screen ratio chosen on purpose is not an oversight to be corrected.
+  ///
+  /// Nothing is undone on the way back. Called Scenes again, a document keeps
+  /// its paper, its rate and its covers: they are all things that were true
+  /// of it, and a switch that threw a layout away would be a switch nobody
+  /// dared press twice.
+  void setKind(CanvasKind kind) {
+    if (_document.kind == kind) return;
+    if (kind != CanvasKind.pages) {
+      apply(_document.copyWith(kind: kind));
+      return;
+    }
+
+    // Paper, unless it is on paper already. A4 at 150dpi: the size somebody
+    // means by "a page", and small enough that a document of thirty of them
+    // is still something the editor can draw.
+    var size = _document.size;
+    var onPaper = size.ratio.isPaper;
+    var next = onPaper
+        ? size
+        : size.copyWith(ratio: CanvasRatio.a4, width: a4PageWidth);
+    var rate = onPaper ? null : defaultFrameRateFor(CanvasRatio.a4);
+
+    // Through setShape, which is the one place a shape change goes: it puts
+    // away the layout of the shape being left and takes out the one being
+    // opened. Written straight into the document the elements would keep the
+    // numbers they had on a screen.
+    if (!onPaper) {
+      // One undo step for the whole of it. Calling this a document and then
+      // pressing undo twice -- once for the kind and once for the paper it
+      // brought with it -- is two steps for one decision.
+      beginInteraction();
+      setShape(next, frameRate: rate);
+      apply(_document.copyWith(kind: kind));
+      endInteraction();
+      return;
+    }
+    apply(_document.copyWith(kind: kind));
+  }
+
   /// forgetShape drops a shape from the document's targets, and the layouts
   /// kept for it.
   ///
@@ -1692,9 +1741,8 @@ class CanvasController extends ChangeNotifier {
     var next = _document.master == null
         ? _document
         : _document.copyWith(master: scene(_document.master!));
-    apply(next
-        .withScenes([for (var s in next.allScenes) scene(s)], at: next.at)
-        .copyWith(targets: left.length > 1 ? left : const []));
+    apply(next.withScenes([for (var s in next.allScenes) scene(s)],
+        at: next.at).copyWith(targets: left.length > 1 ? left : const []));
   }
 
   /// resetShape lays this shape out again from another one, by scale.
@@ -1712,22 +1760,21 @@ class CanvasController extends ChangeNotifier {
       // the design inside them at this shape's size.
       var had = [
         for (var e in s.elements)
-          if (e.base.layouts[from] case var layout?)
-            showing(e, layout)
-          else
-            e,
+          if (e.base.layouts[from] case var layout?) showing(e, layout) else e,
       ];
       var seed = seedFor(had, was, here);
       return s.copyWith(elements: [
         for (var e in had)
-          showing(e, seeded(ElementLayout.of(e.base), seed, coversPage(e, was))),
+          showing(
+              e, seeded(ElementLayout.of(e.base), seed, coversPage(e, was))),
       ]);
     }
+
     var next = _document.master == null
         ? _document
         : _document.copyWith(master: scene(_document.master!));
-    apply(next.withScenes([for (var s in next.allScenes) scene(s)],
-        at: next.at));
+    apply(
+        next.withScenes([for (var s in next.allScenes) scene(s)], at: next.at));
   }
 
   /// addScenes puts [scenes] in after the one being looked at, and goes to
@@ -1821,6 +1868,28 @@ class CanvasController extends ChangeNotifier {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
     apply(_document.withScene(index, list[index].copyWith(holds: holds)));
+  }
+
+  /// setSceneCover marks a page as the front or the back of the document.
+  ///
+  /// One of each at most, and each at its own end. A document with two front
+  /// covers is not a thing, and a cover in the middle is a page: the marks
+  /// are what the numbering and the pairing are read from, so two of them
+  /// would give two answers to what number a page carries.
+  void setSceneCover(int index, PageCover cover) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    var next = [
+      for (var (at, scene) in list.indexed)
+        at == index
+            ? scene.copyWith(cover: cover)
+            // Whoever held this mark before gives it up, which is what makes
+            // marking a page the front cover also mean "and not that one".
+            : (cover.isCover && scene.cover == cover
+                ? scene.copyWith(cover: PageCover.none)
+                : scene),
+    ];
+    apply(_document.withScenes(next, at: _document.at));
   }
 
   /// setSceneTransition gives a scene its own way of giving way to the next,

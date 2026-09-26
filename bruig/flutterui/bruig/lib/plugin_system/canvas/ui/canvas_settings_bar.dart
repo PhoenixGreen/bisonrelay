@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -627,6 +628,24 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
 
     return [
       CanvasControlGroup(label: "Canvas", children: [
+        // What this document is *for*, first, because everything after it
+        // follows from the answer: the shape of the canvas, how fast it runs,
+        // what happens between two of them and what the canvases are called.
+        // See CanvasKind.
+        CanvasDropdown<CanvasKind>(
+          key: const ValueKey("canvasKind"),
+          label: "Type",
+          value: document.kind,
+          width: 104,
+          options: [for (var k in CanvasKind.values) (k, k.label)],
+          onChanged: controller.setKind,
+        ),
+        CanvasHint("Scenes are canvases played one after another — a video, "
+            "an animation, a presentation, a set of images. Pages are the "
+            "leaves of a document: they take covers, page numbers and facing "
+            "pages, and one gives way to the next with a page turn. Choosing "
+            "Pages puts a new canvas on A4 at one frame a second; a canvas "
+            "already on paper is left as it is."),
         CanvasDropdown<CanvasRatio>(
           key: const ValueKey("canvasRatio"),
           label: "Ratio",
@@ -792,6 +811,56 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           ),
         ),
       ]),
+      // The settings that only a document of pages reads, and only there:
+      // on a set of scenes every one of them is a question with no answer.
+      if (document.isPages)
+        CanvasControlGroup(label: "Pages", children: [
+          CanvasToggle(
+            key: const ValueKey("pagesFacing"),
+            label: "Facing pages",
+            value: document.pages.facing,
+            onChanged: (v) => write(
+                document.copyWith(pages: document.pages.copyWith(facing: v))),
+          ),
+          CanvasNumberField(
+            key: const ValueKey("pagesStartAt"),
+            label: "Numbered from",
+            value: document.pages.startAt.toDouble(),
+            min: 0,
+            max: 9999,
+            decimals: 0,
+            width: 74,
+            onChanged: (v) => edit(document.copyWith(
+                pages: document.pages.copyWith(startAt: v.round()))),
+            onCommit: controller.endInteraction,
+          ),
+          CanvasToggle(
+            key: const ValueKey("pagesCountCovers"),
+            label: "Covers count",
+            value: document.pages.countCovers,
+            onChanged: (v) => write(document.copyWith(
+                pages: document.pages.copyWith(countCovers: v))),
+          ),
+          // Only where it can mean anything. A number printed on a cover of a
+          // document whose covers are not counted would have to be a number
+          // the cover does not have.
+          if (document.pages.countCovers)
+            CanvasToggle(
+              key: const ValueKey("pagesNumbersOnCovers"),
+              label: "Number on covers",
+              value: document.pages.numbersOnCovers,
+              onChanged: (v) => write(document.copyWith(
+                  pages: document.pages.copyWith(numbersOnCovers: v))),
+            ),
+          CanvasHint(
+              "Facing pages draws the page beside the one you are working "
+              "on, so a spread is seen as it is read — every page is still "
+              "one page. Numbering is drawn by a counter element set to show "
+              "the page number: put one on the master canvas and every page "
+              "wears it. Covers are left out of the count unless you say "
+              "otherwise${document.pages.countCovers ? "" : ", and are never "
+                  "paired with another page"}."),
+        ]),
       _estimateGroup(context, theme, document),
       // What changing the size does, at the end of the line: it is set once
       // and left, and it belongs after the size and the cost rather than

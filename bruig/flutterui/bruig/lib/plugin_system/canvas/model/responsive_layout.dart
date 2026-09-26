@@ -143,8 +143,7 @@ ShapeSeed seedFor(
     block = block == null ? box : block.expandToInclude(box);
   }
   if (block == null || block.width <= 0 || block.height <= 0) {
-    return ShapeSeed(
-        by: 1, block: Rect.zero, at: Offset.zero, page: page);
+    return ShapeSeed(by: 1, block: Rect.zero, at: Offset.zero, page: page);
   }
 
   // How much the page itself changed, which is what keeps a design looking
@@ -168,8 +167,8 @@ ShapeSeed seedFor(
   // And nudged back on where that would hang it off an edge. A design that
   // fits the page should be on the page.
   at = Offset(
-    at.dx.clamp(
-        math.min(0, page.width - sized.width), math.max(0, page.width - sized.width)),
+    at.dx.clamp(math.min(0, page.width - sized.width),
+        math.max(0, page.width - sized.width)),
     at.dy.clamp(math.min(0, page.height - sized.height),
         math.max(0, page.height - sized.height)),
   );

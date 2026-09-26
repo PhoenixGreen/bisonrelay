@@ -67,7 +67,18 @@ enum CounterSource {
   /// clock is the time of day, in seconds since midnight. Written with the
   /// Minutes or Hours separator it is a clock; written plain it is a number
   /// nobody wants, which is why choosing it sets the separator.
-  clock("The time", "The time of day on the reader's own clock");
+  clock("The time", "The time of day on the reader's own clock"),
+
+  /// page is the number of the page this is drawn on, for a document of
+  /// pages. See CanvasDocument.pageNumber.
+  ///
+  /// A counter rather than a setting of its own, because a page number is a
+  /// number set in type somewhere on the page -- which is what this element
+  /// already is, with the face, the size, the colour, the box and the
+  /// placement it has always had. Put one on the master canvas and every page
+  /// wears it.
+  page("The page number",
+      "The number of the page it is drawn on, for a document of pages");
 
   final String label;
   final String description;
@@ -277,7 +288,13 @@ class CounterElement extends CanvasElement {
 
   /// live is whether this counter runs in real time, which is what the
   /// buttons are for and what makes it an instrument rather than a picture.
-  bool get live => !keyed;
+  ///
+  /// A page number is neither: it does not run and it is not keyed, it is
+  /// read off the page it happens to be drawn on. See CounterSource.page.
+  bool get live => !keyed && source != CounterSource.page;
+
+  /// isPageNumber is the question the renderer and the settings both ask.
+  bool get isPageNumber => source == CounterSource.page;
 
   /// assetIds is the pictures its boxes are painted with. See
   /// BoxSpec.assetIds.

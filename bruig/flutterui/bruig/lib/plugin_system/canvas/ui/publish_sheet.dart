@@ -685,9 +685,8 @@ class _PublishSheetState extends State<_PublishSheet> {
                   key: const ValueKey("publishEveryShape"),
                   label: "Every shape (${widget.document.targets.length})",
                   value: _everyShape,
-                  onChanged: _busy
-                      ? (_) {}
-                      : (v) => setState(() => _everyShape = v),
+                  onChanged:
+                      _busy ? (_) {} : (v) => setState(() => _everyShape = v),
                 ),
                 _note(
                     theme,

@@ -427,6 +427,12 @@ void main() {
     // nothing to say about how it looks.
     await tester.tap(find.byKey(const ValueKey("transitionFamily")));
     await tester.pumpAndSettle();
+    // Scrolled to first. There are more families than fit a four-hundred
+    // pixel window, so the first entry of the menu opens above the top of it
+    // and a tap at its coordinates lands on nothing -- silently, because a
+    // tap that hits the barrier closes the menu and changes nothing.
+    await tester.ensureVisible(find.text("A cut").last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text("A cut").last);
     await tester.pumpAndSettle();
     expect(find.text("HOW LONG"), findsNothing);

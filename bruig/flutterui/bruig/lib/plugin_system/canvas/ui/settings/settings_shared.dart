@@ -338,9 +338,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
               onChanged: (v) {
                 if (v <= 0 || e.base.typeScale <= 0) return;
                 begin();
-                write(e
-                    .scaledBy(v / e.base.typeScale)
-                    .withBase(
+                write(e.scaledBy(v / e.base.typeScale).withBase(
                       x: e.x,
                       y: e.y,
                       width: e.width,

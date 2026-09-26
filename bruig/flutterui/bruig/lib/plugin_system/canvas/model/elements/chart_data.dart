@@ -408,7 +408,9 @@ class ChartSeries {
       band: json["band"] == true,
       width: json["width"] is num ? (json["width"] as num).toDouble() : 0,
       delay: json["delay"] is num
-          ? (json["delay"] as num).toDouble().clamp(-maxSeriesDelay, maxSeriesDelay)
+          ? (json["delay"] as num)
+              .toDouble()
+              .clamp(-maxSeriesDelay, maxSeriesDelay)
           : 0,
       corner: json["corner"] is num ? (json["corner"] as num).toDouble() : null,
       smooth: json["smooth"] is bool ? json["smooth"] as bool : null,

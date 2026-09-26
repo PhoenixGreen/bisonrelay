@@ -463,9 +463,15 @@ void paintElement(
               // clock has got to" for a counter that has no clock -- which is
               // its starting value, at every frame, however many keyframes
               // had been laid on it.
-              e.live
-                  ? (counterValue?.call(e) ?? e.from)
-                  : (pose.values[KeyframeChannel.count] ?? e.from),
+              // A page number is read off the page rather than run or
+              // keyed: the same element on the master canvas says a
+              // different number on every leaf, which is the whole of what
+              // makes it a page number. See CounterSource.page.
+              e.isPageNumber
+                  ? (document?.pageNumber?.toDouble() ?? e.from)
+                  : e.live
+                      ? (counterValue?.call(e) ?? e.from)
+                      : (pose.values[KeyframeChannel.count] ?? e.from),
               pressed: counterPressed?.call(e) ?? -1,
               running: counterRunning?.call(e)));
     case BackgroundElement e:
@@ -1532,7 +1538,6 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
           ..blendMode = BlendMode.modulate);
   }
 }
-
 
 void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
     CanvasImageSource? images) {

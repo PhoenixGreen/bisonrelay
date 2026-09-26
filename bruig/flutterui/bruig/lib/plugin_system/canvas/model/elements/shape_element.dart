@@ -398,15 +398,16 @@ class ShapeElement extends CanvasElement {
           shape: ShapeKind.fromName(json["shape"] as String?),
           fill: colorFromJson(json["fill"], const Color(0xFF3D7EFF)),
           painted: json["painted"] is Map
-              ? TextFill.fromJson(
-                  (json["painted"] as Map).cast<String, dynamic>())
+              ? TextFill.fromJson((json["painted"] as Map).cast<String,
+                  dynamic>())
               : const TextFill(),
           fillFade:
-              json["fillFade"]
-                      is Map
-                  ? GradientSpec.fromJson((json[
-                          "fillFade"] as Map)
-                      .cast<String, dynamic>())
+              json[
+                      "fillFade"] is Map
+                  ? GradientSpec
+                      .fromJson((json[
+                              "fillFade"] as Map)
+                          .cast<String, dynamic>())
                   : null,
           strokeFade:
               json[

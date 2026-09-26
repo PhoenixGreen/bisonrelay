@@ -275,7 +275,8 @@ class ElementBase {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
             if (e.value is Map<String, dynamic>)
-              "${e.key}": ElementLayout.fromJson(e.value as Map<String, dynamic>),
+              "${e.key}":
+                  ElementLayout.fromJson(e.value as Map<String, dynamic>),
       },
     );
   }

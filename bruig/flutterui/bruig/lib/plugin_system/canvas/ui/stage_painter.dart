@@ -129,6 +129,18 @@ class StagePainter extends CustomPainter {
   /// waiting off the left of the canvas can be seen and taken hold of.
   final Rect view;
 
+  /// facing is the page drawn beside the one being edited, by index, or null
+  /// where it stands alone. See CanvasStage._facingPage.
+  ///
+  /// Drawn and nothing else: no handles, no guides, no selection. It is there
+  /// so that a spread is seen as it is read, and a neighbour that could be
+  /// taken hold of would be two canvases being edited at once.
+  final int? facing;
+
+  /// facingOnLeft is whether the page being edited is the left leaf, so the
+  /// neighbour goes to its right.
+  final bool facingOnLeft;
+
   /// selectedPath is the selected element when it is a path, whose points and
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
@@ -225,6 +237,8 @@ class StagePainter extends CustomPainter {
     this.backgrounds,
     required this.page,
     required this.view,
+    this.facing,
+    this.facingOnLeft = false,
     required this.showHandles,
     required this.showHelpers,
     this.flowGrips,
@@ -296,6 +310,30 @@ class StagePainter extends CustomPainter {
       canvas.restore();
       return;
     }
+    // The leaf beside this one, first, so that anything of the edited page
+    // that reaches over the spine is drawn over it rather than under.
+    if (facing case var beside?) {
+      canvas.save();
+      canvas.translate(facingOnLeft ? docSize.width : -docSize.width, 0);
+      canvas.clipRect(Offset.zero & docSize);
+      paintCanvasDocument(canvas, document.goToScene(beside),
+          images: images, backgrounds: backgrounds);
+      // Held back a little from the page in front of it. Not dimmed to
+      // uselessness -- the point of a spread is to see the two together --
+      // but enough that it is plain which of the two the editor is on.
+      canvas.drawRect(
+          Offset.zero & docSize, Paint()..color = const Color(0x22000000));
+      canvas.restore();
+      // The spine, drawn on the join: two pages meeting edge to edge with
+      // nothing between them read as one canvas twice as wide.
+      var at = facingOnLeft ? docSize.width : 0.0;
+      canvas.drawRect(
+        Rect.fromLTWH(at - docSize.width * 0.004, 0, docSize.width * 0.008,
+            docSize.height),
+        Paint()..color = const Color(0x33000000),
+      );
+    }
+
     paintCanvasDocument(canvas, document,
         frame: frame,
         images: images,
@@ -1011,6 +1049,8 @@ class StagePainter extends CustomPainter {
       old.origin != origin ||
       old.page != page ||
       old.view != view ||
+      old.facing != facing ||
+      old.facingOnLeft != facingOnLeft ||
       old.showHelpers != showHelpers ||
       old.showHandles != showHandles ||
       old.flowGrips != flowGrips ||

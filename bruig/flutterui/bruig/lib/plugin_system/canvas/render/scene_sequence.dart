@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
 import 'package:flutter/painting.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 // scene_sequence.dart plays a document through: every scene in order, and
 // whatever is drawn between them.
@@ -246,6 +247,113 @@ void paintTransition(
 
     case SceneTransitionKind.blurThrough:
       _blurThrough(canvas, page, over, t, from: from, to: to);
+
+    case SceneTransitionKind.pageTurn:
+      _pageTurn(canvas, page, over, t, from: from, to: to);
+  }
+}
+
+/// _pageTurn swings the leaf off the spine, the next page underneath it.
+///
+/// A real turn rather than a squash: the leaf is rotated about the spine with
+/// a little perspective, so its far edge rises and its near edge foreshortens
+/// exactly as paper does. A horizontal scale alone -- which is what this was
+/// first -- is a wipe with shading on it, and reads as one.
+///
+/// Three things sold it, and each is cheap:
+///   * the leaf darkens as it turns away from the light,
+///   * a soft shadow falls on the page being uncovered, strongest where the
+///     leaf still nearly touches it,
+///   * the leaf's own free edge keeps a thin highlight, which is what stops
+///     the last of it disappearing into the page behind.
+void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
+    {required void Function() from, required void Function() to}) {
+  // The page arriving is underneath the whole time: a leaf lifting reveals
+  // what was always there, and nothing about it fades in.
+  to();
+
+  // Hinged on the left by default, which is a document that reads left to
+  // right: the leaf's free edge travels towards the spine. Hinged on the right
+  // for one that reads the other way, or for turning back.
+  var onLeft = over.way != SceneTransitionWay.right;
+  var spine = onLeft ? page.left : page.right;
+
+  // A quarter turn over the whole transition. Past ninety degrees the leaf is
+  // beyond the spine and off the page, so there is nothing there to draw and
+  // the back of it is a picture nobody sees.
+  var turn = (math.pi / 2) * t.clamp(0.0, 1.0);
+  var lean = math.cos(turn).clamp(0.0, 1.0);
+
+  // The shadow first, so the leaf is over it. It sits against the standing
+  // edge of the leaf and reaches into the page by as much as the leaf is
+  // lifted -- widest halfway, where a turning page is furthest from flat.
+  var lift = math.sin(turn);
+  var reach = page.width * 0.22 * lift * lean;
+  if (reach > 0.5) {
+    var edge = spine + (onLeft ? page.width * lean : -page.width * lean);
+    var into = onLeft ? edge + reach : edge - reach;
+    canvas.drawRect(
+      Rect.fromLTRB(
+          math.min(edge, into), page.top, math.max(edge, into), page.bottom),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(edge, page.top),
+          Offset(into, page.top),
+          [
+            const Color(0x00000000).withValues(alpha: 0.38 * lift),
+            const Color(0x00000000),
+          ],
+        ),
+    );
+  }
+
+  // And the leaf. The perspective entry is what makes this a turn: without it
+  // rotateY is a horizontal scale, because an orthographic camera cannot tell
+  // a rotated rectangle from a narrow one. Small, because a page is being
+  // looked at from across a room rather than through a keyhole.
+  canvas.save();
+  canvas.clipRect(page);
+  canvas.translate(spine, page.center.dy);
+  canvas.transform((Matrix4.identity()
+        ..setEntry(3, 2, 0.0009)
+        ..rotateY(onLeft ? -turn : turn))
+      .storage);
+  canvas.translate(-spine, -page.center.dy);
+  // Clipped to the leaf's own side of the spine as well. Perspective can
+  // throw a corner across it, and a page drawn on the wrong side of its own
+  // hinge is the one thing that gives the trick away.
+  canvas.clipRect(onLeft
+      ? Rect.fromLTRB(page.left, page.top, page.right, page.bottom)
+      : page);
+  from();
+
+  // Turned away from the light. Not a flat veil: the far edge of a lifting
+  // leaf catches more of it than the edge still against the page, which is
+  // the gradient, and the whole thing dims as it goes over.
+  if (lift > 0.01) {
+    var near = Offset(spine, page.top);
+    var far = Offset(onLeft ? page.right : page.left, page.top);
+    canvas.drawRect(
+      page,
+      Paint()
+        ..shader = ui.Gradient.linear(near, far, [
+          const Color(0x00000000).withValues(alpha: 0.30 * lift),
+          const Color(0x00000000).withValues(alpha: 0.06 * lift),
+        ]),
+    );
+  }
+  canvas.restore();
+
+  // The free edge, a hairline of paper seen side on. It is what is left of the
+  // leaf at the very end, and without it the last quarter of the turn is a
+  // page fading into the one behind it.
+  var soft = page.shortestSide * 0.004 * (1 + over.softness);
+  if (lean > 0.001) {
+    var at = spine + (onLeft ? page.width * lean : -page.width * lean);
+    canvas.drawRect(
+      Rect.fromLTRB(at - soft, page.top, at + soft, page.bottom),
+      Paint()..color = const Color(0x00000000).withValues(alpha: 0.22 * lift),
+    );
   }
 }
 

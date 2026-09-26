@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
@@ -141,6 +142,17 @@ class CanvasDocument {
   /// everything on the canvas lines up.
   final CanvasGuides guides;
 
+  /// kind is whether the canvases are moments or leaves. See CanvasKind.
+  ///
+  /// It changes remarkably little: the same elements on the same canvases,
+  /// named a different word, with covers and numbers and a page turn between
+  /// them. What it is not is a second editor.
+  final CanvasKind kind;
+
+  /// pages are the settings that only a document of pages reads. Carried
+  /// whatever the kind, so switching to Scenes and back does not forget them.
+  final PagesSpec pages;
+
   /// scenes are the canvases this document plays, in order.
   ///
   /// Empty means the one scene held in the fields below, which is what a
@@ -223,6 +235,8 @@ class CanvasDocument {
     List<TimelineAction> actions = const [],
     this.scenes = const [],
     this.sceneAt = 0,
+    this.kind = CanvasKind.scenes,
+    this.pages = const PagesSpec(),
     this.master,
     this.masterOn = false,
     this.onMaster = false,
@@ -343,6 +357,35 @@ class CanvasDocument {
   /// transitions on the timeline -- ask this rather than counting.
   bool get hasScenes => scenes.length > 1;
 
+  /// isPages is whether this document is leaves rather than moments.
+  bool get isPages => kind.isPages;
+
+  /// pageCovers is which of the canvases are covers, in order -- what the
+  /// numbering and the pairing are both worked out from. See canvas_pages.dart.
+  List<PageCover> get pageCovers => [for (var s in allScenes) s.cover];
+
+  /// pageNumberAt is the number printed on one page, or null where none is:
+  /// a cover, or a document that is scenes rather than pages.
+  ///
+  /// Worked out rather than stored. A number written onto a page is right
+  /// until the first time anything is added, removed or dragged.
+  int? pageNumberAt(int index) =>
+      isPages ? pageNumberFor(pageCovers, index, pages) : null;
+
+  /// pageNumber is the number on the page being edited, which is what a page
+  /// number drawn on the master canvas reads. See CounterSource.page.
+  int? get pageNumber => pageNumberAt(at);
+
+  /// facingAt is the page shown beside the one at [index] while facing pages
+  /// are on, or null where it stands alone.
+  int? facingAt(int index) =>
+      isPages && pages.facing ? facingPage(pageCovers, index) : null;
+
+  /// facingIsLeft is whether the page at [index] is the left-hand leaf of its
+  /// spread, so the editor knows which side to draw the neighbour on.
+  bool? facingIsLeft(int index) =>
+      isPages && pages.facing ? leftOfSpread(pageCovers, index) : null;
+
   /// masterScene is the shared canvas when it is switched on, and null
   /// otherwise. Asked by the painter, which must not draw a master that has
   /// been turned off.
@@ -423,9 +466,18 @@ class CanvasDocument {
   }
 
   /// defaultTransition is what a scene with no transition of its own uses:
-  /// the master scene's, or a cut.
+  /// the master scene's, or whatever this kind of document does between two
+  /// canvases when nobody has said.
+  ///
+  /// A cut for scenes, which is what film does most of the time and costs
+  /// nothing. A turned leaf for pages, because that is what happens between
+  /// two of them -- and a document whose pages cut from one to the next is a
+  /// slideshow of pages rather than a document.
   SceneTransition get defaultTransition =>
-      master?.transition ?? SceneTransition.cut;
+      master?.transition ??
+      (isPages
+          ? SceneTransition.bestFor(SceneTransitionKind.pageTurn)
+          : SceneTransition.cut);
 
   /// transitionAfter is how scene [index] gives way to the next one.
   SceneTransition transitionAfter(int index) {
@@ -597,6 +649,8 @@ class CanvasDocument {
     List<TimelineAction>? actions,
     List<CanvasScene>? scenes,
     int? sceneAt,
+    CanvasKind? kind,
+    PagesSpec? pages,
     CanvasScene? master,
     bool clearMaster = false,
     bool? masterOn,
@@ -650,13 +704,15 @@ class CanvasDocument {
               ? _frames
               : (frames ?? _frames).clamp(1, maxFrameCount).toInt())
           : 1,
-      frameRate: (frameRate ?? this.frameRate)
-          .clamp(minFrameRate, maxFrameRate),
+      frameRate:
+          (frameRate ?? this.frameRate).clamp(minFrameRate, maxFrameRate),
       actions: list.isEmpty
           ? (onIt && shared != null ? _actions : (actions ?? _actions))
           : const [],
       scenes: list,
       sceneAt: index,
+      kind: kind ?? this.kind,
+      pages: pages ?? this.pages,
       master: shared,
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
@@ -682,6 +738,8 @@ class CanvasDocument {
       frameRate: frameRate,
       scenes: next,
       sceneAt: (at ?? sceneAt).clamp(0, next.length - 1).toInt(),
+      kind: kind,
+      pages: pages,
       master: master,
       masterOn: masterOn,
       onMaster: onMaster,
@@ -915,6 +973,8 @@ class CanvasDocument {
         "actions": actions.map((a) => a.toJson()).toList(),
       "elements": elements.map((e) => e.toJson()).toList(),
       if (targets.isNotEmpty) "targets": targets,
+      if (kind != CanvasKind.scenes) "kind": kind.name,
+      if (!pages.isDefault) "pages": pages.toJson(),
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
         if (sceneAt != 0) "sceneAt": at,
@@ -1014,6 +1074,10 @@ class CanvasDocument {
       actions: scenes.isEmpty ? actions : const [],
       scenes: scenes,
       sceneAt: jsonInt(json["sceneAt"], 0),
+      kind: CanvasKind.fromName(json["kind"] as String?),
+      pages: json["pages"] is Map<String, dynamic>
+          ? PagesSpec.fromJson(json["pages"] as Map<String, dynamic>)
+          : const PagesSpec(),
       master: json["master"] is Map<String, dynamic>
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,

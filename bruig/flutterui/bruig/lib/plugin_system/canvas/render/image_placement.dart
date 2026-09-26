@@ -113,8 +113,8 @@ ImagePlacement placeImage(
   if (!crop.isWhole) {
     var w = rect.width / crop.width;
     var h = rect.height / crop.height;
-    frame = Rect.fromLTWH(
-        rect.left - w * crop.left, rect.top - h * crop.top, w, h);
+    frame =
+        Rect.fromLTWH(rect.left - w * crop.left, rect.top - h * crop.top, w, h);
   }
 
   Rect dst;
@@ -134,9 +134,8 @@ ImagePlacement placeImage(
       //
       // The zoom multiplies that scale, which takes less of the picture for
       // the same frame -- the whole of a zoom is that the window shrinks.
-      var scale =
-          math.max(frame.width / src.width, frame.height / src.height) *
-              framing.zoom;
+      var scale = math.max(frame.width / src.width, frame.height / src.height) *
+          framing.zoom;
       var window = Size(frame.width / scale, frame.height / scale);
 
       // Whatever is left over in each direction is spent by the framing. At

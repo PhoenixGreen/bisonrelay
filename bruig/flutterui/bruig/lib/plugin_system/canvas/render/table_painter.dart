@@ -67,11 +67,8 @@ void paintTable(ui.Canvas canvas, Rect rect, TableElement e,
       fill = e.zebraFill;
     }
     if (fill != null && (fill.a > 0 || (isHeader && header != null))) {
-      canvas.drawRect(
-          Rect.fromLTWH(rect.left, y, rect.width, h),
-          isHeader
-              ? headerPaint.into(Paint(), rect)
-              : (Paint()..color = fill));
+      canvas.drawRect(Rect.fromLTWH(rect.left, y, rect.width, h),
+          isHeader ? headerPaint.into(Paint(), rect) : (Paint()..color = fill));
     }
     y += h;
   }

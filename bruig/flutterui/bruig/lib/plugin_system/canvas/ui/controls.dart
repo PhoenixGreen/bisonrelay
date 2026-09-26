@@ -2421,7 +2421,8 @@ void _keepSection(String? key, bool open) {
 }
 
 class _CanvasExpanderState extends State<CanvasExpander> {
-  late bool _open = _rememberedSections[widget.remember] ?? widget.initiallyOpen;
+  late bool _open =
+      _rememberedSections[widget.remember] ?? widget.initiallyOpen;
 
   @override
   void initState() {
@@ -2873,7 +2874,8 @@ class CanvasFoldingGroup extends StatefulWidget {
 }
 
 class _CanvasFoldingGroupState extends State<CanvasFoldingGroup> {
-  late bool _shut = !(_rememberedSections[widget.remember] ?? !widget.startShut);
+  late bool _shut =
+      !(_rememberedSections[widget.remember] ?? !widget.startShut);
 
   @override
   void initState() {

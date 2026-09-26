@@ -727,8 +727,7 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
       snackbar.error("Unable to read ${entry.name}.");
       return;
     }
-    var saved =
-        await SavedPresetStore.canvases.save(name, document.toJson());
+    var saved = await SavedPresetStore.canvases.save(name, document.toJson());
     if (saved == null) {
       snackbar.error("Unable to save the preset.");
       return;

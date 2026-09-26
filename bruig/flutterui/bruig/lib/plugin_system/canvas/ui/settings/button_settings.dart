@@ -89,7 +89,7 @@ List<Widget> buttonSettings(
               options: [
                 ("", "Nothing"),
                 for (var (i, scene) in controller.document.allScenes.indexed)
-                  (scene.id, scene.saysAt(i)),
+                  (scene.id, scene.saysAt(i, controller.document.kind)),
               ],
               onChanged: (v) {
                 begin();

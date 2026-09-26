@@ -3,6 +3,7 @@ import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 
 // canvas_scene.dart is one canvas of several in a document.
@@ -30,7 +31,13 @@ enum SceneTransitionFamily {
   move("Move"),
   wipe("Uncover"),
   overlay("Overlay"),
-  drawn("Drawn");
+  drawn("Drawn"),
+
+  /// paper is the one that only means anything to a document: a leaf being
+  /// turned. Its own family rather than one more entry under Move, because
+  /// somebody looking for it is looking for the thing a book does, not for a
+  /// direction to slide in.
+  paper("Paper");
 
   final String label;
   const SceneTransitionFamily(this.label);
@@ -64,6 +71,9 @@ enum SceneTransitionWay {
   /// four of them is offering the same two twice. Growing in place is only
   /// worth having where something can also travel.
   static List<SceneTransitionWay> waysFor(SceneTransitionKind kind) {
+    // A leaf hinges on one side or the other -- which is the spine, and which
+    // way the document reads. Up and down are not things a page does.
+    if (kind == SceneTransitionKind.pageTurn) return const [left, right];
     if (kind == SceneTransitionKind.barn) return const [left, up];
     if (kind == SceneTransitionKind.shapeWipe) return values;
     return const [left, right, up, down];
@@ -72,6 +82,9 @@ enum SceneTransitionWay {
   /// says is what this way is called for [kind], which is not always the
   /// direction it points in.
   String saysFor(SceneTransitionKind kind) {
+    if (kind == SceneTransitionKind.pageTurn) {
+      return this == left ? "Hinged on the left" : "Hinged on the right";
+    }
     if (kind != SceneTransitionKind.barn) return label;
     return this == up ? "Up and down" : "Side to side";
   }
@@ -166,6 +179,10 @@ enum SceneTransitionKind {
   /// the picture rather than coming back.
   burst("Comic burst", SceneTransitionFamily.drawn),
 
+  /// pageTurn lifts the leaf off the spine and swings it away, the next page
+  /// underneath it. The default between two pages -- see CanvasKind.pages.
+  pageTurn("Page turn", SceneTransitionFamily.paper),
+
   /// rays swings the same lines shut like a fan and open again.
   ///
   /// Its own kind rather than the second half of burst, because a burst that
@@ -196,6 +213,7 @@ enum SceneTransitionKind {
 
   /// takesWay is whether it has a direction to be pointed in.
   bool get takesWay =>
+      this == pageTurn ||
       this == band ||
       this == blinds ||
       this == barn ||
@@ -247,6 +265,7 @@ enum SceneTransitionKind {
   /// little softness is the difference between a shape being dragged over the
   /// page and something happening to it.
   bool get takesSoftness =>
+      this == pageTurn ||
       this == band ||
       this == blinds ||
       this == shapeWipe ||
@@ -379,6 +398,10 @@ class SceneTransition {
       SceneTransitionKind.halftone || SceneTransitionKind.tiles => 20,
       SceneTransitionKind.blinds || SceneTransitionKind.barn => 16,
       SceneTransitionKind.clock || SceneTransitionKind.band => 18,
+      // A turned page is slower than a cut and quicker than paint: about
+      // three-quarters of a second at film's rate, which is how long a hand
+      // takes over it.
+      SceneTransitionKind.pageTurn => 18,
       _ => 14,
     };
     // How many pieces this one is made of. A number that means something
@@ -416,6 +439,7 @@ class SceneTransition {
       SceneTransitionKind.clock ||
       SceneTransitionKind.shapeWipe =>
         0.04,
+      SceneTransitionKind.pageTurn => 0.5,
       _ => 0.0,
     };
     return SceneTransition(
@@ -426,9 +450,15 @@ class SceneTransition {
       // rather than in four directions, and "to the right" -- the way every
       // transition started out pointing -- is not one of the two, so the
       // setting came up with nothing chosen in it.
-      way: SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
-          ? SceneTransitionWay.right
-          : SceneTransitionWay.waysFor(kind).first,
+      // Pointed a way this kind actually has, and the way it is usually
+      // wanted. A page turn hinges on the left, because that is the spine of
+      // a document that reads left to right and a forward turn is what
+      // somebody choosing it means.
+      way: kind == SceneTransitionKind.pageTurn
+          ? SceneTransitionWay.left
+          : SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
+              ? SceneTransitionWay.right
+              : SceneTransitionWay.waysFor(kind).first,
       ease: kind.familyOf == SceneTransitionFamily.move
           ? SceneTransitionEase.smooth
           : SceneTransitionEase.straight,
@@ -576,6 +606,16 @@ class CanvasScene {
   /// master covering them would be to throw its background away.
   final bool backgroundOff;
 
+  /// cover marks this canvas as the outside of a document rather than one of
+  /// its leaves -- see PageCover.
+  ///
+  /// On the scene rather than on the document, because it is a fact about this
+  /// canvas: dragged to another place in the list it is still the cover, and
+  /// a document that named its cover by position would have the wrong one the
+  /// first time anything moved. Read only where the document is pages; a
+  /// scene carrying it is a page that was a scene for a while.
+  final PageCover cover;
+
   /// transition is how this scene gives way to the next, or null for whatever
   /// the document's default is -- see CanvasDocument.defaultTransition, which
   /// is the master scene's.
@@ -595,11 +635,20 @@ class CanvasScene {
     this.background,
     this.backgroundOff = false,
     this.transition,
+    this.cover = PageCover.none,
   });
 
-  /// says is what the panel calls this scene: its name, or its place in the
-  /// order when it has not been given one.
-  String saysAt(int index) => name.isEmpty ? "Scene ${index + 1}" : name;
+  /// says is what the panel calls this canvas: its name, or what it is and
+  /// where it comes when it has not been given one.
+  ///
+  /// A cover says so rather than saying a number: "Page 1" on the cover and
+  /// again on the first leaf is the list naming two different things the
+  /// same, which is exactly the confusion marking a cover is meant to end.
+  String saysAt(int index, [CanvasKind kind = CanvasKind.scenes]) {
+    if (name.isNotEmpty) return name;
+    if (kind.isPages && cover.isCover) return cover.label;
+    return "${kind.oneCap} ${index + 1}";
+  }
 
   /// sharedBackground is the backdrop this canvas puts on everything under
   /// it, or null where it has none or has been told not to.
@@ -621,6 +670,7 @@ class CanvasScene {
     bool? backgroundOff,
     SceneTransition? transition,
     bool clearTransition = false,
+    PageCover? cover,
   }) =>
       CanvasScene(
         id: id ?? this.id,
@@ -632,6 +682,7 @@ class CanvasScene {
         background: clearBackground ? null : (background ?? this.background),
         backgroundOff: backgroundOff ?? this.backgroundOff,
         transition: clearTransition ? null : (transition ?? this.transition),
+        cover: cover ?? this.cover,
       );
 
   Map<String, dynamic> toJson() => {
@@ -644,6 +695,7 @@ class CanvasScene {
         if (background != null) "background": background!.toJson(),
         if (backgroundOff) "backgroundOff": true,
         if (transition != null) "transition": transition!.toJson(),
+        if (cover.isCover) "cover": cover.name,
       };
 
   factory CanvasScene.fromJson(Map<String, dynamic> json) {
@@ -675,6 +727,7 @@ class CanvasScene {
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,
+      cover: PageCover.fromName(json["cover"] as String?),
     );
   }
 }

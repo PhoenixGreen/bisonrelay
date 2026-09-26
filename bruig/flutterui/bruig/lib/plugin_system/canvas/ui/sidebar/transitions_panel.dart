@@ -131,7 +131,7 @@ class CanvasTransitionsPanel extends StatelessWidget {
             CanvasControlGroup(
               label: master
                   ? "Every scene, unless it says otherwise"
-                  : "After ${scenes[index].saysAt(index)}",
+                  : "After ${scenes[index].saysAt(index, document.kind)}",
               // A sentence rather than a section's name, so it is given the
               // room a sentence needs -- close under it, it and the caption
               // of the control below read as one run of text.

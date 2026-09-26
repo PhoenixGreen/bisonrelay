@@ -1153,8 +1153,8 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
   }
   if (!box.hasBorder) return;
 
-  var paint = PaintSpec(box.borderColor, gradient: box.borderFade)
-      .into(Paint(), rect);
+  var paint =
+      PaintSpec(box.borderColor, gradient: box.borderFade).into(Paint(), rect);
 
   var even = box.evenBorder;
   if (even != null) {

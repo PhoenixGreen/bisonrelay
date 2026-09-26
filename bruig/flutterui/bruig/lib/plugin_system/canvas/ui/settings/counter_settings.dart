@@ -425,15 +425,21 @@ Widget _countSection(
               onChanged: (v) => now(e.copyWith(running: v)),
             ),
           ],
-          CanvasHint(e.source == CounterSource.clock
-              ? "The reader's own clock, in seconds since midnight -- so the "
-                  "Minutes or Hours way of writing it is the one that makes "
-                  "a clock of it."
-              : "Counts from ${e.format(e.from)} to ${e.format(e.to)} at "
-                  "${e.rate} a second, which is "
-                  "${(e.span / (e.rate <= 0 ? 1 : e.rate)).abs().round()} "
-                  "seconds end to end. Turn Loop on and it starts again, "
-                  "which is what makes a metronome."),
+          CanvasHint(e.source == CounterSource.page
+              ? "The number of the page this is drawn on. Put it on the "
+                  "master canvas and every page wears it, each saying its "
+                  "own number — that is what a page number is. Covers are "
+                  "not numbered, and where the numbering starts is in the "
+                  "canvas settings."
+              : e.source == CounterSource.clock
+                  ? "The reader's own clock, in seconds since midnight -- so the "
+                      "Minutes or Hours way of writing it is the one that makes "
+                      "a clock of it."
+                  : "Counts from ${e.format(e.from)} to ${e.format(e.to)} at "
+                      "${e.rate} a second, which is "
+                      "${(e.span / (e.rate <= 0 ? 1 : e.rate)).abs().round()} "
+                      "seconds end to end. Turn Loop on and it starts again, "
+                      "which is what makes a metronome."),
         ],
       ]),
     ],

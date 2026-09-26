@@ -156,6 +156,15 @@ List<CanvasSizePreset> sizePresetsFor(CanvasRatio ratio) => [
 /// else's to make.
 const List<int> canvasFrameRates = [1, 12, 24, 30, 60];
 
+/// a4PageWidth is how many pixels across one A4 page is by default.
+///
+/// A4 at 150 dots per inch. Three hundred is what a printer wants and is four
+/// times the pixels: a document of thirty pages at 300dpi is a canvas the
+/// editor has to draw and an export it has to hold, and the width is a number
+/// on the settings bar that anybody printing can raise. See canvasSizePresets,
+/// which names both.
+const int a4PageWidth = 1240;
+
 /// minFrameRate and maxFrameRate bound a rate typed by hand.
 ///
 /// One is a still, which is the fewest frames a second there can be. The

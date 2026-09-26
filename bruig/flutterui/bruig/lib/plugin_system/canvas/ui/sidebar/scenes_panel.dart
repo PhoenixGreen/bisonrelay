@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -111,16 +112,19 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         Row(children: [
           Expanded(child: _master(theme)),
           const SizedBox(width: 4),
-          _rowButton(theme, Icons.add, "New scene", controller.addScene),
+          _rowButton(theme, Icons.add, "New ${document.kind.one}",
+              controller.addScene),
           // Only once something has been copied: a paste button with
           // nothing behind it does nothing, and this row is narrow.
           if (CanvasController.hasCopiedScene)
-            _rowButton(theme, Icons.content_paste_go, "Paste the copied scene",
-                controller.pasteScene),
+            _rowButton(theme, Icons.content_paste_go,
+                "Paste the copied ${document.kind.one}", controller.pasteScene),
           _rowButton(
             theme,
             _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,
-            _previews ? "Scene preview: off" : "Scene preview",
+            _previews
+                ? "${document.kind.oneCap} preview: off"
+                : "${document.kind.oneCap} preview",
             () => setState(() => _previews = !_previews),
             active: _previews,
           ),
@@ -208,6 +212,16 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     );
   }
 
+  /// _says is what goes down the left of a row: the page's printed number,
+  /// or the canvas's place in the order.
+  String _says(int index) {
+    if (!document.isPages) return "${index + 1}";
+    var number = document.pageNumberAt(index);
+    // Nothing for a cover rather than a dash or a zero: it has no number, and
+    // a symbol standing in for one is a number that has to be learnt.
+    return number?.toString() ?? "";
+  }
+
   Widget _scene(ThemeNotifier theme, int index, CanvasScene scene,
       List<CanvasScene> all) {
     var here = index == document.at && !document.editingMaster;
@@ -234,9 +248,13 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
+              // The page's own number rather than its place in the list, for
+              // a document of pages: a cover has no number and the first page
+              // after one is still page one, so counting rows would be
+              // saying something the document does not.
               SizedBox(
                 width: 18,
-                child: Text("${index + 1}",
+                child: Text(_says(index),
                     style: TextStyle(
                         fontSize: 11,
                         color: theme.colors.onSurfaceVariant
@@ -258,15 +276,24 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                         // gesture arena, so nothing else on the row is held
                         // back by it. See _nameClicked.
                         onPointerDown: (_) => _nameClicked(index, scene),
-                        child: Text(scene.saysAt(index),
+                        child: Text(scene.saysAt(index, document.kind),
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 12)),
                       ),
               ),
+              // A cover, said in the list. Its row has no number in the
+              // gutter -- it has none -- so without this the only difference
+              // between the cover and page one is a blank space.
+              if (document.isPages && scene.cover.isCover)
+                Tooltip(
+                  message: scene.cover.label,
+                  child: Icon(Icons.bookmark_outline,
+                      size: 13, color: theme.colors.onSurfaceVariant),
+                ),
               // A scene that holds is one that does not run on into the
               // next, which is worth saying in the list: it is the
               // difference between a sequence and a set of stills.
-              if (scene.holds)
+              if (!document.isPages && scene.holds)
                 Tooltip(
                   message: "Playback stops at the end of this scene",
                   child: Icon(Icons.pause_circle_outline,
@@ -369,7 +396,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                   borderRadius: BorderRadius.circular(6),
                   color: theme.colors.secondaryContainer,
                 ),
-                child: Text(scene.saysAt(index),
+                child: Text(scene.saysAt(index, document.kind),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 12,
@@ -413,14 +440,33 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         const PopupMenuItem(value: "copy", child: Text("Copy")),
         // Kept for good, in the Presets sidebar, as a copy: the scene goes
         // on being edited and none of that reaches the preset.
-        const PopupMenuItem(
-            value: "preset", child: Text("Save scene as preset")),
         PopupMenuItem(
-          value: "holds",
-          child: Text(scene.holds
-              ? "Run on into the next scene"
-              : "Stop at the end of this scene"),
-        ),
+            value: "preset",
+            child: Text("Save ${document.kind.one} as preset")),
+        // Which of the two ends of the document this is, for a document of
+        // pages. Only at the ends: a cover in the middle of a document is
+        // not a cover, and offering it there is offering nonsense.
+        if (document.isPages && index == 0)
+          PopupMenuItem(
+            value: "front",
+            child: Text(scene.cover == PageCover.front
+                ? "Not the front cover"
+                : "Make this the front cover"),
+          ),
+        if (document.isPages && count > 1 && index == count - 1)
+          PopupMenuItem(
+            value: "back",
+            child: Text(scene.cover == PageCover.back
+                ? "Not the back cover"
+                : "Make this the back cover"),
+          ),
+        if (!document.isPages)
+          PopupMenuItem(
+            value: "holds",
+            child: Text(scene.holds
+                ? "Run on into the next scene"
+                : "Stop at the end of this scene"),
+          ),
         if (count > 1)
           const PopupMenuItem(value: "delete", child: Text("Delete")),
       ],
@@ -436,6 +482,12 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         controller.duplicateScene(index);
       case "holds":
         controller.setSceneHolds(index, !scene.holds);
+      case "front":
+        controller.setSceneCover(index,
+            scene.cover == PageCover.front ? PageCover.none : PageCover.front);
+      case "back":
+        controller.setSceneCover(index,
+            scene.cover == PageCover.back ? PageCover.none : PageCover.back);
       case "delete":
         controller.removeScene(index);
     }
@@ -444,11 +496,12 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   /// _saveAsPreset keeps this scene in the Presets sidebar.
   Future<void> _saveAsPreset(int index, CanvasScene scene) async {
     var snackbar = SnackBarModel.of(context);
-    var name = await askForPresetName(context, "Save this scene as a preset",
-        initial: scene.saysAt(index));
+    var name = await askForPresetName(
+        context, "Save this ${document.kind.one} as a preset",
+        initial: scene.saysAt(index, document.kind));
     if (name == null || name.trim().isEmpty) return;
-    var saved = await SavedPresetStore.scenes.save(name, scene.toJson(),
-        madeOn: document.size.size);
+    var saved = await SavedPresetStore.scenes
+        .save(name, scene.toJson(), madeOn: document.size.size);
     if (saved == null) {
       snackbar.error("Unable to save the preset.");
       return;

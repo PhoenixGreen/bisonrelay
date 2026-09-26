@@ -105,14 +105,23 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           // then what is on it.
           StackPanel(
             id: "scenes",
-            label: "Scenes",
-            icon: Icons.movie_outlined,
+            // Named for what this document's canvases are. The panel, the
+            // list and the buttons all say the same word, which comes from
+            // one place -- see CanvasKind.many.
+            label: controller.document.kind.manyCap,
+            icon: controller.document.isPages
+                ? Icons.menu_book_outlined
+                : Icons.movie_outlined,
             trailing: controller.document.hasScenes
                 ? "${controller.document.at + 1}/"
                     "${controller.document.allScenes.length}"
                 : null,
-            hint: "The canvases this document plays through, in order. Drag "
-                "one up or down to change when it plays.",
+            hint: controller.document.isPages
+                ? "The leaves of this document, in order. Drag one up or "
+                    "down to move it. The first and last can be marked as "
+                    "covers, which takes them out of the numbering."
+                : "The canvases this document plays through, in order. Drag "
+                    "one up or down to change when it plays.",
             // Shut to begin with: most documents are one canvas, and a list
             // with one row in it is a hole in a column that has three other
             // panels wanting the room.

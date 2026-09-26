@@ -455,6 +455,10 @@ class CanvasStageState extends State<CanvasStage> {
     // The overspill has to fit on screen too, so the page gives up the room
     // for it rather than the margin being eaten into.
     if (controller.showOverspill) fit /= 1 + _overspillFraction * 2;
+    // And so does the page beside it. Two leaves across the room one was in,
+    // which is what a spread is and what makes seeing one worth half the
+    // size.
+    if (_facingPage != null) fit /= 2;
     return fit.isFinite && fit > 0 ? fit : 1;
   }
 
@@ -466,6 +470,15 @@ class CanvasStageState extends State<CanvasStage> {
   /// the reader has asked to see out there.
   Rect get _viewRect {
     var page = _pageRect;
+    // The neighbour's half of the spread, added on its own side. The edited
+    // page keeps its frame and its origin, so nothing the pointer does has to
+    // know that there is a second leaf on screen at all.
+    if (_facingPage != null) {
+      page = _facingOnLeft
+          ? Rect.fromLTWH(page.left, page.top, page.width * 2, page.height)
+          : Rect.fromLTWH(
+              page.left - page.width, page.top, page.width * 2, page.height);
+    }
     if (!controller.showOverspill) return page;
     return Rect.fromCenter(
       center: page.center,
@@ -486,6 +499,20 @@ class CanvasStageState extends State<CanvasStage> {
         _stageMargin * 2;
     return Size(visible.width, math.max(visible.height, wanted));
   }
+
+  /// _facingPage is the page drawn beside the one being worked on, or null
+  /// where it stands alone: a set of scenes, facing pages switched off, a
+  /// cover, or the first leaf of the document.
+  ///
+  /// See CanvasDocument.facingAt. The neighbour is drawn and nothing more --
+  /// it cannot be selected, moved or typed into, because it is not the canvas
+  /// being edited. Everything the pointer does goes on going to the page in
+  /// front of you, which is why this changes so little.
+  int? get _facingPage => document.facingAt(document.at);
+
+  /// _facingOnLeft is whether the page being worked on is the left-hand leaf,
+  /// so the neighbour is drawn to its right.
+  bool get _facingOnLeft => document.facingIsLeft(document.at) ?? false;
 
   /// _pageRect is the canvas's frame on screen, and it does not move.
   ///
@@ -2978,6 +3005,8 @@ class CanvasStageState extends State<CanvasStage> {
                         backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,
+                        facing: _facingPage,
+                        facingOnLeft: _facingOnLeft,
                         document: document,
                         frame: controller.frame,
                         previewAt: controller.previewAt,
