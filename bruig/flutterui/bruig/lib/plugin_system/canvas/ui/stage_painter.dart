@@ -324,32 +324,59 @@ class StagePainter extends CustomPainter {
       canvas.restore();
       return;
     }
-    // The leaf beside this one, first, so that anything of the edited page
-    // that reaches over the spine is drawn over it rather than under.
-    if (facing case var beside?) {
+    // The leaf beside this one. Both backdrops go down first and both sets
+    // of contents over the top of them, so that a picture placed on one page
+    // and pulled across the gutter is seen on the other -- drawn a whole page
+    // at a time, the second backdrop covered the first page's overhang and
+    // the spread had a seam through the middle of it.
+    //
+    // The neighbour is a page of the document even while the master canvas is
+    // the thing being edited: goToScene alone would leave onMaster set and
+    // draw the master twice, side by side.
+    var beside = facing;
+    var over = beside == null
+        ? null
+        : document.goToScene(beside).copyWith(onMaster: false);
+    var aside = facingOnLeft ? docSize.width : -docSize.width;
+    if (over != null) {
       canvas.save();
-      canvas.translate(facingOnLeft ? docSize.width : -docSize.width, 0);
+      canvas.translate(aside, 0);
       canvas.clipRect(Offset.zero & docSize);
-      paintCanvasDocument(canvas, document.goToScene(beside),
-          images: images, backgrounds: facingBackgrounds);
-      // Held back a little from the page in front of it. Not dimmed to
-      // uselessness -- the point of a spread is to see the two together --
-      // but enough that it is plain which of the two the editor is on.
-      canvas.drawRect(
-          Offset.zero & docSize, Paint()..color = const Color(0x22000000));
+      paintCanvasDocument(canvas, over,
+          part: CanvasPaintPart.backdrop,
+          images: images,
+          backgrounds: facingBackgrounds);
       canvas.restore();
+    }
+
+    if (over != null) {
+      paintCanvasDocument(canvas, document,
+          part: CanvasPaintPart.backdrop,
+          images: images,
+          backgrounds: backgrounds);
+      canvas.save();
+      canvas.translate(aside, 0);
+      // Not clipped to its own leaf. An element that hangs over the gutter is
+      // the whole of what a spread is for, and clipping it at the page edge
+      // is what made a picture pulled across from the other page vanish the
+      // moment that page stopped being the one open.
+      paintCanvasDocument(canvas, over,
+          part: CanvasPaintPart.contents, images: images);
+      canvas.restore();
+
       // The spine, drawn on the join: two pages meeting edge to edge with
       // nothing between them read as one canvas twice as wide.
-      var at = facingOnLeft ? docSize.width : 0.0;
+      var join = facingOnLeft ? docSize.width : 0.0;
       canvas.drawRect(
-        Rect.fromLTWH(at - docSize.width * 0.004, 0, docSize.width * 0.008,
+        Rect.fromLTWH(join - docSize.width * 0.003, 0, docSize.width * 0.006,
             docSize.height),
-        Paint()..color = const Color(0x33000000),
+        Paint()..color = const Color(0x22000000),
       );
     }
 
     paintCanvasDocument(canvas, document,
         frame: frame,
+        part: over == null ? CanvasPaintPart.all : CanvasPaintPart.contents,
         images: images,
         hoveredButton: hoveredButton,
         // The whole element only while its own paragraph is being typed
@@ -369,6 +396,21 @@ class StagePainter extends CustomPainter {
         // scaffolding, and a published diagram with every run drawn on it is
         // unreadable.
         editing: true);
+
+    // Which of the two leaves is being edited, said with a line round it
+    // rather than by dimming the other one. A tint over half a spread is a
+    // tint over half of any picture laid across the gutter, which is the one
+    // thing the spread view is there to show. Drawn after the contents, or an
+    // element against the page edge hides it.
+    if (over != null) {
+      canvas.drawRect(
+        (Offset.zero & docSize).deflate(docSize.width * 0.002),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = docSize.width * 0.004
+          ..color = const Color(0x773D7EFF),
+      );
+    }
     canvas.restore();
 
     _paintGuides(canvas);

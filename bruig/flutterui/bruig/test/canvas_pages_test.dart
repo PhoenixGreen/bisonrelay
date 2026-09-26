@@ -294,20 +294,67 @@ void main() {
       return data!.getUint8(at) > data.getUint8(at + 2);
     }
 
-    test("hinges on the left, so the far side goes first", () async {
-      // Halfway through, the leaf covers the spine end of the page and the
-      // page arriving is showing at the free end. A wipe would do the
-      // opposite of nothing in particular; a squash would show this too, so
-      // the third case below is the one that tells them apart.
-      var half = await turned(0.5);
-      expect(await redderAt(half, 5), isTrue, reason: "the leaf, by the spine");
-      expect(await redderAt(half, 95), isFalse, reason: "the page beneath");
+    /// redAt reads a pixel anywhere on the page rather than down its middle.
+    Future<bool> redAt(ui.Image image, int x, int y) async {
+      var data = await image.toByteData();
+      var at = (y * 100 + x) * 4;
+      return data!.getUint8(at) > data.getUint8(at + 2);
+    }
+
+    test("peels from the free corner, so that corner goes first", () async {
+      // The corner a hand takes hold of is the bottom of the free edge, away
+      // from the spine. Early in the turn the page underneath is showing
+      // there and nowhere else.
+      var early = await turned(0.2);
+      expect(await redAt(early, 96, 96), isFalse,
+          reason: "the corner has lifted");
+      expect(await redAt(early, 5, 5), isTrue,
+          reason: "and the far corner has not been reached");
+    });
+
+    /// paperPixels counts the pixels that are neither page: light, and with
+    /// its three channels near enough equal to be grey. The two pages in
+    /// these tests are pure red and pure blue, so anything grey is the back
+    /// of the folded sheet and nothing else.
+    Future<int> paperPixels(ui.Image image) async {
+      var data = await image.toByteData();
+      var found = 0;
+      for (var i = 0; i < 100 * 100; i++) {
+        var r = data!.getUint8(i * 4),
+            g = data.getUint8(i * 4 + 1),
+            b = data.getUint8(i * 4 + 2);
+        if (r > 150 && (r - g).abs() < 14 && (g - b).abs() < 14) found++;
+      }
+      return found;
+    }
+
+    test("and the flap is paper, not the page mirrored", () async {
+      // The back of a printed sheet is the sheet. Reflecting the design onto
+      // it would be the page's own contents shown mirrored, which no
+      // document does -- and would read as neither side being right.
+      expect(await paperPixels(await turned(0.45)), greaterThan(300),
+          reason: "the folded corner is lying over the page");
+      expect(await paperPixels(await turned(0)), lessThan(40),
+          reason: "and nothing is folded before it starts");
     });
 
     test("and is gone by the end", () async {
       var done = await turned(1);
       expect(await redderAt(done, 5), isFalse);
       expect(await redderAt(done, 95), isFalse);
+    });
+
+    test("with nothing of it left outside the page", () async {
+      // The flap folds back past the far edge and the slide carries the rest
+      // over the near one. On a canvas that is one page both are off the
+      // paper, and the editor and the export have to agree about that.
+      var half = await turned(0.5);
+      var data = await half.toByteData();
+      for (var y = 0; y < 100; y += 9) {
+        var at = (y * 100 + 99) * 4;
+        expect(data!.getUint8(at + 3), greaterThan(0),
+            reason: "no hole punched in the page at row $y");
+      }
     });
 
     test("with the whole leaf still there at the start", () async {
@@ -481,6 +528,33 @@ void main() {
       expect(right.spreadRect.center.dx, closeTo(middleOfLeft, 1),
           reason: "and it does not move when the other leaf is opened");
       expect(right.pageRect.left, closeTo(middleOfLeft, 1));
+    });
+
+    // Fitting to the width exists to fill the window with the page being
+    // worked on -- it ignores the height entirely for that reason -- and a
+    // spread in it is that page at half the width.
+    testWidgets("is not shown at all when the canvas is fitted to the width",
+        (tester) async {
+      var controller = facing(1);
+      controller.fit = CanvasFit.width;
+      var view = await stage(tester, controller);
+      expect(view.spreadRect.width, closeTo(view.pageRect.width, 0.5));
+      expect(view.pageRect.center.dx, closeTo(viewport.width / 2, 1));
+    });
+
+    // The master is designed against the page it will appear on, so opening
+    // it keeps the spread of the page that was left -- which is also what
+    // says whether a mirrored page number is on a left-hand leaf.
+    testWidgets("survives opening the master canvas", (tester) async {
+      var controller = facing(1);
+      controller.showMaster();
+      var view = await stage(tester, controller);
+
+      expect(controller.onMaster, isTrue);
+      expect(view.spreadRect.width, closeTo(view.pageRect.width * 2, 0.5),
+          reason: "the master is a page of the document, not a page alone");
+      expect(controller.document.pageIsLeftHand, isTrue,
+          reason: "it is being drawn where page two was");
     });
 
     testWidgets("and pressing the other leaf opens it", (tester) async {

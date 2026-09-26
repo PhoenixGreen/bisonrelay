@@ -100,10 +100,31 @@ abstract class CanvasImageSource {
 /// the one piece of interaction state the renderer takes, because a button's
 /// hover colours are part of its design and have to be visible while they are
 /// being chosen.
+/// CanvasPaintPart is how much of a canvas one call draws.
+///
+/// For the editor's facing pages, and nothing else. Two leaves shown side by
+/// side want their backdrops laid down first and their contents over the top
+/// of both, so that a picture placed on one page and pulled across the gutter
+/// is seen on the other -- drawn a whole page at a time, the second page's
+/// backdrop covered the first page's overhang and the spread had a seam
+/// through the middle of it.
+enum CanvasPaintPart {
+  /// all is a whole canvas, which is what every other caller wants.
+  all,
+
+  /// backdrop is the document's background and nothing on it.
+  backdrop,
+
+  /// contents is the master canvas and the elements, with no backdrop under
+  /// them.
+  contents,
+}
+
 void paintCanvasDocument(
   ui.Canvas canvas,
   CanvasDocument doc, {
   int frame = 0,
+  CanvasPaintPart part = CanvasPaintPart.all,
   CanvasImageSource? images,
   String? hoveredButton,
   bool editing = false,
@@ -138,8 +159,11 @@ void paintCanvasDocument(
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
 
-  _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds,
-      doc.frameRate.toDouble(), backdrop);
+  if (part != CanvasPaintPart.contents) {
+    _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds,
+        doc.frameRate.toDouble(), backdrop);
+  }
+  if (part == CanvasPaintPart.backdrop) return;
 
   // The shared canvas, under every scene. Under rather than over: what goes
   // on a master is a backdrop, a frame, a watermark -- the things a scene is

@@ -512,7 +512,14 @@ class CanvasStageState extends State<CanvasStage> {
   /// it cannot be selected, moved or typed into, because it is not the canvas
   /// being edited. Everything the pointer does goes on going to the page in
   /// front of you, which is why this changes so little.
-  int? get _facingPage => document.facingAt(document.at);
+  int? get _facingPage {
+    // Not while the canvas is fitted to the width. That mode exists to fill
+    // the window with the page being worked on -- it ignores the height
+    // entirely for exactly that reason -- and a spread in it is the working
+    // page at half the width, which is the opposite of what was asked for.
+    if (controller.fit == CanvasFit.width) return null;
+    return document.facingAt(document.at);
+  }
 
   /// _facingOnLeft is whether the page being worked on is the left-hand leaf,
   /// so the neighbour is drawn to its right.
