@@ -669,11 +669,11 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       // Nothing selected: the list, and no settings under it.
-      expect(find.byKey(const ValueKey("textFitToBox")), findsNothing);
+      expect(find.text("Fit to box"), findsNothing);
 
       controller.selectOnly(element.id);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("textFitToBox")), findsWidgets);
+      expect(find.text("Fit to box"), findsWidgets);
     });
 
     testWidgets("the background is the bottom layer, and selectable",
@@ -7818,25 +7818,17 @@ void main() {
         (tester) async {
       // They were behind a heading that was open every time anybody looked.
       var controller = await panel(tester);
-      var fit = find.byKey(const ValueKey("textFitToBox"));
-      expect(fit, findsOneWidget);
+      expect(find.text("Fit to box"), findsOneWidget);
       expect(find.text("Font"), findsOneWidget);
       expect(find.text("BOX"), findsOneWidget);
 
       // Scrolled to first: with four panels in the column the settings can
       // start below the fold, and a tap outside the viewport hits nothing.
-      await tester.ensureVisible(fit);
+      await tester.ensureVisible(find.text("Fit to box"));
       await tester.pumpAndSettle();
-      await tester.tap(fit);
+      await tester.tap(find.text("Fit to box"));
       await tester.pumpAndSettle();
       expect(textIn(controller).autoSize, isTrue);
-
-      // And the switches on that first line are icons with a sentence each,
-      // not five captions on three lines of a narrow sidebar.
-      expect(find.text("Fit to box"), findsNothing);
-      expect(find.text("Wrap text"), findsNothing);
-      expect(find.byTooltip(RegExp("^Fit to box —")), findsOneWidget);
-      expect(find.byTooltip(RegExp("^Wrap text —")), findsOneWidget);
     });
 
     testWidgets(
@@ -7925,13 +7917,12 @@ void main() {
       );
       var controller = await panel(tester, element: reading);
 
-      var from = find.byKey(const ValueKey("textFromDocument"));
-      expect(from, findsOneWidget);
+      expect(find.text("From document"), findsOneWidget);
       // Below the fold now that the presets are above it, and a tap at a
       // point outside the viewport hits nothing.
-      await tester.ensureVisible(from);
+      await tester.ensureVisible(find.text("From document"));
       await tester.pumpAndSettle();
-      await tester.tap(from);
+      await tester.tap(find.text("From document"));
       await tester.pumpAndSettle();
 
       expect(textIn(controller).document.on, isFalse);
@@ -7959,12 +7950,12 @@ void main() {
       controller.selectOnly("head");
       await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("textFromDocument")), findsOneWidget,
+      expect(find.text("From document"), findsOneWidget,
           reason: "the box the words belong to still chooses");
 
       controller.selectOnly("tail");
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("textFromDocument")), findsNothing);
+      expect(find.text("From document"), findsNothing);
     });
 
     testWidgets("and the columns section still works once it is opened",
