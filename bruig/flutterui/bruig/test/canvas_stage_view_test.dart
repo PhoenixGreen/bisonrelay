@@ -2872,15 +2872,23 @@ void main() {
       }
     });
 
-    test("the crop is what framing chooses from", () {
-      // Crop first, then fit, then framing -- so framing spends the slack in
-      // the part of the picture the reader kept, not in the whole file.
+    test("and the crop takes its share of what framing chose", () {
+      // Fit, then framing, then the crop -- the other way round from how it
+      // used to be. Cropping before the fit meant covering re-filled the
+      // frame with whatever was left, so a crop moved the picture and took
+      // nothing away: a zoom rather than a crop. See
+      // canvas_image_crop_test.dart, which is the whole of that rule.
       var placement = placeImage(picture, tall, ImageFit.cover,
-          crop: const ImageCrop(left: 0.5, top: 0, right: 1, bottom: 1),
-          framing: const ImageFraming(x: 0));
-      expect(placement.whole.left, 100);
-      expect(placement.src.left, 100,
-          reason: "the left edge of the crop, not of the picture");
+          crop: const ImageCrop(left: 0.5), framing: const ImageFraming(x: 0));
+
+      // Framing still chose the left of the picture: what it can choose from
+      // is the picture, and the crop is a part of the frame the reader has
+      // taken off rather than part of that choice.
+      expect(placement.window.left, 0);
+      expect(placement.src.left, closeTo(placement.window.width * 0.5, 0.5),
+          reason: "the crop takes half of what the frame was showing");
+      expect(placement.slack.dx, placement.whole.width - placement.window.width,
+          reason: "and the crop is not slack to be dragged back");
     });
 
     testWidgets("a second click reframes rather than moves", (tester) async {

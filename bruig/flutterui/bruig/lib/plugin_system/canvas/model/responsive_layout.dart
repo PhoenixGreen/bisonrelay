@@ -112,10 +112,15 @@ bool coversPage(CanvasElement element, CanvasSize page) {
 /// score bug that filled the card left as postage stamps in a corner of the
 /// new one, which is what was reported.
 ///
-/// What it does instead: the design keeps its size, and is only made smaller
-/// where the new page cannot hold it. Never larger -- type grown to fill a
-/// bigger page is type nobody chose -- and it lands where it sat before, as a
-/// fraction of the page, so a block at the bottom stays at the bottom.
+/// What it does instead: what covers the page goes on covering it, and the
+/// rest is one block, scaled by how much the page changed and placed where it
+/// sat as a fraction of the page -- so a block across the bottom of a feed
+/// card is across the bottom of the screen, at the same share of it.
+///
+/// Never made larger: type grown to fill a bigger page is type nobody chose.
+/// Made smaller than the page asked for where even that does not fit, because
+/// a block hanging off two edges is worse than a small one. And nudged back
+/// on where it would hang off one.
 ShapeSeed seedFor(
     List<CanvasElement> elements, CanvasSize from, CanvasSize to) {
   var page = Size(to.width.toDouble(), to.height.toDouble());
@@ -131,8 +136,14 @@ ShapeSeed seedFor(
         by: 1, block: Rect.zero, at: Offset.zero, page: page);
   }
 
+  // How much the page itself changed, which is what keeps a design looking
+  // like itself: a page that lost half its height carries a design at half
+  // the size. Never larger -- type grown to fill a bigger page is type
+  // nobody chose -- and smaller still where even that does not fit.
   var by = math.min(
-      1.0, math.min(page.width / block.width, page.height / block.height));
+    math.min(1.0, math.min(page.width / from.width, page.height / from.height)),
+    math.min(page.width / block.width, page.height / block.height),
+  );
   var sized = Size(block.width * by, block.height * by);
 
   // Where it sat, as a fraction of the page it sat on: a block across the

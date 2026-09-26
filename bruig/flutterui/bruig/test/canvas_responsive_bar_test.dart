@@ -70,7 +70,7 @@ void main() {
     expect(controller.document.targets, ["feedAd", "wide"]);
   });
 
-  testWidgets("and the list marks the shapes with a layout waiting",
+  testWidgets("the shapes in play are marked in the list they come from",
       (tester) async {
     var controller = await bar(tester);
     controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
@@ -78,50 +78,52 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey("canvasRatio")));
     await tester.pumpAndSettle();
-    expect(find.text("• 4:5 · Feed ad"), findsWidgets,
-        reason: "designed at, so marked");
-    expect(find.text("1:1"), findsWidgets, reason: "and this one is not");
+
+    // Each marked shape carries a cross: one list, which is both the choice
+    // and the set of layouts.
+    expect(find.byTooltip("Stop laying out for 4:5 · Feed ad"), findsOneWidget);
+    expect(find.byTooltip("Stop laying out for 1:1"), findsNothing,
+        reason: "nothing is being laid out for that one");
+    // The shape being looked at cannot be dropped; its cross starts it again.
+    expect(find.byTooltip("Lay 16:9 out again from another shape"),
+        findsOneWidget);
   });
 
-  testWidgets("a shape can take another's layout, by scale", (tester) async {
+  testWidgets("and giving one up takes its layouts with it", (tester) async {
     var controller = await bar(tester);
     controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
     await tester.pumpAndSettle();
+    expect(controller.document.elements.single.base.layouts.keys,
+        contains("feedAd"));
 
+    await tester.tap(find.byKey(const ValueKey("canvasRatio")));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip("Stop laying out for 4:5 · Feed ad"));
+    await tester.pumpAndSettle();
+
+    expect(controller.document.targets, isEmpty,
+        reason: "one shape left is not a responsive document");
+    expect(controller.document.elements.single.base.layouts, isEmpty);
+  });
+
+  testWidgets("the shape being looked at is laid out again from another",
+      (tester) async {
+    var controller = await bar(tester);
+    controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+    await tester.pumpAndSettle();
     // Dragged into a mess on the 16:9.
     controller.replaceElement(controller.document.elements.single
         .withBase(x: 900, y: 900, width: 20, height: 20));
     await tester.pumpAndSettle();
 
-    var field = find.byKey(const ValueKey("layoutResetFrom"));
-    await tester.ensureVisible(field);
+    await tester.tap(find.byKey(const ValueKey("canvasRatio")));
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Choose a shape"));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text("4:5 · Feed ad").last);
+    await tester.tap(find.byTooltip("Lay 16:9 out again from another shape"));
     await tester.pumpAndSettle();
 
-    expect(controller.document.elements.single.x, isNot(900),
-        reason: "laid out again from the 4:5");
-  });
-
-  testWidgets("the Layouts group lists them and can give one up",
-      (tester) async {
-    var controller = await bar(tester);
-    controller.setShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
-    await tester.pumpAndSettle();
-
-    expect(find.text("LAYOUTS"), findsOneWidget);
-    var chip = find.byKey(const ValueKey("layoutTarget:feedAd"));
-    expect(chip, findsOneWidget);
-    await tester.ensureVisible(chip);
-    await tester.pumpAndSettle();
-
-    await tester
-        .tap(find.descendant(of: chip, matching: find.byIcon(Icons.close)));
-    await tester.pumpAndSettle();
-    expect(controller.document.targets, isEmpty,
-        reason: "one shape left is not a responsive document");
+    expect(controller.document.elements.single.x, isNot(900));
+    expect(controller.document.targets, ["feedAd", "wide"],
+        reason: "it is still a shape being designed for");
   });
 
   testWidgets("the element settings offer type and words per shape",

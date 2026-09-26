@@ -474,6 +474,16 @@ List<Widget> imageSettings(
     // is the only way to put two pictures in exactly the same place as each
     // other, and because a control that exists is how anybody finds out the
     // gesture is there at all.
+    // Said rather than silently missing: the three numbers are only
+    // offered for a picture that fills its frame, and a reader who set them
+    // once and cannot find them again is looking for controls that would do
+    // nothing where they are.
+    if (e.hasImage && e.fit != ImageFit.cover)
+      const CanvasHint(
+          "Framing — moving the picture about inside its box and zooming it "
+          "— is for a picture that fills its frame. Set Fit to Cover to "
+          "reach it: contained shows the whole picture and stretched pulls "
+          "it to the box, and neither leaves anything to move."),
     if (e.hasImage && e.fit == ImageFit.cover)
       CanvasControlGroup(label: "Framing", rule: false, children: [
         CanvasHint("Double-click the picture to drag it about inside its box, "

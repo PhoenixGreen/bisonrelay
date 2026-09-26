@@ -2811,6 +2811,38 @@ void main() {
           isFalse);
     });
 
+    testWidgets("the zoom field reaches the picture", (tester) async {
+      // Reported as the numbers moving while the picture did not. The field
+      // writes the element, and the element is what the painter places --
+      // see placeImage, which is tested against the pixels next door.
+      var controller = await panel(tester, filled());
+      var zoom = find.ancestor(
+          of: find.text("Zoom"), matching: find.byType(CanvasNumberField));
+      expect(zoom, findsOneWidget, reason: "offered for a picture that fills");
+      await tester.ensureVisible(zoom);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(zoom, "2");
+      await tester.pump();
+      expect((controller.document.elements.single as ImageElement).framing.zoom,
+          2);
+    });
+
+    testWidgets("and framing is not offered where it can do nothing",
+        (tester) async {
+      // Contained or stretched there is no slack to spend and no window to
+      // shrink, so the three numbers would be three dead controls.
+      await panel(tester, filled().copyWith(fit: ImageFit.contain));
+      expect(find.text("FRAMING"), findsNothing);
+      // A hint is a question mark with a tooltip, so it is found by what it
+      // has to say.
+      expect(
+          find.byWidgetPredicate((w) =>
+              w is CanvasHint && w.message.contains("fills its frame")),
+          findsOneWidget,
+          reason: "and it says where they went");
+    });
+
     testWidgets("frame, crop and look appear only once there is a picture",
         (tester) async {
       await panel(tester, empty());

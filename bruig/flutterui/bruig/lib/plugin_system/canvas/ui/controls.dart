@@ -1471,6 +1471,22 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   /// caption deciding the width means narrowing the box achieves nothing.
   final bool tight;
 
+  /// marked are the options drawn as already in use, with a background
+  /// behind them.
+  ///
+  /// For a list that is both a choice and a set: the canvas shapes a document
+  /// is being laid out for are chosen from the same list as the shape being
+  /// looked at, and a second control listing them again is the same set in
+  /// two places.
+  final Set<T> marked;
+
+  /// onRemove puts a cross on each marked option. Null leaves the marks as
+  /// marks.
+  final void Function(T)? onRemove;
+
+  /// removeTip is what that cross says it will do.
+  final String Function(T)? removeTip;
+
   /// grow lets this take some of the room left over on its line.
   ///
   /// [width] is then the least it will be rather than the whole of it. See
@@ -1489,6 +1505,9 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     this.tight = false,
     this.enabled = true,
     this.grow = true,
+    this.marked = const {},
+    this.onRemove,
+    this.removeTip,
     super.key,
   });
 
@@ -1538,11 +1557,27 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
               underline: const SizedBox.shrink(),
               style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
               iconSize: 16,
+              // The closed button shows the name and nothing else. Without
+              // this it draws the chosen item's own widget, which for a
+              // marked option is the background and the cross as well --
+              // a row of controls inside a box an inch wide.
+              selectedItemBuilder: marked.isEmpty
+                  ? null
+                  : (context) => [
+                        for (var (_, text) in options)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child:
+                                Text(text, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
               items: [
                 for (var (v, text) in options)
                   DropdownMenuItem(
                     value: v,
-                    child: Text(text, overflow: TextOverflow.ellipsis),
+                    child: marked.contains(v)
+                        ? _markedOption(theme, v, text)
+                        : Text(text, overflow: TextOverflow.ellipsis),
                   ),
               ],
               onChanged: enabled
@@ -1796,6 +1831,41 @@ class _SwatchPainter extends CustomPainter {
 /// For the shapes a document is being laid out for: a row of short names is
 /// how a set is read at a glance, and a dropdown would hide the very thing
 /// the row is there to say.
+extension _MarkedOptions<T> on CanvasDropdown<T> {
+  /// _markedOption is an option that is already in use: a background behind
+  /// it, and a cross where it can be given up.
+  Widget _markedOption(ThemeNotifier theme, T value, String text) => Builder(
+        builder: (context) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            color: theme.colors.secondaryContainer,
+          ),
+          child: Row(children: [
+            Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
+            if (onRemove case var remove?) ...[
+              const SizedBox(width: 4),
+              Tooltip(
+                message: removeTip?.call(value) ?? "Remove",
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  // The menu is closed by hand: the cross is inside the row,
+                  // so the row's own tap never runs and the menu would be
+                  // left open over a list that has just changed.
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    remove(value);
+                  },
+                  child: Icon(Icons.close,
+                      size: 13, color: theme.colors.onSecondaryContainer),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      );
+}
+
 class CanvasChip extends StatelessWidget {
   final String label;
 

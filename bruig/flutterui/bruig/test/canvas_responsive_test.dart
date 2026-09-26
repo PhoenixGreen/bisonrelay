@@ -41,39 +41,54 @@ void main() {
 
   group("switching shape", () {
     test("keeps the shape being left, and seeds the one being opened", () {
-      // 1000x1250 (4:5) to 1000x562 (16:9). The design is a 400x200 box,
-      // which the new page holds without shrinking -- so it keeps its size
-      // and lands where it sat, nudged back on where that would hang it off
-      // the top. Measured against the design rather than against the page:
-      // by the page this would have come down to 45%, which is what left a
-      // card as a postage stamp in the corner.
+      // 1000x1250 (4:5) to 1000x562 (16:9). The page kept its width and lost
+      // more than half its height, so the design is carried at that share --
+      // it looks like itself, smaller, rather than filling a page it was not
+      // laid out for.
       var tall = documentAt(CanvasRatio.feedAd);
       var wide = tall.forShape(sizeOf(CanvasRatio.wide));
+      var by = sizeOf(CanvasRatio.wide).height /
+          sizeOf(CanvasRatio.feedAd).height;
 
-      expect(shapeIn(wide).width, 400, reason: "it fits, so it is not shrunk");
-      expect(shapeIn(wide).height, 200);
-      expect(shapeIn(wide).x, closeTo(100, 0.5), reason: "where it sat");
-      expect(shapeIn(wide).y, greaterThanOrEqualTo(0),
-          reason: "and on the page");
+      expect(shapeIn(wide).width, closeTo(400 * by, 1));
+      expect(shapeIn(wide).height, closeTo(200 * by, 1));
+      // And where it sat: its middle was a fifth of the way down the tall
+      // page, so it is a fifth of the way down the wide one.
+      var middle = shapeIn(wide).y + shapeIn(wide).height / 2;
+      expect(middle / sizeOf(CanvasRatio.wide).height,
+          closeTo(150 / 1250, 0.02));
       expect(shapeIn(wide).base.layouts.keys, contains("feedAd"),
           reason: "and the 4:5 is put away, not thrown away");
     });
 
-    test("and is made smaller only where the new page cannot hold it", () {
-      // A design wider than the page it is being taken to comes down until
-      // it fits, and no further.
+    test("and smaller still where even that does not fit", () {
+      // A block hanging off two edges is worse than a small one.
       var doc = CanvasDocument(
-        size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000),
+        size: const CanvasSize(ratio: CanvasRatio.wide, width: 2000),
         elements: [
           ShapeElement(const ElementBase(
-              id: "s", x: 100, y: 100, width: 1600, height: 400)),
+              id: "s", x: 0, y: 0, width: 1900, height: 1000)),
         ],
       );
-      var wide = doc.forShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
+      var tall = doc.forShape(
+          const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000));
 
-      expect(shapeIn(wide).width, closeTo(1000, 1),
-          reason: "as wide as the page and no wider");
-      expect(shapeIn(wide).height, closeTo(250, 1), reason: "in proportion");
+      expect(shapeIn(tall).width, lessThanOrEqualTo(1000));
+      expect(shapeIn(tall).height, lessThanOrEqualTo(1250));
+    });
+
+    test("and never larger, however much room the new page has", () {
+      var doc = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.wide, width: 500),
+        elements: [
+          ShapeElement(const ElementBase(
+              id: "s", x: 10, y: 10, width: 100, height: 50)),
+        ],
+      );
+      var big = doc
+          .forShape(const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000));
+      expect(shapeIn(big).width, 100, reason: "type nobody chose is not type");
+      expect(shapeIn(big).height, 50);
     });
 
     test("what covers the page goes on covering it", () {
@@ -102,12 +117,14 @@ void main() {
       // And the card is not shrunk to the page's ratio because the backdrop
       // is large: the backdrop is left out of the design's own block.
       var card = wide.elementById("card")!;
-      expect(card.width, 800, reason: "not shrunk to the page's own ratio");
-      // It sat against the bottom of the tall page and sits against the
-      // bottom of the wide one: a block that would hang off an edge is
-      // nudged back on.
-      expect(card.y + card.height,
-          closeTo(sizeOf(CanvasRatio.wide).height.toDouble(), 1));
+      var by = sizeOf(CanvasRatio.wide).height /
+          sizeOf(CanvasRatio.feedAd).height;
+      expect(card.width, closeTo(800 * by, 1),
+          reason: "carried at the share the page changed by");
+      // It sat near the bottom of the tall page and sits near the bottom of
+      // the wide one.
+      expect((card.y + card.height / 2) / sizeOf(CanvasRatio.wide).height,
+          closeTo(1050 / 1250, 0.02));
     });
 
     test("and gives it back untouched on the way home", () {
@@ -270,33 +287,24 @@ void main() {
           ],
         );
 
-    test("comes down with the box where the box comes down", () {
-      // A headline too wide for the page it is taken to is made smaller, and
-      // the type with it: scaled without that it keeps the size it had on
-      // the larger page and runs out of the frame.
-      var doc = CanvasDocument(
-        size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000),
-        elements: [
-          TextElement(
-            const ElementBase(id: "t", width: 1600, height: 400),
-            text: "Spend or burn",
-            textSpec: const TextSpec(fontSize: 60),
-          ),
-        ],
-      );
-      var wide =
-          doc.forShape(const CanvasSize(ratio: CanvasRatio.wide, width: 1000));
-
-      expect(wordsIn(wide).width, closeTo(1000, 1));
-      expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * 0.625, 0.5));
-      expect(wordsIn(wide).base.typeScale, closeTo(0.625, 0.01));
-    });
-
-    test("and is left alone where the design fits as it is", () {
+    test("comes down with the box", () {
+      // Scaled without this a headline keeps the size it had on the page
+      // before and runs out of its frame.
       var doc = headline(CanvasRatio.feedAd);
       var wide = doc.forShape(sizeOf(CanvasRatio.wide));
-      expect(wordsIn(wide).textSpec.fontSize, 60);
-      expect(wordsIn(wide).base.typeScale, 1);
+      var by = sizeOf(CanvasRatio.wide).height /
+          sizeOf(CanvasRatio.feedAd).height;
+
+      expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * by, 0.5));
+      expect(wordsIn(wide).base.typeScale, closeTo(by, 0.01));
+    });
+
+    test("and is left alone where the page kept its shape", () {
+      var doc = headline(CanvasRatio.feedAd);
+      var same = doc.forShape(
+          const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000));
+      expect(wordsIn(same).textSpec.fontSize, 60,
+          reason: "a width is a resolution, not a shape");
     });
 
     test("and each shape keeps its own", () {

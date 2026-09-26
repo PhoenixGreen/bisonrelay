@@ -1798,11 +1798,15 @@ class CanvasStageState extends State<CanvasStage> {
 
       // Doc units per picture pixel, which is the same in both directions --
       // a cover never distorts -- so one number scales the whole ghost.
-      var perPixel = placement.dst.width / placement.src.width;
+      // Against the window rather than against what is drawn: the ghost
+      // shows where the frame sits in the picture, and the crop is not part
+      // of that question. See ImagePlacement.window.
+      var window = placement.window;
+      var perPixel = placement.dst.width / window.width;
       var whole = placement.whole;
       var dst = Rect.fromLTWH(
-        placement.dst.left - (placement.src.left - whole.left) * perPixel,
-        placement.dst.top - (placement.src.top - whole.top) * perPixel,
+        placement.dst.left - (window.left - whole.left) * perPixel,
+        placement.dst.top - (window.top - whole.top) * perPixel,
         whole.width * perPixel,
         whole.height * perPixel,
       );
@@ -1940,7 +1944,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (_framedPicture() case (var e, var image)) {
       var placement = _framingPlacement(e, image);
       if (placement == null) return;
-      var perPixel = placement.dst.width / placement.src.width;
+      var perPixel = placement.dst.width / placement.window.width;
       if (perPixel <= 0) return;
       var slack = placement.slack;
 

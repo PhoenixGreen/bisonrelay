@@ -676,16 +676,33 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
           label: "Ratio",
           value: document.size.ratio,
           width: 116,
-          // A dot against the shapes this document is being designed for, so
-          // the list says which of them have a layout waiting behind it. See
-          // CanvasDocument.targets.
-          options: [
+          options: [for (var r in CanvasRatio.values) (r, r.label)],
+          // The shapes this document is being laid out for are marked in the
+          // list they are chosen from, each with a cross to give it up. One
+          // list rather than a choice here and a set of the same names in a
+          // group somewhere else: clicking a shape starts a layout for it,
+          // and the cross is how it is ended. See CanvasDocument.targets.
+          marked: {
             for (var r in CanvasRatio.values)
-              (
-                r,
-                document.targets.contains(r.name) ? "• ${r.label}" : r.label
-              ),
-          ],
+              if (document.targets.contains(r.name)) r,
+          },
+          removeTip: (r) => r.name == shapeKey(document.size)
+              ? "Lay ${r.label} out again from another shape"
+              : "Stop laying out for ${r.label}",
+          onRemove: (r) {
+            // The shape being looked at cannot simply be dropped -- it is
+            // the one on screen -- so its cross lays it out again from
+            // another, which is the same "start this one over" the others
+            // get by being removed and chosen again.
+            if (r.name != shapeKey(document.size)) {
+              controller.forgetShape(r.name);
+              return;
+            }
+            var other = document.targets
+                .where((t) => t != shapeKey(document.size))
+                .firstOrNull;
+            if (other != null) controller.resetShape(other);
+          },
           onChanged: (v) {
             // A shape change carries its own frame rate with it, but only
             // where nobody has chosen one: going from a screen to a page
@@ -825,49 +842,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       // and scaled on the way out, so publishing at 4K gives the same picture
       // with four times the pixels. Off, it is a page: the design keeps its
       // scale and there is more room around it.
-      // The shapes this one design is being laid out for, and the way back
-      // out of one. Only once there are two: a document made for a single
-      // shape has no layouts to keep, and a group saying so would be a line
-      // about a thing that is not happening.
-      if (document.targets.length > 1)
-        CanvasControlGroup(label: "Layouts", children: [
-          for (var key in document.targets)
-            CanvasChip(
-              key: ValueKey("layoutTarget:$key"),
-              label: shapeLabel(key),
-              here: key == shapeKey(document.size),
-              // The shape being looked at cannot be dropped -- it is the one
-              // on screen -- and it is the one that offers to be laid out
-              // again from another.
-              onRemove: key == shapeKey(document.size)
-                  ? null
-                  : () => controller.forgetShape(key),
-            ),
-          CanvasDropdown<String>(
-            key: const ValueKey("layoutResetFrom"),
-            label: "Copy layout from",
-            value: "",
-            width: 150,
-            options: [
-              ("", "Choose a shape"),
-              for (var key in document.targets)
-                if (key != shapeKey(document.size)) (key, shapeLabel(key)),
-            ],
-            onChanged: (v) {
-              if (v.isNotEmpty) controller.resetShape(v);
-            },
-          ),
-          const CanvasHint(
-              "One design, laid out for each of these shapes. What an element "
-              "is — its words, its colours, how it arrives — is the same on "
-              "all of them; where it sits, how big it is and how big its own "
-              "type is belong to the shape you set them on. A shape you have "
-              "not opened yet is laid out by scaling the one you are on, so "
-              "it starts looking like the design rather than like a heap in "
-              "the corner — and copying another shape's layout here does the "
-              "same thing again, for when this one has been dragged into a "
-              "mess."),
-        ]),
       CanvasControlGroup(label: "Scaling", children: [
         CanvasToggle(
           key: const ValueKey("canvasScalesDesign"),
