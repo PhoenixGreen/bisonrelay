@@ -190,6 +190,24 @@ class CanvasStageState extends State<CanvasStage> {
   /// click rather than a drag. Most trackpad clicks move a pixel or two.
   static const double _buttonClickSlop = 4;
 
+  /// _dragThreshold is how far a press has to travel before it is a drag, in
+  /// screen pixels.
+  ///
+  /// A mouse is not held still while it is clicked, and a trackpad is worse:
+  /// a press meant to choose an element arrived with two or three pixels of
+  /// travel on it and the element went with the pointer -- the reported
+  /// "sometimes when I click to select an element the element moves with the
+  /// selection", which is hard to reproduce because it depends on the hand.
+  ///
+  /// Everything that moves something waits for this, and then measures from
+  /// the press itself -- so what is being dragged sits under the pointer
+  /// where it was picked up rather than four pixels behind it for the rest of
+  /// the drag.
+  static const double _dragThreshold = 4;
+
+  /// _travelled is whether the press in hand has passed that threshold.
+  bool _travelled = false;
+
   /// _lastClickAt and _doubleClickWindow spot the second click of a pair.
   ///
   /// Timed by hand rather than through a GestureDetector's onDoubleTap,
@@ -981,6 +999,21 @@ class CanvasStageState extends State<CanvasStage> {
     return null;
   }
 
+  /// _topmostOf is whichever of the two is drawn in front.
+  ///
+  /// Null for both null, and either one where the other is. Paint order is
+  /// the document's own order, so the one further along the list is the one
+  /// on top.
+  CanvasElement? _topmostOf(CanvasElement? box, CanvasElement? piece) {
+    if (box == null || piece == null) return box ?? piece;
+    if (box.id == piece.id) return box;
+    var elements = document.elements;
+    return elements.indexWhere((e) => e.id == piece.id) >
+            elements.indexWhere((e) => e.id == box.id)
+        ? piece
+        : box;
+  }
+
   /// _hitFlowGrip is which flow grip is under the pointer, if either.
   ///
   /// Both of them, because a link has two ends and either is a way to take
@@ -1283,6 +1316,7 @@ class CanvasStageState extends State<CanvasStage> {
     _focus.requestFocus();
     var stage = event.localPosition;
     _pressedAt = stage;
+    _travelled = false;
     var doc = _toDocument(stage);
     _dragStart = doc;
 
@@ -1490,12 +1524,18 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
 
-    // A piece of the selected text element counts as that element, wherever
-    // it is drawn. A gap or a side can put one outside the box it belongs to
-    // -- nothing clips it, so it is plainly there on the canvas -- and the
+    // A piece of a text element counts as that element, wherever it is
+    // drawn. A gap or a side can put one outside the box it belongs to --
+    // nothing clips it, so it is plainly there on the canvas -- and the
     // ordinary hit test asks the box, so a piece out there could be seen and
     // not touched.
-    var element = _hitElement(doc) ?? _textPieceOwner(doc);
+    //
+    // It wins against anything drawn *under* its element, which is the
+    // difference between this and asking the boxes first: a piece hanging
+    // over a photograph is on top of the photograph, and the press should
+    // land on what is on top. Before this it could only be reached by
+    // locking whatever was behind it.
+    var element = _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
       _mode = _DragMode.marquee;
@@ -2308,6 +2348,21 @@ class CanvasStageState extends State<CanvasStage> {
     if (_mode == _DragMode.flow) {
       setState(() => _flowAt = event.localPosition);
       return;
+    }
+
+    // Nothing moves until the press has travelled far enough to be a drag.
+    // The marquee is the exception: it is drawn from the press itself and
+    // has nothing to lose by starting at nought.
+    if (!_travelled && _mode != _DragMode.marquee) {
+      if ((event.localPosition - _pressedAt).distance <= _dragThreshold) {
+        return;
+      }
+      _travelled = true;
+      // And from here on the drag is measured from the press, not from this
+      // moment: what is being dragged should sit under the pointer where it
+      // was picked up. Four pixels of catching up at the start is nothing
+      // anybody sees; a permanent offset of four pixels between the pointer
+      // and what it is carrying is.
     }
 
     var doc = _toDocument(event.localPosition);

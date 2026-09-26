@@ -4,6 +4,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -600,6 +601,44 @@ void main() {
             reason: "and nothing was resized on the way, at $x");
         controller.dispose();
       }
+    });
+
+    testWidgets("even with something else drawn behind it", (tester) async {
+      // A piece hanging over a photograph is on top of the photograph, so
+      // the press should land on it. Asking the boxes first, it could only
+      // be reached by locking whatever was behind it.
+      var card = _card(items: const [
+        TextItem(
+            id: "p",
+            text: "Dash",
+            slot: TextSlot.middleRight,
+            side: -120,
+            spec: TextSpec(fontSize: 20)),
+      ]);
+      var behind = ShapeElement(
+          const ElementBase(id: "back", x: 0, y: 0, width: 800, height: 400));
+      var controller = CanvasController(CanvasDocument(
+        size: const CanvasSize(width: 800, ratio: CanvasRatio.wide),
+        // The shape first, so the card and its piece are drawn over it.
+      ).addElement(behind).addElement(card));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+
+      var rect = textItemRects(card, card.bounds).single;
+      expect(behind.bounds.contains(rect.center), isTrue,
+          reason: "otherwise this test is not asking anything");
+
+      var at = stage.toStagePoint(rect.center);
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(controller.selection, {"c"},
+          reason: "the piece, not the shape under it");
+
+      await tester.tapAt(at);
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
     });
 
     testWidgets("and a second click anywhere else types into the element",

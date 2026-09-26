@@ -21,13 +21,15 @@ const double handleSize = 9;
 
 /// handleHitSlop grows the target past what is drawn.
 ///
-/// A 9px square is a fifth of a fingertip and a tenth of the distance most
-/// people can hold a mouse still, and the whole target is on the edge of the
-/// selection -- so half of what this buys is outside the element, where there
-/// is nothing else to hit anyway. Undersized, the miss does not do nothing: it
-/// falls through to the element underneath and *moves* it, which is the
-/// reported "more often than not I end up moving the element".
-const double handleHitSlop = 13;
+/// A 9px square is a fifth of a fingertip, so the drawn size alone is not a
+/// target anybody can hit. It used to be thirteen, on the grounds that a miss
+/// fell through to the element underneath and *moved* it -- but a press does
+/// not move anything until it has travelled now (see
+/// CanvasStageState._dragThreshold), so a miss costs a click rather than a
+/// nudge, and the generous version was stealing presses meant for whatever
+/// was sitting a few pixels away: "when I've got elements very close to each
+/// other it's very difficult to select the correct element".
+const double handleHitSlop = 6;
 
 /// strokeHitSlop is the same allowance for a *line*, and is deliberately not
 /// the same number.

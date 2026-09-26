@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
@@ -51,6 +52,21 @@ class StageFraming {
 
 /// StagePainter draws the document, the page edge, the handles and the
 /// marquee.
+/// chosenOutlines is every element that should be outlined on its own.
+///
+/// Each element of a multi-selection, so that three things selected out of
+/// six overlapping ones can be told apart: the box round the lot says what
+/// will be moved and resized, and says nothing about what is in it. Nothing
+/// for a single selection, which has its own box already.
+List<CanvasElement> chosenOutlines(
+    CanvasDocument document, Set<String> selection, int frame) {
+  if (selection.length < 2) return const [];
+  return [
+    for (var element in document.elements)
+      if (selection.contains(element.id) && element.visible) element,
+  ];
+}
+
 class StagePainter extends CustomPainter {
   final CanvasDocument document;
   final int frame;
@@ -494,6 +510,15 @@ class StagePainter extends CustomPainter {
     var bounds = selectionBounds;
     if (bounds == null) return;
 
+    // Every element in a multi-selection outlined on its own, under the box
+    // round the lot.
+    //
+    // The box says what will be moved and resized; it does not say what is
+    // in it, and three elements selected out of six overlapping ones is
+    // exactly when that matters. No handles on these: there is one thing
+    // being resized and it is the group.
+    _paintChosenBoxes(canvas);
+
     var centre = bounds.center * scale + origin;
     var half = Offset(bounds.width, bounds.height) * scale / 2;
 
@@ -544,6 +569,36 @@ class StagePainter extends CustomPainter {
     }
 
     _paintFlowGrips(canvas);
+  }
+
+  /// _paintChosenBoxes outlines each element of a multi-selection.
+  ///
+  /// Brighter than the kept boxes and thinner than the selection's own, which
+  /// is the order they should read in: what is selected, then what each of
+  /// them is, then everything else.
+  void _paintChosenBoxes(Canvas canvas) {
+    var paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x993D7EFF);
+
+    for (var element in chosenOutlines(document, selection, frame)) {
+      var box = element.boundsAt(frame);
+      var at = Rect.fromLTWH(box.left * scale + origin.dx,
+          box.top * scale + origin.dy, box.width * scale, box.height * scale);
+      if (element.rotationRadians == 0) {
+        canvas.drawRect(at, paint);
+        continue;
+      }
+      canvas.save();
+      canvas.translate(at.center.dx, at.center.dy);
+      canvas.rotate(element.rotationRadians);
+      canvas.drawRect(
+          Rect.fromCenter(
+              center: Offset.zero, width: at.width, height: at.height),
+          paint);
+      canvas.restore();
+    }
   }
 
   /// _paintKeptBoxes outlines every element while that is asked for.

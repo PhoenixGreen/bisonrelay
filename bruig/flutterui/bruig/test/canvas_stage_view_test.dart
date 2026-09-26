@@ -2326,12 +2326,47 @@ void main() {
     });
   });
 
+  group("what a selection shows", () {
+    CanvasDocument three() => const CanvasDocument()
+        .addElement(ShapeElement(
+            ElementBase(id: "a", x: 0, y: 0, width: 100, height: 100)))
+        .addElement(ShapeElement(
+            ElementBase(id: "b", x: 200, y: 0, width: 100, height: 100)))
+        .addElement(ShapeElement(
+            ElementBase(id: "c", x: 400, y: 0, width: 100, height: 100)));
+
+    test("each element of a multi-selection is outlined on its own", () {
+      // The box round the lot says what will be moved and resized; it says
+      // nothing about which of six overlapping things are in it.
+      var document = three();
+      expect([
+        for (var e in chosenOutlines(document, {"a", "c"}, 0)) e.id,
+      ], ["a", "c"]);
+    });
+
+    test("and one on its own is not: it has a box already", () {
+      expect(chosenOutlines(three(), {"a"}, 0), isEmpty);
+      expect(chosenOutlines(three(), {}, 0), isEmpty);
+    });
+
+    test("nor is one that is not being drawn", () {
+      var document = three();
+      document = document.withElement(
+          document.elementById("a")!.withBase(visible: false));
+      expect([
+        for (var e in chosenOutlines(document, {"a", "b"}, 0)) e.id,
+      ], ["b"]);
+    });
+  });
+
   group("grabbing a resize handle", () {
     testWidgets("a near miss still takes the handle, not the element",
         (tester) async {
-      // The reported fault: aiming at a handle and landing a few pixels inside
-      // it fell through to the element underneath and *moved* it, which is a
-      // far worse outcome than doing nothing.
+      // A handle is nine pixels drawn and a few more to aim at. It used to be
+      // thirteen more, which stole presses meant for elements sitting close
+      // by -- the target is tighter now, and a miss costs a click rather
+      // than a nudge because a press does not move anything until it has
+      // travelled.
       var document = const CanvasDocument();
       var element = ShapeElement(
         ElementBase(
@@ -2349,17 +2384,81 @@ void main() {
       var stage = await pump(tester, controller);
       var scale = stage.pageRect.width / document.size.width;
 
-      // Ten screen pixels inside the bottom-right corner: a miss, but the kind
-      // anybody makes.
+      // Four screen pixels inside the bottom-right corner: a miss, but the
+      // kind anybody makes.
       var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
       await tester.dragFrom(
-          corner - const Offset(10, 10), const Offset(-40, 0));
+          corner - const Offset(4, 4), const Offset(-40, 0));
       await tester.pumpAndSettle();
 
       var after = controller.document.elementById("s")!;
       expect(after.x, element.x, reason: "it was not dragged about");
       expect(after.width, lessThan(element.width),
           reason: "it was resized, which is what was being aimed at");
+    });
+
+    testWidgets("and a wide miss is a press on the element, not the handle",
+        (tester) async {
+      // The other half of tightening it: fifteen pixels away is not aiming
+      // at the handle, and treating it as one is what made two elements
+      // sitting close together impossible to tell apart.
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: document.size.width / 4,
+          y: document.size.height / 4,
+          width: document.size.width / 2,
+          height: document.size.height / 2,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      controller.selectOnly("s");
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
+      await tester.dragFrom(
+          corner - const Offset(15, 15), const Offset(-40, 0));
+      await tester.pumpAndSettle();
+
+      var after = controller.document.elementById("s")!;
+      expect(after.width, element.width, reason: "not resized");
+      expect(after.x, lessThan(element.x), reason: "moved");
+    });
+
+    testWidgets("a press that does not travel chooses without moving",
+        (tester) async {
+      // Reported as elements moving with the click that selected them: a
+      // mouse is not held still while it is clicked, and a trackpad is
+      // worse. Two pixels is a click.
+      var document = const CanvasDocument();
+      var element = ShapeElement(
+        ElementBase(
+          id: "s",
+          x: 100,
+          y: 100,
+          width: 300,
+          height: 200,
+        ),
+        fill: const Color(0xFFCC2200),
+      );
+      var controller = CanvasController(document.addElement(element));
+      addTearDown(controller.dispose);
+      var stage = await pump(tester, controller);
+      var scale = stage.pageRect.width / document.size.width;
+
+      await tester.dragFrom(
+          stage.pageRect.topLeft + element.center * scale,
+          const Offset(2, 2));
+      await tester.pumpAndSettle();
+
+      expect(controller.selection, {"s"}, reason: "chosen");
+      var after = controller.document.elementById("s")!;
+      expect(after.x, 100, reason: "and not moved by the click");
+      expect(after.y, 100);
     });
 
     testWidgets("but the middle of an element still moves it", (tester) async {
