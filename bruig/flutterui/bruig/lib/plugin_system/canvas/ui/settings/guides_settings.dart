@@ -28,15 +28,53 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
       controller.apply(controller.document.copyWith(guides: next));
 
   return [
+    // Rulers first, because they are the edge of the page: everything else
+    // here is drawn inside the frame they make, and a reader going along the
+    // strip meets them in the order the canvas does.
+    CanvasFoldingGroup(label: "Rulers", remember: "guidesRulers", children: [
+      for (var (label, on, apply)
+          in <(String, bool, CanvasRulers Function(bool))>[
+        ("Top", guides.rulers.top, (v) => guides.rulers.copyWith(top: v)),
+        ("Left", guides.rulers.left, (v) => guides.rulers.copyWith(left: v)),
+        ("Right", guides.rulers.right, (v) => guides.rulers.copyWith(right: v)),
+        (
+          "Bottom",
+          guides.rulers.bottom,
+          (v) => guides.rulers.copyWith(bottom: v)
+        ),
+      ])
+        CanvasToggle(
+          label: label,
+          value: on,
+          onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
+        ),
+      // Shown or hidden without forgetting which edges were asked for, which
+      // is the whole of what this is for. It was in the bar and nowhere else,
+      // so a canvas saved with the rulers hidden had no way back to them once
+      // the bar stopped carrying switches.
+      CanvasToggle(
+        key: const ValueKey("guidesShowRulers"),
+        label: "Show",
+        value: guides.showRulers,
+        onChanged: (v) => set(guides.copyWith(showRulers: v)),
+      ),
+      const CanvasHint(
+          "Rulers sit against the edges of the canvas and are numbered from "
+          "its top-left corner, at the spacing the Grid group sets — every few of "
+          "them "
+          "when the canvas is small on screen. Drag out of one to put a guide "
+          "down."),
+    ]),
     // "Every" sets the spacing for the grid and the ruler together. They are
     // one measurement of the page shown two ways, and when they disagreed --
     // a ruler picking its own round numbers by zoom, a grid on its own
     // spacing -- reading a position off the ruler meant counting squares on
     // the grid to find it.
-    CanvasFoldingGroup(
-        label: "Grid and rulers",
-        remember: "guidesGrid",
-        children: [
+    //
+    // Named for the grid all the same. It was "Grid and rulers", which put
+    // the word Rulers on two captions a group apart and read as though the
+    // ruler edges were in here somewhere.
+    CanvasFoldingGroup(label: "Grid", remember: "guidesGrid", children: [
       CanvasToggle(
         label: "Show a grid",
         value: guides.showGrid,
@@ -110,56 +148,56 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         label: "Snapping",
         remember: "guidesSnapping",
         children: [
-      CanvasToggle(
-        label: "Snap",
-        value: guides.snap,
-        onChanged: (v) => set(guides.copyWith(snap: v)),
-      ),
-      CanvasToggle(
-        label: "Vertices",
-        value: guides.snapTo.vertices,
-        onChanged: (v) =>
-            set(guides.copyWith(snapTo: guides.snapTo.copyWith(vertices: v))),
-      ),
-      CanvasToggle(
-        label: "Edges",
-        value: guides.snapTo.edges,
-        onChanged: (v) =>
-            set(guides.copyWith(snapTo: guides.snapTo.copyWith(edges: v))),
-      ),
-      CanvasToggle(
-        label: "Centres",
-        value: guides.snapTo.centres,
-        onChanged: (v) =>
-            set(guides.copyWith(snapTo: guides.snapTo.copyWith(centres: v))),
-      ),
-      // The lines that matter most of the time, and the ones that were
-      // missing: a grid catches a design at regular intervals, and what
-      // anybody actually wants is this heading over that picture.
-      CanvasToggle(
-        key: const ValueKey("snapToObjects"),
-        label: "Elements",
-        value: guides.snapTo.objects,
-        onChanged: (v) =>
-            set(guides.copyWith(snapTo: guides.snapTo.copyWith(objects: v))),
-      ),
-      CanvasNumberField(
-        label: "Within",
-        value: guides.snapWithin,
-        min: 1,
-        max: 40,
-        decimals: 0,
-        width: 56,
-        suffix: "px",
-        onChanged: (v) => set(guides.copyWith(snapWithin: v)),
-      ),
-      const CanvasHint(
-          "How near, on screen, before it jumps — so it feels the same at "
-          "every zoom. With Elements on, the sides and middles of everything "
-          "else on the canvas are lines too. The canvas's own edges and "
-          "middle are always snapped to. Hold Alt while dragging to put "
-          "something exactly where the grid does not want it."),
-    ]),
+          CanvasToggle(
+            label: "Snap",
+            value: guides.snap,
+            onChanged: (v) => set(guides.copyWith(snap: v)),
+          ),
+          CanvasToggle(
+            label: "Vertices",
+            value: guides.snapTo.vertices,
+            onChanged: (v) => set(
+                guides.copyWith(snapTo: guides.snapTo.copyWith(vertices: v))),
+          ),
+          CanvasToggle(
+            label: "Edges",
+            value: guides.snapTo.edges,
+            onChanged: (v) =>
+                set(guides.copyWith(snapTo: guides.snapTo.copyWith(edges: v))),
+          ),
+          CanvasToggle(
+            label: "Centres",
+            value: guides.snapTo.centres,
+            onChanged: (v) => set(
+                guides.copyWith(snapTo: guides.snapTo.copyWith(centres: v))),
+          ),
+          // The lines that matter most of the time, and the ones that were
+          // missing: a grid catches a design at regular intervals, and what
+          // anybody actually wants is this heading over that picture.
+          CanvasToggle(
+            key: const ValueKey("snapToObjects"),
+            label: "Elements",
+            value: guides.snapTo.objects,
+            onChanged: (v) => set(
+                guides.copyWith(snapTo: guides.snapTo.copyWith(objects: v))),
+          ),
+          CanvasNumberField(
+            label: "Within",
+            value: guides.snapWithin,
+            min: 1,
+            max: 40,
+            decimals: 0,
+            width: 56,
+            suffix: "px",
+            onChanged: (v) => set(guides.copyWith(snapWithin: v)),
+          ),
+          const CanvasHint(
+              "How near, on screen, before it jumps — so it feels the same at "
+              "every zoom. With Elements on, the sides and middles of everything "
+              "else on the canvas are lines too. The canvas's own edges and "
+              "middle are always snapped to. Hold Alt while dragging to put "
+              "something exactly where the grid does not want it."),
+        ]),
     // Lining several things up with each other, which snapping cannot do:
     // snapping catches one thing as it passes another, and these move
     // everything chosen at once and exactly.
@@ -200,39 +238,6 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
               "Three or more to spread them evenly."
           : "Lined up against the box the chosen elements make between them, "
               "so the outermost ones stay where they are."),
-    ]),
-    CanvasFoldingGroup(label: "Rulers", remember: "guidesRulers", children: [
-      for (var (label, on, apply)
-          in <(String, bool, CanvasRulers Function(bool))>[
-        ("Top", guides.rulers.top, (v) => guides.rulers.copyWith(top: v)),
-        ("Left", guides.rulers.left, (v) => guides.rulers.copyWith(left: v)),
-        ("Right", guides.rulers.right, (v) => guides.rulers.copyWith(right: v)),
-        (
-          "Bottom",
-          guides.rulers.bottom,
-          (v) => guides.rulers.copyWith(bottom: v)
-        ),
-      ])
-        CanvasToggle(
-          label: label,
-          value: on,
-          onChanged: (v) => set(guides.copyWith(rulers: apply(v))),
-        ),
-      // Shown or hidden without forgetting which edges were asked for, which
-      // is the whole of what this is for. It was in the bar and nowhere else,
-      // so a canvas saved with the rulers hidden had no way back to them once
-      // the bar stopped carrying switches.
-      CanvasToggle(
-        key: const ValueKey("guidesShowRulers"),
-        label: "Show",
-        value: guides.showRulers,
-        onChanged: (v) => set(guides.copyWith(showRulers: v)),
-      ),
-      const CanvasHint(
-          "Rulers sit against the edges of the canvas and are numbered from "
-          "its top-left corner, at the spacing set above — every few of them "
-          "when the canvas is small on screen. Drag out of one to put a guide "
-          "down."),
     ]),
   ];
 }

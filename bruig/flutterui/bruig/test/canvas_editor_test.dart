@@ -5755,10 +5755,15 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasGuidesPanel(controller: controller));
 
-      for (var group in ["GRID AND RULERS", "GUIDES", "SNAPPING", "RULERS"]) {
+      for (var group in ["RULERS", "GRID", "GUIDES", "SNAPPING", "ALIGN"]) {
         expect(find.text(group), findsOneWidget, reason: group);
       }
       expect(find.text("Show a grid"), findsOneWidget);
+
+      // Rulers first: they are the edge of the page, and everything else here
+      // is drawn inside the frame they make.
+      expect(tester.getRect(find.text("RULERS")).left,
+          lessThan(tester.getRect(find.text("GRID")).left));
     });
 
     testWidgets("switching the grid on writes it to the document",
