@@ -7,6 +7,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
@@ -43,6 +44,10 @@ enum PublishAs {
   image("Image", "A single frame as a PNG, a JPEG or a PDF"),
   animation("Animation", "Every frame as an animated GIF"),
   video("Video", "Every frame as an MP4 or a WebM, at full colour"),
+  // A document rather than a picture of one: every canvas is a page, in
+  // order, in something made for reading rather than for looking at. See
+  // document_export.dart.
+  document("Document", "Every page as a PDF or an EPUB, to read and to print"),
   interactive("Interactive canvas",
       "The canvas itself, with its pictures, to open and edit again");
 
@@ -133,6 +138,10 @@ class _PublishSheet extends StatefulWidget {
 
 class _PublishSheetState extends State<_PublishSheet> {
   PublishAs _as = PublishAs.image;
+
+  /// _documentAs is which sort of document, once Document is what is being
+  /// made. See DocumentAs.
+  DocumentAs _documentAs = DocumentAs.pdf;
   PublishTo _to = PublishTo.file;
 
   // The still settings, then the animation's. Kept side by side rather than
@@ -306,6 +315,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         // label below says so. The pictures are added at their stored size,
         // which is what the bundle will carry: they go in without being
         // deflated again, being compressed already.
+        PublishAs.document => estimateDocumentBytes(_document, scale: _scale),
         PublishAs.interactive => _document.encode().length + _pictureBytes,
       };
 
@@ -384,6 +394,20 @@ class _PublishSheetState extends State<_PublishSheet> {
           onProgress: (done, total) {
             if (mounted) {
               setState(() => _progress = "Rendering frame $done of $total…");
+            }
+          },
+        );
+      case PublishAs.document:
+        return renderDocument(
+          document,
+          as: _documentAs,
+          scale: _scale,
+          images: widget.images,
+          paper: _paper,
+          orientation: _orientation,
+          onProgress: (done, total) {
+            if (mounted) {
+              setState(() => _progress = "Rendering page $done of $total…");
             }
           },
         );
@@ -1033,6 +1057,58 @@ class _PublishSheetState extends State<_PublishSheet> {
               theme,
               "${_runNote()} A video keeps every colour, where a GIF has 256, "
               "and is usually much smaller. ${_videoFormat.note}"),
+        ];
+
+      case PublishAs.document:
+        return [
+          Row(children: [
+            Expanded(
+              child: _dropdown<DocumentAs>(
+                theme,
+                "Format",
+                _documentAs,
+                [for (var d in DocumentAs.values) (d, d.label)],
+                (v) => setState(() => _documentAs = v),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: _documentAs == DocumentAs.pdf
+                  ? _dropdown<PdfPaper>(
+                      theme,
+                      "Page",
+                      _paper,
+                      [for (var p in PdfPaper.values) (p, p.label)],
+                      (v) => setState(() => _paper = v))
+                  // A book's page is the canvas and nothing else: an EPUB is
+                  // laid out at the size the design says and the reader fits
+                  // it to whatever it is being read on. Offering A4 here
+                  // would be offering a sheet of paper to a screen.
+                  : const SizedBox(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: _scaleField(theme)),
+          ]),
+          if (_documentAs == DocumentAs.pdf && _paper.turns) ...[
+            const SizedBox(height: 4),
+            _dropdown<PdfOrientation>(
+                theme,
+                "Orientation",
+                _orientation,
+                [for (var o in PdfOrientation.values) (o, o.label)],
+                (v) => setState(() => _orientation = v)),
+          ],
+          const SizedBox(height: 10),
+          Txt.S("${_documentAs.description}. "
+              "${widget.document.allScenes.length} "
+              "page${widget.document.allScenes.length == 1 ? "" : "s"}, "
+              "each at the size this canvas is."
+              "${_documentAs == DocumentAs.interactiveEpub ? " A button that "
+                  "goes to another page, or opens a link, becomes a link on "
+                  "the page it is drawn on; the ones that move a playhead are "
+                  "left out, because a book has none." : ""}"),
         ];
 
       case PublishAs.interactive:

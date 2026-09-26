@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/models/client.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -53,6 +54,7 @@ String extensionFor(String mime) => switch (mime) {
       "video/mp4" => ".mp4",
       "video/webm" => ".webm",
       "application/pdf" => ".pdf",
+      epubMime => ".epub",
       "application/json" => ".bcanvas",
       bundleMime => ".bcanvas",
       _ => ".bin",

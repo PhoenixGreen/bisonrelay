@@ -264,21 +264,27 @@ void paintTransition(
   }
 }
 
-/// _pageTurn slides the leaf off towards the spine, its free corner turned up.
+/// _pageTurn slides the leaf off towards the spine.
 ///
-/// Three goes at this. A rotation about the spine with perspective on it is
-/// what a page really does and looked wrong at every size -- a whole leaf
-/// standing on its edge over a flat page reads as a glitch rather than as
-/// paper. A corner peeling up the diagonal read better, but carried the
-/// design upwards, which a turning page does not. An upright crease sweeping
-/// across is the same fold done sideways, and its flap grows until it is the
-/// width of the page: blank paper covering everything, which is a white wipe.
+/// Four goes at this, and the plainest won. A rotation about the spine with
+/// perspective on it is what a page really does and looked wrong at every
+/// size -- a whole leaf standing on its edge over a flat page reads as a
+/// glitch rather than as paper. A corner peeling up the diagonal read better
+/// but carried the design upwards, which a turning page does not. An upright
+/// crease swept across is the same fold done sideways, and its flap grows
+/// until it is the width of the page: blank paper over everything, which is a
+/// white wipe. A hand-sized turned corner on a sliding leaf was smaller and
+/// still wrong -- a scrap of grey paper skidding across the design.
 ///
-/// What is left is the simple one. The leaf travels across, the page under it
-/// comes the last of the way to meet it, and the corner it is being carried
-/// by is turned up -- one small fold, the size of a hand, rather than a fold
-/// the size of the page. Two polygons, two gradients and a translate: there
-/// is nothing in here for a slow frame to be spent on.
+/// So: the leaf travels, and that is all. What makes it read as paper is not
+/// a picture of a fold, it is the two things a sheet of it does -- the page
+/// underneath comes the last of the way to meet it, and the leaf throws a
+/// shadow into the gap it opens. Both are one translate and one gradient.
+///
+/// The sliding is deliberately not [SceneTransitionKind.pushLeft]. A push
+/// moves both canvases the same distance in step; this moves them by
+/// different amounts and darkens the join, which is the difference between
+/// two slides and one sheet on top of another.
 void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
     {required void Function() from, required void Function() to}) {
   var ease = t.clamp(0.0, 1.0);
@@ -288,8 +294,8 @@ void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
   var onLeft = over.way != SceneTransitionWay.right;
   var away = onLeft ? -1.0 : 1.0;
 
-  // The page arriving, coming the last of the way. It travels a tenth of what
-  // the leaf over it does, which is what gives the two of them depth.
+  // The page arriving, coming the last tenth of the way. Standing still it is
+  // a page being uncovered; travelling with the leaf it is a push.
   canvas.save();
   canvas.translate(-away * page.width * 0.1 * (1 - ease), 0);
   to();
@@ -300,63 +306,13 @@ void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
   canvas.clipRect(page);
   canvas.translate(away * page.width * ease, 0);
 
-  // The turned corner, at the bottom of the free edge: the corner a hand
-  // actually takes hold of. It opens as the leaf starts to move and closes as
-  // it goes, so the page is whole at both ends of the turn.
-  var open = math.sin(ease * math.pi);
-  var fold = math.min(page.width, page.height) * 0.16 * open;
-  var corner = Offset(onLeft ? page.right : page.left, page.bottom);
-  var sign = onLeft ? -1.0 : 1.0;
-  var creaseTop = Offset(corner.dx, corner.dy - fold);
-  var creaseEnd = Offset(corner.dx + sign * fold, corner.dy);
-
-  var leaf = Path()
-    ..addRect(page)
-    ..addPolygon([creaseTop, creaseEnd, corner], true)
-    ..fillType = PathFillType.evenOdd;
-
-  canvas.save();
-  canvas.clipPath(leaf);
   from();
-  canvas.restore();
 
-  if (fold > 0.5) {
-    // The back of the corner: the cut-out triangle reflected in its crease,
-    // which lands on the page. Paper rather than a picture -- the back of a
-    // printed sheet is the sheet.
-    var flap = Path()
-      ..addPolygon([
-        creaseTop,
-        creaseEnd,
-        Offset(corner.dx + sign * fold, corner.dy - fold),
-      ], true);
-    canvas.drawPath(
-      flap,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          creaseTop,
-          creaseEnd,
-          [const Color(0xFFFAF8F5), const Color(0xFFC6C1B8)],
-        ),
-    );
-    canvas.drawLine(
-      creaseTop,
-      creaseEnd,
-      Paint()
-        ..strokeWidth = math.max(1, page.shortestSide * 0.002)
-        ..color = const Color(0x2E000000),
-    );
-  }
-
-  // The shadow the leaf throws on the page it is uncovering. On the edge it
-  // is travelling *away* from -- the gap opens behind it, so that is the edge
-  // with the new page beside it, and the shadow falls out of the leaf onto
-  // that page.
-  //
-  // A gradient band rather than a blurred path: the same picture, and it
-  // costs a rectangle. A mask filter over a shape this size cost more than
-  // everything else in the frame put together, which is what made the turn
-  // crawl.
+  // The shadow the leaf throws into the gap it has opened, on the edge it is
+  // travelling away from. A gradient band rather than a blurred path: the
+  // same picture, and it costs a rectangle. A mask filter over a shape this
+  // size cost more than everything else in the frame put together, which is
+  // what made the turn crawl.
   var edge = onLeft ? page.right : page.left;
   var out = -away;
   var depth = page.width * 0.05;

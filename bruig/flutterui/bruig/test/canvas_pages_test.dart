@@ -336,36 +336,13 @@ void main() {
           reason: "and the far corner has not been reached");
     });
 
-    /// paperPixels counts the pixels that are neither page: light, and with
-    /// its three channels near enough equal to be grey. The two pages in
-    /// these tests are pure red and pure blue, so anything grey is the back
-    /// of the folded sheet and nothing else.
-    Future<int> paperPixels(ui.Image image) async {
-      var data = await image.toByteData();
-      var found = 0;
-      for (var i = 0; i < 100 * 100; i++) {
-        var r = data!.getUint8(i * 4),
-            g = data.getUint8(i * 4 + 1),
-            b = data.getUint8(i * 4 + 2);
-        if (r > 150 && (r - g).abs() < 14 && (g - b).abs() < 14) found++;
-      }
-      return found;
-    }
-
-    test("and the turned corner is paper, not the page mirrored", () async {
-      // The back of a printed sheet is the sheet. Reflecting the design onto
-      // it would be the page's own contents shown mirrored, which no
-      // document does -- and would read as neither side being right.
-      //
-      // One small fold, the size of a hand, rather than one the size of the
-      // page: a crease swept right across leaves blank paper over everything,
-      // which is a white wipe and not a turn.
-      expect(await paperPixels(await turned(0.45)), greaterThan(60),
-          reason: "the turned corner is lying over the page");
-      expect(await paperPixels(await turned(0.45)), lessThan(600),
-          reason: "a corner, not the whole leaf");
-      expect(await paperPixels(await turned(0)), lessThan(40),
-          reason: "and nothing is folded before it starts");
+    test("the page under it is uncovered rather than pushed", () async {
+      // A push moves both canvases the same distance in step. This moves them
+      // by different amounts, which is the difference between two slides and
+      // one sheet lying on another.
+      var half = await turned(0.5);
+      expect(await redderAt(half, 10), isTrue, reason: "the leaf, travelling");
+      expect(await redderAt(half, 90), isFalse, reason: "the page beneath");
     });
 
     test("and is gone by the end", () async {
