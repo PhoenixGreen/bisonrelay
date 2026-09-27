@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/epub_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
@@ -29,8 +30,10 @@ import 'package:flutter/foundation.dart';
 enum DocumentAs {
   pdf("PDF", "Every page, exactly as designed — for printing and for sending"),
   epub("EPUB", "A book of pages an e-reader turns, laid out as designed"),
-  interactiveEpub("Interactive EPUB",
-      "The same, with buttons that still go where they point");
+  interactiveEpub(
+      "Interactive EPUB",
+      "The same, with its buttons, sounds and videos working — sound and "
+          "video need ffmpeg to be put into the book");
 
   final String label;
   final String description;
@@ -143,6 +146,12 @@ Future<CanvasExport?> renderDocument(
     var pages = <EpubPage>[];
     var sheets = <PdfPicture>[];
 
+    // An interactive book's sound and video: converted once for the book,
+    // placed page by page. See epub_media.dart.
+    var builder = as == DocumentAs.interactiveEpub
+        ? await EpubMediaBuilder.start(scale: scale, images: images)
+        : null;
+
     for (var (i, scene) in scenes.indexed) {
       onProgress?.call(i, scenes.length);
       // Rendered and encoded one at a time, so only one decoded page is alive
@@ -167,6 +176,14 @@ Future<CanvasExport?> renderDocument(
         }
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
+        // Design units to the page picture's pixels. The hotspots were
+        // placed in design units, which is right only where the picture is
+        // exactly the design's size -- on any other they missed what they
+        // were over.
+        var pixels = image.width / document.size.size.width;
+        var extra = builder == null
+            ? const EpubPageMedia()
+            : await builder.page(document, i, pixels);
         pages.add(EpubPage(
           png: png.buffer.asUint8List(),
           width: image.width,
@@ -180,8 +197,12 @@ Future<CanvasExport?> renderDocument(
               ? covers[i] == PageCover.front
               : i == 0 && !covers.any((c) => c == PageCover.front),
           links: as == DocumentAs.interactiveEpub
-              ? _linksOn(document, scene, i)
+              ? [..._linksOn(document, scene, i, pixels), ...extra.links]
               : const [],
+          media: extra.media,
+          actions: extra.actions,
+          files: extra.files,
+          film: extra.film,
         ));
       } finally {
         image?.dispose();
@@ -234,7 +255,8 @@ EpubSide _sideOf(CanvasDocument document, List<PageCover> covers, int index) {
 /// none -- a button that played an animation would be a button that does
 /// nothing, and drawing a hotspot over it makes a page look broken rather
 /// than making it work.
-List<EpubLink> _linksOn(CanvasDocument document, CanvasScene scene, int index) {
+List<EpubLink> _linksOn(
+    CanvasDocument document, CanvasScene scene, int index, double pixels) {
   var links = <EpubLink>[];
   for (var element in scene.elements) {
     if (element is! ButtonElement || !element.visible) continue;
@@ -252,10 +274,10 @@ List<EpubLink> _linksOn(CanvasDocument document, CanvasScene scene, int index) {
     if (href == null) continue;
     var box = element.bounds;
     links.add(EpubLink(
-        x: box.left,
-        y: box.top,
-        width: box.width,
-        height: box.height,
+        x: box.left * pixels,
+        y: box.top * pixels,
+        width: box.width * pixels,
+        height: box.height * pixels,
         href: href));
   }
   return links;
@@ -269,6 +291,10 @@ EpubPage _withCover(EpubPage page) => EpubPage(
       side: page.side,
       cover: true,
       links: page.links,
+      media: page.media,
+      actions: page.actions,
+      files: page.files,
+      film: page.film,
     );
 
 /// estimateDocumentBytes is roughly how large the file will be.

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -17,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -48,8 +50,10 @@ enum PublishAs {
   // order, in something made for reading rather than for looking at. See
   // document_export.dart.
   document("Document", "Every page as a PDF or an EPUB, to read and to print"),
-  interactive("Interactive canvas",
-      "The canvas itself, with its pictures, to open and edit again");
+  interactive(
+      "Interactive canvas",
+      "The canvas itself, with its pictures, sounds and videos, to open, "
+          "play and edit again");
 
   final String label;
   final String description;
@@ -328,6 +332,13 @@ class _PublishSheetState extends State<_PublishSheet> {
     var total = 0;
     for (var id in _document.assetIds) {
       total += (await CanvasAssets.load(id))?.length ?? 0;
+    }
+    // And its sounds and videos, which a bundle carries too -- and which,
+    // for anything with a video in it, are most of what it weighs. Left out,
+    // the estimate promised a small file and a chat was sent a large one.
+    for (var id in _document.mediaIds) {
+      var file = await CanvasMedia.existingPath(CanvasMedia.kindOf(id), id);
+      if (file != null) total += await File(file).length();
     }
     if (mounted) setState(() => _pictureBytes = total);
   }
