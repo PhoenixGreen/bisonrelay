@@ -115,12 +115,15 @@ void main() {
       expect(controller.document.frameRate, 30);
     });
 
-    test("pages turn, scenes cut", () {
+    // Pages had a turn of their own for a while. Four goes at drawing one all
+    // read as something going wrong with the page rather than as paper, and a
+    // join that has to be explained is worse than no join at all.
+    test("both kinds cut, and a saved turn reads back as one", () {
       expect(const CanvasDocument().defaultTransition.kind,
           SceneTransitionKind.cut);
-      expect(pages(2).defaultTransition.kind, SceneTransitionKind.pageTurn);
-      expect(pages(2).defaultTransition.way, SceneTransitionWay.left,
-          reason: "the spine of a document that reads left to right");
+      expect(pages(2).defaultTransition.kind, SceneTransitionKind.cut);
+      expect(SceneTransitionKind.fromName("pageTurn"), SceneTransitionKind.cut,
+          reason: "a document saved with one opens without it");
     });
   });
 
@@ -286,97 +289,6 @@ void main() {
       ]).copyWith(pages: const PagesSpec(facing: true));
       expect(doc.facingAt(1), 2, reason: "the pair before it is untouched");
       expect(doc.facingAt(3), isNull, reason: "the back has nothing beside it");
-    });
-  });
-
-  // The leaf itself. Drawn rather than described: a page turn that is a
-  // horizontal squash reads as a wipe, and the only way to know which one
-  // this is, is to look at where the pixels end up.
-  group("the page turn", () {
-    /// turned is the transition drawn at [t] over a red page giving way to a
-    /// blue one, as pixels.
-    Future<ui.Image> turned(double t) async {
-      var recorder = ui.PictureRecorder();
-      var canvas = ui.Canvas(recorder);
-      var page = const Rect.fromLTWH(0, 0, 100, 100);
-      paintTransition(
-        canvas,
-        page,
-        SceneTransition.bestFor(SceneTransitionKind.pageTurn),
-        t,
-        from: () =>
-            canvas.drawRect(page, Paint()..color = const Color(0xFFFF0000)),
-        to: () =>
-            canvas.drawRect(page, Paint()..color = const Color(0xFF0000FF)),
-      );
-      return recorder.endRecording().toImage(100, 100);
-    }
-
-    Future<bool> redderAt(ui.Image image, int x) async {
-      var data = await image.toByteData();
-      var at = (50 * 100 + x) * 4;
-      return data!.getUint8(at) > data.getUint8(at + 2);
-    }
-
-    /// redAt reads a pixel anywhere on the page rather than down its middle.
-    Future<bool> redAt(ui.Image image, int x, int y) async {
-      var data = await image.toByteData();
-      var at = (y * 100 + x) * 4;
-      return data!.getUint8(at) > data.getUint8(at + 2);
-    }
-
-    test("peels from the free corner, so that corner goes first", () async {
-      // The corner a hand takes hold of is the bottom of the free edge, away
-      // from the spine. Early in the turn the page underneath is showing
-      // there and nowhere else.
-      var early = await turned(0.2);
-      expect(await redAt(early, 96, 96), isFalse,
-          reason: "the corner has lifted");
-      expect(await redAt(early, 5, 5), isTrue,
-          reason: "and the far corner has not been reached");
-    });
-
-    test("the page under it is uncovered rather than pushed", () async {
-      // A push moves both canvases the same distance in step. This moves them
-      // by different amounts, which is the difference between two slides and
-      // one sheet lying on another.
-      var half = await turned(0.5);
-      expect(await redderAt(half, 10), isTrue, reason: "the leaf, travelling");
-      expect(await redderAt(half, 90), isFalse, reason: "the page beneath");
-    });
-
-    test("and is gone by the end", () async {
-      var done = await turned(1);
-      expect(await redderAt(done, 5), isFalse);
-      expect(await redderAt(done, 95), isFalse);
-    });
-
-    test("with nothing of it left outside the page", () async {
-      // The flap folds back past the far edge and the slide carries the rest
-      // over the near one. On a canvas that is one page both are off the
-      // paper, and the editor and the export have to agree about that.
-      var half = await turned(0.5);
-      var data = await half.toByteData();
-      for (var y = 0; y < 100; y += 9) {
-        var at = (y * 100 + 99) * 4;
-        expect(data!.getUint8(at + 3), greaterThan(0),
-            reason: "no hole punched in the page at row $y");
-      }
-    });
-
-    test("with the whole leaf still there at the start", () async {
-      var start = await turned(0);
-      expect(await redderAt(start, 5), isTrue);
-      expect(await redderAt(start, 95), isTrue);
-    });
-
-    test("it takes longer than a cut and points at the spine", () {
-      var best = SceneTransition.bestFor(SceneTransitionKind.pageTurn);
-      expect(best.frames, greaterThan(0));
-      expect(best.way, SceneTransitionWay.left);
-      expect(SceneTransitionWay.waysFor(SceneTransitionKind.pageTurn),
-          [SceneTransitionWay.left, SceneTransitionWay.right],
-          reason: "up and down are not things a page does");
     });
   });
 

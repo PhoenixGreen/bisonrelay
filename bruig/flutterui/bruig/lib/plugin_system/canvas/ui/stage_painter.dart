@@ -356,15 +356,14 @@ class StagePainter extends CustomPainter {
 
     if (previewAt case var at?) {
       // Two leaves of one spread are both already on screen, so going from
-      // one to the other is not a page turning -- it is the cursor moving
-      // across a spread that is open. Animated anyway, the leaf being left
-      // slid away from the spine, which is a turn starting in the middle of
-      // the book and is what was reported.
+      // one to the other is not a leaf being turned -- it is the cursor
+      // moving across a spread that is open. Whatever transition is set,
+      // playing it here moves a page that the reader can see is not going
+      // anywhere, and a slide does it away from the spine, which looks like
+      // the book coming apart in the middle.
       //
-      // A leaf turns when the *spread* changes, which with the pairing rule
-      // is every other join. That one plays on the right-hand leaf, whose
-      // outer edge is the outer edge of the spread, so it starts where a hand
-      // would take hold of it. See canvas_pages.dart on the pairing.
+      // A leaf changes when the *spread* changes, which with the pairing rule
+      // is every other join. See canvas_pages.dart on the pairing.
       var place = placeInSequence(document, at);
       var inside = facingShown &&
           place.changing &&

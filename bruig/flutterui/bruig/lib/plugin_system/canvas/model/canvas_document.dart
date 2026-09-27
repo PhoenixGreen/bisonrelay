@@ -46,10 +46,11 @@ const int canvasFormatVersion = 1;
 
 /// defaultRateFor is how fast a document of this shape and this kind runs.
 ///
-/// A page is a still -- see defaultFrameRateFor -- right up until pages start
-/// turning. At one frame a second a turn of eighteen frames takes eighteen
-/// seconds, and playing a document through looked like playback that never
-/// ended; it was playback at reading speed, which is not the same thing and
+/// A page is a still -- see defaultFrameRateFor -- and a document of them is
+/// not. It carries whatever transitions and arrivals somebody puts on it, and
+/// at one frame a second a transition of a dozen frames takes a dozen
+/// seconds: playing the document through looked like playback that never
+/// ended. It was playback at reading speed, which is not the same thing and
 /// is far worse to watch. So a document of pages runs at film's rate like
 /// everything else, and it is the number of frames a page is held for that
 /// says how long it is looked at.
@@ -506,18 +507,15 @@ class CanvasDocument {
   }
 
   /// defaultTransition is what a scene with no transition of its own uses:
-  /// the master scene's, or whatever this kind of document does between two
-  /// canvases when nobody has said.
+  /// the master scene's, or a cut.
   ///
-  /// A cut for scenes, which is what film does most of the time and costs
-  /// nothing. A turned leaf for pages, because that is what happens between
-  /// two of them -- and a document whose pages cut from one to the next is a
-  /// slideshow of pages rather than a document.
+  /// A cut whatever kind of document this is. Pages had a turn of their own
+  /// for a while; four goes at drawing one all read as something going wrong
+  /// with the page rather than as paper, and a join that has to be explained
+  /// is worse than no join at all. A reader turns the pages of a book, and
+  /// what the editor owes it is the pages.
   SceneTransition get defaultTransition =>
-      master?.transition ??
-      (isPages
-          ? SceneTransition.bestFor(SceneTransitionKind.pageTurn)
-          : SceneTransition.cut);
+      master?.transition ?? SceneTransition.cut;
 
   /// transitionAfter is how scene [index] gives way to the next one.
   SceneTransition transitionAfter(int index) {

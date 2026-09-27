@@ -252,78 +252,7 @@ void paintTransition(
 
     case SceneTransitionKind.blurThrough:
       _blurThrough(canvas, page, over, t, from: from, to: to);
-
-    case SceneTransitionKind.pageTurn:
-      _pageTurn(canvas, page, over, t, from: from, to: to);
   }
-}
-
-/// _pageTurn slides the leaf off towards the spine.
-///
-/// Four goes at this, and the plainest won. A rotation about the spine with
-/// perspective on it is what a page really does and looked wrong at every
-/// size -- a whole leaf standing on its edge over a flat page reads as a
-/// glitch rather than as paper. A corner peeling up the diagonal read better
-/// but carried the design upwards, which a turning page does not. An upright
-/// crease swept across is the same fold done sideways, and its flap grows
-/// until it is the width of the page: blank paper over everything, which is a
-/// white wipe. A hand-sized turned corner on a sliding leaf was smaller and
-/// still wrong -- a scrap of grey paper skidding across the design.
-///
-/// So: the leaf travels, and that is all. What makes it read as paper is not
-/// a picture of a fold, it is the two things a sheet of it does -- the page
-/// underneath comes the last of the way to meet it, and the leaf throws a
-/// shadow into the gap it opens. Both are one translate and one gradient.
-///
-/// The sliding is deliberately not [SceneTransitionKind.pushLeft]. A push
-/// moves both canvases the same distance in step; this moves them by
-/// different amounts and darkens the join, which is the difference between
-/// two slides and one sheet on top of another.
-void _pageTurn(ui.Canvas canvas, Rect page, SceneTransition over, double t,
-    {required void Function() from, required void Function() to}) {
-  var ease = t.clamp(0.0, 1.0);
-
-  // Hinged on the left by default, which is a document reading left to right:
-  // the free edge is on the right and the leaf travels towards the spine.
-  var onLeft = over.way != SceneTransitionWay.right;
-  var away = onLeft ? -1.0 : 1.0;
-
-  // The page arriving, coming the last tenth of the way. Standing still it is
-  // a page being uncovered; travelling with the leaf it is a push.
-  canvas.save();
-  canvas.translate(-away * page.width * 0.1 * (1 - ease), 0);
-  to();
-  canvas.restore();
-  if (ease >= 0.999) return;
-
-  canvas.save();
-  canvas.clipRect(page);
-  canvas.translate(away * page.width * ease, 0);
-
-  from();
-
-  // The shadow the leaf throws into the gap it has opened, on the edge it is
-  // travelling away from. A gradient band rather than a blurred path: the
-  // same picture, and it costs a rectangle. A mask filter over a shape this
-  // size cost more than everything else in the frame put together, which is
-  // what made the turn crawl.
-  var edge = onLeft ? page.right : page.left;
-  var out = -away;
-  var depth = page.width * 0.05;
-  canvas.drawRect(
-    Rect.fromLTRB(math.min(edge, edge + out * depth), page.top,
-        math.max(edge, edge + out * depth), page.bottom),
-    Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(edge, page.top),
-        Offset(edge + out * depth, page.top),
-        [
-          const Color(0x00000000).withValues(alpha: 0.32),
-          const Color(0x00000000),
-        ],
-      ),
-  );
-  canvas.restore();
 }
 
 /// _drawCover paints the overlay's own shape over the join.

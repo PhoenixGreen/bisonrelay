@@ -31,13 +31,7 @@ enum SceneTransitionFamily {
   move("Move"),
   wipe("Uncover"),
   overlay("Overlay"),
-  drawn("Drawn"),
-
-  /// paper is the one that only means anything to a document: a leaf being
-  /// turned. Its own family rather than one more entry under Move, because
-  /// somebody looking for it is looking for the thing a book does, not for a
-  /// direction to slide in.
-  paper("Paper");
+  drawn("Drawn");
 
   final String label;
   const SceneTransitionFamily(this.label);
@@ -71,9 +65,6 @@ enum SceneTransitionWay {
   /// four of them is offering the same two twice. Growing in place is only
   /// worth having where something can also travel.
   static List<SceneTransitionWay> waysFor(SceneTransitionKind kind) {
-    // A leaf hinges on one side or the other -- which is the spine, and which
-    // way the document reads. Up and down are not things a page does.
-    if (kind == SceneTransitionKind.pageTurn) return const [left, right];
     if (kind == SceneTransitionKind.barn) return const [left, up];
     if (kind == SceneTransitionKind.shapeWipe) return values;
     return const [left, right, up, down];
@@ -82,9 +73,6 @@ enum SceneTransitionWay {
   /// says is what this way is called for [kind], which is not always the
   /// direction it points in.
   String saysFor(SceneTransitionKind kind) {
-    if (kind == SceneTransitionKind.pageTurn) {
-      return this == left ? "Hinged on the left" : "Hinged on the right";
-    }
     if (kind != SceneTransitionKind.barn) return label;
     return this == up ? "Up and down" : "Side to side";
   }
@@ -179,10 +167,6 @@ enum SceneTransitionKind {
   /// the picture rather than coming back.
   burst("Comic burst", SceneTransitionFamily.drawn),
 
-  /// pageTurn lifts the leaf off the spine and swings it away, the next page
-  /// underneath it. The default between two pages -- see CanvasKind.pages.
-  pageTurn("Page turn", SceneTransitionFamily.paper),
-
   /// rays swings the same lines shut like a fan and open again.
   ///
   /// Its own kind rather than the second half of burst, because a burst that
@@ -213,7 +197,6 @@ enum SceneTransitionKind {
 
   /// takesWay is whether it has a direction to be pointed in.
   bool get takesWay =>
-      this == pageTurn ||
       this == band ||
       this == blinds ||
       this == barn ||
@@ -265,7 +248,6 @@ enum SceneTransitionKind {
   /// little softness is the difference between a shape being dragged over the
   /// page and something happening to it.
   bool get takesSoftness =>
-      this == pageTurn ||
       this == band ||
       this == blinds ||
       this == shapeWipe ||
@@ -398,11 +380,6 @@ class SceneTransition {
       SceneTransitionKind.halftone || SceneTransitionKind.tiles => 20,
       SceneTransitionKind.blinds || SceneTransitionKind.barn => 16,
       SceneTransitionKind.clock || SceneTransitionKind.band => 18,
-      // A turned page is slower than a cut and quicker than paint: half a
-      // second at film's rate, which is about how long a hand takes over it.
-      // It was three-quarters, and read as a document waiting rather than as
-      // a page being turned.
-      SceneTransitionKind.pageTurn => 12,
       _ => 14,
     };
     // How many pieces this one is made of. A number that means something
@@ -440,7 +417,6 @@ class SceneTransition {
       SceneTransitionKind.clock ||
       SceneTransitionKind.shapeWipe =>
         0.04,
-      SceneTransitionKind.pageTurn => 0.5,
       _ => 0.0,
     };
     return SceneTransition(
@@ -451,15 +427,13 @@ class SceneTransition {
       // rather than in four directions, and "to the right" -- the way every
       // transition started out pointing -- is not one of the two, so the
       // setting came up with nothing chosen in it.
-      // Pointed a way this kind actually has, and the way it is usually
-      // wanted. A page turn hinges on the left, because that is the spine of
-      // a document that reads left to right and a forward turn is what
-      // somebody choosing it means.
-      way: kind == SceneTransitionKind.pageTurn
-          ? SceneTransitionWay.left
-          : SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
-              ? SceneTransitionWay.right
-              : SceneTransitionWay.waysFor(kind).first,
+      // Pointed a way this kind actually has. Barn doors open on an axis
+      // rather than in four directions, and "to the right" -- the way every
+      // transition started out pointing -- is not one of the two, so the
+      // setting came up with nothing chosen in it.
+      way: SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
+          ? SceneTransitionWay.right
+          : SceneTransitionWay.waysFor(kind).first,
       ease: kind.familyOf == SceneTransitionFamily.move
           ? SceneTransitionEase.smooth
           : SceneTransitionEase.straight,
