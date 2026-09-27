@@ -146,6 +146,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # The canvas's green screen, run on the GPU per frame -- see
+  # lib/plugin_system/canvas/render/video_key.dart.
+  shaders:
+    - shaders/chroma_key.frag
+
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/icons/app_icon.png

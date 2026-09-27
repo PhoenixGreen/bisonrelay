@@ -37,7 +37,9 @@ enum ElementKind {
   // has keyframed it. See CounterElement.
   counter("Counter"),
   // A sound, and the icon a reader presses to hear it. See AudioElement.
-  audio("Audio");
+  audio("Audio"),
+  // A moving picture, from a file or a link. See VideoElement.
+  video("Video");
 
   final String label;
   const ElementKind(this.label);

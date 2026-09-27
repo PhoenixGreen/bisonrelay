@@ -72,6 +72,9 @@ class FakeEngine implements AudioEngine {
       (voice as FakeVoice).paused = paused;
 
   @override
+  void seek(AudioVoice voice, double at) => (voice as FakeVoice).at = at;
+
+  @override
   double position(AudioVoice voice) => (voice as FakeVoice).at;
 
   @override

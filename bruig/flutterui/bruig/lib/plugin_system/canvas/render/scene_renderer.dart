@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
@@ -35,6 +36,8 @@ import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/table_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/video_key.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:flutter/painting.dart';
 
 // scene_renderer.dart draws a whole document at one frame.
@@ -158,6 +161,10 @@ void paintCanvasDocument(
   /// icon to show it. Null in an export, where nothing is playing.
   AudioState Function(AudioElement)? audioState,
 
+  /// videoShow is where each video has got to -- its frame, its play bar.
+  /// Null in an export, which shows the poster.
+  VideoShow Function(VideoElement)? videoShow,
+
   /// backdrop is the background already rasterised, for a caller drawing many
   /// frames of a document whose background does not move. See ExportBackdrop.
   ui.Image? backdrop,
@@ -190,7 +197,8 @@ void paintCanvasDocument(
         counterValue: counterValue,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
-        audioState: audioState);
+        audioState: audioState,
+        videoShow: videoShow);
   }
 
   _paintScene(canvas, doc, doc.elements, frame,
@@ -202,7 +210,8 @@ void paintCanvasDocument(
       counterValue: counterValue,
       counterPressed: counterPressed,
       counterRunning: counterRunning,
-      audioState: audioState);
+      audioState: audioState,
+      videoShow: videoShow);
 }
 
 /// _paintScene draws one canvas's worth of elements.
@@ -227,6 +236,10 @@ void _paintScene(
   /// audioState is how a sound is doing -- playing, muted, how loud -- for the
   /// icon to show it. Null in an export, where nothing is playing.
   AudioState Function(AudioElement)? audioState,
+
+  /// videoShow is where each video has got to -- its frame, its play bar.
+  /// Null in an export, which shows the poster.
+  VideoShow Function(VideoElement)? videoShow,
 }) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -252,6 +265,7 @@ void _paintScene(
         counterPressed: counterPressed,
         counterRunning: counterRunning,
         audioState: audioState,
+        videoShow: videoShow,
         hovered: element.id == hoveredButton);
   }
 }
@@ -387,6 +401,10 @@ void paintElement(
   /// audioState is how a sound is doing -- playing, muted, how loud -- for the
   /// icon to show it. Null in an export, where nothing is playing.
   AudioState Function(AudioElement)? audioState,
+
+  /// videoShow is where each video has got to -- its frame, its play bar.
+  /// Null in an export, which shows the poster.
+  VideoShow Function(VideoElement)? videoShow,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
@@ -546,6 +564,14 @@ void paintElement(
           () => paintAudio(
               canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
               images: images));
+    case VideoElement e:
+      paintArriving(
+          canvas,
+          bounds,
+          e.animation,
+          pose,
+          () => _paintVideo(canvas, bounds, e,
+              videoShow?.call(e) ?? VideoShow.idle(e), images));
     case BackgroundElement e:
       _paintBackgroundElement(
           canvas, bounds, e, time, frameRate.toDouble(), images);
@@ -1382,6 +1408,82 @@ void _paintImage(
     _paintOutline(canvas, image, inner, e, outward: false);
   }
   canvas.restore();
+}
+
+/// _frameId is what the frame being drawn is called while the image painter
+/// draws it -- see _paintVideo.
+const _frameId = "\u0000video-frame";
+
+/// _OneFrame is the picture store with one more picture in it: the video's
+/// frame, under [_frameId]. Everything else -- a picture painted into the
+/// box, say -- is asked of the store as usual.
+class _OneFrame extends CanvasImageSource {
+  final ui.Image frame;
+  final CanvasImageSource? store;
+  _OneFrame(this.frame, this.store);
+
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) =>
+      assetId == _frameId ? frame : store?.resolve(assetId, removal);
+
+  @override
+  CanvasVector? resolveVector(String assetId) =>
+      assetId == _frameId ? null : store?.resolveVector(assetId);
+}
+
+/// _paintVideo draws a video: its frame, or its poster while it has none,
+/// keyed and then drawn with its look exactly as a picture is, and its
+/// controls over the top.
+void _paintVideo(ui.Canvas canvas, Rect bounds, VideoElement e, VideoShow show,
+    CanvasImageSource? images) {
+  var poster = e.isLink ? e.look.assetId : show.poster;
+  var frame = show.frame ??
+      (poster.isEmpty
+          ? null
+          : images?.resolve(poster, const BackgroundRemoval()));
+
+  if (frame == null) {
+    paintBox(canvas, bounds, e.look.box, images);
+    var inner = e.look.box.inner(bounds);
+    if (inner.width > 0 && inner.height > 0) {
+      // A ground of its own while there is nothing to show, so an empty video
+      // reads as a screen rather than as a hole in the canvas.
+      canvas.drawRect(inner, Paint()..color = const Color(0xFF101418));
+      paintTextInBox(
+          canvas,
+          e.isLink
+              ? VideoHost.of(e.link).label
+              : e.clip.isEmpty
+                  ? "No video yet"
+                  : "Loading…",
+          TextSpec(
+              fontSize: math.max(9, inner.shortestSide * 0.08),
+              weight: 500,
+              color: const Color(0xAAFFFFFF)),
+          inner,
+          clip: true);
+    }
+    paintVideoControls(canvas, e, videoParts(e, bounds), show);
+    return;
+  }
+
+  // Keyed before the look: the look grades what is left of the picture, the
+  // same as it grades a photograph with its background taken out.
+  if (!e.isLink && e.key.on) frame = VideoKey.keyed(frame, e.key);
+
+  var fading = show.opacity < 1;
+  if (fading) {
+    canvas.saveLayer(bounds.inflate(bounds.shortestSide),
+        Paint()..color = Color.fromRGBO(0, 0, 0, show.opacity.clamp(0.0, 1.0)));
+  }
+  _paintImage(
+      canvas,
+      bounds,
+      e.picture.copyWith(assetId: _frameId, removal: const BackgroundRemoval()),
+      _OneFrame(frame, images));
+  if (fading) canvas.restore();
+
+  paintVideoControls(canvas, e, videoParts(e, bounds), show);
 }
 
 /// _outlineRoom is how far outside its box a picture's outline may reach.

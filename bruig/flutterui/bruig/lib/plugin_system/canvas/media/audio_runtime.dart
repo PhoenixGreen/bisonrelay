@@ -158,6 +158,25 @@ class AudioRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// positionOf is how far into its file [id]'s sound has got, in seconds,
+  /// or null where nothing is sounding -- which is what a video keeps time
+  /// by, so the picture follows the sound rather than drifting from it.
+  double? positionOf(String id) {
+    var voice = _sounds[id]?.voice;
+    if (voice == null || !engine.alive(voice)) return null;
+    return engine.position(voice);
+  }
+
+  /// seek moves [id]'s sound to [at] seconds into its file.
+  void seek(String id, double at) {
+    var p = _sounds[id];
+    var voice = p?.voice;
+    if (p == null || voice == null) return;
+    engine.seek(voice, at);
+    p.fadingOut = false;
+    _heard(p);
+  }
+
   void setVolume(AudioElement e, double volume) {
     var p = _for(e);
     p.volume = volume.clamp(0.0, 1.0);

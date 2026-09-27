@@ -27,11 +27,15 @@ enum ButtonActionKind {
   // -- range, fades, loop, volume -- wherever it is started from, and a
   // sound only ever started by buttons is simply an Audio element that is
   // hidden.
-  playSound("Play a sound", "Start an audio element playing"),
-  pauseSound("Pause a sound", "Hold an audio element where it is"),
-  toggleSound("Play or pause a sound", "Start it, or hold it if it is going"),
-  stopSound("Stop a sound", "Stop it and go back to its start"),
-  muteSound("Mute or unmute a sound", "Silence it, or bring it back");
+  //
+  // Named "sound" in the saved file because that is what they were first;
+  // a video is played, paused and muted by the same five.
+  playSound("Play a sound or video", "Start an audio or video element"),
+  pauseSound("Pause a sound or video", "Hold it where it is"),
+  toggleSound(
+      "Play or pause a sound or video", "Start it, or hold it if it is going"),
+  stopSound("Stop a sound or video", "Stop it and go back to its start"),
+  muteSound("Mute or unmute a sound or video", "Silence it, or bring it back");
 
   final String label;
   final String description;

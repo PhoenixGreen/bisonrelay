@@ -4,6 +4,11 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/transition_shapes.dart';
@@ -118,6 +123,12 @@ void paintSequenceFrame(
   /// generated backdrop is the most expensive thing on a canvas -- which is
   /// what made a page turn crawl. See ProceduralCache.
   ProceduralCache? backgrounds,
+
+  /// audioState and videoShow are what the media on screen are doing, so a
+  /// document played through shows its videos moving rather than their
+  /// posters. Null in an export. See paintCanvasDocument.
+  AudioState Function(AudioElement)? audioState,
+  VideoShow Function(VideoElement)? videoShow,
 }) {
   var place = placeInSequence(doc, at);
   var scenes = doc.allScenes;
@@ -142,7 +153,9 @@ void paintSequenceFrame(
             .copyWith(onMaster: false, background: doc.backgroundOf(index)),
         frame: frame,
         images: images,
-        backgrounds: backgrounds);
+        backgrounds: backgrounds,
+        audioState: audioState,
+        videoShow: videoShow);
   }
 
   if (!place.changing) {
@@ -478,6 +491,12 @@ void paintLeaf(
   required int Function(int index) frameOf,
   CanvasImageSource? images,
   ProceduralCache? backgrounds,
+
+  /// audioState and videoShow are what the media on screen are doing, so a
+  /// document played through shows its videos moving rather than their
+  /// posters. Null in an export. See paintCanvasDocument.
+  AudioState Function(AudioElement)? audioState,
+  VideoShow Function(VideoElement)? videoShow,
 }) {
   var size = doc.size.size;
   var page = doc
@@ -495,7 +514,11 @@ void paintLeaf(
     canvas.restore();
   }
   paintCanvasDocument(canvas, page,
-      frame: frameOf(index), part: CanvasPaintPart.contents, images: images);
+      frame: frameOf(index),
+      part: CanvasPaintPart.contents,
+      images: images,
+      audioState: audioState,
+      videoShow: videoShow);
   canvas.restore();
 }
 
@@ -530,6 +553,12 @@ void paintBookFrame(
   required double left,
   CanvasImageSource? images,
   ProceduralCache? backgrounds,
+
+  /// audioState and videoShow are what the media on screen are doing, so a
+  /// document played through shows its videos moving rather than their
+  /// posters. Null in an export. See paintCanvasDocument.
+  AudioState Function(AudioElement)? audioState,
+  VideoShow Function(VideoElement)? videoShow,
 }) {
   var scenes = doc.allScenes;
   if (scenes.isEmpty) return;
@@ -552,7 +581,11 @@ void paintBookFrame(
     canvas.save();
     canvas.translate(slot(onLeft).left, 0);
     paintLeaf(canvas, doc, index,
-        frameOf: frameOf, images: images, backgrounds: backgrounds);
+        frameOf: frameOf,
+        images: images,
+        backgrounds: backgrounds,
+        audioState: audioState,
+        videoShow: videoShow);
     canvas.restore();
   }
 

@@ -37,6 +37,9 @@ abstract class AudioEngine {
 
   void pause(AudioVoice voice, bool paused);
 
+  /// seek moves [voice] to [at] seconds into its file.
+  void seek(AudioVoice voice, double at);
+
   /// position is how far into the file [voice] has got, in seconds.
   double position(AudioVoice voice);
 
@@ -131,6 +134,14 @@ class SoLoudAudioEngine implements AudioEngine {
     var handle = (voice as _SoLoudVoice).handle;
     if (_soloud.getIsValidVoiceHandle(handle)) {
       _soloud.setPause(handle, paused);
+    }
+  }
+
+  @override
+  void seek(AudioVoice voice, double at) {
+    var handle = (voice as _SoLoudVoice).handle;
+    if (_soloud.getIsValidVoiceHandle(handle)) {
+      _soloud.seek(handle, _duration(at));
     }
   }
 

@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
@@ -1231,5 +1232,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return CounterElement.fromJson(json, base);
     case ElementKind.audio:
       return AudioElement.fromJson(json, base);
+    case ElementKind.video:
+      return VideoElement.fromJson(json, base);
   }
 }

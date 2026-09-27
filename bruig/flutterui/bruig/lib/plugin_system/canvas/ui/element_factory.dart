@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
@@ -55,6 +56,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A round speaker, the size of a thumb on a phone-shaped canvas. Its
     // mute switch and volume bar widen it when they are turned on.
     ElementKind.audio => Size(short * 0.12, short * 0.12),
+    // 16:9, half the canvas across -- the shape nearly every video is. The
+    // box takes the file's own shape when one is added.
+    ElementKind.video => Size(wide * 0.5, wide * 0.5 * 9 / 16),
     ElementKind.background => Size(wide * 0.6, short * 0.5),
     // A team, not a player: the box is the half of the pitch the formation is
     // laid out in, so it wants most of the canvas rather than a dot's worth.
@@ -165,6 +169,13 @@ CanvasElement newElement(
               fill: const Color(0xFF223046),
               borderRadius: size.shortestSide,
               padding: size.shortestSide * 0.12));
+
+    case ElementKind.video:
+      // No background of its own. A keyed video has to be see-through where
+      // the screen was, and a dark box behind it put the screen straight back
+      // -- the video under it could not be seen. The empty element draws its
+      // own dark ground until a video is in it.
+      return VideoElement(base.copyWith(lockAspect: true));
 
     case ElementKind.table:
       return TableElement(base,

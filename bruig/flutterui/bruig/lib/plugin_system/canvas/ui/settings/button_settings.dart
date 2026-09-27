@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
@@ -69,18 +70,17 @@ List<Widget> buttonSettings(
           if (action.kind.needsSound)
             CanvasDropdown<String>(
               key: const ValueKey("buttonSound"),
-              label: "Sound",
+              label: "Sound or video",
               value: action.elementId,
               width: 170,
               options: [
                 ("", "Nothing"),
                 for (var other in controller.document.elements)
-                  if (other is AudioElement) (other.id, other.name),
+                  if (_playable(other)) (other.id, other.name),
                 if (!controller.document.editingMaster)
                   for (var other in controller.document.masterScene?.elements ??
                       const <CanvasElement>[])
-                    if (other is AudioElement)
-                      (other.id, "${other.name} (master)"),
+                    if (_playable(other)) (other.id, "${other.name} (master)"),
               ],
               onChanged: (v) {
                 begin();
@@ -177,3 +177,9 @@ List<Widget> buttonSettings(
 /// behind an expander because eleven rows of four fields is more than every
 /// other element's settings put together, and somebody opening a team is
 /// usually there for the formation or the kit.
+
+/// _playable is whether a button's media actions can be aimed at [e]: a
+/// sound, or a video made from files. A linked video is somebody else's
+/// player, which a button on this canvas cannot start or stop.
+bool _playable(CanvasElement e) =>
+    e is AudioElement || (e is VideoElement && !e.isLink);

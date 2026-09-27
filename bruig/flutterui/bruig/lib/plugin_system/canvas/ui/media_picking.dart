@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -82,6 +84,91 @@ Future<MediaSource?> addCanvasAudio(
     }
     var length = await controller.audio.measure(id) ?? 0;
     return MediaSource(assetId: id, name: name, length: length);
+  } catch (exception) {
+    report("Unable to add $name: $exception");
+    return null;
+  } finally {
+    try {
+      await scratch?.delete(recursive: true);
+    } catch (_) {}
+  }
+}
+
+const _videoPickable = ["mp4", "mov", "m4v", "webm", "mkv", "avi"];
+
+/// pickCanvasVideo asks for a video file and stores it, returning it as a
+/// playlist entry -- or null when nothing was added.
+Future<MediaSource?> pickCanvasVideo(
+    BuildContext context, CanvasController controller) async {
+  var picked = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: _videoPickable,
+    withData: false,
+  );
+  var chosen = picked?.files.singleOrNull?.path?.trim();
+  if (chosen == null || chosen.isEmpty) return null;
+  if (!context.mounted) return null;
+  return addCanvasVideo(context, chosen);
+}
+
+/// addCanvasVideo stores the video at [file]: the file itself, a still from
+/// it as a picture, and its sound as a file the audio engine can open.
+///
+/// ffmpeg is needed for all three, and for playing it afterwards, so a
+/// machine without it is told so here rather than given a video that never
+/// moves.
+Future<MediaSource?> addCanvasVideo(BuildContext context, String file) async {
+  var name = path.basenameWithoutExtension(file);
+  void report(String message) {
+    if (context.mounted) SnackBarModel.of(context).error(message);
+  }
+
+  var ffmpeg = await ffmpegPath();
+  if (ffmpeg == null) {
+    report("Adding a video needs ffmpeg, which reads it frame by frame. "
+        "Install ffmpeg and try again, or use a link to the video instead.");
+    return null;
+  }
+  var probe = await probeVideo(ffmpeg, file);
+  if (probe == null) {
+    report("$name is not a video ffmpeg can read.");
+    return null;
+  }
+
+  Directory? scratch;
+  try {
+    var id = await CanvasMedia.saveFile(MediaKind.video, file);
+    if (id == null) {
+      report("$name could not be added. It may be too large, or of a kind "
+          "the canvas does not keep (MP4, MOV, WebM, MKV or AVI).");
+      return null;
+    }
+
+    // A still from a moment in, rather than the very first frame, which is
+    // black more often than not.
+    var still = await posterOf(ffmpeg, file,
+        at: probe.duration > 3 ? 1 : 0, maxWidth: 1280);
+    var poster = still == null ? null : await CanvasAssets.save(still);
+
+    String? sound;
+    if (probe.hasAudio) {
+      scratch = await Directory.systemTemp.createTemp("canvas-video");
+      var flac = path.join(scratch.path, "$name.flac");
+      if (await extractSound(ffmpeg, file, flac)) {
+        sound = await CanvasMedia.saveFile(MediaKind.audio, flac);
+      }
+    }
+
+    return MediaSource(
+      assetId: id,
+      name: name,
+      length: probe.duration,
+      posterId: poster ?? "",
+      soundId: sound ?? "",
+      width: probe.width,
+      height: probe.height,
+      fps: probe.fps,
+    );
   } catch (exception) {
     report("Unable to add $name: $exception");
     return null;

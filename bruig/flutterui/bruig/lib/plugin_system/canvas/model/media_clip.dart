@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonString;
+    show jsonBool, jsonDouble, jsonInt, jsonString;
 
 // media_clip.dart is what is played: which files, which part of each, how it
 // starts and stops, and whether it goes round again.
@@ -52,12 +52,31 @@ class MediaSource {
   /// and nothing depends on it being right: the player asks the file.
   final double length;
 
+  /// posterId, soundId, width, height and fps are what a *video* file was
+  /// found to be when it was added -- see media_picking.dart.
+  ///
+  /// The poster is a still from the file, stored as an ordinary picture, so
+  /// an exported image or a bundle opened without ffmpeg still shows
+  /// something that looks like the video. The sound is the file's own audio
+  /// taken out into the audio store, which is what the audio engine plays in
+  /// step with the picture. Empty for a sound, and for a video with no sound.
+  final String posterId;
+  final String soundId;
+  final int width;
+  final int height;
+  final double fps;
+
   const MediaSource({
     required this.assetId,
     this.name = "",
     this.start = 0,
     this.end = 0,
     this.length = 0,
+    this.posterId = "",
+    this.soundId = "",
+    this.width = 0,
+    this.height = 0,
+    this.fps = 0,
   });
 
   /// endOr is where playing stops, given the file's real length.
@@ -79,6 +98,8 @@ class MediaSource {
     double? start,
     double? end,
     double? length,
+    String? posterId,
+    String? soundId,
   }) =>
       MediaSource(
         assetId: assetId ?? this.assetId,
@@ -86,6 +107,11 @@ class MediaSource {
         start: start ?? this.start,
         end: end ?? this.end,
         length: length ?? this.length,
+        posterId: posterId ?? this.posterId,
+        soundId: soundId ?? this.soundId,
+        width: width,
+        height: height,
+        fps: fps,
       );
 
   Map<String, dynamic> toJson() => {
@@ -94,6 +120,11 @@ class MediaSource {
         if (start > 0) "start": start,
         if (end > 0) "end": end,
         if (length > 0) "length": length,
+        if (posterId.isNotEmpty) "poster": posterId,
+        if (soundId.isNotEmpty) "sound": soundId,
+        if (width > 0) "w": width,
+        if (height > 0) "h": height,
+        if (fps > 0) "fps": fps,
       };
 
   factory MediaSource.fromJson(Map<String, dynamic> json) {
@@ -107,6 +138,11 @@ class MediaSource {
       // a file that will not play. Taken as "to the end" instead.
       end: end > start ? end : 0,
       length: math.max(0.0, jsonDouble(json["length"], 0)),
+      posterId: jsonString(json["poster"], ""),
+      soundId: jsonString(json["sound"], ""),
+      width: jsonInt(json["w"], 0),
+      height: jsonInt(json["h"], 0),
+      fps: math.max(0.0, jsonDouble(json["fps"], 0)),
     );
   }
 }
@@ -159,8 +195,17 @@ class MediaClip {
 
   /// mediaIds is every stored file this clip refers to. See CanvasMedia.
   Set<String> get mediaIds => {
-        for (var s in playlist)
+        for (var s in playlist) ...[
           if (s.assetId.isNotEmpty) s.assetId,
+          if (s.soundId.isNotEmpty) s.soundId,
+        ],
+      };
+
+  /// posterIds is the stills a video's files carry, which are pictures and
+  /// live in the picture store. See MediaSource.posterId.
+  Set<String> get posterIds => {
+        for (var s in playlist)
+          if (s.posterId.isNotEmpty) s.posterId,
       };
 
   MediaClip copyWith({

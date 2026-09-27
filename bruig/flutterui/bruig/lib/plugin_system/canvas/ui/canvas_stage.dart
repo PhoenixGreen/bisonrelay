@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -23,6 +24,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/video_key.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
@@ -162,6 +165,11 @@ class CanvasStageState extends State<CanvasStage> {
   /// not yet released, which control, and where -- the volume bar needs to
   /// know how far along it was pressed.
   AudioElement? _pendingAudio;
+
+  /// _pendingVideo is the same for a selected video's controls.
+  VideoElement? _pendingVideo;
+  VideoPart _pendingVideoPart = VideoPart.picture;
+  Offset _pendingVideoAt = Offset.zero;
   AudioControl _pendingAudioPart = AudioControl.playPause;
   Offset _pendingAudioAt = Offset.zero;
 
@@ -402,6 +410,10 @@ class CanvasStageState extends State<CanvasStage> {
     // going when the canvas is opened; a stopwatch says it is not and waits
     // to be started.
     controller.startCounters();
+    // The green screen's shader, read once for the whole app. Until it has
+    // landed a keyed video is drawn unkeyed, and this repaints when it does.
+    VideoKey.ready.addListener(_onChanged);
+    unawaited(VideoKey.load());
   }
 
   @override
@@ -423,6 +435,7 @@ class CanvasStageState extends State<CanvasStage> {
     _scroll.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
+    VideoKey.ready.removeListener(_onChanged);
     _focus.dispose();
     super.dispose();
   }
@@ -1297,6 +1310,40 @@ class CanvasStageState extends State<CanvasStage> {
     return null;
   }
 
+  /// _videoPartAt is which part of a video a document point is on -- the same
+  /// rectangles the painter drew. A link answers anywhere on it: pressing it
+  /// is the one thing there is to do.
+  VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
+      videoPartAt(videoParts(e, e.boundsAt(controller.frame)), doc,
+          clickable: e.isLink || e.has(VideoControl.clickToggle));
+
+  /// _masterVideoAt is a video on the master under a document point, while a
+  /// page is in front of the reader. See _masterAudioAt.
+  (VideoElement, VideoPart)? _masterVideoAt(Offset doc) {
+    if (document.editingMaster) return null;
+    var master = document.masterScene;
+    if (master == null) return null;
+    for (var e in master.elements.reversed) {
+      if (e is! VideoElement || !e.visible) continue;
+      var part = _videoPartAt(e, doc);
+      if (part != null) return (e, part);
+    }
+    return null;
+  }
+
+  void _pressVideo(VideoElement e, VideoPart part, Offset doc) {
+    var parts = videoParts(e, e.boundsAt(controller.frame));
+    var along = switch (part) {
+      VideoPart.track => alongBar(parts.track!, doc.dx),
+      VideoPart.volume => alongBar(parts.volume!, doc.dx),
+      _ => 0.0,
+    };
+    var url = controller.pressVideo(e, part, along: along);
+    // Leaving the app is asked about by whoever put the stage up, the same
+    // as a button's link.
+    if (url != null && url.isNotEmpty) widget.onButtonLink?.call(url);
+  }
+
   void _pressAudio(AudioElement e, AudioControl part, Offset doc) {
     double? volume;
     if (part == AudioControl.volume) {
@@ -1694,6 +1741,11 @@ class CanvasStageState extends State<CanvasStage> {
       _mode = _DragMode.none;
       return;
     }
+    if (_masterVideoAt(doc) case (var film, var part)?) {
+      _pressVideo(film, part, doc);
+      _mode = _DragMode.none;
+      return;
+    }
 
     var element = _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
@@ -1721,6 +1773,21 @@ class CanvasStageState extends State<CanvasStage> {
     // A selected speaker's own controls, on the same terms as a button: a
     // press that stays put plays, mutes or sets the volume, and one that
     // travels moves it.
+    // And a selected video's: its play button, its bar, or the picture
+    // itself where pressing it plays.
+    if (element is VideoElement &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var part = _videoPartAt(element, doc);
+      if (part != null) {
+        _pendingVideo = element;
+        _pendingVideoPart = part;
+        _pendingVideoAt = doc;
+        _beginTransform(_DragMode.move, null);
+        return;
+      }
+    }
+
     if (element is AudioElement &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id) {
@@ -2891,6 +2958,17 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    var film = _pendingVideo;
+    _pendingVideo = null;
+    if (film != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      _pressVideo(film, _pendingVideoPart, _pendingVideoAt);
+      return;
+    }
+
     var sound = _pendingAudio;
     _pendingAudio = null;
     if (sound != null &&
@@ -3186,6 +3264,7 @@ class CanvasStageState extends State<CanvasStage> {
                         counterRunning: controller.counterRunning,
                         counterTick: controller.counterTicks,
                         audioState: controller.audioState,
+                        videoShow: controller.videoShow,
                         audioRevision: controller.audioRevision,
                         selection: controller.selection,
                         showHelpers: controller.showHelpers,

@@ -5,11 +5,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -108,6 +110,7 @@ class StagePainter extends CustomPainter {
   /// audioState is how each speaker's sound is doing, and audioRevision what
   /// changes when any of that does -- the same arrangement as the counters.
   final AudioState Function(AudioElement)? audioState;
+  final VideoShow Function(VideoElement)? videoShow;
   final int audioRevision;
 
   /// flowGrips are the two dots on a selected text box -- see TextFlowGrips.
@@ -287,6 +290,7 @@ class StagePainter extends CustomPainter {
     this.counterRunning,
     this.counterTick = 0,
     this.audioState,
+    this.videoShow,
     this.audioRevision = 0,
     required this.selection,
     required this.selectionBounds,
@@ -357,10 +361,15 @@ class StagePainter extends CustomPainter {
         paintBookFrame(canvas, document, at,
             left: facingOnLeft ? 0.0 : -docSize.width,
             images: images,
-            backgrounds: backgrounds);
+            backgrounds: backgrounds,
+            audioState: audioState,
+            videoShow: videoShow);
       } else {
         paintSequenceFrame(canvas, document, at,
-            images: images, backgrounds: backgrounds);
+            images: images,
+            backgrounds: backgrounds,
+            audioState: audioState,
+            videoShow: videoShow);
       }
       canvas.restore();
       canvas.restore();
@@ -417,6 +426,7 @@ class StagePainter extends CustomPainter {
         counterPressed: counterPressed,
         counterRunning: counterRunning,
         audioState: audioState,
+        videoShow: videoShow,
         // Drawn once and kept while the design and the size hold still. See
         // ProceduralCache: the editor repaints for a pointer moving over the
         // stage, and generating the background again to produce exactly the

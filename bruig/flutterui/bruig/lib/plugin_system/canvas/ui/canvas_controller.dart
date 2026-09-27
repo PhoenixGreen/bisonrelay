@@ -26,6 +26,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart'
+    show ffmpegPath;
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -230,9 +236,11 @@ class FetchedRows {
 }
 
 class CanvasController extends ChangeNotifier {
-  CanvasController(CanvasDocument document, {AudioEngine? audioEngine})
+  CanvasController(CanvasDocument document,
+      {AudioEngine? audioEngine, FrameSource? frameSource})
       : _document = document,
-        _audioEngine = audioEngine;
+        _audioEngine = audioEngine,
+        _frameSource = frameSource;
 
   CanvasDocument _document;
   CanvasDocument get document => _document;
@@ -2067,7 +2075,7 @@ class CanvasController extends ChangeNotifier {
   void stop() {
     pause();
     stopPreview();
-    _audio?.stopAll();
+    stopAudio();
     frame = 0;
   }
 
@@ -2365,18 +2373,34 @@ class CanvasController extends ChangeNotifier {
         }
       case ButtonActionKind.openLink:
         return action.url;
+      // A sound or a video: the same five things done to either.
       case ButtonActionKind.playSound:
-        if (_audioById(action.elementId) case var e?) unawaited(audio.play(e));
+        switch (_mediaById(action.elementId)) {
+          case AudioElement e:
+            unawaited(audio.play(e));
+          case VideoElement e:
+            unawaited(video.play(e));
+        }
       case ButtonActionKind.pauseSound:
         _audio?.pause(action.elementId);
+        _video?.pause(action.elementId);
       case ButtonActionKind.toggleSound:
-        if (_audioById(action.elementId) case var e?) {
-          unawaited(audio.toggle(e));
+        switch (_mediaById(action.elementId)) {
+          case AudioElement e:
+            unawaited(audio.toggle(e));
+          case VideoElement e:
+            unawaited(video.toggle(e));
         }
       case ButtonActionKind.stopSound:
         _audio?.stop(action.elementId);
+        _video?.stop(action.elementId);
       case ButtonActionKind.muteSound:
-        if (_audioById(action.elementId) case var e?) audio.toggleMute(e);
+        switch (_mediaById(action.elementId)) {
+          case AudioElement e:
+            audio.toggleMute(e);
+          case VideoElement e:
+            video.toggleMute(e);
+        }
     }
     return null;
   }
@@ -2395,16 +2419,71 @@ class CanvasController extends ChangeNotifier {
       locate: (id) => CanvasMedia.existingPath(MediaKind.audio, id))
     ..addListener(notifyListeners);
 
-  /// audioRevision changes whenever any sound's state does, so the stage's
-  /// painter knows to draw the speakers again.
-  int get audioRevision => _audio?.revision ?? 0;
+  /// audioRevision changes whenever any sound's or video's state does, so
+  /// the stage's painter knows to draw the speakers and the frames again.
+  int get audioRevision => (_audio?.revision ?? 0) + (_video?.revision ?? 0);
+
+  final FrameSource? _frameSource;
+  VideoRuntime? _video;
+
+  /// video plays the canvas's videos, through the same sound runtime as
+  /// everything else. Made the first time anything asks, like [audio].
+  VideoRuntime get video => _video ??= VideoRuntime(
+      frames: _frameSource ?? FfmpegFrames(ffmpegPath),
+      audio: audio,
+      locate: (id) => CanvasMedia.existingPath(MediaKind.video, id))
+    ..addListener(notifyListeners);
+
+  /// videoShow is how [e] should be drawn now: its frame and its play bar.
+  VideoShow videoShow(VideoElement e) {
+    var v = _video;
+    if (v == null) return VideoShow.idle(e);
+    var view = v.view(e);
+    return VideoShow(
+      playing: view.playing,
+      muted: view.muted,
+      volume: view.volume,
+      position: view.position,
+      start: view.start,
+      end: view.end,
+      frame: view.frame,
+      poster: view.poster,
+      opacity: view.opacity,
+    );
+  }
+
+  /// pressVideo is a press on [part] of [e], [along] of the way along it
+  /// for the two bars. Returns the address a link video asked to open, for
+  /// the caller to ask about -- leaving the app is not decided down here.
+  String? pressVideo(VideoElement e, VideoPart part, {double along = 0}) {
+    var current = _mediaById(e.id);
+    if (current is VideoElement) e = current;
+    if (e.isLink) return linkAt(e.link, e.linkStart);
+    switch (part) {
+      case VideoPart.picture:
+      case VideoPart.bigPlay:
+      case VideoPart.playPause:
+        unawaited(video.toggle(e));
+      case VideoPart.track:
+        unawaited(video.seekTo(e, along));
+      case VideoPart.mute:
+        video.toggleMute(e);
+      case VideoPart.volume:
+        video.setVolume(e, along);
+        if (along > 0 && video.view(e).muted) video.setMuted(e, false);
+    }
+    return null;
+  }
 
   /// audioUnavailable is whether the sound device could not be opened, for
   /// the settings to say so.
   bool get audioUnavailable => _audio?.unavailable ?? false;
 
   /// stopAudio stops every sound the canvas is playing.
-  void stopAudio() => _audio?.stopAll();
+  void stopAudio() {
+    _video?.stopAll();
+    _audio?.stopAll();
+  }
 
   /// audioState is how [e]'s sound is doing, for the icon to show.
   AudioState audioState(AudioElement e) {
@@ -2435,6 +2514,18 @@ class CanvasController extends ChangeNotifier {
 
   /// _audioById finds an audio element on the canvas showing or on the
   /// master -- the two places a button on this page could mean.
+  /// _mediaById is an Audio or Video element on the canvas showing or on the
+  /// master -- what a button's media action is aimed at.
+  CanvasElement? _mediaById(String id) {
+    for (var e in [
+      ..._document.elements,
+      ...?_document.masterScene?.elements,
+    ]) {
+      if (e.id == id && (e is AudioElement || e is VideoElement)) return e;
+    }
+    return null;
+  }
+
   AudioElement? _audioById(String id) {
     for (var e in _document.elements) {
       if (e is AudioElement && e.id == id) return e;
@@ -2466,13 +2557,21 @@ class CanvasController extends ChangeNotifier {
   void _audioFollowsPage({required bool turned}) {
     var a = _audio;
     if (a == null) return;
+    bool media(CanvasElement e) => e is AudioElement || e is VideoElement;
+    bool carries(CanvasElement e) => switch (e) {
+          AudioElement e => e.clip.acrossPages,
+          VideoElement e => e.clip.acrossPages,
+          _ => false,
+        };
     var keep = <String>{
       for (var e in _document.elements)
-        if (e is AudioElement) e.id,
+        if (media(e)) e.id,
       for (var e in _document.masterScene?.elements ?? const <CanvasElement>[])
-        if (e is AudioElement && (!turned || e.clip.acrossPages)) e.id,
+        if (media(e) && (!turned || carries(e))) e.id,
     };
-    a.keepOnly(keep.contains);
+    _video?.keepOnly(keep.contains);
+    // A video's sound goes where its video goes -- see VideoRuntime.
+    a.keepOnly((id) => keep.contains(VideoRuntime.videoOfSound(id) ?? id));
   }
 
   /// _autoplayAudio starts the sounds on screen that start by themselves.
@@ -2481,8 +2580,16 @@ class CanvasController extends ChangeNotifier {
       for (var e in _pageAudio)
         if (e.clip.autoplay && !e.clip.isEmpty) e,
     ];
-    if (starting.isEmpty) return;
-    audio.autoplay(starting);
+    if (starting.isNotEmpty) audio.autoplay(starting);
+
+    var videos = [
+      for (var e in [
+        ..._document.elements,
+        if (!_document.editingMaster) ...?_document.masterScene?.elements,
+      ])
+        if (e is VideoElement && e.clip.autoplay && !e.clip.isEmpty) e,
+    ];
+    if (videos.isNotEmpty) video.autoplay(videos);
   }
 
   // ------------------------------------------------------------------------
@@ -2714,6 +2821,7 @@ class CanvasController extends ChangeNotifier {
         CounterElement e => e.animation,
         ButtonElement e => e.animation,
         AudioElement e => e.animation,
+        VideoElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -2735,7 +2843,8 @@ class CanvasController extends ChangeNotifier {
       // And a button. Arriving is not pressing: one is what the canvas does
       // to it, the other what somebody does to the canvas.
       element is ButtonElement ||
-      element is AudioElement;
+      element is AudioElement ||
+      element is VideoElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -2748,6 +2857,7 @@ class CanvasController extends ChangeNotifier {
         CounterElement e => e.copyWith(animation: animation),
         ButtonElement e => e.copyWith(animation: animation),
         AudioElement e => e.copyWith(animation: animation),
+        VideoElement e => e.copyWith(animation: animation),
         _ => element,
       };
 
@@ -3146,7 +3256,7 @@ class CanvasController extends ChangeNotifier {
   /// load replaces the whole session with a document from disk.
   void load(CanvasDocument document, {String? folder, String? name}) {
     pause();
-    _audio?.stopAll();
+    stopAudio();
     _document = document;
     this.folder = folder;
     this.name = name;
@@ -3244,6 +3354,8 @@ class CanvasController extends ChangeNotifier {
     _autosave?.cancel();
     _playback?.cancel();
     _counterTimer?.cancel();
+    _video?.removeListener(notifyListeners);
+    _video?.dispose();
     _audio?.removeListener(notifyListeners);
     _audio?.dispose();
     images.dispose();

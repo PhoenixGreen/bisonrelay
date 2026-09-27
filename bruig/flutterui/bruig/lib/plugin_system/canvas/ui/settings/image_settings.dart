@@ -454,170 +454,7 @@ List<Widget> imageSettings(
         ),
       ],
     ]),
-    if (e.hasImage)
-      CanvasControlGroup(label: "Frame", rule: false, children: [
-        CanvasDropdown<String>(
-          label: "Cut to",
-          value: e.frame?.name ?? "",
-          width: 128,
-          options: [
-            ("", "Rectangle"),
-            for (var k in ShapeKind.values) (k.name, k.label),
-          ],
-          onChanged: (v) => now(v.isEmpty
-              ? e.copyWith(clearFrame: true)
-              : e.copyWith(frame: ShapeKind.fromName(v))),
-        ),
-      ]),
-    // Framing is the same three numbers the double-click gesture writes -- see
-    // CanvasStageState._applyFraming. Here as well as there because a number
-    // is the only way to put two pictures in exactly the same place as each
-    // other, and because a control that exists is how anybody finds out the
-    // gesture is there at all.
-    // Said rather than silently missing: the three numbers are only
-    // offered for a picture that fills its frame, and a reader who set them
-    // once and cannot find them again is looking for controls that would do
-    // nothing where they are.
-    if (e.hasImage && e.fit != ImageFit.cover)
-      const CanvasHint(
-          "Framing — moving the picture about inside its box and zooming it "
-          "— is for a picture that fills its frame. Set Fit to Cover to "
-          "reach it: contained shows the whole picture and stretched pulls "
-          "it to the box, and neither leaves anything to move."),
-    if (e.hasImage && e.fit == ImageFit.cover)
-      CanvasControlGroup(label: "Framing", rule: false, children: [
-        CanvasHint("Double-click the picture to drag it about inside its box, "
-            "and scroll to zoom."),
-        for (var (label, value, apply)
-            in <(String, double, ImageFraming Function(double))>[
-          ("Across", e.framing.x, (v) => e.framing.copyWith(x: v)),
-          ("Down", e.framing.y, (v) => e.framing.copyWith(y: v)),
-          ("Zoom", e.framing.zoom, (v) => e.framing.copyWith(zoom: v)),
-        ])
-          CanvasNumberField(
-            label: label,
-            min: label == "Zoom" ? 1 : 0,
-            max: label == "Zoom" ? 8 : 1,
-            decimals: 2,
-            width: 62,
-            value: value,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(framing: apply(v)));
-            },
-            onCommit: commit,
-          ),
-        CanvasIconButton(
-          icon: Icons.filter_center_focus,
-          tooltip: "Put the picture back in the middle",
-          onPressed: () => now(e.copyWith(framing: const ImageFraming())),
-        ),
-      ]),
-    if (e.hasImage)
-      CanvasControlGroup(label: "Crop", rule: false, children: [
-        for (var (label, value, apply)
-            in <(String, double, ImageCrop Function(double))>[
-          ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
-          ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
-          ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
-          ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
-        ])
-          CanvasNumberField(
-            label: label,
-            min: 0,
-            max: 1,
-            decimals: 2,
-            width: 62,
-            value: value,
-            onChanged: (v) {
-              begin();
-              // The frame is trimmed with the crop, so the picture that is
-              // left stays where it is instead of being re-fitted into the
-              // same box -- see ImageElement.croppedTo.
-              write(e.croppedTo(apply(v)));
-            },
-            onCommit: commit,
-          ),
-        CanvasIconButton(
-          icon: Icons.crop_free,
-          tooltip: "Show the whole picture again",
-          onPressed: () => now(e.croppedTo(const ImageCrop())),
-        ),
-      ]),
-    if (e.hasImage)
-      CanvasControlGroup(label: "Look", rule: false, children: [
-        CanvasDropdown<ImageFilterPreset>(
-          label: "Filter",
-          value: e.filter,
-          width: 116,
-          options: [for (var f in ImageFilterPreset.values) (f, f.label)],
-          onChanged: (v) => now(e.copyWith(filter: v)),
-        ),
-        CanvasDropdown<OverlayBlend>(
-          label: "Overlay",
-          value: e.blend,
-          width: 116,
-          options: [for (var b in OverlayBlend.values) (b, b.label)],
-          onChanged: (v) => now(e.copyWith(blend: v)),
-        ),
-        if (e.blend != OverlayBlend.none)
-          CanvasColorButton(
-            key: const ValueKey("imageOverlayColour"),
-            label: "Colour",
-            color: e.overlay,
-            onChanged: (c) => now(e.copyWith(overlay: c)),
-          ),
-      ]),
-    // Not part of "Remove background", though that is what it is for. It
-    // traces the alpha channel and does not care how the alpha got there, so
-    // it works just as well on a picture that arrived with one -- and burying
-    // it in the removal group would say otherwise.
-    if (e.hasImage)
-      CanvasControlGroup(label: "Outline", rule: false, children: [
-        CanvasNumberField(
-          label: "Width",
-          min: 0,
-          max: 60,
-          decimals: 1,
-          width: 62,
-          value: e.outline.width,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(outline: e.outline.copyWith(width: v)));
-          },
-          onCommit: commit,
-        ),
-        if (e.outline.width > 0) ...[
-          CanvasColorButton(
-            key: const ValueKey("imageOutlineColour"),
-            label: "Colour",
-            color: e.outline.color,
-            onChanged: (c) =>
-                now(e.copyWith(outline: e.outline.copyWith(color: c))),
-          ),
-          CanvasDropdown<OutlineStyle>(
-            label: "Style",
-            value: e.outline.style,
-            width: 116,
-            options: [for (var o in OutlineStyle.values) (o, o.label)],
-            onChanged: (v) =>
-                now(e.copyWith(outline: e.outline.copyWith(style: v))),
-          ),
-          CanvasNumberField(
-            label: "Feather",
-            min: 0,
-            max: 1,
-            decimals: 2,
-            width: 62,
-            value: e.outline.feather,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(outline: e.outline.copyWith(feather: v)));
-            },
-            onCommit: commit,
-          ),
-        ],
-      ]),
+    ...pictureLookGroups(e, write, begin, commit, shown: e.hasImage),
     // "Border", not "Frame". Frame is now the shape the picture is cut to,
     // and one word for the outline round a rectangle and for the rectangle
     // being a circle is a word doing two jobs. The background is the colour
@@ -673,3 +510,187 @@ ImageElement grownForPadding(ImageElement e, BoxSpec box) {
 /// of these settings are captioned clusters that read as a list; a table with
 /// its own scrollbars sitting in the middle of that list needs an edge, or
 /// what follows it looks like part of it.
+
+/// pictureLookGroups is how a picture is drawn: the shape it is cut to, its
+/// framing and crop, the filter and overlay, and the outline.
+///
+/// Its own function because a video is drawn by exactly these rules -- see
+/// VideoElement.look -- and two copies of forty controls is two panels that
+/// drift. [shown] is whether there is anything to look at yet: an empty
+/// picture has no framing to set.
+List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
+    VoidCallback begin, VoidCallback commit,
+    {required bool shown}) {
+  void now(ImageElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return [
+    if (shown)
+      CanvasControlGroup(label: "Frame", rule: false, children: [
+        CanvasDropdown<String>(
+          label: "Cut to",
+          value: e.frame?.name ?? "",
+          width: 128,
+          options: [
+            ("", "Rectangle"),
+            for (var k in ShapeKind.values) (k.name, k.label),
+          ],
+          onChanged: (v) => now(v.isEmpty
+              ? e.copyWith(clearFrame: true)
+              : e.copyWith(frame: ShapeKind.fromName(v))),
+        ),
+      ]),
+    // Framing is the same three numbers the double-click gesture writes -- see
+    // CanvasStageState._applyFraming. Here as well as there because a number
+    // is the only way to put two pictures in exactly the same place as each
+    // other, and because a control that exists is how anybody finds out the
+    // gesture is there at all.
+    // Said rather than silently missing: the three numbers are only
+    // offered for a picture that fills its frame, and a reader who set them
+    // once and cannot find them again is looking for controls that would do
+    // nothing where they are.
+    if (shown && e.fit != ImageFit.cover)
+      const CanvasHint(
+          "Framing — moving the picture about inside its box and zooming it "
+          "— is for a picture that fills its frame. Set Fit to Cover to "
+          "reach it: contained shows the whole picture and stretched pulls "
+          "it to the box, and neither leaves anything to move."),
+    if (shown && e.fit == ImageFit.cover)
+      CanvasControlGroup(label: "Framing", rule: false, children: [
+        CanvasHint("Double-click the picture to drag it about inside its box, "
+            "and scroll to zoom."),
+        for (var (label, value, apply)
+            in <(String, double, ImageFraming Function(double))>[
+          ("Across", e.framing.x, (v) => e.framing.copyWith(x: v)),
+          ("Down", e.framing.y, (v) => e.framing.copyWith(y: v)),
+          ("Zoom", e.framing.zoom, (v) => e.framing.copyWith(zoom: v)),
+        ])
+          CanvasNumberField(
+            label: label,
+            min: label == "Zoom" ? 1 : 0,
+            max: label == "Zoom" ? 8 : 1,
+            decimals: 2,
+            width: 62,
+            value: value,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(framing: apply(v)));
+            },
+            onCommit: commit,
+          ),
+        CanvasIconButton(
+          icon: Icons.filter_center_focus,
+          tooltip: "Put the picture back in the middle",
+          onPressed: () => now(e.copyWith(framing: const ImageFraming())),
+        ),
+      ]),
+    if (shown)
+      CanvasControlGroup(label: "Crop", rule: false, children: [
+        for (var (label, value, apply)
+            in <(String, double, ImageCrop Function(double))>[
+          ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
+          ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
+          ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
+          ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
+        ])
+          CanvasNumberField(
+            label: label,
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: value,
+            onChanged: (v) {
+              begin();
+              // The frame is trimmed with the crop, so the picture that is
+              // left stays where it is instead of being re-fitted into the
+              // same box -- see ImageElement.croppedTo.
+              write(e.croppedTo(apply(v)));
+            },
+            onCommit: commit,
+          ),
+        CanvasIconButton(
+          icon: Icons.crop_free,
+          tooltip: "Show the whole picture again",
+          onPressed: () => now(e.croppedTo(const ImageCrop())),
+        ),
+      ]),
+    if (shown)
+      CanvasControlGroup(label: "Look", rule: false, children: [
+        CanvasDropdown<ImageFilterPreset>(
+          label: "Filter",
+          value: e.filter,
+          width: 116,
+          options: [for (var f in ImageFilterPreset.values) (f, f.label)],
+          onChanged: (v) => now(e.copyWith(filter: v)),
+        ),
+        CanvasDropdown<OverlayBlend>(
+          label: "Overlay",
+          value: e.blend,
+          width: 116,
+          options: [for (var b in OverlayBlend.values) (b, b.label)],
+          onChanged: (v) => now(e.copyWith(blend: v)),
+        ),
+        if (e.blend != OverlayBlend.none)
+          CanvasColorButton(
+            key: const ValueKey("imageOverlayColour"),
+            label: "Colour",
+            color: e.overlay,
+            onChanged: (c) => now(e.copyWith(overlay: c)),
+          ),
+      ]),
+    // Not part of "Remove background", though that is what it is for. It
+    // traces the alpha channel and does not care how the alpha got there, so
+    // it works just as well on a picture that arrived with one -- and burying
+    // it in the removal group would say otherwise.
+    if (shown)
+      CanvasControlGroup(label: "Outline", rule: false, children: [
+        CanvasNumberField(
+          label: "Width",
+          min: 0,
+          max: 60,
+          decimals: 1,
+          width: 62,
+          value: e.outline.width,
+          onChanged: (v) {
+            begin();
+            write(e.copyWith(outline: e.outline.copyWith(width: v)));
+          },
+          onCommit: commit,
+        ),
+        if (e.outline.width > 0) ...[
+          CanvasColorButton(
+            key: const ValueKey("imageOutlineColour"),
+            label: "Colour",
+            color: e.outline.color,
+            onChanged: (c) =>
+                now(e.copyWith(outline: e.outline.copyWith(color: c))),
+          ),
+          CanvasDropdown<OutlineStyle>(
+            label: "Style",
+            value: e.outline.style,
+            width: 116,
+            options: [for (var o in OutlineStyle.values) (o, o.label)],
+            onChanged: (v) =>
+                now(e.copyWith(outline: e.outline.copyWith(style: v))),
+          ),
+          CanvasNumberField(
+            label: "Feather",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: e.outline.feather,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(outline: e.outline.copyWith(feather: v)));
+            },
+            onCommit: commit,
+          ),
+        ],
+      ]),
+  ];
+}

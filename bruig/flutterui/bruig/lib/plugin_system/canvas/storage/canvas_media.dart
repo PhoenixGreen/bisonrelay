@@ -199,6 +199,7 @@ class CanvasMedia {
     }
 
     if (at(0, "RIFF") && at(8, "WAVE")) return ".wav";
+    if (at(0, "RIFF") && at(8, "AVI ")) return ".avi";
     if (at(0, "fLaC")) return ".flac";
     if (at(0, "OggS")) {
       // Opus says so in its first page; anything else in Ogg is Vorbis as far
@@ -227,4 +228,4 @@ class CanvasMedia {
   }
 }
 
-const _videoExtensions = {".mp4", ".mov", ".webm"};
+const _videoExtensions = {".mp4", ".mov", ".webm", ".avi"};
