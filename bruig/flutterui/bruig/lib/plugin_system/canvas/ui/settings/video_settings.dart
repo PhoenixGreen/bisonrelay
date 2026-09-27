@@ -25,8 +25,13 @@ List<Widget> videoSettings(
   VideoElement e,
   SettingsWrite write,
   VoidCallback begin,
-  VoidCallback commit,
-) {
+  VoidCallback commit, {
+  /// background is a backdrop's video: a file, not a link, with nothing on
+  /// it to press and no box of its own.
+  bool background = false,
+}) {
+  var across = controller.document.editingMaster ||
+      (background && controller.document.sharedBackdrop);
   void now(VideoElement next) {
     begin();
     write(next);
@@ -108,15 +113,16 @@ List<Widget> videoSettings(
             onPressed: () => controller.video.stop(e.id),
           ),
         ],
-        CanvasTextField(
-          key: const ValueKey("videoLink"),
-          label: "Or a link",
-          value: e.link,
-          hint: "https://youtube.com/…",
-          width: 180,
-          onChanged: (v) => write(e.copyWith(link: v.trim())),
-          onCommit: commit,
-        ),
+        if (!background)
+          CanvasTextField(
+            key: const ValueKey("videoLink"),
+            label: "Or a link",
+            value: e.link,
+            hint: "https://youtube.com/…",
+            width: 180,
+            onChanged: (v) => write(e.copyWith(link: v.trim())),
+            onCommit: commit,
+          ),
         if (e.isLink) ...[
           CanvasNumberField(
             label: "Opens at",
@@ -231,7 +237,7 @@ List<Widget> videoSettings(
             value: clip.autoplay,
             onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
           ),
-          if (controller.document.editingMaster) ...[
+          if (across) ...[
             CanvasToggle(
               key: const ValueKey("videoAcross"),
               label: "Across ${word.many}",
@@ -274,7 +280,7 @@ List<Widget> videoSettings(
               "sound together, at the start and end of each file."),
         ],
       ),
-    if (!e.isLink)
+    if (!e.isLink && !background)
       CanvasControlGroup(
         label: "Reader's controls",
         rule: false,
@@ -385,18 +391,20 @@ List<Widget> videoSettings(
       ),
     ]),
     ...pictureLookGroups(e.picture, writeLook, begin, commit, shown: true),
-    boxGroup(
-        e.look.box,
-        (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
-        begin,
-        commit,
-        remember: "video",
-        label: "Background and Border",
-        fillLabel: "Background",
-        rule: false),
-    boxed(
-        context,
-        elementAnimationSection(controller, e, e.animation,
-            (a) => write(e.copyWith(animation: a)), begin, commit)),
+    if (!background)
+      boxGroup(
+          e.look.box,
+          (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
+          begin,
+          commit,
+          remember: "video",
+          label: "Background and Border",
+          fillLabel: "Background",
+          rule: false),
+    if (!background)
+      boxed(
+          context,
+          elementAnimationSection(controller, e, e.animation,
+              (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }

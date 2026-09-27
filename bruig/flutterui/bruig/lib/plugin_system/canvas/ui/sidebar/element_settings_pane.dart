@@ -1,6 +1,7 @@
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/background_media_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
@@ -46,7 +47,7 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     // last, and with a backdrop on the shared canvas nothing moved at all.
     var showing = document.editedBackground;
 
-    var settings = ProceduralSettings(
+    var pattern = ProceduralSettings(
       // How long the canvas is, for the button that makes one run of a
       // movement fit it.
       canvasFrames: document.frames,
@@ -56,11 +57,30 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
       spec: showing.spec,
       onBegin: controller.beginInteraction,
       onCommit: controller.endInteraction,
-      onReset: () => controller.setBackground(const CanvasBackground()),
+      // The pattern back to its start, and nothing else: resetting a
+      // pattern is not a reason to lose the music or the photograph laid
+      // over it.
+      onReset: () => controller.setBackground(CanvasBackground(
+          picture: showing.picture,
+          imageAssetId: showing.imageAssetId,
+          imageFit: showing.imageFit,
+          video: showing.video,
+          sound: showing.sound)),
       onChanged: (spec) {
         controller.beginInteraction();
         controller.setBackground(showing.copyWith(spec: spec), transient: true);
       },
+    );
+
+    // And what the background carries over the pattern: a picture, a video,
+    // a sound.
+    var settings = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        pattern,
+        const SizedBox(height: canvasGroupGap),
+        ...backgroundMediaSettings(context, controller),
+      ],
     );
 
     // Whose backdrop this is, where it is not this canvas's. One on the

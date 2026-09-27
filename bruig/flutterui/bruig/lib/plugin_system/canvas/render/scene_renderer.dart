@@ -174,7 +174,7 @@ void paintCanvasDocument(
 
   if (part != CanvasPaintPart.contents) {
     _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds,
-        doc.frameRate.toDouble(), backdrop);
+        doc.frameRate.toDouble(), backdrop, videoShow);
   }
   if (part == CanvasPaintPart.backdrop) return;
 
@@ -278,7 +278,8 @@ void _paintDocumentBackground(
     CanvasImageSource? images,
     ProceduralCache? backgrounds,
     double frameRate,
-    [ui.Image? backdrop]) {
+    [ui.Image? backdrop,
+    VideoShow Function(VideoElement)? videoShow]) {
   // A backdrop handed in has already been generated: it is this document's own
   // background, rasterised once for a whole run of frames -- see
   // ExportBackdrop. Generating the same still picture for every frame of an
@@ -299,17 +300,54 @@ void _paintDocumentBackground(
   // The master's own where the shared canvas is switched on and has one.
   // See CanvasDocument.drawnBackground.
   var bg = doc.drawnBackground;
-  if (bg.isImage) {
-    var image = images?.resolve(bg.imageAssetId, const BackgroundRemoval());
-    if (image != null) {
-      _drawImage(canvas, image, rect, bg.imageFit);
-      return;
-    }
-    // Falling through to the generator while the picture decodes means the
-    // canvas is never briefly blank, which on a dark document reads as the
-    // whole design having disappeared.
-  }
 
+  // The picture, the video and the sound are elements stretched to the page
+  // -- see CanvasBackground.picture. Whatever box they were saved with, the
+  // page is theirs.
+  T onPage<T extends CanvasElement>(T e) => e.rebase(ElementBase(
+      id: e.id,
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height)) as T;
+
+  var picture = bg.shownPicture;
+  var decoded = picture == null
+      ? null
+      : images?.resolve(picture.assetId, picture.removal);
+  // A picture that covers the whole page with nothing cut out of it hides
+  // the pattern entirely, and generating a pattern nobody can see is the most
+  // expensive way there is to draw nothing. Anything else -- a picture with
+  // its background removed, cut to a shape, contained, or still decoding --
+  // has the pattern showing round it or through it.
+  var covered = decoded != null &&
+      picture!.fit == ImageFit.cover &&
+      !picture.removal.active &&
+      picture.frame == null &&
+      picture.box.padding == 0;
+  if (!covered) {
+    _paintPattern(canvas, rect, bg, time, images, backgrounds, frameRate);
+  }
+  if (picture != null && decoded != null) {
+    _paintImage(canvas, rect, onPage(picture), images);
+  }
+  if (bg.video case var video? when !video.clip.isEmpty) {
+    var page = onPage(video);
+    _paintVideo(canvas, rect, page,
+        videoShow?.call(page) ?? VideoShow.idle(page), images,
+        placeholder: false);
+  }
+}
+
+/// _paintPattern draws a background's generated pattern.
+void _paintPattern(
+    ui.Canvas canvas,
+    Rect rect,
+    CanvasBackground bg,
+    double time,
+    CanvasImageSource? images,
+    ProceduralCache? backgrounds,
+    double frameRate) {
   // The one drawn last time, where it is the same background at the same
   // size. Generating one is the most expensive thing on a canvas and the
   // editor repaints for everything -- see ProceduralCache.
@@ -1435,13 +1473,17 @@ class _OneFrame extends CanvasImageSource {
 /// keyed and then drawn with its look exactly as a picture is, and its
 /// controls over the top.
 void _paintVideo(ui.Canvas canvas, Rect bounds, VideoElement e, VideoShow show,
-    CanvasImageSource? images) {
+    CanvasImageSource? images,
+    {bool placeholder = true}) {
   var poster = e.isLink ? e.look.assetId : show.poster;
   var frame = show.frame ??
       (poster.isEmpty
           ? null
           : images?.resolve(poster, const BackgroundRemoval()));
 
+  // A background video with nothing to show yet shows nothing, and the
+  // pattern under it is the page in the meantime.
+  if (frame == null && !placeholder) return;
   if (frame == null) {
     paintBox(canvas, bounds, e.look.box, images);
     var inner = e.look.box.inner(bounds);

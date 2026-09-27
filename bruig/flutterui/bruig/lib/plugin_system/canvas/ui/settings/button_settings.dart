@@ -81,6 +81,10 @@ List<Widget> buttonSettings(
                   for (var other in controller.document.masterScene?.elements ??
                       const <CanvasElement>[])
                     if (_playable(other)) (other.id, "${other.name} (master)"),
+                // What the background plays: a button that stops the music is
+                // most of what a music bed needs.
+                for (var other in controller.document.drawnBackground.media)
+                  (other.id, other.name),
               ],
               onChanged: (v) {
                 begin();

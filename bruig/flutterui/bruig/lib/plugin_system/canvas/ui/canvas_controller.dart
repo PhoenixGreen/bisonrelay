@@ -2520,6 +2520,7 @@ class CanvasController extends ChangeNotifier {
     for (var e in [
       ..._document.elements,
       ...?_document.masterScene?.elements,
+      ..._document.drawnBackground.media,
     ]) {
       if (e.id == id && (e is AudioElement || e is VideoElement)) return e;
     }
@@ -2563,11 +2564,17 @@ class CanvasController extends ChangeNotifier {
           VideoElement e => e.clip.acrossPages,
           _ => false,
         };
+    // The background's too: what is drawn is what plays. A master's shared
+    // backdrop is the master's, and carries on across a turn on the same
+    // terms as anything else on the master.
+    var fromMaster = _document.editingMaster || _document.sharedBackdrop;
     var keep = <String>{
       for (var e in _document.elements)
         if (media(e)) e.id,
       for (var e in _document.masterScene?.elements ?? const <CanvasElement>[])
         if (media(e) && (!turned || carries(e))) e.id,
+      for (var e in _document.drawnBackground.media)
+        if (!turned || !fromMaster || carries(e)) e.id,
     };
     _video?.keepOnly(keep.contains);
     // A video's sound goes where its video goes -- see VideoRuntime.
@@ -2589,6 +2596,17 @@ class CanvasController extends ChangeNotifier {
       ])
         if (e is VideoElement && e.clip.autoplay && !e.clip.isEmpty) e,
     ];
+
+    // And the backdrop's, which is where a looping video or a music bed
+    // usually is.
+    for (var e in _document.drawnBackground.media) {
+      switch (e) {
+        case VideoElement v when v.clip.autoplay:
+          videos.add(v);
+        case AudioElement a when a.clip.autoplay:
+          audio.autoplay([a]);
+      }
+    }
     if (videos.isNotEmpty) video.autoplay(videos);
   }
 

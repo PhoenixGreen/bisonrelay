@@ -23,8 +23,13 @@ List<Widget> audioSettings(
   AudioElement e,
   SettingsWrite write,
   VoidCallback begin,
-  VoidCallback commit,
-) {
+  VoidCallback commit, {
+  /// background is a backdrop's sound, which is never drawn: nothing to
+  /// press, no icon, no box.
+  bool background = false,
+}) {
+  var across = controller.document.editingMaster ||
+      (background && controller.document.sharedBackdrop);
   void now(AudioElement next) {
     begin();
     write(next);
@@ -179,7 +184,7 @@ List<Widget> audioSettings(
         ),
         // The one setting only the master can mean -- see
         // MediaClip.acrossPages -- so it is only offered there.
-        if (controller.document.editingMaster) ...[
+        if (across) ...[
           CanvasToggle(
             key: const ValueKey("audioAcross"),
             label: "Across ${word.many}",
@@ -225,102 +230,112 @@ List<Widget> audioSettings(
             : "Fades are seconds, at the start and end of each file."),
       ],
     ),
-    CanvasControlGroup(
-      label: "Reader's controls",
-      rule: false,
-      children: [
-        for (var control in AudioControl.values)
-          CanvasToggle(
-            key: ValueKey("audioControl${control.name}"),
-            label: control.label,
-            value: e.has(control),
-            onChanged: (on) {
-              var controls = [
-                for (var c in AudioControl.values)
-                  if (c == control ? on : e.has(c)) c,
-              ];
-              now(_fitted(e.copyWith(controls: controls)));
-            },
-          ),
-        if (e.controls.isEmpty)
-          const CanvasHint(
-              "Nothing to press: the speaker is a picture, and the sound "
-              "plays by itself or from a button. A sound only ever started by "
-              "buttons can be hidden -- hidden is not drawn, and still plays."),
-      ],
-    ),
-    CanvasMoreGroup(
-      label: "Icon",
-      remember: "audioIconMore",
-      rule: false,
-      tooltip: "Your own pictures for the icon",
-      row: [
-        CanvasDropdown<AudioGlyph>(
-          key: const ValueKey("audioGlyph"),
-          label: "Shape",
-          value: e.glyph,
-          width: 130,
-          options: [for (var g in AudioGlyph.values) (g, g.label)],
-          onChanged: (v) => now(e.copyWith(glyph: v)),
-        ),
-        CanvasColorButton(
-          label: "Icon",
-          color: e.iconColor,
-          onChanged: (c) => now(e.copyWith(iconColor: c)),
-        ),
-        CanvasColorButton(
-          label: "Playing",
-          color: e.accent,
-          onChanged: (c) => now(e.copyWith(accent: c)),
-        ),
-      ],
-      more: [
-        for (var (label, id, set) in [
-          ("Icon", e.picture, (String v) => e.copyWith(picture: v)),
-          (
-            "Paused",
-            e.pausedPicture,
-            (String v) => e.copyWith(pausedPicture: v)
-          ),
-          ("Muted", e.mutedPicture, (String v) => e.copyWith(mutedPicture: v)),
-        ]) ...[
-          CanvasReadout(
-              label: label, value: id.isEmpty ? "Drawn" : "Picture", width: 64),
-          CanvasIconButton(
-            icon: Icons.add_photo_alternate_outlined,
-            tooltip: "Use a picture for the ${label.toLowerCase()} icon",
-            onPressed: () async {
-              var picked = await pickCanvasImage(context);
-              if (picked != null) now(set(picked));
-            },
-          ),
-          CanvasIconButton(
-            icon: Icons.photo_library_outlined,
-            tooltip: "Use a picture you have already added",
-            onPressed: () async {
-              var picked = await showRecentPictures(context);
-              if (picked != null) now(set(picked));
-            },
-          ),
-          if (id.isNotEmpty)
-            CanvasIconButton(
-              icon: Icons.hide_image_outlined,
-              tooltip: "Back to the drawn icon",
-              onPressed: () => now(set("")),
+    if (!background)
+      CanvasControlGroup(
+        label: "Reader's controls",
+        rule: false,
+        children: [
+          for (var control in AudioControl.values)
+            CanvasToggle(
+              key: ValueKey("audioControl${control.name}"),
+              label: control.label,
+              value: e.has(control),
+              onChanged: (on) {
+                var controls = [
+                  for (var c in AudioControl.values)
+                    if (c == control ? on : e.has(c)) c,
+                ];
+                now(_fitted(e.copyWith(controls: controls)));
+              },
             ),
-          const CanvasLineBreak(),
+          if (e.controls.isEmpty)
+            const CanvasHint(
+                "Nothing to press: the speaker is a picture, and the sound "
+                "plays by itself or from a button. A sound only ever started by "
+                "buttons can be hidden -- hidden is not drawn, and still plays."),
         ],
-        const CanvasHint(
-            "Paused and Muted fall back to Icon, so one picture is enough. "
-            "Three make an icon that changes with the sound."),
-      ],
-    ),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "audio", rule: false),
-    boxed(
-        context,
-        elementAnimationSection(controller, e, e.animation,
-            (a) => write(e.copyWith(animation: a)), begin, commit)),
+      ),
+    if (!background)
+      CanvasMoreGroup(
+        label: "Icon",
+        remember: "audioIconMore",
+        rule: false,
+        tooltip: "Your own pictures for the icon",
+        row: [
+          CanvasDropdown<AudioGlyph>(
+            key: const ValueKey("audioGlyph"),
+            label: "Shape",
+            value: e.glyph,
+            width: 130,
+            options: [for (var g in AudioGlyph.values) (g, g.label)],
+            onChanged: (v) => now(e.copyWith(glyph: v)),
+          ),
+          CanvasColorButton(
+            label: "Icon",
+            color: e.iconColor,
+            onChanged: (c) => now(e.copyWith(iconColor: c)),
+          ),
+          CanvasColorButton(
+            label: "Playing",
+            color: e.accent,
+            onChanged: (c) => now(e.copyWith(accent: c)),
+          ),
+        ],
+        more: [
+          for (var (label, id, set) in [
+            ("Icon", e.picture, (String v) => e.copyWith(picture: v)),
+            (
+              "Paused",
+              e.pausedPicture,
+              (String v) => e.copyWith(pausedPicture: v)
+            ),
+            (
+              "Muted",
+              e.mutedPicture,
+              (String v) => e.copyWith(mutedPicture: v)
+            ),
+          ]) ...[
+            CanvasReadout(
+                label: label,
+                value: id.isEmpty ? "Drawn" : "Picture",
+                width: 64),
+            CanvasIconButton(
+              icon: Icons.add_photo_alternate_outlined,
+              tooltip: "Use a picture for the ${label.toLowerCase()} icon",
+              onPressed: () async {
+                var picked = await pickCanvasImage(context);
+                if (picked != null) now(set(picked));
+              },
+            ),
+            CanvasIconButton(
+              icon: Icons.photo_library_outlined,
+              tooltip: "Use a picture you have already added",
+              onPressed: () async {
+                var picked = await showRecentPictures(context);
+                if (picked != null) now(set(picked));
+              },
+            ),
+            if (id.isNotEmpty)
+              CanvasIconButton(
+                icon: Icons.hide_image_outlined,
+                tooltip: "Back to the drawn icon",
+                onPressed: () => now(set("")),
+              ),
+            const CanvasLineBreak(),
+          ],
+          const CanvasHint(
+              "Paused and Muted fall back to Icon, so one picture is enough. "
+              "Three make an icon that changes with the sound."),
+        ],
+      ),
+    if (!background)
+      boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+          remember: "audio", rule: false),
+    if (!background)
+      boxed(
+          context,
+          elementAnimationSection(controller, e, e.animation,
+              (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }
 

@@ -104,42 +104,111 @@ const int maxSequenceFrames = maxFrameCount * 100;
 class CanvasBackground {
   final ProceduralSpec spec;
 
-  /// imageAssetId, when set, is drawn instead of the generator.
+  /// imageAssetId and imageFit are the picture a background carried before a
+  /// background could carry a picture with settings -- see [picture]. Still
+  /// read, so a canvas saved then opens with its picture; never written once
+  /// the picture has been edited.
   final String imageAssetId;
   final ImageFit imageFit;
+
+  /// picture, video and sound are what a background can carry besides its
+  /// pattern, each an element of its own kind with that element's settings:
+  /// a picture can be cut out, cropped and graded; a video keyed, trimmed and
+  /// looped; a sound given a playlist and fades.
+  ///
+  /// Elements rather than a second set of fields, so that one set of controls
+  /// and one painter serve both -- a background video that could not be keyed
+  /// the way a video element can would be a difference nobody could explain.
+  /// They are laid over the pattern in that order, and each is stretched to
+  /// the page when drawn, whatever box it was saved with. The sound is never
+  /// drawn.
+  final ImageElement? picture;
+  final VideoElement? video;
+  final AudioElement? sound;
 
   const CanvasBackground({
     this.spec = const ProceduralSpec(),
     this.imageAssetId = "",
     this.imageFit = ImageFit.cover,
+    this.picture,
+    this.video,
+    this.sound,
   });
 
-  bool get isImage => imageAssetId.isNotEmpty;
+  /// shownPicture is the picture to draw: the one with settings, or the one
+  /// saved before there were any.
+  ImageElement? get shownPicture {
+    if (picture case var p? when p.hasImage) return p;
+    if (imageAssetId.isEmpty) return null;
+    return ImageElement(const ElementBase(id: "backgroundPicture"),
+        assetId: imageAssetId, fit: imageFit);
+  }
+
+  bool get isImage => shownPicture != null;
+
+  /// media is the background's video and sound, for the runtimes.
+  List<CanvasElement> get media => [
+        if (video case var v? when !v.clip.isEmpty) v,
+        if (sound case var a? when !a.clip.isEmpty) a,
+      ];
+
+  Set<String> get assetIds => {
+        ...?shownPicture?.assetIds,
+        ...?video?.assetIds,
+      };
+
+  Set<String> get mediaIds => {
+        ...?video?.mediaIds,
+        ...?sound?.mediaIds,
+      };
 
   CanvasBackground copyWith({
     ProceduralSpec? spec,
     String? imageAssetId,
     ImageFit? imageFit,
+    ImageElement? picture,
+    VideoElement? video,
+    AudioElement? sound,
+    bool clearPicture = false,
+    bool clearVideo = false,
+    bool clearSound = false,
   }) =>
       CanvasBackground(
         spec: spec ?? this.spec,
-        imageAssetId: imageAssetId ?? this.imageAssetId,
+        // A picture edited with settings replaces the old bare one for good.
+        imageAssetId: picture != null || clearPicture
+            ? ""
+            : imageAssetId ?? this.imageAssetId,
         imageFit: imageFit ?? this.imageFit,
+        picture: clearPicture ? null : picture ?? this.picture,
+        video: clearVideo ? null : video ?? this.video,
+        sound: clearSound ? null : sound ?? this.sound,
       );
 
   Map<String, dynamic> toJson() => {
         "spec": spec.toJson(),
-        if (isImage) "image": imageAssetId,
-        if (isImage) "fit": imageFit.name,
+        if (imageAssetId.isNotEmpty) "image": imageAssetId,
+        if (imageAssetId.isNotEmpty) "fit": imageFit.name,
+        if (picture != null) "picture": picture!.toJson(),
+        if (video != null) "video": video!.toJson(),
+        if (sound != null) "sound": sound!.toJson(),
       };
 
-  factory CanvasBackground.fromJson(Map<String, dynamic> json) =>
-      CanvasBackground(
-        spec: jsonSpec(
-            json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-        imageAssetId: jsonString(json["image"], ""),
-        imageFit: ImageFit.fromName(json["fit"] as String?),
-      );
+  factory CanvasBackground.fromJson(Map<String, dynamic> json) {
+    T? element<T>(dynamic raw) =>
+        raw is Map<String, dynamic> && elementFromJson(raw) is T
+            ? elementFromJson(raw) as T
+            : null;
+    return CanvasBackground(
+      spec: jsonSpec(
+          json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
+      imageAssetId: jsonString(json["image"], ""),
+      imageFit: ImageFit.fromName(json["fit"] as String?),
+      picture: element<ImageElement>(json["picture"]),
+      video: element<VideoElement>(json["video"]),
+      sound: element<AudioElement>(json["sound"]),
+    );
+  }
 }
 
 /// CanvasDocument is the whole thing.
@@ -604,7 +673,7 @@ class CanvasDocument {
 
     void fromBackground(CanvasBackground? bg) {
       if (bg == null) return;
-      if (bg.imageAssetId.isNotEmpty) ids.add(bg.imageAssetId);
+      ids.addAll(bg.assetIds);
       fromIcons(bg.spec.rings.icons);
     }
 
@@ -636,10 +705,15 @@ class CanvasDocument {
   /// against, and what a bundle carries. See [assetIds] for why it is every
   /// scene and not the one open.
   Set<String> get mediaIds => {
-        for (var one in allScenes)
+        ...background.mediaIds,
+        for (var one in allScenes) ...[
           for (var e in one.elements) ...e.mediaIds,
-        if (master != null)
+          ...?one.background?.mediaIds,
+        ],
+        if (master != null) ...[
           for (var e in master!.elements) ...e.mediaIds,
+          ...?master!.background?.mediaIds,
+        ],
       };
 
   /// hasKeyframes is whether anything in this document moves.

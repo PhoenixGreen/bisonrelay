@@ -17,7 +17,8 @@ List<Widget> imageSettings(
     ImageElement e,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit) {
+    VoidCallback commit,
+    {bool background = false}) {
   void now(ImageElement next) {
     begin();
     write(next);
@@ -460,17 +461,20 @@ List<Widget> imageSettings(
     // being a circle is a word doing two jobs. The background is the colour
     // behind the picture -- what shows through where the picture does not
     // reach, which is wherever there is padding or the fit is not a cover.
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "image",
-        label: "Background and Border",
-        fillLabel: "Background",
-        rule: false,
-        onPadding: (box) => write(grownForPadding(e, box))),
-    // How it arrives, in a section of its own like a headline's.
-    boxed(
-        context,
-        elementAnimationSection(controller, e, e.animation,
-            (a) => write(e.copyWith(animation: a)), begin, commit)),
+    if (!background)
+      boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+          remember: "image",
+          label: "Background and Border",
+          fillLabel: "Background",
+          rule: false,
+          onPadding: (box) => write(grownForPadding(e, box))),
+    // How it arrives, in a section of its own like a headline's. A
+    // backdrop does not arrive; it is there.
+    if (!background)
+      boxed(
+          context,
+          elementAnimationSection(controller, e, e.animation,
+              (a) => write(e.copyWith(animation: a)), begin, commit)),
   ];
 }
 
