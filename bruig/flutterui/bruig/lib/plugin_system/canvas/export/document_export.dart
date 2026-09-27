@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
@@ -45,7 +48,86 @@ enum DocumentAs {
 /// it has hung.
 typedef DocumentProgress = void Function(int done, int total);
 
+/// renderDocumentPage draws one leaf, exactly as the editor shows it.
+///
+/// Its own function rather than renderFrame, for two reasons that both come
+/// from this being a *page* rather than a frame.
+///
+/// renderFrame draws the sequence: handed a document of several scenes it
+/// asks paintSequenceFrame where the run has got to, and the scene being
+/// edited has nothing to do with it. Given a document moved to page four and
+/// the default frame, it drew page one -- four times over, which is a book
+/// whose every leaf is its first.
+///
+/// And a spread is two leaves. An element laid across the gutter belongs to
+/// one page and hangs over the other; printed a page at a time it would be
+/// cut at the gutter and the half on the other leaf would be nowhere. So the
+/// facing leaf's contents are drawn into this page as well, clipped to it --
+/// which is what a printed spread is: the left half on one sheet, the right
+/// half on the next, meeting when the book is open.
+///
+/// The caller owns the image and must dispose it. A document of forty pages
+/// held forty of these at once is how a long export runs out of memory.
+Future<ui.Image> renderDocumentPage(
+  CanvasDocument document,
+  int index, {
+  double scale = 1,
+  CanvasImageSource? images,
+}) async {
+  var asked = scale.clamp(0.05, maxExportScale);
+  var s = asked * document.size.exportScale;
+  var width = math.max(1, (document.size.exportSize.width * asked).round());
+  var height = math.max(1, (document.size.exportSize.height * asked).round());
+  var docSize = document.size.size;
+
+  // This leaf, with its own backdrop. Taken from the document's own, every
+  // page in the book wore whichever backdrop was edited last -- see
+  // CanvasDocument.backgroundOf, which is the same answer paintSequenceFrame
+  // takes for the same reason.
+  var page = document.goToScene(index).copyWith(
+        onMaster: false,
+        background: document.backgroundOf(index),
+      );
+
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.scale(s);
+
+  paintCanvasDocument(canvas, page,
+      part: CanvasPaintPart.backdrop, images: images);
+
+  // The facing leaf's overhang, between the paper and this page's own
+  // contents -- the order the editor draws them in, so that what was designed
+  // is what is printed.
+  var beside = document.facingAt(index);
+  if (beside != null) {
+    var onLeft = document.facingIsLeft(index) ?? false;
+    canvas.save();
+    canvas.clipRect(ui.Offset.zero & docSize);
+    canvas.translate(onLeft ? docSize.width : -docSize.width, 0);
+    paintCanvasDocument(
+        canvas, document.goToScene(beside).copyWith(onMaster: false),
+        part: CanvasPaintPart.contents, images: images);
+    canvas.restore();
+  }
+
+  paintCanvasDocument(canvas, page,
+      part: CanvasPaintPart.contents, images: images);
+
+  var picture = recorder.endRecording();
+  try {
+    return await picture.toImage(width, height);
+  } finally {
+    picture.dispose();
+  }
+}
+
 /// renderDocument writes the whole document as [as].
+///
+/// Every format goes through renderDocumentPage, so a page is the same page
+/// whichever of the three it is printed into. The PDF used to go through
+/// renderPdf, which draws frames of a run rather than leaves of a document
+/// and knows nothing about a spread.
 Future<CanvasExport?> renderDocument(
   CanvasDocument document, {
   DocumentAs as = DocumentAs.pdf,
@@ -55,54 +137,69 @@ Future<CanvasExport?> renderDocument(
   PdfOrientation orientation = PdfOrientation.auto,
   DocumentProgress? onProgress,
 }) async {
-  // A PDF of every page already exists and is the same job, so it is that
-  // rather than a second one -- see renderPdf, which walks the scenes and
-  // writes a page for each.
-  if (as == DocumentAs.pdf) {
-    return renderPdf(document,
-        scale: scale, images: images, paper: paper, orientation: orientation);
-  }
-
   try {
     var scenes = document.allScenes;
     var covers = document.pageCovers;
     var pages = <EpubPage>[];
+    var sheets = <PdfPicture>[];
+
     for (var (i, scene) in scenes.indexed) {
       onProgress?.call(i, scenes.length);
       // Rendered and encoded one at a time, so only one decoded page is alive
       // at once. The obvious shape -- render them all, then pack them -- is
       // what makes a long document run out of memory.
-      var png = await renderImage(
-        document.goToScene(i).copyWith(onMaster: false),
-        scale: scale,
-        images: images,
-      );
-      if (png == null) return null;
-      pages.add(EpubPage(
-        png: png.data,
-        width: png.width,
-        height: png.height,
-        title: scene.saysAt(i, document.kind),
-        side: _sideOf(document, covers, i),
-        // The first cover the document marks, and the first page otherwise: a
-        // reader wants a picture for its shelf either way, and the front of
-        // the document is the only honest answer to what it should be.
-        cover: document.isPages
-            ? covers[i] == PageCover.front
-            : i == 0 && !covers.any((c) => c == PageCover.front),
-        links: as == DocumentAs.interactiveEpub
-            ? _linksOn(document, scene, i)
-            : const [],
-      ));
+      ui.Image? image;
+      try {
+        image =
+            await renderDocumentPage(document, i, scale: scale, images: images);
+        if (as == DocumentAs.pdf) {
+          // Straight rather than premultiplied: a PDF keeps the colours and
+          // the transparency as two separate images, and separating them out
+          // of premultiplied pixels means dividing the colour back out of its
+          // own alpha, which loses a little of every half-transparent pixel
+          // for nothing.
+          var raw = await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba);
+          if (raw == null) return null;
+          sheets.add(PdfPicture(raw.buffer.asUint8List(),
+              width: image.width, height: image.height));
+          continue;
+        }
+        var png = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (png == null) return null;
+        pages.add(EpubPage(
+          png: png.buffer.asUint8List(),
+          width: image.width,
+          height: image.height,
+          title: scene.saysAt(i, document.kind),
+          side: _sideOf(document, covers, i),
+          // The first cover the document marks, and the first page otherwise:
+          // a reader wants a picture for its shelf either way, and the front
+          // of the document is the only honest answer to what it should be.
+          cover: document.isPages
+              ? covers[i] == PageCover.front
+              : i == 0 && !covers.any((c) => c == PageCover.front),
+          links: as == DocumentAs.interactiveEpub
+              ? _linksOn(document, scene, i)
+              : const [],
+        ));
+      } finally {
+        image?.dispose();
+      }
     }
     onProgress?.call(scenes.length, scenes.length);
-    if (pages.isEmpty) return null;
 
+    if (as == DocumentAs.pdf) {
+      if (sheets.isEmpty) return null;
+      var sheet = pageFor(paper, document.size.size, orientation: orientation);
+      return CanvasExport(writePdf(sheets, page: sheet), as.mime,
+          width: sheet.width.round(), height: sheet.height.round());
+    }
+
+    if (pages.isEmpty) return null;
     // A cover was never marked and the document has none: the first page
     // stands in, so the book has a picture on the shelf.
-    if (!pages.any((p) => p.cover)) {
-      pages[0] = _withCover(pages[0]);
-    }
+    if (!pages.any((p) => p.cover)) pages[0] = _withCover(pages[0]);
 
     var bytes = writeEpub(
       pages: pages,
@@ -113,7 +210,7 @@ Future<CanvasExport?> renderDocument(
     return CanvasExport(bytes, as.mime,
         width: pages.first.width, height: pages.first.height);
   } catch (exception) {
-    debugPrint("Unable to write the canvas as an EPUB: $exception");
+    debugPrint("Unable to write the canvas as a document: $exception");
     return null;
   }
 }

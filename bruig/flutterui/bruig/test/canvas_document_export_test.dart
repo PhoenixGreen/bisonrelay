@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'dart:ui' as ui;
+
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/epub_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_targets.dart';
@@ -11,6 +13,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_document_export_test.dart is the book a document of pages is
@@ -35,6 +40,11 @@ EpubPage page(String title,
     );
 
 Archive openEpub(Uint8List bytes) => ZipDecoder().decodeBytes(bytes);
+
+/// flat is a backdrop that is one colour, which is what a page of a document
+/// usually has behind it.
+CanvasBackground flat(Color color) => CanvasBackground(
+    spec: ProceduralSpec(style: ProceduralStyle.plain, background: color));
 
 String textOf(Archive archive, String path) {
   var file = archive.files.firstWhere((f) => f.name == path,
@@ -255,6 +265,94 @@ void main() {
           () => renderDocument(playing, as: DocumentAs.interactiveEpub));
       var html = textOf(openEpub(made!.data), "OEBPS/page0.xhtml");
       expect(html, isNot(contains("<a ")));
+    });
+
+    /// colourAt reads a pixel out of one rendered page.
+    Future<int> colourAt(
+        WidgetTester tester, CanvasDocument doc, int page, int x, int y) async {
+      var found = 0;
+      await tester.runAsync(() async {
+        var image = await renderDocumentPage(doc, page);
+        try {
+          var data = await image.toByteData();
+          var at = (y * image.width + x) * 4;
+          found = (data!.getUint8(at + 3) << 24) |
+              (data.getUint8(at) << 16) |
+              (data.getUint8(at + 1) << 8) |
+              data.getUint8(at + 2);
+        } finally {
+          image.dispose();
+        }
+      });
+      return found;
+    }
+
+    /// coloured is three pages, each a different flat colour, so that a page
+    /// drawn as the wrong one is plain to see.
+    CanvasDocument coloured() => CanvasDocument(
+          title: "Colours",
+          kind: CanvasKind.pages,
+          size: const CanvasSize(ratio: CanvasRatio.a4, width: 200),
+          scenes: [
+            CanvasScene(id: "a", background: flat(const Color(0xFFFF0000))),
+            CanvasScene(id: "b", background: flat(const Color(0xFF00FF00))),
+            CanvasScene(id: "c", background: flat(const Color(0xFF0000FF))),
+          ],
+        );
+
+    // renderFrame draws the *sequence*: handed a document moved to page four
+    // and the default frame it draws page one. Every leaf of the book came
+    // out as the first one, backdrop and all.
+    testWidgets("every page is its own page, with its own backdrop",
+        (tester) async {
+      var doc = coloured();
+      var first = await colourAt(tester, doc, 0, 10, 10);
+      var second = await colourAt(tester, doc, 1, 10, 10);
+      var third = await colourAt(tester, doc, 2, 10, 10);
+
+      // Which channel leads, rather than the exact pixel: a plain backdrop is
+      // the colour with the generator's own shading over it, and the test is
+      // about which page was drawn.
+      int red(int c) => (c >> 16) & 0xFF;
+      int green(int c) => (c >> 8) & 0xFF;
+      int blue(int c) => c & 0xFF;
+
+      expect(red(first), greaterThan(green(first) + 40));
+      expect(green(second), greaterThan(red(second) + 40));
+      expect(blue(third), greaterThan(red(third) + 40));
+    });
+
+    // An element laid across the gutter belongs to one page and hangs over
+    // the other. Printed a page at a time it was cut at the gutter and the
+    // half on the other leaf was nowhere -- which is not what a spread is:
+    // the left half is on one sheet and the right half on the next.
+    testWidgets("and a spread carries on across the gutter", (tester) async {
+      var wide = CanvasDocument(
+        title: "Spread",
+        kind: CanvasKind.pages,
+        size: const CanvasSize(ratio: CanvasRatio.a4, width: 200),
+        pages: const PagesSpec(facing: true),
+        scenes: [
+          const CanvasScene(id: "cover", cover: PageCover.front),
+          // On the left leaf, reaching well over the gutter onto the right.
+          CanvasScene(id: "left", elements: [
+            ShapeElement(
+                const ElementBase(
+                    id: "s", x: 100, y: 0, width: 300, height: 400),
+                fill: const Color(0xFF00FFFF)),
+          ]),
+          const CanvasScene(id: "right"),
+        ],
+      );
+
+      expect(wide.facingAt(1), 2, reason: "the two leaves face each other");
+      // Its own leaf has the left of it.
+      expect(await colourAt(tester, wide, 1, 150, 40), 0xFF00FFFF);
+      // And the leaf it hangs over has the rest, at the gutter edge.
+      expect(await colourAt(tester, wide, 2, 10, 40), 0xFF00FFFF,
+          reason: "the half of the picture printed on the next sheet");
+      // The cover is not part of the spread and gets none of it.
+      expect(await colourAt(tester, wide, 0, 10, 40), isNot(0xFF00FFFF));
     });
 
     testWidgets("and a PDF is still a PDF", (tester) async {
