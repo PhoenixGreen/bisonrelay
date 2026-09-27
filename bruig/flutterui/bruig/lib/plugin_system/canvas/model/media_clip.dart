@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
-    show jsonBool, jsonDouble, jsonInt, jsonString;
+    show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString;
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
 // media_clip.dart is what is played: which files, which part of each, how it
 // starts and stops, and whether it goes round again.
@@ -189,6 +190,10 @@ class MediaClip {
   final bool timed;
   final int at;
 
+  /// mix is this clip's channel strip on the mixer -- its level, balance,
+  /// EQ and compressor. See mix.dart.
+  final ChannelMix mix;
+
   const MediaClip({
     this.playlist = const [],
     this.volume = 0.8,
@@ -200,6 +205,7 @@ class MediaClip {
     this.acrossPages = true,
     this.timed = false,
     this.at = 0,
+    this.mix = const ChannelMix(),
   });
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
@@ -268,6 +274,7 @@ class MediaClip {
     bool? acrossPages,
     bool? timed,
     int? at,
+    ChannelMix? mix,
   }) =>
       MediaClip(
         playlist: playlist ?? this.playlist,
@@ -280,6 +287,7 @@ class MediaClip {
         acrossPages: acrossPages ?? this.acrossPages,
         timed: timed ?? this.timed,
         at: at ?? this.at,
+        mix: mix ?? this.mix,
       );
 
   Map<String, dynamic> toJson() => {
@@ -294,6 +302,7 @@ class MediaClip {
         if (!acrossPages) "stopsAtJoin": true,
         if (timed) "timed": true,
         if (at != 0) "at": at,
+        if (!mix.isDefault) "mix": mix.toJson(),
       };
 
   factory MediaClip.fromJson(Map<String, dynamic> json) {
@@ -314,6 +323,7 @@ class MediaClip {
       acrossPages: !jsonBool(json["stopsAtJoin"], false),
       timed: jsonBool(json["timed"], false),
       at: math.max(0, jsonInt(json["at"], 0)),
+      mix: jsonSpec(json["mix"], ChannelMix.fromJson, const ChannelMix()),
     );
   }
 }

@@ -453,7 +453,7 @@ Future<({List<String> inputs, List<String> output})> _soundArgs(
   if (sounds.isEmpty) {
     return (inputs: const <String>[], output: const <String>[]);
   }
-  var (inputs, graph) = mixArgs(sounds);
+  var (inputs, graph) = mixArgs(sounds, master: media!.document.masterMix);
   return (
     inputs: inputs,
     output: [

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -9,8 +10,10 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:flutter/foundation.dart';
 
 // export_media.dart is the media on the timeline, for an export: the frame
 // each video shows on each frame of the run, and the sound to put under it.
@@ -39,6 +42,9 @@ class ExportSound {
   final double fadeOut;
   final double volume;
 
+  /// mix is the channel strip this stretch plays through.
+  final ChannelMix mix;
+
   const ExportSound({
     required this.path,
     required this.at,
@@ -47,6 +53,7 @@ class ExportSound {
     this.fadeIn = 0,
     this.fadeOut = 0,
     this.volume = 1,
+    this.mix = const ChannelMix(),
   });
 }
 
@@ -233,7 +240,7 @@ class ExportMedia {
     var total = document.playFrames / _rate;
     for (var p in _placed) {
       var clip = p.clip;
-      if (clip.muted || clip.volume <= 0) continue;
+      if (clip.muted || clip.volume <= 0 || clip.mix.mute) continue;
       var begins = (p.start + clip.at) / _rate;
       var limit = math.min(p.until / _rate, total) - begins;
       if (limit <= 0) continue;
@@ -263,6 +270,7 @@ class ExportMedia {
                 // fading: the fade belongs to the end of the file.
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
+                mix: clip.mix,
               ));
             }
           }
@@ -289,7 +297,8 @@ class ExportMedia {
 /// delayed to where it starts; then all of them are summed without being
 /// turned down -- amix's default halves every input, which would make a
 /// clip on its own half as loud as it was set to be.
-(List<String>, String) mixArgs(List<ExportSound> sounds, {int first = 1}) {
+(List<String>, String) mixArgs(List<ExportSound> sounds,
+    {int first = 1, MasterMix master = const MasterMix(), bool pad = true}) {
   var inputs = <String>[];
   var chains = <String>[];
   var labels = <String>[];
@@ -303,14 +312,91 @@ class ExportMedia {
       if (s.fadeOut > 0)
         "afade=t=out:st=${n(math.max(0, s.length - s.fadeOut))}:d=${n(s.fadeOut)}",
       if (s.volume != 1) "volume=${n(s.volume)}",
+      // The strip it plays through: EQ, compressor, fader and balance. Per
+      // stretch rather than per channel, which is the same thing -- one
+      // channel's stretches never overlap -- and keeps the graph one chain
+      // per input.
+      ...s.mix.ffmpeg,
       "adelay=${(s.at * 1000).round()}:all=1",
     ];
     chains.add("[${first + i}:a]${filters.join(",")}[s$i]");
     labels.add("[s$i]");
   }
+  // Then the master: its EQ, glue, level, the loudness target and the
+  // limiter -- see MasterMix.ffmpeg -- over the sum of everything. The
+  // loudness normaliser works at a high rate of its own, so the sound is put
+  // back to 48kHz after it.
+  var chain = [
+    ...master.ffmpeg,
+    if (master.normalise) "aresample=48000",
+    if (pad) "apad",
+  ];
+  var tail = chain.isEmpty ? "anull" : chain.join(",");
   var mix = sounds.length == 1
-      ? "${labels.single}apad[mix]"
+      ? "${labels.single}$tail[mix]"
       : "${labels.join()}amix=inputs=${sounds.length}:normalize=0"
-          ":dropout_transition=0,apad[mix]";
+          ":dropout_transition=0,$tail[mix]";
   return (inputs, [...chains, mix].join(";"));
+}
+
+/// Loudness is what a mix measured, the way broadcast measures it: EBU R128
+/// integrated loudness, loudness range and true peak.
+class Loudness {
+  final double integrated;
+  final double range;
+  final double truePeak;
+  const Loudness(this.integrated, this.range, this.truePeak);
+}
+
+/// parseLoudness reads the summary ffmpeg's ebur128 filter prints at the end.
+@visibleForTesting
+Loudness? parseLoudness(String report) {
+  var at = report.lastIndexOf("Summary:");
+  if (at < 0) return null;
+  var summary = report.substring(at);
+  double? read(String label) {
+    var m = RegExp("$label:\\s+(-?[\\d.]+|-inf)").firstMatch(summary);
+    var v = m?.group(1);
+    if (v == null) return null;
+    return v == "-inf" ? double.negativeInfinity : double.tryParse(v);
+  }
+
+  var integrated = read("I");
+  var range = read("LRA");
+  var peak = read("Peak");
+  if (integrated == null) return null;
+  return Loudness(integrated, range ?? 0, peak ?? double.negativeInfinity);
+}
+
+/// measureMix plays [document]'s timeline sound through its mix, as an
+/// export would, into ffmpeg's loudness meter -- and nowhere else. The one
+/// honest answer to "how loud is this", because it is the export's own sound.
+Future<Loudness?> measureMix(CanvasDocument document,
+    {Future<String?> Function(MediaKind kind, String id)? locate}) async {
+  var ffmpeg = await ffmpegPath();
+  if (ffmpeg == null) return null;
+  var media = ExportMedia.of(document, locate: locate);
+  if (media == null) return null;
+  try {
+    var sounds = await media.sounds();
+    if (sounds.isEmpty) return null;
+    var (inputs, graph) =
+        mixArgs(sounds, first: 0, master: document.masterMix, pad: false);
+    var seconds = document.playFrames /
+        (document.frameRate <= 0 ? 1 : document.frameRate);
+    var run = await Process.run(ffmpeg, [
+      "-hide_banner", "-nostats", //
+      ...inputs,
+      "-filter_complex", "$graph;[mix]ebur128=peak=true[out]",
+      "-map", "[out]",
+      "-t", seconds.toStringAsFixed(3),
+      "-f", "null", "-",
+    ]);
+    return parseLoudness(run.stderr.toString());
+  } catch (exception) {
+    debugPrint("Unable to measure the mix: $exception");
+    return null;
+  } finally {
+    media.dispose();
+  }
 }

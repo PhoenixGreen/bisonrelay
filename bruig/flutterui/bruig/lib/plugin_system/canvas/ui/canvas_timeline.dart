@@ -135,12 +135,18 @@ class CanvasTimeline extends StatefulWidget {
   final bool channelsOpen;
   final VoidCallback onToggleChannels;
 
+  /// mixerOpen and onToggleMixer drive the mixer, beside the channels.
+  final bool mixerOpen;
+  final VoidCallback onToggleMixer;
+
   const CanvasTimeline({
     required this.controller,
     this.keyframesOpen = false,
     this.onToggleKeyframes = _noop,
     this.channelsOpen = false,
     this.onToggleChannels = _noop,
+    this.mixerOpen = false,
+    this.onToggleMixer = _noop,
     super.key,
   });
 
@@ -923,6 +929,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                     : "Channels: the videos and sounds on the timeline",
                 active: widget.channelsOpen,
                 onPressed: widget.onToggleChannels,
+              ),
+              CanvasIconButton(
+                key: const ValueKey("mixerToggle"),
+                icon: Icons.tune,
+                tooltip: widget.mixerOpen
+                    ? "Close the mixer"
+                    : "Mixer: level, balance, EQ and dynamics for each sound, "
+                        "and the master",
+                active: widget.mixerOpen,
+                onPressed: widget.onToggleMixer,
               ),
             ]),
           ),

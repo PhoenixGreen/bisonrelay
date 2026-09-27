@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter/foundation.dart';
 
 // audio_runtime.dart decides what is playing: which file of a playlist, from
@@ -166,6 +167,71 @@ class AudioRuntime extends ChangeNotifier {
     _silence(p);
     p.index = 0;
     notifyListeners();
+  }
+
+  // ------------------------------------------------------------------------
+  // The mixer
+  // ------------------------------------------------------------------------
+
+  /// _channels is what each mixer channel was last set to, by channel -- the
+  /// element's id -- and _master the master. Kept so that setting the same
+  /// mix again, which happens on every frame the playhead moves, costs a
+  /// comparison rather than two dozen calls into the engine.
+  final Map<String, ChannelSound> _channels = {};
+  final Map<String, String> _channelSignature = {};
+  MasterSound? _master;
+  String _masterSignature = "";
+  bool _started = false;
+
+  /// setMix is the mixer as it stands: a strip for each channel, which of
+  /// them are soloed, and the master.
+  ///
+  /// Solo is worked in here, as a level of nought for every channel that is
+  /// not soloed while any is. It is the reader's, for listening, not the
+  /// document's: an export plays every channel that is not muted.
+  void setMix(Map<String, ChannelMix> channels,
+      {Set<String> solo = const {}, required MasterMix master}) {
+    var soloing = solo.any(channels.containsKey);
+    for (var entry in channels.entries) {
+      var mix = entry.value;
+      var silent = mix.mute || (soloing && !solo.contains(entry.key));
+      var (l, r) = silent ? (0.0, 0.0) : mix.gains;
+      var sound = ChannelSound(
+        left: l,
+        right: r,
+        eq: mix.eq.flat ? null : eqBandGains(mix.eq),
+        comp: mix.comp.on ? mix.comp : null,
+      );
+      var signature =
+          "$l|$r|${mix.eq.flat ? "" : mix.eq.toJson()}|${mix.comp.on ? mix.comp.toJson() : ""}";
+      _channels[entry.key] = sound;
+      if (_channelSignature[entry.key] == signature) continue;
+      _channelSignature[entry.key] = signature;
+      if (_started) engine.setChannel(entry.key, sound);
+    }
+    var sound = MasterSound(
+      volume: dbToGain(master.gainDb),
+      eq: master.eq.flat ? null : eqBandGains(master.eq),
+      comp: master.comp.on ? master.comp : null,
+      ceilingDb: master.limiter ? master.ceilingDb : null,
+    );
+    var signature = master.toJson().toString();
+    _master = sound;
+    if (signature != _masterSignature) {
+      _masterSignature = signature;
+      if (_started) engine.setMaster(sound);
+    }
+  }
+
+  /// levels is how loud [channel] -- or the master -- is right now.
+  (double, double) levels([String? channel]) =>
+      _started ? engine.levels(channel) : (0, 0);
+
+  /// _channelFor is the mixer channel a sound plays through, or null for
+  /// none: the element's own, or for a video's sound, its video's.
+  String? _channelFor(String soundId) {
+    var key = soundId.startsWith("video:") ? soundId.substring(6) : soundId;
+    return _channels.containsKey(key) ? key : null;
   }
 
   /// cue puts [e] where the playhead says it is: [moment] into its playlist,
@@ -333,6 +399,14 @@ class AudioRuntime extends ChangeNotifier {
 
   Future<bool> _ready() async {
     var ok = await engine.start();
+    // The mix set before there was a device to set it on, put on it now.
+    if (ok && !_started) {
+      _started = true;
+      for (var entry in _channels.entries) {
+        engine.setChannel(entry.key, entry.value);
+      }
+      if (_master case var m?) engine.setMaster(m);
+    }
     if (!ok && !_unavailable) {
       _unavailable = true;
       notifyListeners();
@@ -393,7 +467,9 @@ class AudioRuntime extends ChangeNotifier {
     p.fadingOut = false;
     var fadeIn = fades ? p.clip.fadeIn : 0.0;
     var voice = engine.play(track,
-        volume: fadeIn > 0 ? 0 : p.heard, at: from ?? source.start);
+        volume: fadeIn > 0 ? 0 : p.heard,
+        at: from ?? source.start,
+        channel: _channelFor(p.element.id));
     if (voice == null) {
       p.playing = false;
       notifyListeners();

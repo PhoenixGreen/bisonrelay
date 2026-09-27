@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
@@ -11,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
@@ -142,6 +144,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// CanvasChannels. Floated over the canvas like the pose bar, and for the
   /// same reason.
   bool _channelsOpen = false;
+
+  /// _mixerOpen and _mixerHeight are the mixer's -- see CanvasMixer. The
+  /// height is the session's: a mixer somebody made tall stays tall while
+  /// they work.
+  bool _mixerOpen = false;
+  double _mixerHeight = mixerDefaultHeight;
 
   @override
   void initState() {
@@ -574,11 +582,33 @@ class _CanvasScreenState extends State<CanvasScreen> {
               // Above the pose bar when both are out, and up while playing,
               // unlike the pose bar: watching the clips go by under the
               // playhead is half of what it is for.
-              if (_channelsOpen)
+              // The mixer at the bottom, the channels over it, so the strips
+              // and the clips they belong to are both in view.
+              if (_mixerOpen)
                 Positioned(
                   bottom: _keyframesOpen && !_controller.playing
                       ? keyframeBarHeight
                       : 0,
+                  left: 0,
+                  right: 0,
+                  child: LayoutBuilder(
+                    builder: (context, box) => CanvasMixer(
+                      controller: _controller,
+                      height: _mixerHeight,
+                      onResize: (h) => setState(() => _mixerHeight = h.clamp(
+                          mixerMinHeight,
+                          math.max(mixerMinHeight,
+                              MediaQuery.sizeOf(context).height * 0.7))),
+                      onClose: () => setState(() => _mixerOpen = false),
+                    ),
+                  ),
+                ),
+              if (_channelsOpen)
+                Positioned(
+                  bottom: (_keyframesOpen && !_controller.playing
+                          ? keyframeBarHeight
+                          : 0) +
+                      (_mixerOpen ? _mixerHeight : 0),
                   left: 0,
                   right: 0,
                   child: CanvasChannels(controller: _controller),
@@ -597,6 +627,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
               channelsOpen: _channelsOpen,
               onToggleChannels: () =>
                   setState(() => _channelsOpen = !_channelsOpen),
+              mixerOpen: _mixerOpen,
+              onToggleMixer: () => setState(() => _mixerOpen = !_mixerOpen),
               // One line at a time: two strips over the same corner of the
               // canvas would be one on top of the other.
             ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -17,6 +18,33 @@ abstract class AudioTrack {}
 
 abstract class AudioVoice {}
 
+/// ChannelSound is a mixer strip as the engine applies it: the level of each
+/// side (fader, balance, mute and solo already worked in -- see
+/// AudioRuntime.setMix), the EQ as band gains, and the compressor.
+class ChannelSound {
+  final double left;
+  final double right;
+
+  /// eq is SoLoud's band gains for the strip's curve, or null for none. See
+  /// eqBandGains.
+  final List<double>? eq;
+  final Dynamics? comp;
+
+  const ChannelSound({this.left = 1, this.right = 1, this.eq, this.comp});
+}
+
+/// MasterSound is the master strip as the engine applies it.
+class MasterSound {
+  final double volume;
+  final List<double>? eq;
+  final Dynamics? comp;
+
+  /// ceilingDb is the limiter's, or null for no limiter.
+  final double? ceilingDb;
+
+  const MasterSound({this.volume = 1, this.eq, this.comp, this.ceilingDb});
+}
+
 abstract class AudioEngine {
   /// start makes the engine ready, returning false where there is no sound to
   /// be had -- no device, or a library that would not load. Asked before
@@ -29,8 +57,21 @@ abstract class AudioEngine {
   /// lengthOf is how long [track] is, in seconds.
   double lengthOf(AudioTrack track);
 
-  /// play starts [track] from [at] seconds in, at [volume].
-  AudioVoice? play(AudioTrack track, {required double volume, double at = 0});
+  /// play starts [track] from [at] seconds in, at [volume], through the
+  /// mixer channel called [channel] where it has one.
+  AudioVoice? play(AudioTrack track,
+      {required double volume, double at = 0, String? channel});
+
+  /// setChannel makes or changes the mixer channel called [key].
+  void setChannel(String key, ChannelSound sound);
+
+  /// setMaster is the master strip, over everything.
+  void setMaster(MasterSound sound);
+
+  /// levels is how loud a channel -- or with no [channel], the master -- is
+  /// coming out right now, left and right, nought to one. For the meters;
+  /// asking for it is what turns the measuring on.
+  (double, double) levels([String? channel]);
 
   /// volume moves [voice] to [to], over [fade] seconds.
   void volume(AudioVoice voice, double to, {double fade = 0});
@@ -100,11 +141,140 @@ class SoLoudAudioEngine implements AudioEngine {
   double lengthOf(AudioTrack track) =>
       _soloud.getLength((track as _SoLoudTrack).source).inMicroseconds / 1e6;
 
+  /// _buses is a mixing bus per mixer channel, made when the channel is first
+  /// set and played on the engine for as long as the engine lives.
+  final Map<String, Bus> _buses = {};
+  bool _measuring = false;
+
+  static const _eqBands = soloudBands;
+
   @override
-  AudioVoice? play(AudioTrack track, {required double volume, double at = 0}) {
+  void setChannel(String key, ChannelSound sound) {
+    if (!_soloud.isInitialized) return;
     try {
-      var handle = _soloud.play((track as _SoLoudTrack).source,
-          volume: volume, paused: at > 0);
+      var bus = _buses[key];
+      if (bus == null) {
+        bus = Bus(name: key);
+        bus.playOnEngine();
+        _buses[key] = bus;
+      }
+      var handle = bus.soundHandle;
+      if (handle != null) {
+        _soloud.setVolume(handle, 1);
+        _soloud.setPanAbsolute(handle, sound.left, sound.right);
+      }
+      _eq(bus.filters.parametricEqFilter.isActive, sound.eq,
+          activate: bus.filters.parametricEqFilter.activate,
+          deactivate: bus.filters.parametricEqFilter.deactivate,
+          bands: (n) => bus!.filters.parametricEqFilter.numBands().value = n,
+          band: (i, g) =>
+              bus!.filters.parametricEqFilter.bandGain(i).value = g);
+      var comp = bus.filters.compressorFilter;
+      if (sound.comp case var c?) {
+        if (!comp.isActive) comp.activate();
+        comp.threshold().value = c.threshold;
+        comp.ratio().value = c.ratio;
+        comp.attackTime().value = c.attackMs;
+        comp.releaseTime().value = c.releaseMs;
+        comp.makeupGain().value = c.makeupDb;
+        comp.kneeWidth().value = Dynamics.kneeDb;
+      } else if (comp.isActive) {
+        comp.deactivate();
+      }
+    } catch (exception) {
+      debugPrint("Canvas audio could not set the channel $key: $exception");
+    }
+  }
+
+  @override
+  void setMaster(MasterSound sound) {
+    if (!_soloud.isInitialized) return;
+    try {
+      _soloud.setGlobalVolume(sound.volume);
+      var filters = _soloud.filters;
+      _eq(filters.parametricEqFilter.isActive, sound.eq,
+          activate: filters.parametricEqFilter.activate,
+          deactivate: filters.parametricEqFilter.deactivate,
+          bands: (n) => filters.parametricEqFilter.numBands.value = n,
+          band: (i, g) => filters.parametricEqFilter.bandGain(i).value = g);
+      var comp = filters.compressorFilter;
+      if (sound.comp case var c?) {
+        if (!comp.isActive) comp.activate();
+        comp.threshold.value = c.threshold;
+        comp.ratio.value = c.ratio;
+        comp.attackTime.value = c.attackMs;
+        comp.releaseTime.value = c.releaseMs;
+        comp.makeupGain.value = c.makeupDb;
+        comp.kneeWidth.value = Dynamics.kneeDb;
+      } else if (comp.isActive) {
+        comp.deactivate();
+      }
+      var limiter = filters.limiterFilter;
+      if (sound.ceilingDb case var ceiling?) {
+        if (!limiter.isActive) limiter.activate();
+        // No drive: the limiter only catches peaks. Pushing the level up into
+        // it is what the loudness target is for, at export.
+        limiter.threshold.value = 0;
+        limiter.outputCeiling.value = ceiling;
+        limiter.attackTime.value = 5;
+        limiter.releaseTime.value = 50;
+      } else if (limiter.isActive) {
+        limiter.deactivate();
+      }
+    } catch (exception) {
+      debugPrint("Canvas audio could not set the master: $exception");
+    }
+  }
+
+  void _eq(bool active, List<double>? gains,
+      {required void Function() activate,
+      required void Function() deactivate,
+      required void Function(double) bands,
+      required void Function(int, double) band}) {
+    if (gains == null) {
+      if (active) deactivate();
+      return;
+    }
+    if (!active) {
+      activate();
+      bands(_eqBands.toDouble());
+    }
+    for (var (i, g) in gains.indexed) {
+      if (i < _eqBands) band(i, g);
+    }
+  }
+
+  @override
+  (double, double) levels([String? channel]) {
+    if (!_soloud.isInitialized) return (0, 0);
+    try {
+      if (!_measuring) {
+        _soloud.setVisualizationEnabled(true);
+        _measuring = true;
+      }
+      if (channel == null) {
+        return (
+          _soloud.getApproximateVolume(0),
+          _soloud.getApproximateVolume(1)
+        );
+      }
+      var bus = _buses[channel];
+      if (bus == null) return (0, 0);
+      return (bus.getChannelVolume(0), bus.getChannelVolume(1));
+    } catch (_) {
+      return (0, 0);
+    }
+  }
+
+  @override
+  AudioVoice? play(AudioTrack track,
+      {required double volume, double at = 0, String? channel}) {
+    try {
+      var source = (track as _SoLoudTrack).source;
+      var bus = channel == null ? null : _buses[channel];
+      var handle = bus != null
+          ? bus.play(source, volume: volume, paused: at > 0)
+          : _soloud.play(source, volume: volume, paused: at > 0);
       if (at > 0) {
         // Started paused and moved before it is heard, or the first moment
         // of the file plays before the range begins.

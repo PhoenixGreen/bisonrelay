@@ -31,6 +31,7 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart'
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
@@ -2691,6 +2692,7 @@ class CanvasController extends ChangeNotifier {
   /// playing if it is playing, held on the frame under it if not, silent and
   /// out of sight outside its span.
   void _syncTimeline() {
+    _applyMix();
     var going = playing;
     for (var (e, at) in _timedOnScreen) {
       var moment = _momentOf(e, at);
@@ -2701,6 +2703,46 @@ class CanvasController extends ChangeNotifier {
           audio.cue(a, moment, playing: going);
       }
     }
+  }
+
+  // ------------------------------------------------------------------------
+  // The mixer
+  // ------------------------------------------------------------------------
+
+  /// solo is which channels are soloed. The session's rather than the
+  /// document's: soloing is listening to one thing for a moment, and an
+  /// export plays every channel that is not muted.
+  Set<String> get solo => _solo;
+  final Set<String> _solo = {};
+
+  void toggleSolo(String id) {
+    if (!_solo.remove(id)) _solo.add(id);
+    _applyMix();
+    notifyListeners();
+  }
+
+  /// setChannelMix changes one strip, as the Channels strip changes a clip --
+  /// see setTimedClip.
+  void setChannelMix(TimedLane lane, ChannelMix mix,
+          {bool transient = false}) =>
+      setTimedClip(lane.element, lane.clip.copyWith(mix: mix),
+          transient: transient);
+
+  void setMasterMix(MasterMix mix, {bool transient = false}) =>
+      apply(_document.copyWith(masterMix: mix), transient: transient);
+
+  /// levels is how loud a strip -- by its element's id, or the master with
+  /// none -- is coming out now, for the meters.
+  (double, double) levels([String? channel]) =>
+      _audio?.levels(channel) ?? (0, 0);
+
+  /// _applyMix hands the runtime the mixer as it stands. Cheap when nothing
+  /// has changed: the runtime compares before it calls the engine.
+  void _applyMix() {
+    var lanes = timedLanes;
+    if (lanes.isEmpty && _audio == null) return;
+    audio.setMix({for (var lane in lanes) lane.element.id: lane.clip.mix},
+        solo: _solo, master: _document.masterMix);
   }
 
   /// _autoplayAudio starts the sounds on screen that start by themselves.

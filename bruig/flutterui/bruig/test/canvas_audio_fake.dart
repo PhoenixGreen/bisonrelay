@@ -53,9 +53,26 @@ class FakeEngine implements AudioEngine {
   @override
   double lengthOf(AudioTrack track) => (track as FakeTrack).length;
 
+  /// channels is every mixer channel as last set, master the master, and
+  /// onChannel which channel each voice was played through.
+  final Map<String, ChannelSound> channels = {};
+  MasterSound? master;
+  final Map<FakeVoice, String?> onChannel = {};
+
   @override
-  AudioVoice? play(AudioTrack track, {required double volume, double at = 0}) {
+  void setChannel(String key, ChannelSound sound) => channels[key] = sound;
+
+  @override
+  void setMaster(MasterSound sound) => master = sound;
+
+  @override
+  (double, double) levels([String? channel]) => (0.5, 0.5);
+
+  @override
+  AudioVoice? play(AudioTrack track,
+      {required double volume, double at = 0, String? channel}) {
     var v = FakeVoice(track as FakeTrack, at, volume);
+    onChannel[v] = channel;
     voices.add(v);
     return v;
   }

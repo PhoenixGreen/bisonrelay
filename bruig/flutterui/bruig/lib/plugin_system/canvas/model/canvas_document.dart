@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
@@ -237,6 +238,10 @@ class CanvasDocument {
   /// whatever the kind, so switching to Scenes and back does not forget them.
   final PagesSpec pages;
 
+  /// masterMix is the mixer's master strip: what every sound on the timeline
+  /// is summed through. See mix.dart.
+  final MasterMix masterMix;
+
   /// scenes are the canvases this document plays, in order.
   ///
   /// Empty means the one scene held in the fields below, which is what a
@@ -321,6 +326,7 @@ class CanvasDocument {
     this.sceneAt = 0,
     this.kind = CanvasKind.scenes,
     this.pages = const PagesSpec(),
+    this.masterMix = const MasterMix(),
     this.master,
     this.masterOn = false,
     this.onMaster = false,
@@ -803,6 +809,7 @@ class CanvasDocument {
     int? sceneAt,
     CanvasKind? kind,
     PagesSpec? pages,
+    MasterMix? masterMix,
     CanvasScene? master,
     bool clearMaster = false,
     bool? masterOn,
@@ -865,6 +872,7 @@ class CanvasDocument {
       sceneAt: index,
       kind: kind ?? this.kind,
       pages: pages ?? this.pages,
+      masterMix: masterMix ?? this.masterMix,
       master: shared,
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
@@ -892,6 +900,7 @@ class CanvasDocument {
       sceneAt: (at ?? sceneAt).clamp(0, next.length - 1).toInt(),
       kind: kind,
       pages: pages,
+      masterMix: masterMix,
       master: master,
       masterOn: masterOn,
       onMaster: onMaster,
@@ -1127,6 +1136,7 @@ class CanvasDocument {
       if (targets.isNotEmpty) "targets": targets,
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
+      if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
         if (sceneAt != 0) "sceneAt": at,
@@ -1230,6 +1240,8 @@ class CanvasDocument {
       pages: json["pages"] is Map<String, dynamic>
           ? PagesSpec.fromJson(json["pages"] as Map<String, dynamic>)
           : const PagesSpec(),
+      masterMix:
+          jsonSpec(json["masterMix"], MasterMix.fromJson, const MasterMix()),
       master: json["master"] is Map<String, dynamic>
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,
