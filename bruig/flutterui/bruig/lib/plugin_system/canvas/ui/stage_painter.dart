@@ -355,14 +355,34 @@ class StagePainter extends CustomPainter {
     }
 
     if (previewAt case var at?) {
-      // The spread stays up while the turn plays. It is the other half of the
-      // document and it is not what is changing, so a transition that made it
-      // disappear was showing half of a spread turning into half of another.
+      // Two leaves of one spread are both already on screen, so going from
+      // one to the other is not a page turning -- it is the cursor moving
+      // across a spread that is open. Animated anyway, the leaf being left
+      // slid away from the spine, which is a turn starting in the middle of
+      // the book and is what was reported.
       //
-      // Held to its own leaf for the length of it -- see neighbour.
-      neighbour(held: true);
-      paintSequenceFrame(canvas, document, at,
-          images: images, backgrounds: backgrounds);
+      // A leaf turns when the *spread* changes, which with the pairing rule
+      // is every other join. That one plays on the right-hand leaf, whose
+      // outer edge is the outer edge of the spread, so it starts where a hand
+      // would take hold of it. See canvas_pages.dart on the pairing.
+      var place = placeInSequence(document, at);
+      var inside = facingShown &&
+          place.changing &&
+          document.facingAt(place.scene) == place.next;
+
+      // Held to its own leaf only while something is moving -- see neighbour.
+      neighbour(held: !inside);
+      if (inside) {
+        var page = document.goToScene(place.scene).copyWith(
+              onMaster: false,
+              background: document.backgroundOf(place.scene),
+            );
+        paintCanvasDocument(canvas, page,
+            frame: place.frame, images: images, backgrounds: backgrounds);
+      } else {
+        paintSequenceFrame(canvas, document, at,
+            images: images, backgrounds: backgrounds);
+      }
       canvas.restore();
       canvas.restore();
       return;

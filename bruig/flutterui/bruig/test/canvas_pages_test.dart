@@ -568,6 +568,24 @@ void main() {
           reason: "and it has a number to show, or there is nothing to place");
     });
 
+    // A leaf turns when the spread changes. Two pages of one spread are both
+    // already on screen, so going from one to the other is the cursor moving
+    // across an open book, not a page turning -- and animated anyway it slid
+    // away from the spine, which is a turn that starts in the middle.
+    test("a turn happens where the spread changes, not inside one", () {
+      var doc = pages(6, covers: [PageCover.front])
+          .copyWith(pages: const PagesSpec(facing: true));
+
+      // The cover is alone, so leaving it opens a spread: that is a turn.
+      expect(doc.facingAt(0), isNull);
+      // Pages one and two face each other, so the join between them is not.
+      expect(doc.facingAt(1), 2, reason: "both leaves are already showing");
+      // And the join out of the right-hand leaf is a turn again.
+      expect(doc.facingAt(2), 1);
+      expect(doc.facingAt(2) == 3, isFalse,
+          reason: "three is the next spread, not the facing leaf");
+    });
+
     testWidgets("and pressing the other leaf opens it", (tester) async {
       var controller = facing(1);
       var view = await stage(tester, controller);
