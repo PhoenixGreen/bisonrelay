@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
@@ -136,6 +137,11 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// to hold it took height from the canvas and re-fitted it -- so opening a
   /// panel moved the design.
   bool _keyframesOpen = false;
+
+  /// _channelsOpen is whether the Channels strip is out -- see
+  /// CanvasChannels. Floated over the canvas like the pose bar, and for the
+  /// same reason.
+  bool _channelsOpen = false;
 
   @override
   void initState() {
@@ -565,6 +571,18 @@ class _CanvasScreenState extends State<CanvasScreen> {
                   right: 0,
                   child: CanvasKeyframeBar(controller: _controller),
                 ),
+              // Above the pose bar when both are out, and up while playing,
+              // unlike the pose bar: watching the clips go by under the
+              // playhead is half of what it is for.
+              if (_channelsOpen)
+                Positioned(
+                  bottom: _keyframesOpen && !_controller.playing
+                      ? keyframeBarHeight
+                      : 0,
+                  left: 0,
+                  right: 0,
+                  child: CanvasChannels(controller: _controller),
+                ),
             ]),
           ),
           // Hidden by taking it out rather than by shrinking it to nothing:
@@ -576,6 +594,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
               keyframesOpen: _keyframesOpen,
               onToggleKeyframes: () =>
                   setState(() => _keyframesOpen = !_keyframesOpen),
+              channelsOpen: _channelsOpen,
+              onToggleChannels: () =>
+                  setState(() => _channelsOpen = !_channelsOpen),
               // One line at a time: two strips over the same corner of the
               // canvas would be one on top of the other.
             ),

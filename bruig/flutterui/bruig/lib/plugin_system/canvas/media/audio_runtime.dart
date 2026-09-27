@@ -54,12 +54,22 @@ class _Playing {
   /// sound nobody wants any more.
   int generation = 0;
 
+  /// timed is a sound the playhead drives -- see AudioRuntime.cue -- which
+  /// never moves itself on, and gain its fade at the moment the playhead is
+  /// at.
+  bool timed = false;
+  double gain = 1;
+
+  /// starting is set while a file is being opened, so the cues that arrive
+  /// in the meantime do not open it again.
+  bool starting = false;
+
   _Playing(this.element)
       : muted = element.clip.muted,
         volume = element.clip.volume;
 
   MediaClip get clip => element.clip;
-  double get heard => muted ? 0 : volume;
+  double get heard => muted ? 0 : volume * gain;
 }
 
 class AudioRuntime extends ChangeNotifier {
@@ -158,6 +168,65 @@ class AudioRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// cue puts [e] where the playhead says it is: [moment] into its playlist,
+  /// playing or held. Null is the playhead outside the sound's span, which is
+  /// silence.
+  ///
+  /// The sound does not keep time of its own once it is cued. It is moved
+  /// back into step whenever it has drifted more than a few hundredths of a
+  /// second from where it should be, and never moved on to its next file by
+  /// itself -- the next cue says which file it is on.
+  void cue(AudioElement e, ClipMoment? moment, {required bool playing}) {
+    var p = _for(e);
+    p.timed = true;
+    if (moment == null) {
+      if (p.voice != null || p.playing || p.starting) {
+        p.generation++;
+        p.starting = false;
+        _silence(p);
+        notifyListeners();
+      }
+      return;
+    }
+    p.gain = moment.gain;
+    if (p.starting) return;
+    var voice = p.voice;
+    var alive = voice != null && engine.alive(voice);
+    if (!playing) {
+      // Held where it is. Where it should be is worked out again the moment
+      // the playhead moves, so there is no point seeking a held sound.
+      if (alive && p.playing) {
+        engine.pause(voice, true);
+        p.playing = false;
+        notifyListeners();
+      }
+      return;
+    }
+    if (!alive || p.index != moment.index) {
+      unawaited(_start(p, moment.index, from: moment.time, fades: false));
+      return;
+    }
+    if (!p.playing) {
+      engine.pause(voice, false);
+      p.playing = true;
+      _startTimer();
+      notifyListeners();
+    }
+    if ((engine.position(voice) - moment.time).abs() > 0.15) {
+      engine.seek(voice, moment.time);
+    }
+    _heard(p);
+  }
+
+  /// setGain is a fade applied from outside -- a video's picture fading, and
+  /// its sound with it.
+  void setGain(String id, double gain) {
+    var p = _sounds[id];
+    if (p == null) return;
+    p.gain = gain.clamp(0.0, 1.0);
+    _heard(p);
+  }
+
   /// positionOf is how far into its file [id]'s sound has got, in seconds,
   /// or null where nothing is sounding -- which is what a video keeps time
   /// by, so the picture follows the sound rather than drifting from it.
@@ -240,14 +309,14 @@ class AudioRuntime extends ChangeNotifier {
   void tick() {
     for (var p in _sounds.values.toList()) {
       var voice = p.voice;
-      if (voice == null || !p.playing) continue;
+      if (voice == null || !p.playing || p.timed) continue;
       if (!engine.alive(voice)) {
         _next(p);
         continue;
       }
       var at = engine.position(voice);
       var fade = p.clip.fadeOut;
-      if (fade > 0 && !p.fadingOut && at >= p.end - fade) {
+      if (fade > 0 && !p.timed && !p.fadingOut && at >= p.end - fade) {
         p.fadingOut = true;
         engine.volume(voice, 0, fade: math.max(0.01, p.end - at));
       }
@@ -282,12 +351,14 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// _start plays file [index] of [p]'s list from the start of its range.
-  Future<void> _start(_Playing p, int index) async {
+  Future<void> _start(_Playing p, int index,
+      {double? from, bool fades = true}) async {
     var list = p.clip.playlist;
     if (list.isEmpty) return;
     var generation = ++p.generation;
     _silence(p);
     p.index = index.clamp(0, list.length - 1);
+    p.starting = true;
     // Said to be playing from the press, not from when the file has opened:
     // a speaker that waits half a second to light up reads as a press that
     // was missed, and gets pressed again -- which is stop.
@@ -297,6 +368,7 @@ class AudioRuntime extends ChangeNotifier {
     if (!await _ready() || _disposed) {
       if (generation == p.generation) {
         p.playing = false;
+        p.starting = false;
         notifyListeners();
       }
       return;
@@ -304,6 +376,7 @@ class AudioRuntime extends ChangeNotifier {
     var source = list[p.index];
     var track = await _track(source.assetId);
     if (generation != p.generation || _disposed) return;
+    p.starting = false;
     if (track == null) {
       // A file that is not there is skipped rather than ending the list: one
       // missing song is not a reason for the rest of the playlist not to play.
@@ -318,9 +391,9 @@ class AudioRuntime extends ChangeNotifier {
 
     p.end = source.endOr(engine.lengthOf(track));
     p.fadingOut = false;
-    var fadeIn = p.clip.fadeIn;
-    var voice =
-        engine.play(track, volume: fadeIn > 0 ? 0 : p.heard, at: source.start);
+    var fadeIn = fades ? p.clip.fadeIn : 0.0;
+    var voice = engine.play(track,
+        volume: fadeIn > 0 ? 0 : p.heard, at: from ?? source.start);
     if (voice == null) {
       p.playing = false;
       notifyListeners();
@@ -328,6 +401,7 @@ class AudioRuntime extends ChangeNotifier {
     }
     if (fadeIn > 0) engine.volume(voice, p.heard, fade: fadeIn);
     p.voice = voice;
+    if (!fades) p.fadingOut = false;
     _startTimer();
   }
 

@@ -1475,6 +1475,7 @@ class _OneFrame extends CanvasImageSource {
 void _paintVideo(ui.Canvas canvas, Rect bounds, VideoElement e, VideoShow show,
     CanvasImageSource? images,
     {bool placeholder = true}) {
+  if (show.hidden) return;
   var poster = e.isLink ? e.look.assetId : show.poster;
   var frame = show.frame ??
       (poster.isEmpty

@@ -33,6 +33,10 @@ class VideoShow {
 
   final double opacity;
 
+  /// hidden is a video on the timeline with the playhead outside its span:
+  /// not drawn at all, the way a clip is not in a film before it is cut in.
+  final bool hidden;
+
   const VideoShow({
     this.playing = false,
     this.muted = false,
@@ -43,6 +47,7 @@ class VideoShow {
     this.frame,
     this.poster = "",
     this.opacity = 1,
+    this.hidden = false,
   });
 
   factory VideoShow.idle(VideoElement e) {
@@ -113,6 +118,8 @@ VideoParts videoParts(VideoElement e, Rect bounds) {
   var side = picture.shortestSide * 0.24;
   var big = Rect.fromCenter(center: picture.center, width: side, height: side);
   if (e.isLink) return VideoParts(picture, bigPlay: big);
+  // On the timeline the playhead is its control, and it has no other.
+  if (e.clip.timed) return VideoParts(picture);
 
   var wantsBar = e.has(VideoControl.playbar) ||
       e.has(VideoControl.time) ||

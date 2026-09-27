@@ -180,6 +180,15 @@ class MediaClip {
   /// page leaving means.
   final bool acrossPages;
 
+  /// timed puts the media on the timeline: it plays with the playhead from
+  /// frame [at] -- scrubbed, paused and exported with everything else --
+  /// rather than on its own clock when somebody presses it.
+  ///
+  /// A frame of the scene it is on, or of the whole run for media on the
+  /// master, which plays under every scene.
+  final bool timed;
+  final int at;
+
   const MediaClip({
     this.playlist = const [],
     this.volume = 0.8,
@@ -189,6 +198,8 @@ class MediaClip {
     this.loop = MediaLoop.none,
     this.autoplay = false,
     this.acrossPages = true,
+    this.timed = false,
+    this.at = 0,
   });
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
@@ -208,6 +219,44 @@ class MediaClip {
           if (s.posterId.isNotEmpty) s.posterId,
       };
 
+  /// runLength is how long the playlist takes to play through once, in
+  /// seconds -- each file's range, one after another. A file whose length is
+  /// not known counts as nothing, because nothing can be placed after it.
+  double get runLength => playlist.fold(0.0, (sum, s) => sum + s.span);
+
+  /// momentAt is what is playing [seconds] after the clip starts on the
+  /// timeline: which file, where in it, and how far faded in -- or null where
+  /// nothing is, before it starts or after it has finished.
+  ///
+  /// The one answer to "where is this clip at this frame", for the editor
+  /// following the playhead, the channels drawn under it and the exporter;
+  /// three answers to that would be a video that is somewhere else once it
+  /// has been exported. On the timeline a repeat goes round the whole list,
+  /// whichever repeat was chosen: "each" on its own clock is a file played
+  /// until somebody stops it, and a timeline has no somebody.
+  ClipMoment? momentAt(double seconds) {
+    var total = runLength;
+    if (seconds < 0 || total <= 0) return null;
+    if (seconds >= total) {
+      if (loop == MediaLoop.none) return null;
+      seconds %= total;
+    }
+    var from = 0.0;
+    for (var (i, source) in playlist.indexed) {
+      var span = source.span;
+      if (span <= 0) continue;
+      if (seconds < from + span) {
+        var into = seconds - from;
+        var gain = 1.0;
+        if (fadeIn > 0) gain = math.min(gain, into / fadeIn);
+        if (fadeOut > 0) gain = math.min(gain, (span - into) / fadeOut);
+        return ClipMoment(i, source.start + into, gain.clamp(0.0, 1.0));
+      }
+      from += span;
+    }
+    return null;
+  }
+
   MediaClip copyWith({
     List<MediaSource>? playlist,
     double? volume,
@@ -217,6 +266,8 @@ class MediaClip {
     MediaLoop? loop,
     bool? autoplay,
     bool? acrossPages,
+    bool? timed,
+    int? at,
   }) =>
       MediaClip(
         playlist: playlist ?? this.playlist,
@@ -227,6 +278,8 @@ class MediaClip {
         loop: loop ?? this.loop,
         autoplay: autoplay ?? this.autoplay,
         acrossPages: acrossPages ?? this.acrossPages,
+        timed: timed ?? this.timed,
+        at: at ?? this.at,
       );
 
   Map<String, dynamic> toJson() => {
@@ -239,6 +292,8 @@ class MediaClip {
         if (loop != MediaLoop.none) "loop": loop.name,
         if (autoplay) "autoplay": true,
         if (!acrossPages) "stopsAtJoin": true,
+        if (timed) "timed": true,
+        if (at != 0) "at": at,
       };
 
   factory MediaClip.fromJson(Map<String, dynamic> json) {
@@ -257,6 +312,24 @@ class MediaClip {
       loop: MediaLoop.fromName(json["loop"] as String?),
       autoplay: jsonBool(json["autoplay"], false),
       acrossPages: !jsonBool(json["stopsAtJoin"], false),
+      timed: jsonBool(json["timed"], false),
+      at: math.max(0, jsonInt(json["at"], 0)),
     );
   }
+}
+
+/// ClipMoment is where a clip on the timeline is at one instant.
+class ClipMoment {
+  /// index is which file of the playlist, and time how far into that file.
+  final int index;
+  final double time;
+
+  /// gain is the fade, nought to one: the picture's opacity and a multiplier
+  /// on the sound's volume.
+  final double gain;
+
+  const ClipMoment(this.index, this.time, this.gain);
+
+  @override
+  String toString() => "ClipMoment($index, $time, $gain)";
 }

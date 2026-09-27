@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -176,15 +177,16 @@ List<Widget> audioSettings(
           options: [for (var l in MediaLoop.values) (l, l.label)],
           onChanged: (v) => clipNow(clip.copyWith(loop: v)),
         ),
-        CanvasToggle(
-          key: const ValueKey("audioAutoplay"),
-          label: "Start by itself",
-          value: clip.autoplay,
-          onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
-        ),
+        if (!clip.timed)
+          CanvasToggle(
+            key: const ValueKey("audioAutoplay"),
+            label: "Start by itself",
+            value: clip.autoplay,
+            onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
+          ),
         // The one setting only the master can mean -- see
         // MediaClip.acrossPages -- so it is only offered there.
-        if (across) ...[
+        if (across && !clip.timed) ...[
           CanvasToggle(
             key: const ValueKey("audioAcross"),
             label: "Across ${word.many}",
@@ -194,6 +196,16 @@ List<Widget> audioSettings(
           CanvasHint(clip.acrossPages
               ? "Keeps playing as the ${word.many} change."
               : "Stops when the ${word.one} changes."),
+        ],
+        // The timeline is for a backdrop's sound, which is a soundtrack; a
+        // speaker is something a reader presses, which is the opposite.
+        if (background) ...[
+          const CanvasLineBreak(),
+          ...timelineControls(controller, clip,
+              key: "audio",
+              now: clipNow,
+              write: (next) => write(e.copyWith(clip: next)),
+              commit: commit),
         ],
       ],
       more: [

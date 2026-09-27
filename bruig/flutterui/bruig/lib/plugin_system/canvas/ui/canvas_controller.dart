@@ -30,6 +30,7 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
@@ -889,8 +890,10 @@ class CanvasController extends ChangeNotifier {
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
 
-    // A sound whose element has gone goes with it.
+    // A sound whose element has gone goes with it, and one on the timeline
+    // goes where its new settings put it.
     _audioFollowsPage(turned: false);
+    _syncTimeline();
 
     notifyListeners();
   }
@@ -1943,6 +1946,7 @@ class CanvasController extends ChangeNotifier {
   /// not exist.
   void _afterSceneChange() {
     _audioFollowsPage(turned: true);
+    _syncTimeline();
     _selection = {};
     _backgroundSelected = false;
     _focusedPlayer = null;
@@ -2016,6 +2020,7 @@ class CanvasController extends ChangeNotifier {
     var next = value.clamp(0, math.max(0, _document.frames - 1)).toInt();
     if (next == _frame) return;
     _frame = next;
+    _syncTimeline();
     notifyListeners();
   }
 
@@ -2035,6 +2040,8 @@ class CanvasController extends ChangeNotifier {
     // checks below, since a page that is a still is still a page with music
     // on it.
     _autoplayAudio();
+    // _playback is set below; the timed media are cued once it is.
+    scheduleMicrotask(_syncTimeline);
 
     // The whole document: the playhead runs through the sequence, and the
     // editor follows it -- the scene showing changes as it reaches each one,
@@ -2067,6 +2074,7 @@ class CanvasController extends ChangeNotifier {
   void pause() {
     _playback?.cancel();
     _playback = null;
+    _syncTimeline();
     notifyListeners();
   }
 
@@ -2122,6 +2130,7 @@ class CanvasController extends ChangeNotifier {
         _frame =
             place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
       }
+      _syncTimeline();
       notifyListeners();
       return;
     }
@@ -2154,6 +2163,7 @@ class CanvasController extends ChangeNotifier {
           _frame = action.target.clamp(0, _document.frames - 1).toInt();
       }
     }
+    _syncTimeline();
     notifyListeners();
   }
 
@@ -2436,6 +2446,13 @@ class CanvasController extends ChangeNotifier {
 
   /// videoShow is how [e] should be drawn now: its frame and its play bar.
   VideoShow videoShow(VideoElement e) {
+    // On the timeline, outside its span, it is not there at all.
+    if (e.clip.timed && !e.isLink) {
+      var at = _timedFrame(e.id);
+      if (at == null || _momentOf(e, at) == null) {
+        return const VideoShow(hidden: true);
+      }
+    }
     var v = _video;
     if (v == null) return VideoShow.idle(e);
     var view = v.view(e);
@@ -2459,6 +2476,8 @@ class CanvasController extends ChangeNotifier {
     var current = _mediaById(e.id);
     if (current is VideoElement) e = current;
     if (e.isLink) return linkAt(e.link, e.linkStart);
+    // On the timeline it is the playhead's, and nothing on it is pressed.
+    if (e.clip.timed) return null;
     switch (part) {
       case VideoPart.picture:
       case VideoPart.bigPlay:
@@ -2581,11 +2600,114 @@ class CanvasController extends ChangeNotifier {
     a.keepOnly((id) => keep.contains(VideoRuntime.videoOfSound(id) ?? id));
   }
 
+  /// _timedOnScreen is every piece of media on the timeline that is on
+  /// screen, and the frame of *its* timeline the playhead is at.
+  ///
+  /// Two timelines: the scene's, which the playhead is on, and the whole
+  /// run's, which media on the master and its backdrop follow -- they play
+  /// under every scene, so their frame one is the run's frame one.
+  Iterable<(CanvasElement, int)> get _timedOnScreen sync* {
+    bool timed(CanvasElement e) => switch (e) {
+          VideoElement v => v.clip.timed && !v.isLink && !v.clip.isEmpty,
+          AudioElement a => a.clip.timed && !a.clip.isEmpty,
+          _ => false,
+        };
+    var onMaster = _document.editingMaster;
+    var run = onMaster
+        ? _frame
+        : _previewAt ?? _document.startOfScene(_document.at) + _frame;
+    for (var e in _document.elements) {
+      if (timed(e)) yield (e, onMaster ? run : _frame);
+    }
+    if (!onMaster) {
+      for (var e
+          in _document.masterScene?.elements ?? const <CanvasElement>[]) {
+        if (timed(e)) yield (e, run);
+      }
+    }
+    var fromMaster = onMaster || _document.sharedBackdrop;
+    for (var e in _document.drawnBackground.media) {
+      if (timed(e)) yield (e, fromMaster ? run : _frame);
+    }
+  }
+
+  /// timedLanes is the media on the timeline that is on screen, for the
+  /// Channels strip: each clip, how far its timeline is ahead of the scene's
+  /// (the start of this scene in the run, for media that follows the run),
+  /// and whether it can be changed from here.
+  List<TimedLane> get timedLanes {
+    var here = {for (var e in _document.elements) e.id};
+    var backdrop = {for (var e in _document.drawnBackground.media) e.id};
+    return [
+      for (var (e, at) in _timedOnScreen)
+        TimedLane(
+          e,
+          offset: at - _frame,
+          editable: here.contains(e.id) || backdrop.contains(e.id),
+        ),
+    ];
+  }
+
+  /// setTimedClip writes a clip moved or trimmed on the Channels strip back
+  /// to whatever holds it: an element on this canvas, or the backdrop.
+  void setTimedClip(CanvasElement e, MediaClip clip, {bool transient = false}) {
+    var next = switch (e) {
+      VideoElement v => v.copyWith(clip: clip),
+      AudioElement a => a.copyWith(clip: clip),
+      _ => null,
+    };
+    if (next == null) return;
+    if (_document.elements.any((x) => x.id == e.id)) {
+      replaceElement(next, transient: transient);
+      return;
+    }
+    var bg = _document.drawnBackground;
+    if (bg.video?.id == e.id && next is VideoElement) {
+      setBackground(bg.copyWith(video: next), transient: transient);
+    } else if (bg.sound?.id == e.id && next is AudioElement) {
+      setBackground(bg.copyWith(sound: next), transient: transient);
+    }
+  }
+
+  int? _timedFrame(String id) {
+    for (var (e, at) in _timedOnScreen) {
+      if (e.id == id) return at;
+    }
+    return null;
+  }
+
+  ClipMoment? _momentOf(CanvasElement e, int frame) {
+    var clip = switch (e) {
+      VideoElement v => v.clip,
+      AudioElement a => a.clip,
+      _ => null,
+    };
+    if (clip == null) return null;
+    var rate = _document.frameRate <= 0 ? 1 : _document.frameRate;
+    return clip.momentAt((frame - clip.at) / rate);
+  }
+
+  /// _syncTimeline puts every timed piece of media where the playhead is:
+  /// playing if it is playing, held on the frame under it if not, silent and
+  /// out of sight outside its span.
+  void _syncTimeline() {
+    var going = playing;
+    for (var (e, at) in _timedOnScreen) {
+      var moment = _momentOf(e, at);
+      switch (e) {
+        case VideoElement v:
+          video.cue(v, moment, playing: going);
+        case AudioElement a:
+          audio.cue(a, moment, playing: going);
+      }
+    }
+  }
+
   /// _autoplayAudio starts the sounds on screen that start by themselves.
   void _autoplayAudio() {
     var starting = [
       for (var e in _pageAudio)
-        if (e.clip.autoplay && !e.clip.isEmpty) e,
+        if (e.clip.autoplay && !e.clip.isEmpty && !e.clip.timed) e,
     ];
     if (starting.isNotEmpty) audio.autoplay(starting);
 
@@ -2594,16 +2716,20 @@ class CanvasController extends ChangeNotifier {
         ..._document.elements,
         if (!_document.editingMaster) ...?_document.masterScene?.elements,
       ])
-        if (e is VideoElement && e.clip.autoplay && !e.clip.isEmpty) e,
+        if (e is VideoElement &&
+            e.clip.autoplay &&
+            !e.clip.isEmpty &&
+            !e.clip.timed)
+          e,
     ];
 
     // And the backdrop's, which is where a looping video or a music bed
     // usually is.
     for (var e in _document.drawnBackground.media) {
       switch (e) {
-        case VideoElement v when v.clip.autoplay:
+        case VideoElement v when v.clip.autoplay && !v.clip.timed:
           videos.add(v);
-        case AudioElement a when a.clip.autoplay:
+        case AudioElement a when a.clip.autoplay && !a.clip.timed:
           audio.autoplay([a]);
       }
     }
@@ -3400,4 +3526,26 @@ class Offset2 {
 
   @override
   int get hashCode => Object.hash(dx, dy);
+}
+
+/// TimedLane is one clip on the Channels strip.
+class TimedLane {
+  final CanvasElement element;
+
+  /// offset is how many frames the clip's timeline is ahead of the scene's:
+  /// nought for a clip on this scene, the scene's start in the run for one
+  /// that follows the run.
+  final int offset;
+
+  /// editable is false for a clip on the master seen from a page: it is
+  /// changed on the master, where it lives.
+  final bool editable;
+
+  const TimedLane(this.element, {this.offset = 0, this.editable = true});
+
+  MediaClip get clip => switch (element) {
+        VideoElement v => v.clip,
+        AudioElement a => a.clip,
+        _ => const MediaClip(),
+      };
 }

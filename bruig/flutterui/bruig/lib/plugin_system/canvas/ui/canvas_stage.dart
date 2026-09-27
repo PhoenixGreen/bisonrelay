@@ -1315,7 +1315,8 @@ class CanvasStageState extends State<CanvasStage> {
   /// is the one thing there is to do.
   VideoPart? _videoPartAt(VideoElement e, Offset doc) =>
       videoPartAt(videoParts(e, e.boundsAt(controller.frame)), doc,
-          clickable: e.isLink || e.has(VideoControl.clickToggle));
+          clickable:
+              e.isLink || (e.has(VideoControl.clickToggle) && !e.clip.timed));
 
   /// _masterVideoAt is a video on the master under a document point, while a
   /// page is in front of the reader. See _masterAudioAt.

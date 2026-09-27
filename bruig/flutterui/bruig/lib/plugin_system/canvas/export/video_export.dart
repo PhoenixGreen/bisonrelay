@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -229,6 +230,7 @@ Future<CanvasExport?> renderVideo(
 
   Directory? work;
   ExportBackdrop? backdrop;
+  var media = ExportMedia.of(document, scale: scale);
   try {
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
 
@@ -242,7 +244,11 @@ Future<CanvasExport?> renderVideo(
       ui.Image? image;
       try {
         image = await renderFrame(document,
-            frame: i, scale: scale, images: images, backdrop: backdrop);
+            frame: i,
+            scale: scale,
+            images: images,
+            backdrop: backdrop,
+            videoShow: await media?.at(i));
         var png = await image.toByteData(format: ui.ImageByteFormat.png);
         if (png == null) return null;
         width = image.width;
@@ -261,10 +267,13 @@ Future<CanvasExport?> renderVideo(
     if (width == 0) return null;
 
     var out = path.join(work.path, "canvas${format.extension}");
+    var sound = await _soundArgs(media, format);
     var result = await Process.run(ffmpeg, [
       "-y",
       ..._input(document, work.path),
+      ...sound.inputs,
       ..._encoderArgs(document, format, quality),
+      ...sound.output,
       out,
     ]);
 
@@ -290,6 +299,7 @@ Future<CanvasExport?> renderVideo(
     return null;
   } finally {
     backdrop?.dispose();
+    media?.dispose();
     // Whatever happened, the frames are not left behind. A 200-frame 4K export
     // is gigabytes of PNG in the temporary directory.
     try {
@@ -316,17 +326,23 @@ Future<CanvasExport?> _renderPiped(
   ExportBackdrop? backdrop;
   Process? process;
   Directory? work;
+  var media = ExportMedia.of(document, scale: scale);
   try {
     // The size is needed before ffmpeg starts -- raw pixels carry no header
     // saying how wide they are -- so the first frame is drawn first and kept.
     backdrop =
         await ExportBackdrop.prepare(document, scale: scale, images: images);
     var first = await renderFrame(document,
-        frame: 0, scale: scale, images: images, backdrop: backdrop);
+        frame: 0,
+        scale: scale,
+        images: images,
+        backdrop: backdrop,
+        videoShow: await media?.at(0));
     var width = first.width, height = first.height;
 
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
     var out = path.join(work.path, "canvas${format.extension}");
+    var sound = await _soundArgs(media, format);
 
     process = await Process.start(ffmpeg, [
       "-y",
@@ -340,7 +356,9 @@ Future<CanvasExport?> _renderPiped(
       "${document.frameRate}",
       "-i",
       "-",
+      ...sound.inputs,
       ..._encoderArgs(document, format, quality),
+      ...sound.output,
       out,
     ]);
 
@@ -373,7 +391,11 @@ Future<CanvasExport?> _renderPiped(
     onProgress?.call(1, document.playFrames);
     for (var i = 1; i < document.playFrames; i++) {
       await send(await renderFrame(document,
-          frame: i, scale: scale, images: images, backdrop: backdrop));
+          frame: i,
+          scale: scale,
+          images: images,
+          backdrop: backdrop,
+          videoShow: await media?.at(i)));
       onProgress?.call(i + 1, document.playFrames);
       // The same yield the other exports make: without it the whole run
       // happens in one turn of the event loop and the progress line the
@@ -407,6 +429,7 @@ Future<CanvasExport?> _renderPiped(
     return null;
   } finally {
     backdrop?.dispose();
+    media?.dispose();
     try {
       process?.kill();
     } catch (_) {
@@ -421,6 +444,40 @@ Future<CanvasExport?> _renderPiped(
 }
 
 /// _input is where ffmpeg reads the frames from: a numbered set of PNGs.
+/// _soundArgs is the sound of the media on the timeline, as ffmpeg inputs
+/// after the picture's and the arguments that mix and encode them -- or
+/// nothing at all, for an export with nothing to hear.
+Future<({List<String> inputs, List<String> output})> _soundArgs(
+    ExportMedia? media, VideoFormat format) async {
+  var sounds = media == null ? const <ExportSound>[] : await media.sounds();
+  if (sounds.isEmpty) {
+    return (inputs: const <String>[], output: const <String>[]);
+  }
+  var (inputs, graph) = mixArgs(sounds);
+  return (
+    inputs: inputs,
+    output: [
+      "-filter_complex", graph,
+      "-map", "0:v",
+      "-map", "[mix]",
+      if (format == VideoFormat.webm) ...[
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "160k"
+      ] else ...[
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k"
+      ],
+      // The picture decides how long it is: the mix is padded with silence
+      // to reach its end, and cut where it ends.
+      "-shortest",
+    ],
+  );
+}
+
 List<String> _input(CanvasDocument document, String work) => [
       "-framerate",
       "${document.frameRate}",

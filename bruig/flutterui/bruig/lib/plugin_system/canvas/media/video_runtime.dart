@@ -88,6 +88,12 @@ class _Showing {
 
   int generation = 0;
 
+  /// timed, gain and opening are the same as the audio runtime's: a video
+  /// the playhead drives, its fade there, and a file being opened.
+  bool timed = false;
+  double gain = 1;
+  bool opening = false;
+
   _Showing(this.element)
       : muted = element.clip.muted,
         volume = element.clip.volume;
@@ -153,7 +159,7 @@ class VideoRuntime extends ChangeNotifier {
       start: p.start,
       end: p.end,
       frame: p.shown?.image,
-      opacity: _fade(p, at),
+      opacity: p.timed ? p.gain : _fade(p, at),
       poster: p.source?.posterId ?? "",
     );
   }
@@ -271,6 +277,49 @@ class VideoRuntime extends ChangeNotifier {
     }
   }
 
+  /// cue puts [e] where the playhead says it is. See AudioRuntime.cue, which
+  /// is the same idea for a sound: held or playing as the playhead is, moved
+  /// back into step when it drifts, and never on to its next file by itself.
+  ///
+  /// Held, it is moved to within a frame, because a held video is being
+  /// scrubbed and the frame under the playhead is the whole point; playing,
+  /// it is left alone unless it is a good fraction of a second out, because
+  /// reopening a file to correct a frame of drift is a stutter.
+  void cue(VideoElement e, ClipMoment? moment, {required bool playing}) {
+    var p = _for(e);
+    p.timed = true;
+    if (moment == null) {
+      if (p.started || p.opening) {
+        _close(p);
+        p.opening = false;
+        notifyListeners();
+      }
+      return;
+    }
+    p.gain = moment.gain;
+    audio.setGain(p.soundId, moment.gain);
+    if (p.opening) return;
+    if (!p.started || p.index != moment.index) {
+      unawaited(_start(p, moment.index, from: moment.time, paused: !playing));
+      return;
+    }
+    if (playing && !p.playing) {
+      p.playing = true;
+      p.watch.start();
+      unawaited(audio.play(_sound(p)));
+      _startTimer();
+    } else if (!playing && p.playing) {
+      pause(e.id);
+    }
+    var fps = p.source?.fps ?? 25;
+    var slack = playing ? 0.3 : 0.5 / (fps > 0 ? fps : 25);
+    if ((_time(p) - moment.time).abs() > slack) {
+      unawaited(_open(p, moment.time));
+      audio.seek(p.soundId, moment.time);
+    }
+    notifyListeners();
+  }
+
   /// tick shows whichever frame is due and moves on at the end of a range.
   @visibleForTesting
   void tick() {
@@ -278,7 +327,7 @@ class VideoRuntime extends ChangeNotifier {
     for (var p in _shows.values.toList()) {
       if (!p.started || !p.playing) continue;
       var at = _time(p);
-      if (at >= p.end - 0.02 || (p.ended && p.waiting == null)) {
+      if (!p.timed && (at >= p.end - 0.02 || (p.ended && p.waiting == null))) {
         _next(p);
         changed = true;
         continue;
@@ -332,8 +381,10 @@ class VideoRuntime extends ChangeNotifier {
           ],
           volume: p.volume,
           muted: p.muted,
-          fadeIn: p.base <= p.start ? clip.fadeIn : 0,
-          fadeOut: clip.fadeOut,
+          // A timed video's fades come from the playhead -- see cue -- and a
+          // fade the sound ran by itself would be a second one on top.
+          fadeIn: !p.timed && p.base <= p.start ? clip.fadeIn : 0,
+          fadeOut: p.timed ? 0 : clip.fadeOut,
         ));
   }
 
@@ -360,6 +411,15 @@ class VideoRuntime extends ChangeNotifier {
 
   /// _open starts reading frames from [at], closing whatever was reading.
   Future<void> _open(_Showing p, double at) async {
+    p.opening = true;
+    try {
+      await _reopen(p, at);
+    } finally {
+      p.opening = false;
+    }
+  }
+
+  Future<void> _reopen(_Showing p, double at) async {
     var generation = ++p.generation;
     p.reader?.close();
     p.reader = null;

@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/plugin_system/canvas/export/gif_encoder.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
@@ -92,6 +95,9 @@ class ExportBackdrop {
     if (document.hasScenes) return null;
     var background = document.drawnBackground;
     if (background.spec.animated) return null;
+    // A video on the timeline behind everything is a different picture every
+    // frame, like a moving pattern.
+    if (background.video?.clip.timed == true) return null;
 
     var asked = scale.clamp(0.05, maxExportScale);
     var s = asked * document.size.exportScale;
@@ -123,6 +129,10 @@ Future<ui.Image> renderFrame(
   /// exports that render many frames. Null renders it the slow way, which is
   /// right for a single still.
   ExportBackdrop? backdrop,
+
+  /// videoShow is the frame each video on the timeline shows on this frame
+  /// -- see ExportMedia. Null shows every video as its poster.
+  VideoShow Function(VideoElement)? videoShow,
 }) async {
   // The caller's own multiplier is what maxExportScale bounds; the design's
   // scale is not a request for a bigger file but the arithmetic that makes
@@ -141,10 +151,14 @@ Future<ui.Image> renderFrame(
   // same function the preview uses -- see paintSequenceFrame -- so what was
   // watched is what comes out.
   if (document.hasScenes) {
-    paintSequenceFrame(canvas, document, frame, images: images);
+    paintSequenceFrame(canvas, document, frame,
+        images: images, videoShow: videoShow);
   } else {
     paintCanvasDocument(canvas, document,
-        frame: frame, images: images, backdrop: backdrop?.image);
+        frame: frame,
+        images: images,
+        backdrop: backdrop?.image,
+        videoShow: videoShow);
   }
 
   var picture = recorder.endRecording();
@@ -295,6 +309,8 @@ Future<CanvasExport?> renderGif(
   // the most expensive thing on a canvas and on a still one it is the same
   // picture every frame.
   ExportBackdrop? backdrop;
+  // The videos on the timeline, frame by frame. A GIF has no sound to carry.
+  var media = ExportMedia.of(document, scale: scale);
   try {
     backdrop =
         await ExportBackdrop.prepare(document, scale: scale, images: images);
@@ -302,7 +318,11 @@ Future<CanvasExport?> renderGif(
       ui.Image? image;
       try {
         image = await renderFrame(document,
-            frame: i, scale: scale, images: images, backdrop: backdrop);
+            frame: i,
+            scale: scale,
+            images: images,
+            backdrop: backdrop,
+            videoShow: await media?.at(i));
         var raw =
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
         if (raw == null) return null;
@@ -332,6 +352,7 @@ Future<CanvasExport?> renderGif(
     return null;
   } finally {
     backdrop?.dispose();
+    media?.dispose();
   }
 }
 

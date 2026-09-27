@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -139,8 +140,9 @@ List<Widget> videoSettings(
             tooltip: "Choose a picture to show for it",
             onPressed: () async {
               var id = await pickCanvasImage(context);
-              if (id != null)
+              if (id != null) {
                 now(e.copyWith(look: e.look.copyWith(assetId: id)));
+              }
             },
           ),
           CanvasIconButton(
@@ -148,8 +150,9 @@ List<Widget> videoSettings(
             tooltip: "Use a picture you have already added",
             onPressed: () async {
               var id = await showRecentPictures(context);
-              if (id != null)
+              if (id != null) {
                 now(e.copyWith(look: e.look.copyWith(assetId: id)));
+              }
             },
           ),
           CanvasHint(
@@ -231,13 +234,16 @@ List<Widget> videoSettings(
             options: [for (var l in MediaLoop.values) (l, l.label)],
             onChanged: (v) => clipNow(clip.copyWith(loop: v)),
           ),
-          CanvasToggle(
-            key: const ValueKey("videoAutoplay"),
-            label: "Start by itself",
-            value: clip.autoplay,
-            onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
-          ),
-          if (across) ...[
+          // On the timeline, the playhead says when it starts and whether it
+          // carries on -- so those two questions are not asked.
+          if (!clip.timed)
+            CanvasToggle(
+              key: const ValueKey("videoAutoplay"),
+              label: "Start by itself",
+              value: clip.autoplay,
+              onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
+            ),
+          if (across && !clip.timed) ...[
             CanvasToggle(
               key: const ValueKey("videoAcross"),
               label: "Across ${word.many}",
@@ -248,6 +254,12 @@ List<Widget> videoSettings(
                 ? "Keeps playing as the ${word.many} change."
                 : "Stops when the ${word.one} changes."),
           ],
+          const CanvasLineBreak(),
+          ...timelineControls(controller, clip,
+              key: "video",
+              now: clipNow,
+              write: (next) => write(e.copyWith(clip: next)),
+              commit: commit),
         ],
         more: [
           CanvasNumberField(
@@ -280,7 +292,7 @@ List<Widget> videoSettings(
               "sound together, at the start and end of each file."),
         ],
       ),
-    if (!e.isLink && !background)
+    if (!e.isLink && !background && !clip.timed)
       CanvasControlGroup(
         label: "Reader's controls",
         rule: false,
