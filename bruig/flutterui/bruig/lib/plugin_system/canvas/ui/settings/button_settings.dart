@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -61,7 +63,32 @@ List<Widget> buttonSettings(
                   write(e.copyWith(action: action.copyWith(frame: v.round()))),
               onCommit: commit,
             ),
-          if (action.kind.needsElement)
+          // A sound is an Audio element, on this canvas or on the master under
+          // it -- a button on page three can pause the music the master plays
+          // on every page.
+          if (action.kind.needsSound)
+            CanvasDropdown<String>(
+              key: const ValueKey("buttonSound"),
+              label: "Sound",
+              value: action.elementId,
+              width: 170,
+              options: [
+                ("", "Nothing"),
+                for (var other in controller.document.elements)
+                  if (other is AudioElement) (other.id, other.name),
+                if (!controller.document.editingMaster)
+                  for (var other in controller.document.masterScene?.elements ??
+                      const <CanvasElement>[])
+                    if (other is AudioElement)
+                      (other.id, "${other.name} (master)"),
+              ],
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(action: action.copyWith(elementId: v)));
+                commit();
+              },
+            ),
+          if (action.kind.needsElement && !action.kind.needsSound)
             CanvasDropdown<String>(
               label: "Element",
               value: action.elementId,

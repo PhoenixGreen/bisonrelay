@@ -25,6 +25,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
+import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
 
@@ -224,7 +230,9 @@ class FetchedRows {
 }
 
 class CanvasController extends ChangeNotifier {
-  CanvasController(CanvasDocument document) : _document = document;
+  CanvasController(CanvasDocument document, {AudioEngine? audioEngine})
+      : _document = document,
+        _audioEngine = audioEngine;
 
   CanvasDocument _document;
   CanvasDocument get document => _document;
@@ -872,6 +880,9 @@ class CanvasController extends ChangeNotifier {
     _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
 
     if (_frame >= _document.frames) _frame = _document.frames - 1;
+
+    // A sound whose element has gone goes with it.
+    _audioFollowsPage(turned: false);
 
     notifyListeners();
   }
@@ -1534,6 +1545,7 @@ class CanvasController extends ChangeNotifier {
     if (back != null && back != _document.at) {
       _document = _document.goToScene(back);
       _frame = _frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
+      _audioFollowsPage(turned: true);
     }
     // And back onto the shared canvas where that is where it started: the
     // playhead walks the scenes while a join is watched, and returning to a
@@ -1922,6 +1934,7 @@ class CanvasController extends ChangeNotifier {
   /// nothing, and a frame past the end of the new one is a frame that does
   /// not exist.
   void _afterSceneChange() {
+    _audioFollowsPage(turned: true);
     _selection = {};
     _backgroundSelected = false;
     _focusedPlayer = null;
@@ -2010,6 +2023,10 @@ class CanvasController extends ChangeNotifier {
 
   void play() {
     if (playing) return;
+    // Sounds that start by themselves start with the canvas -- before the
+    // checks below, since a page that is a still is still a page with music
+    // on it.
+    _autoplayAudio();
 
     // The whole document: the playhead runs through the sequence, and the
     // editor follows it -- the scene showing changes as it reaches each one,
@@ -2050,6 +2067,7 @@ class CanvasController extends ChangeNotifier {
   void stop() {
     pause();
     stopPreview();
+    _audio?.stopAll();
     frame = 0;
   }
 
@@ -2090,6 +2108,8 @@ class CanvasController extends ChangeNotifier {
             return;
           }
           _document = _document.goToScene(place.scene);
+          _audioFollowsPage(turned: true);
+          _autoplayAudio();
         }
         _frame =
             place.frame.clamp(0, math.max(0, _document.frames - 1)).toInt();
@@ -2345,8 +2365,124 @@ class CanvasController extends ChangeNotifier {
         }
       case ButtonActionKind.openLink:
         return action.url;
+      case ButtonActionKind.playSound:
+        if (_audioById(action.elementId) case var e?) unawaited(audio.play(e));
+      case ButtonActionKind.pauseSound:
+        _audio?.pause(action.elementId);
+      case ButtonActionKind.toggleSound:
+        if (_audioById(action.elementId) case var e?) {
+          unawaited(audio.toggle(e));
+        }
+      case ButtonActionKind.stopSound:
+        _audio?.stop(action.elementId);
+      case ButtonActionKind.muteSound:
+        if (_audioById(action.elementId) case var e?) audio.toggleMute(e);
     }
     return null;
+  }
+
+  // ------------------------------------------------------------------------
+  // Sound
+  // ------------------------------------------------------------------------
+
+  final AudioEngine? _audioEngine;
+  AudioRuntime? _audio;
+
+  /// audio is what is playing. Made the first time anything asks, so a
+  /// canvas with no sound on it never opens a sound device.
+  AudioRuntime get audio => _audio ??= AudioRuntime(
+      engine: _audioEngine ?? SoLoudAudioEngine(),
+      locate: (id) => CanvasMedia.existingPath(MediaKind.audio, id))
+    ..addListener(notifyListeners);
+
+  /// audioRevision changes whenever any sound's state does, so the stage's
+  /// painter knows to draw the speakers again.
+  int get audioRevision => _audio?.revision ?? 0;
+
+  /// audioUnavailable is whether the sound device could not be opened, for
+  /// the settings to say so.
+  bool get audioUnavailable => _audio?.unavailable ?? false;
+
+  /// stopAudio stops every sound the canvas is playing.
+  void stopAudio() => _audio?.stopAll();
+
+  /// audioState is how [e]'s sound is doing, for the icon to show.
+  AudioState audioState(AudioElement e) {
+    var a = _audio;
+    if (a == null) return AudioState.idle(e);
+    var v = a.view(e);
+    return AudioState(playing: v.playing, muted: v.muted, volume: v.volume);
+  }
+
+  /// pressAudio is a press on one of [e]'s own controls. [volume] is where
+  /// on the volume bar, for that one.
+  void pressAudio(AudioElement e, AudioControl part, {double? volume}) {
+    var current = _audioById(e.id) ?? e;
+    switch (part) {
+      case AudioControl.playPause:
+        unawaited(audio.toggle(current));
+      case AudioControl.mute:
+        audio.toggleMute(current);
+      case AudioControl.volume:
+        if (volume == null) return;
+        audio.setVolume(current, volume);
+        // Turning it up is asking to hear it.
+        if (volume > 0 && audio.view(current).muted) {
+          audio.setMuted(current, false);
+        }
+    }
+  }
+
+  /// _audioById finds an audio element on the canvas showing or on the
+  /// master -- the two places a button on this page could mean.
+  AudioElement? _audioById(String id) {
+    for (var e in _document.elements) {
+      if (e is AudioElement && e.id == id) return e;
+    }
+    for (var e in _document.masterScene?.elements ?? const <CanvasElement>[]) {
+      if (e is AudioElement && e.id == id) return e;
+    }
+    return null;
+  }
+
+  /// _pageAudio is every sound that belongs to what is on screen: the canvas
+  /// showing, and the master under it.
+  Iterable<AudioElement> get _pageAudio sync* {
+    for (var e in _document.elements) {
+      if (e is AudioElement) yield e;
+    }
+    if (!_document.editingMaster) {
+      for (var e
+          in _document.masterScene?.elements ?? const <CanvasElement>[]) {
+        if (e is AudioElement) yield e;
+      }
+    }
+  }
+
+  /// _audioFollowsPage stops whatever does not belong on the canvas now
+  /// showing. [turned] is whether the page actually changed: a master sound
+  /// set to stop at the join stops then, and not when an unrelated edit is
+  /// made.
+  void _audioFollowsPage({required bool turned}) {
+    var a = _audio;
+    if (a == null) return;
+    var keep = <String>{
+      for (var e in _document.elements)
+        if (e is AudioElement) e.id,
+      for (var e in _document.masterScene?.elements ?? const <CanvasElement>[])
+        if (e is AudioElement && (!turned || e.clip.acrossPages)) e.id,
+    };
+    a.keepOnly(keep.contains);
+  }
+
+  /// _autoplayAudio starts the sounds on screen that start by themselves.
+  void _autoplayAudio() {
+    var starting = [
+      for (var e in _pageAudio)
+        if (e.clip.autoplay && !e.clip.isEmpty) e,
+    ];
+    if (starting.isEmpty) return;
+    audio.autoplay(starting);
   }
 
   // ------------------------------------------------------------------------
@@ -2577,6 +2713,7 @@ class CanvasController extends ChangeNotifier {
         TableElement e => e.animation,
         CounterElement e => e.animation,
         ButtonElement e => e.animation,
+        AudioElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -2597,7 +2734,8 @@ class CanvasController extends ChangeNotifier {
       element is CounterElement ||
       // And a button. Arriving is not pressing: one is what the canvas does
       // to it, the other what somebody does to the canvas.
-      element is ButtonElement;
+      element is ButtonElement ||
+      element is AudioElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -2609,6 +2747,7 @@ class CanvasController extends ChangeNotifier {
         TableElement e => e.copyWith(animation: animation),
         CounterElement e => e.copyWith(animation: animation),
         ButtonElement e => e.copyWith(animation: animation),
+        AudioElement e => e.copyWith(animation: animation),
         _ => element,
       };
 
@@ -3007,6 +3146,7 @@ class CanvasController extends ChangeNotifier {
   /// load replaces the whole session with a document from disk.
   void load(CanvasDocument document, {String? folder, String? name}) {
     pause();
+    _audio?.stopAll();
     _document = document;
     this.folder = folder;
     this.name = name;
@@ -3078,6 +3218,7 @@ class CanvasController extends ChangeNotifier {
     // Not awaited: tidying the picture store is bookkeeping, and a save should
     // not wait on a walk of the whole library to report that it worked.
     if (ok) unawaited(CanvasAssets.sweepUnused());
+    if (ok) unawaited(CanvasMedia.sweepUnused(open: _document.mediaIds));
     if (ok) {
       _dirty = false;
       notifyListeners();
@@ -3103,6 +3244,8 @@ class CanvasController extends ChangeNotifier {
     _autosave?.cancel();
     _playback?.cancel();
     _counterTimer?.cancel();
+    _audio?.removeListener(notifyListeners);
+    _audio?.dispose();
     images.dispose();
     super.dispose();
   }

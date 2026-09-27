@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -21,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
@@ -155,6 +157,13 @@ class CanvasStageState extends State<CanvasStage> {
   /// meant is only known on release. See _onPointerUp.
   CounterElement? _pendingCounter;
   int _pendingCounterAt = -1;
+
+  /// _pendingAudio is a selected speaker pressed on one of its controls and
+  /// not yet released, which control, and where -- the volume bar needs to
+  /// know how far along it was pressed.
+  AudioElement? _pendingAudio;
+  AudioControl _pendingAudioPart = AudioControl.playPause;
+  Offset _pendingAudioAt = Offset.zero;
 
   /// _pendingLegend is a chart whose key has been pressed, and
   /// _pendingLegendAt which series' entry.
@@ -1260,6 +1269,43 @@ class CanvasStageState extends State<CanvasStage> {
     setState(() => _mode = _DragMode.chartLabel);
   }
 
+  /// _audioPartAt is which of a speaker's controls a document point is on, or
+  /// null for none. The same rectangles the painter drew -- see audioParts.
+  AudioControl? _audioPartAt(AudioElement e, Offset doc) {
+    var parts = audioParts(e, e.boundsAt(controller.frame));
+    if (parts.volume case var v? when v.contains(doc)) {
+      return AudioControl.volume;
+    }
+    if (parts.mute case var m? when m.contains(doc)) return AudioControl.mute;
+    if (e.has(AudioControl.playPause) && parts.icon.contains(doc)) {
+      return AudioControl.playPause;
+    }
+    return null;
+  }
+
+  /// _masterAudioAt is a speaker on the master under a document point, and
+  /// which of its controls, while a page is the canvas in front of the reader.
+  (AudioElement, AudioControl)? _masterAudioAt(Offset doc) {
+    if (document.editingMaster) return null;
+    var master = document.masterScene;
+    if (master == null) return null;
+    for (var e in master.elements.reversed) {
+      if (e is! AudioElement || !e.visible) continue;
+      var part = _audioPartAt(e, doc);
+      if (part != null) return (e, part);
+    }
+    return null;
+  }
+
+  void _pressAudio(AudioElement e, AudioControl part, Offset doc) {
+    double? volume;
+    if (part == AudioControl.volume) {
+      var bar = audioParts(e, e.boundsAt(controller.frame)).volume;
+      if (bar != null) volume = volumeAt(bar, doc.dx);
+    }
+    controller.pressAudio(e, part, volume: volume);
+  }
+
   /// _counterButtonAt is which of a counter's buttons a document point is in,
   /// or -1 for none.
   int _counterButtonAt(CounterElement e, Offset doc) {
@@ -1639,6 +1685,16 @@ class CanvasStageState extends State<CanvasStage> {
     // over a photograph is on top of the photograph, and the press should
     // land on what is on top. Before this it could only be reached by
     // locking whatever was behind it.
+    // A speaker on the master, pressed from a page. It cannot be selected
+    // there -- the master is edited on its own -- so there is nothing for a
+    // press to mean but pressing it, and background music with a mute switch
+    // is exactly the thing that sits on the master.
+    if (_masterAudioAt(doc) case (var sound, var part)?) {
+      _pressAudio(sound, part, doc);
+      _mode = _DragMode.none;
+      return;
+    }
+
     var element = _topmostOf(_hitElement(doc), _textPieceOwner(doc));
     if (element == null) {
       if (!_shiftHeld) controller.clearSelection();
@@ -1660,6 +1716,22 @@ class CanvasStageState extends State<CanvasStage> {
       _pendingButton = element;
       _beginTransform(_DragMode.move, null);
       return;
+    }
+
+    // A selected speaker's own controls, on the same terms as a button: a
+    // press that stays put plays, mutes or sets the volume, and one that
+    // travels moves it.
+    if (element is AudioElement &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var part = _audioPartAt(element, doc);
+      if (part != null) {
+        _pendingAudio = element;
+        _pendingAudioPart = part;
+        _pendingAudioAt = doc;
+        _beginTransform(_DragMode.move, null);
+        return;
+      }
     }
 
     // A live counter's own buttons, on the same terms: pressed when it is the
@@ -2819,6 +2891,17 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    var sound = _pendingAudio;
+    _pendingAudio = null;
+    if (sound != null &&
+        (event.localPosition - _pressedAt).distance <= _buttonClickSlop) {
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      _pressAudio(sound, _pendingAudioPart, _pendingAudioAt);
+      return;
+    }
+
     var button = _pendingButton;
     _pendingButton = null;
     if (button != null &&
@@ -3102,6 +3185,8 @@ class CanvasStageState extends State<CanvasStage> {
                             e.id == _hoveredCounter ? _hoveredCounterAt : -1,
                         counterRunning: controller.counterRunning,
                         counterTick: controller.counterTicks,
+                        audioState: controller.audioState,
+                        audioRevision: controller.audioRevision,
                         selection: controller.selection,
                         showHelpers: controller.showHelpers,
                         selectedPath: _selectedPath(),

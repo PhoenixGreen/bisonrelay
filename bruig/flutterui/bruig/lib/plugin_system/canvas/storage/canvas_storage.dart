@@ -32,6 +32,12 @@ const _libraryDirName = "Canvas";
 /// folder of its own.
 const canvasPicturesFolder = "Pictures";
 
+/// canvasAudioFolder and canvasVideoFolder are where sounds and videos live,
+/// beside the pictures and left out of the listing for the same reason. See
+/// CanvasMedia.
+const canvasAudioFolder = "Audio";
+const canvasVideoFolder = "Videos";
+
 /// canvasExtension is what a saved canvas is called on disk.
 ///
 /// A distinct extension rather than ".json" so that the library listing does
@@ -102,6 +108,24 @@ class CanvasStorage {
         if (entry.isFolder) continue;
         var document = await load(folder, entry.name);
         if (document != null) live.addAll(document.assetIds);
+      }
+    }
+    return live;
+  }
+
+  /// liveMediaIds is every stored sound or video that some saved canvas still
+  /// uses -- [liveAssetIds] for the media store.
+  static Future<Set<String>> liveMediaIds() async {
+    var live = <String>{};
+    var pending = <String>[""];
+    for (var entry in await list("")) {
+      if (entry.isFolder) pending.add(entry.name);
+    }
+    for (var folder in pending) {
+      for (var entry in await list(folder)) {
+        if (entry.isFolder) continue;
+        var document = await load(folder, entry.name);
+        if (document != null) live.addAll(document.mediaIds);
       }
     }
     return live;
@@ -186,7 +210,11 @@ class CanvasStorage {
         // The picture store is a real folder now, so that it can be opened and
         // looked at -- which means the listing has to leave it out by name
         // rather than relying on it being hidden.
-        if (base == canvasPicturesFolder) continue;
+        if (base == canvasPicturesFolder ||
+            base == canvasAudioFolder ||
+            base == canvasVideoFolder) {
+          continue;
+        }
 
         if (entry is Directory) {
           // One level only, so subfolders are listed at the top and never

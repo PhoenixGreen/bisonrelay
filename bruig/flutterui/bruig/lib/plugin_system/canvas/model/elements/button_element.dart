@@ -20,7 +20,18 @@ enum ButtonActionKind {
   restart("Restart", "Go back to the first frame and play"),
   toggleElement("Show or hide", "Flip another element's visibility"),
   goToScene("Go to a scene", "Show another canvas of this document"),
-  openLink("Open a link", "Ask to open a URL in the browser");
+  openLink("Open a link", "Ask to open a URL in the browser"),
+
+  // A sound on the canvas, named by its element. The sound is an Audio
+  // element rather than a file on the button, so it has one set of settings
+  // -- range, fades, loop, volume -- wherever it is started from, and a
+  // sound only ever started by buttons is simply an Audio element that is
+  // hidden.
+  playSound("Play a sound", "Start an audio element playing"),
+  pauseSound("Pause a sound", "Hold an audio element where it is"),
+  toggleSound("Play or pause a sound", "Start it, or hold it if it is going"),
+  stopSound("Stop a sound", "Stop it and go back to its start"),
+  muteSound("Mute or unmute a sound", "Silence it, or bring it back");
 
   final String label;
   final String description;
@@ -33,7 +44,15 @@ enum ButtonActionKind {
 
   bool get needsFrame =>
       this == goToFrame || this == playFrom || this == playToFrame;
-  bool get needsElement => this == toggleElement;
+  bool get needsElement => this == toggleElement || needsSound;
+
+  /// needsSound is whether the element named has to be an Audio element.
+  bool get needsSound =>
+      this == playSound ||
+      this == pauseSound ||
+      this == toggleSound ||
+      this == stopSound ||
+      this == muteSound;
 
   /// needsScene is whether the action names a canvas of this document. Named
   /// rather than numbered where it can be: a scene keeps its id across a

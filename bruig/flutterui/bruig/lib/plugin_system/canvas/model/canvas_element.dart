@@ -35,7 +35,9 @@ enum ElementKind {
   player("Team"),
   // A number that counts -- across the timeline, or in real time when nobody
   // has keyframed it. See CounterElement.
-  counter("Counter");
+  counter("Counter"),
+  // A sound, and the icon a reader presses to hear it. See AudioElement.
+  audio("Audio");
 
   final String label;
   const ElementKind(this.label);
@@ -593,6 +595,14 @@ abstract class CanvasElement {
   /// next restart. An element that refers to a picture says so here, and
   /// there is nowhere else to forget.
   Set<String> get assetIds => const {};
+
+  /// mediaIds is every stored sound or video this element refers to, in the
+  /// media store rather than the picture store -- see CanvasMedia.
+  ///
+  /// The same arrangement as [assetIds], and for the same reason: a sweep
+  /// deletes whatever no saved canvas names, so an element that plays a file
+  /// says so here or loses it on the next restart.
+  Set<String> get mediaIds => const {};
 
   /// scaledBy is this element with everything inside it sized by [by].
   ///

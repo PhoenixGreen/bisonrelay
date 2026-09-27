@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
 
 // canvas_bundle.dart is a canvas with its pictures inside it.
@@ -32,6 +33,11 @@ const String _documentEntry = "canvas.json";
 
 /// _pictureDir is where the pictures go, named by their asset ids.
 const String _pictureDir = "pictures";
+
+/// _mediaDir is where sounds and videos go, named by their media ids -- see
+/// CanvasMedia. A folder of their own, since they are restored into a
+/// different store from the pictures.
+const String _mediaDir = "media";
 
 /// bundleMime marks a canvas that carries its pictures.
 ///
@@ -63,8 +69,11 @@ bool looksLikeBundle(List<int> bytes) =>
 Future<Uint8List> packCanvas(
   CanvasDocument document, {
   Future<List<int>?> Function(String id)? pictures,
+  Future<List<int>?> Function(String id)? media,
 }) async {
   var load = pictures ?? CanvasAssets.load;
+  var loadMedia =
+      media ?? (String id) => CanvasMedia.load(CanvasMedia.kindOf(id), id);
   var archive = Archive();
   archive.addFile(ArchiveFile.string(_documentEntry, document.encode()));
 
@@ -81,6 +90,18 @@ Future<Uint8List> packCanvas(
   // Stored rather than deflated. Everything of any size in here is a PNG or a
   // JPEG, which are compressed already; deflating them again spends the time
   // and saves nothing, and the document itself is a few kilobytes.
+  // The sounds a canvas plays travel with it, or a published canvas arrives
+  // with a speaker that does nothing when pressed.
+  for (var id in document.mediaIds) {
+    var bytes = await loadMedia(id);
+    if (bytes == null) {
+      debugPrint("The bundle is missing the media file $id");
+      continue;
+    }
+    archive.addFile(
+        ArchiveFile.bytes("$_mediaDir/$id", Uint8List.fromList(bytes)));
+  }
+
   return Uint8List.fromList(ZipEncoder().encode(archive, level: 0));
 }
 
@@ -91,7 +112,10 @@ class CanvasBundle {
   /// pictures is the asset id each picture was stored under, and its bytes.
   final Map<String, Uint8List> pictures;
 
-  const CanvasBundle(this.document, this.pictures);
+  /// media is the sounds and videos, by media id.
+  final Map<String, Uint8List> media;
+
+  const CanvasBundle(this.document, this.pictures, [this.media = const {}]);
 }
 
 /// unpackCanvas reads a bundle, or a plain .bcanvas, into a document and its
@@ -114,17 +138,26 @@ Future<CanvasBundle?> unpackCanvas(List<int> bytes) async {
     if (document == null) return null;
 
     var pictures = <String, Uint8List>{};
+    var media = <String, Uint8List>{};
     for (var file in archive.files) {
-      if (!file.isFile || !file.name.startsWith("$_pictureDir/")) continue;
+      if (!file.isFile) continue;
+      if (!file.name.startsWith("$_pictureDir/") &&
+          !file.name.startsWith("$_mediaDir/")) {
+        continue;
+      }
       // Only the last part of the name is used, so a bundle carrying
       // "pictures/../../something" names a picture called "something" and
       // nothing else. The id is checked again by CanvasAssets.saveAs before
       // it becomes a path; this is the first of the two.
       var id = file.name.split("/").last;
       if (id.isEmpty) continue;
+      if (file.name.startsWith("$_mediaDir/")) {
+        if (CanvasMedia.isId(id)) media[id] = Uint8List.fromList(file.content);
+        continue;
+      }
       pictures[id] = Uint8List.fromList(file.content);
     }
-    return CanvasBundle(document, pictures);
+    return CanvasBundle(document, pictures, media);
   } catch (exception) {
     debugPrint("Unable to read the canvas bundle: $exception");
     return null;
@@ -140,6 +173,10 @@ Future<int> storeBundlePictures(CanvasBundle bundle) async {
   var stored = 0;
   for (var entry in bundle.pictures.entries) {
     if (await CanvasAssets.saveAs(entry.key, entry.value)) stored++;
+  }
+  for (var entry in bundle.media.entries) {
+    var kind = CanvasMedia.kindOf(entry.key);
+    if (await CanvasMedia.saveBytes(kind, entry.key, entry.value)) stored++;
   }
   return stored;
 }

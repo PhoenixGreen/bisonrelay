@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -629,6 +630,17 @@ class CanvasDocument {
     return ids;
   }
 
+  /// mediaIds is every stored sound or video this document refers to, on
+  /// every scene and the master -- what a sweep of the media store measures
+  /// against, and what a bundle carries. See [assetIds] for why it is every
+  /// scene and not the one open.
+  Set<String> get mediaIds => {
+        for (var one in allScenes)
+          for (var e in one.elements) ...e.mediaIds,
+        if (master != null)
+          for (var e in master!.elements) ...e.mediaIds,
+      };
+
   /// hasKeyframes is whether anything in this document moves.
   ///
   /// Asks the players as well as the elements, for the same reason
@@ -1217,5 +1229,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return PathElement.fromJson(json, base);
     case ElementKind.counter:
       return CounterElement.fromJson(json, base);
+    case ElementKind.audio:
+      return AudioElement.fromJson(json, base);
   }
 }

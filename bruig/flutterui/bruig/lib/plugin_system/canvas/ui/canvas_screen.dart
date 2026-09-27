@@ -230,6 +230,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void dispose() {
     _documents?.stop();
     _controller.removeListener(_onSelectionChanged);
+    // The canvas's sounds stop when the canvas is left. The session goes on
+    // -- see below -- but music from a page nobody is looking at, carrying on
+    // under a chat, is a sound with no off switch on screen.
+    _controller.stopAudio();
     // Not disposed: the session outlives this page. The provider owns it, and
     // disposing it here would leave a dead controller behind for the next
     // visit to read.

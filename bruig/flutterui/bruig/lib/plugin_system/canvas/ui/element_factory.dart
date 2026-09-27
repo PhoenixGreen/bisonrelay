@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -51,6 +52,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // Wide enough for a figure with words either side of it, and tall enough
     // for the row of buttons a live one can carry.
     ElementKind.counter => Size(wide * 0.34, short * 0.22),
+    // A round speaker, the size of a thumb on a phone-shaped canvas. Its
+    // mute switch and volume bar widen it when they are turned on.
+    ElementKind.audio => Size(short * 0.12, short * 0.12),
     ElementKind.background => Size(wide * 0.6, short * 0.5),
     // A team, not a player: the box is the half of the pitch the formation is
     // laid out in, so it wants most of the canvas rather than a dot's worth.
@@ -151,6 +155,16 @@ CanvasElement newElement(
           buttonSpec: TextSpec(
               fontSize: unit * 0.5, weight: 600, align: TextAlignSpec.center),
           box: BoxSpec(padding: unit * 0.6));
+
+    case ElementKind.audio:
+      // Empty, and it says so: the settings open on "Add a sound file", and a
+      // speaker that plays nothing is a speaker that does nothing when
+      // pressed -- which is the one thing worse than a placeholder.
+      return AudioElement(base,
+          box: BoxSpec(
+              fill: const Color(0xFF223046),
+              borderRadius: size.shortestSide,
+              padding: size.shortestSide * 0.12));
 
     case ElementKind.table:
       return TableElement(base,

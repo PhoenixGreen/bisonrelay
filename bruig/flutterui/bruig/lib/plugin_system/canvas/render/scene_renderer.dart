@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
@@ -19,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
@@ -152,6 +154,10 @@ void paintCanvasDocument(
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
 
+  /// audioState is how a sound is doing -- playing, muted, how loud -- for the
+  /// icon to show it. Null in an export, where nothing is playing.
+  AudioState Function(AudioElement)? audioState,
+
   /// backdrop is the background already rasterised, for a caller drawing many
   /// frames of a document whose background does not move. See ExportBackdrop.
   ui.Image? backdrop,
@@ -183,7 +189,8 @@ void paintCanvasDocument(
         skipTextItem: skipTextItem,
         counterValue: counterValue,
         counterPressed: counterPressed,
-        counterRunning: counterRunning);
+        counterRunning: counterRunning,
+        audioState: audioState);
   }
 
   _paintScene(canvas, doc, doc.elements, frame,
@@ -194,7 +201,8 @@ void paintCanvasDocument(
       skipTextItem: skipTextItem,
       counterValue: counterValue,
       counterPressed: counterPressed,
-      counterRunning: counterRunning);
+      counterRunning: counterRunning,
+      audioState: audioState);
 }
 
 /// _paintScene draws one canvas's worth of elements.
@@ -215,6 +223,10 @@ void _paintScene(
   double Function(CounterElement)? counterValue,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
+
+  /// audioState is how a sound is doing -- playing, muted, how loud -- for the
+  /// icon to show it. Null in an export, where nothing is playing.
+  AudioState Function(AudioElement)? audioState,
 }) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -239,6 +251,7 @@ void _paintScene(
         counterValue: counterValue,
         counterPressed: counterPressed,
         counterRunning: counterRunning,
+        audioState: audioState,
         hovered: element.id == hoveredButton);
   }
 }
@@ -370,6 +383,10 @@ void paintElement(
   double Function(CounterElement)? counterValue,
   int Function(CounterElement)? counterPressed,
   bool Function(CounterElement)? counterRunning,
+
+  /// audioState is how a sound is doing -- playing, muted, how loud -- for the
+  /// icon to show it. Null in an export, where nothing is playing.
+  AudioState Function(AudioElement)? audioState,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
@@ -520,6 +537,15 @@ void paintElement(
                       : (pose.values[KeyframeChannel.count] ?? e.from),
               pressed: counterPressed?.call(e) ?? -1,
               running: counterRunning?.call(e)));
+    case AudioElement e:
+      paintArriving(
+          canvas,
+          bounds,
+          e.animation,
+          pose,
+          () => paintAudio(
+              canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
+              images: images));
     case BackgroundElement e:
       _paintBackgroundElement(
           canvas, bounds, e, time, frameRate.toDouble(), images);
