@@ -31,7 +31,13 @@ enum SceneTransitionFamily {
   move("Move"),
   wipe("Uncover"),
   overlay("Overlay"),
-  drawn("Drawn");
+  drawn("Drawn"),
+
+  /// paper is the one that belongs to a document: a leaf being turned. Its
+  /// own family rather than one more entry under Move, because somebody
+  /// looking for it is looking for the thing a book does, not for a
+  /// direction to slide in.
+  paper("Paper");
 
   final String label;
   const SceneTransitionFamily(this.label);
@@ -173,7 +179,16 @@ enum SceneTransitionKind {
   /// grows out of the middle and then comes apart into rays is two ideas in
   /// one transition -- each of them good on its own and strange together.
   /// This one is the same shape doing the same thing at both ends.
-  rays("Comic rays", SceneTransitionFamily.drawn);
+  rays("Comic rays", SceneTransitionFamily.drawn),
+
+  /// pageTurn turns the leaf over about its spine, the next page underneath.
+  ///
+  /// With facing pages it is the right-hand leaf that turns, and its back is
+  /// the next left-hand page -- the leaf is a sheet printed on both sides,
+  /// which is what the four earlier attempts at this lacked: each had one
+  /// page moving over another, and the reverse of the moving one was blank
+  /// paper or nothing. See paintPageTurn.
+  pageTurn("Page turn", SceneTransitionFamily.paper);
 
   final String label;
   final SceneTransitionFamily family;
@@ -380,6 +395,8 @@ class SceneTransition {
       SceneTransitionKind.halftone || SceneTransitionKind.tiles => 20,
       SceneTransitionKind.blinds || SceneTransitionKind.barn => 16,
       SceneTransitionKind.clock || SceneTransitionKind.band => 18,
+      // About as long as a hand takes over a page at film's rate.
+      SceneTransitionKind.pageTurn => 16,
       _ => 14,
     };
     // How many pieces this one is made of. A number that means something
@@ -427,14 +444,11 @@ class SceneTransition {
       // rather than in four directions, and "to the right" -- the way every
       // transition started out pointing -- is not one of the two, so the
       // setting came up with nothing chosen in it.
-      // Pointed a way this kind actually has. Barn doors open on an axis
-      // rather than in four directions, and "to the right" -- the way every
-      // transition started out pointing -- is not one of the two, so the
-      // setting came up with nothing chosen in it.
       way: SceneTransitionWay.waysFor(kind).contains(SceneTransitionWay.right)
           ? SceneTransitionWay.right
           : SceneTransitionWay.waysFor(kind).first,
-      ease: kind.familyOf == SceneTransitionFamily.move
+      ease: kind.familyOf == SceneTransitionFamily.move ||
+              kind == SceneTransitionKind.pageTurn
           ? SceneTransitionEase.smooth
           : SceneTransitionEase.straight,
       count: pieces,

@@ -88,25 +88,25 @@ void main() {
     });
 
     testWidgets("but only a few, oldest out first", (tester) async {
-      // Three, which is what is on screen at once in the worst case: the leaf
-      // beside the one being worked on, the page leaving and the page
-      // arriving. These are megabytes each, so there is no sense keeping
-      // designs nobody is looking at.
+      // Six: a page turn has four leaves on screen, and the next spread's two
+      // are made ahead of it. Through three, one leaf of a turn was thrown
+      // out every frame and its paper flickered. These are megabytes each,
+      // so there is no sense keeping designs nobody is looking at.
       var cache = ProceduralCache();
       addTearDown(cache.dispose);
       var spec = bannerCanvas().background.spec;
       const size = Size(400, 225);
 
-      var specs = [for (var i = 0; i < 4; i++) spec.copyWith(seed: 100 + i)];
+      var specs = [for (var i = 0; i < 7; i++) spec.copyWith(seed: 100 + i)];
       for (var one in specs) {
         cache.imageFor(one, size, 0);
         await settle(tester);
       }
 
-      // The last three are held and answer at once.
+      // The last six are held and answer at once.
       var held = [for (var one in specs.skip(1)) cache.imageFor(one, size, 0)];
       expect(held.every((i) => i != null), isTrue);
-      expect(held.toSet().length, 3, reason: "three different pictures");
+      expect(held.toSet().length, 6, reason: "six different pictures");
 
       // The first is gone. Asking for it hands back the newest picture as a
       // stand-in of the right size -- which is how a cache miss looks from

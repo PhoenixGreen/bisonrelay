@@ -511,7 +511,23 @@ class CanvasStageState extends State<CanvasStage> {
   /// it cannot be selected, moved or typed into, because it is not the canvas
   /// being edited. Everything the pointer does goes on going to the page in
   /// front of you, which is why this changes so little.
-  int? get _facingPage => document.facingAt(document.at);
+  ///
+  /// Never on the master canvas. The master is one page, placed as a
+  /// right-hand leaf, and drawn in the spread of whichever page happened to
+  /// be open before it, it looked different depending on where it was
+  /// opened from -- which page stood beside it, and on which side.
+  int? get _facingPage =>
+      document.editingMaster ? null : document.facingAt(document.at);
+
+  /// _bookPreview is whether the document is being played as a book: facing
+  /// pages, and the run rather than one canvas on the stage.
+  ///
+  /// Every leaf is then drawn in its own place in the spread -- a cover on the
+  /// right with nothing to its left -- so the stage keeps the same frame for
+  /// the whole run, and a transition between two spreads has both of them to
+  /// move. Given one page's room, the leaf beside it stood still while the
+  /// other one changed.
+  bool get _bookPreview => controller.previewAt != null && document.hasSpread;
 
   /// _spreadShown is whether room is given to the leaf beside this one.
   ///
@@ -522,11 +538,16 @@ class CanvasStageState extends State<CanvasStage> {
   /// across the gutter is part of what this page looks like and it did not
   /// stop being so when the view changed.
   bool get _spreadShown =>
-      _facingPage != null && controller.fit != CanvasFit.width;
+      (_facingPage != null || _bookPreview) &&
+      controller.fit != CanvasFit.width;
 
   /// _facingOnLeft is whether the page being worked on is the left-hand leaf,
   /// so the neighbour is drawn to its right.
-  bool get _facingOnLeft => document.facingIsLeft(document.at) ?? false;
+  bool get _facingOnLeft {
+    if (_bookPreview) return document.spreadOf(document.at)?.$1 == document.at;
+    if (document.editingMaster) return false;
+    return document.facingIsLeft(document.at) ?? false;
+  }
 
   /// _onFacingPage is whether a point on the stage is over the leaf drawn
   /// beside the one being edited.

@@ -427,6 +427,33 @@ class CanvasDocument {
   bool? facingIsLeft(int index) =>
       isPages && pages.facing ? leftOfSpread(pageCovers, index) : null;
 
+  /// spreadOf is the two leaves on screen together with the page at [index],
+  /// left and right, either of them null where that side is empty.
+  ///
+  /// A leaf standing alone still has a side -- the first leaf is a right-hand
+  /// page with nothing to its left -- and that is what lets a transition out
+  /// of it be drawn in the book rather than in a frame of its own. Null
+  /// altogether where facing pages are not being shown.
+  (int?, int?)? spreadOf(int index) {
+    if (!isPages || !pages.facing) return null;
+    var list = allScenes;
+    if (index < 0 || index >= list.length) return null;
+    var beside = facingAt(index);
+    if (beside != null) {
+      return beside > index ? (index, beside) : (beside, index);
+    }
+    return pageIsLeft(index) ? (index, null) : (null, index);
+  }
+
+  /// hasSpread is whether any two leaves of the document face each other.
+  bool get hasSpread {
+    if (!isPages || !pages.facing) return false;
+    for (var i = 0; i < allScenes.length; i++) {
+      if (facingAt(i) != null) return true;
+    }
+    return false;
+  }
+
   /// masterScene is the shared canvas when it is switched on, and null
   /// otherwise. Asked by the painter, which must not draw a master that has
   /// been turned off.

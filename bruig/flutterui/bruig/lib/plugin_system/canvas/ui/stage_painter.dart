@@ -297,11 +297,21 @@ class StagePainter extends CustomPainter {
     // A shadow under the frame, so the canvas reads as a sheet on a desk
     // rather than as a region of the window -- which matters most when the
     // document's own background happens to be the same colour as the editor's.
-    canvas.drawRect(
-        view.shift(const Offset(0, 6)),
-        Paint()
-          ..color = const Color(0x55000000)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
+    var shadow = Paint()
+      ..color = const Color(0x55000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    if (previewAt case var at? when facingShown) {
+      // Only under the leaves there are. A cover stands on its own side of
+      // the book, and a shadow under the empty half is a grey page.
+      var (onLeft, onRight) = bookSides(document, at);
+      var leftLeaf = facingOnLeft ? page : page.shift(Offset(-page.width, 0));
+      if (onLeft) canvas.drawRect(leftLeaf.shift(const Offset(0, 6)), shadow);
+      if (onRight) {
+        canvas.drawRect(leftLeaf.shift(Offset(page.width, 6)), shadow);
+      }
+    } else {
+      canvas.drawRect(view.shift(const Offset(0, 6)), shadow);
+    }
 
     // Everything the document contributes goes inside the frame, at whatever
     // zoom, including the selection handles. The frame itself never moves --
@@ -328,56 +338,17 @@ class StagePainter extends CustomPainter {
         : document.goToScene(beside).copyWith(onMaster: false);
     var aside = facingOnLeft ? docSize.width : -docSize.width;
 
-    /// neighbour draws that leaf where it sits.
-    ///
-    /// [held] clips it to its own page. Off, an element that hangs over the
-    /// gutter carries on across, which is the whole of what a spread is for.
-    /// On for the length of a turn: the other leaf is moving then, and an
-    /// overhang glued over a page that is sliding out from under it is a
-    /// piece of picture left hanging in the air.
-    void neighbour({bool held = false}) {
-      if (over == null) return;
-      canvas.save();
-      canvas.translate(aside, 0);
-      if (held) canvas.clipRect(Offset.zero & docSize);
+    if (previewAt case var at?) {
+      // Played as a book, every leaf is drawn in its own place in the spread
+      // and a transition between two spreads moves both leaves -- see
+      // paintBookFrame. Given one page's room instead, the leaf beside the
+      // one changing stood still, and a picture across the gutter was cut off
+      // at the spine as soon as the second leaf played.
       if (facingShown) {
-        canvas.save();
-        canvas.clipRect(Offset.zero & docSize);
-        paintCanvasDocument(canvas, over,
-            part: CanvasPaintPart.backdrop,
+        paintBookFrame(canvas, document, at,
+            left: facingOnLeft ? 0.0 : -docSize.width,
             images: images,
             backgrounds: backgrounds);
-        canvas.restore();
-      }
-      paintCanvasDocument(canvas, over,
-          part: CanvasPaintPart.contents, images: images);
-      canvas.restore();
-    }
-
-    if (previewAt case var at?) {
-      // Two leaves of one spread are both already on screen, so going from
-      // one to the other is not a leaf being turned -- it is the cursor
-      // moving across a spread that is open. Whatever transition is set,
-      // playing it here moves a page that the reader can see is not going
-      // anywhere, and a slide does it away from the spine, which looks like
-      // the book coming apart in the middle.
-      //
-      // A leaf changes when the *spread* changes, which with the pairing rule
-      // is every other join. See canvas_pages.dart on the pairing.
-      var place = placeInSequence(document, at);
-      var inside = facingShown &&
-          place.changing &&
-          document.facingAt(place.scene) == place.next;
-
-      // Held to its own leaf only while something is moving -- see neighbour.
-      neighbour(held: !inside);
-      if (inside) {
-        var page = document.goToScene(place.scene).copyWith(
-              onMaster: false,
-              background: document.backgroundOf(place.scene),
-            );
-        paintCanvasDocument(canvas, page,
-            frame: place.frame, images: images, backgrounds: backgrounds);
       } else {
         paintSequenceFrame(canvas, document, at,
             images: images, backgrounds: backgrounds);

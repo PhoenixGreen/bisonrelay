@@ -32,13 +32,16 @@ import 'package:flutter/foundation.dart';
 /// backdrop is the most expensive thing on a canvas, and doing it two or
 /// three times a frame is what a flicker and a crawling page turn both are.
 ///
-/// So: a few, oldest out first. Three, because three is what is on screen at
-/// once in the worst case -- the leaf beside the one being worked on, the
-/// page leaving and the page arriving -- and each of these is megabytes of
-/// pixels, so there is no sense keeping designs nobody is looking at.
+/// So: a few, oldest out first. Six, because a page turn puts four leaves on
+/// screen at once -- the spread being left and the spread arriving -- and
+/// the book painter asks for the next spread's two ahead of time so they are
+/// ready when it arrives. It was three, and a turn from page four to five
+/// threw one leaf's backdrop out every frame; while it was being made again
+/// the stand-in was another page's, so the paper flickered between the two
+/// colours. Each of these is megabytes of pixels, so no more than that.
 class ProceduralCache extends ChangeNotifier {
-  /// _keep is how many are held. See the class comment for why it is three.
-  static const int _keep = 3;
+  /// _keep is how many are held. See the class comment for why it is six.
+  static const int _keep = 6;
 
   /// _images is the rasters, least recently asked for first. A LinkedHashMap
   /// by virtue of being a plain Dart map: re-inserting a key moves it to the
@@ -167,6 +170,24 @@ class ProceduralCache extends ChangeNotifier {
     } finally {
       _making.remove(key);
     }
+  }
+
+  /// warm starts [spec] being rasterised at [size] if it is not held, without
+  /// drawing anything -- for a backdrop that is about to be needed.
+  ///
+  /// Asked for only when it is needed, the first frame it appears on shows
+  /// the stand-in imageFor hands back, which is some other design's picture.
+  /// Harmless under a drag; during playback it is a page's paper flashing
+  /// the colour of the page before it.
+  void warm(ProceduralSpec spec, ui.Size size, [CanvasImageSource? images]) {
+    if (spec.animated || size.width < 1 || size.height < 1) return;
+    var key = keyFor(spec, size, 0, images);
+    var held = _images.remove(key);
+    if (held != null) {
+      _images[key] = held;
+      return;
+    }
+    if (!_making.contains(key)) _make(spec, size, 0, key, images);
   }
 
   @override

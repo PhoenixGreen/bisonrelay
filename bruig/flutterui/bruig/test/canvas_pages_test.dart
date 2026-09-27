@@ -3,8 +3,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -12,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -115,15 +119,17 @@ void main() {
       expect(controller.document.frameRate, 30);
     });
 
-    // Pages had a turn of their own for a while. Four goes at drawing one all
-    // read as something going wrong with the page rather than as paper, and a
-    // join that has to be explained is worse than no join at all.
-    test("both kinds cut, and a saved turn reads back as one", () {
+    // A cut is still the default for both: a page turn is chosen, not
+    // imposed on every document somebody makes of pages.
+    test("both kinds cut until told otherwise, and a turn reads back", () {
       expect(const CanvasDocument().defaultTransition.kind,
           SceneTransitionKind.cut);
       expect(pages(2).defaultTransition.kind, SceneTransitionKind.cut);
-      expect(SceneTransitionKind.fromName("pageTurn"), SceneTransitionKind.cut,
-          reason: "a document saved with one opens without it");
+      expect(SceneTransitionKind.fromName("pageTurn"),
+          SceneTransitionKind.pageTurn,
+          reason: "a document saved with one opens with it");
+      expect(
+          SceneTransitionKind.pageTurn.familyOf, SceneTransitionFamily.paper);
     });
   });
 
@@ -374,6 +380,11 @@ void main() {
 
       expect(find.text("PAGES"), findsWidgets);
       expect(find.text("SCENES"), findsNothing);
+
+      await show(tester, CanvasScenesPanel(controller: controller));
+      expect(find.text("Master page"), findsOneWidget,
+          reason: "the master of a document of pages is a page");
+      expect(find.text("Master scene"), findsNothing);
     });
   });
 
@@ -461,23 +472,46 @@ void main() {
       expect(view.pageRect.center.dx, closeTo(viewport.width / 2, 1));
     });
 
-    // The master is designed against the page it will appear on, so opening
-    // it keeps the spread of the page that was left -- which is also what
-    // says whether a mirrored page number is on a left-hand leaf.
-    testWidgets("survives opening the master canvas", (tester) async {
-      var controller = facing(1);
-      controller.showMaster();
-      var view = await stage(tester, controller);
+    // The master is one page. Drawn in the spread of whichever page was open
+    // before it, it looked different depending on where it was opened from.
+    testWidgets("is not shown on the master, whichever page was open",
+        (tester) async {
+      for (var from in [1, 2]) {
+        var controller = facing(from);
+        controller.showMaster();
+        var view = await stage(tester, controller);
 
-      expect(controller.onMaster, isTrue);
-      expect(view.spreadRect.width, closeTo(view.pageRect.width * 2, 0.5),
-          reason: "the master is a page of the document, not a page alone");
-      // Placed as a right-hand page, whichever page was open before. What is
-      // on the master is being put somewhere, and a mirrored element is drawn
-      // on the opposite side of the page from the box that moves it.
-      expect(controller.document.pageIsLeftHand, isFalse);
-      expect(controller.document.pageNumber, isNotNull,
-          reason: "and it has a number to show, or there is nothing to place");
+        expect(controller.onMaster, isTrue);
+        expect(view.spreadRect.width, closeTo(view.pageRect.width, 0.5),
+            reason: "the master is a page alone, opened from page $from");
+        expect(view.pageRect.center.dx, closeTo(viewport.width / 2, 1));
+        // Placed as a right-hand page. A mirrored element is drawn on the
+        // opposite side of the page from the box that moves it.
+        expect(controller.document.pageIsLeftHand, isFalse);
+        expect(controller.document.pageNumber, isNotNull,
+            reason:
+                "and it has a number to show, or there is nothing to place");
+      }
+    });
+
+    // Played as a book, every leaf is in its own place, so the frame does not
+    // change size between a cover and the spread after it.
+    testWidgets("is given room while the book plays, even on a cover",
+        (tester) async {
+      var controller = CanvasController(pages(6, covers: [PageCover.front])
+          .copyWith(pages: const PagesSpec(facing: true)));
+      addTearDown(controller.dispose);
+      var alone = await stage(tester, controller);
+      expect(alone.spreadRect.width, closeTo(alone.pageRect.width, 0.5),
+          reason: "editing, a cover stands on its own");
+
+      controller.previewTransitionAfter(0);
+      await tester.pump();
+      expect(alone.spreadRect.width, closeTo(alone.pageRect.width * 2, 0.5));
+      expect(alone.pageRect.left, closeTo(alone.spreadRect.center.dx, 1),
+          reason: "the first leaf is a right-hand page");
+      controller.stopPreview();
+      await tester.pump();
     });
 
     // A leaf turns when the spread changes. Two pages of one spread are both
@@ -510,6 +544,167 @@ void main() {
       expect(controller.document.at, 2);
       expect(controller.selection, isEmpty,
           reason: "opening a page is not selecting something on it");
+    });
+  });
+
+  // A book played through: every leaf in its own place, a spread moving as
+  // one picture, and a leaf that turns. Checked by reading pixels back,
+  // since the three things reported were all things that looked wrong.
+  group("playing a book", () {
+    const paper = [
+      Color(0xFFFF0000),
+      Color(0xFF00FF00),
+      Color(0xFF0000FF),
+      Color(0xFFFFFF00),
+      Color(0xFF00FFFF),
+      Color(0xFFFF00FF),
+      Color(0xFF800000),
+      Color(0xFF008000),
+    ];
+    const ink = Color(0xFF000000);
+
+    /// book is eight pages facing, each on its own paper, with a bar placed on
+    /// page one and pulled across the gutter onto page two.
+    CanvasDocument book(SceneTransitionKind kind) {
+      var size = const CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth);
+      var w = size.size.width, h = size.size.height;
+      return CanvasDocument(
+        kind: CanvasKind.pages,
+        size: size,
+        pages: const PagesSpec(facing: true),
+        master: CanvasScene(id: "m", transition: SceneTransition.bestFor(kind)),
+        scenes: [
+          for (var i = 0; i < paper.length; i++)
+            CanvasScene(
+              id: "p$i",
+              frames: 30,
+              background: CanvasBackground(
+                  spec: ProceduralSpec(
+                      style: ProceduralStyle.plain, background: paper[i])),
+              elements: [
+                if (i == 1)
+                  ShapeElement(
+                      ElementBase(
+                          id: "across",
+                          x: w * 0.5,
+                          y: h * 0.45,
+                          width: w,
+                          height: h * 0.1),
+                      fill: ink),
+              ],
+            ),
+        ],
+      );
+    }
+
+    /// through is the moment [part] of the way through the join after
+    /// [scene].
+    int through(CanvasDocument doc, int scene, double part) {
+      var frames = [
+        for (var at = 0; at < doc.sequenceFrames; at++)
+          if (placeInSequence(doc, at) case var p
+              when p.scene == scene && p.changing)
+            at
+      ];
+      return frames[((frames.length - 1) * part).round()];
+    }
+
+    /// seen is which paper (or the ink) is at [where], given as fractions
+    /// of the whole spread.
+    Future<Color> seen(CanvasDocument doc, int at, Offset where,
+        {ProceduralCache? backgrounds}) async {
+      var size = doc.size.size;
+      const s = 0.1;
+      var w = (size.width * 2 * s).round(), h = (size.height * s).round();
+      var recorder = ui.PictureRecorder();
+      var canvas = ui.Canvas(recorder);
+      canvas.scale(s);
+      paintBookFrame(canvas, doc, at, left: 0, backgrounds: backgrounds);
+      var image = await recorder.endRecording().toImage(w, h);
+      var bytes = await image.toByteData();
+      var x = (where.dx * w).round().clamp(0, w - 1);
+      var y = (where.dy * h).round().clamp(0, h - 1);
+      var o = (y * w + x) * 4;
+      var got = Color.fromARGB(255, bytes!.getUint8(o), bytes.getUint8(o + 1),
+          bytes.getUint8(o + 2));
+      double apart(Color a) =>
+          (a.r - got.r).abs() + (a.g - got.g).abs() + (a.b - got.b).abs();
+      return [...paper, ink].reduce((a, b) => apart(a) <= apart(b) ? a : b);
+    }
+
+    testWidgets("a picture across the gutter stays while the right leaf plays",
+        (tester) async {
+      await tester.runAsync(() async {
+        var doc = book(SceneTransitionKind.cut);
+        var playingTwo = doc.startOfScene(2) + 10;
+        expect(placeInSequence(doc, playingTwo).scene, 2);
+        expect(await seen(doc, playingTwo, const Offset(0.6, 0.5)), ink,
+            reason: "the bar placed on page one reaches onto page two");
+        expect(await seen(doc, playingTwo, const Offset(0.9, 0.2)), paper[2]);
+      });
+    });
+
+    testWidgets("a slide between spreads moves the left leaf too",
+        (tester) async {
+      await tester.runAsync(() async {
+        var doc = book(SceneTransitionKind.slideLeft);
+        // Three quarters of the way, the arriving spread's left leaf is well
+        // into the old left leaf's half. Moving one page, the left half kept
+        // page one throughout.
+        var at = through(doc, 2, 0.8);
+        expect(await seen(doc, at, const Offset(0.45, 0.2)), paper[3]);
+      });
+    });
+
+    testWidgets(
+        "a page turn uncovers the next right leaf and lays its back "
+        "on the left", (tester) async {
+      await tester.runAsync(() async {
+        var doc = book(SceneTransitionKind.pageTurn);
+        var early = through(doc, 2, 0.3);
+        expect(await seen(doc, early, const Offset(0.2, 0.2)), paper[1],
+            reason: "the left leaf lies still until the turn reaches it");
+        expect(await seen(doc, early, const Offset(0.98, 0.97)), paper[4],
+            reason: "the corner goes first, uncovering page four");
+        expect(await seen(doc, early, const Offset(0.55, 0.1)), paper[2],
+            reason: "and the head of the leaf is still down");
+
+        var late = through(doc, 2, 0.9);
+        expect(await seen(doc, late, const Offset(0.25, 0.5)), paper[3],
+            reason: "the back of the leaf is page three");
+        expect(await seen(doc, late, const Offset(0.8, 0.5)), paper[4]);
+      });
+    });
+
+    // A turn puts four leaves on screen. Through a cache of three, one of them
+    // was thrown out every frame, and while it was made again the stand-in
+    // was another page's paper -- a flicker between two colours.
+    testWidgets("the paper holds its colour through a turn", (tester) async {
+      await tester.runAsync(() async {
+        var doc = book(SceneTransitionKind.pageTurn);
+        var cache = ProceduralCache();
+        addTearDown(cache.dispose);
+        var begins = through(doc, 4, 0);
+        var halfway = through(doc, 4, 0.5);
+        // Played from the start of the spread, as it would be, so the cache
+        // has been asked for what it is asked for in the editor.
+        var settled = through(doc, 2, 1) + 1;
+        for (var at = settled; at <= halfway; at++) {
+          var left =
+              await seen(doc, at, const Offset(0.05, 0.05), backgrounds: cache);
+          var right =
+              await seen(doc, at, const Offset(0.55, 0.05), backgrounds: cache);
+          var corner = await seen(doc, at, const Offset(0.985, 0.98),
+              backgrounds: cache);
+          await Future.delayed(const Duration(milliseconds: 5));
+          if (at < settled + 3) continue;
+          expect(left, paper[3], reason: "page three's paper at $at");
+          if (at < begins) expect(right, paper[4], reason: "page four at $at");
+          if (at > begins + 3) {
+            expect(corner, paper[6], reason: "page six, uncovered, at $at");
+          }
+        }
+      });
     });
   });
 }

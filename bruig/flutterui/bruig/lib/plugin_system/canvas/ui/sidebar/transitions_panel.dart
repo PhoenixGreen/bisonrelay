@@ -353,15 +353,16 @@ class CanvasTransitionsPanel extends StatelessWidget {
               CanvasControlGroup(label: "Where it comes from", children: [
                 CanvasToggle(
                   key: const ValueKey("transitionCustom"),
-                  label: "Set on this scene",
+                  label: "Set on this ${document.kind.one}",
                   value: custom,
                   onChanged: (v) => controller.setSceneTransition(
                       index, v ? document.transitionAfter(index) : null),
                 ),
-                const CanvasHint(
-                    "Off, this scene uses the transition set on the master "
-                    "scene, and changing that one changes it here. On, it "
-                    "keeps its own whatever the master says."),
+                CanvasHint(
+                    "Off, this ${document.kind.one} uses the transition set on "
+                    "the master ${document.kind.one}, and changing that one "
+                    "changes it here. On, it keeps its own whatever the "
+                    "master says."),
               ]),
           ],
         ),

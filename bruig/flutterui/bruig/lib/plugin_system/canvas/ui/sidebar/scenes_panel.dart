@@ -174,7 +174,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                     : theme.colors.onSurfaceVariant.withValues(alpha: 0.4)),
             const SizedBox(width: 6),
             Expanded(
-              child: Text("Master scene",
+              child: Text("Master ${document.kind.one}",
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -187,7 +187,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
               Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: Tooltip(
-                  message: "Scenes give way with "
+                  message: "${document.kind.manyCap} give way with "
                       "${document.defaultTransition.kind.label} unless they "
                       "say otherwise",
                   child: Icon(Icons.compare_arrows,
@@ -201,9 +201,9 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
             _Switch(
               on: on,
               tooltip: on
-                  ? "Turn the master scene off. What is on it is kept."
-                  : "Turn the master scene on: what you put on it appears on "
-                      "every scene",
+                  ? "Turn the master ${document.kind.one} off. What is on it is kept."
+                  : "Turn the master ${document.kind.one} on: what you put on it "
+                      "appears on every ${document.kind.one}",
               onChanged: () => controller.masterOn = !on,
             ),
           ]),
@@ -297,7 +297,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                 Tooltip(
                   message: document.isPages
                       ? "Playing the document stops at this page"
-                      : "Playback stops at the end of this scene",
+                      : "Playback stops at the end of this ${document.kind.one}",
                   child: Icon(Icons.pause_circle_outline,
                       size: 13, color: theme.colors.onSurfaceVariant),
                 ),
@@ -338,8 +338,8 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
       padding: const EdgeInsets.only(left: 2),
       child: Tooltip(
         message: scene.custom
-            ? "${which.kind.label}, set on this scene"
-            : "${which.kind.label}, from the master scene",
+            ? "${which.kind.label}, set on this ${document.kind.one}"
+            : "${which.kind.label}, from the master ${document.kind.one}",
         child: Icon(
           scene.custom ? Icons.compare_arrows : Icons.arrow_right_alt,
           size: 14,
@@ -468,7 +468,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
               ? (scene.holds ? "Read on to the next page" : "Stop at this page")
               : (scene.holds
                   ? "Run on into the next scene"
-                  : "Stop at the end of this scene")),
+                  : "Stop at the end of this ${document.kind.one}")),
         ),
         if (count > 1)
           const PopupMenuItem(value: "delete", child: Text("Delete")),

@@ -965,7 +965,8 @@ class _SceneFieldState extends State<_SceneField> {
         // way the zoom box cut off its own sign.
         width: _widest(type),
         child: Tooltip(
-          message: "Which scene is showing. Type a number to go to one.",
+          message: "Which ${document.kind.one} is showing. "
+              "Type a number to go to one.",
           child: TextField(
             key: const ValueKey("sceneField"),
             controller: _text,
