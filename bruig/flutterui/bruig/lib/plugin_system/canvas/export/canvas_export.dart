@@ -104,10 +104,14 @@ class ExportBackdrop {
     var width = math.max(1, (document.size.exportSize.width * asked).round());
     var height = math.max(1, (document.size.exportSize.height * asked).round());
 
+    void draw(ui.Canvas canvas) {
+      canvas.scale(s);
+      paintDocumentBackdrop(canvas, document, images: images);
+    }
+
+    await drawWhenLoaded(images, draw);
     var recorder = ui.PictureRecorder();
-    var canvas = ui.Canvas(recorder);
-    canvas.scale(s);
-    paintDocumentBackdrop(canvas, document, images: images);
+    draw(ui.Canvas(recorder));
     var picture = recorder.endRecording();
     try {
       return ExportBackdrop._(await picture.toImage(width, height));
@@ -143,23 +147,28 @@ Future<ui.Image> renderFrame(
   var width = math.max(1, (document.size.exportSize.width * asked).round());
   var height = math.max(1, (document.size.exportSize.height * asked).round());
 
-  var recorder = ui.PictureRecorder();
-  var canvas = ui.Canvas(recorder);
-  canvas.scale(s);
-  // The whole run, where there is one: a document of several scenes publishes
-  // as the sequence it plays, not as whichever canvas was being edited. The
-  // same function the preview uses -- see paintSequenceFrame -- so what was
-  // watched is what comes out.
-  if (document.hasScenes) {
-    paintSequenceFrame(canvas, document, frame,
-        images: images, videoShow: videoShow);
-  } else {
-    paintCanvasDocument(canvas, document,
-        frame: frame,
-        images: images,
-        backdrop: backdrop?.image,
-        videoShow: videoShow);
+  void draw(ui.Canvas canvas) {
+    canvas.scale(s);
+    // The whole run, where there is one: a document of several scenes
+    // publishes as the sequence it plays, not as whichever canvas was being
+    // edited. The same function the preview uses -- see paintSequenceFrame --
+    // so what was watched is what comes out.
+    if (document.hasScenes) {
+      paintSequenceFrame(canvas, document, frame,
+          images: images, videoShow: videoShow);
+    } else {
+      paintCanvasDocument(canvas, document,
+          frame: frame,
+          images: images,
+          backdrop: backdrop?.image,
+          videoShow: videoShow);
+    }
   }
+
+  // Its pictures read, not their placeholders -- see drawWhenLoaded.
+  await drawWhenLoaded(images, draw);
+  var recorder = ui.PictureRecorder();
+  draw(ui.Canvas(recorder));
 
   var picture = recorder.endRecording();
   try {

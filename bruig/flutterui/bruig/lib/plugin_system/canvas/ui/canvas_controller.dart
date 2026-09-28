@@ -2367,6 +2367,8 @@ class CanvasController extends ChangeNotifier {
         play();
       case ButtonActionKind.pause:
         pause();
+      case ButtonActionKind.togglePlay:
+        togglePlay();
       case ButtonActionKind.restart:
         frame = 0;
         play();

@@ -394,6 +394,16 @@ class StagePainter extends CustomPainter {
           part: CanvasPaintPart.backdrop,
           images: images,
           backgrounds: backgrounds);
+      // On the neighbour's leaf, the neighbour's own elements go over
+      // whatever this page hangs across the gutter -- a picture laid across
+      // the spread from this side is under the words on that side, as it is
+      // in the book. Drawn the other way round, a picture placed on the left
+      // leaf covered everything on the right one for as long as the left was
+      // the one selected, and dropped behind again when the right was.
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(aside, 0, docSize.width, docSize.height));
+      _paintContents(canvas, document, frame);
+      canvas.restore();
       canvas.save();
       canvas.translate(aside, 0);
       paintCanvasDocument(canvas, over,
@@ -413,30 +423,17 @@ class StagePainter extends CustomPainter {
       }
     }
 
-    paintCanvasDocument(canvas, document,
-        frame: frame,
-        part: over == null ? CanvasPaintPart.all : CanvasPaintPart.contents,
-        images: images,
-        hoveredButton: hoveredButton,
-        // The whole element only while its own paragraph is being typed
-        // into; one piece of it while a piece is.
-        skipElement: editingItem == null ? editingText : null,
-        skipTextItem: editingItem,
-        counterValue: counterValue,
-        counterPressed: counterPressed,
-        counterRunning: counterRunning,
-        audioState: audioState,
-        videoShow: videoShow,
-        // Drawn once and kept while the design and the size hold still. See
-        // ProceduralCache: the editor repaints for a pointer moving over the
-        // stage, and generating the background again to produce exactly the
-        // pixels it produced last time is what made a canvas with one on it
-        // slow to touch.
-        backgrounds: backgrounds,
-        // Guide paths show here and nowhere else: the line describing a run is
-        // scaffolding, and a published diagram with every run drawn on it is
-        // unreadable.
-        editing: true);
+    if (over != null) {
+      // Everywhere but the neighbour's leaf, which had this page's overhang
+      // drawn under its own elements above.
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(aside, 0, docSize.width, docSize.height),
+          clipOp: ui.ClipOp.difference);
+      _paintContents(canvas, document, frame);
+      canvas.restore();
+    } else {
+      _paintContents(canvas, document, frame, part: CanvasPaintPart.all);
+    }
 
     // Which of the two leaves is being edited, said with a line round it
     // rather than by dimming the other one. A tint over half a spread is a
@@ -562,6 +559,36 @@ class StagePainter extends CustomPainter {
     // Drawn inside the clip, as they first were, they were clipped away
     // entirely and no ruler ever appeared.
     _paintRulers(canvas, size);
+  }
+
+  /// _paintContents is the page being edited, everything on it as the editor
+  /// shows it -- over its own backdrop, or with [part] all, with it.
+  void _paintContents(Canvas canvas, CanvasDocument document, int frame,
+      {CanvasPaintPart part = CanvasPaintPart.contents}) {
+    paintCanvasDocument(canvas, document,
+        frame: frame,
+        part: part,
+        images: images,
+        hoveredButton: hoveredButton,
+        // The whole element only while its own paragraph is being typed
+        // into; one piece of it while a piece is.
+        skipElement: editingItem == null ? editingText : null,
+        skipTextItem: editingItem,
+        counterValue: counterValue,
+        counterPressed: counterPressed,
+        counterRunning: counterRunning,
+        audioState: audioState,
+        videoShow: videoShow,
+        // Drawn once and kept while the design and the size hold still. See
+        // ProceduralCache: the editor repaints for a pointer moving over the
+        // stage, and generating the background again to produce exactly the
+        // pixels it produced last time is what made a canvas with one on it
+        // slow to touch.
+        backgrounds: backgrounds,
+        // Guide paths show here and nowhere else: the line describing a run is
+        // scaffolding, and a published diagram with every run drawn on it is
+        // unreadable.
+        editing: true);
   }
 
   /// _paintChartLabels outlines a chart's placed title and description, with a

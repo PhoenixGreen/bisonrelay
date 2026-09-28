@@ -12,6 +12,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -22,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 // canvas_pages_test.dart is a document of pages: what choosing it settles,
@@ -458,6 +460,86 @@ void main() {
       expect(right.spreadRect.center.dx, closeTo(middleOfLeft, 1),
           reason: "and it does not move when the other leaf is opened");
       expect(right.pageRect.left, closeTo(middleOfLeft, 1));
+    });
+
+    // A picture laid across the spread from the left leaf is under what is on
+    // the right leaf, whichever leaf is open. It used to be drawn with the
+    // page being edited, last -- so with the left leaf open, the picture
+    // covered everything on the right, and dropped behind again the moment
+    // the right leaf was opened.
+    testWidgets("a picture across the gutter stays under the other leaf",
+        (tester) async {
+      const w = a4PageWidth, h = a4PageWidth * 297 / 210;
+      var doc = pages(4).copyWith(pages: const PagesSpec(facing: true));
+      doc = doc.withScenes([
+        doc.allScenes[0],
+        doc.allScenes[1].copyWith(elements: [
+          ShapeElement(
+              const ElementBase(
+                  id: "spread",
+                  x: 0,
+                  y: h * 0.25,
+                  width: w * 2,
+                  height: h * 0.5),
+              fill: const Color(0xFFFF0000)),
+        ]),
+        doc.allScenes[2].copyWith(elements: [
+          ShapeElement(
+              const ElementBase(
+                  id: "on-top",
+                  x: w * 0.4,
+                  y: h * 0.45,
+                  width: w * 0.2,
+                  height: h * 0.1),
+              fill: const Color(0xFF0000FF)),
+        ]),
+        doc.allScenes[3],
+      ]);
+
+      Future<(int, int)> colours(int at) async {
+        var controller = CanvasController(doc.copyWith(sceneAt: at));
+        addTearDown(controller.dispose);
+        var view = await stage(tester, controller);
+        var painter = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((c) => c.painter)
+            .whereType<StagePainter>()
+            .single;
+        late ByteData data;
+        await tester.runAsync(() async {
+          var recorder = ui.PictureRecorder();
+          painter.paint(ui.Canvas(recorder), viewport);
+          var image = await recorder
+              .endRecording()
+              .toImage(viewport.width.round(), viewport.height.round());
+          data = (await image.toByteData())!;
+        });
+        // The right leaf, wherever the open page is.
+        var leaf = at == 1
+            ? view.pageRect.shift(Offset(view.pageRect.width, 0))
+            : view.pageRect;
+        int pixel(double fx, double fy) {
+          var x = (leaf.left + leaf.width * fx).round();
+          var y = (leaf.top + leaf.height * fy).round();
+          return data.getUint32((y * viewport.width.round() + x) * 4);
+        }
+
+        return (pixel(0.5, 0.5), pixel(0.2, 0.5));
+      }
+
+      // RGBA, big-endian. Which of the two is on top, not the exact shade.
+      bool blue(int c) => (c >> 8 & 0xFF) > 100 && (c >> 24 & 0xFF) < 60;
+      bool red(int c) => (c >> 24 & 0xFF) > 100 && (c >> 8 & 0xFF) < 60;
+      for (var at in [1, 2]) {
+        var (middle, beside) = await colours(at);
+        var open = at == 1 ? "left" : "right";
+        expect(blue(middle), isTrue,
+            reason: "$open leaf open: the right leaf's own square is over the "
+                "picture (${middle.toRadixString(16)})");
+        expect(red(beside), isTrue,
+            reason: "$open leaf open: and the picture carries on across the "
+                "right leaf (${beside.toRadixString(16)})");
+      }
     });
 
     // Fitting to the width exists to fill the window with the page being

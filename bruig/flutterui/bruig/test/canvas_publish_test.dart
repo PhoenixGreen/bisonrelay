@@ -7,6 +7,9 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/export/document_export.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +26,8 @@ import 'package:provider/provider.dart';
 
 void main() {
   Future<void> open(WidgetTester tester,
-      {CanvasDocument document = const CanvasDocument(frames: 12)}) async {
+      {CanvasDocument document = const CanvasDocument(frames: 12),
+      CanvasPreferences? prefs}) async {
     tester.view.physicalSize = const Size(1200, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -33,6 +37,8 @@ void main() {
         ChangeNotifierProvider<ThemeNotifier>(
             create: (c) => ThemeNotifier(doLoad: false)),
         ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        if (prefs != null)
+          ChangeNotifierProvider<CanvasPreferences>.value(value: prefs),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -65,6 +71,53 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // Each publish opens the sheet as the last was published with, rather than
+  // back on Image: somebody making a book of one canvas after another sets
+  // it to Interactive EPUB once.
+  group("the last settings", () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    testWidgets("open the sheet as they were left", (tester) async {
+      var prefs = CanvasPreferences()
+        ..publish = {
+          "as": "document",
+          "document": "interactiveEpub",
+          "scale": 2,
+          "somethingOld": true,
+        };
+      await open(tester, prefs: prefs);
+      expect(
+          tester
+              .widget<DropdownButton<PublishAs>>(
+                  find.byType(DropdownButton<PublishAs>))
+              .value,
+          PublishAs.document);
+      expect(
+          tester
+              .widget<DropdownButton<DocumentAs>>(
+                  find.byType(DropdownButton<DocumentAs>))
+              .value,
+          DocumentAs.interactiveEpub);
+    });
+
+    testWidgets("and without any, it opens on Image", (tester) async {
+      await open(tester, prefs: CanvasPreferences());
+      expect(
+          tester
+              .widget<DropdownButton<PublishAs>>(
+                  find.byType(DropdownButton<PublishAs>))
+              .value,
+          PublishAs.image);
+    });
+
+    test("and are still there after a restart", () async {
+      CanvasPreferences().publish = {"as": "video", "quality": 70};
+      var later = CanvasPreferences();
+      await later.load();
+      expect(later.publish, {"as": "video", "quality": 70});
+    });
+  });
+
   group("a canvas laid out for several shapes", () {
     CanvasDocument responsive() => const CanvasDocument(
           size: CanvasSize(ratio: CanvasRatio.feedAd, width: 1000),
@@ -91,8 +144,7 @@ void main() {
       expect(find.byKey(const ValueKey("publishEveryShape")), findsNothing);
     });
 
-    testWidgets("and a canvas made for one shape is not asked",
-        (tester) async {
+    testWidgets("and a canvas made for one shape is not asked", (tester) async {
       await open(tester);
       expect(find.byKey(const ValueKey("publishEveryShape")), findsNothing);
     });

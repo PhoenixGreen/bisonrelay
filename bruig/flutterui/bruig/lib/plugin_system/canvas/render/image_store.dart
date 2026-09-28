@@ -86,6 +86,9 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   ui.Image? original(String assetId) => _images[assetId];
 
   @override
+  bool get loading => _pending.isNotEmpty;
+
+  @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) {
     if (assetId.isEmpty) return null;
     var key = removal.active ? removal.cacheKey(assetId) : assetId;

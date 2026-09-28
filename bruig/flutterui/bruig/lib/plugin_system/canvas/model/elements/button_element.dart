@@ -17,6 +17,9 @@ enum ButtonActionKind {
   playToFrame("Play to frame", "Play forward and stop on that frame"),
   play("Play", "Start playing from where the playhead is"),
   pause("Pause", "Stop the playhead where it is"),
+  // One button that is both, the way a player's is: playing, it pauses;
+  // paused, it plays.
+  togglePlay("Play or pause", "Start playing, or stop where it is"),
   restart("Restart", "Go back to the first frame and play"),
   toggleElement("Show or hide", "Flip another element's visibility"),
   goToScene("Go to a scene", "Show another canvas of this document"),
@@ -103,7 +106,7 @@ class ButtonAction {
   Map<String, dynamic> toJson() => {
         "kind": kind.name,
         if (kind.needsFrame) "frame": frame,
-        if (kind.needsElement) "element": elementId,
+        if (kind.needsElement || kind.needsScene) "element": elementId,
         if (kind.needsUrl) "url": url,
       };
 

@@ -55,6 +55,9 @@ Future<List<int>> _pixelAt(CanvasDocument document, int x, int y,
 /// store reads a file and decodes it asynchronously, and answers null until it
 /// has, so a frame rendered through it would have no picture in it.
 class _Pictures implements CanvasImageSource {
+  @override
+  bool get loading => false;
+
   final ui.Image image;
 
   /// vector is what resolveVector hands back, for the tests about drawings

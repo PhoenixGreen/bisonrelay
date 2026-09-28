@@ -21,6 +21,9 @@ import 'package:flutter_test/flutter_test.dart';
 // has one of those in it and none of them have the four.
 
 class _Pictures implements CanvasImageSource {
+  @override
+  bool get loading => false;
+
   final ui.Image image;
   _Pictures(this.image);
   @override

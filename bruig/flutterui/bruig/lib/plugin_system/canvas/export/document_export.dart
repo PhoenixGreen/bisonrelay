@@ -32,8 +32,8 @@ enum DocumentAs {
   epub("EPUB", "A book of pages an e-reader turns, laid out as designed"),
   interactiveEpub(
       "Interactive EPUB",
-      "The same, with its buttons, sounds and videos working — sound and "
-          "video need ffmpeg to be put into the book");
+      "The same, with its buttons, animation, sounds and videos working — "
+          "sound and video need ffmpeg to be put into the book");
 
   final String label;
   final String description;
@@ -92,30 +92,36 @@ Future<ui.Image> renderDocumentPage(
         background: document.backgroundOf(index),
       );
 
-  var recorder = ui.PictureRecorder();
-  var canvas = ui.Canvas(recorder);
-  canvas.scale(s);
+  void draw(ui.Canvas canvas) {
+    canvas.scale(s);
 
-  paintCanvasDocument(canvas, page,
-      part: CanvasPaintPart.backdrop, images: images);
+    paintCanvasDocument(canvas, page,
+        part: CanvasPaintPart.backdrop, images: images);
 
-  // The facing leaf's overhang, between the paper and this page's own
-  // contents -- the order the editor draws them in, so that what was designed
-  // is what is printed.
-  var beside = document.facingAt(index);
-  if (beside != null) {
-    var onLeft = document.facingIsLeft(index) ?? false;
-    canvas.save();
-    canvas.clipRect(ui.Offset.zero & docSize);
-    canvas.translate(onLeft ? docSize.width : -docSize.width, 0);
-    paintCanvasDocument(
-        canvas, document.goToScene(beside).copyWith(onMaster: false),
+    // The facing leaf's overhang, between the paper and this page's own
+    // contents -- the order the editor draws them in, so that what was
+    // designed is what is printed.
+    var beside = document.facingAt(index);
+    if (beside != null) {
+      var onLeft = document.facingIsLeft(index) ?? false;
+      canvas.save();
+      canvas.clipRect(ui.Offset.zero & docSize);
+      canvas.translate(onLeft ? docSize.width : -docSize.width, 0);
+      paintCanvasDocument(
+          canvas, document.goToScene(beside).copyWith(onMaster: false),
+          part: CanvasPaintPart.contents, images: images);
+      canvas.restore();
+    }
+
+    paintCanvasDocument(canvas, page,
         part: CanvasPaintPart.contents, images: images);
-    canvas.restore();
   }
 
-  paintCanvasDocument(canvas, page,
-      part: CanvasPaintPart.contents, images: images);
+  // Every picture on the leaf, and on the leaf beside it, read before it is
+  // printed -- not the placeholder the editor shows while one loads.
+  await drawWhenLoaded(images, draw);
+  var recorder = ui.PictureRecorder();
+  draw(ui.Canvas(recorder));
 
   var picture = recorder.endRecording();
   try {
@@ -183,7 +189,8 @@ Future<CanvasExport?> renderDocument(
         var pixels = image.width / document.size.size.width;
         var extra = builder == null
             ? const EpubPageMedia()
-            : await builder.page(document, i, pixels);
+            : await builder.page(document, i, pixels,
+                width: image.width, height: image.height);
         pages.add(EpubPage(
           png: png.buffer.asUint8List(),
           width: image.width,
@@ -202,7 +209,8 @@ Future<CanvasExport?> renderDocument(
           media: extra.media,
           actions: extra.actions,
           files: extra.files,
-          film: extra.film,
+          stage: extra.stage,
+          soundtrack: extra.soundtrack,
         ));
       } finally {
         image?.dispose();
@@ -258,7 +266,13 @@ EpubSide _sideOf(CanvasDocument document, List<PageCover> covers, int index) {
 List<EpubLink> _linksOn(
     CanvasDocument document, CanvasScene scene, int index, double pixels) {
   var links = <EpubLink>[];
-  for (var element in scene.elements) {
+  // The master's buttons as well as the page's own. They are drawn on every
+  // page, and a Next or a Contents button on the master -- which is where a
+  // book's navigation goes -- was a picture of a button on every one of them.
+  for (var element in [
+    ...?document.masterScene?.elements,
+    ...scene.elements,
+  ]) {
     if (element is! ButtonElement || !element.visible) continue;
     var action = element.action;
     String? href;
@@ -278,7 +292,8 @@ List<EpubLink> _linksOn(
         y: box.top * pixels,
         width: box.width * pixels,
         height: box.height * pixels,
-        href: href));
+        href: href,
+        element: element.id));
   }
   return links;
 }
@@ -294,7 +309,8 @@ EpubPage _withCover(EpubPage page) => EpubPage(
       media: page.media,
       actions: page.actions,
       files: page.files,
-      film: page.film,
+      stage: page.stage,
+      soundtrack: page.soundtrack,
     );
 
 /// estimateDocumentBytes is roughly how large the file will be.

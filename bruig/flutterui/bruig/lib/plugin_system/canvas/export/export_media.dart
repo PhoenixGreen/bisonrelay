@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as path;
 
 // export_media.dart is the media on the timeline, for an export: the frame
 // each video shows on each frame of the run, and the sound to put under it.
@@ -337,6 +338,56 @@ class ExportMedia {
       : "${labels.join()}amix=inputs=${sounds.length}:normalize=0"
           ":dropout_transition=0,$tail[mix]";
   return (inputs, [...chains, mix].join(";"));
+}
+
+/// renderSoundtrack is [document]'s timeline sound through its mix and
+/// nothing else -- what a video export of it would carry -- as an AAC file
+/// exactly as long as the timeline. Null where there is nothing to hear, or
+/// no ffmpeg.
+///
+/// For a book page laid out as its elements: the page plays its soundtrack
+/// in step with its own playhead, and every channel strip, the master and
+/// the loudness target are in it, as they are in a film of the page.
+Future<Uint8List?> renderSoundtrack(CanvasDocument document,
+    {Future<String?> Function(MediaKind kind, String id)? locate}) async {
+  var ffmpeg = await ffmpegPath();
+  if (ffmpeg == null) return null;
+  var media = ExportMedia.of(document, locate: locate);
+  if (media == null) return null;
+  Directory? work;
+  try {
+    var sounds = await media.sounds();
+    if (sounds.isEmpty) return null;
+    var (inputs, graph) =
+        mixArgs(sounds, first: 0, master: document.masterMix, pad: true);
+    var seconds = document.playFrames /
+        (document.frameRate <= 0 ? 1 : document.frameRate);
+    work = await Directory.systemTemp.createTemp("canvas-soundtrack");
+    var out = path.join(work.path, "sound.m4a");
+    var run = await Process.run(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y", //
+      ...inputs,
+      "-filter_complex", graph,
+      "-map", "[mix]",
+      "-t", seconds.toStringAsFixed(3),
+      "-c:a", "aac", "-b:a", "192k",
+      "-movflags", "+faststart",
+      out,
+    ]);
+    if (run.exitCode != 0 || !await File(out).exists()) {
+      debugPrint("Unable to render the soundtrack: ${run.stderr}");
+      return null;
+    }
+    return await File(out).readAsBytes();
+  } catch (exception) {
+    debugPrint("Unable to render the soundtrack: $exception");
+    return null;
+  } finally {
+    media.dispose();
+    try {
+      await work?.delete(recursive: true);
+    } catch (_) {}
+  }
 }
 
 /// Loudness is what a mix measured, the way broadcast measures it: EBU R128

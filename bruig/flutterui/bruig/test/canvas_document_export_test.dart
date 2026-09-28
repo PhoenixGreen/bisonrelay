@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:flutter/painting.dart';
@@ -50,6 +52,28 @@ String textOf(Archive archive, String path) {
   var file = archive.files.firstWhere((f) => f.name == path,
       orElse: () => throw StateError("no $path in the book"));
   return utf8.decode(file.content as List<int>);
+}
+
+/// _SlowPictures is a picture store that, like the editor's, has nothing the
+/// first time it is asked and the picture a moment later.
+class _SlowPictures extends CanvasImageSource {
+  final ui.Image image;
+  bool _asked = false, _arrived = false;
+  _SlowPictures(this.image);
+
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) {
+    if (_arrived) return image;
+    if (!_asked) {
+      _asked = true;
+      Future<void>.delayed(const Duration(milliseconds: 60))
+          .then((_) => _arrived = true);
+    }
+    return null;
+  }
+
+  @override
+  bool get loading => _asked && !_arrived;
 }
 
 void main() {
@@ -115,7 +139,10 @@ void main() {
       );
       expect(opf, contains('idref="page1" properties="page-spread-left"'));
       expect(opf, contains('idref="page2" properties="page-spread-right"'));
-      expect(opf, contains('idref="page0"/>'), reason: "a cover is alone");
+      expect(opf,
+          contains('idref="page0" properties="rendition:page-spread-center"'),
+          reason: "a cover is alone, and says so -- left unsaid, Apple Books "
+              "lays it into half a spread");
       expect(opf, contains('property="rendition:spread">landscape'));
       expect(opf, contains('properties="cover-image"'));
     });
@@ -225,7 +252,8 @@ void main() {
       // The cover stands alone and the two after it face each other, which is
       // the document's own pairing rule and not something a reader can work
       // out.
-      expect(opf, contains('idref="page0"/>'));
+      expect(opf,
+          contains('idref="page0" properties="rendition:page-spread-center"'));
       expect(opf, contains('idref="page1" properties="page-spread-left"'));
       expect(opf, contains('idref="page2" properties="page-spread-right"'));
     });
@@ -361,6 +389,44 @@ void main() {
       expect(made, isNotNull);
       expect(made!.mime, "application/pdf");
       expect(String.fromCharCodes(made.data.take(5)), "%PDF-");
+    });
+  });
+
+  // A picture not yet read when the page was printed came out as the
+  // editor's "Loading…" placeholder -- a picture laid across a spread from
+  // the facing leaf, which the editor had not drawn since the book was
+  // opened. The page waits for its pictures now.
+  testWidgets("a page is printed with its pictures, not their placeholders",
+      (tester) async {
+    await tester.runAsync(() async {
+      var recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 8, 8),
+          Paint()..color = const Color(0xFF00FF00));
+      var green = await recorder.endRecording().toImage(8, 8);
+      var doc = CanvasDocument(
+        size: const CanvasSize(ratio: CanvasRatio.wide, width: 320),
+        scenes: [
+          CanvasScene(id: "one", elements: [
+            const ImageElement(
+                ElementBase(id: "i", x: 0, y: 0, width: 320, height: 180),
+                assetId: "abcdefghij123456"),
+          ]),
+        ],
+      );
+      var page = await renderDocumentPage(doc, 0, images: _SlowPictures(green));
+      var raw = (await page.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+      var middle = ((page.height ~/ 2) * page.width + page.width ~/ 2) * 4;
+      expect([
+        raw.getUint8(middle),
+        raw.getUint8(middle + 1),
+        raw.getUint8(middle + 2)
+      ], [
+        0,
+        255,
+        0
+      ], reason: "the picture itself");
+      page.dispose();
+      green.dispose();
     });
   });
 }

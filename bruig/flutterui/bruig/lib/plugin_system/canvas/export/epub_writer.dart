@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:bruig/plugin_system/canvas/export/epub_layers.dart';
 
 // epub_writer.dart writes a document of pages as an EPUB.
 //
@@ -40,12 +41,17 @@ class EpubLink {
   /// href is another page's file name, or a URL.
   final String href;
 
+  /// element is the button it was made from, so that on a page laid out as
+  /// layers it travels with the button -- see EpubStage.
+  final String? element;
+
   const EpubLink({
     required this.x,
     required this.y,
     required this.width,
     required this.height,
     required this.href,
+    this.element,
   });
 }
 
@@ -98,6 +104,33 @@ class EpubMedia {
 
   final String? poster;
 
+  /// radius is a speaker's corners, in pixels, for the ring that shows it is
+  /// playing. Only a sound gets the ring: a speaker drawn in a picture cannot
+  /// light up by itself, and a video plainly is playing -- ringed, its
+  /// rectangle came out as an oval over the picture.
+  final double radius;
+
+  /// playButton draws the canvas's big play button over a video while it is
+  /// stopped. The canvas draws it into the page's picture, and the video laid
+  /// over the picture covers it -- so without its own, a video with no
+  /// controls showed no sign of being something to press.
+  final bool playButton;
+
+  /// at is the frame of the page's playhead it starts on, for a video on the
+  /// timeline of a page laid out as layers: it follows the playhead rather
+  /// than being played by itself, silent -- its sound is in the page's
+  /// soundtrack. Null for one that plays on its own clock.
+  final int? at;
+
+  /// spans are how long each file's range plays, in seconds, for [at]: what
+  /// the playhead is placed against.
+  final List<double> spans;
+
+  /// element is the element it was made from, so that on a page laid out as
+  /// layers it sits in the element's layer -- above what is under it, below
+  /// what is over it, and moving with it.
+  final String? element;
+
   const EpubMedia({
     required this.id,
     required this.video,
@@ -117,6 +150,11 @@ class EpubMedia {
     this.controls = false,
     this.pressable = false,
     this.poster,
+    this.radius = 0,
+    this.playButton = false,
+    this.at,
+    this.spans = const [],
+    this.element,
   });
 }
 
@@ -128,9 +166,15 @@ class EpubAction {
   final double width;
   final double height;
 
-  /// act is "play", "pause", "toggle", "stop" or "mute".
+  /// act is "play", "pause", "toggle", "stop" or "mute" -- or, aimed at the
+  /// page's playhead, one of its own: "restart", "goto", "playfrom",
+  /// "playto", at [frame] -- or "showhide", aimed at an element's layer.
   final String act;
   final String target;
+  final int frame;
+
+  /// element is the button it was made from. See EpubLink.element.
+  final String? element;
 
   const EpubAction({
     required this.x,
@@ -139,6 +183,8 @@ class EpubAction {
     required this.height,
     required this.act,
     required this.target,
+    this.frame = 0,
+    this.element,
   });
 }
 
@@ -164,17 +210,20 @@ class EpubPage {
   final List<EpubAction> actions;
   final List<EpubFile> files;
 
-  /// film is a video of the whole page, where the page has media on its
-  /// timeline: the page played through with its sound, exactly as an MP4
-  /// export of it would be. Shown in place of the page's picture, which is
-  /// its poster.
-  final String? film;
+  /// stage is the page as the things on it, moved by the page's script, where
+  /// it has anything that moves. See epub_layers.dart.
+  final EpubStage? stage;
+
+  /// soundtrack is the page's timeline sound, mixed, for a page laid out as
+  /// layers: played in step with its playhead. See renderSoundtrack.
+  final String? soundtrack;
 
   /// plays is whether the page has sound or video for media.js to run, and
   /// scripted whether it is declared so -- which a page with links has always
   /// been, as the place where what they drive is written.
   bool get plays => media.isNotEmpty;
-  bool get scripted => plays || links.isNotEmpty || actions.isNotEmpty;
+  bool get scripted =>
+      plays || links.isNotEmpty || actions.isNotEmpty || stage != null;
 
   const EpubPage({
     required this.png,
@@ -187,9 +236,15 @@ class EpubPage {
     this.media = const [],
     this.actions = const [],
     this.files = const [],
-    this.film,
+    this.stage,
+    this.soundtrack,
   });
 }
+
+/// filmTarget is what a playhead button on a page aims at: the page's
+/// playhead. Named "film" in the book's script for the films pages used to
+/// be; the name is only a name.
+const String filmTarget = "film";
 
 /// epubMime is what an EPUB is, and what goes in the archive's first entry.
 const String epubMime = "application/epub+zip";
@@ -222,6 +277,11 @@ Uint8List writeEpub({
     ..compression = CompressionType.none);
 
   _add(archive, "META-INF/container.xml", _container);
+  // Apple Books reads its own options beside the container: without them it
+  // opens a fixed-layout book as though it might be a flowing one, and shows
+  // a stretched picture of the cover while it decides.
+  _add(archive, "META-INF/com.apple.ibooks.display-options.xml",
+      _appleOptions(interactive));
 
   // Each file once, however many pages play it: the same song under ten
   // pages is one song in the book.
@@ -237,7 +297,7 @@ Uint8List writeEpub({
       // Sound and video are compressed already.
       ..compression = CompressionType.none);
   }
-  if (interactive && pages.any((p) => p.plays)) {
+  if (interactive && pages.any((p) => p.scripted)) {
     _add(archive, "OEBPS/media.js", _mediaScript);
   }
 
@@ -272,6 +332,16 @@ const String _container = '''<?xml version="1.0" encoding="UTF-8"?>
 </container>
 ''';
 
+String _appleOptions(bool interactive) =>
+    '''<?xml version="1.0" encoding="UTF-8"?>
+<display_options>
+  <platform name="*">
+    <option name="fixed-layout">true</option>
+    <option name="open-to-spread">false</option>
+${interactive ? '    <option name="interactive">true</option>\n' : ''}  </platform>
+</display_options>
+''';
+
 /// _pageXhtml is one leaf: a picture filling a viewport of its own size.
 ///
 /// The viewport is what makes a fixed-layout page fixed. Without it a reader
@@ -281,33 +351,60 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
   String box(double x, double y, double w, double h, [double turn = 0]) =>
       "left:${_px(x)};top:${_px(y)};width:${_px(w)};height:${_px(h)}"
       "${turn == 0 ? "" : ";transform:rotate(${turn.toStringAsFixed(2)}deg)"}";
+  // A button whose element is a layer is pressed where the layer is, so it
+  // goes inside it: a button that slides in takes the place to press it
+  // with it, and one that is hidden cannot be pressed.
+  var stage = interactive ? page.stage : null;
+  var layered = {for (var l in stage?.layers ?? const <EpubLayer>[]) l.id};
+  bool inLayer(String? element) => element != null && layered.contains(element);
+  // Something inside each link: Apple Books passes over a tap on a link with
+  // nothing in it. A link to another page of the book is also followed by
+  // media.js on the touch itself -- see there.
+  String linkTag(EpubLink link) => '<a class="hit" href="${_attr(link.href)}"'
+      '${_inBook(link.href) ? ' data-go="page"' : ''} '
+      'style="${box(link.x, link.y, link.width, link.height)}">'
+      '<span class="fill"></span></a>';
+  // Buttons, not links: a press on a link that goes nowhere is one Apple
+  // Books may take as a tap on the page, and turn it. See the press handling
+  // in media.js, which keeps the touch to itself.
+  String pressTag(EpubMedia m) =>
+      '<button type="button" class="hit${m.video ? "" : " speaker"}" '
+      'data-act="toggle" data-target="${_attr(m.id)}" '
+      'style="${box(m.x, m.y, m.width, m.height, m.rotation)}'
+      '${m.video ? "" : ";border-radius:${_px(m.radius)}"}">'
+      '${m.video && m.playButton ? _playButton(m) : ""}</button>';
+  String actionTag(EpubAction a) =>
+      '<button type="button" class="hit" data-act="${_attr(a.act)}" '
+      'data-target="${_attr(a.target)}" data-frame="${a.frame}" '
+      'style="${box(a.x, a.y, a.width, a.height)}"></button>';
   var hotspots = interactive
       ? [
           for (var link in page.links)
-            '<a class="hit" href="${_attr(link.href)}" '
-                'style="${box(link.x, link.y, link.width, link.height)}"></a>',
-          for (var m in page.media) _mediaTag(m, box),
+            if (!inLayer(link.element)) linkTag(link),
           for (var m in page.media)
-            if (m.pressable && m.width > 0)
-              '<a class="hit" href="#" data-act="toggle" '
-                  'data-target="${_attr(m.id)}" '
-                  'style="${box(m.x, m.y, m.width, m.height, m.rotation)}"></a>',
+            if (!inLayer(m.element)) _mediaTag(m, box),
+          for (var m in page.media)
+            if (m.pressable && m.width > 0 && !inLayer(m.element)) pressTag(m),
           for (var a in page.actions)
-            '<a class="hit" href="#" data-act="${_attr(a.act)}" '
-                'data-target="${_attr(a.target)}" '
-                'style="${box(a.x, a.y, a.width, a.height)}"></a>',
+            if (!inLayer(a.element)) actionTag(a),
         ].join("\n    ")
       : "";
-  var film = interactive ? page.film : null;
-  // The page's picture is the film's poster: what shows before it plays, and
-  // in a reader that will not play it.
-  var face = film == null
-      ? '<img class="page" src="page$index.png" alt="${_text(page.title)}"/>'
-      : '<video class="page" src="${_attr(film)}" poster="page$index.png" '
-          'controls="controls" playsinline="playsinline" '
-          'preload="metadata"></video>';
-  var script =
-      interactive && page.plays ? '\n    <script src="media.js"></script>' : "";
+  var face = stage != null
+      ? _stageTag(stage, page, box, [
+          for (var m in page.media)
+            if (inLayer(m.element)) (m.element!, _mediaTag(m, box)),
+          for (var m in page.media)
+            if (m.pressable && m.width > 0 && inLayer(m.element))
+              (m.element!, pressTag(m)),
+          for (var link in page.links)
+            if (inLayer(link.element)) (link.element!, linkTag(link)),
+          for (var a in page.actions)
+            if (inLayer(a.element)) (a.element!, actionTag(a)),
+        ])
+      : '<img class="page" src="page$index.png" alt="${_text(page.title)}"/>';
+  var script = interactive && page.scripted
+      ? '\n    <script src="media.js"></script>'
+      : "";
   return '''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml"
@@ -318,11 +415,56 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
         content="width=${page.width}, height=${page.height}"/>
     <style>
       html, body { margin: 0; padding: 0; height: 100%; }
+      /* Nothing on the page is text a reader can select -- it is pictures --
+         and Apple Books shows a text cursor over what it thinks is. */
+      html, body { -webkit-user-select: none; user-select: none;
+        -webkit-touch-callout: none; cursor: default; }
       body { width: ${page.width}px; height: ${page.height}px; }
       img.page, video.page { width: 100%; height: 100%; display: block; }
-      a.hit { position: absolute; display: block; }
+      a.hit { position: absolute; display: block; cursor: pointer;
+        -webkit-tap-highlight-color: transparent; }
+      .hit .fill { display: block; width: 100%; height: 100%; }
+      button.hit {
+        position: absolute; display: block; margin: 0; padding: 0;
+        border: 0; background: transparent; cursor: pointer;
+        -webkit-appearance: none; appearance: none;
+        -webkit-tap-highlight-color: transparent;
+      }
       video.media { position: absolute; display: block; object-fit: cover; }
-      a.hit.on { box-shadow: 0 0 0 3px rgba(61, 126, 255, 0.7); border-radius: 50%; }
+      .hit.speaker.on { box-shadow: 0 0 0 3px rgba(61, 126, 255, 0.7); }
+      .hit .play {
+        position: absolute; left: 50%; top: 50%; border-radius: 50%;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .hit .play span { position: absolute; width: 0; height: 0;
+        border-style: solid; border-color: transparent transparent
+        transparent #ffffff; }
+      .hit.on .play { display: none; }
+      .stage { position: absolute; left: 0; top: 0; overflow: hidden;
+        width: ${page.width}px; height: ${page.height}px; }
+      .stage .page { position: absolute; left: 0; top: 0; }
+      .stage img { position: absolute; display: block;
+        pointer-events: none; max-width: none; }
+      .stage .pic, .stage .slab, .stage .cw, .stage .clip {
+        position: absolute; display: block; pointer-events: none; }
+      .stage .pic, .stage .slab { overflow: hidden; }
+      .stage .pt { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; overflow: hidden; }
+      .layer { position: absolute; left: 0; top: 0; width: 100%;
+        height: 100%; pointer-events: none; }
+      .layer.moves, .layer.moves .pt { will-change: transform, opacity; }
+      .layer .hit { pointer-events: auto; }
+      .hit.idle { cursor: default; }
+      .layer.hovers:hover > .cw, .layer.hovering > .cw,
+      .layer.hovers:hover > .clip, .layer.hovering > .clip,
+      .layer.hovers:hover > .cb, .layer.hovering > .cb,
+      .layer.hovers:hover > .ca, .layer.hovering > .ca {
+        visibility: hidden !important; }
+      .layer.hovers:hover > .h, .layer.hovering > .h {
+        visibility: visible !important; }
+      .layer.switched > .cw, .layer.switched > .clip,
+      .layer.switched > .cb, .layer.switched > .ca {
+        visibility: hidden !important; }
     </style>
   </head>
   <body>
@@ -333,9 +475,165 @@ String _pageXhtml(int index, EpubPage page, bool interactive) {
 ''';
 }
 
+/// _stageTag is a page laid out as layers: the slabs that do not move and
+/// the layers that do, bottom to top, and the presses that belong to each
+/// layer's element. Each layer carries its keyframes for the reader to play
+/// -- see media.js. Written at frame 0, so that a reader that will not run
+/// the script shows the page as its picture does.
+String _stageTag(
+    EpubStage stage,
+    EpubPage page,
+    String Function(double, double, double, double, [double]) box,
+    List<(String, String)> presses) {
+  var marks = [
+    for (var m in stage.marks)
+      "${m.frame}:${m.kind.name}:${m.target}:${m.repeats}:${m.holdFrames}",
+  ].join("|");
+  var out = <String>[
+    '<div class="stage" id="stage" data-frames="${stage.frames}" '
+        'data-rate="${stage.rate}" data-marks="${_attr(marks)}" '
+        'data-autoplay="${stage.autoplay && stage.animates}">',
+    if (page.soundtrack case var sound?)
+      '<audio id="soundtrack" src="${_attr(sound)}" preload="auto"></audio>',
+  ];
+  var span = stage.frames - 1;
+
+  // A keyframed thing: its frame-0 values written inline for a reader that
+  // will not run the script, and all of them for one that will.
+  String animated(List<EpubKey> keys, String style) {
+    if (keys.isEmpty) return 'style="$style"';
+    var inline = [
+      for (var MapEntry(:key, :value) in keys.first.css.entries) ...[
+        if (key == "transform" || key == "clip-path" || key == "filter")
+          "-webkit-$key:$value",
+        "$key:$value",
+      ],
+    ].join(";");
+    var attrs = 'style="$style;$inline"';
+    if (keys.length == 1 || span <= 0) return attrs;
+    var frames = [
+      for (var k in keys)
+        {
+          "offset": double.parse((k.frame / span).toStringAsFixed(6)),
+          for (var MapEntry(:key, :value) in k.css.entries) _camel(key): value,
+        },
+    ];
+    return '$attrs data-kf="${_attr(jsonEncode(frames))}"';
+  }
+
+  for (var item in stage.items) {
+    if (isBackdropVideo(item)) {
+      if (stage.backdropVideo case var video?) {
+        // The page's own background video, going round as itself.
+        out.add('<video class="page" id="backdrop" src="${_attr(video)}" '
+            'style="width:${page.width}px;height:${page.height}px;'
+            'object-fit:cover" loop="loop" muted="muted" '
+            'playsinline="playsinline" preload="auto"></video>');
+      }
+      continue;
+    }
+    switch (item) {
+      case EpubSlab slab:
+        out.add(_spriteTag(slab.sprite, "slab", true, box));
+      case EpubLayer layer:
+        out.add('<div class="layer${layer.moves ? " moves" : ""}'
+            '${layer.hover == null ? "" : " hovers"}" '
+            'id="l-${_attr(layer.id)}" '
+            '${animated(layer.pose, "transform-origin:${_px(layer.originX)} ${_px(layer.originY)}${layer.visible ? "" : ";display:none"}")}>');
+        for (var part in layer.parts) {
+          var s = part.sprite;
+          out.add('  <div class="cw" '
+              '${animated(part.clipKeys, box(s.x, s.y, s.width, s.height))}>'
+              '<div class="pt" '
+              '${animated(part.keys, "transform-origin:${_px(-s.x)} ${_px(-s.y)}")}>'
+              '<img src="${_attr(s.href)}" alt="" '
+              'style="left:${_px(-s.sx)};top:${_px(-s.sy)}"/></div></div>');
+        }
+        if (layer.clip case var clip?) {
+          // Its change as a video of it alone, and itself either side.
+          if (clip.before case var b?) {
+            out.add("  ${_spriteTag(b, "cb", true, box)}");
+          }
+          var r = clip.rect;
+          out.add('  <video class="clip" src="${_attr(clip.href)}" '
+              'data-at="${clip.at}" data-n="${clip.frames}" '
+              'muted="muted" playsinline="playsinline" preload="auto" '
+              'style="${box(r.left, r.top, r.width, r.height)};'
+              'visibility:hidden"></video>');
+          if (clip.after case var a?) {
+            out.add("  ${_spriteTag(a, "ca", false, box)}");
+          }
+        }
+        if (layer.hover case var hover?) {
+          out.add("  ${_spriteTag(hover, "h", false, box)}");
+        }
+        // A chart's key: a picture of the chart for each set of its series
+        // switched off, and an entry to press for each series.
+        for (var MapEntry(key: mask, value: s) in layer.switched.entries) {
+          out.add("  ${_spriteTag(s, "sw", false, box, mask: mask)}");
+        }
+        for (var (bit, r) in layer.legend) {
+          out.add('  <button type="button" class="hit legend" '
+              'data-act="series" data-target="${_attr(layer.id)}" '
+              'data-bit="$bit" '
+              'style="${box(r.left, r.top, r.width, r.height)}"></button>');
+        }
+        var pressed = false;
+        for (var (element, press) in presses) {
+          if (element == layer.id) {
+            out.add("  $press");
+            pressed = true;
+          }
+        }
+        // A button that changes under the pointer but does nothing a book can
+        // do still has to be something the pointer can be over.
+        var b = layer.hoverBox;
+        if (!pressed && b != null) {
+          out.add('  <span class="hit idle" '
+              'style="${box(b.left, b.top, b.width, b.height)}"></span>');
+        }
+        out.add('</div>');
+    }
+  }
+  out.add('</div>');
+  return out.join("\n    ");
+}
+
+String _camel(String css) =>
+    css.replaceAllMapped(RegExp(r"-([a-z])"), (m) => m.group(1)!.toUpperCase());
+
+/// _spriteTag is one picture off a sheet: a box the size of the picture, at
+/// its place on the page, showing its part of the sheet.
+String _spriteTag(EpubSprite s, String kind, bool shown,
+        String Function(double, double, double, double, [double]) box,
+        {int? mask}) =>
+    '<span class="pic $kind"${mask == null ? "" : ' data-mask="$mask"'} '
+    'style="${box(s.x, s.y, s.width, s.height)}'
+    '${shown ? "" : ";visibility:hidden"}">'
+    '<img src="${_attr(s.href)}" alt="" '
+    'style="left:${_px(-s.sx)};top:${_px(-s.sy)}"/></span>';
+
 /// _nav is the contents, which EPUB 3 requires whether or not anybody wants
 /// one. Hidden, because a document of designed pages has a contents list only
 /// if its author drew one.
+/// _inBook is whether [href] is another page of this book rather than a web
+/// address.
+bool _inBook(String href) =>
+    href.startsWith("page") && href.endsWith(".xhtml") && !href.contains(":");
+
+/// _playButton is the canvas's big play button, drawn in HTML: a dark disc a
+/// quarter of the picture's shorter side across, and a white triangle in it.
+/// See video_painter.dart, whose proportions these are.
+String _playButton(EpubMedia m) {
+  var side = (m.width < m.height ? m.width : m.height) * 0.24;
+  var tall = side * 0.4, wide = tall * 0.87;
+  return '<span class="play" style="width:${_px(side)};height:${_px(side)};'
+      'margin:${_px(-side / 2)} 0 0 ${_px(-side / 2)}">'
+      '<span style="left:${_px(side / 2 - wide / 3)};top:${_px(side / 2 - tall / 2)};'
+      'border-width:${_px(tall / 2)} 0 ${_px(tall / 2)} ${_px(wide)}"></span>'
+      '</span>';
+}
+
 /// _mediaTag is one sound or video as the page's HTML, carrying how it plays
 /// for media.js to read.
 String _mediaTag(EpubMedia m,
@@ -345,7 +643,8 @@ String _mediaTag(EpubMedia m,
       'data-ranges="${m.ranges.map((r) => "${r.$1},${r.$2}").join("|")}" '
       'data-loop="${m.loop}" data-volume="${m.volume}" '
       'data-fadein="${m.fadeIn}" data-fadeout="${m.fadeOut}" '
-      'data-autoplay="${m.autoplay}"${m.muted ? ' muted="muted"' : ''}';
+      'data-autoplay="${m.autoplay}"${m.muted ? ' muted="muted"' : ''}'
+      '${m.at == null ? '' : ' data-at="${m.at}" data-spans="${m.spans.join("|")}"'}';
   if (!m.video) return '<audio $data preload="auto"></audio>';
   return '<video class="media" $data playsinline="playsinline" '
       'preload="metadata"${m.controls ? ' controls="controls"' : ''}'
@@ -363,7 +662,11 @@ String _mediaTag(EpubMedia m,
 const String _mediaScript = r"""(function () {
   function all(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
   var media = {};
+  // A video on the playhead is placed by the playhead, below, rather than
+  // played by itself.
+  var onPlayhead = [];
   all("[data-list]").forEach(function (m) {
+    if (m.getAttribute("data-at") !== null) { onPlayhead.push(m); return; }
     var list = m.getAttribute("data-list").split("|");
     var ranges = (m.getAttribute("data-ranges") || "").split("|").map(function (r) {
       var p = r.split(","); return [parseFloat(p[0]) || 0, parseFloat(p[1]) || 0];
@@ -399,8 +702,8 @@ const String _mediaScript = r"""(function () {
     });
     var id = m.id.substring(2);
     function mark() {
-      all('a[data-target="' + id + '"][data-act="toggle"]').forEach(function (a) {
-        if (m.paused) a.classList.remove("on"); else a.classList.add("on");
+      all('.hit[data-act="toggle"][data-target="' + id + '"]').forEach(function (b) {
+        if (m.paused) b.classList.remove("on"); else b.classList.add("on");
       });
     }
     m.addEventListener("play", mark);
@@ -412,18 +715,314 @@ const String _mediaScript = r"""(function () {
       var p = m.play(); if (p && p.catch) p.catch(function () {});
     }
   });
-  all("a[data-act]").forEach(function (a) {
+  // A link to another page is followed on the touch itself, not left to the
+  // reader: a fixed-layout page in Apple Books may keep a tap on a link for
+  // its own page-turning and never follow it.
+  all("a[data-go]").forEach(function (a) {
+    var touched = 0;
+    a.addEventListener("touchstart", function (e) { e.stopPropagation(); }, false);
+    a.addEventListener("touchend", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      touched = Date.now();
+      window.location.href = a.getAttribute("href");
+    }, false);
     a.addEventListener("click", function (e) {
-      e.preventDefault();
-      var t = media[a.getAttribute("data-target")];
+      if (Date.now() - touched < 800) { e.preventDefault(); e.stopPropagation(); }
+    }, false);
+  });
+
+  // A press is kept to itself, from the first touch to the last. Apple Books
+  // turns the page on a tap that reaches the page, and a tap it saw the end
+  // of as well as the start of reaches it -- so the second press on a
+  // speaker, stopping it, also turned the page. The touch ends here, and the
+  // click the browser would make of it afterwards is ignored.
+  function go(m) { var p = m.play(); if (p && p.catch) p.catch(function () {}); }
+
+  // A page laid out as layers has a playhead of its own, and every animation
+  // on it is the reader's own -- keyframes played by the reader's engine,
+  // smooth between the canvas's frames -- held to one clock: played, paused
+  // and moved together. The clock obeys the timeline's markers as the canvas
+  // does, and plays through once and stops on the last frame -- a page is
+  // read, and one that started itself over every few seconds would never be
+  // finished -- unless a marker loops it.
+  var stage = document.getElementById("stage");
+  if (stage) {
+    var runs = function (text, read) {
+      var out = [];
+      (text || "").split("|").forEach(function (run) {
+        if (!run) return;
+        var p = run.split("*"), n = p.length > 1 ? parseInt(p[1], 10) : 1, v = read(p[0]);
+        for (var i = 0; i < n; i++) out.push(v);
+      });
+      return out;
+    };
+    var frames = parseInt(stage.getAttribute("data-frames") || "1", 10);
+    var rate = parseFloat(stage.getAttribute("data-rate") || "24");
+    var length = Math.max(0, frames - 1) / rate;
+    var marks = runs(stage.getAttribute("data-marks"), function (v) {
+      var p = v.split(":");
+      return { f: parseInt(p[0], 10), k: p[1], t: parseInt(p[2], 10),
+        r: parseInt(p[3], 10), h: parseInt(p[4], 10) };
+    });
+
+    // The animations: one for each thing that moves, all as long as the page.
+    var anims = [];
+    all("[data-kf]").forEach(function (el) {
+      if (!el.animate) return;
+      var kf;
+      try { kf = JSON.parse(el.getAttribute("data-kf")); } catch (e) { return; }
+      try {
+        var a = el.animate(kf, { duration: Math.max(1, length * 1000), fill: "both", easing: "linear" });
+        a.pause();
+        a.currentTime = 0;
+        anims.push(a);
+      } catch (e) {}
+    });
+
+    // What the pointer is over, for a reader that does not pass :hover up
+    // to the layer: the press says so itself.
+    all(".layer").forEach(function (l) {
+      Array.prototype.slice.call(l.getElementsByClassName("hit")).forEach(function (h) {
+        h.addEventListener("mouseenter", function () { l.classList.add("hovering"); });
+        h.addEventListener("mouseleave", function () { l.classList.remove("hovering"); });
+      });
+    });
+
+    var t = 0, playing = false, since = 0, holdUntil = 0, stopAt = -1, counts = {}, done = -1;
+
+    // What follows the playhead besides the animations: each video on it, an
+    // element's change filmed on its own, and the page's soundtrack. Each is
+    // put where it should be every time the clock moves -- moved only when it
+    // has drifted, so a playing one is left to play.
+    var followers = onPlayhead.map(function (m) {
+      var list = m.getAttribute("data-list").split("|");
+      var starts = (m.getAttribute("data-ranges") || "").split("|").map(function (r) {
+        return parseFloat(r.split(",")[0]) || 0;
+      });
+      var spans = (m.getAttribute("data-spans") || "").split("|").map(parseFloat);
+      var at = parseInt(m.getAttribute("data-at") || "0", 10);
+      var loop = m.getAttribute("data-loop") || "none";
+      var file = -1, wanted = 0;
+      m.muted = true;
+      m.addEventListener("loadedmetadata", function () {
+        try { m.currentTime = wanted; } catch (e) {}
+      });
+      // Which file, and where in it, t seconds after it starts: the same
+      // answer as MediaClip.momentAt.
+      var moment = function (t) {
+        var total = 0;
+        spans.forEach(function (s) { if (s > 0) total += s; });
+        if (t < 0 || total <= 0) return null;
+        if (t >= total) { if (loop === "none") return null; t = t % total; }
+        var from = 0;
+        for (var i = 0; i < spans.length; i++) {
+          if (!(spans[i] > 0)) continue;
+          if (t < from + spans[i]) return [i, starts[i] + t - from];
+          from += spans[i];
+        }
+        return null;
+      };
+      return function (seconds, on) {
+        var here = seconds - at / rate;
+        var mo = moment(here);
+        if (!mo) {
+          if (!m.paused) m.pause();
+          if (here < 0 && file !== 0 && list.length) { file = 0; wanted = starts[0]; m.src = list[0]; m.load(); }
+          return;
+        }
+        if (mo[0] !== file) { file = mo[0]; wanted = mo[1]; m.src = list[file]; m.load(); }
+        else if (Math.abs(m.currentTime - mo[1]) > (on ? 0.3 : 0.05)) {
+          wanted = mo[1];
+          try { m.currentTime = mo[1]; } catch (e) {}
+        }
+        if (on && m.paused) go(m);
+        else if (!on && !m.paused) m.pause();
+      };
+    });
+    all("video.clip").forEach(function (v) {
+      var at = parseInt(v.getAttribute("data-at") || "0", 10) / rate;
+      var last = (parseInt(v.getAttribute("data-n") || "1", 10) - 1) / rate;
+      var layer = v.parentNode;
+      var before = layer.getElementsByClassName("cb")[0], after = layer.getElementsByClassName("ca")[0];
+      var show = function (el, on) { if (el) el.style.visibility = on ? "visible" : "hidden"; };
+      v.muted = true;
+      followers.push(function (seconds, on) {
+        var here = seconds - at;
+        var inside = here >= 0 && here <= last;
+        show(before, here < 0);
+        show(after, here > last);
+        show(v, inside);
+        var want = Math.max(0, Math.min(last, here));
+        if (Math.abs(v.currentTime - want) > (on && inside ? 0.2 : 0.03)) {
+          try { v.currentTime = want; } catch (e) {}
+        }
+        if (on && inside && v.paused) go(v);
+        else if (!(on && inside) && !v.paused) v.pause();
+      });
+    });
+    var soundtrack = document.getElementById("soundtrack");
+    if (soundtrack) {
+      followers.push(function (seconds, on) {
+        var a = soundtrack;
+        if (isFinite(a.duration) && seconds >= a.duration) { if (!a.paused) a.pause(); return; }
+        if (Math.abs(a.currentTime - seconds) > (on ? 0.25 : 0.05)) {
+          try { a.currentTime = seconds; } catch (e) {}
+        }
+        if (on && a.paused) go(a);
+        else if (!on && !a.paused) a.pause();
+      });
+    }
+
+    var now = function () { return window.performance && performance.now ? performance.now() : Date.now(); };
+    var later = window.requestAnimationFrame ? function (f) { window.requestAnimationFrame(f); }
+      : function (f) { setTimeout(function () { f(now()); }, 16); };
+    var holding = function () { return holdUntil > now(); };
+    var follow = function () {
+      var on = playing && !holding();
+      followers.forEach(function (f) { f(t, on); });
+    };
+    // Everything to [seconds], and playing on from there if the clock is.
+    var place = function (seconds) {
+      t = Math.max(0, Math.min(length, seconds));
+      anims.forEach(function (a) { try { a.currentTime = t * 1000; } catch (e) {} });
+      since = now() - t * 1000;
+      done = Math.floor(t * rate + 1e-6);
+      follow();
+    };
+    var pause = function () {
+      playing = false;
+      anims.forEach(function (a) { try { a.pause(); a.currentTime = t * 1000; } catch (e) {} });
+      follow();
+    };
+    var play = function () {
+      if (playing || frames <= 1) return;
+      if (t >= length) { counts = {}; place(0); }
+      playing = true;
+      since = now() - t * 1000;
+      anims.forEach(function (a) { try { a.currentTime = t * 1000; a.play(); } catch (e) {} });
+      follow();
+      later(tick);
+    };
+    // The clock: where the animations have got to, and the markers on the
+    // frames they have passed since last time.
+    var tick = function () {
+      if (!playing) return;
+      if (holding()) {
+        since = now() - t * 1000;
+        later(tick);
+        return;
+      }
+      var seconds = (now() - since) / 1000;
+      var frame = Math.floor(seconds * rate + 1e-6);
+      for (var f = done + 1; f <= frame && playing; f++) {
+        done = f;
+        for (var i = 0; i < marks.length && playing; i++) {
+          var m = marks[i];
+          if (m.f !== f) continue;
+          if (m.k === "stop") { place(f / rate); pause(); return; }
+          if (m.k === "pause") {
+            // Held where it is for a moment, then on.
+            place(f / rate);
+            anims.forEach(function (a) { try { a.pause(); } catch (e) {} });
+            holdUntil = now() + m.h / rate * 1000;
+            setTimeout(function () {
+              if (!playing) return;
+              since = now() - t * 1000;
+              anims.forEach(function (a) { try { a.currentTime = t * 1000; a.play(); } catch (e) {} });
+              follow();
+            }, m.h / rate * 1000);
+            follow();
+            later(tick);
+            return;
+          }
+          if (m.k === "loop") {
+            counts[m.f] = (counts[m.f] || 0) + 1;
+            if (m.r === 0 || counts[m.f] <= m.r) {
+              place(Math.max(0, Math.min(frames - 1, m.t)) / rate);
+              later(tick);
+              return;
+            }
+          } else if (m.k === "jump") {
+            place(Math.max(0, Math.min(frames - 1, m.t)) / rate);
+            later(tick);
+            return;
+          }
+        }
+        if (stopAt >= 0 && f === stopAt) { stopAt = -1; place(f / rate); pause(); return; }
+      }
+      if (seconds >= length) { place(length); pause(); return; }
+      t = seconds;
+      follow();
+      later(tick);
+    };
+    // The playhead's buttons are aimed at "film": see filmTarget.
+    media.film = { clock: true, act: function (act, f) {
+      switch (act) {
+        case "restart": stopAt = -1; counts = {}; place(0); if (!playing) play(); return;
+        case "goto": stopAt = -1; pause(); place(f / rate); return;
+        case "playfrom": stopAt = -1; place(f / rate); if (!playing) play(); return;
+        case "playto": stopAt = f; if (t >= length) place(0); if (!playing) play(); return;
+        case "play": play(); return;
+        case "pause": pause(); return;
+        case "toggle": if (playing) pause(); else play(); return;
+      }
+    } };
+    // Shown and hidden by a button, the way the canvas flips an element.
+    all(".layer").forEach(function (l) {
+      media[l.id.substring(2)] = { layer: l };
+    });
+    // A background video goes round by itself under the page.
+    var backdrop = document.getElementById("backdrop");
+    if (backdrop) go(backdrop);
+    place(0);
+    if (stage.getAttribute("data-autoplay") === "true") play();
+  }
+
+  all("[data-act]").forEach(function (b) {
+    var touched = 0;
+    function run() {
+      var t = media[b.getAttribute("data-target")];
       if (!t) return;
-      var m = t.m, act = a.getAttribute("data-act");
+      var frame = parseInt(b.getAttribute("data-frame") || "0", 10);
+      if (t.clock) { t.act(b.getAttribute("data-act"), frame); return; }
+      if (t.layer) {
+        if (b.getAttribute("data-act") === "showhide") {
+          t.layer.style.display = t.layer.style.display === "none" ? "" : "none";
+        } else if (b.getAttribute("data-act") === "series") {
+          // A series of a chart switched on or off, as its key does on the
+          // canvas: the chart with that set of series switched is shown in
+          // place of the chart as it plays, and put back when none are.
+          var L = t.layer;
+          var mask = (parseInt(L.getAttribute("data-mask") || "0", 10) ^
+            (1 << parseInt(b.getAttribute("data-bit") || "0", 10)));
+          L.setAttribute("data-mask", "" + mask);
+          Array.prototype.slice.call(L.getElementsByClassName("sw")).forEach(function (s) {
+            s.style.visibility = s.getAttribute("data-mask") === "" + mask ? "visible" : "hidden";
+          });
+          if (mask) L.classList.add("switched"); else L.classList.remove("switched");
+        }
+        return;
+      }
+      var m = t.m, act = b.getAttribute("data-act");
       if (act === "play" || (act === "toggle" && m.paused)) {
         var p = m.play(); if (p && p.catch) p.catch(function () {});
       } else if (act === "pause" || act === "toggle") m.pause();
       else if (act === "stop") t.stop();
       else if (act === "mute") m.muted = !m.muted;
-    });
+    }
+    function keep(e) { e.preventDefault(); e.stopPropagation(); }
+    b.addEventListener("touchstart", function (e) { e.stopPropagation(); }, false);
+    b.addEventListener("touchmove", function (e) { e.stopPropagation(); }, false);
+    b.addEventListener("touchend", function (e) {
+      keep(e);
+      touched = Date.now();
+      run();
+    }, false);
+    b.addEventListener("click", function (e) {
+      keep(e);
+      if (Date.now() - touched < 800) return;
+      run();
+    }, false);
   });
 })();
 """;
@@ -467,7 +1066,7 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
     // A reader will not open a file the manifest does not list.
     for (var (i, f) in files.indexed)
       '<item id="media$i" href="${_attr(f.href)}" media-type="${f.mime}"/>',
-    if (interactive && pages.any((p) => p.plays))
+    if (interactive && pages.any((p) => p.scripted))
       '<item id="script" href="media.js" media-type="application/javascript"/>',
   ].join("\n    ");
 
@@ -479,7 +1078,10 @@ String _opf(List<EpubPage> pages, String title, String author, String id,
       '<itemref idref="page$i"${switch (page.side) {
         EpubSide.left => ' properties="page-spread-left"',
         EpubSide.right => ' properties="page-spread-right"',
-        EpubSide.centre => '',
+        // A cover in a book of spreads stands alone in the middle, and says
+        // so: left unsaid, a reader lays it into half a spread.
+        EpubSide.centre =>
+          facing ? ' properties="rendition:page-spread-center"' : '',
       }}/>',
   ].join("\n    ");
 

@@ -24,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
@@ -595,6 +596,55 @@ void main() {
 
       c.stopAudio();
       c.dispose();
+    });
+
+    testWidgets("the pointer is a hand over what a click would press",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(
+              size: const CanvasSize(ratio: CanvasRatio.wide, width: 1280),
+              frames: 10,
+              elements: [
+                ButtonElement(const ElementBase(
+                    id: "b", x: 100, y: 100, width: 200, height: 80)),
+              ]),
+          audioEngine: engine,
+          frameSource: frames);
+      addTearDown(c.dispose);
+      var key = GlobalKey<CanvasStageState>();
+      tester.view.physicalSize = viewport;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(wrap(SizedBox(
+          width: viewport.width,
+          height: viewport.height,
+          child: CanvasStage(key: key, controller: c))));
+      await tester.pumpAndSettle();
+      var page = key.currentState!.pageRect;
+      var scale = page.width / 1280;
+      Offset at(Offset doc) => page.topLeft + doc * scale;
+      MouseCursor cursor() => tester
+          .widgetList<MouseRegion>(find.descendant(
+              of: find.byType(CanvasStage), matching: find.byType(MouseRegion)))
+          .first
+          .cursor;
+
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: at(const Offset(20, 20)));
+      await mouse.moveTo(at(const Offset(200, 140)));
+      await tester.pump();
+      expect(cursor(), isNot(SystemMouseCursors.click),
+          reason: "unselected, a click selects it rather than pressing it");
+
+      c.selectOnly("b");
+      await mouse.moveTo(at(const Offset(201, 141)));
+      await tester.pump();
+      expect(cursor(), SystemMouseCursors.click);
+
+      await mouse.moveTo(at(const Offset(600, 400)));
+      await tester.pump();
+      expect(cursor(), isNot(SystemMouseCursors.click));
     });
 
     testWidgets("a link hides what only a file can do", (tester) async {

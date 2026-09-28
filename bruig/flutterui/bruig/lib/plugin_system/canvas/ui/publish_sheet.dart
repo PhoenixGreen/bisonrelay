@@ -8,6 +8,7 @@ import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/export/document_export.dart';
 import 'package:bruig/plugin_system/canvas/export/pdf_writer.dart';
 import 'package:bruig/plugin_system/canvas/export/publish_record.dart';
@@ -273,11 +274,12 @@ class _PublishSheetState extends State<_PublishSheet> {
   @override
   void initState() {
     super.initState();
-    // Image, always. An animated document used to open on Animation, on the
-    // grounds that an animated thing wants to be one -- but a GIF is the
-    // most expensive thing this sheet makes, and opening on it means the
-    // first size anybody sees is the biggest one, for a canvas they may well
-    // have wanted a picture of.
+    // As it was last published with, and Image the first time. An animated
+    // document used to open on Animation, on the grounds that an animated
+    // thing wants to be one -- but a GIF is the most expensive thing this
+    // sheet makes, and opening on it means the first size anybody sees is the
+    // biggest one, for a canvas they may well have wanted a picture of.
+    _restore();
     _loadRecord();
     _measurePictures();
     // Asked once, here, rather than in build: it is a process launch, and
@@ -285,6 +287,66 @@ class _PublishSheetState extends State<_PublishSheet> {
     ffmpegPath().then((found) {
       if (mounted) setState(() => _ffmpeg = found != null);
     });
+  }
+
+  /// _prefs is where the settings are remembered, where there is anywhere --
+  /// the sheet opened on its own, as a test opens it, has nowhere.
+  CanvasPreferences? get _prefs {
+    try {
+      return Provider.of<CanvasPreferences>(context, listen: false);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// _settings is how the sheet is set, as it is remembered. Not which scenes
+  /// or which chat, or the caption: those belong to the canvas and the
+  /// moment, and would be wrong on the next one.
+  Map<String, dynamic> get _settings => {
+        "as": _as.name,
+        "document": _documentAs.name,
+        "to": _to.name,
+        "format": _format.name,
+        "quality": _quality,
+        "scale": _scale,
+        "pdf": _pdf,
+        "paper": _paper.name,
+        "orientation": _orientation.name,
+        "everyShape": _everyShape,
+        "dither": _dither,
+        "colors": _colors,
+        "loop": _loop,
+        "videoFormat": _videoFormat.name,
+        "videoQuality": _videoQuality.name,
+      };
+
+  /// _restore sets the sheet as it was last published with. Anything no
+  /// longer recognised -- a setting since renamed, a value out of range --
+  /// keeps the sheet's own default.
+  void _restore() {
+    var saved = _prefs?.publish ?? const {};
+    if (saved.isEmpty) return;
+    T pick<T extends Enum>(List<T> values, String key, T fallback) =>
+        values.firstWhere((v) => v.name == saved[key], orElse: () => fallback);
+    bool flag(String key, bool fallback) =>
+        saved[key] is bool ? saved[key] as bool : fallback;
+    num number(String key, num fallback) =>
+        saved[key] is num ? saved[key] as num : fallback;
+    _as = pick(PublishAs.values, "as", _as);
+    _documentAs = pick(DocumentAs.values, "document", _documentAs);
+    _to = pick(PublishTo.values, "to", _to);
+    _format = pick(EmbedFormat.values, "format", _format);
+    _quality = number("quality", _quality).toInt().clamp(1, 100);
+    _scale = number("scale", _scale).toDouble().clamp(0.05, maxExportScale);
+    _pdf = flag("pdf", _pdf);
+    _paper = pick(PdfPaper.values, "paper", _paper);
+    _orientation = pick(PdfOrientation.values, "orientation", _orientation);
+    _everyShape = flag("everyShape", _everyShape);
+    _dither = flag("dither", _dither);
+    _colors = number("colors", _colors).toInt().clamp(2, 256);
+    _loop = flag("loop", _loop);
+    _videoFormat = pick(VideoFormat.values, "videoFormat", _videoFormat);
+    _videoQuality = pick(VideoQuality.values, "videoQuality", _videoQuality);
   }
 
   /// _loadRecord reads what this canvas published before, if anything.
@@ -462,6 +524,9 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// cancelling.
   Future<void> _publish() async {
     var snackbar = SnackBarModel.of(context);
+    // Remembered as it is published, so the next canvas opens the sheet the
+    // same way.
+    _prefs?.publish = _settings;
     setState(() {
       _busy = true;
       _progress = "Rendering…";
@@ -1116,10 +1181,14 @@ class _PublishSheetState extends State<_PublishSheet> {
               "${widget.document.allScenes.length} "
               "page${widget.document.allScenes.length == 1 ? "" : "s"}, "
               "each at the size this canvas is."
-              "${_documentAs == DocumentAs.interactiveEpub ? " A button that "
-                  "goes to another page, or opens a link, becomes a link on "
-                  "the page it is drawn on; the ones that move a playhead are "
-                  "left out, because a book has none." : ""}"),
+              "${_documentAs == DocumentAs.interactiveEpub ? " Its buttons "
+                  "work as they do here: going to a page, opening a link, "
+                  "playing, pausing and showing or hiding. A page that moves "
+                  "is its own elements, animated by the reader: sharp at any "
+                  "size and light to carry. What an element does that the "
+                  "reader cannot — a chart growing, a counter counting — is "
+                  "a short video of that element alone, and backgrounds hold "
+                  "still." : ""}"),
         ];
 
       case PublishAs.interactive:

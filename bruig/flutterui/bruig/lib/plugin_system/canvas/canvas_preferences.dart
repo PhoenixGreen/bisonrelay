@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +26,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _fitKey = "canvasFit";
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
+  static const _publishKey = "canvasPublish";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -121,6 +123,19 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_filesFolderKey, value);
   }
 
+  /// publish is how the publish sheet was last set when something was
+  /// published with it -- what, as what, where, and every setting for each --
+  /// so that the next one opens as the last was left rather than on Image
+  /// every time. Kept as the sheet writes it; the sheet reads back only what
+  /// it still recognises.
+  Map<String, dynamic> get publish => _publish;
+  Map<String, dynamic> _publish = const {};
+
+  set publish(Map<String, dynamic> value) {
+    _publish = Map.unmodifiable(value);
+    StorageManager.saveString(_publishKey, jsonEncode(value));
+  }
+
   /// load reads what was saved. Called once at startup; until it returns the
   /// defaults are in force, which is the right way round -- a nav item that
   /// appeared a moment after the window opened would be worse than one that
@@ -135,6 +150,12 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
+    try {
+      var saved = jsonDecode(await StorageManager.readString(_publishKey));
+      if (saved is Map<String, dynamic>) _publish = Map.unmodifiable(saved);
+    } catch (_) {
+      // Nothing saved yet, or something unreadable: the sheet's own defaults.
+    }
     notifyListeners();
   }
 

@@ -25,6 +25,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// _Pictures hands the painter one picture, whatever is asked for.
 class _Pictures implements CanvasImageSource {
+  @override
+  bool get loading => false;
+
   final ui.Image image;
   _Pictures(this.image);
 

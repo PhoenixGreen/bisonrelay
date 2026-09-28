@@ -14,9 +14,12 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 // ignore: depend_on_referenced_packages
@@ -105,7 +108,6 @@ void main() {
               title: "Two",
               media: [sound],
               files: files.take(2).toList(),
-              film: "media/page1.mp4",
             ),
             EpubPage(png: png(), width: 800, height: 600, title: "Three"),
           ],
@@ -133,6 +135,111 @@ void main() {
       expect(page, contains('<script src="media.js">'));
     });
 
+    // Apple Books showed the playing ring over a video's press area as an
+    // oval: the ring was a speaker's, with half-round corners, and a
+    // rectangle given those is an ellipse. Only a speaker is ringed now, and
+    // to its own corners.
+    test("only a speaker is ringed while it plays, never a video", () {
+      var page = unzip(writeEpub(title: "Ring", interactive: true, pages: [
+        EpubPage(
+          png: png(),
+          width: 800,
+          height: 600,
+          title: "One",
+          media: const [
+            EpubMedia(
+                id: "s",
+                video: false,
+                width: 40,
+                height: 40,
+                radius: 20,
+                sources: ["media/a.m4a"],
+                ranges: [(0, 0)],
+                pressable: true),
+            EpubMedia(
+                id: "v",
+                video: true,
+                width: 320,
+                height: 180,
+                sources: ["media/v.mp4"],
+                ranges: [(0, 0)],
+                pressable: true),
+          ],
+        ),
+      ]))["OEBPS/page0.xhtml"]!;
+      var hits = XmlDocument.parse(page).findAllElements("button").toList();
+      var speaker =
+          hits.firstWhere((a) => a.getAttribute("data-target") == "s");
+      var film = hits.firstWhere((a) => a.getAttribute("data-target") == "v");
+      expect(speaker.getAttribute("class"), "hit speaker");
+      expect(speaker.getAttribute("style"), contains("border-radius:20.00px"));
+      expect(film.getAttribute("class"), "hit");
+      expect(film.getAttribute("style"), isNot(contains("border-radius")));
+      // The ring is a speaker's alone: no rule rings every press that plays.
+      expect(page, isNot(contains(".hit.on {")));
+      expect(RegExp(r"box-shadow").allMatches(page), hasLength(1));
+      expect(page, contains(".hit.speaker.on"));
+    });
+
+    // In Apple Books a second press on a speaker stopped it and turned the
+    // page: the press was a link going nowhere, and the tap reached the page.
+    test("a press is a button that keeps its touch to itself", () async {
+      var bytes = book();
+      var page = XmlDocument.parse(unzip(bytes)["OEBPS/page0.xhtml"]!);
+      expect(
+          page
+              .findAllElements("a")
+              .where((a) => a.getAttribute("data-act") != null),
+          isEmpty,
+          reason: "no link that goes nowhere");
+      var press = page.findAllElements("button").first;
+      expect(press.getAttribute("type"), "button");
+      var script = utf8.decode(ZipDecoder()
+          .decodeBytes(bytes)
+          .files
+          .firstWhere((f) => f.name == "OEBPS/media.js")
+          .content);
+      expect(script, contains('addEventListener("touchend"'));
+      expect(script, contains("e.stopPropagation()"));
+      expect(script, contains("e.preventDefault()"));
+    });
+
+    // The canvas draws a video's big play button into the page's picture,
+    // and the video laid over the picture covered it.
+    test("a video without controls draws its own play button, if it has one",
+        () {
+      EpubMedia film({required bool button}) => EpubMedia(
+          id: "v",
+          video: true,
+          width: 400,
+          height: 200,
+          sources: const ["media/v.mp4"],
+          ranges: const [(0, 0)],
+          pressable: true,
+          playButton: button);
+      String pageWith(EpubMedia m) =>
+          unzip(writeEpub(title: "Play", interactive: true, pages: [
+            EpubPage(
+                png: png(), width: 800, height: 600, title: "One", media: [m]),
+          ]))["OEBPS/page0.xhtml"]!;
+
+      var shown = XmlDocument.parse(pageWith(film(button: true)));
+      var disc = shown
+          .findAllElements("span")
+          .firstWhere((s) => s.getAttribute("class") == "play");
+      expect(disc.getAttribute("style"), contains("width:48.00px"),
+          reason: "a quarter of the shorter side, as on the canvas");
+      expect(pageWith(film(button: true)), contains(".hit.on .play"),
+          reason: "and gone while it plays");
+
+      var none = XmlDocument.parse(pageWith(film(button: false)));
+      expect(
+          none
+              .findAllElements("span")
+              .where((s) => s.getAttribute("class") == "play"),
+          isEmpty);
+    });
+
     test("a video sits where it was, turned as it was, with its controls", () {
       var page = unzip(book())["OEBPS/page0.xhtml"]!;
       var video = XmlDocument.parse(page)
@@ -142,14 +249,6 @@ void main() {
       expect(video.getAttribute("style"), contains("rotate(5.00deg)"));
       expect(video.getAttribute("controls"), "controls");
       expect(video.getAttribute("poster"), "media/p.png");
-    });
-
-    test("a filmed page shows its film, with its picture as the poster", () {
-      var page = XmlDocument.parse(unzip(book())["OEBPS/page1.xhtml"]!);
-      var film = page.findAllElements("video").first;
-      expect(film.getAttribute("class"), "page");
-      expect(film.getAttribute("src"), "media/page1.mp4");
-      expect(film.getAttribute("poster"), "page1.png");
     });
 
     test("files are carried once and listed, and only playing pages script",
@@ -194,6 +293,38 @@ void main() {
       var run = await Process.run(node, ["--check", file.path]);
       expect(run.exitCode, 0, reason: "${run.stderr}");
     });
+  });
+
+  test("Play or pause is one button, in the editor and saved", () {
+    var c = CanvasController(const CanvasDocument(frames: 24));
+    addTearDown(c.dispose);
+    const press = ButtonAction(kind: ButtonActionKind.togglePlay);
+    c.runButtonAction(press);
+    expect(c.playing, isTrue);
+    c.runButtonAction(press);
+    expect(c.playing, isFalse);
+    expect(ButtonAction.fromJson(press.toJson()).kind,
+        ButtonActionKind.togglePlay);
+  });
+
+  test("a Go-to-a-scene button still knows its scene after a restart", () {
+    // The scene was left out of the saved action -- only an element target
+    // was written -- so every such button came back pointing nowhere.
+    var doc = CanvasDocument(scenes: [
+      const CanvasScene(id: "front", name: "Front cover"),
+      CanvasScene(id: "inside", name: "Inside", elements: [
+        ButtonElement(
+            const ElementBase(id: "b", x: 10, y: 10, width: 80, height: 20),
+            action: const ButtonAction(
+                kind: ButtonActionKind.goToScene, elementId: "front")),
+      ]),
+    ]);
+    var back = CanvasDocument.fromJson(
+        jsonDecode(jsonEncode(doc.toJson())) as Map<String, dynamic>);
+    var button = back.scenes[1].elements.single as ButtonElement;
+    expect(button.action.kind, ButtonActionKind.goToScene);
+    expect(button.action.elementId, "front");
+    expect(back.sceneIndexNamed(button.action.elementId), 0);
   });
 
   test("a video a reader can show as it is, and one it cannot", () {
@@ -249,11 +380,60 @@ void main() {
       });
     });
 
+    // A book's navigation lives on the master, and the master's buttons were
+    // left out: drawn on every page, pressable on none.
+    testWidgets("a master's Go to a scene button works on every page",
+        (tester) async {
+      await tester.runAsync(() async {
+        var doc = CanvasDocument(
+          size: const CanvasSize(ratio: CanvasRatio.wide, width: 400),
+          scenes: const [
+            CanvasScene(id: "one"),
+            CanvasScene(id: "two"),
+            CanvasScene(id: "end", name: "The end"),
+          ],
+          master: CanvasScene(id: "m", elements: [
+            ButtonElement(
+                const ElementBase(
+                    id: "b", x: 300, y: 10, width: 80, height: 20),
+                action: const ButtonAction(
+                    kind: ButtonActionKind.goToScene, elementId: "end")),
+          ]),
+          masterOn: true,
+        );
+        var export =
+            (await renderDocument(doc, as: DocumentAs.interactiveEpub))!;
+        var text = unzip(export.data);
+        for (var i in [0, 1]) {
+          var page = XmlDocument.parse(text["OEBPS/page$i.xhtml"]!);
+          var link = page
+              .findAllElements("a")
+              .firstWhere((a) => a.getAttribute("href") == "page2.xhtml");
+          expect(link.getAttribute("data-go"), "page",
+              reason: "followed on the touch, not left to the reader");
+          expect(link.findElements("span"), isNotEmpty,
+              reason: "something in it to tap");
+          expect(
+              text["OEBPS/page$i.xhtml"], contains('<script src="media.js">'),
+              reason: "the script that follows it, on a page with no media");
+        }
+        expect(
+            XmlDocument.parse(text["OEBPS/page2.xhtml"]!)
+                .findAllElements("a")
+                .where((a) => a.getAttribute("href") == "page2.xhtml"),
+            isEmpty,
+            reason: "no link from a page to itself");
+      });
+    });
+
     // The real thing, with a real ffmpeg: a speaker to press on the first
     // page, a video on the timeline of the second.
-    testWidgets("carries its sound, and films a page with a timeline",
+    testWidgets("carries its sound, and plays a timeline video in step",
         (tester) async {
-      var ffmpeg = await ffmpegPath();
+      // Looked up inside runAsync: it runs a process, and real I/O outside it
+      // never finishes in a widget test. It only ever worked here because an
+      // earlier test in the file had looked it up already.
+      var ffmpeg = await tester.runAsync(ffmpegPath);
       if (ffmpeg == null) return markTestSkipped("ffmpeg is not installed");
       await tester.runAsync(() async {
         var tone = path.join(root.path, "tone.flac");
@@ -301,17 +481,32 @@ void main() {
         var stem = path.basenameWithoutExtension(toneId);
         expect(all, contains("OEBPS/media/$stem.m4a"),
             reason: "the tone, as AAC a reader plays");
-        expect(all, contains("OEBPS/media/page1.mp4"),
-            reason: "the page with a timeline, filmed");
+        expect(all, isNot(contains("OEBPS/media/page1.mp4")),
+            reason: "the page with a timeline is laid out, not filmed");
+        var clip = path.basenameWithoutExtension(talkId);
+        expect(all, contains("OEBPS/media/$clip.mp4"),
+            reason: "the video itself, as H.264 a reader plays");
         var text = unzip(export.data);
         expect(text["OEBPS/page0.xhtml"], contains('<audio id="m-s"'));
-        expect(text["OEBPS/page1.xhtml"], contains('src="media/page1.mp4"'));
         for (var entry in text.entries) {
           if (entry.key.endsWith(".xhtml")) {
             expect(() => XmlDocument.parse(entry.value), returnsNormally,
                 reason: entry.key);
           }
         }
+        // The video is the reader's own, in its layer, following the page's
+        // playhead from frame 0 -- silent, with no controls of its own.
+        var page = XmlDocument.parse(text["OEBPS/page1.xhtml"]!);
+        var layer = page.descendantElements
+            .firstWhere((e) => e.getAttribute("id") == "l-v");
+        var video = layer.findElements("video").single;
+        expect(video.getAttribute("data-at"), "0");
+        expect(video.getAttribute("data-spans"), "1.0");
+        expect(video.getAttribute("muted"), "muted");
+        expect(video.getAttribute("controls"), isNull);
+        var stage = page.descendantElements
+            .firstWhere((e) => e.getAttribute("id") == "stage");
+        expect(stage.getAttribute("data-autoplay"), "true");
       });
     });
   });

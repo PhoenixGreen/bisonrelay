@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -562,6 +563,38 @@ MotionFrame applyMotion(
 }) =>
     applyMotionSpec(canvas, box, preset.spec, p, from: from, seed: seed);
 
+/// MotionCall is one motion as the renderer applied it, for motionProbe.
+class MotionCall {
+  /// box is the thing being moved, in the canvas's own units, and before and
+  /// after the canvas's transform either side of the motion -- so after
+  /// times before's inverse is the motion alone, on the page.
+  final Rect box;
+  final Float64List before;
+  final Float64List after;
+
+  /// clip is the rectangle the motion clipped to, in [box]'s units, drawn
+  /// with [before]; null where it did not clip.
+  final Rect? clip;
+
+  final TextMotion motion;
+  final double p;
+
+  /// blur is how far out of focus, in [box]'s units; nought for none.
+  final double blur;
+  final MotionFrame frame;
+
+  const MotionCall(this.box, this.before, this.after, this.clip, this.motion,
+      this.p, this.blur, this.frame);
+}
+
+/// motionProbe, when set, is told of every motion applied, as it is applied.
+///
+/// For the interactive EPUB, which draws each element once and has the
+/// reader move it: asked of the renderer frame by frame, what it did is the
+/// animation, in the renderer's own numbers -- nothing about a motion is
+/// worked out a second time. Null everywhere else, and costs nothing then.
+void Function(MotionCall call)? motionProbe;
+
 /// applyMotionSpec is [applyMotion] for something that is not a text preset:
 /// a shape or a picture arriving, which has a motion and its numbers and no
 /// paragraph at all. See MotionSpec.
@@ -577,6 +610,10 @@ MotionFrame applyMotionSpec(
   var alpha = p.clamp(0.0, 1.0);
   var depth = 1;
   var clipped = false;
+  var probe = motionProbe;
+  var before = probe == null ? null : canvas.getTransform();
+  Rect? clip;
+  var blur = 0.0;
   canvas.save();
 
   switch (preset.motion) {
@@ -587,7 +624,7 @@ MotionFrame applyMotionSpec(
       // A masked rise is clipped to where the piece will be, so it comes up
       // out of nothing rather than sliding over its neighbour.
       if (preset.clipped) {
-        canvas.clipRect(box);
+        canvas.clipRect(clip = box);
         clipped = true;
       }
       canvas.translate(
@@ -621,6 +658,7 @@ MotionFrame applyMotionSpec(
       canvas.translate(-centre.dx, -centre.dy);
 
     case TextMotion.blur:
+      blur = box.height * 0.25 * (1 - p);
       canvas.saveLayer(
           box.inflate(box.height),
           Paint()
@@ -632,13 +670,13 @@ MotionFrame applyMotionSpec(
 
     case TextMotion.wipe:
       canvas.clipRect(
-          Rect.fromLTWH(box.left, box.top, box.width * p, box.height));
+          clip = Rect.fromLTWH(box.left, box.top, box.width * p, box.height));
       clipped = true;
       alpha = 1;
 
     case TextMotion.split:
       var half = box.width / 2 * p;
-      canvas.clipRect(Rect.fromLTRB(
+      canvas.clipRect(clip = Rect.fromLTRB(
           centre.dx - half, box.top, centre.dx + half, box.bottom));
       clipped = true;
       alpha = 1;
@@ -680,7 +718,12 @@ MotionFrame applyMotionSpec(
       alpha = 1;
   }
 
-  return MotionFrame(alpha, depth, clipped);
+  var frame = MotionFrame(alpha, depth, clipped);
+  if (probe != null) {
+    probe(MotionCall(box, before!, canvas.getTransform(), clip, preset.motion,
+        p, blur, frame));
+  }
+  return frame;
 }
 
 /// paintAnimatedPieces draws some of a paragraph's pieces.

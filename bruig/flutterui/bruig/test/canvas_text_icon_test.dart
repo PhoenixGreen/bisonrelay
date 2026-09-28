@@ -27,6 +27,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// [vector] is what resolveVector answers, for the tests about a drawing whose
 /// own size is unusable.
 class _Pictures implements CanvasImageSource {
+  @override
+  bool get loading => false;
+
   final ui.Image image;
   final CanvasVector? vector;
   _Pictures(this.image, {this.vector});

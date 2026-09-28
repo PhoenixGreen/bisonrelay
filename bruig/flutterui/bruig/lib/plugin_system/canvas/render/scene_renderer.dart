@@ -97,6 +97,38 @@ abstract class CanvasImageSource {
   /// the meantime, and the shape arrives on a later frame.
   ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
       null;
+
+  /// loading is whether anything asked for is still being read or decoded.
+  /// A painter cannot wait for it, and draws a placeholder meanwhile; an
+  /// export can, and must -- see drawWhenLoaded.
+  bool get loading => false;
+}
+
+/// drawWhenLoaded asks [images] for everything [paint] draws, and waits for
+/// it to arrive, so that what an export draws next is the pictures rather
+/// than their placeholders.
+///
+/// The editor's picture store reads a picture only when something first asks
+/// for it -- on screen, a moment of "Loading…" that the next frame replaces.
+/// An export draws each page once, so a page whose pictures had not been
+/// looked at yet was printed with the placeholder in it: a picture laid
+/// across a spread from the facing page, say, which the editor had not drawn
+/// since the book was opened. Asked twice at most, since a picture arriving
+/// can ask for another -- its outline, for text wrapped round it.
+Future<void> drawWhenLoaded(
+    CanvasImageSource? images, void Function(ui.Canvas canvas) paint) async {
+  if (images == null) return;
+  for (var round = 0; round < 3; round++) {
+    var recorder = ui.PictureRecorder();
+    paint(ui.Canvas(recorder));
+    recorder.endRecording().dispose();
+    if (!images.loading) return;
+    // Bounded: a picture that never arrives is drawn as missing rather than
+    // holding the whole export up for ever.
+    for (var waited = 0; images.loading && waited < 300; waited++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
 }
 
 /// paintCanvasDocument draws [doc] at [frame].
@@ -443,9 +475,17 @@ void paintElement(
   /// videoShow is where each video has got to -- its frame, its play bar.
   /// Null in an export, which shows the poster.
   VideoShow Function(VideoElement)? videoShow,
+
+  /// poseOutside leaves the pose's move, turn, scale and fade out, for a
+  /// caller that applies them itself: the interactive EPUB, which draws each
+  /// element once and moves it with CSS. What the pose pins besides -- how
+  /// far an arrival has got, a count, a bow -- is still drawn, because that
+  /// is the element's content rather than where it is.
+  bool poseOutside = false,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
-  var alpha = (element.opacity * pose.opacity).clamp(0.0, 1.0);
+  var outer = poseOutside ? Keyframe.rest : pose;
+  var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   if (alpha <= 0.002) return;
 
   var bounds = element.bounds;
@@ -503,14 +543,14 @@ void paintElement(
   // scale about the element's own centre. In that order, so that an element
   // moved by a keyframe rotates about where it now is rather than swinging
   // around where it was drawn.
-  if (pose.dx != 0 || pose.dy != 0) canvas.translate(pose.dx, pose.dy);
+  if (outer.dx != 0 || outer.dy != 0) canvas.translate(outer.dx, outer.dy);
 
-  var spin = element.rotationRadians + pose.rotate * math.pi / 180;
-  if (spin != 0 || pose.scale != 1) {
+  var spin = element.rotationRadians + outer.rotate * math.pi / 180;
+  if (spin != 0 || outer.scale != 1) {
     var c = bounds.center;
     canvas.translate(c.dx, c.dy);
     if (spin != 0) canvas.rotate(spin);
-    if (pose.scale != 1) canvas.scale(pose.scale);
+    if (outer.scale != 1) canvas.scale(outer.scale);
     canvas.translate(-c.dx, -c.dy);
   }
 

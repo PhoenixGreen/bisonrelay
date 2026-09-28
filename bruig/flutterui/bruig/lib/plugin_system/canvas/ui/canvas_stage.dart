@@ -3077,16 +3077,36 @@ class CanvasStageState extends State<CanvasStage> {
       if (at >= 0) counter = element.id;
     }
 
+    // Whether a click here would do something rather than select or move --
+    // the same tests _onPointerDown makes -- so the pointer can say so.
+    var selected = element != null &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id;
+    var pressable = counter != null ||
+        (selected &&
+            (element is ButtonElement ||
+                (element is VideoElement &&
+                    _videoPartAt(element, doc) != null) ||
+                (element is AudioElement &&
+                    _audioPartAt(element, doc) != null)));
+
     if (id != controller.hoveredButton ||
         counter != _hoveredCounter ||
-        at != _hoveredCounterAt) {
+        at != _hoveredCounterAt ||
+        pressable != _hoverPressable) {
       controller.hoveredButton = id;
       setState(() {
         _hoveredCounter = counter;
         _hoveredCounterAt = at;
+        _hoverPressable = pressable;
       });
     }
   }
+
+  /// _hoverPressable is whether the pointer is over something a click would
+  /// press: a selected button, a selected speaker's or video's controls, or a
+  /// live counter's buttons.
+  bool _hoverPressable = false;
 
   void _onScroll(PointerScrollEvent event) {
     // While reframing, the wheel is the picture's zoom rather than the view's.
@@ -3536,6 +3556,9 @@ class CanvasStageState extends State<CanvasStage> {
       return _mode == _DragMode.imageFrame
           ? SystemMouseCursors.grabbing
           : SystemMouseCursors.grab;
+    }
+    if (_mode == _DragMode.none && _hoverPressable) {
+      return SystemMouseCursors.click;
     }
     return SystemMouseCursors.basic;
   }
