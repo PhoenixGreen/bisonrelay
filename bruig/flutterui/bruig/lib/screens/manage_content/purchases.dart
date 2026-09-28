@@ -1,4 +1,3 @@
-import 'package:bruig/components/empty_widget.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/downloads.dart';

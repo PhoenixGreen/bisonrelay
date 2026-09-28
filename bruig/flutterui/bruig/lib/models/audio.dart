@@ -12,15 +12,20 @@ import 'package:provider/provider.dart';
 
 dynamic globalAudioPlayerInitError;
 
+// StreamAudioSource is just_audio's only way to play bytes held in memory,
+// and the package marks it experimental.
+// ignore: experimental_member_use
 class _MemAudioSource extends StreamAudioSource {
   final Uint8List bytes;
   final String contentType;
   _MemAudioSource(this.contentType, this.bytes);
 
   @override
+  // ignore: experimental_member_use
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     start ??= 0;
     end ??= bytes.length;
+    // ignore: experimental_member_use
     return StreamAudioResponse(
       sourceLength: bytes.length,
       contentLength: end - start,

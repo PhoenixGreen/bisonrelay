@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';

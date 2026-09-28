@@ -25,10 +25,13 @@ import 'package:provider/provider.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+// cfg is replaced in place by setCfg once the node is unlocked, which the
+// unlock page is handed as a callback.
+// ignore: must_be_immutable
 class UnlockLNApp extends StatefulWidget {
   Config cfg;
   final String initialRoute;
-  SnackBarModel snackBar;
+  final SnackBarModel snackBar;
   UnlockLNApp(this.cfg, this.initialRoute, this.snackBar, {super.key});
 
   void setCfg(Config c) {

@@ -559,7 +559,7 @@ class RealtimeChatModel extends ChangeNotifier {
           }
 
           var liveSess = await Golib.rtdtGetLiveSession(updt.sessionRV);
-          if (sess != null && liveSess != null) {
+          if (liveSess != null) {
             sess._refreshFromLive(liveSess);
             liveSessions._setLive(sess);
             if ((liveSess.hotAudio) && hotAudioSession.active != sess) {

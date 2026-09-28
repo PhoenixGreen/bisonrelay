@@ -365,20 +365,6 @@ right: # And another on the right
   group('two cells drawn together', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
-    Future<double> gapAt(WidgetTester tester, double width) async {
-      await tester.pumpWidget(drawHost(MarkdownArea("""
---header--
---row[60,left]--
-left: # Logo
-right: # Title
---/row--
---/header--
-""", false), width: width));
-      await tester.pump();
-      return tester.getRect(find.text("Title")).left -
-          tester.getRect(find.text("Logo")).right;
-    }
-
     testWidgets('sit together rather than sharing out the width',
         (tester) async {
       // Sharing the width out is what made a logo and its title drift apart

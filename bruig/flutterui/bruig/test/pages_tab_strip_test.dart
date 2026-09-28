@@ -1,4 +1,3 @@
-import 'package:bruig/components/pages_bar.dart';
 import 'package:bruig/screens/pages/browser.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';

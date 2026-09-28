@@ -14,8 +14,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';

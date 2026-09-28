@@ -1,14 +1,8 @@
 import 'package:bruig/components/feed/markdown_title.dart';
-import 'package:bruig/components/feed/markdown_header.dart';
 import 'package:bruig/components/md_elements.dart';
-import 'package:bruig/models/payments.dart';
-import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:markdown/markdown.dart' as md;
-import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'header_harness.dart';

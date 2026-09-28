@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';

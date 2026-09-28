@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 
 // element_specs.dart is what the Pages and store panel knows about the
 // blocks it writes: what each one is for, what it can be told, and what it

@@ -82,9 +82,6 @@ void main() {
     // a remote user -- so the button is offered greyed, with the reason,
     // rather than left to fail with "user not found": a sentence about
     // somebody who is standing right there.
-    var pages = _Pages();
-    var shop = _Store(pages);
-
     await tester.pumpWidget(MultiProvider(
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(

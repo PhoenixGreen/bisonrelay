@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 
-import 'package:intl/intl.dart';
 import 'package:crypto/crypto.dart';
 import 'package:duration/duration.dart';
 import 'package:flutter/material.dart';

@@ -1,6 +1,5 @@
 import 'package:bruig/components/containers.dart';
 import 'package:bruig/screens/pages/browser.dart';
-import 'package:flutter/material.dart';
 
 // Pages tabs. Visit is first because it is what the section is for most of
 // the time: reading someone else's site. My Site and Store are the authoring

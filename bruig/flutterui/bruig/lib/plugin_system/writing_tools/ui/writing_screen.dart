@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/writing_tools/ui/composer.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/composer_sidebar_shell.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/formatting_sidebar.dart';
 import 'package:bruig/plugin_system/writing_tools/ui/sidebar/writing_sidebar.dart';
-import 'package:bruig/plugin_system/writing_tools/engine/preferences.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

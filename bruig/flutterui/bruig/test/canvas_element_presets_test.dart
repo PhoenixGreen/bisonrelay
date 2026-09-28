@@ -1,9 +1,7 @@
 import 'dart:io';
 
-import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/element_preset.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_element_presets.dart';

@@ -3,7 +3,6 @@ import 'package:bruig/models/resources.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/models/store.dart';
 import 'package:bruig/screens/pages/store/store_front_fields.dart';
-import 'package:bruig/theming_system/editor/editor_controls.dart';
 import 'package:bruig/theming_system/model/markdown_style.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
