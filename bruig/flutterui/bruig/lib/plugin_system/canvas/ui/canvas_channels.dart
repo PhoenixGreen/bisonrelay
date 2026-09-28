@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -7,11 +10,12 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // canvas_channels.dart is the media on the timeline, one lane each, laid out
-// against the same frames as the timeline strip under it.
+// against the same frames as the keyframe strip above it.
 //
-// Floated over the bottom of the canvas by the screen, like the keyframe bar,
-// rather than grown out of the timeline: a timeline that grows re-fits the
-// canvas and moves the design -- see timelineHeight.
+// Part of the timeline, under the keyframe strip, in the room the timeline is
+// dragged open to -- see CanvasTimeline. The lanes scroll there rather than
+// the timeline growing to hold them, which would re-fit the canvas and move
+// the design every time a channel was added.
 //
 // A lane is its clip drawn as a bar from the frame it starts on to the frame
 // it ends on: one block per file, the fades as slopes, a repeat drawn fainter
@@ -19,19 +23,18 @@ import 'package:flutter/material.dart';
 // ends to trim it -- the first file's start and the last file's end, which
 // is the play range, the same numbers the settings panel shows.
 
-/// channelsLaneHeight is one lane, and _channelsInset the strip's own inset,
-/// which is the timeline strip's -- so a frame is at the same x in both.
+/// channelsLaneHeight is one lane.
 const double channelsLaneHeight = 26;
-const double _channelsInset = 10;
 const double _edgeGrab = 7;
-
-/// channelsHeight is how tall the strip is for [lanes] clips.
-double channelsHeight(int lanes) =>
-    22 + math.max(1, math.min(lanes, 6)) * channelsLaneHeight + 8;
 
 class CanvasChannels extends StatefulWidget {
   final CanvasController controller;
   const CanvasChannels({required this.controller, super.key});
+
+  /// hint is what an empty set of channels says.
+  static const String hint = "Add audio for a channel to drop a sound on, or "
+      "put a video or a background's video or sound on the timeline in its "
+      "settings.";
 
   @override
   State<CanvasChannels> createState() => _CanvasChannelsState();
@@ -75,7 +78,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   void _press(TimedLane lane, Offset at, Offset global, double width) {
-    if (!lane.editable) return;
+    if (!lane.editable || lane.clip.isEmpty) return;
     var span = _span(lane);
     // The bar is drawn from the start of its first frame to the end of its
     // last -- see _LanePainter -- and the ends are pressed where they are drawn.
@@ -152,84 +155,122 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       listenable: controller,
       builder: (context, _) {
         var lanes = controller.timedLanes;
-        return Container(
-          height: channelsHeight(lanes.length),
-          decoration: BoxDecoration(
-            color: theme.colors.surfaceContainerLow.withValues(alpha: 0.96),
-            border: Border(
-                top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
-          ),
-          padding:
-              const EdgeInsets.fromLTRB(_channelsInset, 4, _channelsInset, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: 16,
-                child: Text("CHANNELS",
-                    style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colors.onSurfaceVariant)),
-              ),
-              if (lanes.isEmpty)
-                Expanded(
-                  child: Text(
-                    "Put a video, or a background's video or sound, on the "
-                    "timeline in its settings and it shows here.",
-                    style: TextStyle(
-                        fontSize: 11, color: theme.colors.onSurfaceVariant),
-                  ),
-                )
-              else
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    children: [
-                      for (var lane in lanes)
-                        SizedBox(
-                          key: ValueKey("lane-${lane.element.id}"),
-                          height: channelsLaneHeight,
-                          child: LayoutBuilder(
-                            builder: (context, box) => GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onHorizontalDragDown: (d) => _press(
-                                  lane,
-                                  d.localPosition,
-                                  d.globalPosition,
-                                  box.maxWidth),
-                              onHorizontalDragUpdate: (d) =>
-                                  _drag(d.globalPosition.dx, box.maxWidth),
-                              onHorizontalDragEnd: (_) => _release(),
-                              onHorizontalDragCancel: _release,
-                              child: MouseRegion(
-                                cursor: lane.editable
-                                    ? SystemMouseCursors.resizeLeftRight
-                                    : SystemMouseCursors.basic,
-                                child: CustomPaint(
-                                  size: Size(box.maxWidth, channelsLaneHeight),
-                                  painter: _LanePainter(
-                                    lane: lane,
-                                    span: _span(lane),
-                                    frames: controller.document.frames,
-                                    frame: controller.frame,
-                                    frameRate: controller.document.frameRate,
-                                    colors: theme.colors,
-                                    held: _held?.element.id == lane.element.id,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-            ],
+        // A sound dropped anywhere that is not a lane is a new channel, from
+        // the frame it was dropped on.
+        return DragTarget<Object>(
+          key: _area,
+          onWillAcceptWithDetails: (d) =>
+              droppedKind(d.data) == AssetKind.audio,
+          onAcceptWithDetails: (d) async {
+            var at = _frameAt(d.offset);
+            var asset = await droppedAsset(d.data);
+            if (asset == null) return;
+            controller.addElement(
+                audioChannel(controller.document, at, asset: asset));
+          },
+          builder: (context, candidate, _) => Container(
+            decoration: BoxDecoration(
+              color: candidate.isEmpty
+                  ? null
+                  : theme.colors.primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: lanes.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(CanvasChannels.hint,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colors.onSurfaceVariant)),
+                  )
+                : _lanes(lanes, theme),
           ),
         );
       },
+    );
+  }
+
+  /// _area is the channels' whole room, for the frame a drop landed on.
+  final GlobalKey _area = GlobalKey();
+
+  /// _frameAt is the frame under [global], across the channels' width.
+  int _frameAt(Offset global) {
+    var box = _area.currentContext?.findRenderObject();
+    if (box is! RenderBox || box.size.width <= 0) return controller.frame;
+    var x = box.globalToLocal(global).dx / box.size.width;
+    var frames = controller.document.frames;
+    return (x * frames).floor().clamp(0, frames - 1).toInt();
+  }
+
+  /// _fill puts [asset] in [lane]'s channel: as its sound, where it has
+  /// none, and after what it has, where it has -- a channel plays its files
+  /// one after another.
+  void _fill(TimedLane lane, LibraryAsset asset) {
+    var clip = lane.clip;
+    controller.setTimedClip(lane.element,
+        clip.copyWith(playlist: [...clip.playlist, asset.source]));
+    if (controller.document.elements.any((e) => e.id == lane.element.id)) {
+      controller.selectOnly(lane.element.id);
+    }
+  }
+
+  Widget _lanes(List<TimedLane> lanes, ThemeNotifier theme) {
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        for (var lane in lanes)
+          SizedBox(
+            key: ValueKey("lane-${lane.element.id}"),
+            height: channelsLaneHeight,
+            child: DragTarget<Object>(
+              onWillAcceptWithDetails: (d) =>
+                  droppedKind(d.data) == AssetKind.audio &&
+                  lane.editable &&
+                  lane.element is AudioElement,
+              onAcceptWithDetails: (d) async {
+                var asset = await droppedAsset(d.data);
+                if (asset != null) _fill(lane, asset);
+              },
+              builder: (context, candidate, _) => LayoutBuilder(
+                builder: (context, box) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragDown: (d) => _press(
+                      lane, d.localPosition, d.globalPosition, box.maxWidth),
+                  onHorizontalDragUpdate: (d) =>
+                      _drag(d.globalPosition.dx, box.maxWidth),
+                  onHorizontalDragEnd: (_) => _release(),
+                  onHorizontalDragCancel: _release,
+                  // A tap on an empty channel picks it, so its settings --
+                  // where a file can be chosen -- are the ones on screen.
+                  onTap: () {
+                    if (controller.document.elements
+                        .any((e) => e.id == lane.element.id)) {
+                      controller.selectOnly(lane.element.id);
+                    }
+                  },
+                  child: MouseRegion(
+                    cursor: lane.editable && !lane.clip.isEmpty
+                        ? SystemMouseCursors.resizeLeftRight
+                        : SystemMouseCursors.basic,
+                    child: CustomPaint(
+                      size: Size(box.maxWidth, channelsLaneHeight),
+                      painter: _LanePainter(
+                        lane: lane,
+                        span: _span(lane),
+                        frames: controller.document.frames,
+                        frame: controller.frame,
+                        frameRate: controller.document.frameRate,
+                        colors: theme.colors,
+                        held: _held?.element.id == lane.element.id ||
+                            candidate.isNotEmpty,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -259,6 +300,28 @@ class _LanePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     var w = size.width;
     var top = 3.0, bottom = size.height - 3;
+
+    // An empty channel: its outline across the lane, and what to do with it.
+    if (lane.clip.isEmpty) {
+      var box =
+          RRect.fromLTRBR(0.5, top, w - 0.5, bottom, const Radius.circular(4));
+      canvas.drawRRect(
+          box,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = held ? colors.primary : colors.outlineVariant);
+      var text = TextPainter(
+        text: TextSpan(
+            text: "${lane.element.name} — drop a sound here",
+            style: TextStyle(fontSize: 10.5, color: colors.onSurfaceVariant)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: "…",
+      )..layout(maxWidth: math.max(0, w - 12));
+      text.paint(canvas, Offset(6, (size.height - text.height) / 2));
+      return;
+    }
     var video = lane.element is VideoElement;
     var fill = (video ? const Color(0xFF7B5CC4) : const Color(0xFF2A9D8F))
         .withValues(alpha: lane.editable ? 1 : 0.45);

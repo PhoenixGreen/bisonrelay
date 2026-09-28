@@ -231,6 +231,13 @@ class CanvasAssets {
   /// For the picture cache, which asks about every crest on every refresh --
   /// twenty small reads to answer twenty questions about existence is work for
   /// nothing, and the answer is a stat call.
+  /// pathOf is where the picture [id] is on disk, or null where it is not.
+  static Future<String?> pathOf(String id) async {
+    var where = await _pathFor(id);
+    if (where == null || !await File(where).exists()) return null;
+    return where;
+  }
+
   static Future<bool> exists(String id) async {
     var file = await _pathFor(id);
     return file != null && await File(file).exists();

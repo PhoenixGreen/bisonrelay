@@ -27,6 +27,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
   static const _publishKey = "canvasPublish";
+  static const _timelineHeightKey = "canvasTimelineHeight";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -123,6 +124,18 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_filesFolderKey, value);
   }
 
+  /// timelineHeight is how tall the timeline was dragged to, or nought for
+  /// its least: room for the channels under the keyframe strip is kept
+  /// between visits, like which panels are open.
+  double get timelineHeight => _timelineHeight;
+  double _timelineHeight = 0;
+
+  set timelineHeight(double value) {
+    if (_timelineHeight == value) return;
+    _timelineHeight = value;
+    StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
+  }
+
   /// publish is how the publish sheet was last set when something was
   /// published with it -- what, as what, where, and every setting for each --
   /// so that the next one opens as the last was left rather than on Image
@@ -150,6 +163,9 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
+    _timelineHeight =
+        double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??
+            0;
     try {
       var saved = jsonDecode(await StorageManager.readString(_publishKey));
       if (saved is Map<String, dynamic>) _publish = Map.unmodifiable(saved);

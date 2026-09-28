@@ -19,7 +19,12 @@ enum CanvasPanel {
   /// three tabs. Last, because it is the tab a document ends up on: the two
   /// before it are ways of starting, and this is where the rest of the work
   /// happens.
-  design("Design", Icons.category_outlined);
+  design("Design", Icons.category_outlined),
+
+  /// assets is the library: the pictures, videos and sounds that have been
+  /// added, to put on the canvas and the timeline. After Design, so the tab a
+  /// saved choice points at does not move.
+  assets("Assets", Icons.perm_media_outlined);
 
   final String label;
   final IconData icon;

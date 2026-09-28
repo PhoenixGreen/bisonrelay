@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
@@ -83,7 +84,10 @@ Future<MediaSource?> addCanvasAudio(
       return null;
     }
     var length = await controller.audio.measure(id) ?? 0;
-    return MediaSource(assetId: id, name: name, length: length);
+    var added = MediaSource(assetId: id, name: name, length: length);
+    // In the library from now on, whether or not anything keeps using it.
+    await CanvasLibrary.add(LibraryAsset.fromSource(AssetKind.audio, added));
+    return added;
   } catch (exception) {
     report("Unable to add $name: $exception");
     return null;
@@ -159,7 +163,7 @@ Future<MediaSource?> addCanvasVideo(BuildContext context, String file) async {
       }
     }
 
-    return MediaSource(
+    var source = MediaSource(
       assetId: id,
       name: name,
       length: probe.duration,
@@ -169,6 +173,8 @@ Future<MediaSource?> addCanvasVideo(BuildContext context, String file) async {
       height: probe.height,
       fps: probe.fps,
     );
+    await CanvasLibrary.add(LibraryAsset.fromSource(AssetKind.video, source));
+    return source;
   } catch (exception) {
     report("Unable to add $name: $exception");
     return null;

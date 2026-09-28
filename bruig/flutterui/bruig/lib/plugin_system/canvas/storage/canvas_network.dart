@@ -17,12 +17,19 @@ import 'package:flutter/foundation.dart';
 // the opposite of what the reader asked for, a canvas with a proxy configured
 // refuses to fetch and says why.
 
+/// proxiedForTest stands in for the answer in a test, which has no config
+/// file to read -- and no config reads as proxied, which refuses everything.
+@visibleForTesting
+bool? proxiedForTest;
+
 /// networkIsProxied is whether a proxy has been configured.
 ///
 /// True on any failure to find out. The cost of being wrong in that direction
 /// is a refused refresh and a message; the cost of being wrong the other way
 /// is a connection somebody had arranged not to make.
 Future<bool> networkIsProxied() async {
+  var fixed = proxiedForTest;
+  if (fixed != null) return fixed;
   try {
     var config = await loadConfig(mainConfigFilename);
     return config.proxyaddr.trim().isNotEmpty;

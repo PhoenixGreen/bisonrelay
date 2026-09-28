@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 
@@ -24,7 +25,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
@@ -2648,6 +2648,10 @@ class CanvasController extends ChangeNotifier {
           offset: at - _frame,
           editable: here.contains(e.id) || backdrop.contains(e.id),
         ),
+      // A channel added with nothing in it yet: a lane to drop a sound on.
+      // Not in _timedOnScreen, which is what plays -- there is nothing to.
+      for (var e in _document.elements)
+        if (e is AudioElement && e.clip.timed && e.clip.isEmpty) TimedLane(e),
     ];
   }
 
@@ -3513,10 +3517,13 @@ class CanvasController extends ChangeNotifier {
     var f = folder, n = name;
     if (n == null) return false;
     var ok = await CanvasStorage.save(f ?? "", n, _document);
-    // Not awaited: tidying the picture store is bookkeeping, and a save should
-    // not wait on a walk of the whole library to report that it worked.
-    if (ok) unawaited(CanvasAssets.sweepUnused());
-    if (ok) unawaited(CanvasMedia.sweepUnused(open: _document.mediaIds));
+    // Not awaited: tidying the stores is bookkeeping, and a save should not
+    // wait on a walk of the whole library to report that it worked. Only what
+    // is not an asset goes -- see CanvasLibrary.tidy.
+    if (ok) {
+      unawaited(CanvasLibrary.tidy(
+          open: {..._document.assetIds, ..._document.mediaIds}));
+    }
     if (ok) {
       _dirty = false;
       notifyListeners();

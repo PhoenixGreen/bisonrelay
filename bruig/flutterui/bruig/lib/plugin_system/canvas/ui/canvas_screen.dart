@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
 import 'package:bruig/components/chat/chat_side_menu.dart';
 import 'package:bruig/components/containers.dart';
@@ -11,7 +13,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
@@ -140,10 +141,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// panel moved the design.
   bool _keyframesOpen = false;
 
-  /// _channelsOpen is whether the Channels strip is out -- see
-  /// CanvasChannels. Floated over the canvas like the pose bar, and for the
-  /// same reason.
-  bool _channelsOpen = false;
+  /// _timelineHeight is how tall the timeline is: its least, and whatever it
+  /// has been dragged open to for the channels. Kept in the preferences.
+  double _timelineHeight = timelineHeight;
 
   /// _mixerOpen and _mixerHeight are the mixer's -- see CanvasMixer. The
   /// height is the session's: a mixer somebody made tall stays tall while
@@ -155,6 +155,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void initState() {
     super.initState();
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+    _timelineHeight = math.max(timelineHeight, prefs.timelineHeight);
     var at = prefs.panel;
     _panel = at >= 0 && at < CanvasPanel.values.length
         ? CanvasPanel.values[at]
@@ -477,6 +478,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       ),
                     CanvasPanel.design =>
                       CanvasDesignPanel(controller: _controller),
+                    CanvasPanel.assets =>
+                      CanvasAssetsPanel(controller: _controller),
                   },
                 ),
               ),
@@ -555,14 +558,35 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       center: stage.toDocumentPoint(local),
                     ));
                   },
-                  builder: (context, candidate, rejected) => Container(
-                    color: candidate.isEmpty
-                        ? null
-                        : theme.colors.primary.withValues(alpha: 0.06),
-                    child: CanvasStage(
-                      key: _stageKey,
-                      controller: _controller,
-                      onButtonLink: _openLink,
+                  builder: (context, candidate, rejected) =>
+                      // And an asset from the Assets sidebar, which becomes the
+                      // element that shows it, where it was let go.
+                      // Or a stock result, fetched when it lands.
+                      DragTarget<Object>(
+                    onWillAcceptWithDetails: (d) => droppedKind(d.data) != null,
+                    onAcceptWithDetails: (details) async {
+                      var stage = _stageKey.currentState;
+                      var box = _stageKey.currentContext?.findRenderObject();
+                      if (stage == null || box is! RenderBox) return;
+                      var local = box.globalToLocal(details.offset);
+                      var center = stage.toDocumentPoint(local);
+                      var asset = await droppedAsset(details.data);
+                      if (asset == null || !mounted) return;
+                      _controller.addElement(elementForAsset(
+                        asset,
+                        _controller.document,
+                        center: center,
+                      ));
+                    },
+                    builder: (context, assets, _) => Container(
+                      color: candidate.isEmpty && assets.isEmpty
+                          ? null
+                          : theme.colors.primary.withValues(alpha: 0.06),
+                      child: CanvasStage(
+                        key: _stageKey,
+                        controller: _controller,
+                        onButtonLink: _openLink,
+                      ),
                     ),
                   ),
                 ),
@@ -603,16 +627,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     ),
                   ),
                 ),
-              if (_channelsOpen)
-                Positioned(
-                  bottom: (_keyframesOpen && !_controller.playing
-                          ? keyframeBarHeight
-                          : 0) +
-                      (_mixerOpen ? _mixerHeight : 0),
-                  left: 0,
-                  right: 0,
-                  child: CanvasChannels(controller: _controller),
-                ),
             ]),
           ),
           // Hidden by taking it out rather than by shrinking it to nothing:
@@ -624,9 +638,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
               keyframesOpen: _keyframesOpen,
               onToggleKeyframes: () =>
                   setState(() => _keyframesOpen = !_keyframesOpen),
-              channelsOpen: _channelsOpen,
-              onToggleChannels: () =>
-                  setState(() => _channelsOpen = !_channelsOpen),
+              height: _timelineHeight,
+              onResize: (h) {
+                var most = math.max(
+                    timelineHeight, MediaQuery.sizeOf(context).height * 0.6);
+                setState(() =>
+                    _timelineHeight = h.clamp(timelineHeight, most).toDouble());
+                Provider.of<CanvasPreferences>(context, listen: false)
+                    .timelineHeight = _timelineHeight;
+              },
               mixerOpen: _mixerOpen,
               onToggleMixer: () => setState(() => _mixerOpen = !_mixerOpen),
               // One line at a time: two strips over the same corner of the

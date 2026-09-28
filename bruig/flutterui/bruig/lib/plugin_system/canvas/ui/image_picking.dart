@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -80,7 +81,14 @@ Future<String?> compressCanvasPicture(
   var id = await CanvasAssets.save(result);
   // Content-addressed, so compressing to exactly what was already there hands
   // back the same id. Nothing to do, and nothing to say about it.
-  return id == assetId ? null : id;
+  if (id == assetId) return null;
+  // The smaller copy is in the library under the same name as the one it was
+  // made from; the original stays there too, until it is removed.
+  if (id != null) {
+    await CanvasLibrary.addPicture(
+        id, await CanvasLibrary.named(assetId) ?? "Picture", result);
+  }
+  return id;
 }
 
 /// _mimeOf sniffs the stored bytes, which is the only way to know: an asset id
@@ -130,6 +138,9 @@ Future<String?> pickCanvasImage(BuildContext context) async {
       }
       return null;
     }
+    // In the library from now on, whether or not anything keeps using it.
+    await CanvasLibrary.addPicture(
+        id, path.basenameWithoutExtension(chosen.trim()), bytes);
     return id;
   } catch (exception) {
     if (context.mounted) {

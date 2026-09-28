@@ -135,6 +135,20 @@ class CanvasMedia {
           ? MediaKind.video
           : MediaKind.audio;
 
+  /// stored is every file in [kind]'s store.
+  static Future<List<String>> stored(MediaKind kind) async {
+    try {
+      var dir = Directory(await _dir(kind));
+      return [
+        await for (var entry in dir.list(followLinks: false))
+          if (entry is File && _idPattern.hasMatch(path.basename(entry.path)))
+            path.basename(entry.path),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// sweep deletes every file in [kind]'s store that [liveIds] does not name.
   static Future<int> sweep(MediaKind kind, Set<String> liveIds) async {
     var removed = 0;

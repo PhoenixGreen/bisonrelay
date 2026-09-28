@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -1366,7 +1368,6 @@ void main() {
       addTearDown(later.dispose);
       expect(later.timeline, isFalse, reason: "until it has read the disk");
     });
-
   });
 
   group("the settings section", () {
@@ -2429,19 +2430,22 @@ void main() {
       // setting that did nothing at all until a number was typed into the
       // box beside it. Asking for a colour is asking for a line.
       var controller = await panel(tester, shapeOf(ShapeKind.star));
-      expect((controller.document.elements.single as ShapeElement).strokeWidth,
-          0,
+      expect(
+          (controller.document.elements.single as ShapeElement).strokeWidth, 0,
           reason: "otherwise this test is not asking anything");
 
       var colour = find.byWidgetPredicate(
           (w) => w is CanvasColorButton && w.label == "Colour");
       expect(colour, findsOneWidget);
-      tester.widget<CanvasColorButton>(colour).onChanged(const Color(0xFF00FF00));
+      tester
+          .widget<CanvasColorButton>(colour)
+          .onChanged(const Color(0xFF00FF00));
       await tester.pumpAndSettle();
 
       var after = controller.document.elements.single as ShapeElement;
       expect(after.strokeColor, const Color(0xFF00FF00));
-      expect(after.strokeWidth, greaterThan(0), reason: "and a line to see it on");
+      expect(after.strokeWidth, greaterThan(0),
+          reason: "and a line to see it on");
     });
 
     testWidgets("but leaves a stroke it already has alone", (tester) async {
@@ -2451,7 +2455,9 @@ void main() {
               shape: ShapeKind.star, strokeWidth: 12));
       var colour = find.byWidgetPredicate(
           (w) => w is CanvasColorButton && w.label == "Colour");
-      tester.widget<CanvasColorButton>(colour).onChanged(const Color(0xFF00FF00));
+      tester
+          .widget<CanvasColorButton>(colour)
+          .onChanged(const Color(0xFF00FF00));
       await tester.pumpAndSettle();
       expect((controller.document.elements.single as ShapeElement).strokeWidth,
           12);
@@ -2836,8 +2842,8 @@ void main() {
       // A hint is a question mark with a tooltip, so it is found by what it
       // has to say.
       expect(
-          find.byWidgetPredicate((w) =>
-              w is CanvasHint && w.message.contains("fills its frame")),
+          find.byWidgetPredicate(
+              (w) => w is CanvasHint && w.message.contains("fills its frame")),
           findsOneWidget,
           reason: "and it says where they went");
     });
@@ -3531,10 +3537,8 @@ void main() {
         (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      await pump(
-          tester,
-          CanvasPresetsSidebar(
-              controller: controller, onChoose: (_, __) {}));
+      await pump(tester,
+          CanvasPresetsSidebar(controller: controller, onChoose: (_, __) {}));
 
       // Three panels in a stack now, like the Design sidebar: a canvas to
       // start from, a scene to add, an element to drop on.
@@ -5842,7 +5846,8 @@ void main() {
       expect(controller.document.guides.showRulers, isTrue);
       // The strip scrolls sideways and Rulers is the last group on it, so a
       // tap at its coordinates lands outside the viewport.
-      await tester.ensureVisible(find.byKey(const ValueKey("guidesShowRulers")));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("guidesShowRulers")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("guidesShowRulers")));
       await tester.pumpAndSettle();
@@ -8021,6 +8026,70 @@ void main() {
       // And the rest of them arrive once there is a gutter to put them in.
       expect(find.text("Gap"), findsOneWidget);
       expect(find.text("Rule"), findsOneWidget);
+    });
+  });
+
+  // The channels are part of the timeline now: lanes under the keyframe strip,
+  // in the room the timeline is dragged open to, with Add audio where the
+  // Channels toggle was.
+  group("channels in the timeline", () {
+    Widget host(CanvasController c) {
+      var height = timelineHeight;
+      return StatefulBuilder(
+        builder: (context, set) => Align(
+          alignment: Alignment.bottomCenter,
+          child: CanvasTimeline(
+            controller: c,
+            height: height,
+            onResize: (h) =>
+                set(() => height = h.clamp(timelineHeight, 600).toDouble()),
+          ),
+        ),
+      );
+    }
+
+    testWidgets("Add audio adds an empty channel, and room to see it",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 100));
+      addTearDown(c.dispose);
+      await pump(tester, host(c));
+      expect(find.byKey(const ValueKey("channelsToggle")), findsNothing,
+          reason: "no strip floating over the canvas to open");
+      var before = tester.getSize(find.byType(CanvasTimeline)).height;
+
+      await tester.tap(find.byKey(const ValueKey("addAudioChannel")));
+      await tester.pumpAndSettle();
+
+      var audio = c.document.elements.whereType<AudioElement>().single;
+      expect(audio.visible, isFalse, reason: "a sound, not a speaker");
+      expect(audio.clip.timed, isTrue);
+      expect(audio.clip.isEmpty, isTrue);
+      expect(audio.name, "Audio 1");
+      expect(tester.getSize(find.byType(CanvasTimeline)).height,
+          greaterThan(before),
+          reason: "the timeline opened to show the new channel");
+      expect(find.byKey(ValueKey("lane-${audio.id}")), findsOneWidget);
+    });
+
+    testWidgets("the top edge drags the timeline open and shut",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 100));
+      addTearDown(c.dispose);
+      await pump(tester, host(c));
+      expect(find.text(CanvasChannels.hint), findsNothing,
+          reason: "no room for channels yet");
+
+      var grip = find.byKey(const ValueKey("timelineGrip"));
+      await tester.drag(grip, const Offset(0, -100));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(CanvasTimeline)).height,
+          closeTo(timelineHeight + 100, 25));
+      expect(find.text(CanvasChannels.hint), findsOneWidget);
+
+      await tester.drag(grip, const Offset(0, 300));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(CanvasTimeline)).height, timelineHeight,
+          reason: "never shorter than the keyframe strip");
     });
   });
 }

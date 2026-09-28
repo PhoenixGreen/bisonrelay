@@ -271,7 +271,8 @@ void main() {
             home: Scaffold(
                 body: Align(
                     alignment: Alignment.bottomCenter,
-                    child: CanvasChannels(controller: c)))),
+                    child: SizedBox(
+                        height: 120, child: CanvasChannels(controller: c))))),
       ));
       await tester.pumpAndSettle();
     }
