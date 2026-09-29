@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -81,12 +82,14 @@ class CanvasLayersPanel extends StatelessWidget {
         // frontmost; a list showing that order literally reads upside down to
         // anybody looking at the canvas.
         for (var i = elements.length - 1; i >= 0; i--)
-          CanvasLayerRow(
-            controller: controller,
-            element: elements[i],
-            index: i,
-            key: ValueKey(elements[i].id),
-          ),
+          // Sounds on the timeline are on its channels, not the canvas.
+          if (!isTimelineSound(elements[i]))
+            CanvasLayerRow(
+              controller: controller,
+              element: elements[i],
+              index: i,
+              key: ValueKey(elements[i].id),
+            ),
         // The background is always the bottom row, because it is always behind
         // everything: it is painted before any element and cannot be reordered
         // into the middle of them. Showing it in the list at all is what makes
@@ -274,80 +277,85 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
     var count = controller.document.elements.length;
     var index = widget.index;
 
-    var row = InkWell(
-      onTap: () => controller.selectOnly(element.id),
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          color: selected ? theme.colors.secondaryContainer : null,
+    var row = Material(
+      // Its own, inside the list: on the sidebar's the highlight spilled
+      // over the other sections and stayed put when the list scrolled.
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: () => controller.selectOnly(element.id),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            color: selected ? theme.colors.secondaryContainer : null,
+          ),
+          child: Row(children: [
+            Icon(
+              iconForKind(element.kind),
+              size: 15,
+              color: selected
+                  ? theme.colors.onSecondaryContainer
+                  : theme.colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Expanded(child: _name(theme, selected)),
+            // The buttons stay, alongside the drag. They say which direction the
+            // layer will go before it goes there, they reach a layer at the far
+            // end of a long list without dragging the length of it, and they are
+            // the only way to reorder with a keyboard.
+            _rowButton(
+                theme,
+                Icons.keyboard_arrow_up,
+                "Move forward",
+                index < count - 1
+                    ? () => controller
+                        .apply(controller.document.reorder(index, index + 1))
+                    : null),
+            _rowButton(
+                theme,
+                Icons.keyboard_arrow_down,
+                "Move back",
+                index > 0
+                    ? () => controller
+                        .apply(controller.document.reorder(index, index - 1))
+                    : null),
+            _rowButton(
+              theme,
+              element.visible
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+              element.visible ? "Hide" : "Show",
+              () => controller
+                  .replaceElement(element.withBase(visible: !element.visible)),
+            ),
+            // Filled and tinted when it is locked, outlined when it is not.
+            // The pair used to be lock_outline and lock_open_outlined, which are
+            // the same padlock with the shackle moved a couple of pixels -- at
+            // fourteen pixels on a row of five icons the state was unreadable,
+            // and locking something looked like it had done nothing.
+            _rowButton(
+              theme,
+              element.locked ? Icons.lock : Icons.lock_open_outlined,
+              element.locked ? "Unlock" : "Lock",
+              () => controller
+                  .replaceElement(element.withBase(locked: !element.locked)),
+              active: element.locked,
+            ),
+            // Duplicate rather than copy. A copy did nothing anybody could see:
+            // the canvas was unchanged and the only evidence was that a paste
+            // somewhere else would now produce this. What the button is reached
+            // for is a second one of these, so it makes one. Cmd-C is still
+            // there for a copy that is going somewhere.
+            _rowButton(
+              theme,
+              Icons.control_point_duplicate_outlined,
+              "Duplicate",
+              () => controller.duplicateElement(element.id),
+            ),
+          ]),
         ),
-        child: Row(children: [
-          Icon(
-            iconForKind(element.kind),
-            size: 15,
-            color: selected
-                ? theme.colors.onSecondaryContainer
-                : theme.colors.onSurfaceVariant,
-          ),
-          const SizedBox(width: 6),
-          Expanded(child: _name(theme, selected)),
-          // The buttons stay, alongside the drag. They say which direction the
-          // layer will go before it goes there, they reach a layer at the far
-          // end of a long list without dragging the length of it, and they are
-          // the only way to reorder with a keyboard.
-          _rowButton(
-              theme,
-              Icons.keyboard_arrow_up,
-              "Move forward",
-              index < count - 1
-                  ? () => controller
-                      .apply(controller.document.reorder(index, index + 1))
-                  : null),
-          _rowButton(
-              theme,
-              Icons.keyboard_arrow_down,
-              "Move back",
-              index > 0
-                  ? () => controller
-                      .apply(controller.document.reorder(index, index - 1))
-                  : null),
-          _rowButton(
-            theme,
-            element.visible
-                ? Icons.visibility_outlined
-                : Icons.visibility_off_outlined,
-            element.visible ? "Hide" : "Show",
-            () => controller
-                .replaceElement(element.withBase(visible: !element.visible)),
-          ),
-          // Filled and tinted when it is locked, outlined when it is not.
-          // The pair used to be lock_outline and lock_open_outlined, which are
-          // the same padlock with the shackle moved a couple of pixels -- at
-          // fourteen pixels on a row of five icons the state was unreadable,
-          // and locking something looked like it had done nothing.
-          _rowButton(
-            theme,
-            element.locked ? Icons.lock : Icons.lock_open_outlined,
-            element.locked ? "Unlock" : "Lock",
-            () => controller
-                .replaceElement(element.withBase(locked: !element.locked)),
-            active: element.locked,
-          ),
-          // Duplicate rather than copy. A copy did nothing anybody could see:
-          // the canvas was unchanged and the only evidence was that a paste
-          // somewhere else would now produce this. What the button is reached
-          // for is a second one of these, so it makes one. Cmd-C is still
-          // there for a copy that is going somewhere.
-          _rowButton(
-            theme,
-            Icons.control_point_duplicate_outlined,
-            "Duplicate",
-            () => controller.duplicateElement(element.id),
-          ),
-        ]),
       ),
     );
 

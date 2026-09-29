@@ -571,6 +571,11 @@ StockPage parseStock(StockQuery q, Object? json) {
           licenseUrl: "https://pixabay.com/service/license-summary/",
           page: _s(h, ["pageURL"]),
           thumb: thumb,
+          // The smallest rendition, to watch before choosing: a few hundred
+          // kilobytes rather than the one that is kept.
+          preview: ["tiny", "small", "medium"]
+              .map((r) => _s(h, ["videos", r, "url"]))
+              .firstWhere((u) => u.isNotEmpty, orElse: () => ""),
           media: _s(chosen, ["url"]),
           width: _i(chosen, ["width"]),
           height: _i(chosen, ["height"]),

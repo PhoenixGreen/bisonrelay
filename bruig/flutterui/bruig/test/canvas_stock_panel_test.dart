@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'canvas_audio_fake.dart';
+import 'canvas_video_element_test.dart' show FakeFrames;
 
 // canvas_stock_panel_test.dart is the Stock section with a pretend network:
 // the two gates in front of it, the key form, no request until somebody
@@ -40,6 +41,22 @@ class FakeStock extends StockClient {
         StockClient.refusal(allowFetching: allowFetching, proxied: proxied);
     if (refused != null) return StockPage.failed(refused);
     asked.add(q);
+    if (q.source == StockSource.pixabayVideos) {
+      return StockPage([
+        StockItem(
+          source: q.source,
+          id: "9",
+          title: "Waves",
+          author: "Bo",
+          thumb: "https://cdn.pixabay.com/waves.jpg",
+          media: "https://cdn.pixabay.com/waves-medium.mp4",
+          preview: "https://cdn.pixabay.com/waves-tiny.mp4",
+          width: 640,
+          height: 360,
+          length: 60,
+        ),
+      ]);
+    }
     return StockPage([
       StockItem(
         source: q.source,
@@ -160,6 +177,38 @@ void main() {
     expect(find.byKey(const ValueKey("stockSearch")), findsOneWidget);
   });
 
+  // The key's two buttons and the licence button share the Library row; the
+  // licence choice lives behind its button rather than among the filters.
+  testWidgets("the licence is a button beside the key's", (tester) async {
+    SharedPreferences.setMockInitialValues({
+      "canvasApiKey:api.thenounproject.com": "k",
+      "canvasApiKey:api.thenounproject.com#secret": "s",
+      "canvasStock.source": "nounProject",
+    });
+    await show(tester, key: false);
+    var library = tester.getRect(find.byKey(const ValueKey("stockSource")));
+    for (var k in ["stockChangeKey", "stockForgetKey", "stockLicence"]) {
+      var r = tester.getRect(find.byKey(ValueKey(k)));
+      expect(r.center.dy, closeTo(library.bottom - 18, 18),
+          reason: "$k is on the Library row");
+    }
+    expect(find.textContaining("Using your"), findsNothing);
+    expect(find.byKey(const ValueKey("stockFilter-limit_to_public_domain")),
+        findsNothing,
+        reason: "not among the filters");
+    expect(find.byKey(const ValueKey("stockLicencePanel")), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey("stockLicence")));
+    await idle(tester);
+    expect(find.byKey(const ValueKey("stockLicencePanel")), findsOneWidget);
+    await tester.tap(
+        find.byKey(const ValueKey("stockLicence-limit_to_public_domain-0")));
+    await idle(tester);
+    var saved = await SharedPreferences.getInstance();
+    expect(saved.getString("canvasStock.filters"),
+        contains('"limit_to_public_domain":"0"'));
+  });
+
   testWidgets("nothing is asked until a search, and a filter asks again",
       (tester) async {
     await show(tester);
@@ -200,5 +249,37 @@ void main() {
     expect(asset.id, image.assetId);
     expect([asset.name, asset.author, asset.from, asset.origin],
         ["Red fox", "Ann", "Pixabay", "https://pixabay.com/fox-1/"]);
+  });
+
+  // A video is watched in its tile before it is chosen: a small copy fetched
+  // when play is pressed, and nothing added anywhere.
+  testWidgets("a video result plays in its tile before it is used",
+      (tester) async {
+    // A minute long: a loaded machine can take a second or more over the
+    // steps below, and a one-second video had finished by the time it was
+    // looked for.
+    StockPanel.videoFrames = FakeFrames(60);
+    addTearDown(() => StockPanel.videoFrames = FakeFrames(0));
+    SharedPreferences.setMockInitialValues({
+      "canvasApiKey:pixabay.com": "abc",
+      "canvasStock.source": "pixabayVideos",
+    });
+    var (c, _) = await show(tester, key: false);
+    await tester.enterText(find.byKey(const ValueKey("stockSearch")), "sea");
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await idle(tester);
+
+    await tester.tap(find.byKey(const ValueKey("stockWatch-pixabayVideos-9")));
+    await idle(tester, 10);
+    expect(fake.downloads, 1, reason: "the small copy, to watch");
+    expect(find.byKey(const ValueKey("stockWatching-pixabayVideos-9")),
+        findsOneWidget);
+    expect(c.document.elements, isEmpty, reason: "watched, not used");
+
+    await tester.tap(find.byKey(const ValueKey("stockWatch-pixabayVideos-9")));
+    await idle(tester, 5);
+    expect(find.byKey(const ValueKey("stockWatching-pixabayVideos-9")),
+        findsNothing,
+        reason: "stopped");
   });
 }

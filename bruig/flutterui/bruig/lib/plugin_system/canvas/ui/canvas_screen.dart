@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/space_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/publish_sheet.dart';
@@ -425,7 +426,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
     var client = Provider.of<ClientModel>(context);
     var theme = ThemeNotifier.of(context);
 
-    var content = contentAreaFrame(theme, _content(theme));
+    // Space plays and stops from anywhere on this page -- see CanvasSpaceBar.
+    var content = CanvasSpaceBar(
+        controller: _controller,
+        child: contentAreaFrame(theme, _content(theme)));
 
     // Hidden means nothing beside the canvas. Not routed through
     // SecondarySideMenuLayout at all, since that would put its own sidebar back

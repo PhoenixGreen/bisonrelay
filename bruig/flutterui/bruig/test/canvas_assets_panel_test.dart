@@ -14,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -137,6 +138,40 @@ void main() {
     expect(find.text("Club badge"), findsOneWidget);
   });
 
+  // Every tile's hover and press highlight is drawn on the nearest Material
+  // above it. Where that was the sidebar's -- outside the scrolling list --
+  // the highlight spilled over the other sections and stayed put while the
+  // list scrolled. Each tile has its own now, inside the list.
+  testWidgets("every tile's highlight is drawn inside its list",
+      (tester) async {
+    Future<void> check(Widget Function(CanvasController) body) async {
+      await show(tester, body);
+      var inks = find.byWidgetPredicate((w) => w is InkResponse);
+      expect(inks, findsWidgets);
+      for (var ink in inks.evaluate()) {
+        Widget? first;
+        ink.visitAncestorElements((a) {
+          if (a.widget is Material || a.widget is Scrollable) {
+            first = a.widget;
+            return false;
+          }
+          return true;
+        });
+        expect(first, isA<Material>(),
+            reason: "${ink.widget.key ?? ink.widget.runtimeType} finds the "
+                "list before a Material of its own");
+      }
+    }
+
+    await check((c) => SizedBox(
+        width: 280,
+        child: SizedBox(
+            height: 800,
+            child: AssetSection(controller: c, kind: AssetKind.picture))));
+    await check(
+        (c) => SizedBox(width: 280, child: CanvasElementsPanel(controller: c)));
+  });
+
   testWidgets("a click puts it on the canvas, the shape it is", (tester) async {
     var c = await show(tester, sidebar);
     await tester.tap(find.byKey(const ValueKey("asset-$picture")));
@@ -188,9 +223,10 @@ void main() {
         reason: "only the one that was removed");
   });
 
-  // A sound carried from the sidebar onto the timeline: into the empty
-  // channel it is dropped on, and below the channels, a channel of its own.
-  testWidgets("a sound dropped on the timeline fills a channel or makes one",
+  // A sound carried from the sidebar onto the timeline: onto the empty lane
+  // at the bottom, which starts a channel, and onto a channel, which puts a
+  // second sound on it.
+  testWidgets("a sound dropped on the timeline starts a channel, or joins one",
       (tester) async {
     var c = await show(
         tester,
@@ -201,15 +237,12 @@ void main() {
                     CanvasTimeline(controller: c, height: timelineHeight + 120),
               ),
             ]));
-    c.addElement(audioChannel(c.document, 0), select: false);
-    await tester.pumpAndSettle();
-    var channel = c.document.elements.single as AudioElement;
-    var lane = find.byKey(ValueKey("lane-${channel.id}"));
-    expect(lane, findsOneWidget);
+    expect(c.document.elements, isEmpty,
+        reason: "an empty channel is not an element");
 
     Future<void> carry(Offset to) async {
-      var drag =
-          await tester.startGesture(tester.getCenter(find.text("Anthem")));
+      var drag = await tester.startGesture(
+          tester.getCenter(find.byKey(const ValueKey("asset-$song"))));
       await tester.pump(const Duration(milliseconds: 50));
       await drag.moveBy(const Offset(20, 0));
       await tester.pump();
@@ -219,22 +252,27 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await carry(tester.getCenter(lane));
-    var filled = c.document.elements.single as AudioElement;
-    expect(filled.clip.playlist.single.assetId, song,
-        reason: "the empty channel took the sound");
+    var empty = tester.getRect(find.byKey(const ValueKey("lane-new")));
+    await carry(Offset(empty.left + empty.width * 0.25, empty.center.dy));
+    var first = c.document.elements.single as AudioElement;
+    expect(first.clip.playlist.single.assetId, song);
+    expect(first.clip.channelName, "Audio 1");
+    expect(first.clip.at, closeTo(25, 3));
+    expect(first.visible, isFalse);
 
-    // Below the lanes, three quarters of the way along: a new channel,
-    // starting at the frame it was dropped on.
+    var lane = find.byKey(ValueKey("lane-${first.clip.channel}"));
+    expect(lane, findsOneWidget);
+    expect(find.byKey(const ValueKey("lane-new")), findsOneWidget,
+        reason: "a new empty lane under the one that filled");
+
     var box = tester.getRect(lane);
-    await carry(Offset(box.left + box.width * 0.75, box.bottom + 40));
-    var channels = c.document.elements.whereType<AudioElement>().toList();
-    expect(channels, hasLength(2));
-    var made = channels.last;
-    expect(made.visible, isFalse);
-    expect(made.clip.timed, isTrue);
-    expect(made.name, "Anthem");
-    expect(made.clip.at, closeTo(75, 3));
+    await carry(Offset(box.left + box.width * 0.75, box.center.dy));
+    var sounds = c.document.elements.whereType<AudioElement>().toList();
+    expect(sounds, hasLength(2));
+    expect(sounds.last.clip.channel, first.clip.channel,
+        reason: "on the same channel");
+    expect(sounds.last.clip.at, closeTo(75, 3));
+    expect(c.timelineChannels, hasLength(1));
   });
 
   test("a sound becomes a speaker; a clip keeps what the asset knows", () {

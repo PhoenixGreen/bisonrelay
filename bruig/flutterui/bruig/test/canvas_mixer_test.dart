@@ -405,6 +405,40 @@ void main() {
       await done(tester, c);
     });
 
+    // The reading under a fader is clicked and typed into, for a level to
+    // the tenth of a decibel -- which a fader dragged by hand cannot hit.
+    testWidgets("the level under a fader takes a typed value", (tester) async {
+      var c = await show(tester);
+      await tester.tap(find.descendant(
+          of: find.byKey(const ValueKey("strip-v")),
+          matching: find.byKey(const ValueKey("faderReading"))));
+      await tester.pump();
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "−6.5 dB");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect((c.document.elements.first as VideoElement).clip.mix.gainDb, -6.5);
+      c.undo();
+      expect((c.document.elements.first as VideoElement).clip.mix.gainDb, 0,
+          reason: "one undo step");
+
+      await tester.tap(find.byKey(const ValueKey("masterReading")));
+      await tester.pump();
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "-3");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(c.document.masterMix.gainDb, -3);
+      await done(tester, c);
+    });
+
+    testWidgets("the knob beside the pan control says Pan", (tester) async {
+      var c = await show(tester);
+      expect(find.text("Pan"), findsWidgets);
+      expect(find.text("Bal"), findsNothing);
+      await done(tester, c);
+    });
+
     testWidgets("mute is saved, solo is not", (tester) async {
       var c = await show(tester);
       var strip = find.byKey(const ValueKey("strip-v"));

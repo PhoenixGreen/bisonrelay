@@ -324,19 +324,19 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets("offers a picture, a video and a sound, each empty",
+    // Sound goes on the timeline's channels. A background offers a picture
+    // and a video; a sound only where it already has one, to change or take
+    // off.
+    testWidgets("offers a picture and a video, and no new sound",
         (tester) async {
       var c = CanvasController(const CanvasDocument(),
           audioEngine: engine, frameSource: FakeFrames(10));
       addTearDown(c.dispose);
       await show(tester, c);
-      for (var key in [
-        "backgroundPicture",
-        "backgroundVideo",
-        "backgroundSound"
-      ]) {
+      for (var key in ["backgroundPicture", "backgroundVideo"]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget);
       }
+      expect(find.byKey(const ValueKey("backgroundSound")), findsNothing);
     });
 
     testWidgets("a background video has no link and nothing to press",

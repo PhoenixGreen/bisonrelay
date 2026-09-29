@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
+import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
@@ -139,9 +140,56 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
             color: theme.colors.outlineVariant.withValues(alpha: 0.6),
           ),
         ),
-        for (var (i, scene) in scenes.indexed) _scene(theme, i, scene, scenes),
+        if (_previews && document.hasSpread)
+          ..._spreads(theme, scenes)
+        else
+          for (var (i, scene) in scenes.indexed)
+            _scene(theme, i, scene, scenes),
       ],
     );
+  }
+
+  /// _spreads is the list drawn as the book is: two pages that face each
+  /// other side by side, and a page alone -- a cover -- on the side of the
+  /// spine it is printed on, with the other half left empty.
+  List<Widget> _spreads(ThemeNotifier theme, List<CanvasScene> scenes) {
+    var out = <Widget>[];
+    var done = <int>{};
+    for (var i = 0; i < scenes.length; i++) {
+      if (done.contains(i)) continue;
+      var pair = document.spreadOf(i);
+      if (pair == null) {
+        done.add(i);
+        out.add(_scene(theme, i, scenes[i], scenes));
+        continue;
+      }
+      var (left, right) = pair;
+      done.addAll([
+        if (left != null) left,
+        if (right != null) right,
+      ]);
+      out.add(Row(
+        key: ValueKey("spread.$i"),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: left == null
+                ? const SizedBox.shrink()
+                : _scene(theme, left, scenes[left], scenes,
+                    // Towards the spine, so a capped pair still meets.
+                    align: Alignment.centerRight),
+          ),
+          const SizedBox(width: 3),
+          Expanded(
+            child: right == null
+                ? const SizedBox.shrink()
+                : _scene(theme, right, scenes[right], scenes,
+                    align: Alignment.centerLeft),
+          ),
+        ],
+      ));
+    }
+    return out;
   }
 
   /// _master is the shared canvas, pinned above the list.
@@ -159,54 +207,59 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         border: Border.all(
             color: here ? theme.colors.primary : theme.colors.outlineVariant),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        // Asking to edit the master is asking for one: it is switched on by
-        // being opened rather than by a second press somewhere else.
-        onTap: controller.showMaster,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(children: [
-            Icon(Icons.layers,
-                size: 15,
-                color: on
-                    ? theme.colors.onSurfaceVariant
-                    : theme.colors.onSurfaceVariant.withValues(alpha: 0.4)),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text("Master ${document.kind.one}",
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: on
-                          ? theme.colors.onSurfaceVariant
-                          : theme.colors.onSurfaceVariant
-                              .withValues(alpha: 0.5))),
-            ),
-            if (document.defaultTransition.on)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Tooltip(
-                  message: "${document.kind.manyCap} give way with "
-                      "${document.defaultTransition.kind.label} unless they "
-                      "say otherwise",
-                  child: Icon(Icons.compare_arrows,
-                      size: 14, color: theme.colors.onSurfaceVariant),
-                ),
+      child: Material(
+        // Its own, inside the list: on the sidebar's the highlight spilled
+        // over the other sections and stayed put when the list scrolled.
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          // Asking to edit the master is asking for one: it is switched on by
+          // being opened rather than by a second press somewhere else.
+          onTap: controller.showMaster,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(children: [
+              Icon(Icons.layers,
+                  size: 15,
+                  color: on
+                      ? theme.colors.onSurfaceVariant
+                      : theme.colors.onSurfaceVariant.withValues(alpha: 0.4)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text("Master ${document.kind.one}",
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: on
+                            ? theme.colors.onSurfaceVariant
+                            : theme.colors.onSurfaceVariant
+                                .withValues(alpha: 0.5))),
               ),
-            // A switch drawn to the height of the row's own text. The
-            // Material one is built for a settings page and made this line
-            // half again as tall as every scene under it; an icon button was
-            // the other way, small enough to read as a decoration.
-            _Switch(
-              on: on,
-              tooltip: on
-                  ? "Turn the master ${document.kind.one} off. What is on it is kept."
-                  : "Turn the master ${document.kind.one} on: what you put on it "
-                      "appears on every ${document.kind.one}",
-              onChanged: () => controller.masterOn = !on,
-            ),
-          ]),
+              if (document.defaultTransition.on)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Tooltip(
+                    message: "${document.kind.manyCap} give way with "
+                        "${document.defaultTransition.kind.label} unless they "
+                        "say otherwise",
+                    child: Icon(Icons.compare_arrows,
+                        size: 14, color: theme.colors.onSurfaceVariant),
+                  ),
+                ),
+              // A switch drawn to the height of the row's own text. The
+              // Material one is built for a settings page and made this line
+              // half again as tall as every scene under it; an icon button was
+              // the other way, small enough to read as a decoration.
+              _Switch(
+                on: on,
+                tooltip: on
+                    ? "Turn the master ${document.kind.one} off. What is on it is kept."
+                    : "Turn the master ${document.kind.one} on: what you put on it "
+                        "appears on every ${document.kind.one}",
+                onChanged: () => controller.masterOn = !on,
+              ),
+            ]),
+          ),
         ),
       ),
     );
@@ -222,8 +275,9 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     return number?.toString() ?? "";
   }
 
-  Widget _scene(ThemeNotifier theme, int index, CanvasScene scene,
-      List<CanvasScene> all) {
+  Widget _scene(
+      ThemeNotifier theme, int index, CanvasScene scene, List<CanvasScene> all,
+      {Alignment align = Alignment.center}) {
     var here = index == document.at && !document.editingMaster;
     var row = Container(
       key: ValueKey("scene.${scene.id}"),
@@ -234,88 +288,94 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
         border:
             Border.all(color: here ? theme.colors.primary : Colors.transparent),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        // No double-tap recognizer anywhere on this row. One here holds
-        // every single tap back until the double-click window has passed --
-        // a fifth of a second between pressing a scene and seeing it -- and
-        // one on the name alone still shares the arena with this and with
-        // the menu button, which then opened late as well. The second click
-        // on the name is counted by hand instead: see _nameClicked.
-        onTap: () => controller.goToScene(index),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              // The page's own number rather than its place in the list, for
-              // a document of pages: a cover has no number and the first page
-              // after one is still page one, so counting rows would be
-              // saying something the document does not.
-              SizedBox(
-                width: 18,
-                child: Text(_says(index),
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colors.onSurfaceVariant
-                            .withValues(alpha: 0.6))),
-              ),
-              Expanded(
-                child: _renaming == index
-                    ? TextField(
-                        controller: _name,
-                        autofocus: true,
-                        style: const TextStyle(fontSize: 12),
-                        decoration: const InputDecoration(
-                            isDense: true, border: InputBorder.none),
-                        onSubmitted: (_) => _commitRename(),
-                        onTapOutside: (_) => _commitRename(),
-                      )
-                    : Listener(
-                        // Not a gesture detector: a Listener is not in the
-                        // gesture arena, so nothing else on the row is held
-                        // back by it. See _nameClicked.
-                        onPointerDown: (_) => _nameClicked(index, scene),
-                        child: Text(scene.saysAt(index, document.kind),
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12)),
+      child: Material(
+        // Its own, inside the list: on the sidebar's the highlight spilled
+        // over the other sections and stayed put when the list scrolled.
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          // No double-tap recognizer anywhere on this row. One here holds
+          // every single tap back until the double-click window has passed --
+          // a fifth of a second between pressing a scene and seeing it -- and
+          // one on the name alone still shares the arena with this and with
+          // the menu button, which then opened late as well. The second click
+          // on the name is counted by hand instead: see _nameClicked.
+          onTap: () => controller.goToScene(index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    // The page's own number rather than its place in the list, for
+                    // a document of pages: a cover has no number and the first page
+                    // after one is still page one, so counting rows would be
+                    // saying something the document does not.
+                    SizedBox(
+                      width: 18,
+                      child: Text(_says(index),
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: theme.colors.onSurfaceVariant
+                                  .withValues(alpha: 0.6))),
+                    ),
+                    Expanded(
+                      child: _renaming == index
+                          ? TextField(
+                              controller: _name,
+                              autofocus: true,
+                              style: const TextStyle(fontSize: 12),
+                              decoration: const InputDecoration(
+                                  isDense: true, border: InputBorder.none),
+                              onSubmitted: (_) => _commitRename(),
+                              onTapOutside: (_) => _commitRename(),
+                            )
+                          : Listener(
+                              // Not a gesture detector: a Listener is not in the
+                              // gesture arena, so nothing else on the row is held
+                              // back by it. See _nameClicked.
+                              onPointerDown: (_) => _nameClicked(index, scene),
+                              child: Text(scene.saysAt(index, document.kind),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12)),
+                            ),
+                    ),
+                    // A cover, said in the list. Its row has no number in the
+                    // gutter -- it has none -- so without this the only difference
+                    // between the cover and page one is a blank space.
+                    if (document.isPages && scene.cover.isCover)
+                      Tooltip(
+                        message: scene.cover.label,
+                        child: Icon(Icons.bookmark_outline,
+                            size: 13, color: theme.colors.onSurfaceVariant),
                       ),
-              ),
-              // A cover, said in the list. Its row has no number in the
-              // gutter -- it has none -- so without this the only difference
-              // between the cover and page one is a blank space.
-              if (document.isPages && scene.cover.isCover)
-                Tooltip(
-                  message: scene.cover.label,
-                  child: Icon(Icons.bookmark_outline,
-                      size: 13, color: theme.colors.onSurfaceVariant),
-                ),
-              // A scene that holds is one that does not run on into the
-              // next, which is worth saying in the list: it is the
-              // difference between a sequence and a set of stills.
-              if (scene.holds)
-                Tooltip(
-                  message: document.isPages
-                      ? "Playing the document stops at this page"
-                      : "Playback stops at the end of this ${document.kind.one}",
-                  child: Icon(Icons.pause_circle_outline,
-                      size: 13, color: theme.colors.onSurfaceVariant),
-                ),
-              if (index < all.length - 1) _transitionMark(theme, index),
-              // The button's own context, not the panel's: a menu placed
-              // from the panel appeared beside the panel, which for a row
-              // half way down a list is nowhere near what was pressed.
-              Builder(
-                builder: (context) => _rowButton(theme, Icons.more_horiz,
-                    "More", () => _menu(context, index, all.length)),
-              ),
-            ]),
-            if (_previews)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 2),
-                child: _preview(index),
-              ),
-          ]),
+                    // A scene that holds is one that does not run on into the
+                    // next, which is worth saying in the list: it is the
+                    // difference between a sequence and a set of stills.
+                    if (scene.holds)
+                      Tooltip(
+                        message: document.isPages
+                            ? "Playing the document stops at this page"
+                            : "Playback stops at the end of this ${document.kind.one}",
+                        child: Icon(Icons.pause_circle_outline,
+                            size: 13, color: theme.colors.onSurfaceVariant),
+                      ),
+                    if (index < all.length - 1) _transitionMark(theme, index),
+                    // The button's own context, not the panel's: a menu placed
+                    // from the panel appeared beside the panel, which for a row
+                    // half way down a list is nowhere near what was pressed.
+                    Builder(
+                      builder: (context) => _rowButton(theme, Icons.more_horiz,
+                          "More", () => _menu(context, index, all.length)),
+                    ),
+                  ]),
+                  if (_previews)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 2),
+                      child: _preview(index, align),
+                    ),
+                ]),
+          ),
         ),
       ),
     );
@@ -351,19 +411,34 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     );
   }
 
-  /// _preview draws the scene, at the width the column has.
-  Widget _preview(int index) {
+  /// _previewMaxHeight caps a preview. Drawn at the column's width alone, a
+  /// sidebar dragged wide made each page taller than the screen.
+  static const double _previewMaxHeight = 220;
+
+  /// _preview draws the scene, at the width the column has -- up to
+  /// [_previewMaxHeight] tall, placed at [align] when that leaves room over.
+  Widget _preview(int index, Alignment align) {
     var size = document.size;
-    var ratio = size.height <= 0 ? 1.0 : size.width / size.height;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: AspectRatio(
-        aspectRatio: math.max(0.2, ratio),
-        child: CustomPaint(
-          painter: _ScenePainter(document: document, index: index),
+    var ratio =
+        math.max(0.2, size.height <= 0 ? 1.0 : size.width / size.height);
+    return LayoutBuilder(builder: (context, box) {
+      var width = math.min(box.maxWidth, _previewMaxHeight * ratio);
+      return Align(
+        alignment: align,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            key: ValueKey("scenePreview.$index"),
+            width: width,
+            height: width / ratio,
+            child: CustomPaint(
+              painter: _ScenePainter(
+                  document: document, index: index, images: controller.images),
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _draggable(
@@ -542,22 +617,63 @@ class _ScenePainter extends CustomPainter {
   final CanvasDocument document;
   final int index;
 
-  _ScenePainter({required this.document, required this.index});
+  /// images is the editor's own picture store. Without it every picture was
+  /// drawn as its "Loading" placeholder, for good: nothing here ever asked for
+  /// the picture itself. Repainted when a picture arrives.
+  final CanvasImageStore images;
+
+  _ScenePainter(
+      {required this.document, required this.index, required this.images})
+      : super(repaint: images);
+
+  /// frameOf is the moment a scene is shown at: the middle of its timeline,
+  /// where what it is about is on screen. Frame nought is usually before any
+  /// of it has arrived.
+  static int frameOf(CanvasDocument scene) =>
+      math.max(0, scene.frames - 1) ~/ 2;
 
   @override
   void paint(Canvas canvas, Size size) {
     var page = document.size;
     if (page.width <= 0 || page.height <= 0) return;
+    var scene = document.goToScene(index).copyWith(onMaster: false);
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     canvas.scale(size.width / page.width, size.height / page.height);
-    paintCanvasDocument(canvas, document.goToScene(index), frame: 0);
+    var beside = document.facingAt(index);
+    if (beside == null) {
+      paintCanvasDocument(canvas, scene, frame: frameOf(scene), images: images);
+    } else {
+      // What the facing page hangs across the spine is part of this page, as
+      // it is on the canvas: its paper first, then the neighbour's overhang,
+      // then this page's own elements over it. Drawn alone, a picture laid
+      // across the spread was cut off at the spine in the list.
+      var over = document.goToScene(beside).copyWith(onMaster: false);
+      var aside = (document.facingIsLeft(index) ?? false)
+          ? page.width.toDouble()
+          : -page.width.toDouble();
+      paintCanvasDocument(canvas, scene,
+          frame: frameOf(scene),
+          part: CanvasPaintPart.backdrop,
+          images: images);
+      canvas.save();
+      canvas.translate(aside, 0);
+      paintCanvasDocument(canvas, over,
+          frame: frameOf(over), part: CanvasPaintPart.contents, images: images);
+      canvas.restore();
+      paintCanvasDocument(canvas, scene,
+          frame: frameOf(scene),
+          part: CanvasPaintPart.contents,
+          images: images);
+    }
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_ScenePainter old) =>
-      old.index != index || !identical(old.document, document);
+      old.index != index ||
+      !identical(old.document, document) ||
+      !identical(old.images, images);
 }
 
 /// _Switch is an on-and-off drawn to the height of a line of this panel's

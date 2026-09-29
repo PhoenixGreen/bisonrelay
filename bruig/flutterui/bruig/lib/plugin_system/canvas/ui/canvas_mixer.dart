@@ -81,13 +81,16 @@ class _CanvasMixerState extends State<CanvasMixer>
   void _meter(Duration now) {
     if (now - _last < const Duration(milliseconds: 33)) return;
     _last = now;
-    var keys = [
-      for (var lane in controller.timedLanes) lane.element.id,
-      _master,
-    ];
+    var channels = {
+      for (var channel in controller.timelineChannels) channel.key: channel,
+    };
+    var keys = [...channels.keys, _master];
     var moved = false;
     for (var key in keys) {
-      var (l, r) = controller.levels(key == _master ? null : key);
+      // A channel is as loud as the loudest sound on it.
+      var (l, r) = key == _master
+          ? controller.levels()
+          : controller.channelLevels(channels[key]!);
       var db = (gainToDb(l), gainToDb(r));
       var was = _now[key];
       if (was == null ||
@@ -125,11 +128,11 @@ class _CanvasMixerState extends State<CanvasMixer>
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        var lanes = controller.timedLanes;
+        var lanes = controller.timelineChannels;
         var editing = _editing;
-        TimedLane? lane;
+        TimelineChannel? lane;
         if (editing != null && editing != _master) {
-          lane = lanes.where((l) => l.element.id == editing).firstOrNull;
+          lane = lanes.where((l) => l.key == editing).firstOrNull;
           if (lane == null) editing = null;
         }
         return Container(
@@ -169,7 +172,7 @@ class _CanvasMixerState extends State<CanvasMixer>
                   child: Text(
                     editing == null
                         ? "MIXER"
-                        : "MIXER · ${editing == _master ? "Master" : lane!.element.name}"
+                        : "MIXER · ${editing == _master ? "Master" : lane!.name}"
                             " · ${_editingComp ? "Compressor" : "EQ"}",
                     style: TextStyle(
                         fontSize: 10,
@@ -207,7 +210,7 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  Widget _strips(ThemeNotifier theme, List<TimedLane> lanes) {
+  Widget _strips(ThemeNotifier theme, List<TimelineChannel> lanes) {
     var master = controller.document.masterMix;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -234,13 +237,13 @@ class _CanvasMixerState extends State<CanvasMixer>
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: _ChannelStrip(
-                          key: ValueKey("strip-${lane.element.id}"),
-                          name: lane.element.name,
-                          mix: lane.clip.mix,
+                          key: ValueKey("strip-${lane.key}"),
+                          name: lane.name,
+                          mix: lane.mix,
                           editable: lane.editable,
-                          soloed: controller.solo.contains(lane.element.id),
-                          level: _now[lane.element.id] ?? (-90, -90),
-                          peak: _peaks[lane.element.id] ?? (-90, -90),
+                          soloed: controller.solo.contains(lane.key),
+                          level: _now[lane.key] ?? (-90, -90),
+                          peak: _peaks[lane.key] ?? (-90, -90),
                           theme: theme,
                           onChanged: (mix, {transient = false}) {
                             controller.beginInteraction();
@@ -249,13 +252,13 @@ class _CanvasMixerState extends State<CanvasMixer>
                             if (!transient) controller.endInteraction();
                           },
                           onCommit: controller.endInteraction,
-                          onSolo: () => controller.toggleSolo(lane.element.id),
+                          onSolo: () => controller.toggleSolo(lane.key),
                           onOpenEq: () => setState(() {
-                            _editing = lane.element.id;
+                            _editing = lane.key;
                             _editingComp = false;
                           }),
                           onOpenComp: () => setState(() {
-                            _editing = lane.element.id;
+                            _editing = lane.key;
                             _editingComp = true;
                           }),
                         ),
@@ -292,11 +295,11 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  Widget _editor(ThemeNotifier theme, String key, TimedLane? lane) {
+  Widget _editor(ThemeNotifier theme, String key, TimelineChannel? lane) {
     var isMaster = key == _master;
     var master = controller.document.masterMix;
-    var eq = isMaster ? master.eq : lane!.clip.mix.eq;
-    var comp = isMaster ? master.comp : lane!.clip.mix.comp;
+    var eq = isMaster ? master.eq : lane!.mix.eq;
+    var comp = isMaster ? master.comp : lane!.mix.comp;
 
     void write({Eq? eq, Dynamics? comp, bool transient = false}) {
       controller.beginInteraction();
@@ -304,8 +307,7 @@ class _CanvasMixerState extends State<CanvasMixer>
         controller.setMasterMix(master.copyWith(eq: eq, comp: comp),
             transient: true);
       } else {
-        controller.setChannelMix(
-            lane!, lane.clip.mix.copyWith(eq: eq, comp: comp),
+        controller.setChannelMix(lane!, lane.mix.copyWith(eq: eq, comp: comp),
             transient: true);
       }
       if (!transient) controller.endInteraction();
@@ -433,6 +435,112 @@ double faderDb(double position) => position >= 0.995
 String dbText(double db) => db <= -89
     ? "−∞"
     : "${db > 0 ? "+" : db < 0 ? "−" : ""}${db.abs().toStringAsFixed(1)}";
+
+/// parseDb reads a level somebody typed: "-6", "−6.5 dB", "+3", "0", or
+/// "-inf" for silence -- clamped to what the fader reaches. Null for anything
+/// that is not a level, which leaves the fader where it was.
+double? parseDb(String text) {
+  var t = text
+      .trim()
+      .toLowerCase()
+      .replaceAll("−", "-")
+      .replaceAll("db", "")
+      .replaceAll(" ", "");
+  if (t == "-inf" || t == "-∞" || t == "inf" || t == "∞") return -90;
+  var v = double.tryParse(t);
+  if (v == null || !v.isFinite) return null;
+  if (v <= _faderBottom - 30) return -90;
+  return v.clamp(-90.0, _faderTop).toDouble();
+}
+
+/// DbReading is the level under a fader: clicked, it takes a typed value.
+class DbReading extends StatefulWidget {
+  final double db;
+  final ValueChanged<double> onSet;
+  final TextStyle style;
+
+  /// textKey is on the reading itself, so a test can find it by its old name.
+  final Key? textKey;
+
+  /// fieldHeight is how tall the box for typing is, to fit where it is.
+  final double fieldHeight;
+
+  const DbReading(
+      {required this.db,
+      required this.onSet,
+      required this.style,
+      this.textKey,
+      this.fieldHeight = 16,
+      super.key});
+
+  @override
+  State<DbReading> createState() => _DbReadingState();
+}
+
+class _DbReadingState extends State<DbReading> {
+  bool _typing = false;
+  final TextEditingController _text = TextEditingController();
+  final FocusNode _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _open() {
+    setState(() {
+      _typing = true;
+      _text.text = widget.db <= -89 ? "-inf" : widget.db.toStringAsFixed(1);
+      _text.selection =
+          TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  void _commit() {
+    if (!_typing) return;
+    var v = parseDb(_text.text);
+    setState(() => _typing = false);
+    if (v != null && v != widget.db) widget.onSet(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_typing) {
+      return SizedBox(
+        height: widget.fieldHeight,
+        child: TextField(
+          key: const ValueKey("dbEntry"),
+          controller: _text,
+          focusNode: _focus,
+          textAlign: TextAlign.center,
+          style: widget.style,
+          decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+              border: InputBorder.none),
+          onSubmitted: (_) => _commit(),
+          onTapOutside: (_) => _commit(),
+        ),
+      );
+    }
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _open,
+        child: Text("${dbText(widget.db)} dB",
+            key: widget.textKey,
+            textAlign: TextAlign.center,
+            style: widget.style),
+      ),
+    );
+  }
+}
 
 class _Fader extends StatelessWidget {
   final double db;
@@ -737,9 +845,10 @@ class _ChannelStrip extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text("${dbText(mix.gainDb)} dB",
-            key: const ValueKey("faderReading"),
-            textAlign: TextAlign.center,
+        DbReading(
+            db: mix.gainDb,
+            textKey: const ValueKey("faderReading"),
+            onSet: (db) => onChanged(mix.copyWith(gainDb: db)),
             style: TextStyle(
                 fontSize: 11,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -819,7 +928,7 @@ class _Balance extends StatelessWidget {
         ? "C"
         : "${value < 0 ? "L" : "R"}${(value.abs() * 100).round()}";
     return Row(children: [
-      Text("Bal",
+      Text("Pan",
           style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant)),
       const Spacer(),
       GestureDetector(
@@ -976,9 +1085,10 @@ class _MasterStrip extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text("${dbText(mix.gainDb)} dB",
-                key: const ValueKey("masterReading"),
-                textAlign: TextAlign.center,
+            DbReading(
+                db: mix.gainDb,
+                textKey: const ValueKey("masterReading"),
+                onSet: (db) => onChanged(mix.copyWith(gainDb: db)),
                 style: TextStyle(fontSize: 11, color: colors.onSurface)),
           ]),
         ),

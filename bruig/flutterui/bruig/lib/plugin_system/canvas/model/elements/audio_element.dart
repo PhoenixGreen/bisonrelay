@@ -191,3 +191,10 @@ class AudioElement extends CanvasElement {
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }
 }
+
+/// isTimelineSound is whether [e] is a sound that lives on the timeline
+/// rather than on the canvas: timed, and not drawn. It is on a channel, not a
+/// page, so the canvas's own lists and tools leave it alone -- the layers,
+/// select-all, the speaker's settings.
+bool isTimelineSound(Object? e) =>
+    e is AudioElement && e.clip.timed && !e.visible;

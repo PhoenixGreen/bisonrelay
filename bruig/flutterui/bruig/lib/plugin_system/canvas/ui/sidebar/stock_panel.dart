@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/export/video_export.dart'
+    show ffmpegPath;
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
@@ -46,6 +50,10 @@ class StockPanel extends StatefulWidget {
   final CanvasController controller;
   const StockPanel({required this.controller, super.key});
 
+  /// videoFrames decodes a video preview. ffmpeg, unless a test says
+  /// otherwise.
+  static FrameSource videoFrames = FfmpegFrames(ffmpegPath);
+
   @override
   State<StockPanel> createState() => _StockPanelState();
 }
@@ -60,6 +68,9 @@ class _StockPanelState extends State<StockPanel> {
   bool? _proxied;
   bool? _hasKey;
   bool _editingKey = false;
+
+  /// _licenceOpen is whether the licence button's panel is showing.
+  bool _licenceOpen = false;
 
   /// _query is the last search made, or null before the first -- which is
   /// what decides whether changing a filter searches again.
@@ -77,6 +88,10 @@ class _StockPanelState extends State<StockPanel> {
     if (mounted) setState(() {});
   });
 
+  late final _VideoPreviewer _watching = _VideoPreviewer(() {
+    if (mounted) setState(() {});
+  });
+
   @override
   void initState() {
     super.initState();
@@ -86,6 +101,7 @@ class _StockPanelState extends State<StockPanel> {
   @override
   void dispose() {
     _previewer.dispose();
+    _watching.dispose();
     _search.dispose();
     _key.dispose();
     _secret.dispose();
@@ -226,8 +242,17 @@ class _StockPanelState extends State<StockPanel> {
     if (asset != null) snacks.success("${asset.name} is in the library.");
   }
 
+  Future<void> _watch(StockItem item) async {
+    var prefs = context.read<CanvasPreferences>();
+    _previewer.stop();
+    var problem = await _watching.toggle(item,
+        allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
+    if (problem != null && mounted) SnackBarModel.of(context).error(problem);
+  }
+
   Future<void> _listen(StockItem item) async {
     var prefs = context.read<CanvasPreferences>();
+    _watching.stop();
     var ok = await _previewer.toggle(item,
         allowFetching: prefs.allowFetching, proxied: _proxied ?? true);
     if (!ok && mounted) {
@@ -281,9 +306,20 @@ class _StockPanelState extends State<StockPanel> {
       ]);
     }
 
-    var filters = filtersFor(_source);
+    // The licence choice is behind the licence button rather than among the
+    // filters: it is a question about what may be done with a result, asked
+    // once, not a way of narrowing a search that is changed every time.
+    var filters = [
+      for (var f in filtersFor(_source))
+        if (!_licenceFilter(f)) f,
+    ];
+    var licence = [
+      for (var f in filtersFor(_source))
+        if (_licenceFilter(f)) f,
+    ];
     var chosen = _filters[_source] ?? const {};
     var visual = _source.kind != AssetKind.audio;
+    var keyed = _hasKey == true && !_editingKey;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
@@ -293,28 +329,37 @@ class _StockPanelState extends State<StockPanel> {
             key: const ValueKey("stockSource"),
             label: "Library",
             value: _source,
-            width: 200,
+            width: 160,
             options: [for (var s in StockSource.values) (s, s.label)],
             onChanged: _choose,
           ),
+          if (keyed) ...[
+            CanvasIconButton(
+              key: const ValueKey("stockChangeKey"),
+              icon: Icons.key,
+              tooltip: "Change the ${_source.from} key",
+              onPressed: () => setState(() => _editingKey = true),
+            ),
+            CanvasIconButton(
+              key: const ValueKey("stockForgetKey"),
+              icon: Icons.key_off,
+              tooltip: "Forget the ${_source.from} key",
+              onPressed: _forgetKey,
+            ),
+          ],
+          CanvasIconButton(
+            key: const ValueKey("stockLicence"),
+            icon: Icons.copyright_outlined,
+            tooltip: "Licence",
+            active: _licenceOpen,
+            onPressed: () => setState(() => _licenceOpen = !_licenceOpen),
+          ),
         ]),
+        if (_licenceOpen) _licencePanel(theme, muted, licence, chosen),
         if (_hasKey == false || _editingKey)
           ..._keyForm(theme, muted)
         else if (_hasKey == true) ...[
-          Row(children: [
-            Expanded(
-                child: Text("Using your ${_source.from} key.", style: muted)),
-            TextButton(
-              key: const ValueKey("stockChangeKey"),
-              onPressed: () => setState(() => _editingKey = true),
-              child: const Text("Change"),
-            ),
-            TextButton(
-              key: const ValueKey("stockForgetKey"),
-              onPressed: _forgetKey,
-              child: const Text("Forget"),
-            ),
-          ]),
+          const SizedBox(height: 6),
           Row(children: [
             Expanded(
               child: TextField(
@@ -339,7 +384,7 @@ class _StockPanelState extends State<StockPanel> {
               onPressed: _loading ? null : () => _run(),
             ),
           ]),
-          const SizedBox(height: 6),
+          if (filters.isNotEmpty) const SizedBox(height: 6),
           CanvasWrap(children: [
             for (var f in filters)
               CanvasDropdown<String>(
@@ -353,7 +398,7 @@ class _StockPanelState extends State<StockPanel> {
                 onChanged: (v) => _setFilter(f.id, v),
               ),
           ]),
-          note(_source.terms),
+          const SizedBox(height: 6),
           if (_problem != null)
             note(key: const ValueKey("stockProblem"), _problem!),
           if (visual)
@@ -383,6 +428,39 @@ class _StockPanelState extends State<StockPanel> {
       ],
     );
   }
+
+  /// _licenceFilter is whether [f] is a library's licence choice.
+  static bool _licenceFilter(StockFilter f) =>
+      f.id == "license" || f.id == "limit_to_public_domain";
+
+  /// _licencePanel is what the licence button opens: the library's licence
+  /// choice, where it has one, and what its licences ask of whoever uses a
+  /// result.
+  Widget _licencePanel(ThemeNotifier theme, TextStyle muted,
+          List<StockFilter> licence, Map<String, String> chosen) =>
+      Container(
+        key: const ValueKey("stockLicencePanel"),
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: theme.colors.outlineVariant),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var f in licence)
+            Wrap(spacing: 4, runSpacing: 4, children: [
+              for (var (value, label) in f.options)
+                _Pill(
+                  key: ValueKey("stockLicence-${f.id}-$value"),
+                  label: label,
+                  on: (chosen[f.id] ?? f.options.first.$1) == value,
+                  onTap: () => _setFilter(f.id, value),
+                ),
+            ]),
+          if (licence.isNotEmpty) const SizedBox(height: 6),
+          Text(_source.terms, style: muted),
+        ]),
+      );
 
   List<Widget> _keyForm(ThemeNotifier theme, TextStyle muted) => [
         Padding(
@@ -442,10 +520,15 @@ class _StockPanelState extends State<StockPanel> {
           ),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => _use(item),
-          child: body,
+        child: Material(
+          // Its own, inside the list: on the sidebar's the highlight spilled
+          // over the other sections and stayed put when the list scrolled.
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _use(item),
+            child: body,
+          ),
         ),
       );
 
@@ -455,10 +538,45 @@ class _StockPanelState extends State<StockPanel> {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Stack(children: [
-              _Thumb(item: item, width: 96, height: 72),
+              // Playing, the preview in place of the still.
+              if (_watching.playing == item.key && _watching.frame != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    key: ValueKey("stockWatching-${item.key}"),
+                    width: 96,
+                    height: 72,
+                    child: RawImage(image: _watching.frame, fit: BoxFit.cover),
+                  ),
+                )
+              else
+                _Thumb(item: item, width: 96, height: 72),
               if (item.length > 0)
                 Positioned(
                     left: 4, bottom: 4, child: _Badge(_duration(item.length))),
+              // A video is watched before it is chosen: a small copy,
+              // fetched when this is pressed and thrown away after.
+              if (item.kind == AssetKind.video && item.preview.isNotEmpty)
+                Positioned(
+                  right: 3,
+                  bottom: 3,
+                  child: _watching.loading == item.key
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : InkResponse(
+                          key: ValueKey("stockWatch-${item.key}"),
+                          radius: 12,
+                          onTap: () => _watch(item),
+                          child: Icon(
+                              _watching.playing == item.key
+                                  ? Icons.stop_circle
+                                  : Icons.play_circle,
+                              size: 20,
+                              color: const Color(0xEEFFFFFF)),
+                        ),
+                ),
               if (over || _busy.contains(item.key))
                 Positioned(right: 2, top: 2, child: _addButton(item, theme)),
             ]),
@@ -557,6 +675,42 @@ class _StockPanelState extends State<StockPanel> {
                 height: 14,
                 child: CircularProgressIndicator(strokeWidth: 2))
             : Icon(Icons.add, size: 14, color: theme.colors.onSurface),
+      ),
+    );
+  }
+}
+
+/// _Pill is one choice of a few, pressed to choose it.
+class _Pill extends StatelessWidget {
+  final String label;
+  final bool on;
+  final VoidCallback onTap;
+  const _Pill(
+      {required this.label, required this.on, required this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: on ? theme.colors.secondaryContainer : null,
+            border: Border.all(
+                color: on ? theme.colors.primary : theme.colors.outlineVariant),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: on
+                      ? theme.colors.onSecondaryContainer
+                      : theme.colors.onSurface)),
+        ),
       ),
     );
   }
@@ -731,5 +885,144 @@ class _Previewer {
     if (dir != null) {
       dir.delete(recursive: true).catchError((_) => dir);
     }
+  }
+}
+
+/// _VideoPreviewer plays one stock video at a time, small and silent, in its
+/// result's tile: the smallest rendition fetched to a temporary file, its
+/// frames decoded as they are shown. Forgotten when the sidebar closes.
+class _VideoPreviewer {
+  final VoidCallback changed;
+  _VideoPreviewer(this.changed);
+
+  /// playing and loading are the item keys being watched and being fetched.
+  String? playing;
+  String? loading;
+
+  /// frame is what is on screen now.
+  ui.Image? frame;
+
+  FrameReader? _reader;
+  Directory? _dir;
+
+  /// _run goes up with every start and stop, so a preview still fetching or
+  /// decoding when another is asked for knows to give way.
+  int _run = 0;
+
+  /// toggle stops [item] if it is playing, or plays it -- answering why not,
+  /// where it cannot.
+  Future<String?> toggle(StockItem item,
+      {required bool allowFetching, required bool proxied}) async {
+    if (playing == item.key || loading == item.key) {
+      stop();
+      return null;
+    }
+    stop();
+    var run = _run;
+    loading = item.key;
+    changed();
+    try {
+      _dir ??= await Directory.systemTemp.createTemp("canvas-stock-video");
+      var file = File(path.join(_dir!.path, "${fileNameFor(item.key)}.mp4"));
+      if (!await file.exists()) {
+        var got = await StockClient.instance.download(item.preview, file,
+            maxBytes: _previewMaxBytes,
+            allowFetching: allowFetching,
+            proxied: proxied);
+        if (!got) return "The preview of ${item.title} could not be fetched.";
+      }
+      if (run != _run) return null;
+      // Twice the tile, for a sharp picture on a retina screen, and even on
+      // both sides, which the decoder's scaler needs.
+      var w = 192;
+      var h = item.width > 0 && item.height > 0
+          ? ((w * item.height / item.width).round() ~/ 2) * 2
+          : 108;
+      var reader = await StockPanel.videoFrames
+          .open(file.path, from: 0, width: w, height: h, fps: 12);
+      if (reader == null) {
+        return "Watching a video needs ffmpeg, which reads it frame by frame.";
+      }
+      if (run != _run) {
+        reader.close();
+        return null;
+      }
+      _reader = reader;
+      playing = item.key;
+      loading = null;
+      changed();
+      unawaited(_show(run, reader));
+      return null;
+    } finally {
+      if (run == _run && loading == item.key) {
+        loading = null;
+        changed();
+      }
+    }
+  }
+
+  /// _show puts each frame up at its moment, and stops at the end.
+  Future<void> _show(int run, FrameReader reader) async {
+    var clock = Stopwatch()..start();
+    while (run == _run) {
+      var next = await reader.next();
+      if (next == null || run != _run) {
+        next?.image.dispose();
+        break;
+      }
+      var wait = (next.time * 1000).round() - clock.elapsedMilliseconds;
+      if (wait > 0) await _sleep(wait);
+      if (run != _run) {
+        next.image.dispose();
+        break;
+      }
+      frame?.dispose();
+      frame = next.image;
+      changed();
+    }
+    if (run == _run) stop();
+  }
+
+  /// _sleep waits [ms] -- cut short by a stop, so nothing is left waiting
+  /// after the preview has gone.
+  Timer? _tick;
+  Completer<void>? _asleep;
+  Future<void> _sleep(int ms) {
+    var done = Completer<void>();
+    _asleep = done;
+    _tick = Timer(Duration(milliseconds: ms), () {
+      if (!done.isCompleted) done.complete();
+    });
+    return done.future;
+  }
+
+  void _wake() {
+    _tick?.cancel();
+    _tick = null;
+    var asleep = _asleep;
+    _asleep = null;
+    if (asleep != null && !asleep.isCompleted) asleep.complete();
+  }
+
+  void stop() {
+    _run++;
+    _wake();
+    _reader?.close();
+    _reader = null;
+    var was = playing != null || loading != null;
+    playing = null;
+    loading = null;
+    frame?.dispose();
+    frame = null;
+    if (was) changed();
+  }
+
+  void dispose() {
+    _run++;
+    _wake();
+    _reader?.close();
+    frame?.dispose();
+    var dir = _dir;
+    if (dir != null) dir.delete(recursive: true).catchError((_) => dir);
   }
 }

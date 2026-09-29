@@ -55,23 +55,6 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.path => Icons.gesture,
     };
 
-String _hintForKind(ElementKind kind) => switch (kind) {
-      ElementKind.text => "A heading or a paragraph",
-      ElementKind.image => "A picture, with its background removable",
-      ElementKind.shape => "A square, circle, star or arrow",
-      ElementKind.line => "A rule or an arrow between two points",
-      ElementKind.chart => "Bars, lines, pies and radars",
-      ElementKind.table => "A grid of text",
-      ElementKind.button => "Something to press in a published canvas",
-      ElementKind.counter => "A number that counts, or a clock",
-      ElementKind.audio => "A sound, and a speaker to press to hear it",
-      ElementKind.video => "A video file, keyable and graded, or a link",
-      ElementKind.background => "A generated pattern in a panel",
-      ElementKind.player => "A numbered dot with a name",
-      ElementKind.path =>
-        "A curve, and optionally the route something takes along it",
-    };
-
 class CanvasElementsPanel extends StatelessWidget {
   final CanvasController controller;
   const CanvasElementsPanel({required this.controller, super.key});
@@ -119,18 +102,20 @@ class _AddChip extends StatelessWidget {
       ]),
     );
 
-    return Tooltip(
-      message: "${kind.label} — ${_hintForKind(kind)}\n"
-          "Click to add, or drag onto the canvas",
-      child: Draggable<ElementKind>(
-        data: kind,
-        // The same chip under the pointer, faded. A generic drag rectangle
-        // gives no clue what is being carried once there are nine of them.
-        feedback: Material(
-          color: Colors.transparent,
-          child: Opacity(opacity: 0.8, child: body),
-        ),
-        childWhenDragging: Opacity(opacity: 0.35, child: body),
+    // No hover text: the chip's own icon and name say what it adds.
+    return Draggable<ElementKind>(
+      data: kind,
+      // The same chip under the pointer, faded. A generic drag rectangle
+      // gives no clue what is being carried once there are nine of them.
+      feedback: Material(
+        color: Colors.transparent,
+        child: Opacity(opacity: 0.8, child: body),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: body),
+      child: Material(
+        // Its own, inside the list: on the sidebar's the highlight spilled
+        // over the other sections and stayed put when the list scrolled.
+        type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () =>

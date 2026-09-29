@@ -1,5 +1,3 @@
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -1260,7 +1258,11 @@ void main() {
       await tester.pumpAndSettle();
 
       var closed = tester.getSize(find.byType(CanvasTimeline)).height;
-      await tester.tap(find.byTooltip("Keyframe settings for ${element.name}"));
+      // The transport row scrolls in a narrow window, and this one is.
+      var settings = find.byTooltip("Keyframe settings for ${element.name}");
+      await tester.ensureVisible(settings);
+      await tester.pumpAndSettle();
+      await tester.tap(settings);
       await tester.pumpAndSettle();
 
       expect(open, isTrue);
@@ -1592,11 +1594,7 @@ void main() {
       // The ruler is the strip's own CustomPaint, and the marks sit at
       // _rulerHeight + 14 down it -- see _keyframeAt, which is what this is
       // exercising.
-      var ruler = find
-          .descendant(
-              of: find.byType(CanvasTimeline),
-              matching: find.byType(CustomPaint))
-          .last;
+      var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       // The same mapping _xFor uses, so the drag starts exactly on the mark.
       double xFor(int frame) => box.left + (frame + 0.5) / 30 * box.width;
@@ -1636,11 +1634,7 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
       var before = bandsIn(controller.document.elementById("c")!.track).single;
 
-      var ruler = find
-          .descendant(
-              of: find.byType(CanvasTimeline),
-              matching: find.byType(CustomPaint))
-          .last;
+      var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       var frames = controller.document.frames;
       double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
@@ -1677,11 +1671,7 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
       var before = bandsIn(controller.document.elementById("c")!.track).single;
 
-      var ruler = find
-          .descendant(
-              of: find.byType(CanvasTimeline),
-              matching: find.byType(CustomPaint))
-          .last;
+      var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       var frames = controller.document.frames;
       double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
@@ -1703,11 +1693,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var ruler = find
-          .descendant(
-              of: find.byType(CanvasTimeline),
-              matching: find.byType(CustomPaint))
-          .last;
+      var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
 
       // On the ruler's numbers, above the keyframe row: that is where the
@@ -2076,11 +2062,7 @@ void main() {
 
     /// tapMark clicks the mark at [frame] on the strip.
     Future<void> tapMark(WidgetTester tester, int frame, int frames) async {
-      var ruler = find
-          .descendant(
-              of: find.byType(CanvasTimeline),
-              matching: find.byType(CustomPaint))
-          .last;
+      var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       await tester.tapAt(Offset(
           box.left + (frame + 0.5) / frames * box.width, box.top + 22 + 14));
@@ -8048,27 +8030,20 @@ void main() {
       );
     }
 
-    testWidgets("Add audio adds an empty channel, and room to see it",
+    // No button to press for a channel: there is always an empty one at the
+    // bottom, and nothing is put on the canvas until a sound is.
+    testWidgets("an empty channel is always there, and is not an element",
         (tester) async {
       var c = CanvasController(const CanvasDocument(frames: 100));
       addTearDown(c.dispose);
       await pump(tester, host(c));
-      expect(find.byKey(const ValueKey("channelsToggle")), findsNothing,
-          reason: "no strip floating over the canvas to open");
-      var before = tester.getSize(find.byType(CanvasTimeline)).height;
-
-      await tester.tap(find.byKey(const ValueKey("addAudioChannel")));
+      expect(find.byKey(const ValueKey("addAudioChannel")), findsNothing);
+      await tester.drag(find.byKey(const ValueKey("timelineGrip")),
+          const Offset(0, -120));
       await tester.pumpAndSettle();
-
-      var audio = c.document.elements.whereType<AudioElement>().single;
-      expect(audio.visible, isFalse, reason: "a sound, not a speaker");
-      expect(audio.clip.timed, isTrue);
-      expect(audio.clip.isEmpty, isTrue);
-      expect(audio.name, "Audio 1");
-      expect(tester.getSize(find.byType(CanvasTimeline)).height,
-          greaterThan(before),
-          reason: "the timeline opened to show the new channel");
-      expect(find.byKey(ValueKey("lane-${audio.id}")), findsOneWidget);
+      expect(find.byKey(const ValueKey("lane-new")), findsOneWidget);
+      expect(find.textContaining("Audio 1"), findsWidgets);
+      expect(c.document.elements, isEmpty);
     });
 
     testWidgets("the top edge drags the timeline open and shut",
@@ -8076,7 +8051,7 @@ void main() {
       var c = CanvasController(const CanvasDocument(frames: 100));
       addTearDown(c.dispose);
       await pump(tester, host(c));
-      expect(find.text(CanvasChannels.hint), findsNothing,
+      expect(find.byKey(const ValueKey("lane-new")), findsNothing,
           reason: "no room for channels yet");
 
       var grip = find.byKey(const ValueKey("timelineGrip"));
@@ -8084,7 +8059,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getSize(find.byType(CanvasTimeline)).height,
           closeTo(timelineHeight + 100, 25));
-      expect(find.text(CanvasChannels.hint), findsOneWidget);
+      expect(find.byKey(const ValueKey("lane-new")), findsOneWidget);
 
       await tester.drag(grip, const Offset(0, 300));
       await tester.pumpAndSettle();

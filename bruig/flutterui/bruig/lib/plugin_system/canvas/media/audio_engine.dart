@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:ffi' as ffi;
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter/foundation.dart';
@@ -91,6 +94,11 @@ abstract class AudioEngine {
   void stop(AudioVoice voice);
 
   void close(AudioTrack track);
+
+  /// peaks is the shape of the sound in the file at [path]: [count] values,
+  /// nought to one, each the loudest moment in its share of the file. For
+  /// drawing, never for playing. Null where the file cannot be read.
+  Future<Float32List?> peaks(String path, int count);
 }
 
 class _SoLoudTrack extends AudioTrack {
@@ -102,6 +110,29 @@ class _SoLoudVoice extends AudioVoice {
   final SoundHandle handle;
   _SoLoudVoice(this.handle);
 }
+
+/// _busMetering switches level-gathering on for one mixing bus.
+///
+/// Looked up by hand. A bus's meter reads nothing until this has been called
+/// for it, and flutter_soloud 4.1 exports the native function but leaves its
+/// Dart binding commented out -- so every channel meter sat at the bottom
+/// while the master, which has a binding, moved. The library is opened the
+/// way the package opens it, which hands back the one already loaded. Null
+/// where it cannot be found, and the meters simply stay still.
+final void Function(int busId, bool enable)? _busMetering = () {
+  try {
+    var lib = Platform.isLinux || Platform.isAndroid
+        ? ffi.DynamicLibrary.open("libflutter_soloud_plugin.so")
+        : Platform.isWindows
+            ? ffi.DynamicLibrary.open("flutter_soloud_plugin.dll")
+            : ffi.DynamicLibrary.process();
+    return lib.lookupFunction<ffi.Void Function(ffi.UnsignedInt, ffi.Bool),
+        void Function(int, bool)>("busSetVisualizationEnable");
+  } catch (exception) {
+    debugPrint("Channel meters are unavailable: $exception");
+    return null;
+  }
+}();
 
 /// SoLoudAudioEngine plays through flutter_soloud.
 class SoLoudAudioEngine implements AudioEngine {
@@ -144,6 +175,10 @@ class SoLoudAudioEngine implements AudioEngine {
   /// _buses is a mixing bus per mixer channel, made when the channel is first
   /// set and played on the engine for as long as the engine lives.
   final Map<String, Bus> _buses = {};
+
+  /// _metered is the buses whose levels are being gathered -- see
+  /// _busMetering.
+  final Set<String> _metered = {};
   bool _measuring = false;
 
   static const _eqBands = soloudBands;
@@ -245,12 +280,42 @@ class SoLoudAudioEngine implements AudioEngine {
   }
 
   @override
+  Future<Float32List?> peaks(String path, int count) async {
+    try {
+      // Eight readings for each peak, the loudest kept: a single reading per
+      // point lands between the beats as often as on them, and draws a quiet
+      // sound where there is a loud one.
+      const per = 8;
+      var raw = await _soloud.readSamplesFromFile(path, count * per);
+      var out = Float32List(count);
+      for (var i = 0; i < count; i++) {
+        var most = 0.0;
+        for (var j = i * per; j < (i + 1) * per && j < raw.length; j++) {
+          var v = raw[j].abs();
+          if (v > most) most = v;
+        }
+        out[i] = most.clamp(0.0, 1.0);
+      }
+      return out;
+    } catch (exception) {
+      debugPrint("Unable to read the shape of $path: $exception");
+      return null;
+    }
+  }
+
+  @override
   (double, double) levels([String? channel]) {
     if (!_soloud.isInitialized) return (0, 0);
     try {
       if (!_measuring) {
         _soloud.setVisualizationEnabled(true);
         _measuring = true;
+      }
+      // Each bus gathers its own levels, and only once asked to.
+      for (var entry in _buses.entries) {
+        if (_metered.add(entry.key)) {
+          _busMetering?.call(entry.value.busId, true);
+        }
       }
       if (channel == null) {
         return (

@@ -731,8 +731,16 @@ class CanvasStageState extends State<CanvasStage> {
   /// tried to follow several different rotations at once would have no
   /// meaningful orientation, and the box is only being used to say "this much
   /// is chosen".
+  /// _chosen is what is selected on the canvas. A sound on the timeline is
+  /// selected from its channel and is not drawn: a box and handles for it
+  /// were an empty element sitting on the page.
+  List<CanvasElement> get _chosen => [
+        for (var e in controller.selectedElements)
+          if (!isTimelineSound(e)) e,
+      ];
+
   Rect? get _selectionBounds {
-    var elements = controller.selectedElements;
+    var elements = _chosen;
     if (elements.isEmpty) return null;
     // Where they are on this frame, not where they rest -- see
     // CanvasElement.boundsAt. Using the resting bounds left the blue rectangle
@@ -762,17 +770,15 @@ class CanvasStageState extends State<CanvasStage> {
   /// _selectionHasOwnGeometry is whether the handles and the rotate ring are
   /// worth showing. See hasOwnGeometry.
   bool get _selectionHasOwnGeometry {
-    var elements = controller.selectedElements;
+    var elements = _chosen;
     if (elements.isEmpty) return false;
     return elements.every((e) => hasOwnGeometry(e, document, controller.frame));
   }
 
   /// _rotationOfSelection is the single selected element's rotation, or zero
   /// when several are chosen.
-  double get _rotationOfSelection => controller.selectedElements.length == 1
-      ? controller.selectedElements.first.rotationAt(controller.frame) *
-          math.pi /
-          180
+  double get _rotationOfSelection => _chosen.length == 1
+      ? _chosen.first.rotationAt(controller.frame) * math.pi / 180
       : 0;
 
   // ------------------------------------------------------------------------
@@ -869,6 +875,16 @@ class CanvasStageState extends State<CanvasStage> {
       return (local - box.center).distance <= r;
     }
     return true;
+  }
+
+  /// _onSelectionGrip is whether a press at [stage] ([doc] in document space)
+  /// would take hold of something on the selection: a resize or rotate
+  /// handle, a flow grip, or a selected path's points and handles.
+  bool _onSelectionGrip(Offset stage, Offset doc) {
+    if (controller.selection.isEmpty) return false;
+    if (_hitHandle(stage) != null || _hitFlowGrip(stage) != null) return true;
+    var path = _selectedPath();
+    return path != null && _hitPathControl(path, doc) != null;
   }
 
   /// _hitHandle is which grip is under a stage-space point, if any.
@@ -1512,7 +1528,13 @@ class CanvasStageState extends State<CanvasStage> {
     // press. Before the hit test too, because the elements of the *edited*
     // page are the only ones it knows about, and one hanging over the spine
     // would otherwise be picked up by a press meant for the leaf beside it.
-    if (_facingPage case var beside? when _onFacingPage(stage)) {
+    //
+    // Except on a grip of what is selected. A picture laid across the spread
+    // from one leaf has handles on the other, and they belong to the page
+    // being edited: switching pages there left a handle that could be seen
+    // and never taken hold of.
+    if (_facingPage case var beside?
+        when _onFacingPage(stage) && !_onSelectionGrip(stage, doc)) {
       controller.goToScene(beside);
       _mode = _DragMode.none;
       return;
@@ -3270,6 +3292,9 @@ class CanvasStageState extends State<CanvasStage> {
                         page: _pageRect,
                         view: _viewRect,
                         facing: _facingPage,
+                        facingFrame: _facingPage == null
+                            ? 0
+                            : controller.frameOn(_facingPage!),
                         facingOnLeft: _facingOnLeft,
                         facingShown: _spreadShown,
                         document: document,
@@ -3287,7 +3312,7 @@ class CanvasStageState extends State<CanvasStage> {
                         audioState: controller.audioState,
                         videoShow: controller.videoShow,
                         audioRevision: controller.audioRevision,
-                        selection: controller.selection,
+                        selection: {for (var e in _chosen) e.id},
                         showHelpers: controller.showHelpers,
                         selectedPath: _selectedPath(),
                         chartLabels: _selectedChartLabels(),

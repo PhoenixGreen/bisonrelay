@@ -449,26 +449,31 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_folder.isNotEmpty)
-        InkWell(
-          onTap: () {
-            setState(() {
-              _folder = "";
-              _loading = true;
-            });
-            _rememberFolder();
-            _reload();
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(children: [
-              const Icon(Icons.arrow_back, size: 15),
-              const SizedBox(width: 6),
-              Expanded(
-                  child: Text(_folder,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600))),
-            ]),
+        Material(
+          // Its own, inside the list: on the sidebar's the highlight spilled
+          // over the other sections and stayed put when the list scrolled.
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _folder = "";
+                _loading = true;
+              });
+              _rememberFolder();
+              _reload();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(children: [
+                const Icon(Icons.arrow_back, size: 15),
+                const SizedBox(width: 6),
+                Expanded(
+                    child: Text(_folder,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600))),
+              ]),
+            ),
           ),
         ),
       Expanded(
@@ -627,50 +632,55 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
         controller.name == entry.name &&
         controller.folder == entry.folder;
 
-    return InkWell(
+    return Material(
       // A reorderable list needs a key on every child, and the row's own
       // identity is where it lives.
       key: ValueKey("${entry.folder}/${entry.name}"),
-      onTap: () async {
-        if (entry.isFolder) {
-          setState(() {
-            _folder = entry.name;
-            _loading = true;
-          });
-          _rememberFolder();
-          await _reload();
-        } else {
-          await widget.onOpen(entry.folder, entry.name);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        color: open ? theme.colors.secondaryContainer : null,
-        child: Row(children: [
-          Icon(
-            entry.isFolder ? Icons.folder_outlined : Icons.dashboard_outlined,
-            size: 16,
-            color: theme.colors.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12)),
-                if (!entry.isFolder && entry.modified != null)
-                  Text(
-                    DateFormat("d MMM y, HH:mm").format(entry.modified!),
-                    style: TextStyle(
-                        fontSize: 10, color: theme.colors.onSurfaceVariant),
-                  ),
-              ],
+      // Its own, inside the list: on the sidebar's the highlight spilled
+      // over the other sections and stayed put when the list scrolled.
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: () async {
+          if (entry.isFolder) {
+            setState(() {
+              _folder = entry.name;
+              _loading = true;
+            });
+            _rememberFolder();
+            await _reload();
+          } else {
+            await widget.onOpen(entry.folder, entry.name);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          color: open ? theme.colors.secondaryContainer : null,
+          child: Row(children: [
+            Icon(
+              entry.isFolder ? Icons.folder_outlined : Icons.dashboard_outlined,
+              size: 16,
+              color: theme.colors.onSurfaceVariant,
             ),
-          ),
-          _rowButton(theme, entry, index),
-        ]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12)),
+                  if (!entry.isFolder && entry.modified != null)
+                    Text(
+                      DateFormat("d MMM y, HH:mm").format(entry.modified!),
+                      style: TextStyle(
+                          fontSize: 10, color: theme.colors.onSurfaceVariant),
+                    ),
+                ],
+              ),
+            ),
+            _rowButton(theme, entry, index),
+          ]),
+        ),
       ),
     );
   }

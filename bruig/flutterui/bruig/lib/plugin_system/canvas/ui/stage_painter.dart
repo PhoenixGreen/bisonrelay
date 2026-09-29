@@ -147,6 +147,10 @@ class StagePainter extends CustomPainter {
   /// taken hold of would be two canvases being edited at once.
   final int? facing;
 
+  /// facingFrame is the frame the neighbour is drawn at: where that page was
+  /// left -- see CanvasController.frameOn.
+  final int facingFrame;
+
   /// facingOnLeft is whether the page being edited is the left leaf, so the
   /// neighbour goes to its right.
   final bool facingOnLeft;
@@ -257,6 +261,7 @@ class StagePainter extends CustomPainter {
     required this.page,
     required this.view,
     this.facing,
+    this.facingFrame = 0,
     this.facingOnLeft = false,
     this.facingShown = false,
     required this.showHandles,
@@ -350,6 +355,10 @@ class StagePainter extends CustomPainter {
         ? null
         : document.goToScene(beside).copyWith(onMaster: false);
     var aside = facingOnLeft ? docSize.width : -docSize.width;
+    // The neighbour where it was left. Drawn at frame nought, a chart
+    // scrubbed past its animation vanished the moment the other leaf was
+    // clicked; drawn finished, a chart left at its start jumped to the end.
+    var overFrame = facingFrame;
 
     if (previewAt case var at?) {
       // Played as a book, every leaf is drawn in its own place in the spread
@@ -385,6 +394,7 @@ class StagePainter extends CustomPainter {
         canvas.translate(aside, 0);
         canvas.clipRect(Offset.zero & docSize);
         paintCanvasDocument(canvas, over,
+            frame: overFrame,
             part: CanvasPaintPart.backdrop,
             images: images,
             backgrounds: backgrounds);
@@ -407,7 +417,7 @@ class StagePainter extends CustomPainter {
       canvas.save();
       canvas.translate(aside, 0);
       paintCanvasDocument(canvas, over,
-          part: CanvasPaintPart.contents, images: images);
+          frame: overFrame, part: CanvasPaintPart.contents, images: images);
       canvas.restore();
 
       // The spine, drawn on the join: two pages meeting edge to edge with
@@ -1174,6 +1184,7 @@ class StagePainter extends CustomPainter {
       old.page != page ||
       old.view != view ||
       old.facing != facing ||
+      old.facingFrame != facingFrame ||
       old.facingOnLeft != facingOnLeft ||
       old.facingShown != facingShown ||
       old.showHelpers != showHelpers ||

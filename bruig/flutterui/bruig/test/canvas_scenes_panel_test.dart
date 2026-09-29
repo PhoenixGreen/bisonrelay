@@ -1,7 +1,12 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -33,11 +38,11 @@ void main() {
   });
 
   Future<CanvasController> panel(WidgetTester tester,
-      {CanvasDocument? document}) async {
+      {CanvasDocument? document, double width = 300}) async {
     var controller = CanvasController(document ?? const CanvasDocument());
     addTearDown(controller.dispose);
 
-    tester.view.physicalSize = const Size(400, 900);
+    tester.view.physicalSize = Size(width + 100, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -55,7 +60,7 @@ void main() {
           // list that is too long for its panel cannot overflow it -- which
           // is exactly the thing that needs catching.
           body: SizedBox(
-              width: 300,
+              width: width,
               height: 420,
               child: CanvasScenesPanel(controller: controller)),
         ),
@@ -225,6 +230,127 @@ void main() {
     await tester.tap(find.byTooltip("Scene preview"));
     await tester.pumpAndSettle();
     expect(find.byTooltip("Scene preview: off"), findsOneWidget);
+  });
+
+  // A preview is as wide as the column -- until that would make it taller
+  // than a page's worth of sidebar. Dragged wide, one page filled the screen.
+  testWidgets("a preview is capped in height however wide the sidebar",
+      (tester) async {
+    await panel(tester,
+        width: 900,
+        document: const CanvasDocument(
+            kind: CanvasKind.pages,
+            size: CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth),
+            scenes: [CanvasScene(id: "a")]));
+    await tester.tap(find.byTooltip("Page preview"));
+    await tester.pumpAndSettle();
+    var box = tester.getSize(find.byKey(const ValueKey("scenePreview.0")));
+    expect(box.height, lessThanOrEqualTo(220.5));
+    expect(box.width / box.height, closeTo(210 / 297, 0.01),
+        reason: "still the shape of the page");
+  });
+
+  // Drawn from the editor's own picture store, so the pictures on a page are
+  // the pictures rather than "Loading" placeholders that nothing ever
+  // replaced: the preview had no store to ask.
+  testWidgets("a preview draws with the editor's pictures", (tester) async {
+    var controller = await panel(tester);
+    await tester.tap(find.byTooltip("Scene preview"));
+    await tester.pumpAndSettle();
+    var painters = tester
+        .widgetList<CustomPaint>(find.descendant(
+            of: find.byKey(const ValueKey("scenePreview.0")),
+            matching: find.byType(CustomPaint)))
+        .map((c) => c.painter)
+        .whereType<CustomPainter>()
+        .toList();
+    expect(painters, hasLength(1));
+    expect(identical((painters.single as dynamic).images, controller.images),
+        isTrue);
+  });
+
+  // With facing pages on, the previews are laid out as the book is: the two
+  // pages of a spread side by side, the left one on the left.
+  testWidgets("facing pages are previewed side by side", (tester) async {
+    await panel(tester,
+        document: const CanvasDocument(
+            kind: CanvasKind.pages,
+            size: CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth),
+            pages: PagesSpec(facing: true),
+            scenes: [
+              CanvasScene(id: "a"),
+              CanvasScene(id: "b"),
+              CanvasScene(id: "c"),
+              CanvasScene(id: "d"),
+            ]));
+    await tester.tap(find.byTooltip("Page preview"));
+    await tester.pumpAndSettle();
+    Rect at(int i) => tester.getRect(find.byKey(ValueKey("scenePreview.$i")));
+    var doc = const CanvasDocument(
+        kind: CanvasKind.pages,
+        pages: PagesSpec(facing: true),
+        scenes: [
+          CanvasScene(id: "a"),
+          CanvasScene(id: "b"),
+          CanvasScene(id: "c"),
+          CanvasScene(id: "d"),
+        ]);
+    var (left, right) = doc.spreadOf(1)!;
+    expect([left, right], everyElement(isNotNull));
+    expect(at(left!).top, closeTo(at(right!).top, 0.5),
+        reason: "one row for the spread");
+    expect(at(left).right, lessThanOrEqualTo(at(right).left),
+        reason: "the left-hand page on the left");
+  });
+
+  // A picture laid across the spread from one page shows on the page facing
+  // it in the list too, as it does on the canvas. Drawn alone, each preview
+  // cut the picture off at the spine.
+  testWidgets("a picture across the spine is in both previews", (tester) async {
+    const w = a4PageWidth * 1.0, h = w * 297 / 210;
+    var doc = const CanvasDocument(
+        kind: CanvasKind.pages,
+        size: CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth),
+        pages: PagesSpec(facing: true),
+        scenes: [
+          CanvasScene(id: "a"),
+          CanvasScene(id: "b"),
+          CanvasScene(id: "c"),
+          CanvasScene(id: "d"),
+        ]);
+    var (left, right) = doc.spreadOf(1)!;
+    var scenes = [...doc.allScenes];
+    scenes[left!] = scenes[left].copyWith(elements: [
+      ShapeElement(
+          const ElementBase(
+              id: "across", x: 0, y: h * 0.25, width: w * 2, height: h * 0.5),
+          fill: const Color(0xFFFF0000)),
+    ]);
+    await panel(tester, document: doc.withScenes(scenes));
+    await tester.tap(find.byTooltip("Page preview"));
+    await tester.pumpAndSettle();
+
+    var preview = find.byKey(ValueKey("scenePreview.${right!}"));
+    var size = tester.getSize(preview);
+    var painter = tester
+        .widget<CustomPaint>(
+            find.descendant(of: preview, matching: find.byType(CustomPaint)))
+        .painter!;
+    late ByteData data;
+    await tester.runAsync(() async {
+      var recorder = ui.PictureRecorder();
+      painter.paint(ui.Canvas(recorder), size);
+      var image = await recorder
+          .endRecording()
+          .toImage(size.width.round(), size.height.round());
+      data = (await image.toByteData())!;
+    });
+    var c = data.getUint32(((size.height / 2).round() * size.width.round() +
+            (size.width / 2).round()) *
+        4);
+    expect((c >> 24 & 0xFF) > 150 && (c >> 8 & 0xFF) < 80, isTrue,
+        reason: "the right page shows the picture from the left "
+            "(${c.toRadixString(16)})");
   });
 
   testWidgets("the menu opens under the button that was pressed",

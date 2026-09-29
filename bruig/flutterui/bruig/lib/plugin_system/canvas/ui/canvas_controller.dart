@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
@@ -1020,9 +1021,18 @@ class CanvasController extends ChangeNotifier {
     var next = _document;
     var made = <String>{};
     for (var element in _clipboard) {
-      var copy = element
-          .withId(newElementId())
-          .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
+      CanvasElement copy;
+      if (element is AudioElement && element.clip.timed) {
+        // A sound on the timeline goes where the playhead is, on the channel
+        // it was copied from -- which is how one channel comes to hold two.
+        copy = element
+            .copyWith(clip: element.clip.copyWith(at: _frame))
+            .withId(newElementId());
+      } else {
+        copy = element
+            .withId(newElementId())
+            .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
+      }
       made.add(copy.id);
       next = next.addElement(copy);
     }
@@ -1587,8 +1597,35 @@ class CanvasController extends ChangeNotifier {
   void goToScene(int index) {
     var next = _document.goToScene(index).copyWith(onMaster: false);
     if (identical(next, _document)) return;
+    if (!_document.editingMaster) _sceneFrames[_document.scene.id] = _frame;
     apply(next, transient: true);
+    // Back where it was left. One playhead clamped to each scene in turn
+    // lost a place in a long page to a visit to a short one, and a page
+    // left part-way through came back somewhere else.
+    if (_sceneFrames[_document.scene.id] case var kept?) _frame = kept;
     _afterSceneChange();
+  }
+
+  /// _sceneFrames is where the playhead was on each scene when it was last
+  /// left, by scene id. Not in the document: it is where somebody is, not
+  /// something they made.
+  final Map<String, int> _sceneFrames = {};
+
+  /// frameOn is the frame scene [index] is at: the playhead for the scene
+  /// being edited, and for any other the frame it was left on -- or, for one
+  /// not visited yet, the frame it would open on, which is the playhead's.
+  ///
+  /// What the facing page is drawn at. Drawn at a frame of its own choosing,
+  /// a page left at the start of its chart's animation showed the chart
+  /// finished as soon as the page beside it was opened.
+  int frameOn(int index) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return _frame;
+    var scene = list[index];
+    var at = !_document.editingMaster && index == _document.at
+        ? _frame
+        : (_sceneFrames[scene.id] ?? _frame);
+    return at.clamp(0, math.max(0, scene.frames - 1)).toInt();
   }
 
   /// showMaster puts the shared canvas in front of the reader, making one if
@@ -1965,9 +2002,11 @@ class CanvasController extends ChangeNotifier {
 
   void selectAll() {
     _backgroundSelected = false;
+    // What is on the canvas: a sound on the timeline is not, and taking it
+    // in would put the soundtrack one Delete away.
     _selection = {
       for (var e in _document.elements)
-        if (!e.locked) e.id,
+        if (!e.locked && !isTimelineSound(e)) e.id,
     };
     notifyListeners();
   }
@@ -2648,12 +2687,188 @@ class CanvasController extends ChangeNotifier {
           offset: at - _frame,
           editable: here.contains(e.id) || backdrop.contains(e.id),
         ),
-      // A channel added with nothing in it yet: a lane to drop a sound on.
-      // Not in _timedOnScreen, which is what plays -- there is nothing to.
-      for (var e in _document.elements)
-        if (e is AudioElement && e.clip.timed && e.clip.isEmpty) TimedLane(e),
     ];
   }
+
+  /// timelineChannels is the timeline's channels, each with the sounds on it,
+  /// in the order they first appear. A channel is its sounds: one with none
+  /// left is gone, and the empty lane under the last is not one -- it is
+  /// where a new channel is started.
+  List<TimelineChannel> get timelineChannels {
+    var by = <String, List<TimedLane>>{};
+    for (var lane in timedLanes) {
+      (by[lane.channelKey] ??= []).add(lane);
+    }
+    return [
+      for (var entry in by.entries) TimelineChannel(entry.key, entry.value),
+    ];
+  }
+
+  /// channelLevels is how loud [channel] is now: the loudest of its sounds,
+  /// each of which plays through a strip of its own set to the channel's.
+  (double, double) channelLevels(TimelineChannel channel) {
+    var l = 0.0, r = 0.0;
+    for (var lane in channel.lanes) {
+      var (a, b) = levels(lane.element.id);
+      if (a > l) l = a;
+      if (b > r) r = b;
+    }
+    return (l, r);
+  }
+
+  /// _setClips writes several clips at once, as one change: every sound on a
+  /// channel when its strip is changed, say. Media on the backdrop has a lane
+  /// of its own and is written the way it always was.
+  void _setClips(List<(CanvasElement, MediaClip)> changes,
+      {bool transient = false}) {
+    var next = _document;
+    for (var (e, clip) in changes) {
+      var changed = switch (e) {
+        VideoElement v => v.copyWith(clip: clip),
+        AudioElement a => a.copyWith(clip: clip),
+        _ => null,
+      };
+      if (changed == null) continue;
+      if (next.elements.any((x) => x.id == e.id)) {
+        next = next.withElement(changed);
+      } else if (changes.length == 1) {
+        setTimedClip(e, clip, transient: transient);
+        return;
+      }
+    }
+    apply(next, transient: transient);
+  }
+
+  /// newChannelName is "Audio" and the next number not already taken.
+  String newChannelName() {
+    var taken = {for (var c in timelineChannels) c.name};
+    for (var n = 1;; n++) {
+      if (!taken.contains("Audio $n")) return "Audio $n";
+    }
+  }
+
+  /// newChannelId is an id for a channel not made yet.
+  String newChannelId() => "ch${newElementId()}";
+
+  /// moveClipToChannel puts [lane]'s sound on [to] -- taking its name and its
+  /// strip -- or, with none, on a channel of its own. The channel it leaves
+  /// is gone if it was the last thing on it.
+  void moveClipToChannel(TimedLane lane, TimelineChannel? to,
+      {bool transient = false}) {
+    if (lane.element is! AudioElement || !lane.editable) return;
+    var clip = lane.clip;
+    var moved = to == null
+        ? clip.copyWith(
+            channel: newChannelId(),
+            channelName: newChannelName(),
+            mix: const ChannelMix())
+        : clip.copyWith(channel: to.key, channelName: to.name, mix: to.mix);
+    _setClips([(lane.element, moved)], transient: transient);
+  }
+
+  /// splitClip cuts [lane]'s sound in two at [frame] of the scene: what is
+  /// before stays, and what is after becomes a sound of its own on the same
+  /// channel, starting where the cut was. The knife.
+  bool splitClip(TimedLane lane, int frame) {
+    var e = lane.element;
+    if (e is! AudioElement || !lane.editable) return false;
+    if (!_document.elements.any((x) => x.id == e.id)) return false;
+    var clip = e.clip;
+    var rate = math.max(1, _document.frameRate);
+    var into = (frame - (clip.at - lane.offset)) / rate;
+    if (into <= 0.05 || into >= clip.runLength - 0.05) return false;
+    var from = 0.0;
+    for (var (i, source) in clip.playlist.indexed) {
+      var span = source.span;
+      if (into < from + span) {
+        var cut = source.start + (into - from);
+        var before = [
+          ...clip.playlist.take(i),
+          source.copyWith(end: cut),
+        ];
+        var after = [
+          source.copyWith(start: cut),
+          ...clip.playlist.skip(i + 1),
+        ];
+        var first = e.copyWith(
+            clip: clip.copyWith(
+                playlist: before, fadeOut: 0, loop: MediaLoop.none));
+        var second = e
+            .copyWith(
+                clip: clip.copyWith(
+                    playlist: after,
+                    fadeIn: 0,
+                    at: clip.at + (into * rate).round()))
+            .withId(newElementId());
+        apply(_document.withElement(first).addElement(second));
+        selectOnly(second.id);
+        return true;
+      }
+      from += span;
+    }
+    return false;
+  }
+
+  /// timelineTool is what a press on a sound on the timeline does: take hold
+  /// of it, or cut it in two.
+  TimelineTool get timelineTool => _timelineTool;
+  TimelineTool _timelineTool = TimelineTool.select;
+  set timelineTool(TimelineTool value) {
+    if (_timelineTool == value) return;
+    _timelineTool = value;
+    notifyListeners();
+  }
+
+  /// laneHeights is how tall each channel has been dragged, by channel. The
+  /// reader's, for this session: how much room a waveform is given is not
+  /// something the document says.
+  final Map<String, double> laneHeights = {};
+
+  /// setLaneHeight changes one channel's height.
+  void setLaneHeight(String channel, double height) {
+    laneHeights[channel] = height;
+    notifyListeners();
+  }
+
+  /// headerWidth is the column of channel strips down the left of the
+  /// timeline, dragged anywhere from an icon's width to the whole strip.
+  double get headerWidth => _headerWidth;
+  double _headerWidth = 150;
+  set headerWidth(double value) {
+    var next = value.clamp(timelineHeaderMin, timelineHeaderMax).toDouble();
+    if (next == _headerWidth) return;
+    _headerWidth = next;
+    notifyListeners();
+  }
+
+  /// _waveforms is each stored sound's shape, read once and kept -- see
+  /// waveformOf.
+  static final Map<String, Float32List?> _waveforms = {};
+  static final Set<String> _readingWaveform = {};
+
+  /// waveformOf is [assetId]'s shape, as peaks from nought to one across the
+  /// whole file, or null until it has been read -- it is read on first asking,
+  /// off the main thread, and the timeline is told when it arrives.
+  Float32List? waveformOf(String assetId) {
+    if (_waveforms.containsKey(assetId)) return _waveforms[assetId];
+    if (_readingWaveform.add(assetId)) _readWaveform(assetId);
+    return null;
+  }
+
+  Future<void> _readWaveform(String assetId) async {
+    Float32List? peaks;
+    try {
+      var path = await CanvasMedia.existingPath(MediaKind.audio, assetId);
+      if (path != null) peaks = await audio.engine.peaks(path, waveformPoints);
+    } catch (exception) {
+      debugPrint("Unable to read the shape of $assetId: $exception");
+    }
+    _waveforms[assetId] = peaks;
+    _readingWaveform.remove(assetId);
+    if (!_disposedForWaveform) notifyListeners();
+  }
+
+  bool _disposedForWaveform = false;
 
   /// setTimedClip writes a clip moved or trimmed on the Channels strip back
   /// to whatever holds it: an element on this canvas, or the backdrop.
@@ -2721,6 +2936,7 @@ class CanvasController extends ChangeNotifier {
   Set<String> get solo => _solo;
   final Set<String> _solo = {};
 
+  /// toggleSolo solos or unsolos a channel, by its key.
   void toggleSolo(String id) {
     if (!_solo.remove(id)) _solo.add(id);
     _applyMix();
@@ -2729,10 +2945,12 @@ class CanvasController extends ChangeNotifier {
 
   /// setChannelMix changes one strip, as the Channels strip changes a clip --
   /// see setTimedClip.
-  void setChannelMix(TimedLane lane, ChannelMix mix,
+  void setChannelMix(TimelineChannel channel, ChannelMix mix,
           {bool transient = false}) =>
-      setTimedClip(lane.element, lane.clip.copyWith(mix: mix),
-          transient: transient);
+      _setClips([
+        for (var lane in channel.lanes)
+          if (lane.editable) (lane.element, lane.clip.copyWith(mix: mix)),
+      ], transient: transient);
 
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
@@ -2747,8 +2965,15 @@ class CanvasController extends ChangeNotifier {
   void _applyMix() {
     var lanes = timedLanes;
     if (lanes.isEmpty && _audio == null) return;
-    audio.setMix({for (var lane in lanes) lane.element.id: lane.clip.mix},
-        solo: _solo, master: _document.masterMix);
+    audio.setMix({
+      for (var lane in lanes) lane.element.id: lane.clip.mix
+    },
+        // Soloed by channel, heard by sound: every sound on a soloed channel.
+        solo: {
+          for (var lane in lanes)
+            if (_solo.contains(lane.channelKey)) lane.element.id,
+        },
+        master: _document.masterMix);
   }
 
   /// _autoplayAudio starts the sounds on screen that start by themselves.
@@ -3449,6 +3674,13 @@ class CanvasController extends ChangeNotifier {
   void load(CanvasDocument document, {String? folder, String? name}) {
     pause();
     stopAudio();
+    // The empty channels "Add audio" used to leave: a sound with nothing in
+    // it, on the canvas as an element. A channel now is only its sounds.
+    for (var e in document.elements) {
+      if (e is AudioElement && e.clip.timed && e.clip.isEmpty) {
+        document = document.removeElement(e.id);
+      }
+    }
     _document = document;
     this.folder = folder;
     this.name = name;
@@ -3546,6 +3778,7 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposedForWaveform = true;
     _autosave?.cancel();
     _playback?.cancel();
     _counterTimer?.cancel();
@@ -3599,4 +3832,39 @@ class TimedLane {
         AudioElement a => a.clip,
         _ => const MediaClip(),
       };
+
+  /// channelKey is the channel this is on: its own, for a clip with none.
+  String get channelKey => clip.channel.isNotEmpty ? clip.channel : element.id;
 }
+
+/// TimelineChannel is one channel of the timeline and the sounds on it.
+class TimelineChannel {
+  final String key;
+  final List<TimedLane> lanes;
+  const TimelineChannel(this.key, this.lanes);
+
+  TimedLane get first => lanes.first;
+
+  String get name {
+    var named = first.clip.channelName;
+    return named.isNotEmpty ? named : first.element.name;
+  }
+
+  /// mix is the channel's strip, which every sound on it carries.
+  ChannelMix get mix => first.clip.mix;
+
+  bool get editable => lanes.any((l) => l.editable);
+  bool get video => first.element is VideoElement;
+}
+
+/// TimelineTool is what a press on a sound does. See timelineTool.
+enum TimelineTool { select, knife }
+
+/// timelineHeaderMin and timelineHeaderMax bound the channel strips' column:
+/// from the icon alone to everything on it.
+const double timelineHeaderMin = 28;
+const double timelineHeaderMax = 240;
+
+/// waveformPoints is how finely a sound's shape is read: enough for a lane
+/// several screens wide, few enough to draw every frame.
+const int waveformPoints = 2400;

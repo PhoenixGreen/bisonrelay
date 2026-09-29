@@ -793,17 +793,22 @@ class CanvasControlGroup extends StatelessWidget {
     // A nine-pixel row of grey capitals is a small thing to hit, and the
     // chevron alone would be smaller still.
     if (folded != null) {
-      caption = InkWell(
-        onTap: onFold,
-        borderRadius: BorderRadius.circular(4),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(1, 2, 4, 2),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(folded! ? Icons.chevron_right : Icons.expand_more,
-                size: 13, color: style.color),
-            const SizedBox(width: 2),
-            caption,
-          ]),
+      caption = Material(
+        // Its own, so the highlight stays with the control inside a
+        // scrolling list rather than on whatever Material is above it.
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onFold,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(1, 2, 4, 2),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(folded! ? Icons.chevron_right : Icons.expand_more,
+                  size: 13, color: style.color),
+              const SizedBox(width: 2),
+              caption,
+            ]),
+          ),
         ),
       );
     }
@@ -1808,25 +1813,30 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
         message: widget.onGradientChanged == null
             ? "Choose a colour"
             : "Choose a colour, or two to fade between",
-        child: InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: _pick,
-          child: Container(
-            width: 30,
-            height: controlHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: theme.colors.outlineVariant),
-              // The checker is what makes a transparent or nearly-transparent
-              // colour distinguishable from a black one, which otherwise look
-              // identical in a swatch on a dark background.
-              color: theme.colors.surface,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: CustomPaint(
-                painter: _SwatchPainter(color, gradient),
-                size: const Size(30, controlHeight),
+        child: Material(
+          // Its own, so the highlight stays with the control inside a
+          // scrolling list rather than on whatever Material is above it.
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: _pick,
+            child: Container(
+              width: 30,
+              height: controlHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: theme.colors.outlineVariant),
+                // The checker is what makes a transparent or nearly-transparent
+                // colour distinguishable from a black one, which otherwise look
+                // identical in a swatch on a dark background.
+                color: theme.colors.surface,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: CustomPaint(
+                  painter: _SwatchPainter(color, gradient),
+                  size: const Size(30, controlHeight),
+                ),
               ),
             ),
           ),
@@ -1953,13 +1963,18 @@ class CanvasChip extends StatelessWidget {
         if (onRemove case var remove?)
           Tooltip(
             message: "Stop laying out for $label",
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: remove,
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(Icons.close,
-                    size: 12, color: theme.colors.onSurfaceVariant),
+            child: Material(
+              // Its own, so the highlight stays with the control inside a
+              // scrolling list rather than on whatever Material is above it.
+              type: MaterialType.transparency,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: remove,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.close,
+                      size: 12, color: theme.colors.onSurfaceVariant),
+                ),
               ),
             ),
           )
@@ -1998,32 +2013,37 @@ class CanvasToggle extends StatelessWidget {
           top: CanvasControlScope.isInline(context)
               ? 0
               : controlWithLabelHeight - controlHeight),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: () => onChanged(!value),
-        child: Container(
-          height: controlHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            color: value ? theme.colors.secondaryContainer : null,
-            border: Border.all(
-                color: value
-                    ? theme.colors.secondaryContainer
-                    : theme.colors.outlineVariant),
+      child: Material(
+        // Its own, so the highlight stays with the control inside a
+        // scrolling list rather than on whatever Material is above it.
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => onChanged(!value),
+          child: Container(
+            height: controlHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: value ? theme.colors.secondaryContainer : null,
+              border: Border.all(
+                  color: value
+                      ? theme.colors.secondaryContainer
+                      : theme.colors.outlineVariant),
+            ),
+            // No check box beside the word. It was nineteen pixels per switch
+            // saying what the fill already says, on a panel whose switches come
+            // five to a line -- and the difference between five of them fitting
+            // a narrow sidebar and four of them fitting was exactly that.
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: value
+                          ? theme.colors.onSecondaryContainer
+                          : theme.colors.onSurfaceVariant)),
+            ]),
           ),
-          // No check box beside the word. It was nineteen pixels per switch
-          // saying what the fill already says, on a panel whose switches come
-          // five to a line -- and the difference between five of them fitting
-          // a narrow sidebar and four of them fitting was exactly that.
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: value
-                        ? theme.colors.onSecondaryContainer
-                        : theme.colors.onSurfaceVariant)),
-          ]),
         ),
       ),
     );
@@ -2111,25 +2131,30 @@ class CanvasIconButton extends StatelessWidget {
               : controlWithLabelHeight - controlHeight),
       child: Tooltip(
         message: tooltip,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: onPressed,
-          child: Container(
-            width: controlHeight,
-            height: controlHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: active ? theme.colors.secondaryContainer : null,
-              border: Border.all(color: theme.colors.outlineVariant),
-            ),
-            child: Icon(
-              icon,
-              size: 15,
-              color: !enabled
-                  ? theme.colors.onSurfaceVariant.withValues(alpha: 0.35)
-                  : active
-                      ? theme.colors.onSecondaryContainer
-                      : theme.colors.onSurfaceVariant,
+        child: Material(
+          // Its own, so the highlight stays with the control inside a
+          // scrolling list rather than on whatever Material is above it.
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: onPressed,
+            child: Container(
+              width: controlHeight,
+              height: controlHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                color: active ? theme.colors.secondaryContainer : null,
+                border: Border.all(color: theme.colors.outlineVariant),
+              ),
+              child: Icon(
+                icon,
+                size: 15,
+                color: !enabled
+                    ? theme.colors.onSurfaceVariant.withValues(alpha: 0.35)
+                    : active
+                        ? theme.colors.onSecondaryContainer
+                        : theme.colors.onSurfaceVariant,
+              ),
             ),
           ),
         ),
@@ -2458,48 +2483,53 @@ class _CanvasExpanderState extends State<CanvasExpander> {
         // size. So the heading shrink-wraps there instead.
         LayoutBuilder(builder: (context, constraints) {
           var fills = constraints.maxWidth.isFinite;
-          Widget heading = InkWell(
-            onTap: _toggle,
-            borderRadius: BorderRadius.circular(5),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_open ? Icons.expand_more : Icons.chevron_right,
-                    size: 16, color: theme.colors.onSurfaceVariant),
-                const SizedBox(width: 3),
-                // The name shrinks before the summary does, and both clip. A
-                // heading carrying a button as well is wider than a narrow
-                // sidebar for several of these, and a Text that cannot shrink
-                // overflows however flexible everything beside it is.
-                Flexible(
-                  child: Text(
-                    widget.label.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 9,
-                      letterSpacing: 0.7,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          theme.colors.onSurfaceVariant.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
-                if (widget.trailing != null) ...[
-                  const SizedBox(width: 5),
+          Widget heading = Material(
+            // Its own, so the highlight stays with the control inside a
+            // scrolling list rather than on whatever Material is above it.
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: _toggle,
+              borderRadius: BorderRadius.circular(5),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_open ? Icons.expand_more : Icons.chevron_right,
+                      size: 16, color: theme.colors.onSurfaceVariant),
+                  const SizedBox(width: 3),
+                  // The name shrinks before the summary does, and both clip. A
+                  // heading carrying a button as well is wider than a narrow
+                  // sidebar for several of these, and a Text that cannot shrink
+                  // overflows however flexible everything beside it is.
                   Flexible(
                     child: Text(
-                      widget.trailing!,
+                      widget.label.toUpperCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: 9,
-                          color: theme.colors.onSurfaceVariant
-                              .withValues(alpha: 0.5)),
+                        fontSize: 9,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colors.onSurfaceVariant
+                            .withValues(alpha: 0.7),
+                      ),
                     ),
                   ),
-                ],
-              ]),
+                  if (widget.trailing != null) ...[
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        widget.trailing!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 9,
+                            color: theme.colors.onSurfaceVariant
+                                .withValues(alpha: 0.5)),
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
             ),
           );
 
@@ -2594,20 +2624,25 @@ class CanvasKeyframeDot extends StatelessWidget {
               : controlWithLabelHeight - controlHeight),
       child: Tooltip(
         message: tooltip,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: enabled ? onPressed : null,
-          child: SizedBox(
-            width: 18,
-            height: controlHeight,
-            child: Icon(
-              on ? Icons.diamond : Icons.diamond_outlined,
-              size: 11,
-              color: !enabled
-                  ? theme.colors.onSurfaceVariant.withValues(alpha: 0.25)
-                  : on
-                      ? theme.colors.primary
-                      : theme.colors.onSurfaceVariant.withValues(alpha: 0.55),
+        child: Material(
+          // Its own, so the highlight stays with the control inside a
+          // scrolling list rather than on whatever Material is above it.
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: enabled ? onPressed : null,
+            child: SizedBox(
+              width: 18,
+              height: controlHeight,
+              child: Icon(
+                on ? Icons.diamond : Icons.diamond_outlined,
+                size: 11,
+                color: !enabled
+                    ? theme.colors.onSurfaceVariant.withValues(alpha: 0.25)
+                    : on
+                        ? theme.colors.primary
+                        : theme.colors.onSurfaceVariant.withValues(alpha: 0.55),
+              ),
             ),
           ),
         ),

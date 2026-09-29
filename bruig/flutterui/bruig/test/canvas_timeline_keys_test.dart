@@ -51,7 +51,10 @@ void main() {
           home: Scaffold(body: CanvasTimeline(controller: controller))),
     ));
     await tester.pumpAndSettle();
-    return (controller, tester.getRect(find.byType(CustomPaint).last));
+    return (
+      controller,
+      tester.getRect(find.byKey(const ValueKey("keyframeStrip")))
+    );
   }
 
   /// markAt is where a frame's mark is drawn on the strip, at [dy] down the
@@ -83,8 +86,10 @@ void main() {
 
     testWidgets("and the whole mark row is inside the strip", (tester) async {
       var (_, paint) = await strip(tester, [10]);
-      expect(paint.height, greaterThan(60),
-          reason: "the two rows of marks and the air around them");
+      // The ruler -- which the markers are flags on -- the keyframes, and
+      // the air under them.
+      expect(paint.height, greaterThan(44),
+          reason: "the ruler, the row of keyframes and the air round it");
     });
   });
 

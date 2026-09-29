@@ -137,47 +137,54 @@ class _PresetCard extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: theme.colors.outlineVariant),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: preview == null
-                  ? Container(color: theme.colors.surfaceContainerHighest)
-                  : CustomPaint(painter: _PreviewPainter(preview!)),
+      child: Material(
+        // Its own, inside the list: on the sidebar's the highlight spilled
+        // over the other sections and stayed put when the list scrolled.
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colors.outlineVariant),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-              child: Row(children: [
-                Icon(preset.icon,
-                    size: 16, color: theme.colors.onSurfaceVariant),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(preset.label,
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600)),
-                      Text(
-                        preset.description,
-                        style: TextStyle(
-                            fontSize: 10, color: theme.colors.onSurfaceVariant),
-                      ),
-                    ],
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: preview == null
+                        ? Container(color: theme.colors.surfaceContainerHighest)
+                        : CustomPaint(painter: _PreviewPainter(preview!)),
                   ),
-                ),
-              ]),
-            ),
-          ]),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                    child: Row(children: [
+                      Icon(preset.icon,
+                          size: 16, color: theme.colors.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(preset.label,
+                                style: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text(
+                              preset.description,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: theme.colors.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ]),
+                  ),
+                ]),
+          ),
         ),
       ),
     );

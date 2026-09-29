@@ -273,10 +273,15 @@ class _AssetSectionState extends State<AssetSection> {
               child: SizedBox(width: 96, child: _Feedback(asset: asset))),
         ),
         childWhenDragging: Opacity(opacity: 0.35, child: body),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(6),
-          onTap: () => _use(asset),
-          child: body,
+        child: Material(
+          // Its own, inside the list: on the sidebar's the highlight spilled
+          // over the other sections and stayed put when the list scrolled.
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _use(asset),
+            child: body,
+          ),
         ),
       );
 }
@@ -560,20 +565,18 @@ class _RemoveButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    return Tooltip(
-      message: "Remove from the library",
-      child: InkResponse(
-        key: ValueKey("removeAsset-${asset.id}"),
-        onTap: onRemove,
-        radius: 14,
-        child: Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: theme.colors.surface.withValues(alpha: 0.85),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.close, size: 14, color: theme.colors.onSurface),
+    // No hover text: the cross says it, and removing asks first anyway.
+    return InkResponse(
+      key: ValueKey("removeAsset-${asset.id}"),
+      onTap: onRemove,
+      radius: 14,
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: theme.colors.surface.withValues(alpha: 0.85),
+          shape: BoxShape.circle,
         ),
+        child: Icon(Icons.close, size: 14, color: theme.colors.onSurface),
       ),
     );
   }

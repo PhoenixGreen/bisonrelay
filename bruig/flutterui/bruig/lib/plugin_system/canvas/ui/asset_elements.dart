@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter/painting.dart';
@@ -52,22 +53,31 @@ CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
   }
 }
 
-/// audioChannel is a new channel on the timeline: a sound that plays only
-/// there, from [at], and is not drawn -- with [asset] in it, or empty, waiting
-/// for one. Named after its asset, or numbered after the sounds already on
-/// [document].
-AudioElement audioChannel(CanvasDocument document, int at,
-    {LibraryAsset? asset}) {
-  var count = document.elements.whereType<AudioElement>().length;
+/// channelClip is a sound on the timeline: [source] from frame [at], on the
+/// channel [channel] called [channelName], playing through [mix] -- the
+/// channel's strip, which every sound on it carries. Not drawn: it is heard,
+/// and seen on the timeline. Named after its file.
+AudioElement channelClip(
+  CanvasDocument document,
+  int at, {
+  required MediaSource source,
+  required String channel,
+  required String channelName,
+  ChannelMix mix = const ChannelMix(),
+}) {
   var e = newElement(ElementKind.audio, document) as AudioElement;
   return e
-          .copyWith(
-              clip: MediaClip(
-                  timed: true,
-                  at: at,
-                  playlist: asset == null ? const [] : [asset.source]))
-          .withBase(name: asset?.name ?? "Audio ${count + 1}", visible: false)
-      as AudioElement;
+      .copyWith(
+          clip: MediaClip(
+              timed: true,
+              at: at,
+              playlist: [source],
+              channel: channel,
+              channelName: channelName,
+              mix: mix))
+      .withBase(
+          name: source.name.isEmpty ? "Sound" : source.name,
+          visible: false) as AudioElement;
 }
 
 /// PendingAsset is an asset that is not in the library yet -- a stock result

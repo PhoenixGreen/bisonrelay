@@ -64,6 +64,14 @@ List<Widget> elementSettings(
   void commit() => controller.endInteraction();
   void begin() => controller.beginInteraction();
 
+  // A sound on the timeline is not on the canvas: no place on it, no presets
+  // for a speaker, no speaker. What it has is its files, how it plays, and
+  // where on the timeline -- the same as a backdrop's sound.
+  if (element is AudioElement && isTimelineSound(element)) {
+    return audioSettings(context, controller, element, write, begin, commit,
+        background: true);
+  }
+
   return [
     positionGroup(controller, element, write, begin, commit),
     // The designs somebody has saved, at the top of the three kinds of

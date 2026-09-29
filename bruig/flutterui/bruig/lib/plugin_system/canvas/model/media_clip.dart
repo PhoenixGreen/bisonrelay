@@ -194,6 +194,17 @@ class MediaClip {
   /// EQ and compressor. See mix.dart.
   final ChannelMix mix;
 
+  /// channel is the timeline channel a sound is on, and channelName what the
+  /// channel is called. Several sounds share a channel by sharing its id, and
+  /// a channel is only ever the sounds on it -- when the last one goes, so
+  /// does the channel. Empty for media given a lane of its own, which is
+  /// everything made before channels could hold more than one.
+  ///
+  /// The channel's strip -- [mix] -- is kept the same on every sound in it,
+  /// so each plays and exports through the channel's level as it always did.
+  final String channel;
+  final String channelName;
+
   const MediaClip({
     this.playlist = const [],
     this.volume = 0.8,
@@ -206,6 +217,8 @@ class MediaClip {
     this.timed = false,
     this.at = 0,
     this.mix = const ChannelMix(),
+    this.channel = "",
+    this.channelName = "",
   });
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
@@ -275,6 +288,8 @@ class MediaClip {
     bool? timed,
     int? at,
     ChannelMix? mix,
+    String? channel,
+    String? channelName,
   }) =>
       MediaClip(
         playlist: playlist ?? this.playlist,
@@ -288,6 +303,8 @@ class MediaClip {
         timed: timed ?? this.timed,
         at: at ?? this.at,
         mix: mix ?? this.mix,
+        channel: channel ?? this.channel,
+        channelName: channelName ?? this.channelName,
       );
 
   Map<String, dynamic> toJson() => {
@@ -303,6 +320,8 @@ class MediaClip {
         if (timed) "timed": true,
         if (at != 0) "at": at,
         if (!mix.isDefault) "mix": mix.toJson(),
+        if (channel.isNotEmpty) "channel": channel,
+        if (channelName.isNotEmpty) "channelName": channelName,
       };
 
   factory MediaClip.fromJson(Map<String, dynamic> json) {
@@ -324,6 +343,9 @@ class MediaClip {
       timed: jsonBool(json["timed"], false),
       at: math.max(0, jsonInt(json["at"], 0)),
       mix: jsonSpec(json["mix"], ChannelMix.fromJson, const ChannelMix()),
+      channel: json["channel"] is String ? json["channel"] as String : "",
+      channelName:
+          json["channelName"] is String ? json["channelName"] as String : "",
     );
   }
 }

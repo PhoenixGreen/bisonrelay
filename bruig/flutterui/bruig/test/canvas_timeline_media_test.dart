@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -272,7 +273,10 @@ void main() {
                 body: Align(
                     alignment: Alignment.bottomCenter,
                     child: SizedBox(
-                        height: 120, child: CanvasChannels(controller: c))))),
+                        height: 120,
+                        child: CanvasChannels(
+                            controller: c,
+                            view: TimelineView.whole(c.document.frames)))))),
       ));
       await tester.pumpAndSettle();
     }

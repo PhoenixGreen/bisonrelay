@@ -171,46 +171,23 @@ List<Widget> backgroundMediaSettings(
         ],
       ),
     ),
-    boxed(
-      context,
-      CanvasExpander(
-        key: const ValueKey("backgroundSound"),
-        label: "Sound",
-        remember: "backgroundSound",
-        trailing: sound == null ? "None" : null,
-        children: [
-          if (sound == null)
-            CanvasControlGroup(
-                label: "Sound",
-                hideCaption: true,
-                rule: false,
-                children: [
-                  CanvasIconButton(
-                    key: const ValueKey("backgroundAddSound"),
-                    icon: Icons.library_music_outlined,
-                    tooltip: "Put a sound behind everything",
-                    onPressed: () async {
-                      var source = await pickCanvasAudio(context, controller);
-                      if (source == null) return;
-                      now(current().copyWith(
-                          sound: AudioElement(fresh("Background sound"),
-                              controls: const [],
-                              clip: MediaClip(
-                                  playlist: [source],
-                                  autoplay: true,
-                                  loop: MediaLoop.all))));
-                    },
-                  ),
-                  const CanvasHint(
-                      "Music or a sound behind everything, starting when the "
-                      "canvas plays. On the master's background it goes on "
-                      "across the pages."),
-                ])
-          else ...[
+    // Sound goes on the timeline's channels now. A background that already
+    // has one keeps it -- changed, or taken off, here -- but a new one is
+    // not offered: two places to put a soundtrack is one too many.
+    if (sound != null)
+      boxed(
+        context,
+        CanvasExpander(
+          key: const ValueKey("backgroundSound"),
+          label: "Sound",
+          remember: "backgroundSound",
+          children: [
             remove("sound", () {
               controller.audio.stop(sound.id);
               now(current().copyWith(clearSound: true));
             }),
+            const CanvasHint("New sounds go on the timeline, in a channel "
+                "of their own."),
             ...audioSettings(
                 context,
                 controller,
@@ -220,8 +197,7 @@ List<Widget> backgroundMediaSettings(
                 commit,
                 background: true),
           ],
-        ],
+        ),
       ),
-    ),
   ];
 }

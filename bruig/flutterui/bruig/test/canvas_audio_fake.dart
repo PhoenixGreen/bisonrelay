@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:path/path.dart' as path;
 
@@ -102,4 +104,11 @@ class FakeEngine implements AudioEngine {
 
   @override
   void close(AudioTrack track) {}
+
+  /// shapes is what [peaks] answers, by file base name: a test's waveform.
+  final Map<String, Float32List> shapes = {};
+
+  @override
+  Future<Float32List?> peaks(String file, int count) async =>
+      shapes[path.basename(file)];
 }

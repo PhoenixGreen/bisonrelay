@@ -1,9 +1,11 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
@@ -626,6 +628,126 @@ void main() {
       expect(controller.document.at, 2);
       expect(controller.selection, isEmpty,
           reason: "opening a page is not selecting something on it");
+    });
+
+    // A picture laid across the spread from the left leaf has its right-hand
+    // handles on the right leaf. They are the edited page's, so a press on
+    // one takes hold of it -- it used to open the right leaf instead, and the
+    // handle could be seen and never grabbed. And the other way round.
+    testWidgets("a handle on the other leaf is still a handle", (tester) async {
+      const w = a4PageWidth * 1.0, h = w * 297 / 210;
+      for (var (at, x) in [(1, 0.0), (2, -w)]) {
+        var doc = pages(4).copyWith(pages: const PagesSpec(facing: true));
+        var scenes = [...doc.allScenes];
+        scenes[at] = scenes[at].copyWith(elements: [
+          ShapeElement(
+              ElementBase(
+                  id: "spread",
+                  x: x,
+                  y: h * 0.25,
+                  width: w * 2,
+                  height: h * 0.5),
+              fill: const Color(0xFFFF0000)),
+        ]);
+        var controller =
+            CanvasController(doc.withScenes(scenes).copyWith(sceneAt: at));
+        addTearDown(controller.dispose);
+        var view = await stage(tester, controller);
+        controller.selectOnly("spread");
+        await tester.pump();
+
+        // The handle in the middle of the edge that is over the other leaf.
+        var page = view.pageRect;
+        var edge = at == 1 ? page.right + page.width : page.left - page.width;
+        await tester.dragFrom(Offset(edge, page.center.dy),
+            Offset(at == 1 ? -page.width / 4 : page.width / 4, 0));
+        await tester.pumpAndSettle();
+
+        var side = at == 1 ? "left" : "right";
+        expect(controller.document.at, at,
+            reason: "$side leaf open: the page did not change");
+        var box = controller.document.elementById("spread")!.base;
+        expect(box.width, closeTo(w * 1.75, w * 0.03),
+            reason: "$side leaf open: the edge moved in by a quarter page");
+      }
+    });
+
+    // The leaf beside the open one is drawn where it was left. Drawn at frame
+    // nought, a chart on the right leaf scrubbed past its animation vanished
+    // the moment the left leaf was clicked; drawn at the frame everything had
+    // arrived by, a chart left at its start jumped to the end. And the page
+    // left comes back at the frame it was left on, however short the page
+    // visited in between.
+    testWidgets("the other leaf is drawn, and comes back, where it was left",
+        (tester) async {
+      const w = a4PageWidth * 1.0, h = w * 297 / 210;
+      var doc = pages(4).copyWith(pages: const PagesSpec(facing: true));
+      var scenes = [...doc.allScenes];
+      // The left leaf is short: five frames, which the playhead would be
+      // clamped to on the way through.
+      scenes[1] = scenes[1].copyWith(frames: 5);
+      scenes[2] = scenes[2].copyWith(frames: 30, elements: [
+        ShapeElement(
+            ElementBase(
+                id: "arrives",
+                x: w * 0.25,
+                y: h * 0.25,
+                width: w * 0.5,
+                height: h * 0.5,
+                track: ElementTrack(const [
+                  Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+                  Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+                ])),
+            fill: const Color(0xFF0000FF),
+            // Faded in, so at frame nought there is nothing to see.
+            animation:
+                const ElementAnimation(preset: ElementAnimationPreset.fadeIn)),
+      ]);
+      var controller =
+          CanvasController(doc.withScenes(scenes).copyWith(sceneAt: 2));
+      addTearDown(controller.dispose);
+      var view = await stage(tester, controller);
+
+      /// blueOnRight is whether the right leaf's square is showing.
+      Future<bool> blueOnRight() async {
+        await tester.pump();
+        var painter = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((c) => c.painter)
+            .whereType<StagePainter>()
+            .single;
+        late ByteData data;
+        await tester.runAsync(() async {
+          var recorder = ui.PictureRecorder();
+          painter.paint(ui.Canvas(recorder), viewport);
+          var image = await recorder
+              .endRecording()
+              .toImage(viewport.width.round(), viewport.height.round());
+          data = (await image.toByteData())!;
+        });
+        var page = view.pageRect;
+        var right = controller.document.at == 2
+            ? page.center
+            : page.center + Offset(page.width, 0);
+        var c = data.getUint32(
+            (right.dy.round() * viewport.width.round() + right.dx.round()) * 4);
+        return (c >> 8 & 0xFF) > 100 && (c >> 24 & 0xFF) < 60;
+      }
+
+      controller.frame = 20;
+      controller.goToScene(1);
+      expect(await blueOnRight(), isTrue,
+          reason: "left at frame 20, the square is there");
+      controller.goToScene(2);
+      expect(controller.frame, 20,
+          reason: "back where it was left, not clamped to the short page");
+
+      controller.frame = 0;
+      controller.goToScene(1);
+      expect(await blueOnRight(), isFalse,
+          reason: "left at frame nought, the square has not arrived");
+      controller.goToScene(2);
+      expect(controller.frame, 0);
     });
   });
 
