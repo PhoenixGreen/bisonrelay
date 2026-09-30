@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -8,12 +9,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 // canvas_channels.dart is the sound on the timeline, a lane for each channel,
 // laid out against the same frames as the keyframe strip above it.
@@ -24,20 +26,30 @@ import 'package:flutter/material.dart';
 // new empty lane is under it. A channel with nothing left on it is simply not
 // there any more.
 //
+// Each channel has a strip at the left: a coloured edge that says what kind
+// of channel it is (green for sound, yellow for a video's), its short name --
+// A1, V1 -- and its full one when it is tall enough, its level as a number,
+// and lock, solo and mute.
+//
 // Each sound is a bar from the frame it starts on to the frame it ends on:
-// one block per file, the fades as slopes, a repeat drawn fainter to the end.
-// A bar is dragged along to move it and onto another lane to move it there;
-// its ends are dragged to trim it, and the handles at its top corners to fade
-// it in and out. With the knife, a click cuts it in two. Taller than a line of
-// text, a lane draws each file's waveform.
+// one block per file, the fades as slopes, a repeat drawn fainter to the end,
+// and a line across it at its own volume. A bar is dragged along to move it
+// and onto another lane to move it there; its ends are dragged to trim it,
+// the handles at its top corners to fade it, and its line up and down to turn
+// it up or down on its own. With the knife, a click cuts it in two. Taller
+// than a line of text, a lane draws each file's waveform.
 
-/// channelsLaneHeight is a lane as it starts: tall enough for its strip on
-/// the left -- the name with mute and solo, and the level under them.
-const double channelsLaneHeight = 34;
+/// channelsLaneHeight is a lane as it starts, and the shortest it goes to
+/// while its strip keeps everything on one line.
+const double channelsLaneHeight = 32;
 
 /// _laneMin and _laneMax bound a lane dragged taller or shorter.
 const double _laneMin = 26;
 const double _laneMax = 180;
+
+/// _tall is how tall a lane is before its strip spreads over two lines and
+/// shows the channel's name.
+const double _tall = 52;
 
 /// _waveformFrom is how tall a lane has to be before it shows its waveform.
 const double _waveformFrom = 46;
@@ -47,15 +59,21 @@ const double _edgeGrab = 7;
 /// _fadeGrab is how far down from the top of a bar its fade handles reach.
 const double _fadeGrab = 10;
 
+/// _volumeGrab is how near the volume line a press has to be to take it.
+const double _volumeGrab = 4;
+
+/// _snapReach is how near, on screen, a dragged edge has to come to a second
+/// or the playhead to land on it.
+const double _snapReach = 8;
+
 /// timelineHeaderWidth is the channel strips' column as it starts. The reader
 /// drags it -- see CanvasController.headerWidth.
 const double timelineHeaderWidth = 150;
 
-/// _showsControls and _showsName are the widths at which a strip has room
-/// for mute, solo and its reading; and for its name and its level. Narrower
-/// than both, it is its icon.
-const double _showsControls = 128;
-const double _showsName = 64;
+/// channelColour is the edge of a channel's strip: green for sound, yellow
+/// for the sound of a video.
+Color channelColour(bool video) =>
+    video ? const Color(0xFFD9A93A) : const Color(0xFF3AA66A);
 
 class CanvasChannels extends StatefulWidget {
   final CanvasController controller;
@@ -74,7 +92,7 @@ class CanvasChannels extends StatefulWidget {
   State<CanvasChannels> createState() => _CanvasChannelsState();
 }
 
-enum _Grip { move, start, end, fadeIn, fadeOut }
+enum _Grip { move, start, end, fadeIn, fadeOut, volume }
 
 class _CanvasChannelsState extends State<CanvasChannels> {
   CanvasController get controller => widget.controller;
@@ -86,12 +104,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   MediaClip? _was;
   bool _dragging = false;
 
-  /// _pressedX is where the press was, on screen. A drag is measured from
-  /// it rather than by adding up the drag's own steps, because a drag is
-  /// only recognised once the pointer has already moved some way -- and
-  /// that first stretch never arrives as a step, so a clip dragged twenty
-  /// frames moved sixteen.
-  double _pressedX = 0;
+  /// _pressedX and _pressedY are where the press was, on screen. A drag is
+  /// measured from them rather than by adding up the drag's own steps,
+  /// because a drag is only recognised once the pointer has already moved
+  /// some way -- and that first stretch never arrives as a step, so a clip
+  /// dragged twenty frames moved sixteen.
+  double _pressedX = 0, _pressedY = 0;
 
   /// _over is the lane a sound being dragged is over, by channel key --
   /// [_newLane] for the empty one -- while it is off its own.
@@ -139,11 +157,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return null;
   }
 
-  void _press(TimelineChannel channel, Offset at, Offset global, double width) {
+  bool _canEdit(TimedLane lane) => lane.editable && !lane.element.locked;
+
+  /// _gripAt is the sound under [at] on [channel] and which part of it: an
+  /// end, a fade handle, its volume line, or the rest of it. Null for no
+  /// sound. What a press takes hold of, and what the pointer shows.
+  (TimedLane, _Grip)? _gripAt(
+      TimelineChannel channel, Offset at, double width, double height) {
     var lane = _clipAt(channel, at.dx, width);
-    _held = lane;
-    _dragging = false;
-    if (lane == null || !lane.editable) return;
+    if (lane == null) return null;
     var span = _span(lane);
     var clip = lane.clip;
     var rate = controller.document.frameRate.toDouble();
@@ -151,9 +173,11 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     var right = _view.xOf(span.to, width);
     var fadeInX = _view.xOf(span.from + clip.fadeIn * rate, width);
     var fadeOutX = _view.xOf(span.to - clip.fadeOut * rate, width);
+    var line = _volumeY(clip.volume, height);
     // The fade handles first: they sit on the top edge, at the corners until
-    // a fade is drawn, and on the ends of the slopes after.
-    _grip = at.dy <= _fadeGrab && (at.dx - fadeInX).abs() <= _edgeGrab
+    // a fade is drawn, and on the ends of the slopes after. Then the ends;
+    // then the volume line; and anywhere else moves it.
+    var grip = at.dy <= _fadeGrab && (at.dx - fadeInX).abs() <= _edgeGrab
         ? _Grip.fadeIn
         : at.dy <= _fadeGrab && (at.dx - fadeOutX).abs() <= _edgeGrab
             ? _Grip.fadeOut
@@ -161,18 +185,122 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 ? _Grip.start
                 : (at.dx - right).abs() <= _edgeGrab
                     ? _Grip.end
-                    : _Grip.move;
-    _was = clip;
+                    : lane.element is AudioElement &&
+                            (at.dy - line).abs() <= _volumeGrab
+                        ? _Grip.volume
+                        : _Grip.move;
+    return (lane, grip);
+  }
+
+  void _press(TimelineChannel channel, Offset at, Offset global, double width,
+      double height) {
+    _dragging = false;
     _pressedX = global.dx;
+    _pressedY = global.dy;
+    var hit = _gripAt(channel, at, width, height);
+    _held = hit?.$1;
+    if (hit == null) {
+      // Empty lane: a box, dragged, picks what it touches.
+      if (controller.timelineTool == TimelineTool.select) {
+        _boxFrom = global;
+        _boxTo = null;
+        var adding = HardwareKeyboard.instance.isShiftPressed;
+        _boxBase = adding ? {...controller.selection} : {};
+        _boxChannels = adding ? {...controller.selectedChannels} : {};
+      }
+      return;
+    }
+    var (lane, grip) = hit;
+    if (!_canEdit(lane)) return;
+    _grip = grip;
+    _was = lane.clip;
+  }
+
+  /// _cursors is the pointer each lane shows, from what is under it.
+  final Map<String, MouseCursor> _cursors = {};
+
+  void _hover(TimelineChannel channel, Offset at, double width, double height) {
+    MouseCursor cursor;
+    if (controller.timelineTool == TimelineTool.knife) {
+      cursor = SystemMouseCursors.precise;
+    } else {
+      var hit = _gripAt(channel, at, width, height);
+      cursor = hit == null || !_canEdit(hit.$1)
+          ? SystemMouseCursors.basic
+          : switch (hit.$2) {
+              _Grip.start ||
+              _Grip.end ||
+              _Grip.fadeIn ||
+              _Grip.fadeOut =>
+                SystemMouseCursors.resizeLeftRight,
+              _Grip.volume => SystemMouseCursors.resizeUpDown,
+              _Grip.move => SystemMouseCursors.basic,
+            };
+    }
+    if (_cursors[channel.key] != cursor) {
+      setState(() => _cursors[channel.key] = cursor);
+    }
+  }
+
+  // The box dragged across empty lanes: where it began and has got to, on
+  // screen, and what was picked before it when Shift was held.
+  Offset? _boxFrom, _boxTo;
+  Set<String> _boxBase = {};
+  Set<String> _boxChannels = {};
+  final GlobalKey _stack = GlobalKey();
+
+  /// _box picks every sound the box touches, and the channels they are on.
+  void _box(Offset global) {
+    var from = _boxFrom;
+    if (from == null) return;
+    _boxTo = global;
+    var box = Rect.fromPoints(from, global);
+    var ids = {..._boxBase};
+    var keys = {..._boxChannels};
+    for (var channel in controller.timelineChannels) {
+      var row = _keyFor(channel.key).currentContext?.findRenderObject();
+      if (row is! RenderBox || !row.attached) continue;
+      var origin = row.localToGlobal(Offset.zero);
+      var top = origin.dy, bottom = origin.dy + row.size.height;
+      if (bottom < box.top || top > box.bottom) continue;
+      var left = origin.dx + controller.headerWidth;
+      var width = row.size.width - controller.headerWidth;
+      for (var lane in channel.lanes) {
+        var span = _span(lane);
+        var a = left + _view.xOf(span.from, width);
+        var b = left + _view.xOf(span.to, width);
+        if (b < box.left || a > box.right) continue;
+        if (controller.document.elements.any((e) => e.id == lane.element.id)) {
+          ids.add(lane.element.id);
+        }
+        keys.add(channel.key);
+      }
+    }
+    controller.selectMany(ids);
+    controller.selectChannels(keys);
+    setState(() {});
   }
 
   void _tap(TimelineChannel channel, Offset at, double width) {
+    _boxFrom = null;
+    var shift = HardwareKeyboard.instance.isShiftPressed;
     var lane = _held ?? _clipAt(channel, at.dx, width);
     _held = null;
     if (lane == null) {
-      controller.clearSelection();
+      if (!shift) {
+        controller.clearSelection();
+        controller.selectedChannel = channel.key;
+      }
       return;
     }
+    // Shift adds a sound to what is picked, or takes it out, and its
+    // channel with it.
+    if (shift && controller.timelineTool == TimelineTool.select) {
+      controller.toggleSelected(lane.element.id);
+      controller.toggleChannel(channel.key);
+      return;
+    }
+    controller.selectedChannel = channel.key;
     if (controller.timelineTool == TimelineTool.knife) {
       controller.pause();
       var frame = (_view.first + _view.framesPer(at.dx, width)).round();
@@ -190,26 +318,84 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     }
   }
 
-  void _drag(Offset global, double width) {
+  /// _snapped is [frames] nudged so that [edge] + frames lands on a second
+  /// or on the playhead, where one is within reach -- or [frames] as it is.
+  double _snapped(double edge, double frames, double width) {
+    if (!controller.snapping) return frames;
+    var reach = _view.framesPer(_snapReach, width);
+    var rate = math.max(1, controller.document.frameRate);
+    var wanted = edge + frames;
+    var marks = [
+      controller.frame.toDouble(),
+      (wanted / rate).roundToDouble() * rate,
+    ];
+    double? best;
+    for (var m in marks) {
+      var off = m - wanted;
+      if (off.abs() <= reach && (best == null || off.abs() < best.abs())) {
+        best = off;
+      }
+    }
+    return best == null ? frames : frames + best;
+  }
+
+  void _drag(Offset global, double width, double height) {
+    if (_boxFrom != null) {
+      _box(global);
+      return;
+    }
     var lane = _held, was = _was;
-    if (lane == null || was == null || !lane.editable) return;
+    if (lane == null || was == null || !_canEdit(lane)) return;
     if (controller.timelineTool == TimelineTool.knife) return;
     if (!_dragging) {
       _dragging = true;
       controller.pause();
       controller.beginInteraction();
-      _pick(lane);
+      // One of several picked, moved: all of them go, together.
+      var picked = controller.selection;
+      _group = picked.length > 1 &&
+              picked.contains(lane.element.id) &&
+              _grip == _Grip.move
+          ? {
+              for (var l in controller.timedLanes)
+                if (picked.contains(l.element.id) &&
+                    l.element.id != lane.element.id &&
+                    _canEdit(l))
+                  l.element.id: (l.element, l.clip),
+            }
+          : const {};
+      if (_group.isEmpty) {
+        _pick(lane);
+        controller.selectedChannel = lane.channelKey;
+      }
     }
     var frames = _view.framesPer(global.dx - _pressedX, width);
     var rate = controller.document.frameRate.toDouble();
-    var seconds = frames / (rate <= 0 ? 1 : rate);
+    if (rate <= 0) rate = 1;
+    var span = (from: (was.at - lane.offset).toDouble(), length: 0.0);
+    var length = was.runLength * rate;
     MediaClip next;
     switch (_grip) {
       case _Grip.move:
+        // Whichever end is nearer something to land on, lands on it.
+        var byStart = _snapped(span.from, frames, width);
+        var byEnd = _snapped(span.from + length, frames, width);
+        // Whichever end snapped -- the nearer, if both did.
+        var a = byStart - frames, b = byEnd - frames;
+        if (a != 0 && (b == 0 || a.abs() <= b.abs())) {
+          frames = byStart;
+        } else if (b != 0) {
+          frames = byEnd;
+        }
         next = was.copyWith(at: math.max(0, was.at + frames.round()));
-        // And onto another lane, where it is let go over one. Audio only: a
-        // video's lane is its own.
-        if (lane.element is AudioElement) {
+        for (var (e, clip) in _group.values) {
+          controller.setTimedClip(
+              e, clip.copyWith(at: math.max(0, clip.at + frames.round())),
+              transient: true);
+        }
+        // And onto another lane, where it is let go over one -- one sound,
+        // not several. Audio only: a video's lane is its own.
+        if (lane.element is AudioElement && _group.isEmpty) {
           var over = _laneUnder(global);
           var own = lane.channelKey;
           _over = over == own ? null : over;
@@ -218,6 +404,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         // Trimming the front moves the start of the first file's range and
         // the clip with it, so what is left stays where it was on the
         // timeline -- the way an editor trims.
+        frames = _snapped(span.from, frames, width);
+        var seconds = frames / rate;
         var first = was.playlist.first;
         var stop = first.endOr(first.length) - 0.1;
         var start =
@@ -228,6 +416,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           playlist: [first.copyWith(start: start), ...was.playlist.skip(1)],
         );
       case _Grip.end:
+        frames = _snapped(span.from + length, frames, width);
+        var seconds = frames / rate;
         var last = was.playlist.last;
         var end = last.endOr(last.length) + seconds;
         var most = last.length > 0 ? last.length : double.infinity;
@@ -240,12 +430,20 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       case _Grip.fadeIn:
         // No longer than the shortest file, which is where each fade runs.
         next = was.copyWith(
-            fadeIn:
-                (was.fadeIn + seconds).clamp(0.0, _shortest(was)).toDouble());
+            fadeIn: (was.fadeIn + frames / rate)
+                .clamp(0.0, _shortest(was))
+                .toDouble());
       case _Grip.fadeOut:
         next = was.copyWith(
-            fadeOut:
-                (was.fadeOut - seconds).clamp(0.0, _shortest(was)).toDouble());
+            fadeOut: (was.fadeOut - frames / rate)
+                .clamp(0.0, _shortest(was))
+                .toDouble());
+      case _Grip.volume:
+        // This sound only, not the channel: up is louder, to six decibels
+        // over, and down is quieter, to nothing.
+        var room = math.max(1.0, height - 16);
+        var at = _volumeShare(was.volume) + (global.dy - _pressedY) / room;
+        next = was.copyWith(volume: _volumeAt(at));
     }
     controller.setTimedClip(lane.element, next, transient: true);
     setState(() {});
@@ -259,7 +457,18 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return least;
   }
 
+  /// _group is the other sounds picked, as they were, while one of them is
+  /// dragged along -- see _drag.
+  Map<String, (CanvasElement, MediaClip)> _group = const {};
+
   void _release() {
+    if (_boxFrom != null) {
+      _boxFrom = null;
+      _boxTo = null;
+      setState(() {});
+      return;
+    }
+    _group = const {};
     var held = _held;
     var over = _over;
     _held = null;
@@ -273,9 +482,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             .firstOrNull;
         var to =
             controller.timelineChannels.where((c) => c.key == over).firstOrNull;
-        if (now != null) {
+        if (now != null && !(to?.locked ?? false)) {
           controller.moveClipToChannel(now, over == _newLane ? null : to,
               transient: true);
+          controller.selectedChannel = over == _newLane
+              ? controller.timedLanes
+                  .where((l) => l.element.id == held.element.id)
+                  .firstOrNull
+                  ?.channelKey
+              : over;
         }
       }
       controller.endInteraction();
@@ -306,46 +521,79 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       builder: (context, _) {
         var channels = controller.timelineChannels;
         var width = controller.headerWidth;
-        return ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            for (var channel in channels)
-              _row(channel.key, _heightOf(channel.key), width,
-                  header: _ChannelHeader(
-                    key: ValueKey("channelStrip-${channel.key}"),
-                    channel: channel,
-                    width: width,
-                    height: _heightOf(channel.key),
-                    soloed: controller.solo.contains(channel.key),
-                    theme: theme,
-                    onPick: () => _pick(channel.first),
-                    onMix: (mix, {transient = false}) {
-                      controller.beginInteraction();
-                      controller.setChannelMix(channel, mix, transient: true);
-                      if (!transient) controller.endInteraction();
-                    },
-                    onCommit: controller.endInteraction,
-                    onSolo: () => controller.toggleSolo(channel.key),
-                    onGripStart: (y) {
-                      _gripFrom = y;
-                      _gripHeight = _heightOf(channel.key);
-                    },
-                    onGripMove: (y) => controller.setLaneHeight(
-                        channel.key,
-                        (_gripHeight + y - _gripFrom)
-                            .clamp(_laneMin, _laneMax)
-                            .toDouble()),
-                  ),
-                  lane: _lane(channel, theme)),
-            _row(_newLane, channelsLaneHeight, width,
-                header: _EmptyHeader(
-                    width: width,
-                    name: controller.newChannelName(),
-                    theme: theme),
-                lane: _emptyLane(theme)),
-          ],
-        );
+        var audio = 0, video = 0;
+        return Stack(key: _stack, children: [
+          ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              for (var channel in channels)
+                _row(channel.key, _heightOf(channel.key), width,
+                    header: _ChannelHeader(
+                      key: ValueKey("channelStrip-${channel.key}"),
+                      channel: channel,
+                      label: channel.video ? "V${++video}" : "A${++audio}",
+                      width: width,
+                      height: _heightOf(channel.key),
+                      selected:
+                          controller.selectedChannels.contains(channel.key),
+                      soloed: controller.solo.contains(channel.key),
+                      theme: theme,
+                      // Shift picks it as well as the others, or leaves it.
+                      onSelect: () => HardwareKeyboard.instance.isShiftPressed
+                          ? controller.toggleChannel(channel.key)
+                          : controller.selectedChannel = channel.key,
+                      onRename: (name) =>
+                          controller.renameChannel(channel, name),
+                      onMix: (mix) {
+                        controller.beginInteraction();
+                        controller.setChannelMix(channel, mix, transient: true);
+                        controller.endInteraction();
+                      },
+                      onLock: () =>
+                          controller.lockChannel(channel, !channel.locked),
+                      onSolo: () => controller.toggleSolo(channel.key),
+                      onGripStart: (y) {
+                        _gripFrom = y;
+                        _gripHeight = _heightOf(channel.key);
+                      },
+                      onGripMove: (y) => controller.setLaneHeight(
+                          channel.key,
+                          (_gripHeight + y - _gripFrom)
+                              .clamp(_laneMin, _laneMax)
+                              .toDouble()),
+                    ),
+                    lane: _lane(channel, theme)),
+              _row(_newLane, channelsLaneHeight, width,
+                  header: _EmptyHeader(
+                      width: width,
+                      name: controller.newChannelName(),
+                      theme: theme),
+                  lane: _emptyLane(theme)),
+            ],
+          ),
+          // The box being dragged across the lanes.
+          if (_boxFrom != null && _boxTo != null) _boxOverlay(theme),
+        ]);
       },
+    );
+  }
+
+  Widget _boxOverlay(ThemeNotifier theme) {
+    var stack = _stack.currentContext?.findRenderObject();
+    if (stack is! RenderBox) return const SizedBox.shrink();
+    var rect = Rect.fromPoints(
+        stack.globalToLocal(_boxFrom!), stack.globalToLocal(_boxTo!));
+    return Positioned.fromRect(
+      rect: rect,
+      child: IgnorePointer(
+        child: Container(
+          key: const ValueKey("channelsBox"),
+          decoration: BoxDecoration(
+            color: theme.colors.primary.withValues(alpha: 0.08),
+            border: Border.all(color: theme.colors.primary),
+          ),
+        ),
+      ),
     );
   }
 
@@ -363,15 +611,18 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
   /// channel of its own.
   void _addAt(MediaSource source, int frame, TimelineChannel? channel) {
+    var key = channel?.key ?? controller.newChannelId();
     controller.addElement(channelClip(controller.document, frame,
         source: source,
-        channel: channel?.key ?? controller.newChannelId(),
+        channel: key,
         channelName: channel?.name ?? controller.newChannelName(),
         mix: channel?.mix ?? const ChannelMix()));
+    controller.selectedChannel = key;
   }
 
   Widget _lane(TimelineChannel channel, ThemeNotifier theme) {
-    var tall = _heightOf(channel.key) >= _waveformFrom;
+    var height = _heightOf(channel.key);
+    var tall = height >= _waveformFrom;
     var shapes = <String, Float32List?>{
       if (tall)
         for (var lane in channel.lanes)
@@ -384,7 +635,9 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return DragTarget<Object>(
       key: ValueKey("lane-${channel.key}"),
       onWillAcceptWithDetails: (d) =>
-          droppedKind(d.data) == AssetKind.audio && channel.editable,
+          droppedKind(d.data) == AssetKind.audio &&
+          channel.editable &&
+          !channel.locked,
       onAcceptWithDetails: (d) async {
         var at = _frameIn(channel.key, d.offset);
         var asset = await droppedAsset(d.data);
@@ -394,13 +647,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         builder: (context, box) => GestureDetector(
           supportedDevices: timelinePointers,
           behavior: HitTestBehavior.opaque,
-          onPanDown: (d) =>
-              _press(channel, d.localPosition, d.globalPosition, box.maxWidth),
+          onPanDown: (d) => _press(channel, d.localPosition, d.globalPosition,
+              box.maxWidth, box.maxHeight),
           // The start is a move too: a pan is only recognised once the
           // pointer has gone some way, and a short drag can end on the step
           // that is recognised, with no update after it.
-          onPanStart: (d) => _drag(d.globalPosition, box.maxWidth),
-          onPanUpdate: (d) => _drag(d.globalPosition, box.maxWidth),
+          onPanStart: (d) =>
+              _drag(d.globalPosition, box.maxWidth, box.maxHeight),
+          onPanUpdate: (d) =>
+              _drag(d.globalPosition, box.maxWidth, box.maxHeight),
           onPanEnd: (_) => _release(),
           onPanCancel: () {
             // A tap cancels the pan before it lands; only a drag in progress
@@ -409,9 +664,14 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           },
           onTapUp: (d) => _tap(channel, d.localPosition, box.maxWidth),
           child: MouseRegion(
+            // From what is under the pointer: the arrow to move a sound,
+            // left and right for its ends and fades, up and down for its
+            // volume, and the knife's crosshair.
             cursor: knife
                 ? SystemMouseCursors.precise
-                : SystemMouseCursors.resizeLeftRight,
+                : _cursors[channel.key] ?? SystemMouseCursors.basic,
+            onHover: (e) =>
+                _hover(channel, e.localPosition, box.maxWidth, box.maxHeight),
             child: CustomPaint(
               size: Size(box.maxWidth, box.maxHeight),
               painter: _LanePainter(
@@ -422,7 +682,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 frameRate: controller.document.frameRate,
                 colors: theme.colors,
                 selected: controller.selection,
+                chosenChannel:
+                    controller.selectedChannels.contains(channel.key),
                 held: _dragging ? _held?.element.id : null,
+                showVolume: _dragging && _grip == _Grip.volume,
                 target: candidate.isNotEmpty || _over == channel.key,
                 shapes: shapes,
               ),
@@ -472,6 +735,64 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 }
 
+/// _unityShare is how far down a clip nought decibels sits: a little above
+/// the middle, so a sound that is too quiet has room to be turned up.
+const double _unityShare = 0.45;
+
+/// _mostDb is as far up as a sound goes: six decibels, twice as loud, which
+/// is generally as much as turning one up will stand.
+const double _mostDb = 6.0206;
+
+/// _volumeShare is how far down the clip [volume]'s line is, nought at the
+/// top to one at the bottom: decibels above nought -- up to six at the top --
+/// and a straight fade to silence below.
+double _volumeShare(double volume) {
+  if (volume >= 1) {
+    var db = math.min(_mostDb, 20 * math.log(volume) / math.ln10);
+    return _unityShare * (1 - db / _mostDb);
+  }
+  return _unityShare + (1 - volume.clamp(0.0, 1.0)) * (1 - _unityShare);
+}
+
+/// _volumeAt is the volume whose line is [share] of the way down.
+double _volumeAt(double share) {
+  var p = share.clamp(0.0, 1.0);
+  if (p <= _unityShare) {
+    var db = _mostDb * (1 - p / _unityShare);
+    return math.pow(10, db / 20).toDouble();
+  }
+  return 1 - (p - _unityShare) / (1 - _unityShare);
+}
+
+/// _volumeY is where a clip's volume line sits in a lane [height] tall.
+double _volumeY(double volume, double height) {
+  // Inset from the clip's edges, so the line is never the edge itself.
+  var top = 3.0 + 5, bottom = height - 3 - 5;
+  return top + _volumeShare(volume) * (bottom - top);
+}
+
+/// gainToDb is a level as decibels, -90 standing for silence.
+double gainToDb(double gain) =>
+    gain <= 0.0000316 ? -90 : 20 * math.log(gain) / math.ln10;
+
+/// _paintSeconds draws a faint line at every second across [size], as the
+/// strip above ticks them: the lanes and the strip are one timeline. In each
+/// lane and not under the empty one, so the lines stop where the channels do.
+void _paintSeconds(Canvas canvas, Size size, TimelineView view, int frameRate,
+    ColorScheme colors) {
+  var w = size.width;
+  var rate = math.max(1, frameRate);
+  if (w / view.span * rate <= 8) return;
+  var grid = Paint()
+    ..color = colors.outlineVariant.withValues(alpha: 0.35)
+    ..strokeWidth = 1;
+  var s = (view.first / rate).ceil();
+  for (var f = s * rate; f <= view.first + view.span; f += rate) {
+    var x = view.xOf(f, w);
+    canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+  }
+}
+
 class _LanePainter extends CustomPainter {
   final TimelineChannel channel;
   final List<({double from, double to, List<double> cuts})> spans;
@@ -480,7 +801,9 @@ class _LanePainter extends CustomPainter {
   final int frameRate;
   final ColorScheme colors;
   final Set<String> selected;
+  final bool chosenChannel;
   final String? held;
+  final bool showVolume;
   final bool target;
   final Map<String, Float32List?> shapes;
 
@@ -492,7 +815,9 @@ class _LanePainter extends CustomPainter {
     required this.frameRate,
     required this.colors,
     required this.selected,
+    required this.chosenChannel,
     required this.held,
+    required this.showVolume,
     required this.target,
     required this.shapes,
   });
@@ -506,32 +831,23 @@ class _LanePainter extends CustomPainter {
     // Zoomed in, a clip reaches past either edge: drawn, and cut off there.
     canvas.clipRect(Offset.zero & size);
 
-    // A lane something is being dropped on, or dragged onto.
-    if (target) {
-      canvas.drawRect(Offset.zero & size,
-          Paint()..color = colors.primary.withValues(alpha: 0.08));
+    // The channel picked, which a cut at the playhead is made on; and a lane
+    // something is being dropped on, or dragged onto.
+    if (chosenChannel || target) {
+      canvas.drawRect(
+          Offset.zero & size,
+          Paint()
+            ..color = colors.primary.withValues(alpha: target ? 0.10 : 0.05));
     }
-    // The line between this lane and the next.
-    canvas.drawLine(Offset(0, size.height - 0.5), Offset(w, size.height - 0.5),
-        Paint()..color = colors.outlineVariant.withValues(alpha: 0.4));
 
-    // A faint line at every second, as the strip above ticks them, so the
-    // strip and the lanes read as one timeline rather than two.
-    var rate = math.max(1, frameRate);
-    var grid = Paint()
-      ..color = colors.outlineVariant.withValues(alpha: 0.35)
-      ..strokeWidth = 1;
-    if (w / view.span * rate > 8) {
-      var s = (view.first / rate).ceil();
-      for (var f = s * rate; f <= view.first + view.span; f += rate) {
-        var x = _x(f, w);
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
-      }
-    }
+    _paintSeconds(canvas, size, view, frameRate, colors);
 
     for (var (i, lane) in channel.lanes.indexed) {
       _paintClip(canvas, size, lane, spans[i], top, bottom);
     }
+
+    // No line under the lane: the channels' lines are their strips', and the
+    // one across the whole timeline is the keyframes' -- see CanvasTimeline.
 
     // The playhead, through every lane, as on the strip above.
     var head = view.centreOf(frame, w);
@@ -554,8 +870,9 @@ class _LanePainter extends CustomPainter {
     var clip = lane.clip;
     if (clip.isEmpty) return;
     var video = lane.element is VideoElement;
+    var locked = lane.element.locked;
     var fill = (video ? const Color(0xFF7B5CC4) : const Color(0xFF2A9D8F))
-        .withValues(alpha: lane.editable ? 1 : 0.45);
+        .withValues(alpha: lane.editable && !locked ? 1 : 0.5);
 
     var from = _x(span.from, w), to = _x(span.to, w);
 
@@ -571,15 +888,28 @@ class _LanePainter extends CustomPainter {
         from, top, math.max(from + 2, to), bottom, const Radius.circular(4));
     canvas.drawRRect(bar, Paint()..color = fill);
 
-    var rate = frameRate <= 0 ? 1 : frameRate;
+    canvas.save();
+    // Everything of the clip's is inside the clip: the waveform, the lines
+    // and its name.
+    canvas.clipRRect(bar);
 
-    // The shape of the sound, where the lane is tall enough to read one.
+    var rate = frameRate <= 0 ? 1 : frameRate;
+    var audio = lane.element is AudioElement;
+
+    // The shape of the sound as it will come out -- its peaks times its own
+    // volume -- where the lane is tall enough to read one. Turned up, it
+    // grows; where a peak would go past full it stops at the edge, in red,
+    // which is where it would clip.
     if (size.height >= _waveformFrom) {
       var ink = Paint()
         ..color = const Color(0x99FFFFFF)
         ..strokeWidth = 1;
+      var over = Paint()
+        ..color = const Color(0xFFE05050)
+        ..strokeWidth = 1;
       var mid = (top + bottom) / 2 + 5;
       var reach = (bottom - top) / 2 - 7;
+      var gain = audio ? clip.volume : 1.0;
       for (var (i, cut) in span.cuts.indexed) {
         var source = clip.playlist[i];
         var peaks = shapes[source.assetId];
@@ -590,8 +920,10 @@ class _LanePainter extends CustomPainter {
           var t = source.start + (view.first + x / w * view.span - cut) / rate;
           var at = (t / source.length * peaks.length).floor();
           if (at < 0 || at >= peaks.length) continue;
-          var h = peaks[at] * reach;
-          canvas.drawLine(Offset(x, mid - h), Offset(x, mid + h), ink);
+          var level = peaks[at] * gain;
+          var h = math.min(1.0, level) * reach;
+          canvas.drawLine(
+              Offset(x, mid - h), Offset(x, mid + h), level >= 1 ? over : ink);
         }
       }
     }
@@ -630,6 +962,61 @@ class _LanePainter extends CustomPainter {
       }
     }
 
+    // The volume line: this sound's own level, dragged up or down.
+    if (audio) {
+      var y = _volumeY(clip.volume, size.height);
+      canvas.drawLine(
+          Offset(from, y),
+          Offset(to, y),
+          Paint()
+            ..color = const Color(0xCCFFFFFF)
+            ..strokeWidth = 1.2);
+      if (showVolume && held == lane.element.id) {
+        var reading = TextPainter(
+          text: TextSpan(
+              text: clip.volume <= 0
+                  ? "−∞ dB"
+                  : "${clip.volume > 1.0001 ? "+" : ""}"
+                      "${gainToDb(clip.volume).toStringAsFixed(1)} dB",
+              style: const TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFFFFFFFF),
+                  fontWeight: FontWeight.w600)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        reading.paint(
+            canvas,
+            Offset(math.max(from, 0) + 6,
+                (y - reading.height - 2).clamp(top, bottom - reading.height)));
+      }
+    }
+
+    // The name, inside the bar, and not at all where the bar is too short
+    // for any of it.
+    var room = to - math.max(from, 0) - 12;
+    if (room >= 24) {
+      var name =
+          lane.editable ? lane.element.name : "${lane.element.name} (master)";
+      var text = TextPainter(
+        text: TextSpan(
+            text: name,
+            style: const TextStyle(
+                fontSize: 10.5,
+                color: Color(0xFFFFFFFF),
+                fontWeight: FontWeight.w500)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: "…",
+      )..layout(maxWidth: room);
+      // Along the bottom of a tall lane, so the waveform and the volume line
+      // have the rest; in the middle of a short one.
+      var y = size.height >= _waveformFrom
+          ? bottom - text.height - 2
+          : (size.height - text.height) / 2;
+      text.paint(canvas, Offset(math.max(from, 0) + 6, y));
+    }
+    canvas.restore();
+
     // Chosen, it keeps an outline for as long as it is: its settings are
     // the ones on screen.
     var chosen = selected.contains(lane.element.id);
@@ -644,7 +1031,7 @@ class _LanePainter extends CustomPainter {
 
     // The fade handles, on the top edge: at the corners until a fade is
     // drawn, and at the end of each slope after.
-    if (lane.editable && to - from > 24) {
+    if (lane.editable && !locked && to - from > 24) {
       var handle = Paint()..color = const Color(0xFFFFFFFF);
       var inX = _x(span.from + clip.fadeIn * rate, w).clamp(from, to);
       var outX = _x(span.to - clip.fadeOut * rate, w).clamp(from, to);
@@ -657,37 +1044,6 @@ class _LanePainter extends CustomPainter {
               center: Offset(outX - 3, top + 3), width: 6, height: 6),
           handle);
     }
-
-    // The name, inside the bar where it fits and after it where it does not.
-    var name =
-        lane.editable ? lane.element.name : "${lane.element.name} (master)";
-    var text = TextPainter(
-      text: TextSpan(
-          text: name,
-          style: const TextStyle(
-              fontSize: 10.5,
-              color: Color(0xFFFFFFFF),
-              fontWeight: FontWeight.w500)),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: "…",
-    )..layout(maxWidth: math.max(0, w - from - 8));
-    var inside = text.width + 12 < to - from;
-    if (!inside) {
-      text = TextPainter(
-        text: TextSpan(
-            text: name,
-            style: TextStyle(fontSize: 10.5, color: colors.onSurfaceVariant)),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: "…",
-      )..layout(maxWidth: math.max(0, w - to - 8));
-    }
-    // Along the top of a tall lane, so the waveform has the rest.
-    var y = size.height >= _waveformFrom
-        ? top + 2
-        : (size.height - text.height) / 2;
-    text.paint(canvas, Offset(inside ? math.max(from, 0) + 6 : to + 6, y));
   }
 
   @override
@@ -731,33 +1087,42 @@ class _EmptyLanePainter extends CustomPainter {
       old.label != label || old.lit != lit || old.colors != colors;
 }
 
-/// _ChannelHeader is a channel's strip at the left of its lane: what it is
-/// called, mute and solo, and its level -- the same settings as its strip in
-/// the mixer, where a channel is found by the thing it is next to. Narrowed,
-/// it gives up its buttons and reading, then its name and level, and is its
-/// icon. Its bottom edge is dragged to make the lane taller.
+/// _ChannelHeader is a channel's strip at the left of its lane.
+///
+/// A coloured edge for what kind of channel it is; its short name, A1 or V1;
+/// its whole name, once the lane is tall enough to give it a line --
+/// double-clicked to rename it; its level, in decibels, clicked to type one;
+/// and lock, solo and mute. Narrowed, it gives up the reading, then the buttons
+/// one at a time, and is its edge and its short name. Its bottom edge is
+/// dragged to make the lane taller, and a click picks the channel.
 class _ChannelHeader extends StatelessWidget {
   final TimelineChannel channel;
+  final String label;
   final double width;
   final double height;
+  final bool selected;
   final bool soloed;
   final ThemeNotifier theme;
-  final VoidCallback onPick;
-  final void Function(ChannelMix mix, {bool transient}) onMix;
-  final VoidCallback onCommit;
+  final VoidCallback onSelect;
+  final ValueChanged<String> onRename;
+  final ValueChanged<ChannelMix> onMix;
+  final VoidCallback onLock;
   final VoidCallback onSolo;
   final ValueChanged<double> onGripStart;
   final ValueChanged<double> onGripMove;
 
   const _ChannelHeader({
     required this.channel,
+    required this.label,
     required this.width,
     required this.height,
+    required this.selected,
     required this.soloed,
     required this.theme,
-    required this.onPick,
+    required this.onSelect,
+    required this.onRename,
     required this.onMix,
-    required this.onCommit,
+    required this.onLock,
     required this.onSolo,
     required this.onGripStart,
     required this.onGripMove,
@@ -768,108 +1133,134 @@ class _ChannelHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     var colors = theme.colors;
     var mix = channel.mix;
-    var named = width >= _showsName;
-    var controls = width >= _showsControls;
-    var icon = Icon(
-        channel.video ? Icons.movie_outlined : Icons.music_note_outlined,
-        size: 12,
-        color: colors.onSurfaceVariant);
-    var body = Container(
-      padding: EdgeInsets.fromLTRB(4, 3, named ? 8 : 2, 3),
-      decoration: BoxDecoration(
-        border: Border(
-            right: BorderSide(color: colors.outlineVariant),
-            bottom: BorderSide(
-                color: colors.outlineVariant.withValues(alpha: 0.4))),
+    var tall = height >= _tall && width >= 110;
+    var locked = channel.locked;
+
+    Widget code = Text(label,
+        key: const ValueKey("channelCode"),
+        maxLines: 1,
+        style: TextStyle(
+            fontSize: 12.5,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
+            color: colors.onSurface));
+
+    // The channel's level, as a number: clicked, it takes a typed one --
+    // the same level as its fader in the mixer.
+    var reading = SizedBox(
+      width: 32,
+      child: DbReading(
+        key: const ValueKey("channelLevel"),
+        db: mix.gainDb,
+        fieldHeight: 14,
+        unit: "",
+        onSet: (db) => onMix(mix.copyWith(gainDb: db)),
+        style: TextStyle(
+            fontSize: 10,
+            height: 1.1,
+            fontFeatures: const [FontFeature.tabularFigures()],
+            color: colors.onSurfaceVariant),
       ),
-      child: !named
-          ? Align(alignment: Alignment.topLeft, child: icon)
-          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              // Heights given, and the text's own line height pinned: the
-              // app's text theme is generous with both, and a lane can be
-              // thirty-four pixels.
-              SizedBox(
-                height: 14,
-                child: Row(children: [
-                  icon,
-                  const SizedBox(width: 3),
-                  Expanded(
-                    child: GestureDetector(
-                      supportedDevices: timelinePointers,
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onPick,
-                      child: Text(channel.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 10.5,
-                              height: 1.2,
-                              fontWeight: FontWeight.w600,
-                              color: colors.onSurface)),
-                    ),
-                  ),
-                  if (controls) ...[
-                    _MiniToggle(
-                      key: const ValueKey("channelMute"),
-                      label: "M",
-                      on: mix.mute,
-                      onColor: const Color(0xFFB23B3B),
-                      theme: theme,
-                      onTap: () => onMix(mix.copyWith(mute: !mix.mute)),
-                    ),
-                    const SizedBox(width: 2),
-                    _MiniToggle(
-                      key: const ValueKey("channelSolo"),
-                      label: "S",
-                      on: soloed,
-                      onColor: const Color(0xFFB28A1F),
-                      theme: theme,
-                      onTap: onSolo,
-                    ),
-                  ],
-                ]),
-              ),
-              const SizedBox(height: 1),
-              SizedBox(
-                height: 12,
-                child: Row(children: [
-                  Expanded(
-                    child: _GainBar(
-                      key: const ValueKey("channelGain"),
-                      db: mix.gainDb,
-                      theme: theme,
-                      onChanged: (db, {transient = false}) =>
-                          onMix(mix.copyWith(gainDb: db), transient: transient),
-                      onCommit: onCommit,
-                    ),
-                  ),
-                  if (controls) ...[
-                    const SizedBox(width: 4),
-                    SizedBox(
-                      width: 44,
-                      child: DbReading(
-                        key: const ValueKey("channelDb"),
-                        db: mix.gainDb,
-                        fieldHeight: 12,
-                        onSet: (db) => onMix(mix.copyWith(gainDb: db)),
-                        style: TextStyle(
-                            fontSize: 9.5,
-                            height: 1.2,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                            color: colors.onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                ]),
-              ),
-            ]),
     );
+
+    // What there is room for, the reading going first and then the buttons.
+    var buttons = [
+      if (width >= 128)
+        _StripButton(
+          key: const ValueKey("channelLock"),
+          icon: locked ? Icons.lock : Icons.lock_open,
+          on: locked,
+          onColor: colors.onSurface,
+          theme: theme,
+          onTap: onLock,
+        ),
+      if (width >= 104)
+        _StripButton(
+          key: const ValueKey("channelSolo"),
+          text: "S",
+          on: soloed,
+          onColor: const Color(0xFFB28A1F),
+          theme: theme,
+          onTap: onSolo,
+        ),
+      if (width >= 80)
+        _StripButton(
+          key: const ValueKey("channelMute"),
+          text: "M",
+          on: mix.mute,
+          onColor: const Color(0xFFB23B3B),
+          theme: theme,
+          onTap: () => onMix(mix.copyWith(mute: !mix.mute)),
+        ),
+    ];
+    var gap = const SizedBox(width: 4);
+
+    Widget body;
+    if (tall) {
+      body = Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 16,
+              child: Row(children: [
+                code,
+                const SizedBox(width: 8),
+                Expanded(
+                    child: _ChannelName(
+                        name: channel.name, theme: theme, onRename: onRename)),
+                if (width >= 150) reading,
+              ]),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 18,
+              child: Row(children: [
+                for (var b in buttons) ...[b, gap],
+              ]),
+            ),
+          ]);
+    } else {
+      body = Row(children: [
+        code,
+        const Spacer(),
+        for (var b in buttons) ...[b, gap],
+        if (width >= 150) reading,
+      ]);
+    }
+
+    var strip = GestureDetector(
+      supportedDevices: timelinePointers,
+      behavior: HitTestBehavior.opaque,
+      onTap: onSelect,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected ? colors.surfaceContainerHighest : null,
+          border: Border(
+              right: BorderSide(color: colors.outlineVariant),
+              // The line under each channel, drawn strongly: the channels are
+              // rows, and they read as rows only with a line between them.
+              bottom: BorderSide(color: colors.outline.withValues(alpha: 0.7))),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Green for sound, yellow for a video's.
+          Container(width: 4, color: channelColour(channel.video)),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(width < 44 ? 3 : 6, 2, 4, 2),
+              child: ClipRect(child: body),
+            ),
+          ),
+        ]),
+      ),
+    );
+
     return Stack(children: [
       Positioned.fill(
         // A channel from the master is changed there, as in the mixer.
         child: channel.editable
-            ? body
-            : IgnorePointer(child: Opacity(opacity: 0.55, child: body)),
+            ? strip
+            : IgnorePointer(child: Opacity(opacity: 0.55, child: strip)),
       ),
       // The bottom edge: dragged, the lane is taller or shorter.
       Positioned(
@@ -880,8 +1271,8 @@ class _ChannelHeader extends StatelessWidget {
         child: MouseRegion(
           cursor: SystemMouseCursors.resizeUpDown,
           child: GestureDetector(
-            supportedDevices: timelinePointers,
             key: ValueKey("laneGrip-${channel.key}"),
+            supportedDevices: timelinePointers,
             behavior: HitTestBehavior.opaque,
             // Measured from the press, not from where the drag was noticed.
             dragStartBehavior: DragStartBehavior.down,
@@ -891,6 +1282,72 @@ class _ChannelHeader extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+/// _ChannelName is a channel's whole name, double-clicked to rename it.
+class _ChannelName extends StatefulWidget {
+  final String name;
+  final ThemeNotifier theme;
+  final ValueChanged<String> onRename;
+  const _ChannelName(
+      {required this.name, required this.theme, required this.onRename});
+
+  @override
+  State<_ChannelName> createState() => _ChannelNameState();
+}
+
+class _ChannelNameState extends State<_ChannelName> {
+  bool _typing = false;
+  final TextEditingController _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    if (!_typing) return;
+    setState(() => _typing = false);
+    var named = _text.text.trim();
+    if (named.isNotEmpty && named != widget.name) widget.onRename(named);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var style = TextStyle(
+        fontSize: 11,
+        height: 1.2,
+        fontWeight: FontWeight.w500,
+        color: widget.theme.colors.onSurface);
+    if (_typing) {
+      return TextField(
+        key: const ValueKey("channelNameField"),
+        controller: _text,
+        autofocus: true,
+        style: style,
+        decoration: const InputDecoration(
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+            border: InputBorder.none),
+        onSubmitted: (_) => _commit(),
+        onTapOutside: (_) => _commit(),
+      );
+    }
+    return GestureDetector(
+      onDoubleTap: () => setState(() {
+        _typing = true;
+        _text.text = widget.name;
+        _text.selection =
+            TextSelection(baseOffset: 0, extentOffset: _text.text.length);
+      }),
+      child: Text(widget.name,
+          key: const ValueKey("channelName"),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: style),
+    );
   }
 }
 
@@ -906,13 +1363,13 @@ class _EmptyHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     var colors = theme.colors;
     return Container(
-      padding: const EdgeInsets.fromLTRB(4, 3, 8, 3),
+      padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
       decoration: BoxDecoration(
           border: Border(right: BorderSide(color: colors.outlineVariant))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Row(children: [
         Icon(Icons.add, size: 12, color: colors.onSurfaceVariant),
-        if (width >= _showsName) ...[
-          const SizedBox(width: 3),
+        if (width >= 64) ...[
+          const SizedBox(width: 4),
           Expanded(
             child: Text(name,
                 maxLines: 1,
@@ -928,15 +1385,18 @@ class _EmptyHeader extends StatelessWidget {
   }
 }
 
-class _MiniToggle extends StatelessWidget {
-  final String label;
+/// _StripButton is one of a strip's small square buttons: lock, solo, mute.
+class _StripButton extends StatelessWidget {
+  final String? text;
+  final IconData? icon;
   final bool on;
   final Color onColor;
   final ThemeNotifier theme;
   final VoidCallback onTap;
 
-  const _MiniToggle({
-    required this.label,
+  const _StripButton({
+    this.text,
+    this.icon,
     required this.on,
     required this.onColor,
     required this.theme,
@@ -945,102 +1405,31 @@ class _MiniToggle extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        supportedDevices: timelinePointers,
-        onTap: onTap,
-        child: Container(
-          width: 16,
-          height: 14,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: on ? onColor : null,
-            borderRadius: BorderRadius.circular(3),
-            border:
-                Border.all(color: on ? onColor : theme.colors.outlineVariant),
-          ),
-          child: Text(label,
-              style: TextStyle(
-                  fontSize: 9,
-                  height: 1.1,
-                  fontWeight: FontWeight.w700,
-                  color: on
-                      ? const Color(0xFFFFFFFF)
-                      : theme.colors.onSurfaceVariant)),
+  Widget build(BuildContext context) {
+    var colors = theme.colors;
+    var ink = on
+        ? (onColor == colors.onSurface ? colors.surface : Colors.white)
+        : colors.onSurfaceVariant;
+    return GestureDetector(
+      supportedDevices: timelinePointers,
+      onTap: onTap,
+      child: Container(
+        width: 20,
+        height: 17,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: on ? onColor : colors.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(3),
         ),
-      );
-}
-
-/// _GainBar is a channel's level laid on its side: dragged along to set it,
-/// double-clicked for nought decibels. The same curve as the mixer's fader,
-/// so a level reads the same in either place.
-class _GainBar extends StatelessWidget {
-  final double db;
-  final ThemeNotifier theme;
-  final void Function(double db, {bool transient}) onChanged;
-  final VoidCallback onCommit;
-
-  const _GainBar({
-    required this.db,
-    required this.theme,
-    required this.onChanged,
-    required this.onCommit,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-        var w = box.maxWidth;
-        void at(double x) =>
-            onChanged(faderDb(1 - (x / (w <= 0 ? 1 : w)).clamp(0.0, 1.0)),
-                transient: true);
-        var share = 1 - faderPosition(db);
-        return GestureDetector(
-          supportedDevices: timelinePointers,
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (d) => at(d.localPosition.dx),
-          onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
-          onHorizontalDragEnd: (_) => onCommit(),
-          onDoubleTap: () => onChanged(0),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.resizeLeftRight,
-            child: SizedBox(
-              height: 12,
-              child: CustomPaint(
-                painter: _GainBarPainter(share, theme.colors),
-              ),
-            ),
-          ),
-        );
-      });
-}
-
-class _GainBarPainter extends CustomPainter {
-  final double share;
-  final ColorScheme colors;
-  _GainBarPainter(this.share, this.colors);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    var y = size.height / 2;
-    var track =
-        RRect.fromLTRBR(0, y - 2, size.width, y + 2, const Radius.circular(2));
-    canvas.drawRRect(track, Paint()..color = colors.surfaceContainerHighest);
-    var x = share.clamp(0.0, 1.0) * size.width;
-    canvas.drawRRect(
-        RRect.fromLTRBR(0, y - 2, x, y + 2, const Radius.circular(2)),
-        Paint()..color = colors.primary.withValues(alpha: 0.7));
-    // Where nought decibels is, so the unity position can be found by eye.
-    var unity = (1 - faderPosition(0)) * size.width;
-    canvas.drawLine(
-        Offset(unity, y - 4),
-        Offset(unity, y + 4),
-        Paint()
-          ..color = colors.onSurfaceVariant.withValues(alpha: 0.6)
-          ..strokeWidth = 1);
-    canvas.drawCircle(Offset(x, y), 4, Paint()..color = colors.onSurface);
+        child: icon != null
+            ? Icon(icon, size: 11, color: ink)
+            : Text(text!,
+                style: TextStyle(
+                    fontSize: 9.5,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                    color: ink)),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(_GainBarPainter old) =>
-      old.share != share || old.colors != colors;
 }

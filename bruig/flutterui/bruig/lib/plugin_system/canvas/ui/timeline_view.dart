@@ -36,13 +36,16 @@ class TimelineView {
   double xOf(num frame, double width) =>
       span <= 0 ? 0 : (frame - first) / span * width;
 
-  /// centreOf is the middle of [frame], where its mark is drawn.
-  double centreOf(int frame, double width) => xOf(frame + 0.5, width);
+  /// centreOf is where [frame]'s mark is drawn: on its leading edge, the
+  /// line a sound starts on and a cut is made on. The middle of the frame
+  /// put the playhead half a frame to the right of every cut made at it.
+  double centreOf(int frame, double width) => xOf(frame, width);
 
-  /// frameAt is the frame under [x], clamped to the timeline.
+  /// frameAt is the frame whose line is nearest [x], clamped to the
+  /// timeline -- the frames are lines, as the playhead and the cuts are.
   int frameAt(double x, double width, int frames) {
     if (frames <= 1 || width <= 0) return 0;
-    return (first + x / width * span).floor().clamp(0, frames - 1).toInt();
+    return (first + x / width * span).round().clamp(0, frames - 1).toInt();
   }
 
   /// framesPer is how many frames [pixels] is, for a drag.

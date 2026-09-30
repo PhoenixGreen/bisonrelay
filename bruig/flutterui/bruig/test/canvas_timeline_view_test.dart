@@ -1,9 +1,11 @@
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
@@ -37,6 +39,16 @@ void main() {
       expect(v.frameAt(v.centreOf(37, 500), 500, 100), 37);
       expect(v.xOf(0, 500), 0);
       expect(v.xOf(100, 500), 500);
+    });
+
+    // The playhead, a keyframe, the start of a sound and a cut are all on a
+    // frame's leading edge. The playhead was drawn in the middle of its
+    // frame, half a frame right of every cut made at it.
+    test("the playhead is on the line a cut is made on", () {
+      var v = const TimelineView(40, 8);
+      expect(v.centreOf(42, 800), v.xOf(42, 800));
+      expect(v.frameAt(v.xOf(42, 800) + 30, 800, 100), 42,
+          reason: "nearer 42's line than 43's");
     });
 
     test("zooming keeps the frame under the pointer where it was", () {
@@ -129,41 +141,55 @@ void main() {
           reason: "the first channel sits close under the strip");
     });
 
-    testWidgets("each channel has a strip: name, mute, solo and its level",
-        (tester) async {
+    // A channel's strip: an edge in its colour, A1, its name when there is
+    // room for a second line (double-clicked to rename it), its level, and
+    // lock, solo and mute.
+    testWidgets(
+        "each channel's strip: its code, its name, and lock, solo "
+        "and mute", (tester) async {
       var c = await show(tester, elements: [channel("a", "Music")]);
       var strip = find.byKey(const ValueKey("channelStrip-a"));
-      expect(
-          find.descendant(of: strip, matching: find.text("Music")), findsOne);
-
-      await tester.tap(find.descendant(
-          of: strip, matching: find.byKey(const ValueKey("channelMute"))));
+      Finder inStrip(String key) =>
+          find.descendant(of: strip, matching: find.byKey(ValueKey(key)));
+      expect(find.descendant(of: strip, matching: find.text("A1")), findsOne);
+      expect(inStrip("channelName"), findsNothing,
+          reason: "the name only once the lane is tall enough");
+      // Its level as a number, which takes a typed one.
+      await tester.tap(inStrip("channelLevel"));
       await tester.pump();
-      var clip = (c.document.elements.single as AudioElement).clip;
-      expect(clip.mix.mute, isTrue);
+      await tester.pump();
+      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "-6");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect((c.document.elements.single as AudioElement).clip.mix.gainDb, -6);
+      expect(find.byKey(const ValueKey("channelGain")), findsNothing,
+          reason: "no slider on the strip");
 
-      await tester.tap(find.descendant(
-          of: strip, matching: find.byKey(const ValueKey("channelSolo"))));
+      await tester.tap(inStrip("channelMute"));
+      await tester.pump();
+      expect(
+          (c.document.elements.single as AudioElement).clip.mix.mute, isTrue);
+      await tester.tap(inStrip("channelSolo"));
       await tester.pump();
       expect(c.solo, {"a"});
-
-      await tester.drag(
-          find.descendant(
-              of: strip, matching: find.byKey(const ValueKey("channelGain"))),
-          const Offset(-40, 0));
-      await tester.pump(const Duration(milliseconds: 500));
-      clip = (c.document.elements.single as AudioElement).clip;
-      expect(clip.mix.gainDb, lessThan(0), reason: "dragged left, turned down");
-
-      await tester.tap(find.descendant(
-          of: strip, matching: find.byKey(const ValueKey("channelDb"))));
+      await tester.tap(inStrip("channelLock"));
       await tester.pump();
+      expect(c.document.elements.single.locked, isTrue);
+
+      c.setLaneHeight("a", 60);
       await tester.pump();
-      await tester.enterText(find.byKey(const ValueKey("dbEntry")), "-12");
+      expect(
+          find.descendant(of: strip, matching: find.text("Music")), findsOne);
+      await tester.tap(inStrip("channelName"));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(inStrip("channelName"));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey("channelNameField")), "Drums");
       await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump(const Duration(milliseconds: 500));
-      clip = (c.document.elements.single as AudioElement).clip;
-      expect(clip.mix.gainDb, -12);
+      await tester.pump();
+      expect((c.document.elements.single as AudioElement).clip.channelName,
+          "Drums");
     });
 
     testWidgets("zooming in shows fewer frames, on the strip and the lanes",
@@ -180,6 +206,35 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("timelineZoomFit")));
       await tester.pump();
       expect(await frameAtEnd(tester, c), 99);
+    });
+
+    // The play bar scrolls sideways itself, to reach what is along it --
+    // an action's settings, say. That is not the frames being scrolled.
+    // The length in seconds is level with the rate it is worked out from --
+    // it sat a caption's height lower, the caption no longer being there.
+    testWidgets("the seconds sit level with the rate", (tester) async {
+      await show(tester);
+      var rate = tester.getRect(find.byKey(const ValueKey("canvasFrameRate")));
+      var seconds = tester.getRect(find.text("10.0s"));
+      expect(seconds.center.dy, closeTo(rate.center.dy, 3));
+    });
+
+    testWidgets("the wheel over the play bar leaves the frames alone",
+        (tester) async {
+      var c = await show(tester);
+      await tester.tap(find.byKey(const ValueKey("trackpadScrolls")));
+      await tester.pump();
+      c.frame = 0;
+      await tester.tap(find.byKey(const ValueKey("timelineZoomIn")));
+      await tester.pump();
+      var end = await frameAtEnd(tester, c);
+
+      var play = tester.getCenter(find.byKey(const ValueKey("play")));
+      var mouse = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(mouse.hover(play));
+      await tester.sendEventToBinding(mouse.scroll(const Offset(300, 0)));
+      await tester.pump();
+      expect(await frameAtEnd(tester, c), end);
     });
 
     testWidgets("Ctrl and the wheel zoom; the wheel scrolls only if allowed",
@@ -578,24 +633,101 @@ void main() {
       expect(find.text("Volume"), findsOneWidget, reason: "how it plays");
     });
 
-    testWidgets("K picks the knife, and a click with it cuts", (tester) async {
+    // K -- or T -- cuts the channel picked where the playhead is. The knife
+    // on the tools is for cutting where the pointer is.
+    testWidgets(
+        "K cuts the picked channel at the playhead; the knife where "
+        "it is clicked", (tester) async {
       var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);
       var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
-      await tester.tapAt(lane.centerLeft + const Offset(4, 0));
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
-      await tester.pump();
-      expect(c.timelineTool, TimelineTool.knife);
-
-      // Half way along a two-hundred-frame view: frame 100 of a sound that
-      // runs to 100 is its end; a quarter, frame 50, is in its middle.
       await tester.tapAt(Offset(lane.left + lane.width / 4, lane.center.dy));
       await tester.pump();
-      expect(c.document.elements, hasLength(2));
+      expect(c.selectedChannel, "1");
+      c.frame = 30;
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+      await tester.pump();
+      expect(c.timelineTool, TimelineTool.select, reason: "no tool change");
+      var sounds = c.document.elements.cast<AudioElement>().toList();
+      expect(sounds, hasLength(2));
+      expect(sounds.last.clip.at, 30);
 
+      await tester.tap(find.byKey(const ValueKey("toolKnife")));
+      await tester.pump();
+      // A quarter of the way along a two-hundred-frame view is frame 50.
+      await tester.tapAt(Offset(lane.left + lane.width / 4, lane.center.dy));
+      await tester.pump();
+      expect(c.document.elements, hasLength(3));
       await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
       await tester.pump();
       expect(c.timelineTool, TimelineTool.select);
+    });
+
+    // A sound's own line: dragged down, that sound is quieter -- the
+    // channel's strip, and every other sound on it, are left alone.
+    testWidgets("a sound's volume line turns that sound alone down",
+        (tester) async {
+      var c = await show(tester, [
+        onChannel("a", "1", at: 0, seconds: 5),
+        onChannel("b", "1", at: 100, seconds: 5),
+      ]);
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      // Where the line of a sound at 0.8 is: a straight fade below nought
+      // decibels, which sits 0.45 of the way down, inset eight pixels.
+      var h = lane.height;
+      var lineY = lane.top + 8 + (0.45 + 0.2 * 0.55) * (h - 16);
+      // A mouse, as it is at a desk: a finger's short vertical drag is the
+      // list's, to scroll the channels.
+      await tester.dragFrom(
+          Offset(lane.left + lane.width / 8, lineY), const Offset(0, 6),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      var a = c.document.elementById("a") as AudioElement;
+      var b = c.document.elementById("b") as AudioElement;
+      expect(a.clip.volume, lessThan(0.75));
+      expect(a.clip.at, 0, reason: "a volume, not a move");
+      expect(b.clip.volume, 0.8, reason: "the other sound is untouched");
+      expect(a.clip.mix.gainDb, 0, reason: "and so is the channel's strip");
+    });
+
+    testWidgets("with snapping on, a dragged sound lands on the playhead",
+        (tester) async {
+      var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);
+      c.frame = 47;
+      c.snapping = true;
+      await tester.pump();
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      var perFrame = lane.width / 200;
+      await tester.dragFrom(Offset(lane.left + lane.width / 8, lane.bottom - 6),
+          Offset(perFrame * 46, 0));
+      await tester.pumpAndSettle();
+      expect((c.document.elements.single as AudioElement).clip.at, 47);
+
+      c.snapping = false;
+      c.undo();
+      await tester.pump();
+      await tester.dragFrom(Offset(lane.left + lane.width / 8, lane.bottom - 6),
+          Offset(perFrame * 46, 0));
+      await tester.pumpAndSettle();
+      expect(
+          (c.document.elements.single as AudioElement).clip.at, closeTo(46, 1));
+    });
+
+    testWidgets("a locked channel's sounds stay where they are",
+        (tester) async {
+      var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);
+      c.lockChannel(c.timelineChannels.single, true);
+      await tester.pump();
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      await tester.dragFrom(Offset(lane.left + lane.width / 8, lane.bottom - 6),
+          const Offset(80, 0));
+      await tester.pumpAndSettle();
+      expect((c.document.elements.single as AudioElement).clip.at, 0);
+      c.frame = 30;
+      expect(c.cutAtPlayhead(), isFalse, reason: "nor are they cut");
+    });
+
+    test("a video's channel is yellow, a sound's green", () {
+      expect(channelColour(true), isNot(channelColour(false)));
     });
 
     testWidgets("a sound clicked stays picked, and Backspace takes it",
@@ -627,7 +759,7 @@ void main() {
       expect(clip.at, 0, reason: "a fade, not a move");
     });
 
-    testWidgets("a lane is dragged taller, and a strip narrowed to its icon",
+    testWidgets("a lane is dragged taller, and a strip narrowed to its code",
         (tester) async {
       var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);
       var before = tester.getSize(find.byKey(const ValueKey("lane-1"))).height;
@@ -638,24 +770,226 @@ void main() {
           greaterThan(before + 30));
 
       var strip = find.byKey(const ValueKey("channelStrip-1"));
-      expect(
-          find.descendant(
-              of: strip, matching: find.byKey(const ValueKey("channelMute"))),
-          findsOne);
-      c.headerWidth = 100;
+      bool has(String key) => find
+          .descendant(of: strip, matching: find.byKey(ValueKey(key)))
+          .evaluate()
+          .isNotEmpty;
+      expect([has("channelLock"), has("channelSolo"), has("channelMute")],
+          [true, true, true]);
+      c.headerWidth = 120;
       await tester.pump();
-      expect(
-          find.descendant(
-              of: strip, matching: find.byKey(const ValueKey("channelMute"))),
-          findsNothing,
-          reason: "mute and solo go first");
-      expect(
-          find.descendant(of: strip, matching: find.text("Audio 1")), findsOne);
-      c.headerWidth = 30;
+      expect([
+        has("channelLock"),
+        has("channelSolo"),
+        has("channelMute")
+      ], [
+        false,
+        true,
+        true
+      ], reason: "the lock goes first");
+      c.headerWidth = 90;
       await tester.pump();
-      expect(find.descendant(of: strip, matching: find.text("Audio 1")),
-          findsNothing,
-          reason: "then the name, and it is its icon");
+      expect([has("channelSolo"), has("channelMute")], [false, true]);
+      c.headerWidth = 40;
+      await tester.pump();
+      expect(has("channelMute"), isFalse);
+      expect(find.descendant(of: strip, matching: find.text("A1")), findsOne,
+          reason: "and it is its code");
+    });
+  });
+
+  group("the channels, picked and turned up", () {
+    AudioElement sound(String id, String channel, {int at = 0}) =>
+        AudioElement(ElementBase(id: id, name: id, visible: false),
+            clip: MediaClip(
+                timed: true,
+                at: at,
+                volume: 1,
+                channel: channel,
+                channelName: "Audio $channel",
+                playlist: const [MediaSource(assetId: song, length: 4)]));
+
+    Future<CanvasController> show(
+        WidgetTester tester, List<CanvasElement> elements) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 200, frameRate: 10, elements: elements),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      tester.view.physicalSize = const Size(1200, 700);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CanvasSpaceBar(
+              controller: c,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child:
+                    CanvasTimeline(controller: c, height: timelineHeight + 160),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return c;
+    }
+
+    // Nought decibels sits a little above the middle, so a quiet sound can
+    // be turned up -- six decibels at the top.
+    testWidgets("a sound's line goes up past nought, to six decibels",
+        (tester) async {
+      var c = await show(tester, [sound("a", "1")]);
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      var lineY = lane.top + 8 + 0.45 * (lane.height - 16);
+      expect(lineY - lane.top, lessThan(lane.height / 2),
+          reason: "nought is above the middle");
+      await tester.dragFrom(Offset(lane.left + 40, lineY), const Offset(0, -40),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      var clip = (c.document.elements.single as AudioElement).clip;
+      expect(clip.volume, closeTo(2, 0.01), reason: "six decibels up");
+      expect(MediaClip.fromJson(clip.toJson()).volume, closeTo(2, 0.01),
+          reason: "and kept that way");
+    });
+
+    testWidgets("a box dragged across the lanes picks what it touches",
+        (tester) async {
+      var c = await show(tester, [
+        sound("a", "1"),
+        sound("b", "2", at: 10),
+        sound("c", "2", at: 150),
+      ]);
+      var one = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      var two = tester.getRect(find.byKey(const ValueKey("lane-2")));
+      // From empty lane past the end of "a", up over both, back across them.
+      var from = Offset(one.left + one.width * 0.6, one.top + 4);
+      var to = Offset(one.left + 20, two.bottom - 4);
+      await tester.dragFrom(from, to - from, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(c.selection, {"a", "b"});
+      expect(c.selectedChannels, {"1", "2"});
+    });
+
+    testWidgets(
+        "shift adds a sound to what is picked; dragging one moves "
+        "them all", (tester) async {
+      var c = await show(tester, [sound("a", "1"), sound("b", "2", at: 10)]);
+      var one = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      var two = tester.getRect(find.byKey(const ValueKey("lane-2")));
+      await tester.tapAt(Offset(one.left + 20, one.bottom - 6));
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tapAt(Offset(two.left + 60, two.bottom - 6));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(c.selection, {"a", "b"});
+      expect(c.selectedChannels, {"1", "2"});
+
+      var perFrame = one.width / 200;
+      await tester.dragFrom(
+          Offset(one.left + 20, one.bottom - 6), Offset(perFrame * 20, 0),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      int at(String id) => (c.document.elementById(id) as AudioElement).clip.at;
+      expect(at("a"), closeTo(20, 1));
+      expect(at("b"), closeTo(30, 1), reason: "moved with it");
+    });
+
+    testWidgets("the pointer says what a press would take hold of",
+        (tester) async {
+      await show(tester, [sound("a", "1", at: 0)]);
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      var mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      // The lane's own pointer, as it is set from what is under it.
+      MouseCursor cursorAt(Offset at) => tester
+          .widget<MouseRegion>(find
+              .descendant(
+                  of: find.byKey(const ValueKey("lane-1")),
+                  matching: find.byType(MouseRegion))
+              .first)
+          .cursor;
+
+      var lineY = lane.top + 8 + 0.45 * (lane.height - 16);
+      var perFrame = lane.width / 200;
+      for (var (at, want) in [
+        (Offset(lane.left + 60, lane.bottom - 6), SystemMouseCursors.basic),
+        (Offset(lane.left + 60, lineY), SystemMouseCursors.resizeUpDown),
+        (
+          Offset(lane.left + perFrame * 40, lane.bottom - 6),
+          SystemMouseCursors.resizeLeftRight
+        ),
+      ]) {
+        await mouse.moveTo(at);
+        await tester.pump();
+        expect(cursorAt(at), want, reason: "at $at");
+      }
+    });
+
+    testWidgets("a flag is dragged along the ruler, and keeps a label",
+        (tester) async {
+      var c = await show(tester, const []);
+      c.apply(c.document.copyWith(actions: const [
+        TimelineAction(frame: 10, kind: TimelineActionKind.stop),
+      ]));
+      c.frame = 10;
+      await tester.pump();
+      var strip = tester.getRect(find.byKey(const ValueKey("keyframeStrip")));
+      var perFrame = strip.width / 200;
+      await tester.dragFrom(
+          Offset(strip.left + perFrame * 10 + 4, strip.top + 5),
+          Offset(perFrame * 20, 0),
+          kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(c.document.actions.single.frame, closeTo(30, 1));
+      expect(c.frame, c.document.actions.single.frame,
+          reason: "the playhead goes with it, so its settings are showing");
+
+      var label = find.byKey(const ValueKey("actionLabel"));
+      await tester.ensureVisible(label);
+      await tester.enterText(
+          find.descendant(of: label, matching: find.byType(TextField)),
+          "Chorus");
+      await tester.pump();
+      expect(c.document.actions.single.label, "Chorus");
+      expect(c.document.actions.single.showLabel, isTrue);
+      var round = TimelineAction.fromJson(c.document.actions.single.toJson());
+      expect(round.label, "Chorus");
+    });
+
+    testWidgets("the timeline goes down to its play bar alone", (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 100),
+          audioEngine: FakeEngine(const {}));
+      addTearDown(c.dispose);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: CanvasTimeline(
+                  controller: c, height: timelineCollapsedHeight),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(CanvasTimeline)).height,
+          closeTo(timelineCollapsedHeight, 0.5));
+      expect(find.byKey(const ValueKey("keyframeStrip")), findsNothing);
+      expect(find.byKey(const ValueKey("toFirstFrame")), findsOneWidget,
+          reason: "the play bar is all there is");
     });
   });
 }

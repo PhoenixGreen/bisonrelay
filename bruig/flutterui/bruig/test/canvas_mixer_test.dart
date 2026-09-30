@@ -191,6 +191,25 @@ void main() {
     AudioElement sound(String id) => AudioElement(ElementBase(id: id),
         clip: const MediaClip(playlist: [MediaSource(assetId: song)]));
 
+    // A sound on the timeline is as loud as its clip says, when the clip's
+    // volume line is moved while it plays -- and past full, to six decibels.
+    test("a timeline sound follows its clip's volume as it changes", () async {
+      AudioElement timed(double volume) => AudioElement(
+          const ElementBase(id: "t", visible: false),
+          clip: MediaClip(
+              timed: true,
+              volume: volume,
+              playlist: const [MediaSource(assetId: song)]));
+      runtime.cue(timed(1), const ClipMoment(0, 0, 1), playing: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.voices, isNotEmpty);
+      runtime.cue(timed(1.8), const ClipMoment(0, 0, 1), playing: true);
+      expect(engine.last.volume, closeTo(1.8, 1e-9));
+      runtime.cue(timed(0.3), const ClipMoment(0, 0, 1), playing: true);
+      expect(engine.last.volume, closeTo(0.3, 1e-9));
+    });
+
     test("plays each sound through its own strip", () async {
       runtime.setMix(const {"a": ChannelMix(balance: 1)},
           master: const MasterMix());

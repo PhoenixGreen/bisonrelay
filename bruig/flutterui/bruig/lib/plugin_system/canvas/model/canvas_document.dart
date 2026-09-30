@@ -459,6 +459,22 @@ class CanvasDocument {
   ///
   /// Worked out rather than stored. A number written onto a page is right
   /// until the first time anything is added, removed or dragged.
+  /// nameOf is what scene [index] is called: its own name where it has been
+  /// given one, and otherwise its default -- which, for a page, is the number
+  /// printed on it. A front cover that does not count put "1" on the page
+  /// after it while the list still called that page "Page 2".
+  String nameOf(int index) {
+    var list = allScenes;
+    if (index < 0 || index >= list.length) return "";
+    var scene = list[index];
+    if (scene.name.isNotEmpty) return scene.name;
+    if (isPages && !scene.cover.isCover) {
+      var number = pageNumberAt(index);
+      if (number != null) return "${kind.oneCap} $number";
+    }
+    return scene.saysAt(index, kind);
+  }
+
   int? pageNumberAt(int index) =>
       isPages ? pageNumberFor(pageCovers, index, pages) : null;
 

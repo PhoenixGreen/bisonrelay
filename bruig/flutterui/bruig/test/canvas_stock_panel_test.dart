@@ -270,7 +270,12 @@ void main() {
     await idle(tester);
 
     await tester.tap(find.byKey(const ValueKey("stockWatch-pixabayVideos-9")));
-    await idle(tester, 10);
+    // Until it shows, within reason: the copy is written to a real file, and
+    // a loaded machine takes longer over that than a quiet one.
+    var watching = find.byKey(const ValueKey("stockWatching-pixabayVideos-9"));
+    for (var i = 0; i < 40 && watching.evaluate().isEmpty; i++) {
+      await idle(tester, 5);
+    }
     expect(fake.downloads, 1, reason: "the small copy, to watch");
     expect(find.byKey(const ValueKey("stockWatching-pixabayVideos-9")),
         findsOneWidget);

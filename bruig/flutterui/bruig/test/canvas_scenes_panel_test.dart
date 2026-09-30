@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -351,6 +352,44 @@ void main() {
     expect((c >> 24 & 0xFF) > 150 && (c >> 8 & 0xFF) < 80, isTrue,
         reason: "the right page shows the picture from the left "
             "(${c.toRadixString(16)})");
+  });
+
+  // Preview on, the section left and come back to: still previews. The
+  // panel is built afresh each time, and it went back to the list.
+  testWidgets("the preview is remembered when the section is come back to",
+      (tester) async {
+    await panel(tester);
+    await tester.tap(find.byTooltip("Scene preview"));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("scenePreview.0")), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await panel(tester);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("scenePreview.0")), findsOneWidget);
+  });
+
+  testWidgets("up and down go through the list", (tester) async {
+    var controller = await panel(tester,
+        document: const CanvasDocument(scenes: [
+          CanvasScene(id: "a"),
+          CanvasScene(id: "b"),
+          CanvasScene(id: "c"),
+        ]));
+    await tester.tap(find.text("Scene 1"));
+    await tester.pumpAndSettle();
+    expect(controller.sceneAt, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(controller.sceneAt, 2);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(controller.sceneAt, 2, reason: "the end is the end");
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(controller.sceneAt, 1);
   });
 
   testWidgets("the menu opens under the button that was pressed",

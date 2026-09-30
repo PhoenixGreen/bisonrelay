@@ -333,7 +333,8 @@ class MediaClip {
                 if (s is Map<String, dynamic>) MediaSource.fromJson(s),
             ]
           : const [],
-      volume: jsonDouble(json["volume"], 0.8).clamp(0.0, 1.0),
+      // Up to twice: a sound on the timeline can be turned up six decibels.
+      volume: jsonDouble(json["volume"], 0.8).clamp(0.0, 2.0),
       muted: jsonBool(json["muted"], false),
       fadeIn: math.max(0.0, jsonDouble(json["fadeIn"], 0)),
       fadeOut: math.max(0.0, jsonDouble(json["fadeOut"], 0)),

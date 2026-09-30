@@ -195,7 +195,7 @@ Future<CanvasExport?> renderDocument(
           png: png.buffer.asUint8List(),
           width: image.width,
           height: image.height,
-          title: scene.saysAt(i, document.kind),
+          title: document.nameOf(i),
           side: _sideOf(document, covers, i),
           // The first cover the document marks, and the first page otherwise:
           // a reader wants a picture for its shelf either way, and the front

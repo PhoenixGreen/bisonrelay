@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:bruig/storage_manager.dart';
 
 // scenes_panel.dart is the list of canvases a document plays through.
 //
@@ -43,17 +45,56 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   CanvasController get controller => widget.controller;
   CanvasDocument get document => controller.document;
 
-  /// _previews is whether each scene is drawn rather than named.
+  /// _previews is whether each scene is drawn rather than named. Kept: it
+  /// is how somebody works, and the panel is built afresh each time the
+  /// section is come back to -- which put it back to the list every time.
   bool _previews = false;
+  static const _previewsKey = "canvasScenePreviews";
 
   /// _renaming is the scene whose name is being typed, by index.
   int? _renaming;
   final TextEditingController _name = TextEditingController();
 
+  /// _focus is the list's, for the arrow keys: taken by a click anywhere on
+  /// it, so up and down move through the pages from there.
+  final FocusNode _focus = FocusNode(debugLabel: "scenes");
+
+  @override
+  void initState() {
+    super.initState();
+    StorageManager.readBool(_previewsKey).then((on) {
+      if (mounted && on != _previews) setState(() => _previews = on);
+    });
+  }
+
   @override
   void dispose() {
     _name.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  void _setPreviews(bool on) {
+    setState(() => _previews = on);
+    StorageManager.saveBool(_previewsKey, on);
+  }
+
+  /// _onKey is up and down through the list: the one before and the one
+  /// after, and from the master down onto the first.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    var by = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => -1,
+      LogicalKeyboardKey.arrowDown => 1,
+      _ => 0,
+    };
+    if (by == 0) return KeyEventResult.ignored;
+    var count = document.allScenes.length;
+    var to = document.editingMaster ? 0 : document.at + by;
+    if (to >= 0 && to < count) controller.goToScene(to);
+    return KeyEventResult.handled;
   }
 
   void _startRename(int index, CanvasScene scene) {
@@ -90,9 +131,19 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: controller,
-        builder: (context, _) => _body(ThemeNotifier.of(context)),
+  Widget build(BuildContext context) => Focus(
+        focusNode: _focus,
+        onKeyEvent: _onKey,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) {
+            if (!_focus.hasFocus) _focus.requestFocus();
+          },
+          child: ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => _body(ThemeNotifier.of(context)),
+          ),
+        ),
       );
 
   Widget _body(ThemeNotifier theme) {
@@ -126,7 +177,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
             _previews
                 ? "${document.kind.oneCap} preview: off"
                 : "${document.kind.oneCap} preview",
-            () => setState(() => _previews = !_previews),
+            () => _setPreviews(!_previews),
             active: _previews,
           ),
         ]),
@@ -335,7 +386,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                               // gesture arena, so nothing else on the row is held
                               // back by it. See _nameClicked.
                               onPointerDown: (_) => _nameClicked(index, scene),
-                              child: Text(scene.saysAt(index, document.kind),
+                              child: Text(document.nameOf(index),
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 12)),
                             ),
@@ -473,7 +524,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
                   borderRadius: BorderRadius.circular(6),
                   color: theme.colors.secondaryContainer,
                 ),
-                child: Text(scene.saysAt(index, document.kind),
+                child: Text(document.nameOf(index),
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 12,
@@ -576,7 +627,7 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
     var snackbar = SnackBarModel.of(context);
     var name = await askForPresetName(
         context, "Save this ${document.kind.one} as a preset",
-        initial: scene.saysAt(index, document.kind));
+        initial: document.nameOf(index));
     if (name == null || name.trim().isEmpty) return;
     var saved = await SavedPresetStore.scenes
         .save(name, scene.toJson(), madeOn: document.size.size);

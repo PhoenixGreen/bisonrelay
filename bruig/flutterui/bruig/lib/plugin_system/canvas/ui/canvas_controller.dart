@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
@@ -2771,7 +2770,7 @@ class CanvasController extends ChangeNotifier {
   /// channel, starting where the cut was. The knife.
   bool splitClip(TimedLane lane, int frame) {
     var e = lane.element;
-    if (e is! AudioElement || !lane.editable) return false;
+    if (e is! AudioElement || !lane.editable || e.locked) return false;
     if (!_document.elements.any((x) => x.id == e.id)) return false;
     var clip = e.clip;
     var rate = math.max(1, _document.frameRate);
@@ -2807,6 +2806,89 @@ class CanvasController extends ChangeNotifier {
       from += span;
     }
     return false;
+  }
+
+  /// selectedChannels are the channels picked -- by their strips, by a sound
+  /// on them, or by a box dragged across them -- which a cut at the playhead
+  /// is made on.
+  Set<String> get selectedChannels => _selectedChannels;
+  Set<String> _selectedChannels = {};
+
+  /// selectedChannel is the one channel picked, where one is; setting it
+  /// picks that alone.
+  String? get selectedChannel =>
+      _selectedChannels.isEmpty ? null : _selectedChannels.first;
+  set selectedChannel(String? key) =>
+      selectChannels(key == null ? const {} : {key});
+
+  void selectChannels(Set<String> keys) {
+    if (setEquals(keys, _selectedChannels)) return;
+    _selectedChannels = {...keys};
+    notifyListeners();
+  }
+
+  /// toggleChannel adds [key] to the channels picked, or takes it out.
+  void toggleChannel(String key) {
+    var next = {..._selectedChannels};
+    if (!next.remove(key)) next.add(key);
+    selectChannels(next);
+  }
+
+  /// cutAtPlayhead cuts the selected channel -- or the channel of the sound
+  /// selected -- where the playhead is: every sound on it the playhead is
+  /// part way through. The knife's key.
+  bool cutAtPlayhead() {
+    var keys = {..._selectedChannels};
+    if (keys.isEmpty) {
+      for (var lane in timedLanes) {
+        if (_selection.contains(lane.element.id)) keys.add(lane.channelKey);
+      }
+    }
+    var cut = false;
+    for (var channel in timelineChannels) {
+      if (!keys.contains(channel.key) || channel.locked) continue;
+      for (var lane in channel.lanes) {
+        // Fresh each time: a cut changes the document the next one reads.
+        var now = timedLanes.where((l) => l.element.id == lane.element.id);
+        if (now.isEmpty) continue;
+        if (splitClip(now.first, _frame)) cut = true;
+      }
+    }
+    return cut;
+  }
+
+  /// lockChannel locks or unlocks every sound on [channel]: locked, none of
+  /// them is moved, trimmed, faded, cut or dropped onto.
+  void lockChannel(TimelineChannel channel, bool locked) {
+    var next = _document;
+    for (var lane in channel.lanes) {
+      if (!lane.editable) continue;
+      if (next.elements.any((e) => e.id == lane.element.id)) {
+        next = next.withElement(lane.element.withBase(locked: locked));
+      }
+    }
+    apply(next);
+  }
+
+  /// renameChannel names [channel], on every sound it holds.
+  void renameChannel(TimelineChannel channel, String name) {
+    var named = name.trim();
+    if (named.isEmpty) return;
+    _setClips([
+      for (var lane in channel.lanes)
+        if (lane.editable)
+          (lane.element, lane.clip.copyWith(channelName: named)),
+    ]);
+  }
+
+  /// snapping is whether a sound dragged on the timeline lands on the
+  /// seconds and the playhead when it comes near them.
+  bool get snapping => _snapping;
+  bool _snapping = false;
+  set snapping(bool value) {
+    if (_snapping == value) return;
+    _snapping = value;
+    notifyListeners();
   }
 
   /// timelineTool is what a press on a sound on the timeline does: take hold
@@ -3855,6 +3937,9 @@ class TimelineChannel {
 
   bool get editable => lanes.any((l) => l.editable);
   bool get video => first.element is VideoElement;
+
+  /// locked is whether every sound on it is locked -- see lockChannel.
+  bool get locked => lanes.every((l) => l.element.locked);
 }
 
 /// TimelineTool is what a press on a sound does. See timelineTool.

@@ -109,6 +109,35 @@ void main() {
           onShowSidebar: showSidebar,
         );
 
+    // The mixer is opened from the band, beside the timeline's button and
+    // apart from it: the mixer can be open with the timeline shut.
+    testWidgets("the mixer's button is on the band, left of the timeline's",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var opened = 0;
+      await pump(
+          tester,
+          CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: false,
+            onToggleTimeline: () {},
+            mixerOpen: false,
+            onToggleMixer: () => opened++,
+          ));
+      var mixer = find.byKey(const ValueKey("mixerToggle"));
+      expect(mixer, findsOneWidget);
+      expect(tester.getCenter(mixer).dx,
+          lessThan(tester.getCenter(find.byTooltip("Show the timeline")).dx));
+      await tester.tap(mixer);
+      expect(opened, 1);
+    });
+
     testWidgets("is one line, open or closed", (tester) async {
       // The whole point of splitting the panel out. As a second row inside the
       // band, opening the canvas settings pushed the canvas down -- the design
@@ -1046,8 +1075,7 @@ void main() {
 
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester
-          .tap(find.byTooltip("Add a keyframe for ${element.name} here"));
+      await tester.tap(find.byTooltip("Add Keyframe"));
       await tester.pumpAndSettle();
 
       var track = controller.document.elements.single.track;
@@ -1056,25 +1084,30 @@ void main() {
 
       // The tooltip names what it belongs to, since the same button also
       // edits a focused player's keyframes.
-      await tester
-          .tap(find.byTooltip("Remove this keyframe from ${element.name}"));
+      await tester.tap(find.byTooltip("Remove Keyframe"));
       await tester.pumpAndSettle();
       // The track goes entirely rather than being left empty, so a saved file
       // carries no dead animation.
       expect(controller.document.elements.single.track, isNull);
     });
 
-    testWidgets("says what to do when nothing is selected", (tester) async {
+    testWidgets("with nothing selected, the diamond does nothing",
+        (tester) async {
       var controller = CanvasController(const CanvasDocument(frames: 10));
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
       // On the disclosure itself, since with nothing selected there is
       // nothing to open it for.
+      // "Add Keyframe", with nothing to add one to: it does nothing.
+      var diamond = find.byTooltip("Add Keyframe");
+      expect(diamond, findsOneWidget);
       expect(
-          find.byTooltip(
-              "Select an element, or click a player, to give it a keyframe"),
-          findsOneWidget);
+          tester
+              .widget<InkWell>(
+                  find.descendant(of: diamond, matching: find.byType(InkWell)))
+              .onTap,
+          isNull);
     });
 
     testWidgets("changes the frame count and the frame rate", (tester) async {
@@ -1206,23 +1239,19 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var playAt = tester.getTopLeft(find.byTooltip("Play this scene"));
+      var playAt = tester.getTopLeft(find.byKey(const ValueKey("play")));
       controller.setKeyframe(element.id, const Keyframe(frame: 0));
       await tester.pumpAndSettle();
 
-      expect(tester.getTopLeft(find.byTooltip("Play this scene")), playAt,
+      expect(tester.getTopLeft(find.byKey(const ValueKey("play"))), playAt,
           reason: "landing on a keyframe must not move the transport");
       expect(find.text("Easing"), findsNothing,
           reason: "the pose controls are behind the disclosure");
       // The two keyframe buttons stay on this row -- they are pressed
       // constantly while animating and neither changes width, so neither can
       // shift it.
-      expect(find.byTooltip("Remove this keyframe from ${element.name}"),
-          findsOneWidget);
-      expect(
-          find.byTooltip(
-              "Auto-keyframe: record a keyframe whenever something moves"),
-          findsOneWidget);
+      expect(find.byTooltip("Remove Keyframe"), findsOneWidget);
+      expect(find.byTooltip("Auto Keyframe"), findsOneWidget);
     });
 
     testWidgets("the pose bar floats rather than resizing the strip",
@@ -1303,8 +1332,7 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
 
       expect(controller.autoKeyframe, isFalse, reason: "off by default");
-      await tester.tap(find.byTooltip(
-          "Auto-keyframe: record a keyframe whenever something moves"));
+      await tester.tap(find.byTooltip("Auto Keyframe"));
       await tester.pumpAndSettle();
       expect(controller.autoKeyframe, isTrue);
     });
@@ -1326,7 +1354,7 @@ void main() {
       controller.focusedPlayer = 4;
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip("Add a keyframe for #5 (Team) here"));
+      await tester.tap(find.byTooltip("Add Keyframe"));
       await tester.pumpAndSettle();
 
       var after = controller.document.elements.whereType<TeamElement>().single;
@@ -1342,14 +1370,28 @@ void main() {
       controller.frame = 12;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(find
-          .byTooltip("Loop back — Jump back to the target frame and carry on"));
+      // One Action button, which adds a stop; the kind is chosen after,
+      // from "At this frame".
+      var action = find.byKey(const ValueKey("addAction"));
+      await tester.ensureVisible(action);
       await tester.pumpAndSettle();
-
+      await tester.tap(action);
+      await tester.pumpAndSettle();
       expect(controller.document.actions.single.frame, 12);
-      expect(find.text("To frame"), findsOneWidget);
+      expect(controller.document.actions.single.kind, TimelineActionKind.stop);
 
-      await tester.tap(find.byTooltip("Remove this marker"));
+      await tester.tap(find.text(TimelineActionKind.stop.label).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(TimelineActionKind.loop.label).last);
+      await tester.pumpAndSettle();
+      expect(controller.document.actions.single.kind, TimelineActionKind.loop);
+      expect(find.byTooltip("To frame"), findsOneWidget,
+          reason: "its caption is its hover text");
+
+      var remove = find.byTooltip("Remove this marker");
+      await tester.ensureVisible(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(remove);
       await tester.pumpAndSettle();
       expect(controller.document.actions, isEmpty);
     });
@@ -1552,12 +1594,12 @@ void main() {
 
       controller.frame = 10;
       await tester.pumpAndSettle();
-      expect(find.byTooltip("Remove this keyframe from Path"), findsOneWidget,
+      expect(find.byTooltip("Remove Keyframe"), findsOneWidget,
           reason: "frame 10 has a point on it");
 
       controller.frame = 11;
       await tester.pumpAndSettle();
-      expect(find.byTooltip("Add a keyframe for Path here"), findsOneWidget);
+      expect(find.byTooltip("Add Keyframe"), findsOneWidget);
     });
 
     testWidgets("the diamond adds and removes a point", (tester) async {
@@ -1573,14 +1615,14 @@ void main() {
       expect(find.textContaining("No point on this frame"), findsOneWidget);
 
       await pump(tester, CanvasTimeline(controller: controller));
-      await tester.tap(find.byTooltip("Add a keyframe for Path here"));
+      await tester.tap(find.byTooltip("Add Keyframe"));
       await tester.pumpAndSettle();
 
       var after = controller.document.elements.single as PathElement;
       expect(after.nodes.length, 4);
       expect(after.nodes.map((n) => n.frame).toList(), [0, 10, 15, 20]);
 
-      await tester.tap(find.byTooltip("Remove this keyframe from Path"));
+      await tester.tap(find.byTooltip("Remove Keyframe"));
       await tester.pumpAndSettle();
       expect(
           (controller.document.elements.single as PathElement).nodes.length, 3);
@@ -1597,7 +1639,7 @@ void main() {
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       // The same mapping _xFor uses, so the drag starts exactly on the mark.
-      double xFor(int frame) => box.left + (frame + 0.5) / 30 * box.width;
+      double xFor(int frame) => box.left + frame / 30 * box.width;
 
       await tester.dragFrom(
         Offset(xFor(10), box.top + 22 + 14),
@@ -1637,7 +1679,7 @@ void main() {
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       var frames = controller.document.frames;
-      double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
+      double xFor(int frame) => box.left + frame / frames * box.width;
 
       // From the middle of the bar, which is the part that is neither end.
       var middle = (before.from + before.to) ~/ 2;
@@ -1674,7 +1716,7 @@ void main() {
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
       var frames = controller.document.frames;
-      double xFor(int frame) => box.left + (frame + 0.5) / frames * box.width;
+      double xFor(int frame) => box.left + frame / frames * box.width;
 
       await tester.dragFrom(
         Offset(xFor(before.to), box.top + 22 + 14),
@@ -1741,8 +1783,7 @@ void main() {
       controller.focusedPlayer = 6;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester
-          .tap(find.byTooltip("Clear every keyframe on #7 (${team.name})"));
+      await tester.tap(find.byTooltip("Clear Channel Keyframes"));
       await tester.pumpAndSettle();
 
       expect(teamOf(controller).players[6].track, isNull);
@@ -1758,7 +1799,7 @@ void main() {
       controller.selectOnly(shape.id);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.tap(find.byTooltip("Clear every keyframe on ${shape.name}"));
+      await tester.tap(find.byTooltip("Clear Channel Keyframes"));
       await tester.pumpAndSettle();
 
       expect(controller.document.elementById("s")!.track, isNull);
@@ -1771,8 +1812,7 @@ void main() {
       await pump(tester, CanvasTimeline(controller: controller));
 
       expect(controller.document.hasKeyframes, isTrue);
-      await tester
-          .tap(find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester.tap(find.byTooltip("Clear all keyframes"));
       await tester.pumpAndSettle();
 
       expect(controller.document.hasKeyframes, isFalse);
@@ -1788,8 +1828,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester
-          .tap(find.byTooltip("Clear every keyframe in the whole canvas"));
+      await tester.tap(find.byTooltip("Clear all keyframes"));
       await tester.pumpAndSettle();
       controller.undo();
 
@@ -1806,8 +1845,7 @@ void main() {
       expect(
           tester
               .widget<InkWell>(find.descendant(
-                  of: find
-                      .byTooltip("Clear every keyframe in the whole canvas"),
+                  of: find.byTooltip("Clear all keyframes"),
                   matching: find.byType(InkWell)))
               .onTap,
           isNull);
@@ -1831,8 +1869,7 @@ void main() {
       controller.selectOnly("p");
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var button = find.byTooltip(
-          "A path's marks are its points — remove them in its settings");
+      var button = find.byTooltip("Clear Channel Keyframes");
       expect(button, findsOneWidget);
       expect(
           tester
@@ -1907,13 +1944,10 @@ void main() {
       controller.focusedPlayer = 0;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      expect(
-          find.byTooltip("#1 (Home) is following Run — "
-              "its timing is that path's points"),
-          findsOneWidget);
-      expect(find.byTooltip("Add a keyframe for #1 (Home) here"), findsNothing);
-      expect(
-          find.byTooltip("Remove this keyframe from #1 (Home)"), findsNothing);
+      expect(find.byTooltip("Following a path"), findsNWidgets(2),
+          reason: "the diamond and the clear button both say so");
+      expect(find.byTooltip("Add Keyframe"), findsNothing);
+      expect(find.byTooltip("Remove Keyframe"), findsNothing);
     });
 
     testWidgets("cannot be cleared from the strip either", (tester) async {
@@ -1923,8 +1957,7 @@ void main() {
       controller.focusedPlayer = 0;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var button = find.byTooltip("#1 (Home) is following Run — "
-          "clear it by unlinking the path");
+      var button = find.byTooltip("Following a path").last;
       expect(button, findsOneWidget);
       expect(
           tester
@@ -1953,8 +1986,7 @@ void main() {
       controller.focusedPlayer = 5;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      expect(
-          find.byTooltip("Add a keyframe for #6 (Home) here"), findsOneWidget);
+      expect(find.byTooltip("Add Keyframe"), findsOneWidget);
     });
   });
 
@@ -2064,8 +2096,8 @@ void main() {
     Future<void> tapMark(WidgetTester tester, int frame, int frames) async {
       var ruler = find.byKey(const ValueKey("keyframeStrip"));
       var box = tester.getRect(ruler);
-      await tester.tapAt(Offset(
-          box.left + (frame + 0.5) / frames * box.width, box.top + 22 + 14));
+      await tester.tapAt(
+          Offset(box.left + frame / frames * box.width, box.top + 22 + 14));
       await tester.pumpAndSettle();
     }
 
@@ -2500,6 +2532,47 @@ void main() {
   });
 
   group("scrubbing a number", () {
+    // The timeline's Length and Per second, as they are in a column with
+    // their captions over them. The play bar keeps its captions in hover
+    // text now, so what is dragged here is the same field where the caption
+    // is on the screen to take hold of.
+    Widget fields(CanvasController controller) => ListenableBuilder(
+          listenable: controller,
+          builder: (context, _) {
+            var document = controller.document;
+            return Row(children: [
+              CanvasNumberField(
+                key: const ValueKey("canvasFrames"),
+                label: "Length",
+                value: document.frames.toDouble(),
+                min: 1,
+                max: maxFrameCount.toDouble(),
+                width: 68,
+                onChanged: (v) {
+                  controller.beginInteraction();
+                  controller.apply(document.copyWith(frames: v.round()),
+                      transient: true);
+                },
+                onCommit: controller.endInteraction,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("canvasFrameRate"),
+                label: "Per second",
+                value: document.frameRate.toDouble(),
+                min: 1,
+                max: 60,
+                width: 60,
+                onChanged: (v) {
+                  controller.beginInteraction();
+                  controller.apply(document.copyWith(frameRate: v.round()),
+                      transient: true);
+                },
+                onCommit: controller.endInteraction,
+              ),
+            ]);
+          },
+        );
+
     testWidgets("one pixel is one of the field's own last digits",
         (tester) async {
       // Not a fraction of the field's range, which was the first attempt and
@@ -2507,7 +2580,7 @@ void main() {
       // than scales.
       var controller = CanvasController(const CanvasDocument(frames: 200));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, fields(controller));
 
       var caption = find.descendant(
           of: find.byKey(const ValueKey("canvasFrames")),
@@ -2524,7 +2597,7 @@ void main() {
       var controller = CanvasController(const CanvasDocument(frames: 40));
       addTearDown(controller.dispose);
       controller.frame = 10;
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, fields(controller));
 
       var before = controller.document.frames;
       // The caption above the field is the handle -- a TextField owns its own
@@ -2548,7 +2621,7 @@ void main() {
     testWidgets("it stays inside the field's own limits", (tester) async {
       var controller = CanvasController(const CanvasDocument(frames: 40));
       addTearDown(controller.dispose);
-      await pump(tester, CanvasTimeline(controller: controller));
+      await pump(tester, fields(controller));
 
       var caption = find.descendant(
           of: find.byKey(const ValueKey("canvasFrameRate")),
@@ -2571,7 +2644,7 @@ void main() {
       Future<int> dragFromFraction(double at) async {
         var controller = CanvasController(const CanvasDocument(frames: 200));
         addTearDown(controller.dispose);
-        await pump(tester, CanvasTimeline(controller: controller));
+        await pump(tester, fields(controller));
 
         var caption = find.descendant(
             of: find.byKey(const ValueKey("canvasFrames")),
@@ -8038,8 +8111,8 @@ void main() {
       addTearDown(c.dispose);
       await pump(tester, host(c));
       expect(find.byKey(const ValueKey("addAudioChannel")), findsNothing);
-      await tester.drag(find.byKey(const ValueKey("timelineGrip")),
-          const Offset(0, -120));
+      await tester.drag(
+          find.byKey(const ValueKey("timelineGrip")), const Offset(0, -120));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("lane-new")), findsOneWidget);
       expect(find.textContaining("Audio 1"), findsWidgets);

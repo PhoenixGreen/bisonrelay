@@ -71,6 +71,8 @@ AudioElement channelClip(
           clip: MediaClip(
               timed: true,
               at: at,
+              // Full: its own line starts at the top, and is dragged down.
+              volume: 1,
               playlist: [source],
               channel: channel,
               channelName: channelName,

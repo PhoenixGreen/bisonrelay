@@ -60,12 +60,12 @@ void main() {
   /// markAt is where a frame's mark is drawn on the strip, at [dy] down the
   /// painted area.
   ///
-  /// The strip's own formula: a frame's mark sits in the middle of the frame's
-  /// share of the width, not at the fraction of the way along it. Measured the
-  /// other way, a tap lands a few pixels off the mark and misses it -- which
-  /// is a thing about this test, not about the strip, and cost an hour.
+  /// The strip's own formula: a frame's mark sits on the frame's leading
+  /// edge -- the line the playhead and a cut are on. It sat in the middle of
+  /// the frame once, and a test measuring from anywhere else lands a few
+  /// pixels off the mark and misses it.
   Offset markAt(Rect paint, int frame, int frames, double dy) => Offset(
-        paint.left + paint.width * (frame + 0.5) / frames,
+        paint.left + paint.width * frame / frames,
         paint.top + dy,
       );
 

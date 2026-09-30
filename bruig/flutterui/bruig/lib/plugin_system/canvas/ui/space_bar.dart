@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 
 // space_bar.dart is the space bar playing and stopping the timeline from
 // anywhere on the Canvas page -- and the few other keys the page answers
-// wherever the focus is: the timeline's tools, and copy, paste, undo and
-// delete for what is selected.
+// wherever the focus is: a cut at the playhead, the timeline's tools, and
+// copy, paste, undo and delete for what is selected.
 //
 // A focus scope round the page, answering space. The stage and the timeline
 // each answered it too, but only while they held the focus, so after a click
@@ -82,9 +82,12 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace:
         if (c.selection.isEmpty) return KeyEventResult.ignored;
         c.deleteSelected();
-      // The timeline's tools: K for the knife, V -- or Escape -- to select.
-      case LogicalKeyboardKey.keyK:
-        c.timelineTool = TimelineTool.knife;
+      // A cut on the selected channel where the playhead is -- K, the
+      // knife's letter, or T. The knife itself is on the timeline's tools,
+      // for cutting where the pointer is; V or Escape goes back to select.
+      case LogicalKeyboardKey.keyK || LogicalKeyboardKey.keyT:
+        c.pause();
+        c.cutAtPlayhead();
       case LogicalKeyboardKey.keyV:
         c.timelineTool = TimelineTool.select;
       case LogicalKeyboardKey.escape:

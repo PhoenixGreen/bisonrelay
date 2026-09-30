@@ -245,6 +245,11 @@ class AudioRuntime extends ChangeNotifier {
   void cue(AudioElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
+    // A sound on the timeline is as loud as its document says, every time --
+    // nobody turns it up by hand the way a speaker's reader does. Read once,
+    // when it was first heard, a clip's volume line moved nothing.
+    p.volume = e.clip.volume;
+    p.muted = e.clip.muted;
     if (moment == null) {
       if (p.voice != null || p.playing || p.starting) {
         p.generation++;

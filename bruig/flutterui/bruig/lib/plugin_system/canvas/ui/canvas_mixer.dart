@@ -465,12 +465,17 @@ class DbReading extends StatefulWidget {
   /// fieldHeight is how tall the box for typing is, to fit where it is.
   final double fieldHeight;
 
+  /// unit follows the number: " dB" under a fader, nothing where there is
+  /// no room for it.
+  final String unit;
+
   const DbReading(
       {required this.db,
       required this.onSet,
       required this.style,
       this.textKey,
       this.fieldHeight = 16,
+      this.unit = " dB",
       super.key});
 
   @override
@@ -533,7 +538,7 @@ class _DbReadingState extends State<DbReading> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _open,
-        child: Text("${dbText(widget.db)} dB",
+        child: Text("${dbText(widget.db)}${widget.unit}",
             key: widget.textKey,
             textAlign: TextAlign.center,
             style: widget.style),

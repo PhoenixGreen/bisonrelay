@@ -911,4 +911,55 @@ void main() {
       });
     });
   });
+
+  group("page names and page numbers", () {
+    CanvasDocument book({bool countCovers = false}) => CanvasDocument(
+          kind: CanvasKind.pages,
+          size: const CanvasSize(ratio: CanvasRatio.a4, width: a4PageWidth),
+          pages: PagesSpec(countCovers: countCovers),
+          scenes: const [
+            CanvasScene(id: "c", cover: PageCover.front),
+            CanvasScene(id: "a"),
+            CanvasScene(id: "b", name: "Contents"),
+            CanvasScene(id: "d"),
+          ],
+        );
+
+    // A page not given a name is called by its number: with the front cover
+    // not counted, the page after it is 1 in the gutter and "Page 1" in
+    // the list -- it said "Page 2".
+    test("a page's default name is its number", () {
+      var doc = book();
+      expect(doc.nameOf(0), PageCover.front.label);
+      expect(doc.nameOf(1), "Page 1");
+      expect(doc.nameOf(2), "Contents", reason: "a name given is kept");
+      expect(doc.nameOf(3), "Page 3");
+      expect(book(countCovers: true).nameOf(1), "Page 2",
+          reason: "and with the cover counted, it is 2");
+    });
+
+    // A page number on the master is over the page, not under it: under,
+    // the first page of a book whose opening spread was one photograph had
+    // none -- the photograph was over it.
+    test("the master's page number is drawn over the page", () async {
+      const w = a4PageWidth * 1.0, h = w * 297 / 210;
+      var number = CounterElement(
+          const ElementBase(
+              id: "n", x: w * 0.4, y: h * 0.8, width: 120, height: 80),
+          source: CounterSource.page);
+      var doc = book().copyWith(
+        masterOn: true,
+        master: CanvasScene(id: "m", elements: [number]),
+      );
+      var scenes = [...doc.allScenes];
+      scenes[1] = scenes[1].copyWith(elements: [
+        ShapeElement(
+            const ElementBase(id: "photo", x: 0, y: 0, width: w, height: h),
+            fill: const Color(0xFFFF0000)),
+      ]);
+      doc = doc.withScenes(scenes).goToScene(1);
+      var order = stackedWithMaster(doc.masterScene!.elements, doc.elements);
+      expect([for (var e in order) e.id], ["photo", "n"]);
+    });
+  });
 }

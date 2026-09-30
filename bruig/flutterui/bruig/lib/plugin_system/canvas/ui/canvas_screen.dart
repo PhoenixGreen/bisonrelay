@@ -156,7 +156,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void initState() {
     super.initState();
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
-    _timelineHeight = math.max(timelineHeight, prefs.timelineHeight);
+    // Nought is never set: the strip as it starts. Anything under the strip
+    // is the play bar alone, as it was left.
+    var kept = prefs.timelineHeight;
+    _timelineHeight = kept <= 0
+        ? timelineHeight
+        : kept < timelineHeight
+            ? timelineCollapsedHeight
+            : kept;
     var at = prefs.panel;
     _panel = at >= 0 && at < CanvasPanel.values.length
         ? CanvasPanel.values[at]
@@ -524,6 +531,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
               _guidesOpen = !_guidesOpen;
               if (_guidesOpen) _canvasSettingsOpen = false;
             }),
+            // The mixer, open or shut whether or not the timeline is: it
+            // floats over the canvas, and is as useful with the timeline away.
+            mixerOpen: _mixerOpen,
+            onToggleMixer: () => setState(() => _mixerOpen = !_mixerOpen),
             timelineOpen: _timelineOpen,
             onToggleTimeline: () => setState(() {
               _timelineOpen = !_timelineOpen;
@@ -646,13 +657,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
               onResize: (h) {
                 var most = math.max(
                     timelineHeight, MediaQuery.sizeOf(context).height * 0.6);
-                setState(() =>
-                    _timelineHeight = h.clamp(timelineHeight, most).toDouble());
+                // Down to the play bar alone: below half way to the strip it
+                // snaps shut to the bar, and above, it is at least the strip.
+                var shut = h < (timelineCollapsedHeight + timelineHeight) / 2;
+                setState(() => _timelineHeight = shut
+                    ? timelineCollapsedHeight
+                    : h.clamp(timelineHeight, most).toDouble());
                 Provider.of<CanvasPreferences>(context, listen: false)
                     .timelineHeight = _timelineHeight;
               },
-              mixerOpen: _mixerOpen,
-              onToggleMixer: () => setState(() => _mixerOpen = !_mixerOpen),
               // One line at a time: two strips over the same corner of the
               // canvas would be one on top of the other.
             ),

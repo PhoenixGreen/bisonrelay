@@ -104,16 +104,31 @@ class CanvasControlScope extends InheritedWidget {
   /// controls up with each other.
   final bool inline;
 
+  /// hoverCaptions puts a control's caption in its hover text rather than on
+  /// the screen at all: for the timeline's play bar, whose controls are
+  /// known by what is in them -- a frame, a length, a rate -- and whose line
+  /// of captions was a line of height taken from the timeline for them.
+  final bool hoverCaptions;
+
   const CanvasControlScope({
     required this.maxWidth,
     this.inline = false,
+    this.hoverCaptions = false,
     required super.child,
     super.key,
   });
 
-  /// isInline is whether captions go beside their controls here.
-  static bool isInline(BuildContext context) =>
-      maybeOf(context)?.inline ?? false;
+  /// isInline is whether captions go beside their controls here -- or
+  /// nowhere on screen, in hover text, which lines up the same way: nothing
+  /// above a control to line the others up under.
+  static bool isInline(BuildContext context) {
+    var scope = maybeOf(context);
+    return (scope?.inline ?? false) || (scope?.hoverCaptions ?? false);
+  }
+
+  /// hovers is whether captions are hover text here. See hoverCaptions.
+  static bool hovers(BuildContext context) =>
+      maybeOf(context)?.hoverCaptions ?? false;
 
   static CanvasControlScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasControlScope>();
@@ -126,7 +141,9 @@ class CanvasControlScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(CanvasControlScope old) =>
-      old.maxWidth != maxWidth || old.inline != inline;
+      old.maxWidth != maxWidth ||
+      old.inline != inline ||
+      old.hoverCaptions != hoverCaptions;
 }
 
 /// CanvasLineBreak starts a new line inside a group.
@@ -2129,9 +2146,11 @@ class CanvasIconButton extends StatelessWidget {
           top: tight || CanvasControlScope.isInline(context)
               ? 0
               : controlWithLabelHeight - controlHeight),
-      child: Tooltip(
-        message: tooltip,
-        child: Material(
+      // No hover text where there is nothing to say: a button whose icon says
+      // it all is quieter without a box of words appearing over it.
+      child: _maybeTooltip(
+        tooltip,
+        Material(
           // Its own, so the highlight stays with the control inside a
           // scrolling list rather than on whatever Material is above it.
           type: MaterialType.transparency,
@@ -2162,6 +2181,11 @@ class CanvasIconButton extends StatelessWidget {
     );
   }
 }
+
+/// _maybeTooltip is [child] with [message] as its hover text, or with none
+/// where the message is empty.
+Widget _maybeTooltip(String message, Widget child) =>
+    message.isEmpty ? child : Tooltip(message: message, child: child);
 
 /// _labelled puts a control's own small label above it.
 /// _ScrubLabel is a caption you can drag sideways to change the number under
@@ -2294,6 +2318,13 @@ class _ScrubLabelState extends State<_ScrubLabel> {
 Widget _labelled(ThemeNotifier theme, String label, Widget child,
     {Widget? scrub, double? cap}) {
   return Builder(builder: (context) {
+    // In hover text, and nothing on screen but the control.
+    if (CanvasControlScope.hovers(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(right: canvasControlGap),
+        child: label.isEmpty ? child : Tooltip(message: label, child: child),
+      );
+    }
     var inline = CanvasControlScope.isInline(context);
     var caption = Text(
       label,

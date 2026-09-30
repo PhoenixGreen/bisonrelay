@@ -448,12 +448,20 @@ class TimelineAction {
   /// holdFrames is how long [TimelineActionKind.pause] waits.
   final int holdFrames;
 
+  /// label is a word or two beside the flag -- "Chorus", "Page 2" -- and
+  /// showLabel whether it is drawn there. A note to whoever is editing; it
+  /// does nothing when the canvas plays.
+  final String label;
+  final bool showLabel;
+
   const TimelineAction({
     required this.frame,
     required this.kind,
     this.target = 0,
     this.repeats = 0,
     this.holdFrames = 12,
+    this.label = "",
+    this.showLabel = true,
   });
 
   TimelineAction copyWith({
@@ -462,6 +470,8 @@ class TimelineAction {
     int? target,
     int? repeats,
     int? holdFrames,
+    String? label,
+    bool? showLabel,
   }) =>
       TimelineAction(
         frame: frame ?? this.frame,
@@ -469,6 +479,8 @@ class TimelineAction {
         target: target ?? this.target,
         repeats: repeats ?? this.repeats,
         holdFrames: holdFrames ?? this.holdFrames,
+        label: label ?? this.label,
+        showLabel: showLabel ?? this.showLabel,
       );
 
   Map<String, dynamic> toJson() => {
@@ -477,6 +489,8 @@ class TimelineAction {
         if (target != 0) "target": target,
         if (repeats != 0) "repeats": repeats,
         if (holdFrames != 12) "hold": holdFrames,
+        if (label.isNotEmpty) "label": label,
+        if (!showLabel) "hideLabel": true,
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
@@ -485,6 +499,8 @@ class TimelineAction {
         target: (json["target"] as num?)?.toInt() ?? 0,
         repeats: (json["repeats"] as num?)?.toInt() ?? 0,
         holdFrames: (json["hold"] as num?)?.toInt() ?? 12,
+        label: json["label"] is String ? json["label"] as String : "",
+        showLabel: json["hideLabel"] != true,
       );
 }
 

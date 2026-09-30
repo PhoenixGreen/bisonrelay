@@ -307,7 +307,9 @@ Future<StageResult?> buildEpubStage(
   var scene = document.allScenes[index];
   var frames = math.max(1, page.frames);
   var master = document.masterScene;
-  var elements = [...?master?.elements, ...scene.elements];
+  // In the renderer's order: the master's page numbers over the page.
+  var elements =
+      stackedWithMaster(master?.elements ?? const [], scene.elements);
   var pageBox = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
 
   // Shown and hidden by a button on the page: a layer even when it is still,

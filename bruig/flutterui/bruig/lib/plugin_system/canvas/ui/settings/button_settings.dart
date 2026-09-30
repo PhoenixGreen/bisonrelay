@@ -120,7 +120,7 @@ List<Widget> buttonSettings(
               options: [
                 ("", "Nothing"),
                 for (var (i, scene) in controller.document.allScenes.indexed)
-                  (scene.id, scene.saysAt(i, controller.document.kind)),
+                  (scene.id, controller.document.nameOf(i)),
               ],
               onChanged: (v) {
                 begin();

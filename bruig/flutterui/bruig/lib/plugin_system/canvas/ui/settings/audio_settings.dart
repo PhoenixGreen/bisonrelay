@@ -165,7 +165,10 @@ List<Widget> audioSettings(
       row: [
         CanvasSlider(
           label: "Volume",
-          value: clip.volume,
+          // A sound on the timeline goes to twice -- six decibels up; a
+          // speaker's is where its own control starts, which tops out at one.
+          value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0).toDouble(),
+          max: clip.timed ? 2 : 1,
           onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
           onCommit: commit,
         ),

@@ -587,3 +587,21 @@ String _asTime(double value, int places, CounterSeparator separator) {
   }
   return negative ? "-$out" : out.toString();
 }
+
+/// stackedWithMaster is a page's elements with the master's under them --
+/// all but its page numbers, which go over them.
+///
+/// Under, because what the master carries is what every page stands on: a
+/// frame, a logo, a rule. But a page number under the page was a number a
+/// picture laid across the page covered: the first page of a book whose
+/// opening spread was one photograph had none. The order the renderer draws
+/// in and the order an EPUB's layers are stacked in, so the two agree.
+List<CanvasElement> stackedWithMaster(
+        List<CanvasElement> master, List<CanvasElement> page) =>
+    [
+      for (var e in master)
+        if (!(e is CounterElement && e.isPageNumber)) e,
+      ...page,
+      for (var e in master)
+        if (e is CounterElement && e.isPageNumber) e,
+    ];

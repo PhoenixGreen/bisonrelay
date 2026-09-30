@@ -219,21 +219,15 @@ void paintCanvasDocument(
   // Not while the master is the canvas being edited, or it would be drawn
   // twice: once as itself and once as the thing behind itself.
   var master = doc.masterScene;
-  if (master != null && !doc.editingMaster) {
-    _paintScene(canvas, doc, master.elements, frame,
-        images: images,
-        editing: editing,
-        hoveredButton: hoveredButton,
-        skipElement: skipElement,
-        skipTextItem: skipTextItem,
-        counterValue: counterValue,
-        counterPressed: counterPressed,
-        counterRunning: counterRunning,
-        audioState: audioState,
-        videoShow: videoShow);
-  }
-
-  _paintScene(canvas, doc, doc.elements, frame,
+  // The master under the page, and its page numbers over it -- see
+  // stackedWithMaster.
+  _paintScene(
+      canvas,
+      doc,
+      master != null && !doc.editingMaster
+          ? stackedWithMaster(master.elements, doc.elements)
+          : doc.elements,
+      frame,
       images: images,
       editing: editing,
       hoveredButton: hoveredButton,
