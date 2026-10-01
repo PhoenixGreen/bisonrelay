@@ -759,6 +759,22 @@ void main() {
       expect(clip.at, 0, reason: "a fade, not a move");
     });
 
+    // Every width the strips can be dragged to, at a short lane and a tall
+    // one: nothing in them overflows. At the narrowest the code alone was
+    // wider than the room left for it, and the empty lane's strip was a
+    // pixel over too.
+    testWidgets("the strips fit at every width and height", (tester) async {
+      var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);
+      for (var h in [26.0, 60.0, 160.0]) {
+        c.setLaneHeight("1", h);
+        for (var w = timelineHeaderMin; w <= timelineHeaderMax; w += 3) {
+          c.headerWidth = w;
+          await tester.pump();
+          expect(tester.takeException(), isNull, reason: "at $w wide, $h tall");
+        }
+      }
+    });
+
     testWidgets("a lane is dragged taller, and a strip narrowed to its code",
         (tester) async {
       var c = await show(tester, [onChannel("a", "1", at: 0, seconds: 10)]);

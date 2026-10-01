@@ -1222,8 +1222,16 @@ class _ChannelHeader extends StatelessWidget {
           ]);
     } else {
       body = Row(children: [
-        code,
-        const Spacer(),
+        // Shrunk to fit where the strip is narrower than the code: at its
+        // narrowest the column leaves sixteen pixels, and "A1" is eighteen.
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: code,
+          ),
+        ),
+        if (buttons.isNotEmpty || width >= 150) const Spacer(),
         for (var b in buttons) ...[b, gap],
         if (width >= 150) reading,
       ]);
@@ -1363,7 +1371,11 @@ class _EmptyHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     var colors = theme.colors;
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+      // Less to either side when the column is narrow: the icon alone is
+      // what fits, and eight pixels each side of it did not.
+      padding: width < 64
+          ? const EdgeInsets.fromLTRB(4, 3, 2, 3)
+          : const EdgeInsets.fromLTRB(8, 3, 8, 3),
       decoration: BoxDecoration(
           border: Border(right: BorderSide(color: colors.outlineVariant))),
       child: Row(children: [

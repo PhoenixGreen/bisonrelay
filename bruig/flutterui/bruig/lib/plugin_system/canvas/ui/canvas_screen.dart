@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
@@ -256,7 +257,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
     // The canvas's sounds stop when the canvas is left. The session goes on
     // -- see below -- but music from a page nobody is looking at, carrying on
     // under a chat, is a sound with no off switch on screen.
-    _controller.stopAudio();
+    //
+    // Just after this frame rather than in it: stopping them tells everything
+    // watching the canvas, and some of what watches it is being taken down in
+    // this same frame, with the tree locked -- a notification then is an
+    // exception, which leaving the page for the chat threw every time a sound
+    // had been loaded.
+    var controller = _controller;
+    scheduleMicrotask(controller.stopAudio);
     // Not disposed: the session outlives this page. The provider owns it, and
     // disposing it here would leave a dead controller behind for the next
     // visit to read.
