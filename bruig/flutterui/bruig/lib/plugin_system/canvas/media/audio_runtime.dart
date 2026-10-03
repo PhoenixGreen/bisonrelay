@@ -73,6 +73,10 @@ class _Playing {
   double get heard => muted ? 0 : volume * gain;
 }
 
+/// declickSeconds is how long a sound started part way through takes to
+/// rise to its level: too short to hear as a fade, long enough not to click.
+const double declickSeconds = 0.015;
+
 class AudioRuntime extends ChangeNotifier {
   final AudioEngine engine;
 
@@ -317,9 +321,11 @@ class AudioRuntime extends ChangeNotifier {
     _heard(p);
   }
 
-  void setVolume(AudioElement e, double volume) {
+  /// setVolume sets how loud [e] is, up to [most]: full for a reader's
+  /// speaker, and over it for a clip on the timeline turned up there.
+  void setVolume(AudioElement e, double volume, {double most = 1}) {
     var p = _for(e);
-    p.volume = volume.clamp(0.0, 1.0);
+    p.volume = volume.clamp(0.0, most);
     _heard(p);
     notifyListeners();
   }
@@ -471,6 +477,11 @@ class AudioRuntime extends ChangeNotifier {
     p.end = source.endOr(engine.lengthOf(track));
     p.fadingOut = false;
     var fadeIn = fades ? p.clip.fadeIn : 0.0;
+    // Started part way through, it rises over a few milliseconds rather than
+    // jumping straight to full: a waveform cut into mid-swing is a click,
+    // which is what pressing play over a sound on the timeline made.
+    var at = from ?? source.start;
+    if (fadeIn <= 0 && at > source.start + 0.001) fadeIn = declickSeconds;
     var voice = engine.play(track,
         volume: fadeIn > 0 ? 0 : p.heard,
         at: from ?? source.start,

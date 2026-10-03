@@ -256,7 +256,7 @@ void main() {
     await carry(Offset(empty.left + empty.width * 0.25, empty.center.dy));
     var first = c.document.elements.single as AudioElement;
     expect(first.clip.playlist.single.assetId, song);
-    expect(first.clip.channelName, "Audio 1");
+    expect(first.clip.channelName, "Channel 1");
     expect(first.clip.at, closeTo(25, 3));
     expect(first.visible, isFalse);
 
@@ -273,6 +273,35 @@ void main() {
         reason: "on the same channel");
     expect(sounds.last.clip.at, closeTo(75, 3));
     expect(c.timelineChannels, hasLength(1));
+  });
+
+  // A video dropped on the timeline's lanes is on the canvas and on the
+  // timeline at once: "On the timeline", done by putting it there.
+  testWidgets("a video dropped on the timeline is timed from that frame",
+      (tester) async {
+    var c = await show(
+        tester,
+        (c) => Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              sidebar(c),
+              Expanded(
+                child:
+                    CanvasTimeline(controller: c, height: timelineHeight + 120),
+              ),
+            ]));
+    var empty = tester.getRect(find.byKey(const ValueKey("lane-new")));
+    var drag = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey("asset-$film"))));
+    await tester.pump(const Duration(milliseconds: 50));
+    await drag.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await drag.moveTo(Offset(empty.left + empty.width * 0.5, empty.center.dy));
+    await tester.pump();
+    await drag.up();
+    await tester.pumpAndSettle();
+    var video = c.document.elements.single as VideoElement;
+    expect(video.clip.timed, isTrue);
+    expect(video.clip.at, closeTo(50, 3));
+    expect(video.clip.playlist.single.assetId, film);
   });
 
   test("a sound becomes a speaker; a clip keeps what the asset knows", () {

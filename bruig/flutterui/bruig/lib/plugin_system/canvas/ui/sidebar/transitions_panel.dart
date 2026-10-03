@@ -112,7 +112,8 @@ class CanvasTransitionsPanel extends StatelessWidget {
     var free = room -
         16 -
         2 * (controlHeight + canvasControlGap) -
-        2 * canvasControlGap;
+        // The two dropdowns are captioned, and keep the wider gap.
+        2 * canvasCaptionedGap;
     var family = (free * 0.42).clamp(62.0, 128.0);
     var which = (free * 0.58).clamp(80.0, 168.0);
 

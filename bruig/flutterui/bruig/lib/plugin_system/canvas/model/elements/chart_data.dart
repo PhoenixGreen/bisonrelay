@@ -53,6 +53,112 @@ enum ChartLineStyle {
       };
 }
 
+/// ChartBackdropGrow is where a bar's background grows from when it is a
+/// different size from the bar.
+///
+/// Left and right anchor it to that side of the bar, and grow it up from the
+/// axis. Bottom grows it up from the axis, centred across the bar; top hangs
+/// it down from the top of the chart; centre centres it both ways, about the
+/// middle of the chart. On a chart drawn sideways, "up" is along the bars
+/// and "left" is the edge nearer the top.
+enum ChartBackdropGrow {
+  left("Left"),
+  centre("Centre"),
+  right("Right"),
+  bottom("Bottom"),
+  top("Top");
+
+  final String label;
+  const ChartBackdropGrow(this.label);
+
+  static ChartBackdropGrow fromName(String? name) => values.firstWhere(
+        (s) => s.name == name,
+        orElse: () => ChartBackdropGrow.centre,
+      );
+}
+
+/// ChartBackdrop is a panel drawn behind every bar of one series: the track
+/// a progress bar fills, or a card each bar stands on.
+///
+/// [height] is a share of the plot along the value axis, so 1 is the whole
+/// height of the chart and more stands proud of it.
+/// [width] is a share of the bar's own thickness, so 1 is exactly as wide as
+/// the bar and 1.5 stands a quarter proud on each side when grown from the
+/// centre. Off by default, and kept when switched off so switching it back
+/// on finds it as it was left.
+/// maxBackdropHeight is the tallest a bar's background is drawn, as a share
+/// of the chart's height.
+const double maxBackdropHeight = 3;
+
+class ChartBackdrop {
+  final bool on;
+  final double height;
+  final double width;
+  final Color fill;
+  final Color border;
+  final double radius;
+  final double borderWidth;
+  final ChartBackdropGrow grow;
+
+  const ChartBackdrop({
+    this.on = false,
+    this.height = 1,
+    this.width = 1,
+    this.fill = const Color(0x33FFFFFF),
+    this.border = const Color(0x00000000),
+    this.radius = 0,
+    this.borderWidth = 0,
+    this.grow = ChartBackdropGrow.centre,
+  });
+
+  ChartBackdrop copyWith({
+    bool? on,
+    double? height,
+    double? width,
+    Color? fill,
+    Color? border,
+    double? radius,
+    double? borderWidth,
+    ChartBackdropGrow? grow,
+  }) =>
+      ChartBackdrop(
+        on: on ?? this.on,
+        height: height ?? this.height,
+        width: width ?? this.width,
+        fill: fill ?? this.fill,
+        border: border ?? this.border,
+        radius: radius ?? this.radius,
+        borderWidth: borderWidth ?? this.borderWidth,
+        grow: grow ?? this.grow,
+      );
+
+  Map<String, dynamic> toJson() => {
+        if (on) "on": true,
+        "height": height,
+        "width": width,
+        "fill": colorToJson(fill),
+        "border": colorToJson(border),
+        "radius": radius,
+        "borderWidth": borderWidth,
+        "grow": grow.name,
+      };
+
+  factory ChartBackdrop.fromJson(Map<String, dynamic> json) {
+    double num_(String k, double or, double lo, double hi) =>
+        json[k] is num ? (json[k] as num).toDouble().clamp(lo, hi) : or;
+    return ChartBackdrop(
+      on: json["on"] == true,
+      height: num_("height", 1, 0, maxBackdropHeight),
+      width: num_("width", 1, 0.1, 4),
+      fill: colorFromJson(json["fill"], const Color(0x33FFFFFF)),
+      border: colorFromJson(json["border"], const Color(0x00000000)),
+      radius: num_("radius", 0, 0, 200),
+      borderWidth: num_("borderWidth", 0, 0, 40),
+      grow: ChartBackdropGrow.fromName(json["grow"] as String?),
+    );
+  }
+}
+
 /// missingValue is a cell nobody filled in.
 ///
 /// A NaN rather than a nullable double, so that a series' values stay a plain
@@ -271,6 +377,11 @@ class ChartSeries {
   final double? pointSize;
   final Color? pointColor;
 
+  /// backdrop is the panel drawn behind each of this series' bars, or null
+  /// for none -- which is almost every series. Only drawn where the series is
+  /// drawn as bars.
+  final ChartBackdrop? backdrop;
+
   const ChartSeries({
     required this.name,
     required this.color,
@@ -288,6 +399,7 @@ class ChartSeries {
     this.points,
     this.pointSize,
     this.pointColor,
+    this.backdrop,
   });
 
   /// paint is the colour and the gradient as one thing, for the picker and
@@ -327,6 +439,7 @@ class ChartSeries {
     bool? points,
     double? pointSize,
     Color? pointColor,
+    ChartBackdrop? backdrop,
     bool followChart = false,
     bool writtenLikeChart = false,
     bool oneColour = false,
@@ -359,6 +472,7 @@ class ChartSeries {
         points: drawnLikeChart ? null : (points ?? this.points),
         pointSize: drawnLikeChart ? null : (pointSize ?? this.pointSize),
         pointColor: drawnLikeChart ? null : (pointColor ?? this.pointColor),
+        backdrop: backdrop ?? this.backdrop,
       );
 
   Map<String, dynamic> toJson() => {
@@ -382,6 +496,7 @@ class ChartSeries {
         if (points != null) "points": points,
         if (pointSize != null) "pointSize": pointSize,
         if (pointColor != null) "pointColor": colorToJson(pointColor!),
+        if (backdrop != null) "backdrop": backdrop!.toJson(),
       };
 
   factory ChartSeries.fromJson(Map<String, dynamic> json, int index) {
@@ -420,6 +535,9 @@ class ChartSeries {
           : null,
       pointColor:
           json["pointColor"] == null ? null : colorFromJson(json["pointColor"]),
+      backdrop: json["backdrop"] is Map<String, dynamic>
+          ? ChartBackdrop.fromJson(json["backdrop"] as Map<String, dynamic>)
+          : null,
       // A null in the list is a cell nobody filled in -- see
       // ChartData.hasValueAt. Anything else that is not a number is a nought,
       // which is what a stray string in a pasted column has always been.

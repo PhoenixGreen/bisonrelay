@@ -298,9 +298,10 @@ void main() {
       var box = tester.getRect(lane);
       double xOf(num frame) => box.left + frame / 200 * box.width;
 
-      // The middle of the bar: frames 50 to 150.
-      await tester.dragFrom(
-          Offset(xOf(100), box.center.dy), Offset(20 / 200 * box.width, 0));
+      // The middle of the bar: frames 50 to 150. Low in it, clear of the
+      // volume line a video's soundtrack has, as a sound's does.
+      await tester.dragFrom(Offset(xOf(100), box.top + box.height * 0.85),
+          Offset(20 / 200 * box.width, 0));
       await tester.pumpAndSettle();
       var clip = (c.document.elements.single as VideoElement).clip;
       expect(clip.at, closeTo(70, 1));

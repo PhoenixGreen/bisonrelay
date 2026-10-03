@@ -308,14 +308,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// _setView zooms or scrolls. All of it is stored as null, so a timeline
   /// made longer afterwards is still shown whole.
   void _setView(TimelineView next) {
-    var frames = controller.document.frames;
+    var frames = controller.timelineReach;
     var fitted = next.fitted(frames);
     setState(() => _view = fitted.isWhole(frames) ? null : fitted);
   }
 
   /// _zoomBy zooms in by [factor] (out, below one) about the playhead.
   void _zoomBy(double factor) => _setView(_viewNow.zoomed(
-      factor, controller.frame + 0.5, controller.document.frames));
+      factor, controller.frame + 0.5, controller.timelineReach));
 
   /// _laneWidth is the width the frames are laid across: the body, less its
   /// padding and the strip column.
@@ -342,7 +342,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     // Scrolling along is the reader's choice -- see _trackpadScrolls. Zooming
     // asks for a key held down, so it is never done by accident.
     if (!zoom && !_trackpadScrolls) return;
-    var frames = controller.document.frames;
+    var frames = controller.timelineReach;
     var width = _laneWidth(bodyWidth);
     GestureBinding.instance.pointerSignalResolver.register(event, (e) {
       var d = (e as PointerScrollEvent).scrollDelta;
@@ -366,7 +366,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (event.localPosition.dy < _stripPadTop + _transportHeight + _stripGap) {
       return;
     }
-    var frames = controller.document.frames;
+    var frames = controller.timelineReach;
     var width = _laneWidth(bodyWidth);
     var next = _viewNow;
     if ((event.scale - _pinch).abs() > 0.001) {
@@ -781,7 +781,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
 
     // The frames on screen: all of them, or the stretch zoomed to -- kept
     // up with the playhead while it plays, a page at a time.
-    var frames = document.frames;
+    // To the end of the longest clip, where one runs on past the scene.
+    var frames = controller.timelineReach;
     var view = _view?.fitted(frames) ?? TimelineView.whole(frames);
     if (_view != null && controller.playing) {
       view = view.following(controller.frame, frames);
@@ -861,7 +862,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   Widget _stripHeader(ThemeNotifier theme, String? target) {
     var colors = theme.colors;
     var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
-    var frames = controller.document.frames;
+    var frames = controller.timelineReach;
     var whole = _viewNow.isWhole(frames);
     Widget zoom(String key, IconData icon, VoidCallback? onTap) => InkResponse(
           key: ValueKey(key),
@@ -1459,7 +1460,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                       painter: _TimelinePainter(
                         view: _viewNow,
-                        frames: document.frames,
+                        frames: controller.timelineReach,
+                        scene: document.frames,
                         frame: controller.frame,
                         frameRate: document.frameRate,
                         // The focused player's, when one is focused -- see
@@ -1496,7 +1498,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 child: _TimelineScrollbar(
                   key: const ValueKey("timelineScrollbar"),
                   view: _viewNow,
-                  frames: document.frames,
+                  frames: controller.timelineReach,
                   colors: theme.colors,
                   onView: _setView,
                 ),
@@ -1667,6 +1669,10 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
 class _TimelinePainter extends CustomPainter {
   final TimelineView view;
   final int frames;
+
+  /// scene is how many frames the scene has; [frames] runs on past it where
+  /// a clip does, and that stretch is shaded.
+  final int scene;
   final int frame;
   final int frameRate;
   final List<Keyframe> keyframes;
@@ -1685,6 +1691,7 @@ class _TimelinePainter extends CustomPainter {
   const _TimelinePainter({
     required this.view,
     required this.frames,
+    required this.scene,
     required this.frame,
     required this.frameRate,
     required this.bands,
@@ -1728,6 +1735,7 @@ class _TimelinePainter extends CustomPainter {
       canvas.drawLine(Offset(x, strong ? 4 : 9), Offset(x, _rulerHeight - 3),
           strong ? strongTick : tick);
     }
+    paintPastScene(canvas, Size(size.width, _rulerHeight), view, scene, colors);
 
     // The bars first, under the marks they join: a chart's entrance and its
     // exit are each two keyframes that mean nothing apart, and two marks with
@@ -1893,6 +1901,7 @@ class _TimelinePainter extends CustomPainter {
   @override
   bool shouldRepaint(_TimelinePainter old) =>
       old.frames != frames ||
+      old.scene != scene ||
       old.view != view ||
       old.frame != frame ||
       old.frameRate != frameRate ||

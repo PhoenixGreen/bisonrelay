@@ -482,6 +482,18 @@ void paintElement(
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
   if (alpha <= 0.002) return;
 
+  // A video on the timeline is on screen while its clip is, as in an
+  // editor: from where it starts to where it ends. Its poster before and
+  // after was a second picture over the first wherever a clip had been cut
+  // in two, the later half's still covering the earlier half as it played.
+  if (element is VideoElement &&
+      document != null &&
+      document.offTimeline(element.clip, frame,
+          onMaster:
+              document.masterScene?.elements.contains(element) ?? false)) {
+    return;
+  }
+
   var bounds = element.bounds;
 
   // A page number that sits on the outside edge of the leaf. Mirrored about

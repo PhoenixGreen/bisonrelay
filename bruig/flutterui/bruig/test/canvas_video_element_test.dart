@@ -340,6 +340,23 @@ void main() {
       expect(engine.last.volume, 0);
       expect(runtime.view(e).muted, isTrue);
     });
+
+    // On the timeline the clip's volume line is the volume, as it is for a
+    // sound -- and, as there, it can be turned up past full.
+    test("on the timeline it is as loud as its clip's volume line", () async {
+      var e = video("v");
+      e = e.copyWith(clip: e.clip.copyWith(timed: true));
+      runtime.cue(e, e.clip.momentAt(0.5), playing: true);
+      await settle();
+      expect(audio.isPlaying("video:v"), isTrue);
+
+      var louder = e.copyWith(clip: e.clip.copyWith(volume: 1.5));
+      runtime.cue(louder, louder.clip.momentAt(0.6), playing: true);
+      expect(engine.last.volume, closeTo(1.5, 0.001));
+      var muted = louder.copyWith(clip: louder.clip.copyWith(muted: true));
+      runtime.cue(muted, muted.clip.momentAt(0.7), playing: true);
+      expect(engine.last.volume, 0);
+    });
   });
 
   group("the controller", () {

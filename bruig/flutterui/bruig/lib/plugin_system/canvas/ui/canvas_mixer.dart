@@ -1176,17 +1176,35 @@ class _MasterStrip extends StatelessWidget {
 
   Widget _reading(String label, String value, Color? colour) => Padding(
         padding: const EdgeInsets.only(bottom: 2),
+        // The two share the room, the reading shrinking to fit before it is
+        // cut off: in a narrow master strip "Integrated -15.6 LUFS" ran past
+        // the edge.
         child: Row(children: [
-          Text(label,
-              style: TextStyle(
-                  fontSize: 10, color: theme.colors.onSurfaceVariant)),
-          const Spacer(),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: colour ?? theme.colors.onSurface)),
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10, color: theme.colors.onSurfaceVariant)),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(value,
+                    maxLines: 1,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: colour ?? theme.colors.onSurface)),
+              ),
+            ),
+          ),
         ]),
       );
 }

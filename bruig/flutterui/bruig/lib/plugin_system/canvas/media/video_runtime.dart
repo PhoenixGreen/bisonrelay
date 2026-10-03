@@ -288,6 +288,16 @@ class VideoRuntime extends ChangeNotifier {
   void cue(VideoElement e, ClipMoment? moment, {required bool playing}) {
     var p = _for(e);
     p.timed = true;
+    // As loud as its clip's volume line says, as a sound on the timeline is:
+    // nobody turns a timed video up by hand.
+    if (p.volume != e.clip.volume || p.muted != e.clip.muted) {
+      p.volume = e.clip.volume;
+      p.muted = e.clip.muted;
+      if (p.started) {
+        audio.setVolume(_sound(p), p.volume, most: 2);
+        audio.setMuted(_sound(p), p.muted);
+      }
+    }
     if (moment == null) {
       if (p.started || p.opening) {
         _close(p);

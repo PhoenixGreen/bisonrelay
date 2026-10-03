@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
@@ -396,6 +397,17 @@ class CanvasDocument {
   int get playFrames => hasScenes ? sequenceFrames : frames;
 
   /// startOfScene is the frame the sequence reaches [index] on.
+  /// offTimeline is whether [clip], on the timeline, has nothing to show at
+  /// [frame] of the scene being looked at: before it starts or after it has
+  /// finished. A clip on the master runs on the whole run's clock, the way
+  /// it plays. See momentAt.
+  bool offTimeline(MediaClip clip, int frame, {bool onMaster = false}) {
+    if (!clip.timed || clip.isEmpty || clip.runLength <= 0) return false;
+    var rate = frameRate <= 0 ? 1 : frameRate;
+    var run = onMaster && !editingMaster ? startOfScene(at) + frame : frame;
+    return clip.momentAt((run - clip.at) / rate) == null;
+  }
+
   int startOfScene(int index) {
     var reached = 0;
     for (var i = 0; i < index && i < allScenes.length; i++) {

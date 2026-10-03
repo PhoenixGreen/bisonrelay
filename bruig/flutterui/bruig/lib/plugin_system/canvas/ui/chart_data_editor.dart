@@ -411,7 +411,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               // kind, the colour and the button all make one line of a narrow
               // sidebar. It grows into a wide one, so the floor only has to
               // hold a legend entry -- "Revenue", "2024" -- not a sentence.
-              width: 56,
+              width: 50,
               onChanged: (v) {
                 var out = [...data.series];
                 out[i] = out[i].copyWith(name: v);
@@ -429,7 +429,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
                 key: const ValueKey("chartType"),
                 label: "Drawn as",
                 value: widget.chartType.name,
-                width: 96,
+                width: 90,
                 options: [for (var t in ChartType.values) (t.name, t.label)],
                 // The caller puts the series back to following the chart in
                 // the same write. Left pinned to what it was, choosing a new
@@ -443,7 +443,7 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               CanvasDropdown<String>(
                 label: i == 0 ? "Drawn as" : "",
                 value: series.type?.name ?? "",
-                width: 96,
+                width: 90,
                 options: [
                   ("", "As the chart"),
                   for (var t in ChartType.values)
@@ -595,6 +595,23 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
               : _writeSeries(i, series.copyWith(corner: v)),
           onCommit: widget.onCommit,
         ),
+        // A panel behind every one of this series' bars. Its own per series,
+        // not the chart's: a track behind one set and not the other is the
+        // usual reason to want one.
+        const CanvasLineBreak(),
+        CanvasToggle(
+          key: ValueKey("seriesBackdrop$i"),
+          label: "Background",
+          value: series.backdrop?.on ?? false,
+          onChanged: (v) => _writeSeries(
+              i,
+              series.copyWith(
+                  backdrop: (series.backdrop ?? const ChartBackdrop())
+                      .copyWith(on: v))),
+        ),
+        if (series.backdrop?.on ?? false)
+          ..._backdropSettings(i, series, series.backdrop!),
+        const CanvasLineBreak(),
         CanvasHint(leads
             ? "How the bars are shaped. Spacing is the gap between one "
                 "category and the next. Least is the smallest a bar is ever "
@@ -706,6 +723,88 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
           "${i < data.series.length - 1 ? " Band fills the space between this "
               "line and the next one down the list, fading from this "
               "colour into that one's." : ""}"),
+    ];
+  }
+
+  /// _backdropSettings are the controls for the panel behind one series'
+  /// bars, shown while it is switched on.
+  List<Widget> _backdropSettings(int i, ChartSeries series, ChartBackdrop b) {
+    void set(ChartBackdrop next) =>
+        _writeSeries(i, series.copyWith(backdrop: next));
+    // Three lines: the switch on its own, then the panel's size and where it
+    // grows from, then how it is painted.
+    return [
+      const CanvasLineBreak(),
+      CanvasNumberField(
+        key: ValueKey("seriesBackdropHeight$i"),
+        label: "Height",
+        // A share of the chart's height, as a percentage: 100 reaches the
+        // top of the plot, and more stands above it.
+        value: b.height * 100,
+        min: 0,
+        max: maxBackdropHeight * 100,
+        decimals: 0,
+        width: 58,
+        suffix: "%",
+        onChanged: (v) => set(b.copyWith(height: v / 100)),
+        onCommit: widget.onCommit,
+      ),
+      CanvasNumberField(
+        key: ValueKey("seriesBackdropWidth$i"),
+        label: "Width",
+        // A share of the bar's own thickness: 100 is exactly as wide.
+        value: b.width * 100,
+        min: 10,
+        max: 400,
+        decimals: 0,
+        width: 58,
+        suffix: "%",
+        onChanged: (v) => set(b.copyWith(width: v / 100)),
+        onCommit: widget.onCommit,
+      ),
+      CanvasDropdown<ChartBackdropGrow>(
+        key: ValueKey("seriesBackdropGrow$i"),
+        label: "Grow from",
+        value: b.grow,
+        width: 78,
+        options: [for (var v in ChartBackdropGrow.values) (v, v.label)],
+        onChanged: (v) => set(b.copyWith(grow: v)),
+      ),
+      const CanvasLineBreak(),
+      CanvasColorButton(
+        key: ValueKey("seriesBackdropFill$i"),
+        label: "Fill",
+        color: b.fill,
+        onChanged: (c) => set(b.copyWith(fill: c)),
+      ),
+      CanvasColorButton(
+        key: ValueKey("seriesBackdropBorder$i"),
+        label: "Border",
+        color: b.border,
+        onChanged: (c) => set(b.copyWith(border: c)),
+      ),
+      CanvasNumberField(
+        key: ValueKey("seriesBackdropBorderWidth$i"),
+        label: "Border width",
+        value: b.borderWidth,
+        min: 0,
+        max: 40,
+        decimals: 1,
+        width: 54,
+        onChanged: (v) => set(b.copyWith(borderWidth: v)),
+        onCommit: widget.onCommit,
+      ),
+      CanvasNumberField(
+        key: ValueKey("seriesBackdropRadius$i"),
+        label: "Radius",
+        value: b.radius,
+        min: 0,
+        max: 200,
+        decimals: 0,
+        width: 54,
+        onChanged: (v) => set(b.copyWith(radius: v)),
+        onCommit: widget.onCommit,
+      ),
     ];
   }
 

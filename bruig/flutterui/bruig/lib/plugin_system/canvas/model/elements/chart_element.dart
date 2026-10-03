@@ -291,6 +291,11 @@ class ChartElement extends CanvasElement {
   final double? yLabelSize;
   final Color? yLabelColor;
 
+  /// xLabelGap and yLabelGap move each axis's values away from the chart
+  /// (or, below zero, closer to it), in points.
+  final double xLabelGap;
+  final double yLabelGap;
+
   /// showXTitle and showYTitle show or hide the two words naming the axes --
   /// [xAxisLabel] and [yAxisLabel] -- one at a time.
   ///
@@ -461,6 +466,8 @@ class ChartElement extends CanvasElement {
     this.xLabelColor,
     this.yLabelSize,
     this.yLabelColor,
+    this.xLabelGap = 0,
+    this.yLabelGap = 0,
     this.showXTitle = true,
     this.showYTitle = true,
     this.showLegend = false,
@@ -617,6 +624,8 @@ class ChartElement extends CanvasElement {
     Color? xLabelColor,
     double? yLabelSize,
     Color? yLabelColor,
+    double? xLabelGap,
+    double? yLabelGap,
     bool? showXTitle,
     bool? showYTitle,
     bool? showLegend,
@@ -672,6 +681,8 @@ class ChartElement extends CanvasElement {
           xLabelColor: xLabelColor,
           yLabelSize: yLabelSize,
           yLabelColor: yLabelColor,
+          xLabelGap: xLabelGap,
+          yLabelGap: yLabelGap,
           showXTitle: showXTitle,
           showYTitle: showYTitle,
           showLegend: showLegend,
@@ -731,6 +742,8 @@ class ChartElement extends CanvasElement {
     Color? xLabelColor,
     double? yLabelSize,
     Color? yLabelColor,
+    double? xLabelGap,
+    double? yLabelGap,
     bool? showXTitle,
     bool? showYTitle,
     bool? showLegend,
@@ -786,6 +799,8 @@ class ChartElement extends CanvasElement {
           xLabelColor: xLabelColor ?? this.xLabelColor,
           yLabelSize: yLabelSize ?? this.yLabelSize,
           yLabelColor: yLabelColor ?? this.yLabelColor,
+          xLabelGap: xLabelGap ?? this.xLabelGap,
+          yLabelGap: yLabelGap ?? this.yLabelGap,
           showXTitle: showXTitle ?? this.showXTitle,
           showYTitle: showYTitle ?? this.showYTitle,
           showLegend: showLegend ?? this.showLegend,
@@ -853,6 +868,8 @@ class ChartElement extends CanvasElement {
         if (xLabelColor != null) "xLabelColor": colorToJson(xLabelColor!),
         if (yLabelSize != null) "yLabelSize": yLabelSize,
         if (yLabelColor != null) "yLabelColor": colorToJson(yLabelColor!),
+        if (xLabelGap != 0) "xLabelGap": xLabelGap,
+        if (yLabelGap != 0) "yLabelGap": yLabelGap,
         if (!showXTitle) "noXTitle": true,
         if (!showYTitle) "noYTitle": true,
         "legend": showLegend,
@@ -885,92 +902,93 @@ class ChartElement extends CanvasElement {
         if (smooth) "smooth": true,
       };
 
-  factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      ChartElement(b,
-          type: ChartType.fromName(json["type"] as String?),
-          data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
-          fromTable: jsonSpec(
-              json["fromTable"], TableLink.fromJson, const TableLink()),
-          source:
-              jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
-          fromSource: jsonSpec(json["fromSource"], ChartSourceMap.fromJson,
-              const ChartSourceMap()),
-          title: jsonString(json["title"], ""),
-          description: jsonString(json["desc"], ""),
-          titleBox: jsonSpec(
-              json["titleBox"], ChartLabel.fromJson, const ChartLabel()),
-          descriptionBox: jsonSpec(json["descBox"], ChartLabel.fromJson,
-              const ChartLabel(height: 0.1)),
-          body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
-          animation: jsonSpec(
-              json["anim"], ChartAnimation.fromJson, const ChartAnimation()),
-          legend: jsonSpec(
-              json["legendSpec"], ChartLegend.fromJson, const ChartLegend()),
-          floatingLabels: jsonBool(json["floatLabels"], false),
-          descriptionSpec: json["descSpec"] is Map<String, dynamic>
-              ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
-              : null,
-          xAxisLabel: jsonString(json["xlabel"], ""),
-          yAxisLabel: jsonString(json["ylabel"], ""),
-          showGrid: jsonBool(json["grid"], true),
-          showAxes: jsonBool(json["axes"], true),
-          showXLabels: !jsonBool(json["noAxisLabels"], false) &&
-              !jsonBool(json["noXLabels"], false),
-          showYLabels: !jsonBool(json["noAxisLabels"], false) &&
-              !jsonBool(json["noYLabels"], false),
-          xLabelSize: json["xLabelSize"] is num
-              ? (json["xLabelSize"] as num).toDouble()
-              : null,
-          xLabelColor: json["xLabelColor"] == null
-              ? null
-              : colorFromJson(json["xLabelColor"]),
-          yLabelSize: json["yLabelSize"] is num
-              ? (json["yLabelSize"] as num).toDouble()
-              : null,
-          yLabelColor: json["yLabelColor"] == null
-              ? null
-              : colorFromJson(json["yLabelColor"]),
-          showXTitle: !jsonBool(json["noXTitle"], false),
-          showYTitle: !jsonBool(json["noYTitle"], false),
-          showLegend: jsonBool(json["legend"], false),
-          showValues: jsonBool(json["values"], false),
-          gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
-          axisSteps: jsonInt(json["axisSteps"], 0).clamp(0, 40),
-          logScale: jsonBool(json["log"], false),
-          numbers: jsonSpec(
-              json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
-          // Null rather than a default when there is nothing saved: null is
-          // the state "the axis follows the values", which is what a chart
-          // saved before either of these existed was doing.
-          axisNumbers: json["axisNumbers"] is Map<String, dynamic>
-              ? ChartNumbers.fromJson(
-                  json["axisNumbers"] as Map<String, dynamic>)
-              : null,
-          axisSpec: json["axisSpec"] is Map<String, dynamic>
-              ? TextSpec.fromJson(json["axisSpec"] as Map<String, dynamic>)
-              : null,
-          axisGap: jsonDouble(json["axisGap"], 0),
-          riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
-          fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
-          axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
-          titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 28, weight: 700)),
-          labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 16, weight: 400)),
-          valueSpec: jsonSpec(json["valueSpec"], TextSpec.fromJson,
-              const TextSpec(fontSize: 14, weight: 600)),
-          yMin: jsonDouble(json["ymin"], double.nan),
-          yMax: jsonDouble(json["ymax"], double.nan),
-          barGap: jsonDouble(json["barGap"], 0.3),
-          barRadius: jsonDouble(json["barRadius"], 4),
-          barFloor: jsonDouble(json["barFloor"], 0),
-          innerRadius: jsonDouble(json["inner"], 0.55),
-          strokeWidth: jsonDouble(json["sw"], 3),
-          showPoints: jsonBool(json["points"], false),
-          pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),
-          pointColor:
-              colorFromJson(json["pointColor"], const Color(0x00000000)),
-          smooth: jsonBool(json["smooth"], false));
+  factory ChartElement.fromJson(Map<String, dynamic> json, ElementBase b) => ChartElement(
+      b,
+      type: ChartType.fromName(json["type"] as String?),
+      data: jsonSpec(json["data"], ChartData.fromJson, const ChartData()),
+      fromTable:
+          jsonSpec(json["fromTable"], TableLink.fromJson, const TableLink()),
+      source: jsonSpec(json["source"], DataSource.fromJson, const DataSource()),
+      fromSource: jsonSpec(
+          json["fromSource"], ChartSourceMap.fromJson, const ChartSourceMap()),
+      title: jsonString(json["title"], ""),
+      description: jsonString(json["desc"], ""),
+      titleBox:
+          jsonSpec(json["titleBox"], ChartLabel.fromJson, const ChartLabel()),
+      descriptionBox: jsonSpec(
+          json["descBox"], ChartLabel.fromJson, const ChartLabel(height: 0.1)),
+      body: jsonSpec(json["body"], ChartBody.fromJson, const ChartBody()),
+      animation: jsonSpec(
+          json["anim"], ChartAnimation.fromJson, const ChartAnimation()),
+      legend: jsonSpec(
+          json["legendSpec"], ChartLegend.fromJson, const ChartLegend()),
+      floatingLabels: jsonBool(json["floatLabels"], false),
+      descriptionSpec: json["descSpec"] is Map<String, dynamic>
+          ? TextSpec.fromJson(json["descSpec"] as Map<String, dynamic>)
+          : null,
+      xAxisLabel: jsonString(json["xlabel"], ""),
+      yAxisLabel: jsonString(json["ylabel"], ""),
+      showGrid: jsonBool(json["grid"], true),
+      showAxes: jsonBool(json["axes"], true),
+      showXLabels: !jsonBool(json["noAxisLabels"], false) &&
+          !jsonBool(json["noXLabels"], false),
+      showYLabels: !jsonBool(json["noAxisLabels"], false) &&
+          !jsonBool(json["noYLabels"], false),
+      xLabelSize: json["xLabelSize"] is num
+          ? (json["xLabelSize"] as num).toDouble()
+          : null,
+      xLabelColor: json["xLabelColor"] == null
+          ? null
+          : colorFromJson(json["xLabelColor"]),
+      yLabelSize: json["yLabelSize"] is num
+          ? (json["yLabelSize"] as num).toDouble()
+          : null,
+      yLabelColor: json["yLabelColor"] == null
+          ? null
+          : colorFromJson(json["yLabelColor"]),
+      xLabelGap:
+          json["xLabelGap"] is num ? (json["xLabelGap"] as num).toDouble() : 0,
+      yLabelGap:
+          json["yLabelGap"] is num ? (json["yLabelGap"] as num).toDouble() : 0,
+      showXTitle: !jsonBool(json["noXTitle"], false),
+      showYTitle: !jsonBool(json["noYTitle"], false),
+      showLegend: jsonBool(json["legend"], false),
+      showValues: jsonBool(json["values"], false),
+      gridColor: colorFromJson(json["gridColor"], const Color(0x33FFFFFF)),
+      axisSteps: jsonInt(json["axisSteps"], 0).clamp(0, 40),
+      logScale: jsonBool(json["log"], false),
+      numbers: jsonSpec(
+          json["numbers"], ChartNumbers.fromJson, const ChartNumbers()),
+      // Null rather than a default when there is nothing saved: null is
+      // the state "the axis follows the values", which is what a chart
+      // saved before either of these existed was doing.
+      axisNumbers: json["axisNumbers"] is Map<String, dynamic>
+          ? ChartNumbers.fromJson(json["axisNumbers"] as Map<String, dynamic>)
+          : null,
+      axisSpec: json["axisSpec"] is Map<String, dynamic>
+          ? TextSpec.fromJson(json["axisSpec"] as Map<String, dynamic>)
+          : null,
+      axisGap: jsonDouble(json["axisGap"], 0),
+      riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
+      fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
+      axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
+      titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,
+          const TextSpec(fontSize: 28, weight: 700)),
+      labelSpec: jsonSpec(json["labelSpec"], TextSpec.fromJson,
+          const TextSpec(fontSize: 16, weight: 400)),
+      valueSpec: jsonSpec(json["valueSpec"], TextSpec.fromJson,
+          const TextSpec(fontSize: 14, weight: 600)),
+      yMin: jsonDouble(json["ymin"], double.nan),
+      yMax: jsonDouble(json["ymax"], double.nan),
+      barGap: jsonDouble(json["barGap"], 0.3),
+      barRadius: jsonDouble(json["barRadius"], 4),
+      barFloor: jsonDouble(json["barFloor"], 0),
+      innerRadius: jsonDouble(json["inner"], 0.55),
+      strokeWidth: jsonDouble(json["sw"], 3),
+      showPoints: jsonBool(json["points"], false),
+      pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),
+      pointColor: colorFromJson(json["pointColor"], const Color(0x00000000)),
+      smooth: jsonBool(json["smooth"], false));
 }
 
 /// ChartSourceMap is which of a fetched source's columns the chart draws.

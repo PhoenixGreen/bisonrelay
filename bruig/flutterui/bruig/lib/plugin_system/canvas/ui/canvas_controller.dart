@@ -1027,6 +1027,12 @@ class CanvasController extends ChangeNotifier {
         copy = element
             .copyWith(clip: element.clip.copyWith(at: _frame))
             .withId(newElementId());
+      } else if (element is VideoElement && element.clip.timed) {
+        // And a video on the timeline the same: at the playhead, in the same
+        // place on the canvas -- the same shot, later.
+        copy = element
+            .copyWith(clip: element.clip.copyWith(at: _frame))
+            .withId(newElementId());
       } else {
         copy = element
             .withId(newElementId())
@@ -2689,6 +2695,22 @@ class CanvasController extends ChangeNotifier {
     ];
   }
 
+  /// timelineReach is how many frames the timeline shows: the scene's, or
+  /// further where a clip on it runs on past the scene's end -- so the rest
+  /// of a long video or song can be scrolled to, seen and trimmed. The frames
+  /// past the scene are drawn as out of it; nothing plays there.
+  int get timelineReach {
+    var most = _document.frames;
+    var rate = math.max(1, _document.frameRate);
+    for (var lane in timedLanes) {
+      var clip = lane.clip;
+      if (clip.isEmpty || clip.runLength <= 0) continue;
+      var end = clip.at - lane.offset + (clip.runLength * rate).ceil();
+      if (end > most) most = end;
+    }
+    return most;
+  }
+
   /// timelineChannels is the timeline's channels, each with the sounds on it,
   /// in the order they first appear. A channel is its sounds: one with none
   /// left is gone, and the empty lane under the last is not one -- it is
@@ -2738,11 +2760,13 @@ class CanvasController extends ChangeNotifier {
     apply(next, transient: transient);
   }
 
-  /// newChannelName is "Audio" and the next number not already taken.
+  /// newChannelName is "Channel" and the next number not already taken. A
+  /// channel holds sound, and a video's soundtrack beside it, so it is not
+  /// "Audio".
   String newChannelName() {
     var taken = {for (var c in timelineChannels) c.name};
     for (var n = 1;; n++) {
-      if (!taken.contains("Audio $n")) return "Audio $n";
+      if (!taken.contains("Channel $n")) return "Channel $n";
     }
   }
 
@@ -2754,7 +2778,8 @@ class CanvasController extends ChangeNotifier {
   /// is gone if it was the last thing on it.
   void moveClipToChannel(TimedLane lane, TimelineChannel? to,
       {bool transient = false}) {
-    if (lane.element is! AudioElement || !lane.editable) return;
+    var e = lane.element;
+    if ((e is! AudioElement && e is! VideoElement) || !lane.editable) return;
     var clip = lane.clip;
     var moved = to == null
         ? clip.copyWith(
@@ -2770,9 +2795,28 @@ class CanvasController extends ChangeNotifier {
   /// channel, starting where the cut was. The knife.
   bool splitClip(TimedLane lane, int frame) {
     var e = lane.element;
-    if (e is! AudioElement || !lane.editable || e.locked) return false;
+    // A sound, or a video -- whose two halves are two videos in the same
+    // place on the canvas, each on screen while its half plays.
+    if ((e is! AudioElement && e is! VideoElement) ||
+        !lane.editable ||
+        e.locked) {
+      return false;
+    }
     if (!_document.elements.any((x) => x.id == e.id)) return false;
-    var clip = e.clip;
+    var clip = lane.clip;
+    CanvasElement withClip(MediaClip c) => switch (e) {
+          VideoElement v => v.copyWith(clip: c),
+          AudioElement a => a.copyWith(clip: c),
+          _ => e,
+        };
+    // Both halves on one channel. A video put on the timeline from its
+    // settings has none of its own -- its lane is keyed by its id -- so it
+    // is given one here, or the half after the cut would be a lane apart.
+    if (clip.channel.isEmpty) {
+      clip = clip.copyWith(
+          channel: newChannelId(),
+          channelName: clip.channelName.isNotEmpty ? clip.channelName : e.name);
+    }
     var rate = math.max(1, _document.frameRate);
     var into = (frame - (clip.at - lane.offset)) / rate;
     if (into <= 0.05 || into >= clip.runLength - 0.05) return false;
@@ -2789,15 +2833,12 @@ class CanvasController extends ChangeNotifier {
           source.copyWith(start: cut),
           ...clip.playlist.skip(i + 1),
         ];
-        var first = e.copyWith(
-            clip: clip.copyWith(
-                playlist: before, fadeOut: 0, loop: MediaLoop.none));
-        var second = e
-            .copyWith(
-                clip: clip.copyWith(
-                    playlist: after,
-                    fadeIn: 0,
-                    at: clip.at + (into * rate).round()))
+        var first = withClip(
+            clip.copyWith(playlist: before, fadeOut: 0, loop: MediaLoop.none));
+        var second = withClip(clip.copyWith(
+                playlist: after,
+                fadeIn: 0,
+                at: clip.at + (into * rate).round()))
             .withId(newElementId());
         apply(_document.withElement(first).addElement(second));
         selectOnly(second.id);

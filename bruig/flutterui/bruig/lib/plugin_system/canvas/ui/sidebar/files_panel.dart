@@ -371,13 +371,15 @@ class _CanvasFilesPanelState extends State<CanvasFilesPanel> {
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, folder),
               child: Row(children: [
+                // The library itself, outside every folder: "Top level", not
+                // the section's own name, which read as one more folder.
                 Icon(
                     folder.isEmpty
-                        ? Icons.inbox_outlined
+                        ? Icons.home_outlined
                         : Icons.folder_outlined,
                     size: 16),
                 const SizedBox(width: 8),
-                Text(folder.isEmpty ? "Canvases" : folder),
+                Text(folder.isEmpty ? "Top level" : folder),
               ]),
             ),
         ],

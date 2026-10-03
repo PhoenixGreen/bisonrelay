@@ -490,9 +490,8 @@ void main() {
           ),
         ),
       );
-      // 62 as asked, and the five pixels of room every control keeps to its
-      // right.
-      expect(at(tester, "loose").width, closeTo(67, 0.5));
+      // 62 as asked, and the room a captioned control keeps to its right.
+      expect(at(tester, "loose").width, closeTo(62 + canvasCaptionedGap, 0.5));
     });
   });
 }

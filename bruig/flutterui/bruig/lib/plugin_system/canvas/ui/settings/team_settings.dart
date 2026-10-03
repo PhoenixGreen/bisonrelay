@@ -281,12 +281,6 @@ Widget _squadList(TeamElement e, SettingsWrite write, VoidCallback begin,
 /// A widget rather than a function so each row's fields keep their own state
 /// across the rebuild that every keystroke causes; as plain builders, typing
 /// in one player's name rebuilt all eleven and moved the caret.
-
-/// _PlayerRow is one line of the team sheet.
-///
-/// A widget rather than a function so each row's fields keep their own state
-/// across the rebuild that every keystroke causes; as plain builders, typing
-/// in one player's name rebuilt all eleven and moved the caret.
 class _PlayerRow extends StatelessWidget {
   final TeamElement team;
   final int index;
@@ -325,9 +319,11 @@ class _PlayerRow extends StatelessWidget {
       ));
     }
 
+    // Half a group apart, so each player's two lines read as one entry
+    // rather than running into the next player's.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+      padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
+      child: CanvasWrap(children: [
         CanvasTextField(
           key: ValueKey("num-$index-${team.id}"),
           label: index == 0 ? "GK" : "No.",

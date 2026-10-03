@@ -194,12 +194,12 @@ void main() {
     // A sound on the timeline is as loud as its clip says, when the clip's
     // volume line is moved while it plays -- and past full, to six decibels.
     test("a timeline sound follows its clip's volume as it changes", () async {
-      AudioElement timed(double volume) => AudioElement(
-          const ElementBase(id: "t", visible: false),
-          clip: MediaClip(
-              timed: true,
-              volume: volume,
-              playlist: const [MediaSource(assetId: song)]));
+      AudioElement timed(double volume) =>
+          AudioElement(const ElementBase(id: "t", visible: false),
+              clip: MediaClip(
+                  timed: true,
+                  volume: volume,
+                  playlist: const [MediaSource(assetId: song)]));
       runtime.cue(timed(1), const ClipMoment(0, 0, 1), playing: true);
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
@@ -208,6 +208,29 @@ void main() {
       expect(engine.last.volume, closeTo(1.8, 1e-9));
       runtime.cue(timed(0.3), const ClipMoment(0, 0, 1), playing: true);
       expect(engine.last.volume, closeTo(0.3, 1e-9));
+    });
+
+    // Played from part way through a sound, it starts silent and rises over
+    // a few milliseconds: a waveform cut into mid-swing clicks. From the top
+    // it starts at its level, the file itself starting from silence.
+    test("a sound started part way through rises rather than clicking",
+        () async {
+      var e = AudioElement(const ElementBase(id: "t", visible: false),
+          clip: const MediaClip(
+              timed: true, volume: 1, playlist: [MediaSource(assetId: song)]));
+      runtime.cue(e, const ClipMoment(0, 2.5, 1), playing: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      var voice = engine.last;
+      expect(voice.fades.first.$1, closeTo(1, 1e-9), reason: "up to its level");
+      expect(voice.fades.first.$2, declickSeconds);
+
+      var fresh = AudioRuntime(engine: engine, locate: (id) async => id);
+      addTearDown(fresh.dispose);
+      fresh.cue(e, const ClipMoment(0, 0, 1), playing: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.last.fades, isEmpty, reason: "from the top, no ramp");
     });
 
     test("plays each sound through its own strip", () async {

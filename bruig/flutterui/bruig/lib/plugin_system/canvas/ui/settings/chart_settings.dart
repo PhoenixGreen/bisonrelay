@@ -594,6 +594,23 @@ List<Widget> chartSettings(
               },
               onCommit: commit,
             ),
+            // How far the values sit from the chart: more to push them
+            // out, below nothing to draw them in.
+            CanvasNumberField(
+              key: const ValueKey("chartXLabelGap"),
+              // Not "Gap": the animation section has one of its own.
+              label: "Distance",
+              value: e.xLabelGap,
+              min: -40,
+              max: 200,
+              decimals: 0,
+              width: 52,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(xLabelGap: v));
+              },
+              onCommit: commit,
+            ),
             CanvasColorButton(
               key: const ValueKey("chartXLabelColour"),
               label: "Colour",
@@ -621,6 +638,23 @@ List<Widget> chartSettings(
               onChanged: (v) {
                 begin();
                 write(e.copyWith(yLabelSize: v));
+              },
+              onCommit: commit,
+            ),
+            // How far the values sit from the chart: more to push them
+            // out, below nothing to draw them in.
+            CanvasNumberField(
+              key: const ValueKey("chartYLabelGap"),
+              // Not "Gap": the animation section has one of its own.
+              label: "Distance",
+              value: e.yLabelGap,
+              min: -40,
+              max: 200,
+              decimals: 0,
+              width: 52,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(yLabelGap: v));
               },
               onCommit: commit,
             ),

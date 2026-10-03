@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
@@ -1006,6 +1007,99 @@ void main() {
       expect(find.byKey(const ValueKey("keyframeStrip")), findsNothing);
       expect(find.byKey(const ValueKey("toFirstFrame")), findsOneWidget,
           reason: "the play bar is all there is");
+    });
+  });
+
+  group("video on the timeline", () {
+    VideoElement video({int at = 20}) => VideoElement(
+        const ElementBase(id: "v", x: 10, y: 10, width: 160, height: 90),
+        clip: MediaClip(
+            timed: true,
+            at: at,
+            playlist: const [MediaSource(assetId: song, length: 4)]));
+
+    // Cut in two, a video is two videos in the same place: the second half
+    // starts where the cut was, and each is on screen while its half plays.
+    test("the knife cuts a video into two halves", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 200, frameRate: 10, elements: [video()]),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      var lane = c.timedLanes.single;
+      expect(c.splitClip(lane, 35), isTrue);
+      var halves = c.document.elements.cast<VideoElement>().toList();
+      expect(halves, hasLength(2));
+      expect(halves.last.clip.at, 35);
+      expect(halves.last.bounds, halves.first.bounds,
+          reason: "the same place on the canvas");
+      expect(halves.first.clip.playlist.single.end, closeTo(1.5, 0.001));
+    });
+
+    // A video put on the timeline from its settings has no channel of its
+    // own; cut, both halves go on one, rather than the second starting
+    // another lane.
+    test("both halves stay on one channel", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 200, frameRate: 10, elements: [video()]),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      expect(c.splitClip(c.timedLanes.single, 35), isTrue);
+      expect(c.timelineChannels, hasLength(1));
+      expect(c.timelineChannels.single.lanes, hasLength(2));
+      var after = c.timedLanes.last;
+      expect(c.splitClip(after, 45), isTrue, reason: "and cut again");
+      expect(c.timelineChannels, hasLength(1));
+      expect(c.timelineChannels.single.lanes, hasLength(3));
+    });
+
+    test("a video can join a sound's channel, one after the other", () {
+      var sound = AudioElement(const ElementBase(id: "s"),
+          clip: const MediaClip(
+              timed: true,
+              at: 100,
+              channel: "ch1",
+              channelName: "Channel 1",
+              playlist: [MediaSource(assetId: song, length: 4)]));
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 200, frameRate: 10, elements: [video(), sound]),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      expect(c.timelineChannels, hasLength(2));
+      var lane = c.timedLanes.firstWhere((l) => l.element.id == "v");
+      var to = c.timelineChannels.firstWhere((ch) => ch.key == "ch1");
+      c.moveClipToChannel(lane, to);
+      expect(c.timelineChannels, hasLength(1));
+      expect(c.timelineChannels.single.name, "Channel 1");
+      expect(c.timelineChannels.single.lanes, hasLength(2));
+    });
+
+    // A clip longer than the scene: the timeline runs on to its end, so the
+    // rest of it can be scrolled to and trimmed.
+    test("the timeline reaches the end of a clip past the scene", () {
+      var c = CanvasController(
+          CanvasDocument(
+              frames: 200, frameRate: 10, elements: [video(at: 180)]),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      expect(c.timelineReach, 220, reason: "180 plus four seconds at ten");
+      expect(c.document.frames, 200, reason: "the scene is not lengthened");
+
+      var short = CanvasController(
+          CanvasDocument(frames: 200, frameRate: 10, elements: [video()]),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(short.dispose);
+      expect(short.timelineReach, 200);
+    });
+
+    test("a video on the timeline is on screen only while it plays", () {
+      var doc = CanvasDocument(frames: 200, frameRate: 10, elements: [video()]);
+      var clip = (doc.elements.single as VideoElement).clip;
+      expect(doc.offTimeline(clip, 10), isTrue, reason: "before it starts");
+      expect(doc.offTimeline(clip, 30), isFalse, reason: "while it plays");
+      expect(doc.offTimeline(clip, 70), isTrue, reason: "after it ends");
+      expect(doc.offTimeline(clip.copyWith(timed: false), 10), isFalse,
+          reason: "a video not on the timeline is always there");
     });
   });
 }

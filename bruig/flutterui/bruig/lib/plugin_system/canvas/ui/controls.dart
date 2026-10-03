@@ -61,7 +61,15 @@ const double controlLabelHeight = 11;
 /// have no rules left in them at all, so the gap is the only thing saying
 /// where one group ends. At twice the row gap a run of five groups still read
 /// as one block of controls.
+///
+/// canvasCaptionedGap is the control gap after a control with a caption over
+/// it. Wider, because the captions are what touch: a colour swatch is
+/// narrower than the word naming it, and at the plain gap "Fill", "Colour"
+/// and "Border" over three swatches read as one word. Bordered buttons and
+/// toggles keep the plain gap, which their borders already separate -- and
+/// which the fixed-width rows of buttons over a data grid are built on.
 const double canvasControlGap = 5;
+const double canvasCaptionedGap = 8;
 const double canvasRowGap = 8;
 const double canvasCaptionGap = 7;
 const double canvasGroupGap = 24;
@@ -414,6 +422,11 @@ Widget canvasSized(
 /// control off the end of the line it was packed onto. A line with fewer
 /// marked controls than the busiest one therefore stops short of the right
 /// margin, which is what makes the columns line up.
+///
+/// Lines are [canvasRowGap] apart unless told otherwise. They were nought
+/// apart by default, and every wrap written without saying so -- a chart
+/// series' own settings, a path's points -- came out with each line's
+/// captions sitting on the underline of the one above.
 class CanvasWrap extends StatelessWidget {
   final double spacing;
   final double runSpacing;
@@ -422,7 +435,7 @@ class CanvasWrap extends StatelessWidget {
   const CanvasWrap({
     required this.children,
     this.spacing = 0,
-    this.runSpacing = 0,
+    this.runSpacing = canvasRowGap,
     super.key,
   });
 
@@ -2361,7 +2374,7 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
     }
 
     return Padding(
-      padding: const EdgeInsets.only(right: canvasControlGap),
+      padding: const EdgeInsets.only(right: canvasCaptionedGap),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

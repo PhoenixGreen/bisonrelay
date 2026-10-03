@@ -8115,7 +8115,7 @@ void main() {
           find.byKey(const ValueKey("timelineGrip")), const Offset(0, -120));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("lane-new")), findsOneWidget);
-      expect(find.textContaining("Audio 1"), findsWidgets);
+      expect(find.textContaining("Channel 1"), findsWidgets);
       expect(c.document.elements, isEmpty);
     });
 

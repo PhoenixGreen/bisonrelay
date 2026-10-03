@@ -299,12 +299,16 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
       var p = layoutText(formatAxis(e, t), valueSpec, maxWidth: area.width / 3);
       valueGutter = math.max(valueGutter, p.width);
     }
-    valueGutter += valueSpec.fontSize * 0.5;
+    valueGutter =
+        math.max(0, valueGutter + valueSpec.fontSize * 0.5 + e.yLabelGap);
   }
 
   // No writing, no gutters. Switching one axis' labels off and keeping the
   // room they took would be a chart with a margin of nothing down that side.
-  var categoryGutter = bottomOn ? bottomSpec.fontSize * 1.6 : 0.0;
+  // The gaps are the user's: more air between the values and the chart, or
+  // less. The gutter grows with them, and never past nothing.
+  var categoryGutter =
+      bottomOn ? math.max(0.0, bottomSpec.fontSize * 1.6 + e.xLabelGap) : 0.0;
   // The axis titles have their own type and their own distance from the plot:
   // one and a half times their height to sit against it, plus whatever room
   // has been asked for to push them out. A title an inch clear of the plot is
@@ -318,7 +322,12 @@ void paintCartesian(ui.Canvas canvas, Rect area, ChartElement e, double reveal,
   // pushed off centre.
   var left = area.left +
       (horizontal
-          ? (sideOn ? _widestCategory(data.categories, sideSpec, area) : 0.0)
+          ? (sideOn
+              ? math.max(
+                  0.0,
+                  _widestCategory(data.categories, sideSpec, area) +
+                      e.yLabelGap)
+              : 0.0)
           : valueGutter) +
       (e.showsYTitle ? axisTitleGutter : 0);
   // The title's own switch, not whether anybody has typed one. A chart with a
@@ -464,9 +473,9 @@ void _axisLabels(
               verticalAlign: VerticalAlignSpec.top),
           Rect.fromLTWH(
               x - spec.fontSize * 2,
-              plot.bottom + spec.fontSize * 0.3,
+              plot.bottom + spec.fontSize * 0.3 + e.xLabelGap,
               spec.fontSize * 4,
-              categoryGutter));
+              spec.fontSize * 1.6));
     } else {
       var y = plot.bottom - plot.height * f;
       paintTextInBox(
@@ -475,8 +484,11 @@ void _axisLabels(
           spec.copyWith(
               align: TextAlignSpec.right,
               verticalAlign: VerticalAlignSpec.middle),
-          Rect.fromLTWH(plot.left - valueGutter, y - spec.fontSize,
-              valueGutter - spec.fontSize * 0.4, spec.fontSize * 2));
+          Rect.fromLTRB(
+              plot.left - valueGutter,
+              y - spec.fontSize,
+              plot.left - spec.fontSize * 0.4 - e.yLabelGap,
+              y + spec.fontSize));
     }
   }
 
@@ -492,8 +504,8 @@ void _axisLabels(
           spec.copyWith(
               align: TextAlignSpec.right,
               verticalAlign: VerticalAlignSpec.middle),
-          Rect.fromLTWH(
-              area.left, y, plot.left - area.left - spec.fontSize * 0.4, slot),
+          Rect.fromLTRB(area.left, y,
+              plot.left - spec.fontSize * 0.4 - e.yLabelGap, y + slot),
           clip: true);
     } else {
       var slot = plot.width / slots;
@@ -504,8 +516,8 @@ void _axisLabels(
           spec.copyWith(
               align: TextAlignSpec.center,
               verticalAlign: VerticalAlignSpec.top),
-          Rect.fromLTWH(
-              x, plot.bottom + spec.fontSize * 0.35, slot, categoryGutter),
+          Rect.fromLTWH(x, plot.bottom + spec.fontSize * 0.35 + e.xLabelGap,
+              slot, spec.fontSize * 1.6),
           clip: true);
     }
   }
@@ -661,6 +673,56 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
   var barSpan = slotSize * (1 - e.barGap.clamp(0.0, 0.9));
   var barSize = barSpan / seriesCount;
   var zero = range.fraction(0).clamp(0.0, 1.0);
+
+  // The backgrounds first, all of them, so one wider than its bar sits under
+  // the bar beside it rather than over it. Drawn whole from the start: a
+  // track is there to be filled, and it is the bar that arrives into it.
+  for (var at = 0; at < which.length; at++) {
+    var back = data.series[which[at]].backdrop;
+    if (back == null || !back.on) continue;
+    var thick = grouped ? barSize : barSpan;
+    var across = thick * back.width;
+    var lead = switch (back.grow) {
+      ChartBackdropGrow.left => 0.0,
+      ChartBackdropGrow.right => thick - across,
+      _ => (thick - across) / 2,
+    };
+    // Along the bars: up from the axis, down from the far edge, or about
+    // the middle -- as a share of the plot's length that way.
+    var length = horizontal ? plot.width : plot.height;
+    var long = length * back.height;
+    var from = switch (back.grow) {
+      ChartBackdropGrow.top => length - long,
+      ChartBackdropGrow.centre => (length - long) / 2,
+      _ => 0.0,
+    };
+    var fill = Paint()..color = back.fill;
+    var edge = back.borderWidth > 0 && back.border.a > 0
+        ? (Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = back.borderWidth
+          ..color = back.border)
+        : null;
+    for (var i = 0; i < slots; i++) {
+      var start = (horizontal ? plot.top : plot.left) +
+          slotSize * i +
+          (slotSize - barSpan) / 2 +
+          (grouped ? barSize * at : 0) +
+          lead;
+      var panel = horizontal
+          ? Rect.fromLTWH(plot.left + from, start, long, across)
+          : Rect.fromLTWH(start, plot.bottom - from - long, across, long);
+      var r = math.min(back.radius, math.min(panel.width, panel.height) / 2);
+      var shape =
+          RRect.fromRectAndRadius(panel, Radius.circular(math.max(0, r)));
+      canvas.drawRRect(shape, fill);
+      if (edge != null) {
+        // Inside the panel, so a thick border does not make it bigger.
+        var inner = shape.deflate(back.borderWidth / 2);
+        if (inner.width > 0 && inner.height > 0) canvas.drawRRect(inner, edge);
+      }
+    }
+  }
 
   for (var i = 0; i < slots; i++) {
     var slotStart = (horizontal ? plot.top : plot.left) + slotSize * i;

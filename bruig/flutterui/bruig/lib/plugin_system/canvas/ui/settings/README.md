@@ -64,11 +64,12 @@ round a single row reads as a section somebody left open.
 
 ## Spacing
 
-Four numbers, in `controls.dart`, and everything reads from them:
+Five numbers, in `controls.dart`, and everything reads from them:
 
 | | | |
 |---|---|---|
 | `canvasControlGap` | 5 | between two controls on a line |
+| `canvasCaptionedGap` | 8 | after a control with a caption over it, so neighbouring captions do not touch |
 | `canvasRowGap` | 8 | between one line of a group and the next |
 | `canvasCaptionGap` | 7 | under a group's name |
 | `canvasGroupGap` | 24 | under every group |
@@ -99,6 +100,10 @@ number field stays the wider of the two. Give two controls that should line up
 the same minimum width.
 
 `CanvasLineBreak` ends a line deliberately. It costs one row gap, not two.
+
+`CanvasWrap` puts a row gap between its lines by default. Do not pass
+`runSpacing: 0` to a wrap holding captioned controls: each line's captions
+end up on the underline of the line above.
 
 ## Order
 

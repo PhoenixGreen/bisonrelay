@@ -730,7 +730,9 @@ List<Widget> typeGroups(
             // were asking for two hundred and fifty-four pixels, which is
             // what pushed the switches onto a line of their own the moment
             // anybody pulled the sidebar in. They grow back into a wide one.
-            width: 66,
+            // Trimmed again when the gap after a captioned control went from
+            // five pixels to eight.
+            width: 60,
             options: [for (var f in canvasFonts) (f, f)],
             onChanged: (v) {
               begin();
@@ -750,7 +752,7 @@ List<Widget> typeGroups(
           CanvasDropdown<int>(
             label: cap("Weight"),
             value: spec.weight,
-            width: 62,
+            width: 56,
             options: const [
               (100, "Thin"),
               (300, "Light"),

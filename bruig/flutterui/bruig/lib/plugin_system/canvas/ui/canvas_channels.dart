@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -86,7 +85,7 @@ class CanvasChannels extends StatefulWidget {
       {required this.controller, required this.view, super.key});
 
   /// hint is what the empty lane says after its name.
-  static const String hint = "drop a sound here";
+  static const String hint = "drop a sound or video here";
 
   @override
   State<CanvasChannels> createState() => _CanvasChannelsState();
@@ -185,8 +184,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 ? _Grip.start
                 : (at.dx - right).abs() <= _edgeGrab
                     ? _Grip.end
-                    : lane.element is AudioElement &&
-                            (at.dy - line).abs() <= _volumeGrab
+                    : (at.dy - line).abs() <= _volumeGrab
                         ? _Grip.volume
                         : _Grip.move;
     return (lane, grip);
@@ -393,9 +391,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               e, clip.copyWith(at: math.max(0, clip.at + frames.round())),
               transient: true);
         }
-        // And onto another lane, where it is let go over one -- one sound,
-        // not several. Audio only: a video's lane is its own.
-        if (lane.element is AudioElement && _group.isEmpty) {
+        // And onto another lane, where it is let go over one -- one clip,
+        // not several. A video's soundtrack goes with it, so a channel can
+        // hold sounds and videos one after another.
+        if (_group.isEmpty) {
           var over = _laneUnder(global);
           var own = lane.channelKey;
           _over = over == own ? null : over;
@@ -620,28 +619,52 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     controller.selectedChannel = key;
   }
 
+  /// _addVideoAt puts the video [asset] on the canvas -- in the middle, its
+  /// own shape -- and on the timeline from [frame], its soundtrack on a lane
+  /// of its own: what "On the timeline" in its settings does, done by
+  /// dropping it there.
+  void _addVideoAt(LibraryAsset asset, int frame, TimelineChannel? channel) {
+    var made = elementForAsset(asset, controller.document);
+    if (made is! VideoElement) return;
+    var key = channel?.key ?? controller.newChannelId();
+    controller.addElement(made.copyWith(
+        clip: made.clip.copyWith(
+            timed: true,
+            at: frame,
+            channel: key,
+            channelName: channel?.name ?? controller.newChannelName(),
+            mix: channel?.mix ?? const ChannelMix())));
+    controller.selectedChannel = key;
+  }
+
   Widget _lane(TimelineChannel channel, ThemeNotifier theme) {
     var height = _heightOf(channel.key);
     var tall = height >= _waveformFrom;
+    // A sound's shape from its file, and a video's from the soundtrack that
+    // was taken out of it when it was added.
     var shapes = <String, Float32List?>{
       if (tall)
         for (var lane in channel.lanes)
-          if (lane.element is AudioElement)
-            for (var s in lane.clip.playlist)
-              if (s.assetId.isNotEmpty)
-                s.assetId: controller.waveformOf(s.assetId),
+          for (var s in lane.clip.playlist)
+            if (_shapeOf(lane, s).isNotEmpty)
+              _shapeOf(lane, s): controller.waveformOf(_shapeOf(lane, s)),
     };
     var knife = controller.timelineTool == TimelineTool.knife;
     return DragTarget<Object>(
       key: ValueKey("lane-${channel.key}"),
+      // A sound or a video joins the channel it is let go on.
       onWillAcceptWithDetails: (d) =>
-          droppedKind(d.data) == AssetKind.audio &&
+          (droppedKind(d.data) == AssetKind.video ||
+              droppedKind(d.data) == AssetKind.audio) &&
           channel.editable &&
           !channel.locked,
       onAcceptWithDetails: (d) async {
         var at = _frameIn(channel.key, d.offset);
         var asset = await droppedAsset(d.data);
-        if (asset != null) _addAt(asset.source, at, channel);
+        if (asset == null) return;
+        asset.kind == AssetKind.video
+            ? _addVideoAt(asset, at, channel)
+            : _addAt(asset.source, at, channel);
       },
       builder: (context, candidate, _) => LayoutBuilder(
         builder: (context, box) => GestureDetector(
@@ -688,6 +711,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 showVolume: _dragging && _grip == _Grip.volume,
                 target: candidate.isNotEmpty || _over == channel.key,
                 shapes: shapes,
+                scene: controller.document.frames,
               ),
             ),
           ),
@@ -700,11 +724,16 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// or chosen by clicking it, starts a channel.
   Widget _emptyLane(ThemeNotifier theme) => DragTarget<Object>(
         key: const ValueKey("lane-new"),
-        onWillAcceptWithDetails: (d) => droppedKind(d.data) == AssetKind.audio,
+        onWillAcceptWithDetails: (d) =>
+            droppedKind(d.data) == AssetKind.audio ||
+            droppedKind(d.data) == AssetKind.video,
         onAcceptWithDetails: (d) async {
           var at = _frameIn(_newLane, d.offset);
           var asset = await droppedAsset(d.data);
-          if (asset != null) _addAt(asset.source, at, null);
+          if (asset == null) return;
+          asset.kind == AssetKind.video
+              ? _addVideoAt(asset, at, null)
+              : _addAt(asset.source, at, null);
         },
         builder: (context, candidate, _) => GestureDetector(
           supportedDevices: timelinePointers,
@@ -731,7 +760,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     var width = controller.headerWidth;
     if (box is! RenderBox || box.size.width <= width) return controller.frame;
     var x = box.globalToLocal(global).dx - width;
-    return _view.frameAt(x, box.size.width - width, controller.document.frames);
+    return _view.frameAt(x, box.size.width - width, controller.timelineReach);
   }
 }
 
@@ -764,6 +793,11 @@ double _volumeAt(double share) {
   return 1 - (p - _unityShare) / (1 - _unityShare);
 }
 
+/// _shapeOf is the stored sound whose waveform a clip's file is drawn with:
+/// the file itself for a sound, its soundtrack for a video.
+String _shapeOf(TimedLane lane, MediaSource source) =>
+    lane.element is VideoElement ? source.soundId : source.assetId;
+
 /// _volumeY is where a clip's volume line sits in a lane [height] tall.
 double _volumeY(double volume, double height) {
   // Inset from the clip's edges, so the line is never the edge itself.
@@ -793,6 +827,38 @@ void _paintSeconds(Canvas canvas, Size size, TimelineView view, int frameRate,
   }
 }
 
+/// paintPastScene marks the frames from [scene] on as outside the scene:
+/// shaded and hatched, with a line where the scene ends. The timeline runs on
+/// past the scene where a clip does -- see CanvasController.timelineReach --
+/// and what is drawn out there is not played.
+void paintPastScene(Canvas canvas, Size size, TimelineView view, int scene,
+    ColorScheme colors) {
+  var x = view.xOf(scene, size.width);
+  if (x >= size.width) return;
+  var past = Rect.fromLTRB(math.max(0.0, x), 0, size.width, size.height);
+  canvas.save();
+  canvas.clipRect(past);
+  canvas.drawRect(past, Paint()..color = const Color(0x66000000));
+  var hatch = Paint()
+    ..color = colors.onSurfaceVariant.withValues(alpha: 0.18)
+    ..strokeWidth = 1;
+  // Pinned to the frames rather than the screen, so the hatching moves with
+  // the timeline as it scrolls.
+  var start = x - size.height - ((x % 8) + 8);
+  for (var a = start; a < size.width; a += 8) {
+    canvas.drawLine(Offset(a, size.height), Offset(a + size.height, 0), hatch);
+  }
+  canvas.restore();
+  if (x >= 0) {
+    canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..color = colors.onSurfaceVariant.withValues(alpha: 0.6)
+          ..strokeWidth = 1);
+  }
+}
+
 class _LanePainter extends CustomPainter {
   final TimelineChannel channel;
   final List<({double from, double to, List<double> cuts})> spans;
@@ -807,7 +873,11 @@ class _LanePainter extends CustomPainter {
   final bool target;
   final Map<String, Float32List?> shapes;
 
+  /// scene is how many frames the scene has: past it is shaded.
+  final int scene;
+
   _LanePainter({
+    required this.scene,
     required this.channel,
     required this.spans,
     required this.view,
@@ -845,6 +915,9 @@ class _LanePainter extends CustomPainter {
     for (var (i, lane) in channel.lanes.indexed) {
       _paintClip(canvas, size, lane, spans[i], top, bottom);
     }
+    // Over the clips, so the part of one that runs on past the scene reads
+    // as not played.
+    paintPastScene(canvas, size, view, scene, colors);
 
     // No line under the lane: the channels' lines are their strips', and the
     // one across the whole timeline is the keyframes' -- see CanvasTimeline.
@@ -894,7 +967,6 @@ class _LanePainter extends CustomPainter {
     canvas.clipRRect(bar);
 
     var rate = frameRate <= 0 ? 1 : frameRate;
-    var audio = lane.element is AudioElement;
 
     // The shape of the sound as it will come out -- its peaks times its own
     // volume -- where the lane is tall enough to read one. Turned up, it
@@ -909,10 +981,10 @@ class _LanePainter extends CustomPainter {
         ..strokeWidth = 1;
       var mid = (top + bottom) / 2 + 5;
       var reach = (bottom - top) / 2 - 7;
-      var gain = audio ? clip.volume : 1.0;
+      var gain = clip.volume;
       for (var (i, cut) in span.cuts.indexed) {
         var source = clip.playlist[i];
-        var peaks = shapes[source.assetId];
+        var peaks = shapes[_shapeOf(lane, source)];
         if (peaks == null || peaks.isEmpty || source.length <= 0) continue;
         var a = math.max(0.0, _x(cut, w));
         var b = math.min(w, _x(cut + source.span * rate, w));
@@ -962,8 +1034,9 @@ class _LanePainter extends CustomPainter {
       }
     }
 
-    // The volume line: this sound's own level, dragged up or down.
-    if (audio) {
+    // The volume line: this clip's own level, dragged up or down -- a
+    // video's soundtrack the same as a sound.
+    {
       var y = _volumeY(clip.volume, size.height);
       canvas.drawLine(
           Offset(from, y),
