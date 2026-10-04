@@ -5,9 +5,11 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
+import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -121,7 +123,7 @@ const double _flagWidth = 12;
 const double _scrollbarHeight = 10;
 
 /// _rulerHeight is the frame numbers and the playhead.
-const double _rulerHeight = 22;
+const double _rulerHeight = 30;
 
 /// _markGrabWidth and _markGrabHeight are how close the pointer has to be to a
 /// keyframe mark to take hold of it rather than scrub.
@@ -293,11 +295,64 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     setState(() {});
   }
 
-  /// _frameAt turns a horizontal position into a frame number.
+  /// _frameAt turns a horizontal position into a frame number of the scene
+  /// being edited.
   int _frameAt(double x, double width) =>
-      _viewNow.frameAt(x, width, controller.document.frames);
+      _sceneView.frameAt(x, width, controller.document.frames);
 
-  double _xFor(int frame, double width) => _viewNow.centreOf(frame, width);
+  double _xFor(int frame, double width) => _sceneView.centreOf(frame, width);
+
+  /// _scrubTo puts the playhead under [x]. Where the timeline runs along
+  /// every scene, a point over another scene goes to that scene, at the frame
+  /// of it the ruler says -- the ruler is the run's, so it has to.
+  void _scrubTo(double x, double width) {
+    var document = controller.document;
+    if (_runs && !document.editingMaster) {
+      var place = placeInSequence(document, _viewNow.frameAt(x, width, _total));
+      if (place.scene != document.at) controller.goToScene(place.scene);
+      controller.frame = place.frame;
+      return;
+    }
+    controller.frame = _frameAt(x, width);
+  }
+
+  /// _runs is whether the timeline is laid along the whole run rather than
+  /// the one scene: while Play runs every scene. The ruler and the scene
+  /// strip are then one scale -- each scene's frames run along the ruler
+  /// over its box, and zooming zooms both -- and the scene being edited is
+  /// its stretch of that run. See CanvasSceneStrip.
+  bool get _runs => controller.playAll && controller.document.hasScenes;
+
+  /// _origin is where the scene being edited starts in the run, in frames:
+  /// nought unless the timeline runs, and on the master, whose frames are
+  /// the run's already.
+  int get _origin {
+    var document = controller.document;
+    if (!_runs || document.editingMaster) return 0;
+    return document.startOfScene(document.at);
+  }
+
+  /// _total is how many frames the timeline is laid along: the run where it
+  /// runs, and otherwise the scene -- and past either to the end of a clip
+  /// that goes on longer. See CanvasController.timelineReach.
+  int get _total => _runs
+      ? math.max(controller.document.sequenceFrames,
+          _origin + controller.timelineReach)
+      : controller.timelineReach;
+
+  /// _sceneView is the view in the scene's own frames: the run's, moved back
+  /// by where the scene starts. What the keyframes, the markers and the
+  /// channels are drawn with, so they sit under their stretch of the ruler.
+  TimelineView get _sceneView =>
+      TimelineView(_viewNow.first - _origin, _viewNow.span);
+
+  /// _sceneGap is the room the scene strip takes between the ruler and the
+  /// keyframes, while it shows.
+  double get _sceneGap => _showScenes ? sceneStripHeight : 0;
+
+  /// _ranRun is whether the last build ran along the whole run, so a view
+  /// zoomed in one way of counting is not kept for the other.
+  bool _ranRun = false;
 
   /// _view is the stretch of frames zoomed to, or null for all of them --
   /// which then follows the timeline's length as it changes. _viewNow is the
@@ -308,14 +363,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// _setView zooms or scrolls. All of it is stored as null, so a timeline
   /// made longer afterwards is still shown whole.
   void _setView(TimelineView next) {
-    var frames = controller.timelineReach;
+    var frames = _total;
     var fitted = next.fitted(frames);
     setState(() => _view = fitted.isWhole(frames) ? null : fitted);
   }
 
   /// _zoomBy zooms in by [factor] (out, below one) about the playhead.
-  void _zoomBy(double factor) => _setView(_viewNow.zoomed(
-      factor, controller.frame + 0.5, controller.timelineReach));
+  void _zoomBy(double factor) => _setView(
+      _viewNow.zoomed(factor, _origin + controller.frame + 0.5, _total));
 
   /// _laneWidth is the width the frames are laid across: the body, less its
   /// padding and the strip column.
@@ -332,7 +387,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var zoom = keys.isControlPressed || keys.isMetaPressed;
     var local = event.localPosition;
     var stripTop = _stripPadTop + _transportHeight + _stripGap;
-    var overStrip = local.dy >= stripTop && local.dy <= stripTop + _stripHeight;
+    var overStrip =
+        local.dy >= stripTop && local.dy <= stripTop + _stripHeight + _sceneGap;
     // Not over the play bar: it scrolls sideways itself, to reach what is
     // along it, and that is not the frames being scrolled.
     if (local.dy < stripTop) return;
@@ -342,7 +398,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     // Scrolling along is the reader's choice -- see _trackpadScrolls. Zooming
     // asks for a key held down, so it is never done by accident.
     if (!zoom && !_trackpadScrolls) return;
-    var frames = controller.timelineReach;
+    var frames = _total;
     var width = _laneWidth(bodyWidth);
     GestureBinding.instance.pointerSignalResolver.register(event, (e) {
       var d = (e as PointerScrollEvent).scrollDelta;
@@ -366,7 +422,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     if (event.localPosition.dy < _stripPadTop + _transportHeight + _stripGap) {
       return;
     }
-    var frames = controller.timelineReach;
+    var frames = _total;
     var width = _laneWidth(bodyWidth);
     var next = _viewNow;
     if ((event.scale - _pinch).abs() > 0.001) {
@@ -781,11 +837,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
 
     // The frames on screen: all of them, or the stretch zoomed to -- kept
     // up with the playhead while it plays, a page at a time.
-    // To the end of the longest clip, where one runs on past the scene.
-    var frames = controller.timelineReach;
+    // To the end of the longest clip, where one runs on past the scene --
+    // and along every scene while Play runs them all.
+    if (_runs != _ranRun) {
+      _ranRun = _runs;
+      _view = null;
+    }
+    var frames = _total;
     var view = _view?.fitted(frames) ?? TimelineView.whole(frames);
     if (_view != null && controller.playing) {
-      view = view.following(controller.frame, frames);
+      view = view.following(_origin + controller.frame, frames);
       _view = view;
     }
     _viewNow = view;
@@ -862,7 +923,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   Widget _stripHeader(ThemeNotifier theme, String? target) {
     var colors = theme.colors;
     var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
-    var frames = controller.timelineReach;
+    var frames = _total;
     var whole = _viewNow.isWhole(frames);
     Widget zoom(String key, IconData icon, VoidCallback? onTap) => InkResponse(
           key: ValueKey(key),
@@ -913,10 +974,29 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                   style: muted),
           ]),
         ),
+        if (_showScenes)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: _rulerHeight + sceneStripLead,
+            height: sceneBoxHeight,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                named
+                    ? "Scenes ${controller.scenes.length}"
+                    : "${controller.scenes.length}",
+                key: const ValueKey("sceneStripLabel"),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: muted,
+              ),
+            ),
+          ),
         Positioned(
           left: 0,
           right: 0,
-          top: _markRow - 8,
+          top: _markRow - 8 + _sceneGap,
           height: 16,
           child: Row(children: [
             Icon(Icons.diamond_outlined,
@@ -940,6 +1020,13 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// _collapsed is the timeline dragged down to its play bar.
   bool get _collapsed => widget.height < timelineHeight - 0.5;
 
+  /// _showScenes is whether the scene strip is under the ruler: while Play
+  /// runs every scene, so what is playing, and how long each scene is, can
+  /// be seen -- and changed -- as it plays. The timeline grows by the strip
+  /// rather than taking it from the channels. See CanvasSceneStrip.
+  bool get _showScenes =>
+      controller.playAll && controller.document.hasScenes && !_collapsed;
+
   Widget _body(
       BuildContext context,
       ThemeNotifier theme,
@@ -948,7 +1035,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
       Keyframe? keyHere,
       String? target) {
     return Container(
-      height: math.max(timelineCollapsedHeight, widget.height),
+      height: math.max(timelineCollapsedHeight, widget.height) +
+          (_showScenes ? sceneStripHeight : 0),
       padding: const EdgeInsets.fromLTRB(10, _stripPadTop, 10,
           _stripPadBottom + _notesGutter - _scrollbarHeight),
       decoration: BoxDecoration(
@@ -1316,7 +1404,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             // Less the border along the timeline's top, which comes out of the
             // same height: the height the strip always had, when it filled
             // what was left.
-            height: _stripHeight - 1,
+            height: _stripHeight - 1 + _sceneGap,
             // A firm line under the keyframes: the channels scroll up under
             // it, and without one they seemed to vanish into the strip.
             child: Container(
@@ -1328,156 +1416,188 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 _stripHeader(theme, target),
                 Expanded(
                     child: LayoutBuilder(
-                  builder: (context, constraints) => GestureDetector(
-                    supportedDevices: timelinePointers,
-                    behavior: HitTestBehavior.opaque,
-                    onTapDown: (details) {
-                      controller.pause();
-                      // Selected on the press and the playhead moved on the
-                      // release. Moving it here moved it the instant a mark was
-                      // touched -- including at the start of a drag, so the frame
-                      // somebody had lined the playhead up with as a guide was
-                      // gone before they had dragged anywhere. A drag never
-                      // reaches onTapUp, which is exactly the distinction wanted.
-                      var mark = _keyframeAt(
-                          details.localPosition, constraints.maxWidth);
-                      var band = mark != null
-                          ? null
-                          : _bandAt(
-                              details.localPosition, constraints.maxWidth);
-                      setState(() {
-                        if (mark != null) {
-                          // Shift adds to the selection; an ordinary click starts
-                          // a new one.
-                          if (!_shiftHeld) _selectedKeys.clear();
-                          if (!_selectedKeys.add(mark) && _shiftHeld) {
-                            _selectedKeys.remove(mark);
+                  builder: (context, constraints) => Stack(children: [
+                    GestureDetector(
+                      supportedDevices: timelinePointers,
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) {
+                        controller.pause();
+                        // Selected on the press and the playhead moved on the
+                        // release. Moving it here moved it the instant a mark was
+                        // touched -- including at the start of a drag, so the frame
+                        // somebody had lined the playhead up with as a guide was
+                        // gone before they had dragged anywhere. A drag never
+                        // reaches onTapUp, which is exactly the distinction wanted.
+                        var mark = _keyframeAt(
+                            details.localPosition, constraints.maxWidth);
+                        var band = mark != null
+                            ? null
+                            : _bandAt(
+                                details.localPosition, constraints.maxWidth);
+                        setState(() {
+                          if (mark != null) {
+                            // Shift adds to the selection; an ordinary click starts
+                            // a new one.
+                            if (!_shiftHeld) _selectedKeys.clear();
+                            if (!_selectedKeys.add(mark) && _shiftHeld) {
+                              _selectedKeys.remove(mark);
+                            }
+                          } else if (band != null) {
+                            // Both ends. The bar is what says the two belong
+                            // together, so picking it up picks up the pair.
+                            if (!_shiftHeld) _selectedKeys.clear();
+                            _selectedKeys.addAll(band);
+                          } else {
+                            _selectedKeys.clear();
                           }
-                        } else if (band != null) {
-                          // Both ends. The bar is what says the two belong
-                          // together, so picking it up picks up the pair.
-                          if (!_shiftHeld) _selectedKeys.clear();
-                          _selectedKeys.addAll(band);
-                        } else {
-                          _selectedKeys.clear();
+                        });
+                      },
+                      onTapUp: (details) {
+                        // Focus is asked for here rather than on the press: the
+                        // press is followed by the framework handing focus to the
+                        // enclosing scope, so a request made before that is undone
+                        // by it -- and without focus the strip never sees Delete,
+                        // copy or paste.
+                        if (_selectedKeys.isNotEmpty) {
+                          FocusScope.of(context).requestFocus(_focus);
                         }
-                      });
-                    },
-                    onTapUp: (details) {
-                      // Focus is asked for here rather than on the press: the
-                      // press is followed by the framework handing focus to the
-                      // enclosing scope, so a request made before that is undone
-                      // by it -- and without focus the strip never sees Delete,
-                      // copy or paste.
-                      if (_selectedKeys.isNotEmpty) {
-                        FocusScope.of(context).requestFocus(_focus);
-                      }
-                      // The click has turned out to be a click. A mark puts the
-                      // playhead on itself, which is what anybody wants from
-                      // clicking a keyframe -- to be looking at the pose they are
-                      // about to change -- and anywhere else scrubs.
-                      var mark = _keyframeAt(
-                          details.localPosition, constraints.maxWidth);
-                      controller.frame = mark ??
-                          _frameAt(
+                        // The click has turned out to be a click. A mark puts the
+                        // playhead on itself, which is what anybody wants from
+                        // clicking a keyframe -- to be looking at the pose they are
+                        // about to change -- and anywhere else scrubs.
+                        var mark = _keyframeAt(
+                            details.localPosition, constraints.maxWidth);
+                        if (mark != null) {
+                          controller.frame = mark;
+                        } else {
+                          _scrubTo(
                               details.localPosition.dx, constraints.maxWidth);
-                    },
-                    // A drag that starts on a mark retimes that mark; anywhere else
-                    // it scrubs. Deciding once, at the start, rather than on every
-                    // update: a mark dragged past the pointer's own starting row
-                    // would otherwise stop being dragged half way through.
-                    // The mark is found on the *press*, not on the drag start.
-                    // A horizontal drag is not recognised until the pointer has
-                    // moved about eighteen pixels, by which time its reported start
-                    // is well past whatever it was aimed at -- so looking for a mark
-                    // there finds nothing, and every attempt to retime one scrubbed
-                    // instead.
-                    onHorizontalDragDown: (details) {
-                      // A flag on the ruler first: it is what the press is
-                      // on, and dragged, it moves.
-                      _pressedFlag =
-                          _flagAt(details.localPosition, constraints.maxWidth);
-                      _pressedFrame = _pressedFlag != null
-                          ? null
-                          : _keyframeAt(
-                              details.localPosition, constraints.maxWidth);
-                      // The bar between a pair, when the press was not on either
-                      // end of it. A mark wins: dragging one end is how the
-                      // length of an animation is changed, and dragging the
-                      // middle is how it is moved without changing it.
-                      _pressedBand = _pressedFrame != null
-                          ? null
-                          : _bandAt(
-                              details.localPosition, constraints.maxWidth);
-                    },
-                    onHorizontalDragStart: (details) {
-                      controller.pause();
-                      _dragFlag = _pressedFlag;
-                      if (_dragFlag != null) controller.beginInteraction();
-                      _dragKey = _pressedFrame;
-                      _dragBand = _pressedBand;
-                      _bandAnchor = _frameAt(
-                          details.localPosition.dx, constraints.maxWidth);
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      var at = _frameAt(
-                          details.localPosition.dx, constraints.maxWidth);
-                      if (_dragFlag != null) {
-                        if (_moveAction(_dragFlag!, at)) _dragFlag = at;
-                        return;
-                      }
-                      if (_dragBand != null) {
-                        _shiftBand(at);
-                        return;
-                      }
-                      if (_dragKey == null) {
-                        controller.frame = at;
-                        return;
-                      }
-                      _retime(_dragKey!, at);
-                      _dragKey = at;
-                    },
-                    onHorizontalDragEnd: (_) {
-                      if (_dragFlag != null) controller.endInteraction();
-                      _dragFlag = null;
-                      _pressedFlag = null;
-                      _dragKey = null;
-                      _dragBand = null;
-                      _pressedFrame = null;
-                      _pressedBand = null;
-                    },
-                    onHorizontalDragCancel: () {
-                      if (_dragFlag != null) controller.endInteraction();
-                      _dragFlag = null;
-                      _pressedFlag = null;
-                      _dragKey = null;
-                      _dragBand = null;
-                      _pressedFrame = null;
-                      _pressedBand = null;
-                    },
-                    child: CustomPaint(
-                      key: const ValueKey("keyframeStrip"),
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: _TimelinePainter(
-                        view: _viewNow,
-                        frames: controller.timelineReach,
-                        scene: document.frames,
-                        frame: controller.frame,
-                        frameRate: document.frameRate,
-                        // The focused player's, when one is focused -- see
-                        // _targetTrack. The marks on the ruler have to be the same
-                        // keyframes the diamond button adds and removes, or the
-                        // strip shows one player's run while the button edits
-                        // another's.
-                        keyframes: _targetTrack?.keys ?? const [],
-                        bands: _bands,
-                        selected: _selectedKeys,
-                        actions: document.actions,
-                        colors: theme.colors,
-                        xFor: (f) => _xFor(f, constraints.maxWidth),
+                        }
+                      },
+                      // A drag that starts on a mark retimes that mark; anywhere else
+                      // it scrubs. Deciding once, at the start, rather than on every
+                      // update: a mark dragged past the pointer's own starting row
+                      // would otherwise stop being dragged half way through.
+                      // The mark is found on the *press*, not on the drag start.
+                      // A horizontal drag is not recognised until the pointer has
+                      // moved about eighteen pixels, by which time its reported start
+                      // is well past whatever it was aimed at -- so looking for a mark
+                      // there finds nothing, and every attempt to retime one scrubbed
+                      // instead.
+                      onHorizontalDragDown: (details) {
+                        // A flag on the ruler first: it is what the press is
+                        // on, and dragged, it moves.
+                        _pressedFlag = _flagAt(
+                            details.localPosition, constraints.maxWidth);
+                        _pressedFrame = _pressedFlag != null
+                            ? null
+                            : _keyframeAt(
+                                details.localPosition, constraints.maxWidth);
+                        // The bar between a pair, when the press was not on either
+                        // end of it. A mark wins: dragging one end is how the
+                        // length of an animation is changed, and dragging the
+                        // middle is how it is moved without changing it.
+                        _pressedBand = _pressedFrame != null
+                            ? null
+                            : _bandAt(
+                                details.localPosition, constraints.maxWidth);
+                      },
+                      onHorizontalDragStart: (details) {
+                        controller.pause();
+                        _dragFlag = _pressedFlag;
+                        if (_dragFlag != null) controller.beginInteraction();
+                        _dragKey = _pressedFrame;
+                        _dragBand = _pressedBand;
+                        _bandAnchor = _frameAt(
+                            details.localPosition.dx, constraints.maxWidth);
+                      },
+                      onHorizontalDragUpdate: (details) {
+                        var at = _frameAt(
+                            details.localPosition.dx, constraints.maxWidth);
+                        if (_dragFlag != null) {
+                          if (_moveAction(_dragFlag!, at)) _dragFlag = at;
+                          return;
+                        }
+                        if (_dragBand != null) {
+                          _shiftBand(at);
+                          return;
+                        }
+                        if (_dragKey == null) {
+                          _scrubTo(
+                              details.localPosition.dx, constraints.maxWidth);
+                          return;
+                        }
+                        _retime(_dragKey!, at);
+                        _dragKey = at;
+                      },
+                      onHorizontalDragEnd: (_) {
+                        if (_dragFlag != null) controller.endInteraction();
+                        _dragFlag = null;
+                        _pressedFlag = null;
+                        _dragKey = null;
+                        _dragBand = null;
+                        _pressedFrame = null;
+                        _pressedBand = null;
+                      },
+                      onHorizontalDragCancel: () {
+                        if (_dragFlag != null) controller.endInteraction();
+                        _dragFlag = null;
+                        _pressedFlag = null;
+                        _dragKey = null;
+                        _dragBand = null;
+                        _pressedFrame = null;
+                        _pressedBand = null;
+                      },
+                      child: CustomPaint(
+                        key: const ValueKey("keyframeStrip"),
+                        size: Size(constraints.maxWidth, constraints.maxHeight),
+                        painter: _TimelinePainter(
+                          view: _sceneView,
+                          // Ticks along the whole of what is laid out: the
+                          // run, where the timeline runs, counted from the
+                          // scene's own start.
+                          origin: _origin,
+                          frames: _total - _origin,
+                          scene: _runs ? _total - _origin : document.frames,
+                          marks: _markRow + _sceneGap,
+                          sceneStarts: _runs && !document.editingMaster
+                              ? [
+                                  for (var i = 0;
+                                      i < document.allScenes.length;
+                                      i++)
+                                    document.startOfScene(i) - _origin,
+                                ]
+                              : const [0],
+                          frame: controller.frame,
+                          frameRate: document.frameRate,
+                          // The focused player's, when one is focused -- see
+                          // _targetTrack. The marks on the ruler have to be the same
+                          // keyframes the diamond button adds and removes, or the
+                          // strip shows one player's run while the button edits
+                          // another's.
+                          keyframes: _targetTrack?.keys ?? const [],
+                          bands: _bands,
+                          selected: _selectedKeys,
+                          actions: document.actions,
+                          colors: theme.colors,
+                          xFor: (f) => _xFor(f, constraints.maxWidth),
+                        ),
                       ),
                     ),
-                  ),
+                    // The scenes, under the ruler and over the keyframes,
+                    // on the ruler's own scale.
+                    if (_showScenes)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: _rulerHeight + sceneStripLead,
+                        height: sceneBoxHeight,
+                        child: CanvasSceneStrip(
+                            controller: controller,
+                            view: _viewNow,
+                            origin: _origin),
+                      ),
+                  ]),
                 )),
               ]),
             ),
@@ -1486,7 +1606,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
         // whatever room the timeline has been dragged open to.
         if (widget.height > timelineHeight + 4)
           Expanded(
-              child: CanvasChannels(controller: controller, view: _viewNow)),
+              child: CanvasChannels(controller: controller, view: _sceneView)),
         // Which stretch of the timeline is on screen, and a handle to move
         // it: under the frames, not the strip column.
         if (!_collapsed)
@@ -1498,7 +1618,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 child: _TimelineScrollbar(
                   key: const ValueKey("timelineScrollbar"),
                   view: _viewNow,
-                  frames: controller.timelineReach,
+                  frames: _total,
                   colors: theme.colors,
                   onView: _setView,
                 ),
@@ -1590,7 +1710,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   int? _keyframeAt(Offset local, double width) {
     var keys = _targetTrack?.keys ?? const <Keyframe>[];
     if (keys.isEmpty) return null;
-    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
+    if ((local.dy - _markRow - _sceneGap).abs() > _markGrabHeight) return null;
 
     int? best;
     var nearest = _markGrabWidth;
@@ -1619,7 +1739,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// between the two marks rather than on them, because dragging one end to
   /// change the length has to stay possible.
   List<int>? _bandAt(Offset local, double width) {
-    if ((local.dy - _markRow).abs() > _markGrabHeight) return null;
+    if ((local.dy - _markRow - _sceneGap).abs() > _markGrabHeight) return null;
     for (var band in _bands) {
       if (!band.real) continue;
       var from = _xFor(band.from, width);
@@ -1665,6 +1785,41 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   }
 }
 
+/// rulerSteps is how far apart, in frames, the ruler's three sizes of tick
+/// are at [pixelsPerFrame]: a number and a line through the ruler every so
+/// many whole seconds -- as many as fit with room around them -- a mid tick
+/// that divides it, and a small one that divides that. Null where a size
+/// would be too close together to see.
+(int, int?, int?) rulerSteps(double pixelsPerFrame, int frameRate) {
+  var second = math.max(1, frameRate);
+
+  /// first is the first of [ladder] that is at least [least] pixels apart
+  /// and, where [within] is given, divides it and is smaller.
+  int? first(List<int> ladder, double least, [int? within]) {
+    for (var n in ladder) {
+      if (n <= 0) continue;
+      if (within != null && (n >= within || within % n != 0)) continue;
+      if (n * pixelsPerFrame >= least) return n;
+    }
+    return null;
+  }
+
+  var seconds = [
+    for (var n in [1, 2, 5, 10, 30, 60, 120, 300, 600]) second * n
+  ];
+  var frameSteps = [1, 2, 5, 10, ...seconds];
+  var major = first(seconds, 90) ?? seconds.last;
+  var medium = first(frameSteps, 22, major);
+  var minor = first(frameSteps, 7, medium ?? major);
+  return (major, medium, minor);
+}
+
+/// rulerNumber is what the ruler writes at [frame] of a scene starting
+/// [origin] frames into what is laid out: the frame of the whole run while
+/// the timeline runs along every scene, so the numbers go on through them,
+/// and counted from one, as the Frame box counts.
+int rulerNumber(int frame, int origin) => frame + origin + 1;
+
 /// _TimelinePainter draws the ruler, the two rows of marks and the playhead.
 class _TimelinePainter extends CustomPainter {
   final TimelineView view;
@@ -1673,6 +1828,20 @@ class _TimelinePainter extends CustomPainter {
   /// scene is how many frames the scene has; [frames] runs on past it where
   /// a clip does, and that stretch is shaded.
   final int scene;
+
+  /// origin is where the scene starts in what is laid out -- the run, while
+  /// the timeline runs -- so the ruler is ticked from the run's own start
+  /// rather than the scene's. Nought otherwise.
+  final int origin;
+
+  /// marks is how far down the keyframes are drawn: under the scene strip,
+  /// where it shows.
+  final double marks;
+
+  /// sceneStarts is where each scene starts, in this painter's frames --
+  /// just the one, at nought, unless the timeline runs along every scene.
+  /// Each later one is marked on the ruler, over its join in the scene strip.
+  final List<int> sceneStarts;
   final int frame;
   final int frameRate;
   final List<Keyframe> keyframes;
@@ -1692,6 +1861,9 @@ class _TimelinePainter extends CustomPainter {
     required this.view,
     required this.frames,
     required this.scene,
+    this.origin = 0,
+    this.marks = _markRow,
+    this.sceneStarts = const [0],
     required this.frame,
     required this.frameRate,
     required this.bands,
@@ -1712,28 +1884,59 @@ class _TimelinePainter extends CustomPainter {
       Paint()..color = colors.surfaceContainerHighest,
     );
 
-    // A tick every frame while they are far enough apart to see, and every
-    // second otherwise. Ticks closer together than a couple of pixels are a
-    // grey smear that says nothing about where anything is.
+    // Ticks hang from the top edge in three sizes -- frames, seconds, and a
+    // line through the whole ruler where a number is written -- and the
+    // numbers sit under the ticks, beside their line, big enough to read.
+    // Counted along the whole run where the timeline runs, so the numbers go
+    // on through every scene rather than starting again at each; and from
+    // one, the way the Frame box counts.
     var step = size.width / math.max(1.0, view.span);
-    var everyFrame = step > 6;
-    var secondStep = math.max(1, frameRate);
+    var (major, medium, minor) = rulerSteps(step, frameRate);
 
-    var tick = Paint()
-      ..color = colors.onSurfaceVariant.withValues(alpha: 0.35)
-      ..strokeWidth = 1;
-    var strongTick = Paint()
-      ..color = colors.onSurfaceVariant.withValues(alpha: 0.7)
-      ..strokeWidth = 1;
-
-    var from = math.max(0, view.first.floor());
+    var from = math.max(-origin, view.first.floor());
     var to = math.min(frames - 1, (view.first + view.span).ceil());
+    var line = Paint()
+      ..color = colors.onSurfaceVariant.withValues(alpha: 0.45)
+      ..strokeWidth = 1;
+    var mid = Paint()
+      ..color = colors.onSurfaceVariant.withValues(alpha: 0.55)
+      ..strokeWidth = 1;
+    var small = Paint()
+      ..color = colors.onSurfaceVariant.withValues(alpha: 0.32)
+      ..strokeWidth = 1;
+    var numbers = TextStyle(
+        fontSize: 11,
+        height: 1,
+        color: colors.onSurfaceVariant.withValues(alpha: 0.95));
+
     for (var f = from; f <= to; f++) {
-      var strong = f % secondStep == 0;
-      if (!everyFrame && !strong) continue;
+      var run = f + origin;
       var x = xFor(f);
-      canvas.drawLine(Offset(x, strong ? 4 : 9), Offset(x, _rulerHeight - 3),
-          strong ? strongTick : tick);
+      if (run % major == 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
+        var label = TextPainter(
+          text: TextSpan(text: "${rulerNumber(f, origin)}", style: numbers),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        label.paint(canvas, Offset(x + 5, _rulerHeight - label.height - 4));
+      } else if (medium != null && run % medium == 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, 9), mid);
+      } else if (minor != null && run % minor == 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, 5), small);
+      }
+    }
+
+    // Where each scene begins, firmer than any tick: over the joins in the
+    // scene strip under it.
+    if (sceneStarts.length > 1) {
+      var join = Paint()
+        ..color = colors.primary.withValues(alpha: 0.55)
+        ..strokeWidth = 1.5;
+      for (var start in sceneStarts.skip(1)) {
+        var x = xFor(start);
+        if (x < 0 || x > size.width) continue;
+        canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), join);
+      }
     }
     paintPastScene(canvas, Size(size.width, _rulerHeight), view, scene, colors);
 
@@ -1741,12 +1944,12 @@ class _TimelinePainter extends CustomPainter {
     // exit are each two keyframes that mean nothing apart, and two marks with
     // nothing between them are two marks somebody will separate by accident.
     // Dragging the bar moves both -- see _shiftBand.
-    _paintBands(canvas, y: _markRow);
+    _paintBands(canvas, y: marks);
 
     _paintMarks(
       canvas,
       size,
-      y: _markRow,
+      y: marks,
       frames: [for (var k in keyframes) k.frame],
       // Muted, the same weight as the transport's own icons. They were all
       // drawn in the accent, which is the colour that means "this one" -- so
@@ -1902,6 +2105,9 @@ class _TimelinePainter extends CustomPainter {
   bool shouldRepaint(_TimelinePainter old) =>
       old.frames != frames ||
       old.scene != scene ||
+      old.origin != origin ||
+      !listEquals(old.sceneStarts, sceneStarts) ||
+      old.marks != marks ||
       old.view != view ||
       old.frame != frame ||
       old.frameRate != frameRate ||

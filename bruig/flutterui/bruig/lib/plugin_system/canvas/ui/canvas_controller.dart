@@ -1587,6 +1587,22 @@ class CanvasController extends ChangeNotifier {
   /// scenes are the canvases this document plays, in order.
   List<CanvasScene> get scenes => _document.allScenes;
 
+  /// setSceneFrames sets how many frames several scenes have, as one change:
+  /// the scene strip's drag between two scenes, which gives one what it takes
+  /// from the other. Each is held to at least one frame.
+  void setSceneFrames(Map<int, int> lengths, {bool transient = false}) {
+    var next = _document;
+    for (var entry in lengths.entries) {
+      var list = next.allScenes;
+      if (entry.key < 0 || entry.key >= list.length) continue;
+      var frames = entry.value.clamp(1, maxFrameCount).toInt();
+      if (list[entry.key].frames == frames) continue;
+      next =
+          next.withScene(entry.key, list[entry.key].copyWith(frames: frames));
+    }
+    apply(next, transient: transient);
+  }
+
   /// sceneAt is which one is being edited, and onMaster whether the shared
   /// canvas is showing instead of any of them.
   int get sceneAt => _document.at;
@@ -2094,8 +2110,20 @@ class CanvasController extends ChangeNotifier {
     // where the playback has got to.
     if (_playAll && _document.hasScenes) {
       if (_document.playFrames <= 1) return;
-      _previewAt ??= _document.startOfScene(_document.at);
       _previewEnd = _document.playFrames - 1;
+      // From the playhead, wherever it has been put: the run's frame under
+      // it on the ruler. It was from wherever the last run had been paused,
+      // which -- after the playhead had been moved to edit something --
+      // looked like a jump to anywhere. At the very end, from the start.
+      var from = _document.editingMaster
+          ? _frame
+          : _document.startOfScene(_document.at) + _frame;
+      if (from >= _previewEnd) {
+        if (!_document.editingMaster && _document.at != 0) goToScene(0);
+        _frame = 0;
+        from = 0;
+      }
+      _previewAt = from;
       _loopCounts.clear();
       _startTimer();
       notifyListeners();
@@ -2119,6 +2147,12 @@ class CanvasController extends ChangeNotifier {
   void pause() {
     _playback?.cancel();
     _playback = null;
+    // A run of every scene, stopped, is the scene it stopped on at the frame
+    // it stopped at -- which is where the playhead already is. Holding on to
+    // the run's own frame kept the canvas drawing it while the playhead was
+    // moved to edit, and the next Play went on from there instead. Watching
+    // one join is different: it puts itself back. See stopPreview.
+    if (_playAll && _previewFrom == null) _previewAt = null;
     _syncTimeline();
     notifyListeners();
   }
