@@ -233,6 +233,50 @@ void main() {
       expect(engine.last.fades, isEmpty, reason: "from the top, no ramp");
     });
 
+    // Every frame the playhead moves the sound is cued again. Its volume is
+    // put on it only when it has changed -- put on every frame, it cut off
+    // the rise a sound starts with -- and on the timeline by a glide.
+    test("a timeline sound's volume is set when it changes, by a glide",
+        () async {
+      var e = AudioElement(const ElementBase(id: "t", visible: false),
+          clip: const MediaClip(
+              timed: true, volume: 1, playlist: [MediaSource(assetId: song)]));
+      runtime.cue(e, const ClipMoment(0, 2.5, 1), playing: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      var voice = engine.last;
+      for (var i = 1; i <= 10; i++) {
+        voice.at = 2.5 + i * 0.04;
+        runtime.cue(e, ClipMoment(0, 2.5 + i * 0.04, 1), playing: true);
+      }
+      expect(voice.fades, hasLength(1),
+          reason: "the rise it started with, and nothing after it");
+
+      runtime.cue(e, const ClipMoment(0, 2.94, 0.5), playing: true);
+      expect(voice.fades.last, (0.5, glideSeconds),
+          reason: "a fade's next step, glided to");
+    });
+
+    // The sound card reports where a sound has got in steps, so a little
+    // either way is not the sound being out of time; moving a playing sound
+    // is a jump that is heard.
+    test("a timeline sound is moved only when it is really out of time",
+        () async {
+      var e = AudioElement(const ElementBase(id: "t", visible: false),
+          clip: const MediaClip(
+              timed: true, volume: 1, playlist: [MediaSource(assetId: song)]));
+      runtime.cue(e, const ClipMoment(0, 1, 1), playing: true);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      var voice = engine.last;
+      voice.at = 1.2;
+      runtime.cue(e, const ClipMoment(0, 1, 1), playing: true);
+      expect(voice.at, 1.2, reason: "a fifth of a second is left alone");
+      voice.at = 1.6;
+      runtime.cue(e, const ClipMoment(0, 1, 1), playing: true);
+      expect(voice.at, 1, reason: "more than driftSeconds is put right");
+    });
+
     test("plays each sound through its own strip", () async {
       runtime.setMix(const {"a": ChannelMix(balance: 1)},
           master: const MasterMix());

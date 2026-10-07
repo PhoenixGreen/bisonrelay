@@ -65,6 +65,10 @@ class _Playing {
   /// in the meantime do not open it again.
   bool starting = false;
 
+  /// sent is the volume last put on the voice, so the same one is not put
+  /// on it again every frame -- see AudioRuntime._heard.
+  double? sent;
+
   _Playing(this.element)
       : muted = element.clip.muted,
         volume = element.clip.volume;
@@ -76,6 +80,19 @@ class _Playing {
 /// declickSeconds is how long a sound started part way through takes to
 /// rise to its level: too short to hear as a fade, long enough not to click.
 const double declickSeconds = 0.015;
+
+/// glideSeconds is how long a sound on the timeline takes to reach a new
+/// volume: a clip's fade moves its level every frame, and set outright each
+/// time that is a staircase -- heard as a buzz under the fade, and a click
+/// where it cut short the rise a sound starts with.
+const double glideSeconds = 0.03;
+
+/// driftSeconds is how far a sound on the timeline may be from where the
+/// playhead says before it is moved there. The sound card reports where a
+/// sound has got to in steps of its buffer, so a few hundredths either way
+/// is that reporting and not the sound being out -- and moving a playing
+/// sound is a jump that is heard.
+const double driftSeconds = 0.3;
 
 class AudioRuntime extends ChangeNotifier {
   final AudioEngine engine;
@@ -268,26 +285,41 @@ class AudioRuntime extends ChangeNotifier {
     var voice = p.voice;
     var alive = voice != null && engine.alive(voice);
     if (!playing) {
-      // Held where it is. Where it should be is worked out again the moment
-      // the playhead moves, so there is no point seeking a held sound.
+      // Brought down and stopped, not paused: a pause cuts the sound off
+      // mid-swing, which clicks. Where it should be is worked out again when
+      // the playhead moves, and it starts there again rising from nothing.
       if (alive && p.playing) {
-        engine.pause(voice, true);
-        p.playing = false;
+        p.generation++;
+        _silence(p);
         notifyListeners();
       }
       return;
     }
     if (!alive || p.index != moment.index) {
-      unawaited(_start(p, moment.index, from: moment.time, fades: false));
+      unawaited(_start(p, moment.index,
+          from: moment.time, fades: false, asked: Stopwatch()..start()));
       return;
     }
     if (!p.playing) {
+      // Put right before it is heard again. Held while the playhead was
+      // moved, it kept the place and the level it had -- so playing from
+      // somewhere else, the start of a fade say, sounded a moment of the old
+      // place at the old level before it was moved and turned down: heard as
+      // a spike. Into place, then up from nothing, as a start part way
+      // through is.
+      if ((engine.position(voice) - moment.time).abs() > 0.02) {
+        engine.seek(voice, moment.time);
+      }
+      engine.volume(voice, 0);
       engine.pause(voice, false);
+      p.sent = p.heard;
+      engine.volume(voice, p.heard, fade: declickSeconds);
       p.playing = true;
       _startTimer();
       notifyListeners();
+      return;
     }
-    if ((engine.position(voice) - moment.time).abs() > 0.15) {
+    if ((engine.position(voice) - moment.time).abs() > driftSeconds) {
       engine.seek(voice, moment.time);
     }
     _heard(p);
@@ -309,6 +341,15 @@ class AudioRuntime extends ChangeNotifier {
     var voice = _sounds[id]?.voice;
     if (voice == null || !engine.alive(voice)) return null;
     return engine.position(voice);
+  }
+
+  /// indexOf is which file of [id]'s playlist is sounding, or null where
+  /// none is.
+  int? indexOf(String id) {
+    var p = _sounds[id];
+    var voice = p?.voice;
+    if (p == null || voice == null || !engine.alive(voice)) return null;
+    return p.index;
   }
 
   /// seek moves [id]'s sound to [at] seconds into its file.
@@ -396,6 +437,7 @@ class AudioRuntime extends ChangeNotifier {
       if (fade > 0 && !p.timed && !p.fadingOut && at >= p.end - fade) {
         p.fadingOut = true;
         engine.volume(voice, 0, fade: math.max(0.01, p.end - at));
+        p.sent = 0;
       }
       // A little early rather than exactly on it: a tick lands anywhere
       // inside forty milliseconds, and the few samples past the range are
@@ -436,8 +478,12 @@ class AudioRuntime extends ChangeNotifier {
   }
 
   /// _start plays file [index] of [p]'s list from the start of its range.
+  /// [asked] times how long the file took to open, for a sound on the
+  /// timeline: by then the playhead has gone on, and the sound is started
+  /// where it now is rather than where it was -- started where it was, it
+  /// began behind, and was jumped forward a moment later.
   Future<void> _start(_Playing p, int index,
-      {double? from, bool fades = true}) async {
+      {double? from, bool fades = true, Stopwatch? asked}) async {
     var list = p.clip.playlist;
     if (list.isEmpty) return;
     var generation = ++p.generation;
@@ -476,6 +522,9 @@ class AudioRuntime extends ChangeNotifier {
 
     p.end = source.endOr(engine.lengthOf(track));
     p.fadingOut = false;
+    if (from != null && asked != null && p.timed) {
+      from = math.min(from + asked.elapsedMicroseconds / 1e6, p.end);
+    }
     var fadeIn = fades ? p.clip.fadeIn : 0.0;
     // Started part way through, it rises over a few milliseconds rather than
     // jumping straight to full: a waveform cut into mid-swing is a click,
@@ -492,6 +541,7 @@ class AudioRuntime extends ChangeNotifier {
       return;
     }
     if (fadeIn > 0) engine.volume(voice, p.heard, fade: fadeIn);
+    p.sent = p.heard;
     p.voice = voice;
     if (!fades) p.fadingOut = false;
     _startTimer();
@@ -503,6 +553,7 @@ class AudioRuntime extends ChangeNotifier {
     var voice = p.voice;
     if (voice != null) engine.stop(voice);
     p.voice = null;
+    p.sent = null;
     if (list.isEmpty) {
       p.playing = false;
       notifyListeners();
@@ -526,16 +577,33 @@ class AudioRuntime extends ChangeNotifier {
 
   /// _heard puts the volume the reader chose onto the sound, unless a fade
   /// is under way -- moving the volume mid-fade would snap it back up.
+  ///
+  /// Only when it has changed: it is asked on every frame the playhead moves,
+  /// and set again each time, it cut off the rise a sound starts with. And on
+  /// the timeline by a short glide rather than outright -- see glideSeconds.
   void _heard(_Playing p) {
     var voice = p.voice;
     if (voice == null || p.fadingOut) return;
-    engine.volume(voice, p.heard);
+    var to = p.heard;
+    if (p.sent case var was? when (was - to).abs() < 0.0005) return;
+    p.sent = to;
+    engine.volume(voice, to, fade: p.timed ? glideSeconds : 0);
   }
 
-  void _silence(_Playing p) {
+  ///
+  /// Brought down over a few milliseconds and then stopped, where it is
+  /// sounding -- a clip coming to its end, a scene turning, playback stopped.
+  /// Stopped outright, each was a click. [softly] off is for going away
+  /// altogether, when there is no time for the fade to run.
+  void _silence(_Playing p, {bool softly = true}) {
     var voice = p.voice;
-    if (voice != null) engine.stop(voice);
+    if (voice != null) {
+      softly && engine.alive(voice)
+          ? engine.stopSoftly(voice, declickSeconds)
+          : engine.stop(voice);
+    }
     p.voice = null;
+    p.sent = null;
     p.playing = false;
     p.fadingOut = false;
   }
@@ -550,7 +618,7 @@ class AudioRuntime extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     for (var p in _sounds.values) {
-      _silence(p);
+      _silence(p, softly: false);
     }
     _sounds.clear();
     for (var track in _tracks.values) {

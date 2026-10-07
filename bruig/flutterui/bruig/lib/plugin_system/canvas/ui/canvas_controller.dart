@@ -1457,10 +1457,12 @@ class CanvasController extends ChangeNotifier {
   void selectOnly(String id) {
     if (_selection.length == 1 &&
         _selection.first == id &&
-        !_backgroundSelected) {
+        !_backgroundSelected &&
+        _offCanvas.isEmpty) {
       return;
     }
     _backgroundSelected = false;
+    _offCanvas = const {};
     _selection = {id};
     _focusedPlayer = null;
     notifyListeners();
@@ -1470,6 +1472,7 @@ class CanvasController extends ChangeNotifier {
   /// -- the alignment tools, and a sweep over empty space.
   void selectMany(Set<String> ids) {
     _backgroundSelected = false;
+    _offCanvas = const {};
     _selection = {...ids};
     _focusedPlayer = null;
     notifyListeners();
@@ -1479,6 +1482,54 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _selection = {..._selection};
     _selection.contains(id) ? _selection.remove(id) : _selection.add(id);
+    notifyListeners();
+  }
+
+  /// clipSelection is every clip picked on the timeline: the selection, and
+  /// the clips picked that are on another canvas -- another scene's, or the
+  /// master's seen from a scene -- which the timeline can reach while every
+  /// scene plays. They are not in the selection, which is only ever the
+  /// canvas in front of the reader; picked, they are lit and moved with the
+  /// rest all the same.
+  Set<String> get clipSelection =>
+      _offCanvas.isEmpty ? _selection : {..._selection, ..._offCanvas};
+  Set<String> _offCanvas = const {};
+
+  bool _onCanvas(String id) => _document.indexOf(id) >= 0;
+
+  /// pickClip picks the clip [id] on the timeline, wherever it is -- or,
+  /// with [toggle], adds it to what is picked or takes it out.
+  void pickClip(String id, {bool toggle = false}) {
+    if (_onCanvas(id)) {
+      toggle ? toggleSelected(id) : selectOnly(id);
+      return;
+    }
+    if (toggle) {
+      var next = {..._offCanvas};
+      if (!next.remove(id)) next.add(id);
+      _offCanvas = next;
+    } else {
+      _backgroundSelected = false;
+      _focusedPlayer = null;
+      _selection = {};
+      _offCanvas = {id};
+    }
+    notifyListeners();
+  }
+
+  /// pickClips picks [ids] on the timeline, wherever each one is: a box
+  /// dragged across the lanes.
+  void pickClips(Set<String> ids) {
+    _backgroundSelected = false;
+    _focusedPlayer = null;
+    _selection = {
+      for (var id in ids)
+        if (_onCanvas(id)) id
+    };
+    _offCanvas = {
+      for (var id in ids)
+        if (!_onCanvas(id)) id
+    };
     notifyListeners();
   }
 
@@ -1497,6 +1548,8 @@ class CanvasController extends ChangeNotifier {
   set playAll(bool value) {
     if (_playAll == value) return;
     _playAll = value;
+    // What is picked on other canvases is out of reach again with one scene.
+    if (!value) _offCanvas = const {};
     pause();
     stopPreview();
     notifyListeners();
@@ -2014,15 +2067,19 @@ class CanvasController extends ChangeNotifier {
   }
 
   void clearSelection() {
-    if (_selection.isEmpty && !_backgroundSelected) return;
+    if (_selection.isEmpty && !_backgroundSelected && _offCanvas.isEmpty) {
+      return;
+    }
     _backgroundSelected = false;
     _focusedPlayer = null;
+    _offCanvas = const {};
     _selection = {};
     notifyListeners();
   }
 
   void selectAll() {
     _backgroundSelected = false;
+    _offCanvas = const {};
     // What is on the canvas: a sound on the timeline is not, and taking it
     // in would put the soundtrack one Delete away.
     _selection = {
@@ -2090,10 +2147,47 @@ class CanvasController extends ChangeNotifier {
   /// Stopping is the point: scrubbing while the timer is still running means
   /// the next tick undoes the step, so the key appears to do nothing. Taking
   /// hold of the playhead is saying you want it where you put it.
+  ///
+  /// While Play runs every scene, a step past either end of a scene goes on
+  /// into the next or the previous one, as playing does.
   void stepFrame(int by) {
     pause();
-    frame = _frame + by;
+    var document = _document;
+    if (!_runsScenes) {
+      frame = _frame + by;
+      return;
+    }
+    var scenes = document.allScenes;
+    var at = document.at;
+    var f = _frame + by;
+    while (f < 0 && at > 0) {
+      at--;
+      f += scenes[at].frames;
+    }
+    while (f >= scenes[at].frames && at < scenes.length - 1) {
+      f -= scenes[at].frames;
+      at++;
+    }
+    if (at != document.at) goToScene(at);
+    frame = f;
   }
+
+  /// rewind is the back-to-the-start button: the first frame of the scene,
+  /// and -- pressed again there, while Play runs every scene -- the first
+  /// frame of the scene before.
+  void rewind() {
+    var back = _runsScenes && _frame == 0 && _document.at > 0;
+    stop();
+    if (back) {
+      goToScene(_document.at - 1);
+      frame = 0;
+    }
+  }
+
+  /// _runsScenes is whether the transport works across the scenes: Play all
+  /// scenes, on a scene rather than the master.
+  bool get _runsScenes =>
+      _playAll && _document.hasScenes && !_document.editingMaster;
 
   void play() {
     if (playing) return;
@@ -2138,10 +2232,92 @@ class CanvasController extends ChangeNotifier {
 
   void _startTimer() {
     _playback?.cancel();
+    // Twice a frame, to notice a frame falling due soon after it does; each
+    // tick moves the playhead on by however many frames have actually
+    // passed. See _tick.
     var interval = Duration(
         microseconds:
-            (1000000 / _document.frameRate).round().clamp(8000, 1000000));
-    _playback = Timer.periodic(interval, (_) => _tick());
+            (500000 / _document.frameRate).round().clamp(4000, 500000));
+    _clockFrames = 0;
+    _clockShift = 0;
+    // A periodic timer's tick counts the intervals that have passed, not the
+    // callbacks that ran: a late callback sees every interval it missed. So
+    // tick times interval is the time since Play, by the same clock a test's
+    // pretend time drives.
+    _playback = Timer.periodic(
+        interval, (t) => _tick(t.tick * interval.inMicroseconds));
+  }
+
+  /// _clockFrames is how many frames the playhead has been moved on since
+  /// playback started.
+  ///
+  /// The playhead keeps time by the clock, not by counting ticks. It was a
+  /// frame a tick, and a timer's ticks come late whenever the app is busy --
+  /// so the playhead fell behind the sound, which plays on the sound card's
+  /// own clock, until the two were far enough apart that the sound was
+  /// pulled back to the playhead: heard as a skipped beat, or a jump.
+  int _clockFrames = 0;
+
+  /// _tick moves the playhead on to where the clock says it should be: one
+  /// frame at a time, so a marker on a frame passed over is still obeyed.
+  void _tick(int elapsed) {
+    var rate = math.max(1, _document.frameRate);
+    var seconds = (clockForTest?.call() ?? elapsed) / 1000000 + _clockShift;
+    var now = seconds * rate;
+    var due = now.floor() - _clockFrames;
+    // A long stall -- the window dragged, the machine asleep -- is let go
+    // rather than raced through: past a few frames behind, it carries on
+    // from the clock without playing out what was missed.
+    if (due > 6) {
+      _clockFrames += due - 6;
+      due = 6;
+    }
+    for (var i = 0; i < due && _playback != null; i++) {
+      _clockFrames++;
+      _step();
+    }
+    if (_playback != null) _followSound(now - _clockFrames);
+  }
+
+  /// _clockShift is how far, in seconds, the playhead's clock has been moved
+  /// to keep with the sound -- see _followSound.
+  double _clockShift = 0;
+
+  /// _followSound keeps the playhead with the sound it is playing.
+  ///
+  /// The sound plays by the sound card's clock and the playhead went by the
+  /// computer's, and the two do not run at quite the same speed. Over a long
+  /// track they drifted apart until the sound was far enough out to be moved
+  /// back to the playhead -- heard as a skip part way through. Now the
+  /// playhead's clock is eased toward wherever the sound has actually got,
+  /// a little each tick, so the two never part and the sound is never moved
+  /// for drift. A difference too big to be drift -- a hold, a jump -- is
+  /// left alone, for the cue to put right.
+  ///
+  /// [into] is how far past the frame it is on the playhead has got.
+  void _followSound(double into) {
+    var a = _audio;
+    if (a == null) return;
+    var rate = math.max(1, _document.frameRate);
+    for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {
+      if (at == null || e is! AudioElement || !a.isPlaying(e.id)) continue;
+      var clip = e.clip;
+      if (clip.loop != MediaLoop.none) continue;
+      var position = a.positionOf(e.id), index = a.indexOf(e.id);
+      if (position == null || index == null || index >= clip.playlist.length) {
+        continue;
+      }
+      var before = 0.0;
+      for (var s in clip.playlist.take(index)) {
+        before += s.span;
+      }
+      var heard =
+          clip.at + (before + position - clip.playlist[index].start) * rate;
+      var ahead = (heard - (at + into)) / rate;
+      if (ahead.abs() > 0.25) return;
+      _clockShift += ahead * 0.1;
+      return;
+    }
   }
 
   void pause() {
@@ -2171,14 +2347,23 @@ class CanvasController extends ChangeNotifier {
   /// Playback is a real timer, and a test that waited on one would be a test
   /// that takes seconds to say something about arithmetic.
   @visibleForTesting
-  void tickForTest() => _tick();
+  void tickForTest() => _step();
 
-  /// _tick advances one frame and obeys whatever marker is on the new one.
+  /// clockForTest stands in for the playback clock, in microseconds since
+  /// Play, and tickClockForTest is a tick of the timer against it -- so a
+  /// test can make a tick late without waiting for one to be.
+  @visibleForTesting
+  int Function()? clockForTest;
+
+  @visibleForTesting
+  void tickClockForTest() => _tick(0);
+
+  /// _step advances one frame and obeys whatever marker is on the new one.
   ///
   /// The markers are applied after the advance rather than before, so a stop
   /// marker on frame 30 means "having reached 30, stop" -- which is what
   /// putting a marker on a frame looks like it should mean.
-  void _tick() {
+  void _step() {
     // Watching a transition: the playhead is running through the whole
     // document rather than through the scene, and it stops at the end of the
     // stretch that was asked for rather than looping.
@@ -2659,9 +2844,13 @@ class CanvasController extends ChangeNotifier {
     var a = _audio;
     if (a == null) return;
     bool media(CanvasElement e) => e is AudioElement || e is VideoElement;
+    // On the master's timeline, a clip runs on the run's clock under every
+    // scene, so a turn is nothing to it. Stopped at the turn, it was started
+    // again at once by the timeline -- heard as a restart, or as itself
+    // twice over.
     bool carries(CanvasElement e) => switch (e) {
-          AudioElement e => e.clip.acrossPages,
-          VideoElement e => e.clip.acrossPages,
+          AudioElement e => e.clip.acrossPages || e.clip.timed,
+          VideoElement e => e.clip.acrossPages || e.clip.timed,
           _ => false,
         };
     // The background's too: what is drawn is what plays. A master's shared
@@ -2717,17 +2906,57 @@ class CanvasController extends ChangeNotifier {
   /// (the start of this scene in the run, for media that follows the run),
   /// and whether it can be changed from here.
   List<TimedLane> get timedLanes {
-    var here = {for (var e in _document.elements) e.id};
-    var backdrop = {for (var e in _document.drawnBackground.media) e.id};
-    return [
+    var document = _document;
+    var here = {for (var e in document.elements) e.id};
+    var backdrop = {for (var e in document.drawnBackground.media) e.id};
+    var onMaster = document.editingMaster;
+    var fromMaster = onMaster || document.sharedBackdrop;
+    // Which canvas each clip is on, for the strip's label: the master, or the
+    // scene being edited.
+    int sceneOf(CanvasElement e) => onMaster ||
+            (!here.contains(e.id) && !backdrop.contains(e.id)) ||
+            (backdrop.contains(e.id) && fromMaster)
+        ? -1
+        : document.at;
+    // While every scene plays, every clip on the timeline can be moved and
+    // trimmed from it -- the master's included, wherever it is seen from.
+    var lanes = [
       for (var (e, at) in _timedOnScreen)
         TimedLane(
           e,
           offset: at - _frame,
-          editable: here.contains(e.id) || backdrop.contains(e.id),
+          editable:
+              allChannels || here.contains(e.id) || backdrop.contains(e.id),
+          scene: sceneOf(e),
         ),
     ];
+    // Every other scene's as well, where that has been asked for: each at its
+    // place in the run, to be seen against the rest -- and moved, trimmed
+    // and cut from here, held to its own scene. Not played from here: a
+    // clip is played on its own scene.
+    if (allChannels && document.hasScenes) {
+      var base = onMaster ? 0 : document.startOfScene(document.at);
+      for (var (i, scene) in document.allScenes.indexed) {
+        if (!onMaster && i == document.at) continue;
+        var offset = base - document.startOfScene(i);
+        for (var e in scene.elements) {
+          var clip = switch (e) {
+            VideoElement v when !v.isLink => v.clip,
+            AudioElement a => a.clip,
+            _ => null,
+          };
+          if (clip == null || !clip.timed || clip.isEmpty) continue;
+          lanes.add(TimedLane(e, offset: offset, scene: i));
+        }
+      }
+    }
+    return lanes;
   }
+
+  /// allChannels is whether the timeline lists every scene's channels, or
+  /// only the scene being edited and the master's. It is Play all scenes:
+  /// watching the whole run is when every scene's sound is wanted in view.
+  bool get allChannels => _playAll;
 
   /// timelineReach is how many frames the timeline shows: the scene's, or
   /// further where a clip on it runs on past the scene's end -- so the rest
@@ -2754,9 +2983,57 @@ class CanvasController extends ChangeNotifier {
     for (var lane in timedLanes) {
       (by[lane.channelKey] ??= []).add(lane);
     }
-    return [
+    var found = [
       for (var entry in by.entries) TimelineChannel(entry.key, entry.value),
     ];
+    // By scene -- S1, S2, S3, with the master's last -- and in the order
+    // each was first met within a scene. The scene being edited used to come
+    // first, so the list reshuffled itself at every turn of the page.
+    var met = {for (var (i, c) in found.indexed) c.key: i};
+    int rank(TimelineChannel c) {
+      var scene = c.first.scene;
+      return scene < 0 ? 1 << 20 : scene;
+    }
+
+    found.sort((a, b) {
+      var by = rank(a).compareTo(rank(b));
+      return by != 0 ? by : met[a.key]!.compareTo(met[b.key]!);
+    });
+    if (_channelOrder.isEmpty) return found;
+    // Then as they have been dragged into: the channels that have been
+    // placed take the places such channels have in that order, among
+    // themselves, and a channel never placed keeps its own.
+    var placed = {for (var (i, k) in _channelOrder.indexed) k: i};
+    var moved = [
+      for (var c in found)
+        if (placed.containsKey(c.key)) c
+    ]..sort((a, b) => placed[a.key]!.compareTo(placed[b.key]!));
+    var next = 0;
+    return [
+      for (var c in found) placed.containsKey(c.key) ? moved[next++] : c,
+    ];
+  }
+
+  /// _channelOrder is the order channels have been dragged into, by key.
+  /// Where somebody is working, not what they made, so it is not saved.
+  List<String> _channelOrder = const [];
+
+  /// moveChannel puts the channel [key] at [to] in the list -- the strip
+  /// dragged up or down.
+  void moveChannel(String key, int to) {
+    var keys = [for (var c in timelineChannels) c.key];
+    var from = keys.indexOf(key);
+    if (from < 0) return;
+    keys.removeAt(from);
+    keys.insert(to.clamp(0, keys.length).toInt(), key);
+    // The ones not in view now -- another scene's, with every scene off --
+    // keep the places they were given.
+    _channelOrder = [
+      ...keys,
+      for (var k in _channelOrder)
+        if (!keys.contains(k)) k,
+    ];
+    notifyListeners();
   }
 
   /// channelLevels is how loud [channel] is now: the loudest of its sounds,
@@ -2784,8 +3061,9 @@ class CanvasController extends ChangeNotifier {
         _ => null,
       };
       if (changed == null) continue;
-      if (next.elements.any((x) => x.id == e.id)) {
-        next = next.withElement(changed);
+      var anywhere = _replacedAnywhere(next, changed);
+      if (anywhere != null) {
+        next = anywhere;
       } else if (changes.length == 1) {
         setTimedClip(e, clip, transient: transient);
         return;
@@ -2814,6 +3092,9 @@ class CanvasController extends ChangeNotifier {
       {bool transient = false}) {
     var e = lane.element;
     if ((e is! AudioElement && e is! VideoElement) || !lane.editable) return;
+    // Onto a channel of its own canvas: a channel is the clips on it, and
+    // one holding a scene's clip and the master's would be two canvases'.
+    if (to != null && to.first.scene != lane.scene) return;
     var clip = lane.clip;
     var moved = to == null
         ? clip.copyWith(
@@ -2836,7 +3117,6 @@ class CanvasController extends ChangeNotifier {
         e.locked) {
       return false;
     }
-    if (!_document.elements.any((x) => x.id == e.id)) return false;
     var clip = lane.clip;
     CanvasElement withClip(MediaClip c) => switch (e) {
           VideoElement v => v.copyWith(clip: c),
@@ -2874,8 +3154,15 @@ class CanvasController extends ChangeNotifier {
                 fadeIn: 0,
                 at: clip.at + (into * rate).round()))
             .withId(newElementId());
-        apply(_document.withElement(first).addElement(second));
-        selectOnly(second.id);
+        var replaced = _replacedAnywhere(_document, first);
+        var both =
+            replaced == null ? null : _addedBeside(replaced, first.id, second);
+        if (both == null) return false;
+        apply(both);
+        // Picked where it can be: on the canvas being edited.
+        if (_document.elements.any((x) => x.id == second.id)) {
+          selectOnly(second.id);
+        }
         return true;
       }
       from += span;
@@ -2915,8 +3202,9 @@ class CanvasController extends ChangeNotifier {
   bool cutAtPlayhead() {
     var keys = {..._selectedChannels};
     if (keys.isEmpty) {
+      var picked = clipSelection;
       for (var lane in timedLanes) {
-        if (_selection.contains(lane.element.id)) keys.add(lane.channelKey);
+        if (picked.contains(lane.element.id)) keys.add(lane.channelKey);
       }
     }
     var cut = false;
@@ -2938,9 +3226,8 @@ class CanvasController extends ChangeNotifier {
     var next = _document;
     for (var lane in channel.lanes) {
       if (!lane.editable) continue;
-      if (next.elements.any((e) => e.id == lane.element.id)) {
-        next = next.withElement(lane.element.withBase(locked: locked));
-      }
+      next = _replacedAnywhere(next, lane.element.withBase(locked: locked)) ??
+          next;
     }
     apply(next);
   }
@@ -3036,8 +3323,9 @@ class CanvasController extends ChangeNotifier {
       _ => null,
     };
     if (next == null) return;
-    if (_document.elements.any((x) => x.id == e.id)) {
-      replaceElement(next, transient: transient);
+    var anywhere = _replacedAnywhere(_document, next);
+    if (anywhere != null) {
+      apply(anywhere, transient: transient);
       return;
     }
     var bg = _document.drawnBackground;
@@ -3046,6 +3334,72 @@ class CanvasController extends ChangeNotifier {
     } else if (bg.sound?.id == e.id && next is AudioElement) {
       setBackground(bg.copyWith(sound: next), transient: transient);
     }
+  }
+
+  /// _replacedAnywhere is [doc] with [next] in place of the element of its
+  /// id, wherever that is: the canvas being edited, the master seen from a
+  /// scene, or another scene -- or null where it is none of them. What lets
+  /// the timeline change any clip on it while every scene plays.
+  ///
+  /// A clip on a scene is held to that scene: it starts no earlier than the
+  /// scene's first frame and no later than its last. The master's runs the
+  /// length of the whole run, and goes where it is put.
+  CanvasDocument? _replacedAnywhere(CanvasDocument doc, CanvasElement next) {
+    List<CanvasElement> swapped(List<CanvasElement> list) =>
+        [for (var e in list) e.id == next.id ? next : e];
+    CanvasElement held(CanvasElement e, int frames) => switch (e) {
+          VideoElement v when v.clip.timed => v.copyWith(
+              clip: v.clip.copyWith(
+                  at: v.clip.at.clamp(0, math.max(0, frames - 1)).toInt())),
+          AudioElement a when a.clip.timed => a.copyWith(
+              clip: a.clip.copyWith(
+                  at: a.clip.at.clamp(0, math.max(0, frames - 1)).toInt())),
+          _ => e,
+        };
+    var onMaster = doc.editingMaster;
+    if (doc.elements.any((x) => x.id == next.id)) {
+      return doc.withElement(onMaster ? next : held(next, doc.frames));
+    }
+    var master = doc.master;
+    if (!onMaster &&
+        master != null &&
+        master.elements.any((x) => x.id == next.id)) {
+      return doc.copyWith(
+          master: master.copyWith(elements: swapped(master.elements)));
+    }
+    for (var (i, scene) in doc.allScenes.indexed) {
+      if (!onMaster && i == doc.at) continue;
+      if (!scene.elements.any((x) => x.id == next.id)) continue;
+      next = held(next, scene.frames);
+      return doc.withScene(
+          i, scene.copyWith(elements: swapped(scene.elements)));
+    }
+    return null;
+  }
+
+  /// _addedBeside is [doc] with [added] put on whichever canvas [besideId]
+  /// is on, just after it -- the second half of a clip cut in two.
+  CanvasDocument? _addedBeside(
+      CanvasDocument doc, String besideId, CanvasElement added) {
+    List<CanvasElement> after(List<CanvasElement> list) => [
+          for (var e in list) ...[e, if (e.id == besideId) added],
+        ];
+    if (doc.elements.any((x) => x.id == besideId)) {
+      return doc.addElement(added);
+    }
+    var master = doc.master;
+    if (!doc.editingMaster &&
+        master != null &&
+        master.elements.any((x) => x.id == besideId)) {
+      return doc.copyWith(
+          master: master.copyWith(elements: after(master.elements)));
+    }
+    for (var (i, scene) in doc.allScenes.indexed) {
+      if (!doc.editingMaster && i == doc.at) continue;
+      if (!scene.elements.any((x) => x.id == besideId)) continue;
+      return doc.withScene(i, scene.copyWith(elements: after(scene.elements)));
+    }
+    return null;
   }
 
   int? _timedFrame(String id) {
@@ -3072,8 +3426,8 @@ class CanvasController extends ChangeNotifier {
   void _syncTimeline() {
     _applyMix();
     var going = playing;
-    for (var (e, at) in _timedOnScreen) {
-      var moment = _momentOf(e, at);
+    for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {
+      var moment = at == null ? null : _momentOf(e, at);
       switch (e) {
         case VideoElement v:
           video.cue(v, moment, playing: going);
@@ -3081,6 +3435,77 @@ class CanvasController extends ChangeNotifier {
           audio.cue(a, moment, playing: going);
       }
     }
+  }
+
+  /// _joinedCuts is the timeline's sounds as they are played: a sound cut in
+  /// two, its halves still end to end on one channel, is played as the one
+  /// sound it was. The second half is cued with nothing, and the first runs
+  /// on through the join.
+  ///
+  /// Played as two, the first half stopped and the second started at the
+  /// cut, and neither on the sample: the playhead moves a frame at a time,
+  /// so the first ran a little past the cut -- into what the second then
+  /// played again -- and the second started a little late. Heard as a skip
+  /// in the middle of what had been one clip.
+  ///
+  /// Only where nothing would be lost by it: the same file, the second
+  /// starting in it where the first stops and on the timeline where the
+  /// first ends, no fade at the join, neither looping. The level is whichever
+  /// half the playhead is in, so each half's volume line still holds.
+  List<(CanvasElement, int?)> _joinedCuts(List<(CanvasElement, int)> items) {
+    var rate = math.max(1, _document.frameRate);
+    bool joins(AudioElement a, AudioElement b) {
+      var x = a.clip, y = b.clip;
+      if (x.channel.isEmpty || x.channel != y.channel) return false;
+      if (x.playlist.length != 1 || y.playlist.length != 1) return false;
+      if (x.loop != MediaLoop.none || y.loop != MediaLoop.none) return false;
+      if (x.fadeOut > 0 || y.fadeIn > 0 || x.muted != y.muted) return false;
+      var s = x.playlist.single, t = y.playlist.single;
+      if (s.assetId != t.assetId || s.end <= 0) return false;
+      if ((t.start - s.end).abs() > 0.002) return false;
+      return (y.at - (x.at + s.span * rate)).abs() <= 1;
+    }
+
+    var out = <(CanvasElement, int?)>[];
+    var sounds = <int, List<AudioElement>>{};
+    for (var (e, at) in items) {
+      if (e is AudioElement && e.clip.timed) {
+        (sounds[at] ??= []).add(e);
+      } else {
+        out.add((e, at));
+      }
+    }
+    for (var MapEntry(key: at, value: list) in sounds.entries) {
+      list.sort((a, b) => a.clip.at.compareTo(b.clip.at));
+      var used = <String>{};
+      for (var (i, head) in list.indexed) {
+        if (!used.add(head.id)) continue;
+        var chain = [head];
+        for (var next in list.skip(i + 1)) {
+          if (used.contains(next.id) || !joins(chain.last, next)) continue;
+          chain.add(next);
+          used.add(next.id);
+        }
+        if (chain.length == 1) {
+          out.add((head, at));
+          continue;
+        }
+        var here = chain.lastWhere((c) => c.clip.at <= at, orElse: () => head);
+        var whole = head.clip.copyWith(
+          playlist: [
+            head.clip.playlist.single
+                .copyWith(end: chain.last.clip.playlist.single.end),
+          ],
+          fadeOut: chain.last.clip.fadeOut,
+          volume: here.clip.volume,
+        );
+        out.add((head.copyWith(clip: whole), at));
+        for (var rest in chain.skip(1)) {
+          out.add((rest, null));
+        }
+      }
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------------
@@ -3982,7 +4407,16 @@ class TimedLane {
   /// changed on the master, where it lives.
   final bool editable;
 
-  const TimedLane(this.element, {this.offset = 0, this.editable = true});
+  /// scene is which canvas the clip is on: -1 for the master, and otherwise
+  /// the scene's place in the list.
+  final int scene;
+
+  const TimedLane(this.element,
+      {this.offset = 0, this.editable = true, this.scene = -1});
+
+  /// sceneLabel is the scene, as the channel strip names it: M for the
+  /// master, S1 for the first scene.
+  String get sceneLabel => scene < 0 ? "M" : "S${scene + 1}";
 
   MediaClip get clip => switch (element) {
         VideoElement v => v.clip,
@@ -4012,6 +4446,10 @@ class TimelineChannel {
 
   bool get editable => lanes.any((l) => l.editable);
   bool get video => first.element is VideoElement;
+
+  /// sceneLabel is which canvas the channel's clips are on -- see
+  /// TimedLane.sceneLabel.
+  String get sceneLabel => first.sceneLabel;
 
   /// locked is whether every sound on it is locked -- see lockChannel.
   bool get locked => lanes.every((l) => l.element.locked);

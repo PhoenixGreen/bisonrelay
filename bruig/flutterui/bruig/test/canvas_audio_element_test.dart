@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -326,6 +327,164 @@ void main() {
           reason: "set to keep playing across pages");
       expect(c.audio.isPlaying("chime"), isFalse,
           reason: "set to stop at the join");
+    });
+
+    // A clip on the master's timeline runs on the run's clock under every
+    // scene. Stopped at each turn, the timeline started it again at once --
+    // heard as a restart, or as itself twice over.
+    test("a sound on the master's timeline plays on through every scene",
+        () async {
+      var music = AudioElement(const ElementBase(id: "music", visible: false),
+          clip: const MediaClip(
+              timed: true,
+              acrossPages: false,
+              playlist: [MediaSource(assetId: song, name: song, length: 30)]));
+      var doc = CanvasDocument(
+        frameRate: 10,
+        scenes: const [
+          CanvasScene(id: "one", frames: 10),
+          CanvasScene(id: "two", frames: 10),
+        ],
+        master: CanvasScene(id: "m", elements: [music]),
+        masterOn: true,
+      );
+      var c = with_(doc);
+      c.playAll = true;
+      c.play();
+      for (var i = 0; i < 15; i++) {
+        c.tickForTest();
+        await pumpEventQueue();
+      }
+      expect(c.sceneAt, 1, reason: "past the turn");
+      var heard = [
+        for (var v in engine.voices)
+          if (path.basename(v.track.path) == song) v
+      ];
+      expect(heard, hasLength(1),
+          reason: "started once, not again at the turn");
+      expect(heard.single.alive, isTrue);
+      c.pause();
+    });
+
+    // A sound cut in two is played as the one sound it was: no stop and
+    // start at the cut, which the playhead -- a frame at a time -- never
+    // made on the sample, and which was heard as a skip.
+    test("a cut sound plays on through the cut as one", () async {
+      var music = AudioElement(const ElementBase(id: "music", visible: false),
+          clip: const MediaClip(
+              timed: true,
+              channel: "ch1",
+              channelName: "Channel 1",
+              playlist: [MediaSource(assetId: song, name: song, length: 30)]));
+      var c =
+          with_(CanvasDocument(frames: 200, frameRate: 10, elements: [music]));
+      expect(c.splitClip(c.timedLanes.single, 20), isTrue);
+      c.frame = 15;
+      c.play();
+      for (var i = 0; i < 12; i++) {
+        c.tickForTest();
+        await pumpEventQueue();
+      }
+      expect(c.frame, 27, reason: "past the cut");
+      expect(engine.voices, hasLength(1),
+          reason: "one sound, not stopped and started again at the cut");
+      expect(engine.voices.single.alive, isTrue);
+      expect(c.audio.isPlaying(c.document.elements.last.id), isFalse,
+          reason: "the second half is played by the first");
+      c.pause();
+    });
+
+    // Stopped, a sound on the timeline is brought down and stopped rather
+    // than paused -- a pause cuts it off mid-swing, a click -- and played
+    // again it starts where the playhead now is, from nothing, so nothing of
+    // the old place or the old level is heard: the spike at a fade's start.
+    test("stopped and played again, a sound fades out and back in", () async {
+      var music = AudioElement(const ElementBase(id: "music", visible: false),
+          clip: const MediaClip(
+              timed: true,
+              fadeIn: 2,
+              playlist: [MediaSource(assetId: song, name: song, length: 30)]));
+      var c =
+          with_(CanvasDocument(frames: 200, frameRate: 10, elements: [music]));
+      c.frame = 50;
+      c.play();
+      await pumpEventQueue();
+      c.tickForTest();
+      await pumpEventQueue();
+      c.pause();
+      await pumpEventQueue();
+      var first = engine.voices.single;
+      expect(
+          engine.softStops.map((s) => (s.$1, s.$2)), [(first, declickSeconds)],
+          reason: "brought down, not cut off");
+
+      c.frame = 5; // half a second into the two-second rise
+      c.play();
+      await pumpEventQueue();
+      var again = engine.last;
+      expect(again, isNot(same(first)));
+      expect(again.at, closeTo(0.5, 0.01), reason: "where the playhead is");
+      expect(again.volume, lessThan(0.5),
+          reason: "at the fade's level, not the old one");
+      c.pause();
+    });
+
+    // The sound plays by the sound card's clock, which does not run at quite
+    // the computer's speed. Over a long track the two drifted apart until
+    // the sound was moved back to the playhead: a skip part way through.
+    // The playhead keeps with the sound instead, and the sound is never
+    // moved for drift.
+    test("a long track is never moved for drift; the playhead keeps with it",
+        () async {
+      var music = AudioElement(const ElementBase(id: "music", visible: false),
+          clip: const MediaClip(
+              timed: true,
+              playlist: [MediaSource(assetId: song, name: song, length: 30)]));
+      var c =
+          with_(CanvasDocument(frames: 3600, frameRate: 10, elements: [music]));
+      var now = 0;
+      c.clockForTest = () => now;
+      c.play();
+      await pumpEventQueue();
+      var voice = engine.voices.single;
+      var moved = 0;
+      // Twenty-five seconds of a thirty-second file, the sound card running
+      // two percent slow: half a second apart by the end, unfollowed.
+      for (var i = 1; i <= 250; i++) {
+        now = i * 100000;
+        var heard = i * 0.1 * 0.98;
+        voice.at = heard;
+        c.tickClockForTest();
+        if ((voice.at - heard).abs() > 1e-9) moved++;
+      }
+      expect(moved, 0, reason: "the sound is never pulled back to the picture");
+      expect(c.frame / 10, closeTo(voice.at, 0.2),
+          reason: "the picture is with the sound");
+      c.pause();
+    });
+
+    // A scene's clip running on past the scene stops at the turn -- brought
+    // down, not cut off, which was a click.
+    test("a scene's sound is faded out at the turn, not cut off", () async {
+      var talk = AudioElement(const ElementBase(id: "talk", visible: false),
+          clip: const MediaClip(
+              timed: true,
+              playlist: [MediaSource(assetId: song, name: song, length: 30)]));
+      var c = with_(CanvasDocument(frameRate: 10, scenes: [
+        CanvasScene(id: "one", frames: 10, elements: [talk]),
+        const CanvasScene(id: "two", frames: 10),
+      ]));
+      c.playAll = true;
+      c.play();
+      for (var i = 0; i < 12; i++) {
+        c.tickForTest();
+        await pumpEventQueue();
+      }
+      expect(c.sceneAt, 1);
+      var voice = engine.voices.single;
+      expect(voice.alive, isFalse);
+      expect(engine.softStops.map((s) => s.$1), [voice]);
+      c.pause();
     });
 
     test("playing starts what starts by itself, on a still page too", () async {

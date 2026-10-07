@@ -925,14 +925,17 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var muted = TextStyle(fontSize: 10, color: colors.onSurfaceVariant);
     var frames = _total;
     var whole = _viewNow.isWhole(frames);
+    // Big enough to hit: they were fifteen-pixel icons with a pixel round
+    // them, which is a target to aim at rather than a button to press.
     Widget zoom(String key, IconData icon, VoidCallback? onTap) => InkResponse(
           key: ValueKey(key),
-          radius: 12,
+          radius: 14,
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(1),
+          child: SizedBox(
+            width: 24,
+            height: 24,
             child: Icon(icon,
-                size: 15,
+                size: 19,
                 color: onTap == null
                     ? colors.onSurfaceVariant.withValues(alpha: 0.35)
                     : colors.onSurfaceVariant),
@@ -954,13 +957,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           // Narrowed, it keeps what it has room for: the zoom out and in
           // first, then the one button.
           child: Row(children: [
-            if (controller.headerWidth >= 52)
+            if (controller.headerWidth >= 60)
               zoom("timelineZoomOut", Icons.zoom_out,
                   whole ? null : () => _zoomBy(0.5)),
-            if (controller.headerWidth >= 96 || controller.headerWidth < 52)
+            if (controller.headerWidth >= 100 ||
+                (controller.headerWidth < 60 && controller.headerWidth >= 34))
               zoom("timelineZoomFit", Icons.fit_screen_outlined,
                   whole ? null : () => _setView(TimelineView.whole(frames))),
-            if (controller.headerWidth >= 52)
+            if (controller.headerWidth >= 60)
               zoom(
                   "timelineZoomIn",
                   Icons.zoom_in,
@@ -968,7 +972,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       ? null
                       : () => _zoomBy(2)),
             const Spacer(),
-            if (!whole && controller.headerWidth >= 130)
+            if (!whole && controller.headerWidth >= 170)
               Text(
                   "${(frames / _viewNow.span).toStringAsFixed(frames / _viewNow.span < 10 ? 1 : 0)}×",
                   style: muted),
@@ -1024,8 +1028,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// runs every scene, so what is playing, and how long each scene is, can
   /// be seen -- and changed -- as it plays. The timeline grows by the strip
   /// rather than taking it from the channels. See CanvasSceneStrip.
-  bool get _showScenes =>
-      controller.playAll && controller.document.hasScenes && !_collapsed;
+  bool get _showScenes => _runs && !_collapsed;
 
   Widget _body(
       BuildContext context,
@@ -1066,7 +1069,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       key: const ValueKey("toFirstFrame"),
                       icon: Icons.skip_previous,
                       tooltip: "",
-                      onPressed: controller.stop,
+                      onPressed: controller.rewind,
                     ),
                     CanvasIconButton(
                       icon: controller.playing ? Icons.pause : Icons.play_arrow,
@@ -1095,13 +1098,15 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       ),
                     CanvasIconButton(
                       icon: Icons.chevron_left,
+                      key: const ValueKey("previousFrame"),
                       tooltip: "Previous frame",
-                      onPressed: () => controller.frame = controller.frame - 1,
+                      onPressed: () => controller.stepFrame(-1),
                     ),
                     CanvasIconButton(
                       icon: Icons.chevron_right,
+                      key: const ValueKey("nextFrame"),
                       tooltip: "Next frame",
-                      onPressed: () => controller.frame = controller.frame + 1,
+                      onPressed: () => controller.stepFrame(1),
                     ),
                     // And to the next mark rather than the next frame. Stepping a
                     // frame at a time to reach a keyframe eighty frames away is

@@ -142,7 +142,8 @@ void main() {
           reason: "the first channel sits close under the strip");
     });
 
-    // A channel's strip: an edge in its colour, A1, its name when there is
+    // A channel's strip: an edge in its colour, S1 (the scene its clips are
+    // on), its name when there is
     // room for a second line (double-clicked to rename it), its level, and
     // lock, solo and mute.
     testWidgets(
@@ -152,7 +153,7 @@ void main() {
       var strip = find.byKey(const ValueKey("channelStrip-a"));
       Finder inStrip(String key) =>
           find.descendant(of: strip, matching: find.byKey(ValueKey(key)));
-      expect(find.descendant(of: strip, matching: find.text("A1")), findsOne);
+      expect(find.descendant(of: strip, matching: find.text("S1")), findsOne);
       expect(inStrip("channelName"), findsNothing,
           reason: "the name only once the lane is tall enough");
       // Its level as a number, which takes a typed one.
@@ -810,7 +811,7 @@ void main() {
       c.headerWidth = 40;
       await tester.pump();
       expect(has("channelMute"), isFalse);
-      expect(find.descendant(of: strip, matching: find.text("A1")), findsOne,
+      expect(find.descendant(of: strip, matching: find.text("S1")), findsOne,
           reason: "and it is its code");
     });
   });

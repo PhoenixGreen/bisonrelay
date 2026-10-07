@@ -239,7 +239,9 @@ void main() {
       c.play();
       await settle();
       expect(c.audio.isPlaying("bed"), isTrue);
-      expect(engine.last.at, closeTo(20 / 25, 1e-9));
+      // Plus however long the file took to open, which the sound makes up so
+      // it is not behind the playhead -- a fraction of a millisecond here.
+      expect(engine.last.at, closeTo(20 / 25, 0.01));
       c.pause();
     });
 

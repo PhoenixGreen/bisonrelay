@@ -92,6 +92,11 @@ abstract class AudioEngine {
 
   void stop(AudioVoice voice);
 
+  /// stopSoftly brings [voice] down to nothing over [fade] seconds and then
+  /// stops it, both on the sound card's own clock. A sound stopped outright
+  /// is cut mid-swing, which is a click.
+  void stopSoftly(AudioVoice voice, double fade);
+
   void close(AudioTrack track);
 
   /// peaks is the shape of the sound in the file at [path]: [count] values,
@@ -395,6 +400,26 @@ class SoLoudAudioEngine implements AudioEngine {
   void stop(AudioVoice voice) {
     var handle = (voice as _SoLoudVoice).handle;
     if (_soloud.getIsValidVoiceHandle(handle)) unawaited(_soloud.stop(handle));
+  }
+
+  /// _bufferSeconds is how much sound SoLoud mixes at a time: the default
+  /// 2048 frames at 44.1 kHz. A fade and a scheduled stop are only looked
+  /// at once a buffer, and the level is ramped across the buffer toward
+  /// wherever the fade has got by then.
+  static const double _bufferSeconds = 2048 / 44100;
+
+  @override
+  void stopSoftly(AudioVoice voice, double fade) {
+    var handle = (voice as _SoLoudVoice).handle;
+    if (!_soloud.getIsValidVoiceHandle(handle)) return;
+    _soloud.fadeVolume(handle, 0, _duration(fade));
+    // Stopped two buffers after the fade is due to end, not as it ends. The
+    // stop is acted on at the start of a buffer, and a fade shorter than a
+    // buffer has only been ramped part of the way down by then -- so a stop
+    // timed with it cut the sound off at that level, which is the click it
+    // was there to prevent. Two buffers on, a whole buffer has ramped it to
+    // nothing first; in between it is silent.
+    _soloud.scheduleStop(handle, _duration(fade + 2 * _bufferSeconds));
   }
 
   @override

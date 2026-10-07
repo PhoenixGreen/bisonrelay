@@ -203,7 +203,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         _boxFrom = global;
         _boxTo = null;
         var adding = HardwareKeyboard.instance.isShiftPressed;
-        _boxBase = adding ? {...controller.selection} : {};
+        _boxBase = adding ? {...controller.clipSelection} : {};
         _boxChannels = adding ? {...controller.selectedChannels} : {};
       }
       return;
@@ -268,13 +268,11 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         var a = left + _view.xOf(span.from, width);
         var b = left + _view.xOf(span.to, width);
         if (b < box.left || a > box.right) continue;
-        if (controller.document.elements.any((e) => e.id == lane.element.id)) {
-          ids.add(lane.element.id);
-        }
+        if (_canPick(lane)) ids.add(lane.element.id);
         keys.add(channel.key);
       }
     }
-    controller.selectMany(ids);
+    controller.pickClips(ids);
     controller.selectChannels(keys);
     setState(() {});
   }
@@ -294,7 +292,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     // Shift adds a sound to what is picked, or takes it out, and its
     // channel with it.
     if (shift && controller.timelineTool == TimelineTool.select) {
-      controller.toggleSelected(lane.element.id);
+      if (_canPick(lane)) controller.pickClip(lane.element.id, toggle: true);
       controller.toggleChannel(channel.key);
       return;
     }
@@ -310,11 +308,17 @@ class _CanvasChannelsState extends State<CanvasChannels> {
 
   /// _pick selects [lane]'s sound, where it is one on this canvas, so its
   /// settings are the ones on screen.
+  ///
+  /// Wherever it is, while every scene plays and any clip can be changed: a
+  /// clip on another canvas is lit as picked, though its settings stay on
+  /// its own canvas. Otherwise only one on this canvas.
   void _pick(TimedLane lane) {
-    if (controller.document.elements.any((e) => e.id == lane.element.id)) {
-      controller.selectOnly(lane.element.id);
-    }
+    if (_canPick(lane)) controller.pickClip(lane.element.id);
   }
+
+  bool _canPick(TimedLane lane) =>
+      controller.allChannels ||
+      controller.document.elements.any((e) => e.id == lane.element.id);
 
   /// _snapped is [frames] nudged so that [edge] + frames lands on a second
   /// or on the playhead, where one is within reach -- or [frames] as it is.
@@ -350,7 +354,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       controller.pause();
       controller.beginInteraction();
       // One of several picked, moved: all of them go, together.
-      var picked = controller.selection;
+      var picked = controller.clipSelection;
       _group = picked.length > 1 &&
               picked.contains(lane.element.id) &&
               _grip == _Grip.move
@@ -397,7 +401,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         if (_group.isEmpty) {
           var over = _laneUnder(global);
           var own = lane.channelKey;
-          _over = over == own ? null : over;
+          // Only onto a channel of the same canvas -- see moveClipToChannel.
+          var to = controller.timelineChannels
+              .where((c) => c.key == over)
+              .firstOrNull;
+          _over = over == own || (to != null && to.first.scene != lane.scene)
+              ? null
+              : over;
         }
       case _Grip.start:
         // Trimming the front moves the start of the first file's range and
@@ -518,19 +528,22 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        var channels = controller.timelineChannels;
+        var channels = _withMoving(controller.timelineChannels);
         var width = controller.headerWidth;
-        var audio = 0, video = 0;
         return Stack(key: _stack, children: [
           ListView(
             padding: EdgeInsets.zero,
             children: [
               for (var channel in channels)
                 _row(channel.key, _heightOf(channel.key), width,
+                    moving: channel.key == _moving,
                     header: _ChannelHeader(
                       key: ValueKey("channelStrip-${channel.key}"),
                       channel: channel,
-                      label: channel.video ? "V${++video}" : "A${++audio}",
+                      // Which canvas its clips are on -- M for the master,
+                      // S1 for the first scene -- beside the band whose
+                      // colour says sound or video.
+                      label: channel.sceneLabel,
                       width: width,
                       height: _heightOf(channel.key),
                       selected:
@@ -560,6 +573,12 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           (_gripHeight + y - _gripFrom)
                               .clamp(_laneMin, _laneMax)
                               .toDouble()),
+                      onMoveStart: (_) => _startMove(channels, channel.key),
+                      onMove: (y) {
+                        var to = _slotAt(y);
+                        if (to != _moveTo) setState(() => _moveTo = to);
+                      },
+                      onMoveEnd: _endMove,
                     ),
                     lane: _lane(channel, theme)),
               _row(_newLane, channelsLaneHeight, width,
@@ -575,6 +594,67 @@ class _CanvasChannelsState extends State<CanvasChannels> {
         ]);
       },
     );
+  }
+
+  /// _moving is the channel whose strip is being dragged up or down, and
+  /// _moveTo where in the list it would go. The list is shown in that order
+  /// while it is dragged -- see _withMoving -- so the channel is seen going
+  /// where it will be put.
+  String? _moving;
+  int? _moveTo;
+
+  /// _rowsAtStart is the middle of each other channel's row when the drag
+  /// began, by which the pointer is placed. Measured once: the rows move as
+  /// the list is shown in its new order, and measuring them as they moved
+  /// would have the channel chase its own reflection.
+  List<double> _rowsAtStart = const [];
+
+  void _startMove(List<TimelineChannel> channels, String key) {
+    var mids = <double>[];
+    var at = 0;
+    for (var (i, c) in channels.indexed) {
+      if (c.key == key) {
+        at = i;
+        continue;
+      }
+      var box = _keyFor(c.key).currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.attached) continue;
+      mids.add(box.localToGlobal(Offset.zero).dy + box.size.height / 2);
+    }
+    setState(() {
+      _moving = key;
+      _moveTo = at;
+      _rowsAtStart = mids;
+    });
+  }
+
+  /// _slotAt is where in the list, without the channel being moved, a
+  /// pointer at [y] would put it: after every row whose middle it is below.
+  int _slotAt(double y) => _rowsAtStart.where((mid) => y > mid).length;
+
+  /// _withMoving is [channels] in the order the drag would leave them.
+  List<TimelineChannel> _withMoving(List<TimelineChannel> channels) {
+    var key = _moving, to = _moveTo;
+    if (key == null || to == null) return channels;
+    var moving = channels.where((c) => c.key == key).firstOrNull;
+    if (moving == null) return channels;
+    var rest = [
+      for (var c in channels)
+        if (c.key != key) c
+    ];
+    rest.insert(to.clamp(0, rest.length).toInt(), moving);
+    return rest;
+  }
+
+  void _endMove() {
+    var key = _moving, to = _moveTo;
+    setState(() {
+      _moving = null;
+      _moveTo = null;
+      _rowsAtStart = const [];
+    });
+    if (key == null || to == null) return;
+    controller.moveChannel(key, to);
   }
 
   Widget _boxOverlay(ThemeNotifier theme) {
@@ -597,15 +677,55 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   Widget _row(String channel, double height, double width,
-          {required Widget header, required Widget lane}) =>
-      SizedBox(
-        key: _keyFor(channel),
-        height: height,
-        child: Row(children: [
-          SizedBox(width: width, child: header),
-          Expanded(child: lane),
-        ]),
-      );
+      {required Widget header, required Widget lane, bool moving = false}) {
+    var row = Row(children: [
+      SizedBox(width: width, child: header),
+      Expanded(child: lane),
+    ]);
+    var colors = ThemeNotifier.of(context).colors;
+    return SizedBox(
+      key: _keyFor(channel),
+      height: height,
+      // The channel being moved, lit across the whole of it -- its strip and
+      // its lane -- so it is plain which one is going where. Always in a
+      // Stack, lit or not: changing what the row is built from as the drag
+      // began threw away the strip the drag had started on, and with it the
+      // drag.
+      child: Stack(children: [
+        Positioned.fill(child: row),
+        if (moving)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                key: const ValueKey("channelMoving"),
+                decoration: BoxDecoration(
+                  color: colors.primary.withValues(alpha: 0.16),
+                  border: Border.all(color: colors.primary, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// _playedIn is the frames of this view [channel]'s clips are played in:
+  /// while every scene plays, its own scene's -- the master's, the whole
+  /// run -- so a clip running on past its scene is shaded where it does; one
+  /// scene at a time, the scene's, as it always was.
+  (int?, int?) _playedIn(TimelineChannel channel) {
+    var document = controller.document;
+    if (!controller.allChannels || !document.hasScenes) {
+      return (null, document.frames);
+    }
+    var lane = channel.first;
+    var from = -lane.offset;
+    var scenes = document.allScenes;
+    var long = lane.scene >= 0 && lane.scene < scenes.length
+        ? scenes[lane.scene].frames
+        : document.sequenceFrames;
+    return (from, from + long);
+  }
 
   /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
   /// channel of its own.
@@ -704,14 +824,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 frame: controller.frame,
                 frameRate: controller.document.frameRate,
                 colors: theme.colors,
-                selected: controller.selection,
+                selected: controller.clipSelection,
                 chosenChannel:
                     controller.selectedChannels.contains(channel.key),
                 held: _dragging ? _held?.element.id : null,
                 showVolume: _dragging && _grip == _Grip.volume,
                 target: candidate.isNotEmpty || _over == channel.key,
                 shapes: shapes,
-                scene: controller.document.frames,
+                sceneFrom: _playedIn(channel).$1,
+                sceneTo: _playedIn(channel).$2,
               ),
             ),
           ),
@@ -832,30 +953,52 @@ void _paintSeconds(Canvas canvas, Size size, TimelineView view, int frameRate,
 /// past the scene where a clip does -- see CanvasController.timelineReach --
 /// and what is drawn out there is not played.
 void paintPastScene(Canvas canvas, Size size, TimelineView view, int scene,
-    ColorScheme colors) {
-  var x = view.xOf(scene, size.width);
-  if (x >= size.width) return;
-  var past = Rect.fromLTRB(math.max(0.0, x), 0, size.width, size.height);
-  canvas.save();
-  canvas.clipRect(past);
-  canvas.drawRect(past, Paint()..color = const Color(0x66000000));
+        ColorScheme colors) =>
+    paintOutsideScene(canvas, size, view, null, scene, colors);
+
+/// paintOutsideScene shades and hatches everything before [from] and from
+/// [to] on -- either left open with null -- with a line at each edge: the
+/// frames a lane's clips are not played in. A scene's clip that runs on past
+/// its scene is shaded where it does, so it does not look as if it plays in
+/// the next scene too.
+void paintOutsideScene(Canvas canvas, Size size, TimelineView view, int? from,
+    int? to, ColorScheme colors) {
   var hatch = Paint()
     ..color = colors.onSurfaceVariant.withValues(alpha: 0.18)
     ..strokeWidth = 1;
-  // Pinned to the frames rather than the screen, so the hatching moves with
-  // the timeline as it scrolls.
-  var start = x - size.height - ((x % 8) + 8);
-  for (var a = start; a < size.width; a += 8) {
-    canvas.drawLine(Offset(a, size.height), Offset(a + size.height, 0), hatch);
+  var edge = Paint()
+    ..color = colors.onSurfaceVariant.withValues(alpha: 0.6)
+    ..strokeWidth = 1;
+  void shade(double a, double b, double edgeAt) {
+    a = math.max(0.0, a);
+    b = math.min(size.width, b);
+    if (b <= a) return;
+    var out = Rect.fromLTRB(a, 0, b, size.height);
+    canvas.save();
+    canvas.clipRect(out);
+    canvas.drawRect(out, Paint()..color = const Color(0x66000000));
+    // Pinned to the frames rather than the screen, so the hatching moves
+    // with the timeline as it scrolls.
+    // The first line on the same eight-pixel step as the edge that reaches
+    // the shaded part's left end.
+    var start = edgeAt - 8 * ((edgeAt - (a - size.height)) / 8).ceilToDouble();
+    for (var x = start; x < b; x += 8) {
+      canvas.drawLine(
+          Offset(x, size.height), Offset(x + size.height, 0), hatch);
+    }
+    canvas.restore();
+    if (edgeAt >= 0 && edgeAt <= size.width) {
+      canvas.drawLine(Offset(edgeAt, 0), Offset(edgeAt, size.height), edge);
+    }
   }
-  canvas.restore();
-  if (x >= 0) {
-    canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, size.height),
-        Paint()
-          ..color = colors.onSurfaceVariant.withValues(alpha: 0.6)
-          ..strokeWidth = 1);
+
+  if (from != null) {
+    var x = view.xOf(from, size.width);
+    shade(0, x, x);
+  }
+  if (to != null) {
+    var x = view.xOf(to, size.width);
+    shade(x, size.width, x);
   }
 }
 
@@ -873,11 +1016,15 @@ class _LanePainter extends CustomPainter {
   final bool target;
   final Map<String, Float32List?> shapes;
 
-  /// scene is how many frames the scene has: past it is shaded.
-  final int scene;
+  /// sceneFrom and sceneTo are the frames, in this lane's view, its clips
+  /// are played in: their scene's, or the whole run's for the master's.
+  /// Outside them is shaded. Null is open on that side.
+  final int? sceneFrom;
+  final int? sceneTo;
 
   _LanePainter({
-    required this.scene,
+    required this.sceneFrom,
+    required this.sceneTo,
     required this.channel,
     required this.spans,
     required this.view,
@@ -917,7 +1064,7 @@ class _LanePainter extends CustomPainter {
     }
     // Over the clips, so the part of one that runs on past the scene reads
     // as not played.
-    paintPastScene(canvas, size, view, scene, colors);
+    paintOutsideScene(canvas, size, view, sceneFrom, sceneTo, colors);
 
     // No line under the lane: the channels' lines are their strips', and the
     // one across the whole timeline is the keyframes' -- see CanvasTimeline.
@@ -1184,6 +1331,12 @@ class _ChannelHeader extends StatelessWidget {
   final ValueChanged<double> onGripStart;
   final ValueChanged<double> onGripMove;
 
+  /// onMoveStart, onMove and onMoveEnd are the strip pressed and dragged up
+  /// or down, to put the channel somewhere else in the list.
+  final ValueChanged<double> onMoveStart;
+  final ValueChanged<double> onMove;
+  final VoidCallback onMoveEnd;
+
   const _ChannelHeader({
     required this.channel,
     required this.label,
@@ -1199,6 +1352,9 @@ class _ChannelHeader extends StatelessWidget {
     required this.onSolo,
     required this.onGripStart,
     required this.onGripMove,
+    required this.onMoveStart,
+    required this.onMove,
+    required this.onMoveEnd,
     super.key,
   });
 
@@ -1338,10 +1494,22 @@ class _ChannelHeader extends StatelessWidget {
 
     return Stack(children: [
       Positioned.fill(
-        // A channel from the master is changed there, as in the mixer.
-        child: channel.editable
-            ? strip
-            : IgnorePointer(child: Opacity(opacity: 0.55, child: strip)),
+        // Pressed and dragged up or down, the channel moves in the list --
+        // any channel, the master's and another scene's too, so this is
+        // round the strip rather than in it.
+        child: GestureDetector(
+          key: ValueKey("channelMove-${channel.key}"),
+          supportedDevices: timelinePointers,
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragStart: (d) => onMoveStart(d.globalPosition.dy),
+          onVerticalDragUpdate: (d) => onMove(d.globalPosition.dy),
+          onVerticalDragEnd: (_) => onMoveEnd(),
+          onVerticalDragCancel: onMoveEnd,
+          // A channel from the master is changed there, as in the mixer.
+          child: channel.editable
+              ? strip
+              : IgnorePointer(child: Opacity(opacity: 0.55, child: strip)),
+        ),
       ),
       // The bottom edge: dragged, the lane is taller or shorter.
       Positioned(

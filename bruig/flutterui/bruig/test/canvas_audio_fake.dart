@@ -86,6 +86,17 @@ class FakeEngine implements AudioEngine {
     v.volume = to;
   }
 
+  /// softStops is every voice stopped with a fade, and over how long.
+  final List<(FakeVoice, double)> softStops = [];
+
+  @override
+  void stopSoftly(AudioVoice voice, double fade) {
+    var v = voice as FakeVoice;
+    softStops.add((v, fade));
+    v.fades.add((0, fade));
+    v.alive = false;
+  }
+
   @override
   void pause(AudioVoice voice, bool paused) =>
       (voice as FakeVoice).paused = paused;
