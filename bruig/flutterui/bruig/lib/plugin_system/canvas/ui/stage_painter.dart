@@ -180,6 +180,8 @@ class StagePainter extends CustomPainter {
     Set<VectorPick> picks,
     bool boxing,
     Set<VectorPick> boxed,
+    bool bare,
+    Set<int>? combining,
   })? editingVector;
 
   /// chartLabels is the boxes of the selected chart's placed labels, in
@@ -694,9 +696,12 @@ class StagePainter extends CustomPainter {
       return;
     }
     if (editingVector case var editing?) {
+      // Painting -- tint, or the pencil with its points hidden -- nothing is
+      // picked or boxed: the drawing alone.
+      if (editing.bare) return;
       _paintVectorControls(canvas, editing.element, editing.shape, editing.pick,
           {...editing.picks, ...editing.boxed},
-          everyShape: editing.boxing);
+          everyShape: editing.boxing, combining: editing.combining);
       return;
     }
 
@@ -911,7 +916,7 @@ class StagePainter extends CustomPainter {
   /// the drawing, so what it will take in can be seen.
   void _paintVectorControls(Canvas canvas, VectorElement e, int picked,
       VectorPick? pick, Set<VectorPick> picks,
-      {bool everyShape = false}) {
+      {bool everyShape = false, Set<int>? combining}) {
     var shapes = e.shapes;
     if (shapes == null) return;
     var space = VectorSpace(e);
@@ -931,6 +936,28 @@ class StagePainter extends CustomPainter {
     canvas.translate(place.dx, place.dy);
     canvas.scale(place.sx, place.sy);
     var hair = 1 / (scale * math.max(1e-6, math.min(place.sx, place.sy)));
+    // Combining shapes: whole shapes are what is picked, so their outlines
+    // are all there is -- the picked ones, and every shape combined into
+    // them, lit.
+    if (combining != null) {
+      for (var i = 0; i < shapes.length; i++) {
+        var lit = combining.contains(groupOf(e, i));
+        var path = vectorShapePath(shapes[i]);
+        if (lit) {
+          canvas.drawPath(
+              path, Paint()..color = colour.withValues(alpha: colour.a * 0.12));
+        }
+        canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = (lit ? 2 : 1) * hair
+              ..color =
+                  lit ? colour : colour.withValues(alpha: colour.a * 0.35));
+      }
+      canvas.restore();
+      return;
+    }
     for (var i = 0; i < shapes.length; i++) {
       canvas.drawPath(
           vectorShapePath(shapes[i]),
@@ -997,13 +1024,17 @@ class StagePainter extends CustomPainter {
         }
       }
     }
+    // A joint is one point however many lines meet at it: picked, every
+    // end lying there is drawn picked, not only the one taken hold of --
+    // or the others, drawn over it, hide that it is.
+    var lit = joinedTo(e, picks);
     for (var showing in shown) {
       var paths = shapes[showing].paths;
       for (var p = 0; p < paths.length; p++) {
         for (var n = 0; n < paths[p].nodes.length; n++) {
           var node = paths[p].nodes[n];
           var at = screen(node.point);
-          var chosen = picks.contains(VectorPick(showing, p, n));
+          var chosen = lit.contains(VectorPick(showing, p, n));
           // A smooth point is round, a corner square: the two kinds can be
           // told apart at a glance, which is what decides how a handle moves.
           if (node.smooth) {

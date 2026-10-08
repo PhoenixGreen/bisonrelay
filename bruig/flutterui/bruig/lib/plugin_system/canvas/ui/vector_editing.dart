@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 
@@ -12,6 +13,21 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 // pointer, and the edits themselves -- move a point or a handle, put a point
 // in a curve, take one out, make one a corner or smooth. Kept out of the
 // stage, which only has to ask.
+
+/// VectorTool is what a press on a drawing being edited does.
+enum VectorTool {
+  select("Select points"),
+  pen("Pen"),
+  scale("Line thickness"),
+  tint("Tint"),
+  boolean("Combine shapes"),
+  align("Align points"),
+  corner("Round corners"),
+  pencil("Pencil");
+
+  final String label;
+  const VectorTool(this.label);
+}
 
 /// VectorPick is one point of a drawing: which shape, which run of it, and
 /// which point along the run.
@@ -183,32 +199,226 @@ VectorElement withVectorNode(VectorElement e, VectorPick pick, VectorNode n) {
 /// is how a smooth point is made a corner by hand.
 VectorElement movedVector(
     VectorElement e, VectorPick pick, VectorPart part, Offset canvasPoint,
-    {bool breakHandles = false}) {
+    {bool breakHandles = false,
+    VectorHandleDrag drag = VectorHandleDrag.any,
+    bool snap = false}) {
   var node = _nodeAt(e, pick);
   if (node == null) return e;
   var to = VectorSpace(e).toDrawing(canvasPoint);
   switch (part) {
     case VectorPart.point:
-      return withVectorNode(e, pick, node.moved(to));
+      return withPointsMoved(e, {pick}, to - node.point);
     case VectorPart.inHandle || VectorPart.outHandle:
       var out = part == VectorPart.outHandle;
+      var was = out ? Offset(node.outX, node.outY) : Offset(node.inX, node.inY);
       var d = to - node.point;
+      // Snapped, it turns in steps of fifteen degrees.
+      if (snap && d.distance > 0) {
+        const step = math.pi / 12;
+        var angle = (math.atan2(d.dy, d.dx) / step).round() * step;
+        d = Offset(math.cos(angle), math.sin(angle)) * d.distance;
+      }
+      // Turned only, it keeps its length; stretched only, its line.
+      if (was.distance > 0) {
+        var along = was / was.distance;
+        switch (drag) {
+          case VectorHandleDrag.any:
+            break;
+          case VectorHandleDrag.turn:
+            if (d.distance > 0) d = d / d.distance * was.distance;
+          case VectorHandleDrag.stretch:
+            d = along * math.max(0.0, d.dx * along.dx + d.dy * along.dy);
+        }
+      }
       var next = out
           ? node.copyWith(outX: d.dx, outY: d.dy)
           : node.copyWith(inX: d.dx, inY: d.dy);
       if (node.smooth && !breakHandles) {
         var other =
             out ? Offset(node.inX, node.inY) : Offset(node.outX, node.outY);
-        var length = other.distance;
         var dir = d.distance == 0 ? Offset.zero : d / d.distance;
-        var mirrored = -dir * length;
+        // Mirrored, the other is this one turned round; aligned, it swings
+        // round to stay in line, keeping its own length.
+        var opposite = node.mirrored ? -d : -dir * other.distance;
         next = out
-            ? next.copyWith(inX: mirrored.dx, inY: mirrored.dy)
-            : next.copyWith(outX: mirrored.dx, outY: mirrored.dy);
+            ? next.copyWith(inX: opposite.dx, inY: opposite.dy)
+            : next.copyWith(outX: opposite.dx, outY: opposite.dy);
       }
-      if (breakHandles) next = next.copyWith(smooth: false);
+      if (breakHandles) next = next.copyWith(smooth: false, mirrored: false);
       return withVectorNode(e, pick, next);
   }
+}
+
+/// VectorHandleDrag is what dragging a handle may change.
+enum VectorHandleDrag {
+  any("Any way"),
+  turn("Turn only"),
+  stretch("Stretch only");
+
+  final String label;
+  const VectorHandleDrag(this.label);
+}
+
+/// withHandles gives the points in [picks] handles that move as [mode]
+/// says. Free leaves them where they are, free of each other. Aligned and
+/// mirrored line them up -- a point with none is given a pair first, along
+/// the line between its neighbours -- and mirrored evens their lengths.
+VectorElement withHandles(
+    VectorElement e, Set<VectorPick> picks, VectorHandles mode) {
+  var next = e;
+  for (var pick in picks) {
+    var node = _nodeAt(next, pick);
+    if (node == null) continue;
+    if (mode == VectorHandles.free) {
+      next = withVectorNode(
+          next, pick, node.copyWith(smooth: false, mirrored: false));
+      continue;
+    }
+    if (!node.hasIn && !node.hasOut) {
+      next = withSmoothToggled(next, pick);
+      node = _nodeAt(next, pick)!;
+    }
+    var outH = Offset(node.outX, node.outY), inH = Offset(node.inX, node.inY);
+    var dir = outH.distance > 0
+        ? outH / outH.distance
+        : inH.distance > 0
+            ? -inH / inH.distance
+            : const Offset(1, 0);
+    var (lin, lout) = mode == VectorHandles.mirrored
+        ? (
+            (outH.distance + inH.distance) / 2,
+            (outH.distance + inH.distance) / 2
+          )
+        : (inH.distance, outH.distance);
+    next = withVectorNode(
+        next,
+        pick,
+        node.copyWith(
+            outX: dir.dx * lout,
+            outY: dir.dy * lout,
+            inX: -dir.dx * lin,
+            inY: -dir.dy * lin,
+            smooth: true,
+            mirrored: mode == VectorHandles.mirrored));
+  }
+  return next;
+}
+
+/// withEvenHandles makes each picked point's two handles the same length --
+/// the two lengths' middle -- each keeping its line.
+VectorElement withEvenHandles(VectorElement e, Set<VectorPick> picks) {
+  var next = e;
+  for (var pick in picks) {
+    var node = _nodeAt(next, pick);
+    if (node == null || !node.hasIn || !node.hasOut) continue;
+    var outH = Offset(node.outX, node.outY), inH = Offset(node.inX, node.inY);
+    var l = (outH.distance + inH.distance) / 2;
+    var o = outH / outH.distance * l, i = inH / inH.distance * l;
+    next = withVectorNode(next, pick,
+        node.copyWith(outX: o.dx, outY: o.dy, inX: i.dx, inY: i.dy));
+  }
+  return next;
+}
+
+/// withoutHandles takes the picked points' handles off: corners again.
+VectorElement withoutHandles(VectorElement e, Set<VectorPick> picks) {
+  var next = e;
+  for (var pick in picks) {
+    var node = _nodeAt(next, pick);
+    if (node == null) continue;
+    next = withVectorNode(
+        next,
+        pick,
+        node.copyWith(
+            inX: 0, inY: 0, outX: 0, outY: 0, smooth: false, mirrored: false));
+  }
+  return next;
+}
+
+/// VectorAlign is how the align tool lines points up.
+enum VectorAlign {
+  left("Align left"),
+  centreX("Align centres across"),
+  right("Align right"),
+  top("Align top"),
+  centreY("Align centres down"),
+  bottom("Align bottom"),
+  spreadX("Even gaps across"),
+  spreadY("Even gaps down");
+
+  final String label;
+  const VectorAlign(this.label);
+}
+
+/// withAligned lines the points in [picks] up as [how] says, in the
+/// drawing's own units -- to the edge or middle of the box round them, or
+/// spread evenly between the two outermost. A joint is one point: every end
+/// lying there goes with it, and counts once.
+VectorElement withAligned(
+    VectorElement e, Set<VectorPick> picks, VectorAlign how) {
+  var all = joinedTo(e, picks);
+  var places = <Offset>{
+    for (var p in all)
+      if (_nodeAt(e, p) case var n?) n.point,
+  }.toList();
+  if (places.length < 2) return e;
+  var box = Rect.fromPoints(places.first, places.first);
+  for (var p in places) {
+    box = box.expandToInclude(Rect.fromPoints(p, p));
+  }
+  Map<Offset, Offset> spread(bool across) {
+    var order = [...places]
+      ..sort((a, b) => across ? a.dx.compareTo(b.dx) : a.dy.compareTo(b.dy));
+    var from = across ? box.left : box.top;
+    var step = ((across ? box.right : box.bottom) - from) / (order.length - 1);
+    return {
+      for (var (k, p) in order.indexed)
+        p: across
+            ? Offset(from + k * step, p.dy)
+            : Offset(p.dx, from + k * step),
+    };
+  }
+
+  var to = switch (how) {
+    VectorAlign.left => {for (var p in places) p: Offset(box.left, p.dy)},
+    VectorAlign.centreX => {
+        for (var p in places) p: Offset(box.center.dx, p.dy)
+      },
+    VectorAlign.right => {for (var p in places) p: Offset(box.right, p.dy)},
+    VectorAlign.top => {for (var p in places) p: Offset(p.dx, box.top)},
+    VectorAlign.centreY => {
+        for (var p in places) p: Offset(p.dx, box.center.dy)
+      },
+    VectorAlign.bottom => {for (var p in places) p: Offset(p.dx, box.bottom)},
+    VectorAlign.spreadX => spread(true),
+    VectorAlign.spreadY => spread(false),
+  };
+  var next = e;
+  for (var pick in all) {
+    var node = _nodeAt(e, pick);
+    if (node == null) continue;
+    next = withVectorNode(next, pick, node.moved(to[node.point]!));
+  }
+  return next;
+}
+
+/// joinedTo is [picks] and every point lying exactly on one of them: the
+/// other ends of a joint -- where a branch leaves a line, or two lines were
+/// drawn to meet -- which move as one point.
+Set<VectorPick> joinedTo(VectorElement e, Set<VectorPick> picks) {
+  var at = <Offset>{
+    for (var p in picks)
+      if (_nodeAt(e, p) case var n?) n.point,
+  };
+  if (at.isEmpty) return picks;
+  return {
+    ...picks,
+    for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
+      for (var (p, run) in shape.paths.indexed)
+        for (var (n, node) in run.nodes.indexed)
+          if (at.any((a) => (a - node.point).distance < 1e-6))
+            VectorPick(s, p, n),
+  };
 }
 
 /// nearestSegment is the segment of shape [shape] nearest [canvasPoint], as
@@ -243,11 +453,43 @@ VectorElement movedVector(
 
 Offset _bezier(VectorNode a, VectorNode b, double t) {
   var p0 = a.point, p1 = a.outHandle, p2 = b.inHandle, p3 = b.point;
+  // A straight segment is straight in t too: as far along as t says.
+  if (!a.hasOut && !b.hasIn) return p0 + (p3 - p0) * t;
   var u = 1 - t;
   return p0 * (u * u * u) +
       p1 * (3 * u * u * t) +
       p2 * (3 * u * t * t) +
       p3 * (t * t * t);
+}
+
+/// _split is the segment from [a] to [b] split [t] of the way along, so
+/// its shape does not change: [a] with its out handle shortened, the new
+/// point between, and [b] with its in handle shortened. The new point is as
+/// thick as the line was there.
+(VectorNode, VectorNode, VectorNode) _split(
+    VectorNode a, VectorNode b, double t) {
+  // de Casteljau: the curve split in two at t, through the same points.
+  var p0 = a.point, p1 = a.outHandle, p2 = b.inHandle, p3 = b.point;
+  Offset lerp(Offset x, Offset y) => x + (y - x) * t;
+  var q0 = lerp(p0, p1), q1 = lerp(p1, p2), q2 = lerp(p2, p3);
+  var r0 = lerp(q0, q1), r1 = lerp(q1, q2);
+  var m = lerp(r0, r1);
+  var width = a.width + (b.width - a.width) * t * t * (3 - 2 * t);
+  if (!a.hasOut && !b.hasIn) {
+    var on = p0 + (p3 - p0) * t;
+    return (a, VectorNode(on.dx, on.dy, width: width), b);
+  }
+  return (
+    a.copyWith(outX: q0.dx - p0.dx, outY: q0.dy - p0.dy),
+    VectorNode(m.dx, m.dy,
+        inX: r0.dx - m.dx,
+        inY: r0.dy - m.dy,
+        outX: r1.dx - m.dx,
+        outY: r1.dy - m.dy,
+        smooth: true,
+        width: width),
+    b.copyWith(inX: q2.dx - p3.dx, inY: q2.dy - p3.dy),
+  );
 }
 
 /// withPointAdded is [e] with a point put into the segment of [path] that
@@ -258,26 +500,10 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
   var s = e.shapes![shape];
   var run = s.paths[path];
   var nodes = [...run.nodes];
-  var a = nodes[from], bIndex = (from + 1) % nodes.length, b = nodes[bIndex];
-  // de Casteljau: the curve split in two at t, through the same points.
-  var p0 = a.point, p1 = a.outHandle, p2 = b.inHandle, p3 = b.point;
-  Offset lerp(Offset x, Offset y) => x + (y - x) * t;
-  var q0 = lerp(p0, p1), q1 = lerp(p1, p2), q2 = lerp(p2, p3);
-  var r0 = lerp(q0, q1), r1 = lerp(q1, q2);
-  var m = lerp(r0, r1);
-  var straight = !a.hasOut && !b.hasIn;
-  var added = straight
-      ? VectorNode(m.dx, m.dy)
-      : VectorNode(m.dx, m.dy,
-          inX: r0.dx - m.dx,
-          inY: r0.dy - m.dy,
-          outX: r1.dx - m.dx,
-          outY: r1.dy - m.dy,
-          smooth: true);
-  if (!straight) {
-    nodes[from] = a.copyWith(outX: q0.dx - p0.dx, outY: q0.dy - p0.dy);
-    nodes[bIndex] = b.copyWith(inX: q2.dx - p3.dx, inY: q2.dy - p3.dy);
-  }
+  var bIndex = (from + 1) % nodes.length;
+  var (a, added, b) = _split(nodes[from], nodes[bIndex], t);
+  nodes[from] = a;
+  nodes[bIndex] = b;
   nodes.insert(from + 1, added);
   var paths = [...s.paths];
   paths[path] = run.copyWith(nodes: nodes);
@@ -287,26 +513,82 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
   );
 }
 
+/// withCornered rounds -- or, with [round] off, cuts -- the corner at
+/// [pick], [reach] back along each side of it (in the drawing's units, and
+/// never past halfway along either): the point is replaced by two, one on
+/// each side, joined by a quarter-circle-like curve or a straight cut. Null
+/// where the point has no corner to round: an end of a line, or a joint,
+/// whose other lines would be left behind.
+(VectorElement, Set<VectorPick>)? withCornered(
+    VectorElement e, VectorPick pick, double reach,
+    {bool round = true}) {
+  var shapes = e.shapes;
+  if (shapes == null || pick.shape >= shapes.length) return null;
+  var s = shapes[pick.shape];
+  if (pick.path >= s.paths.length) return null;
+  var run = s.paths[pick.path];
+  var nodes = [...run.nodes];
+  var i = pick.node, n = nodes.length;
+  if (i >= n || n < 3 && !run.closed || n < 2) return null;
+  if (!run.closed && (i == 0 || i == n - 1)) return null;
+  if (joinedTo(e, {pick}).length > 1) return null;
+  var prev = (i - 1 + n) % n, next = (i + 1) % n;
+  double length(VectorNode a, VectorNode b) {
+    var seg = Path()..moveTo(a.x, a.y);
+    if (!a.hasOut && !b.hasIn) {
+      seg.lineTo(b.x, b.y);
+    } else {
+      seg.cubicTo(a.outHandle.dx, a.outHandle.dy, b.inHandle.dx, b.inHandle.dy,
+          b.x, b.y);
+    }
+    var m = seg.computeMetrics().toList();
+    return m.isEmpty ? 0 : m.first.length;
+  }
+
+  var p = nodes[i];
+  var l1 = length(nodes[prev], p), l2 = length(p, nodes[next]);
+  if (l1 <= 0 || l2 <= 0) return null;
+  var d = math.min(reach, math.min(l1, l2) * 0.49);
+  if (d <= 0) return null;
+  var (a2, m1, _) = _split(nodes[prev], p, 1 - d / l1);
+  var (_, m2, b2) = _split(p, nodes[next], d / l2);
+  // Which way the line runs at each new point, towards the corner and away.
+  Offset unit(Offset v) => v.distance == 0 ? Offset.zero : v / v.distance;
+  var u1 =
+      m1.hasOut ? unit(Offset(m1.outX, m1.outY)) : unit(p.point - m1.point);
+  var u2 =
+      m2.hasOut ? unit(Offset(m2.outX, m2.outY)) : unit(m2.point - p.point);
+  var h = 0.0;
+  if (round) {
+    var turn = math.acos((u1.dx * u2.dx + u1.dy * u2.dy).clamp(-1.0, 1.0));
+    // The handle length that makes the curve a circle's arc, as near as a
+    // cubic can, for a corner turning [turn].
+    if (turn > 1e-3 && turn < math.pi - 1e-3) {
+      h = 4 / 3 * math.tan(turn / 4) * d / math.tan(turn / 2);
+    }
+  }
+  var c1 = m1.copyWith(
+      outX: u1.dx * h, outY: u1.dy * h, smooth: false, mirrored: false);
+  var c2 = m2.copyWith(
+      inX: -u2.dx * h, inY: -u2.dy * h, smooth: false, mirrored: false);
+  nodes[prev] = a2;
+  nodes[next] = b2;
+  nodes.replaceRange(i, i + 1, [c1, c2]);
+  var paths = [...s.paths];
+  paths[pick.path] = run.copyWith(nodes: nodes);
+  return (
+    e.withShape(pick.shape, s.copyWith(paths: paths)),
+    {
+      VectorPick(pick.shape, pick.path, i),
+      VectorPick(pick.shape, pick.path, i + 1)
+    }
+  );
+}
+
 /// withoutPoint is [e] with the point at [pick] taken out. A run left with
 /// fewer than two points goes, and a shape left with no runs goes with it.
-VectorElement withoutPoint(VectorElement e, VectorPick pick) {
-  var shapes = [...?e.shapes];
-  if (pick.shape >= shapes.length) return e;
-  var s = shapes[pick.shape];
-  var paths = [...s.paths];
-  var nodes = [...paths[pick.path].nodes]..removeAt(pick.node);
-  if (nodes.length < 2) {
-    paths.removeAt(pick.path);
-  } else {
-    paths[pick.path] = paths[pick.path].copyWith(nodes: nodes);
-  }
-  if (paths.isEmpty) {
-    shapes.removeAt(pick.shape);
-  } else {
-    shapes[pick.shape] = s.copyWith(paths: paths);
-  }
-  return e.copyWith(shapes: shapes);
-}
+VectorElement withoutPoint(VectorElement e, VectorPick pick) =>
+    withoutPoints(e, {pick});
 
 /// withSmoothToggled makes the point at [pick] a corner, or smooth: a corner
 /// loses its handles, and a point made smooth is given a pair along the line
@@ -315,8 +597,11 @@ VectorElement withSmoothToggled(VectorElement e, VectorPick pick) {
   var node = _nodeAt(e, pick);
   if (node == null) return e;
   if (node.smooth || node.hasIn || node.hasOut) {
-    return withVectorNode(e, pick,
-        node.copyWith(inX: 0, inY: 0, outX: 0, outY: 0, smooth: false));
+    return withVectorNode(
+        e,
+        pick,
+        node.copyWith(
+            inX: 0, inY: 0, outX: 0, outY: 0, smooth: false, mirrored: false));
   }
   var run = e.shapes![pick.shape].paths[pick.path];
   var nodes = run.nodes;
@@ -352,7 +637,7 @@ VectorElement withSmoothToggled(VectorElement e, VectorPick pick) {
 VectorElement withPointsMoved(
     VectorElement e, Set<VectorPick> picks, Offset by) {
   var shapes = [...?e.shapes];
-  for (var pick in picks) {
+  for (var pick in joinedTo(e, picks)) {
     if (pick.shape >= shapes.length) continue;
     var s = shapes[pick.shape];
     if (pick.path >= s.paths.length) continue;
@@ -397,20 +682,442 @@ Rect? picksBox(VectorElement e, Set<VectorPick> picks) {
   return box;
 }
 
-/// withoutPoints is [e] with every point in [picks] taken out -- last first,
-/// so taking one out does not move the others' places in their lists.
+/// withoutPoints is [e] with every point in [picks] taken out, all at once.
+///
+/// A point taken out of the middle of a line joins its neighbours up, as
+/// one would expect of a point. A joint -- a point that several lines meet
+/// at -- breaks them there instead: there is no one neighbour to join to,
+/// and joining the wrong two would draw a line nobody drew. Every line
+/// meeting at it loses its end there, wherever it was picked from.
+///
+/// A run left with fewer than two points goes, and a shape left with no
+/// runs goes with it. Picks that are not there any more are passed over.
 VectorElement withoutPoints(VectorElement e, Set<VectorPick> picks) {
-  var order = [...picks]..sort((a, b) {
-      var by = b.shape.compareTo(a.shape);
-      if (by != 0) return by;
-      by = b.path.compareTo(a.path);
-      return by != 0 ? by : b.node.compareTo(a.node);
-    });
-  var next = e;
-  for (var pick in order) {
-    next = withoutPoint(next, pick);
+  var all = e.shapes ?? const <VectorShape>[];
+  var joints = <Offset>{};
+  var count = <Offset, int>{};
+  for (var shape in all) {
+    for (var run in shape.paths) {
+      for (var n in run.nodes) {
+        count[n.point] = (count[n.point] ?? 0) + 1;
+      }
+    }
   }
-  return next;
+  for (var pick in picks) {
+    if (_nodeAt(e, pick) case var n? when (count[n.point] ?? 0) > 1) {
+      joints.add(n.point);
+    }
+  }
+  // Every end of a joint taken out goes, not only the one picked.
+  var gone = joinedTo(e, picks);
+
+  var shapes = <VectorShape>[];
+  var droppedBase = false;
+  for (var (si, s) in all.indexed) {
+    var paths = <VectorPath>[];
+    var changed = false;
+    for (var (pi, run) in s.paths.indexed) {
+      var nodes = run.nodes;
+      bool out(int ni) => gone.contains(VectorPick(si, pi, ni));
+      if (![for (var i = 0; i < nodes.length; i++) i].any(out)) {
+        paths.add(run);
+        continue;
+      }
+      changed = true;
+      bool breaks(int ni) => out(ni) && joints.contains(nodes[ni].point);
+      var order = [for (var i = 0; i < nodes.length; i++) i];
+      var closed = run.closed;
+      // A closed run broken at a joint opens there: read from just after
+      // the break, round to it.
+      if (closed) {
+        var at = order.indexWhere(breaks);
+        if (at >= 0) {
+          order = [...order.sublist(at + 1), ...order.sublist(0, at + 1)];
+          closed = false;
+        }
+      }
+      var piece = <VectorNode>[];
+      void finish() {
+        if (piece.length >= 2) paths.add(VectorPath(piece, closed: closed));
+        piece = [];
+      }
+
+      for (var ni in order) {
+        if (breaks(ni)) {
+          finish();
+        } else if (!out(ni)) {
+          piece.add(nodes[ni]);
+        }
+      }
+      finish();
+    }
+    if (!changed) {
+      // A shape combining into one that went combines into nothing: it is
+      // a shape of its own now.
+      shapes.add(droppedBase && s.combine != null
+          ? s.copyWith(clearCombine: true)
+          : s);
+      droppedBase = false;
+    } else if (paths.isNotEmpty) {
+      shapes.add(s.copyWith(
+          paths: paths, clearCombine: droppedBase && s.combine != null));
+      droppedBase = false;
+    } else {
+      droppedBase = s.combine == null || droppedBase;
+    }
+  }
+  return e.copyWith(shapes: shapes);
+}
+
+/// connectedPicks is every point connected to the part of shape [shape]
+/// at [at] (in the drawing's units): the run whose inside it is in -- or,
+/// off every run's inside, the shape's first -- and every run joined to that
+/// one at a joint, and every run joined to those, of any shape.
+Set<VectorPick> connectedPicks(VectorElement e, int shape, Offset at) {
+  var shapes = e.shapes ?? const <VectorShape>[];
+  if (shape < 0 || shape >= shapes.length) return const {};
+  var runs = shapes[shape].paths;
+  if (runs.isEmpty) return const {};
+  var start = 0;
+  for (var (p, run) in runs.indexed) {
+    if (run.closed &&
+        (VectorShape(paths: [run]).path..fillType = PathFillType.nonZero)
+            .contains(at)) {
+      start = p;
+    }
+  }
+  Set<VectorPick> whole(int s, int p) => {
+        for (var n = 0; n < shapes[s].paths[p].nodes.length; n++)
+          VectorPick(s, p, n),
+      };
+  var picks = whole(shape, start);
+  var seen = {(shape, start)};
+  while (true) {
+    var more = <VectorPick>{};
+    for (var j in joinedTo(e, picks).difference(picks)) {
+      if (seen.add((j.shape, j.path))) more.addAll(whole(j.shape, j.path));
+    }
+    if (more.isEmpty) return picks;
+    picks = {...picks, ...more};
+  }
+}
+
+/// copiedShapes is what copying the points in [picks] copies: of each run,
+/// the stretches of points picked one after another -- the whole run where
+/// every point of it is picked, closed if it was -- each in a copy of the
+/// shape it came from. A point picked on its own has no line to copy.
+List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
+  var out = <VectorShape>[];
+  for (var (si, s) in (e.shapes ?? const <VectorShape>[]).indexed) {
+    var runs = <VectorPath>[];
+    for (var (pi, run) in s.paths.indexed) {
+      var n = run.nodes.length;
+      bool picked(int i) => picks.contains(VectorPick(si, pi, i));
+      var count = [for (var i = 0; i < n; i++) i].where(picked).length;
+      if (count == n) {
+        runs.add(run);
+        continue;
+      }
+      if (count < 2) continue;
+      // Read from just after a point not picked, so a stretch running round
+      // the end of a closed run comes out in one piece.
+      var start = run.closed
+          ? [for (var i = 0; i < n; i++) i].firstWhere((i) => !picked(i)) + 1
+          : 0;
+      var piece = <VectorNode>[];
+      void finish() {
+        if (piece.length >= 2) runs.add(VectorPath(piece));
+        piece = [];
+      }
+
+      for (var k = 0; k < n; k++) {
+        var i = (start + k) % n;
+        if (picked(i)) {
+          piece.add(run.nodes[i]);
+        } else {
+          finish();
+        }
+      }
+      finish();
+    }
+    if (runs.isNotEmpty) {
+      out.add(s.copyWith(paths: runs, clearCombine: true));
+    }
+  }
+  return out;
+}
+
+/// withPasted is [e] with [shapes] added on top, moved [by] in the
+/// drawing's units, and every point of them -- to be picked.
+(VectorElement, Set<VectorPick>) withPasted(
+    VectorElement e, List<VectorShape> shapes, Offset by) {
+  var before = e.shapes ?? const <VectorShape>[];
+  var added = [
+    for (var s in shapes)
+      s.copyWith(paths: [
+        for (var run in s.paths)
+          run.copyWith(nodes: [for (var n in run.nodes) n.moved(n.point + by)]),
+      ]),
+  ];
+  var next = e.copyWith(shapes: [...before, ...added]);
+  return (
+    next,
+    {
+      for (var (k, s) in added.indexed)
+        for (var (p, run) in s.paths.indexed)
+          for (var n = 0; n < run.nodes.length; n++)
+            VectorPick(before.length + k, p, n),
+    }
+  );
+}
+
+/// allPicks is every point of [e].
+Set<VectorPick> allPicks(VectorElement e) => {
+      for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
+        for (var (p, run) in shape.paths.indexed)
+          for (var n = 0; n < run.nodes.length; n++) VectorPick(s, p, n),
+    };
+
+/// pencilShape is a stroke of the pencil as a shape: the pen's [samples],
+/// drawn with [brush] in [colour], [width] wide at full pressure (in the
+/// drawing's units). Null with no samples.
+///
+/// The hand's wobble is smoothed out as the brush says; the width at each
+/// point comes from the pen's pressure -- or, where the pen gives none, from
+/// how fast it moved, slow being heavy -- and its tilt, and from which way
+/// the stroke runs for a broad nib; the ends taper. What is left is thinned
+/// to the points the line needs and given smooth handles through them, so a
+/// stroke of hundreds of readings is a few dozen points to edit.
+VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
+    VectorBrush brush, Color colour, double width) {
+  if (samples.isEmpty) return null;
+  var space = VectorSpace(e);
+  var pts = [for (var s in samples) space.toDrawing(s.at)];
+
+  // Steadied: each point eased towards where the pen is, the last left
+  // where the pen let go so the line reaches it.
+  var follow = 1 - brush.smoothing.clamp(0.0, 1.0) * 0.85;
+  for (var i = 1; i < pts.length - 1; i++) {
+    pts[i] = pts[i - 1] + (pts[i] - pts[i - 1]) * follow;
+  }
+
+  // Pressure: the pen's own, or made up from its speed.
+  var weight = <double>[];
+  var eased = 0.6;
+  for (var (i, s) in samples.indexed) {
+    double p;
+    if (s.pressure case var given?) {
+      p = given.clamp(0.0, 1.0);
+    } else if (i == 0) {
+      p = eased;
+    } else {
+      var gap = (s.time - samples[i - 1].time).inMicroseconds / 1000;
+      var moved = (s.at - samples[i - 1].at).distance;
+      var speed = gap > 0 ? moved / gap : 0.0;
+      // Two pixels a millisecond is a quick flick: lightest.
+      var target = (1 - speed / 2).clamp(0.15, 1.0);
+      eased += (target - eased) * 0.3;
+      p = eased;
+    }
+    weight.add(p);
+  }
+
+  var tiltMax = math.pi / 2;
+  var nibAngle = brush.nibAngle * math.pi / 180;
+  double widthAt(int i) {
+    var f = brush.pressure
+        ? brush.thinnest +
+            (1 - brush.thinnest) * math.pow(weight[i], brush.curve).toDouble()
+        : 1.0;
+    if (samples[i].tilt case var t?) {
+      f *= 1 + brush.tilt * (t / tiltMax).clamp(0.0, 1.0);
+    }
+    if (brush.nib > 0 && pts.length > 1) {
+      var a = pts[math.max(0, i - 1)], b = pts[math.min(pts.length - 1, i + 1)];
+      var d = b - a;
+      if (d.distance > 0) {
+        var across = (math.sin(math.atan2(d.dy, d.dx) - nibAngle)).abs();
+        f *= math.max(0.12, 1 - brush.nib + brush.nib * across);
+      }
+    }
+    return f;
+  }
+
+  var widths = [for (var i = 0; i < pts.length; i++) widthAt(i)];
+
+  // Only the points the line needs: where it bends, and where it swells or
+  // thins, to within a small share of its width.
+  var keep = _simplified(pts, [for (var w in widths) w * width / 2],
+      math.max(width * 0.04, 0.25 * space.unitsPer));
+
+  // Tapered in and out, by distance along the stroke.
+  var along = <double>[0];
+  for (var i = 1; i < pts.length; i++) {
+    along.add(along.last + (pts[i] - pts[i - 1]).distance);
+  }
+  var total = along.last;
+  double taper(int i) {
+    var f = 1.0;
+    if (brush.taperIn > 0 && total > 0) {
+      var t =
+          (along[i] / (total * brush.taperIn.clamp(0.0, 0.5))).clamp(0.0, 1.0);
+      f *= math.max(0.05, math.sin(t * math.pi / 2));
+    }
+    if (brush.taperOut > 0 && total > 0) {
+      var t = ((total - along[i]) / (total * brush.taperOut.clamp(0.0, 0.5)))
+          .clamp(0.0, 1.0);
+      f *= math.max(0.05, math.sin(t * math.pi / 2));
+    }
+    return f;
+  }
+
+  var kept = [for (var i in keep) pts[i]];
+  var nodes = <VectorNode>[];
+  for (var (k, i) in keep.indexed) {
+    // Through the points kept, smoothly: each handle along the line from
+    // the point before to the point after, a third as long as its own side
+    // -- the points thinning leaves are spaced unevenly, and one length for
+    // both sides flattens the long side and kinks the short.
+    var inside = k > 0 && k < kept.length - 1;
+    var dir = inside ? kept[k + 1] - kept[k - 1] : Offset.zero;
+    dir = dir.distance == 0 ? Offset.zero : dir / dir.distance;
+    var outLen = inside ? (kept[k + 1] - kept[k]).distance / 3 : 0.0;
+    var inLen = inside ? (kept[k] - kept[k - 1]).distance / 3 : 0.0;
+    nodes.add(VectorNode(pts[i].dx, pts[i].dy,
+        outX: dir.dx * outLen,
+        outY: dir.dy * outLen,
+        inX: -dir.dx * inLen,
+        inY: -dir.dy * inLen,
+        smooth: inside,
+        width: double.parse((widths[i] * taper(i)).toStringAsFixed(3))));
+  }
+  return VectorShape(
+    paths: [VectorPath(nodes)],
+    stroke: colour.withValues(alpha: colour.a * brush.opacity.clamp(0.0, 1.0)),
+    strokeWidth: width,
+    cap: brush.cap,
+    join: StrokeJoin.round,
+  );
+}
+
+/// _simplified is which of [pts] a line through them needs, to within
+/// [tolerance] -- Douglas and Peucker's thinning, the first and last always
+/// kept. A point is needed for its half-width in [halves] as well as for
+/// where it is: a stroke that swells on a straight stretch keeps the points
+/// it swells at.
+List<int> _simplified(List<Offset> pts, List<double> halves, double tolerance) {
+  if (pts.length < 3) return [for (var i = 0; i < pts.length; i++) i];
+  var keep = List<bool>.filled(pts.length, false);
+  keep[0] = keep[pts.length - 1] = true;
+  var stack = [(0, pts.length - 1)];
+  while (stack.isNotEmpty) {
+    var (a, b) = stack.removeLast();
+    var far = -1;
+    var most = tolerance;
+    var line = pts[b] - pts[a];
+    var len = line.distance;
+    for (var i = a + 1; i < b; i++) {
+      var v = pts[i] - pts[a];
+      var d =
+          len == 0 ? v.distance : (v.dx * line.dy - v.dy * line.dx).abs() / len;
+      var t = (i - a) / (b - a);
+      var w = (halves[i] - (halves[a] + (halves[b] - halves[a]) * t)).abs();
+      if (w > d) d = w;
+      if (d > most) {
+        most = d;
+        far = i;
+      }
+    }
+    if (far >= 0) {
+      keep[far] = true;
+      stack.add((a, far));
+      stack.add((far, b));
+    }
+  }
+  return [
+    for (var i = 0; i < pts.length; i++)
+      if (keep[i]) i
+  ];
+}
+
+/// withoutShapesAt is [e] with every shape under [canvasPoint] taken out --
+/// the pen's eraser.
+VectorElement withoutShapesAt(
+    VectorElement e, Offset canvasPoint, double reach) {
+  var next = e;
+  while (true) {
+    var hit = shapeAt(next, canvasPoint, reach);
+    if (hit < 0) return next;
+    var shapes = [...next.shapes!]..removeAt(hit);
+    // One combined into it is a shape of its own now.
+    if (hit < shapes.length && shapes[hit].combine != null) {
+      shapes[hit] = shapes[hit].copyWith(clearCombine: true);
+    }
+    next = next.copyWith(shapes: shapes);
+  }
+}
+
+/// groupOf is the shape the run of combining shapes that shape [index] is
+/// in starts from: itself, for a shape of its own.
+int groupOf(VectorElement e, int index) {
+  var shapes = e.shapes ?? const <VectorShape>[];
+  if (index < 0 || index >= shapes.length) return index;
+  var i = index;
+  while (i > 0 && shapes[i].combine != null) {
+    i--;
+  }
+  return i;
+}
+
+/// groupMembers is every shape in the run of combining shapes starting at
+/// [base]: it, and those combining into it.
+List<int> groupMembers(VectorElement e, int base) {
+  var shapes = e.shapes ?? const <VectorShape>[];
+  if (base < 0 || base >= shapes.length) return const [];
+  return [
+    base,
+    for (var i = base + 1; i < shapes.length && shapes[i].combine != null; i++)
+      i,
+  ];
+}
+
+/// withCombined is the shapes in [picked] combined by [op]: the lowest of
+/// them is what the others are combined into, and they are moved up to sit
+/// just after it, in the order they were. Each picked shape brings the
+/// shapes already combined into it. Returns the drawing and where the
+/// result now starts.
+(VectorElement, int) withCombined(
+    VectorElement e, Set<int> picked, VectorCombine op) {
+  var shapes = e.shapes ?? const <VectorShape>[];
+  var bases = {for (var i in picked) groupOf(e, i)}.toList()..sort();
+  if (bases.length < 2) return (e, bases.firstOrNull ?? -1);
+  var base = bases.first;
+  var joining = [
+    for (var b in bases.skip(1))
+      for (var (k, i) in groupMembers(e, b).indexed)
+        k == 0 ? shapes[i].copyWith(combine: op) : shapes[i],
+  ];
+  var moved = {for (var b in bases.skip(1)) ...groupMembers(e, b)};
+  var baseGroup = groupMembers(e, base);
+  var next = <VectorShape>[];
+  var at = -1;
+  for (var i = 0; i < shapes.length; i++) {
+    if (moved.contains(i)) continue;
+    if (i == base) at = next.length;
+    next.add(shapes[i]);
+    if (i == baseGroup.last) next.addAll(joining);
+  }
+  return (e.copyWith(shapes: next), at);
+}
+
+/// withSeparated undoes the combining of the run starting at [base]: every
+/// shape in it is a shape of its own again, in its own colours.
+VectorElement withSeparated(VectorElement e, int base) {
+  var shapes = [...?e.shapes];
+  for (var i in groupMembers(e, base).skip(1)) {
+    shapes[i] = shapes[i].copyWith(clearCombine: true);
+  }
+  return e.copyWith(shapes: shapes);
 }
 
 /// blankDrawing is [e] ready to be drawn on from nothing: no shapes yet, in
@@ -419,25 +1126,52 @@ VectorElement blankDrawing(VectorElement e) => e.copyWith(
     viewBox: Rect.fromLTWH(0, 0, math.max(1, e.width), math.max(1, e.height)),
     shapes: const []);
 
-/// withPenPoint is [e] with a point put down by the pen at [canvasPoint]: on
-/// the end of the shape the pen is drawing, or -- where it is drawing none --
-/// as the first point of a new shape, painted like [like] or plainly. The
-/// shape's index and the new point's pick come back with it.
+/// withPenPoint is [e] with a point put down by the pen at [canvasPoint],
+/// joined on from the point [from] -- or, with none, as the first point of
+/// a new shape, painted like [like] or plainly. The new point's pick comes
+/// back with it, and is what the next point joins on from.
+///
+/// From the end of an open run, the run goes on. From its first point, the
+/// run is turned round and goes on from there. From anywhere else -- a
+/// point in the middle, or on a closed run -- a new run starts at that
+/// point, in the same shape: a branch, joined where it leaves.
 (VectorElement, VectorPick) withPenPoint(
-    VectorElement e, int drawing, Offset canvasPoint,
+    VectorElement e, VectorPick? from, Offset canvasPoint,
     {VectorShape? like}) {
   var at = VectorSpace(e).toDrawing(canvasPoint);
   var shapes = [...?e.shapes];
-  if (drawing >= 0 && drawing < shapes.length) {
-    var s = shapes[drawing];
+  var node = from == null ? null : _nodeAt(e, from);
+  if (from != null && node != null) {
+    var s = shapes[from.shape];
     var paths = [...s.paths];
-    var run = paths.last;
-    paths[paths.length - 1] =
-        run.copyWith(nodes: [...run.nodes, VectorNode(at.dx, at.dy)]);
-    shapes[drawing] = s.copyWith(paths: paths);
+    var run = paths[from.path];
+    var nodes = run.nodes;
+    var added = VectorNode(at.dx, at.dy, width: node.width);
+    if (!run.closed && from.node == nodes.length - 1) {
+      paths[from.path] = run.copyWith(nodes: [...nodes, added]);
+      shapes[from.shape] = s.copyWith(paths: paths);
+      return (
+        e.copyWith(shapes: shapes),
+        VectorPick(from.shape, from.path, nodes.length)
+      );
+    }
+    if (!run.closed && from.node == 0 && nodes.length > 1) {
+      paths[from.path] = run.copyWith(nodes: [
+        for (var n in nodes.reversed) n.reversed,
+        added,
+      ]);
+      shapes[from.shape] = s.copyWith(paths: paths);
+      return (
+        e.copyWith(shapes: shapes),
+        VectorPick(from.shape, from.path, nodes.length)
+      );
+    }
+    paths.add(
+        VectorPath([VectorNode(node.x, node.y, width: node.width), added]));
+    shapes[from.shape] = s.copyWith(paths: paths);
     return (
       e.copyWith(shapes: shapes),
-      VectorPick(drawing, paths.length - 1, run.nodes.length)
+      VectorPick(from.shape, paths.length - 1, 1)
     );
   }
   // A line a hundredth of the drawing across, so it can be seen whatever
@@ -457,6 +1191,51 @@ VectorElement blankDrawing(VectorElement e) => e.copyWith(
   return (e.copyWith(shapes: shapes), VectorPick(shapes.length - 1, 0, 0));
 }
 
+/// withWidths is [e] with each point in [from] given its width there times
+/// [factor]: a line made thicker or thinner at those points. Kept between
+/// nothing and twenty times the shape's stroke width.
+VectorElement withWidths(
+    VectorElement e, Map<VectorPick, double> from, double factor) {
+  var next = e;
+  for (var MapEntry(key: pick, value: width) in from.entries) {
+    var node = _nodeAt(next, pick);
+    if (node == null) continue;
+    next = withVectorNode(
+        next, pick, node.copyWith(width: (width * factor).clamp(0.0, 20.0)));
+  }
+  return next;
+}
+
+/// withTintFrom is [e] with a new stroke of the tint brush started at
+/// [canvasPoint]: [like] with that one point.
+VectorElement withTintFrom(
+        VectorElement e, VectorTint like, Offset canvasPoint) =>
+    e.copyWith(tints: [
+      ...e.tints,
+      VectorTint(
+          points: [VectorSpace(e).toDrawing(canvasPoint)],
+          paint: like.paint,
+          width: like.width,
+          soft: like.soft,
+          line: like.line,
+          fill: like.fill,
+          erase: like.erase),
+    ]);
+
+/// withTintTo is [e] with its last tint stroke carried on to [canvasPoint].
+/// A move of less than a tenth of the brush's width adds nothing: a stroke
+/// is a few hundred points, not one for every pixel the pointer crossed.
+VectorElement withTintTo(VectorElement e, Offset canvasPoint) {
+  if (e.tints.isEmpty) return e;
+  var last = e.tints.last;
+  var at = VectorSpace(e).toDrawing(canvasPoint);
+  if ((at - last.points.last).distance < last.width / 10) return e;
+  return e.copyWith(tints: [
+    ...e.tints.take(e.tints.length - 1),
+    last.withPoint(at),
+  ]);
+}
+
 /// withPenHandles is the point at [pick] given a smooth pair of handles,
 /// the out one pulled to [canvasPoint] -- what dragging as a point is put
 /// down does.
@@ -473,15 +1252,37 @@ VectorElement withPenHandles(
           outY: d.dy,
           inX: -d.dx,
           inY: -d.dy,
-          smooth: d != Offset.zero));
+          smooth: d != Offset.zero,
+          // Pulled out by the pen, the pair is each other's mirror.
+          mirrored: d != Offset.zero));
 }
 
-/// withPenClosed closes the run the pen is drawing in shape [shape].
-VectorElement withPenClosed(VectorElement e, int shape) {
-  var s = e.shapes![shape];
+/// withPenClosed closes the run at [run] -- the one the pen is drawing.
+VectorElement withPenClosed(VectorElement e, VectorPick run) {
+  var s = e.shapes![run.shape];
   var paths = [...s.paths];
-  paths[paths.length - 1] = paths.last.copyWith(closed: true);
-  return e.withShape(shape, s.copyWith(paths: paths));
+  paths[run.path] = paths[run.path].copyWith(closed: true);
+  return e.withShape(run.shape, s.copyWith(paths: paths));
+}
+
+/// anyPointAt is the point of any shape of [e] within [reach] of
+/// [canvasPoint], the nearest -- or null.
+VectorPick? anyPointAt(VectorElement e, Offset canvasPoint, double reach) {
+  var space = VectorSpace(e);
+  VectorPick? best;
+  var nearest = reach;
+  for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed) {
+    for (var (p, path) in shape.paths.indexed) {
+      for (var (n, node) in path.nodes.indexed) {
+        var d = (space.toCanvas(node.point) - canvasPoint).distance;
+        if (d <= nearest) {
+          nearest = d;
+          best = VectorPick(s, p, n);
+        }
+      }
+    }
+  }
+  return best;
 }
 
 /// shapeExtent is how far [shape]'s outline actually reaches, in the
@@ -546,6 +1347,12 @@ VectorElement boxedToDrawing(VectorElement e) {
   if (view.width <= 0 || view.height <= 0) return e;
   Rect? reach;
   for (var shape in shapes) {
+    // A shape cutting another, or keeping only its overlap, draws nothing
+    // outside the shape it is combined into.
+    if (shape.combine == VectorCombine.subtract ||
+        shape.combine == VectorCombine.intersect) {
+      continue;
+    }
     var b = shapeExtent(shape);
     if (b == null) continue;
     reach = reach == null ? b : reach.expandToInclude(b);

@@ -21,7 +21,10 @@ enum SavedPresetKind {
   scene("scenes"),
 
   /// canvas is a whole document: its page, its backdrop and all its scenes.
-  canvas("canvases");
+  canvas("canvases"),
+
+  /// brush is a pencil brush somebody made -- see VectorBrush.
+  brush("brushes");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -101,6 +104,7 @@ class SavedPreset {
   List<CanvasScene> buildScenes({Size? on}) => switch (kind) {
         SavedPresetKind.scene => [if (buildScene(on: on) case var s?) s],
         SavedPresetKind.canvas => _canvasScenes(on),
+        SavedPresetKind.brush => const [],
       };
 
   /// _canvasScenes is a saved canvas's scenes, sized to the page they are

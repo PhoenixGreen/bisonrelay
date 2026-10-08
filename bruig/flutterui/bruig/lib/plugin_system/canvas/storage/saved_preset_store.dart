@@ -29,10 +29,15 @@ class SavedPresetStore extends ChangeNotifier {
       SavedPresetStore._(SavedPresetKind.scene);
   static final SavedPresetStore canvases =
       SavedPresetStore._(SavedPresetKind.canvas);
+  static final SavedPresetStore brushes =
+      SavedPresetStore._(SavedPresetKind.brush);
 
   /// of is the store for a kind, for the code that has one in hand.
-  static SavedPresetStore of(SavedPresetKind kind) =>
-      kind == SavedPresetKind.canvas ? canvases : scenes;
+  static SavedPresetStore of(SavedPresetKind kind) => switch (kind) {
+        SavedPresetKind.scene => scenes,
+        SavedPresetKind.canvas => canvases,
+        SavedPresetKind.brush => brushes,
+      };
 
   final SavedPresetKind kind;
   SavedPresetStore._(this.kind);

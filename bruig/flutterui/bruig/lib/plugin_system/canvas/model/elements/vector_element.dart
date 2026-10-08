@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:bruig/components/paint_spec.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
@@ -35,6 +37,27 @@ class VectorNode {
   /// apart.
   final bool smooth;
 
+  /// mirrored is, for a smooth point, whether its handles are each other's
+  /// mirror: dragged, one gives the other its length as well as its line.
+  final bool mirrored;
+
+  /// handles is how the two handles move together -- see VectorHandles.
+  VectorHandles get handles => !smooth
+      ? VectorHandles.free
+      : mirrored
+          ? VectorHandles.mirrored
+          : VectorHandles.aligned;
+
+  /// width is how thick the shape's line is at this point, as a share of the
+  /// shape's own stroke width: 1 is as set, 2 twice as thick. It tapers from
+  /// point to point along the line between.
+  final double width;
+
+  /// cap and join are this point's own line end -- where a run ends here --
+  /// and line corner, or null for the shape's.
+  final StrokeCap? cap;
+  final StrokeJoin? join;
+
   const VectorNode(
     this.x,
     this.y, {
@@ -43,6 +66,10 @@ class VectorNode {
     this.outX = 0,
     this.outY = 0,
     this.smooth = false,
+    this.mirrored = false,
+    this.width = 1,
+    this.cap,
+    this.join,
   });
 
   Offset get point => Offset(x, y);
@@ -59,6 +86,12 @@ class VectorNode {
     double? outX,
     double? outY,
     bool? smooth,
+    bool? mirrored,
+    double? width,
+    StrokeCap? cap,
+    StrokeJoin? join,
+    bool clearCap = false,
+    bool clearJoin = false,
   }) =>
       VectorNode(
         x ?? this.x,
@@ -68,7 +101,23 @@ class VectorNode {
         outX: outX ?? this.outX,
         outY: outY ?? this.outY,
         smooth: smooth ?? this.smooth,
+        mirrored: mirrored ?? this.mirrored,
+        width: width ?? this.width,
+        cap: clearCap ? null : cap ?? this.cap,
+        join: clearJoin ? null : join ?? this.join,
       );
+
+  /// reversed is this node on a run read the other way: its handles swap.
+  VectorNode get reversed => VectorNode(x, y,
+      inX: outX,
+      inY: outY,
+      outX: inX,
+      outY: inY,
+      smooth: smooth,
+      mirrored: mirrored,
+      width: width,
+      cap: cap,
+      join: join);
 
   /// moved is this node put at [to], its handles going with it.
   VectorNode moved(Offset to) => copyWith(x: to.dx, y: to.dy);
@@ -79,12 +128,29 @@ class VectorNode {
   List<num> toJson() {
     num r(double v) => double.parse(v.toStringAsFixed(3));
     var out = <num>[r(x), r(y), r(inX), r(inY), r(outX), r(outY)];
-    if (smooth) return [...out, 1];
+    // A cap and a join are a ninth and tenth -- each its place in the list
+    // of them, or -1 for the shape's -- after the width spelt out.
+    if (cap != null || join != null) {
+      return [
+        ...out,
+        _smoothFlag,
+        r(width),
+        cap?.index ?? -1,
+        join?.index ?? -1,
+      ];
+    }
+    // A width is an eighth number, after the smooth flag spelt out.
+    if (width != 1) return [...out, _smoothFlag, r(width)];
+    if (smooth) return [...out, _smoothFlag];
     while (out.length > 2 && out.last == 0) {
       out.removeLast();
     }
     return out;
   }
+
+  /// _smoothFlag is the seventh number: 0 a corner, 1 smooth, 2 smooth and
+  /// mirrored.
+  int get _smoothFlag => !smooth ? 0 : (mirrored ? 2 : 1);
 
   static VectorNode? fromJson(Object? json) {
     if (json is! List || json.length < 2) return null;
@@ -95,8 +161,33 @@ class VectorNode {
         inY: at(3),
         outX: at(4),
         outY: at(5),
-        smooth: json.length > 6 && json[6] == 1);
+        smooth: json.length > 6 && (json[6] == 1 || json[6] == 2),
+        mirrored: json.length > 6 && json[6] == 2,
+        width:
+            json.length > 7 && json[7] is num ? (json[7] as num).toDouble() : 1,
+        cap: _pick(StrokeCap.values, json.length > 8 ? json[8] : null),
+        join: _pick(StrokeJoin.values, json.length > 9 ? json[9] : null));
   }
+}
+
+/// _pick is [values] at the place [i] names, or null for -1, or anything
+/// that is not a place in it.
+T? _pick<T>(List<T> values, Object? i) =>
+    i is int && i >= 0 && i < values.length ? values[i] : null;
+
+/// VectorHandles is how a point's two handles move together.
+enum VectorHandles {
+  /// free: each on its own -- a corner.
+  free("Free"),
+
+  /// aligned: in line with each other, each its own length.
+  aligned("Aligned"),
+
+  /// mirrored: each the other's mirror, the same length.
+  mirrored("Mirrored");
+
+  final String label;
+  const VectorHandles(this.label);
 }
 
 /// VectorPath is one unbroken run of points: a shape's outline, or one of
@@ -145,6 +236,13 @@ class VectorShape {
   /// hole even when it goes the same way round.
   final bool evenOdd;
 
+  /// combine is how this shape is combined into the shape before it -- see
+  /// VectorCombine -- or null for a shape of its own. The shape a run of
+  /// combining shapes starts from gives the result its fill and stroke; the
+  /// others only give it their outlines, and keep their own colours for the
+  /// day they are separated again.
+  final VectorCombine? combine;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -153,6 +251,7 @@ class VectorShape {
     this.cap = StrokeCap.butt,
     this.join = StrokeJoin.miter,
     this.evenOdd = false,
+    this.combine,
   });
 
   VectorShape copyWith({
@@ -165,6 +264,8 @@ class VectorShape {
     StrokeCap? cap,
     StrokeJoin? join,
     bool? evenOdd,
+    VectorCombine? combine,
+    bool clearCombine = false,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -174,7 +275,19 @@ class VectorShape {
         cap: cap ?? this.cap,
         join: join ?? this.join,
         evenOdd: evenOdd ?? this.evenOdd,
+        combine: clearCombine ? null : combine ?? this.combine,
       );
+
+  /// tapered is whether its line is thicker or thinner at some points than
+  /// its stroke width says -- see VectorNode.width.
+  bool get tapered => paths.any((p) => p.nodes.any((n) => n.width != 1));
+
+  /// ownLine is whether its line is drawn point by point: tapered, or with
+  /// points that end or turn their own way -- what one stroke of the whole
+  /// path, with one end and one corner for all of it, cannot draw.
+  bool get ownLine =>
+      tapered ||
+      paths.any((p) => p.nodes.any((n) => n.cap != null || n.join != null));
 
   /// path is the outline as one drawable path, in the drawing's units.
   Path get path {
@@ -212,6 +325,7 @@ class VectorShape {
         if (cap != StrokeCap.butt) "cap": cap.name,
         if (join != StrokeJoin.miter) "join": join.name,
         if (evenOdd) "eo": true,
+        if (combine != null) "op": combine!.name,
       };
 
   static VectorShape? fromJson(Object? json) {
@@ -231,6 +345,126 @@ class VectorShape {
       join: StrokeJoin.values.firstWhere((j) => j.name == json["join"],
           orElse: () => StrokeJoin.miter),
       evenOdd: json["eo"] == true,
+      combine:
+          VectorCombine.values.where((c) => c.name == json["op"]).firstOrNull,
+    );
+  }
+}
+
+/// VectorCombine is how a shape is combined with the shapes before it --
+/// the Boolean tool's operators. Kept rather than worked out once, so every
+/// shape in the result keeps its own points and can still be edited.
+enum VectorCombine {
+  /// unite joins it on: the outline round both.
+  unite("Unite", PathOperation.union),
+
+  /// subtract cuts it out: a hole, or a bite.
+  subtract("Subtract", PathOperation.difference),
+
+  /// intersect keeps only where it overlaps.
+  intersect("Intersect", PathOperation.intersect),
+
+  /// exclude keeps where one or the other is, but not both.
+  exclude("Exclude", PathOperation.xor);
+
+  final String label;
+  final PathOperation operation;
+  const VectorCombine(this.label, this.operation);
+}
+
+/// VectorTint is one stroke of the tint brush: colour painted over the
+/// drawing, and seen only where the drawing is -- on its lines, its fills,
+/// or both, as the stroke was painted.
+///
+/// A tint belongs to the drawing rather than to a shape: what is painted is
+/// what was seen under the brush, whichever shape that was. In the drawing's
+/// own units, so it moves and scales with the drawing.
+class VectorTint {
+  /// points is the brush's path. One point is a dab.
+  final List<Offset> points;
+
+  /// paint is the tint: one colour, or a gradient laid across the stroke as
+  /// the colour picker set it.
+  final PaintSpec paint;
+
+  /// width is the brush's width, in the drawing's units.
+  final double width;
+
+  /// soft is how far the brush's edge fades, from 0 (a hard edge) to 1 (a
+  /// fade from the middle out).
+  final double soft;
+
+  /// line and fill are where it shows: on the drawing's lines, in its fills.
+  final bool line;
+  final bool fill;
+
+  /// erase is a stroke that takes tint off rather than putting it on.
+  final bool erase;
+
+  const VectorTint({
+    required this.points,
+    required this.paint,
+    this.width = 10,
+    this.soft = 0.5,
+    this.line = true,
+    this.fill = true,
+    this.erase = false,
+  });
+
+  VectorTint withPoint(Offset p) => VectorTint(
+      points: [...points, p],
+      paint: paint,
+      width: width,
+      soft: soft,
+      line: line,
+      fill: fill,
+      erase: erase);
+
+  /// mapped is this stroke with every point put through [f]: what moving or
+  /// scaling the drawing's points does to the tint laid on them.
+  VectorTint mapped(Offset Function(Offset) f, {double scale = 1}) =>
+      VectorTint(
+          points: [for (var p in points) f(p)],
+          paint: paint,
+          width: width * scale,
+          soft: soft,
+          line: line,
+          fill: fill,
+          erase: erase);
+
+  Map<String, dynamic> toJson() {
+    num r(double v) => double.parse(v.toStringAsFixed(2));
+    return {
+      "p": [
+        for (var p in points) ...[r(p.dx), r(p.dy)]
+      ],
+      "c": paint.toJson(),
+      "w": r(width),
+      if (soft != 0.5) "soft": soft,
+      if (!line) "line": false,
+      if (!fill) "fill": false,
+      if (erase) "erase": true,
+    };
+  }
+
+  static VectorTint? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var raw = json["p"];
+    if (raw is! List || raw.length < 2) return null;
+    var points = <Offset>[
+      for (var i = 0; i + 1 < raw.length; i += 2)
+        if (raw[i] is num && raw[i + 1] is num)
+          Offset((raw[i] as num).toDouble(), (raw[i + 1] as num).toDouble()),
+    ];
+    if (points.isEmpty) return null;
+    return VectorTint(
+      points: points,
+      paint: PaintSpec.fromJson(json["c"], const Color(0xFFE5484D)),
+      width: jsonDouble(json["w"], 10),
+      soft: jsonDouble(json["soft"], 0.5),
+      line: json["line"] != false,
+      fill: json["fill"] != false,
+      erase: json["erase"] == true,
     );
   }
 }
@@ -271,6 +505,10 @@ class VectorElement extends CanvasElement {
   /// the file it came from. See the note at the top of the file.
   final List<VectorShape>? shapes;
 
+  /// tints is the tint brush's strokes, in the order painted, over the
+  /// shapes. See VectorTint.
+  final List<VectorTint> tints;
+
   final VectorFit fit;
 
   /// handleColor and handleSize are how the edit points and handles are
@@ -286,6 +524,7 @@ class VectorElement extends CanvasElement {
     this.assetId = "",
     this.viewBox = Rect.zero,
     this.shapes,
+    this.tints = const [],
     this.fit = VectorFit.contain,
     this.handleColor = defaultHandleColor,
     this.handleSize = 8,
@@ -328,6 +567,7 @@ class VectorElement extends CanvasElement {
       assetId: assetId,
       viewBox: viewBox,
       shapes: shapes,
+      tints: tints,
       fit: fit,
       handleColor: handleColor,
       handleSize: handleSize,
@@ -338,6 +578,7 @@ class VectorElement extends CanvasElement {
     Rect? viewBox,
     List<VectorShape>? shapes,
     bool clearShapes = false,
+    List<VectorTint>? tints,
     VectorFit? fit,
     Color? handleColor,
     double? handleSize,
@@ -347,6 +588,7 @@ class VectorElement extends CanvasElement {
           assetId: assetId ?? this.assetId,
           viewBox: viewBox ?? this.viewBox,
           shapes: clearShapes ? null : shapes ?? this.shapes,
+          tints: clearShapes ? const [] : tints ?? this.tints,
           fit: fit ?? this.fit,
           handleColor: handleColor ?? this.handleColor,
           handleSize: handleSize ?? this.handleSize,
@@ -376,6 +618,7 @@ class VectorElement extends CanvasElement {
         if (viewBox != Rect.zero)
           "vb": [viewBox.left, viewBox.top, viewBox.width, viewBox.height],
         if (shapes != null) "shapes": [for (var s in shapes!) s.toJson()],
+        if (tints.isNotEmpty) "tints": [for (var t in tints) t.toJson()],
         if (fit != VectorFit.contain) "fit": fit.name,
         if (handleColor != defaultHandleColor)
           "handle": colorToJson(handleColor),
@@ -401,6 +644,11 @@ class VectorElement extends CanvasElement {
                   if (VectorShape.fromJson(s) case var shape?) shape,
               ]
             : null,
+        tints: [
+          if (json["tints"] case List raw)
+            for (var t in raw)
+              if (VectorTint.fromJson(t) case var tint?) tint,
+        ],
         fit: VectorFit.fromName(json["fit"] as String?),
         handleColor: colorFromJson(json["handle"], defaultHandleColor),
         handleSize: jsonDouble(json["handleSize"], 8),

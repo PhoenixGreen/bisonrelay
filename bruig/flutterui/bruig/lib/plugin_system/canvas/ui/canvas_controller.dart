@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Color, Offset, Rect;
+
+import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
@@ -22,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -1476,35 +1479,373 @@ class CanvasController extends ChangeNotifier {
   VectorPick? get vectorPick =>
       _vectorPicks.length == 1 ? _vectorPicks.first : null;
 
-  /// vectorPen is whether presses on the drawing put points down rather
-  /// than pick them, and vectorPenShape the shape the pen is drawing, or -1
-  /// before its first point.
-  bool get vectorPen => _vectorPen;
-  bool _vectorPen = false;
-  int get vectorPenShape => _vectorPenShape;
-  int _vectorPenShape = -1;
+  /// vectorTool is what a press on the drawing being edited does: pick and
+  /// move points, put them down with the pen, scale them, or tint them.
+  VectorTool get vectorTool => _vectorTool;
+  VectorTool _vectorTool = VectorTool.select;
 
-  set vectorPen(bool on) {
-    if (_vectorPen == on) return;
-    _vectorPen = on;
-    _vectorPenShape = -1;
+  set vectorTool(VectorTool tool) {
+    if (_vectorTool == tool) return;
+    _vectorTool = tool;
+    // The pen taken out with one point picked carries on from that point.
+    _vectorPenFrom = tool == VectorTool.pen && _vectorPicks.length == 1
+        ? _vectorPicks.first
+        : null;
+    // The Boolean tool taken out with a shape picked starts from that one.
+    var e = editingVector;
+    _vectorCombining = tool == VectorTool.boolean &&
+            e != null &&
+            _vectorShape >= 0 &&
+            _vectorShape < (e.shapes?.length ?? 0)
+        ? {groupOf(e, _vectorShape)}
+        : const {};
     notifyListeners();
   }
 
-  /// penDrawing records the shape the pen has started or gone on with.
-  void penDrawing(int shape) {
-    _vectorPenShape = shape;
-    _vectorShape = shape;
+  /// vectorPen is whether the pen is out. See vectorTool.
+  bool get vectorPen => _vectorTool == VectorTool.pen;
+  set vectorPen(bool on) =>
+      vectorTool = on ? VectorTool.pen : VectorTool.select;
+
+  /// vectorPenFrom is the point the pen's next point joins on from, or null
+  /// before it has one -- when the next point starts a new shape.
+  VectorPick? get vectorPenFrom => _vectorPenFrom;
+  VectorPick? _vectorPenFrom;
+
+  /// vectorPenShape is the shape the pen is drawing, or -1.
+  int get vectorPenShape => _vectorPenFrom?.shape ?? -1;
+
+  /// penFrom says where the pen's next point joins on from: the point just
+  /// put down, or a point picked to carry on from.
+  void penFrom(VectorPick? pick) {
+    _vectorPenFrom = pick;
+    if (pick != null) _vectorShape = pick.shape;
     notifyListeners();
   }
 
-  /// finishPenShape ends the shape the pen is drawing; the pen stays out,
+  /// finishPenShape ends the run the pen is drawing; the pen stays out,
   /// ready to start another.
   void finishPenShape() {
-    if (_vectorPenShape < 0) return;
-    _vectorPenShape = -1;
+    if (_vectorPenFrom == null) return;
+    _vectorPenFrom = null;
     _vectorPicks = const {};
     notifyListeners();
+  }
+
+  /// vectorCornerRound is whether the corner tool rounds a corner or cuts
+  /// it, and vectorCornerSize how far back along each side it starts, in
+  /// canvas units.
+  ///
+  /// Both reshape the corner the tool last made while it is still picked --
+  /// see vectorCornerActive.
+  bool get vectorCornerRound => _vectorCornerRound;
+  bool _vectorCornerRound = true;
+  set vectorCornerRound(bool on) {
+    if (_vectorCornerRound == on) return;
+    _vectorCornerRound = on;
+    if (!reshapeCorner()) notifyListeners();
+  }
+
+  double get vectorCornerSize => _vectorCornerSize;
+  double _vectorCornerSize = 20;
+  set vectorCornerSize(double v) => sizeCorner(v);
+
+  /// sizeCorner sets the corner size and reshapes the corner being made by
+  /// it -- [transient] while a drag is still setting it.
+  void sizeCorner(double v, {bool transient = false}) {
+    if (_vectorCornerSize == v) return;
+    _vectorCornerSize = v;
+    if (!reshapeCorner(transient: transient)) notifyListeners();
+  }
+
+  /// _corner is the corner the corner tool last made: the drawing before
+  /// it, the point it was made at, and the drawing and the two points it
+  /// made. Still being made for as long as those two points are what is
+  /// picked and nothing else has changed the drawing.
+  ({
+    VectorElement before,
+    VectorPick at,
+    VectorElement after,
+    Set<VectorPick> picks
+  })? _corner;
+
+  /// vectorCornerActive is whether the corner the tool last made is still
+  /// being made: its size and kind reshape it, and a drag on it goes on
+  /// shaping it. Picking anything else finishes it.
+  bool get vectorCornerActive {
+    var c = _corner;
+    return c != null &&
+        identical(editingVector, c.after) &&
+        c.picks.length == _vectorPicks.length &&
+        c.picks.containsAll(_vectorPicks);
+  }
+
+  /// vectorCornerPoint is where the corner being made was, in the drawing's
+  /// units, or null with none.
+  Offset? get vectorCornerPoint {
+    if (!vectorCornerActive) return null;
+    var c = _corner!;
+    return vectorNodeAt(c.before, c.at)?.point;
+  }
+
+  /// roundCorner rounds -- or cuts -- the corner at [at] as the corner
+  /// settings say, picking the two points it makes and keeping it open to
+  /// reshaping. Answers whether there was a corner there to round.
+  bool roundCorner(VectorPick at, {bool transient = false}) {
+    var e = editingVector;
+    if (e == null) return false;
+    return _shapeCorner(e, at, transient: transient);
+  }
+
+  /// reshapeCorner makes the corner being made again from the drawing as it
+  /// was before it, at the size and kind now set. Answers whether there was
+  /// one being made.
+  bool reshapeCorner({bool transient = false}) {
+    if (!vectorCornerActive) return false;
+    var c = _corner!;
+    return _shapeCorner(c.before, c.at, transient: transient);
+  }
+
+  bool _shapeCorner(VectorElement before, VectorPick at,
+      {bool transient = false}) {
+    var done = withCornered(
+        before, at, _vectorCornerSize * VectorSpace(before).unitsPer,
+        round: _vectorCornerRound);
+    if (done == null) return false;
+    var (after, picks) = done;
+    _corner = (before: before, at: at, after: after, picks: picks);
+    _vectorPicks = picks;
+    _vectorShape = at.shape;
+    replaceElement(after, transient: transient);
+    return true;
+  }
+
+  /// vectorHandleDrag is what dragging a handle may change, and
+  /// vectorHandleSnap whether it turns in fifteen-degree steps.
+  VectorHandleDrag get vectorHandleDrag => _vectorHandleDrag;
+  VectorHandleDrag _vectorHandleDrag = VectorHandleDrag.any;
+  set vectorHandleDrag(VectorHandleDrag d) {
+    if (_vectorHandleDrag == d) return;
+    _vectorHandleDrag = d;
+    notifyListeners();
+  }
+
+  bool get vectorHandleSnap => _vectorHandleSnap;
+  bool _vectorHandleSnap = false;
+  set vectorHandleSnap(bool on) {
+    if (_vectorHandleSnap == on) return;
+    _vectorHandleSnap = on;
+    notifyListeners();
+  }
+
+  /// _copiedShapes is what the last copy of points copied, and _pastes how
+  /// many times it has been pasted since -- each paste a step further off,
+  /// so pastes do not land on top of one another.
+  List<VectorShape> _copiedShapes = const [];
+  int _pastes = 0;
+
+  /// copyVectorPoints copies the points picked -- see copiedShapes --
+  /// answering whether there was anything to copy.
+  bool copyVectorPoints() {
+    var e = editingVector;
+    if (e == null || _vectorPicks.isEmpty) return false;
+    var copied = copiedShapes(e, _vectorPicks);
+    if (copied.isEmpty) return false;
+    _copiedShapes = copied;
+    _pastes = 0;
+    return true;
+  }
+
+  /// cutVectorPoints copies the points picked and takes them out.
+  bool cutVectorPoints() {
+    if (!copyVectorPoints()) return false;
+    deleteVectorPoint();
+    _pastes = -1;
+    return true;
+  }
+
+  /// pasteVectorPoints puts the points copied into the drawing being
+  /// edited, a little down and to the right of where they were, and picks
+  /// them -- answering whether there was anything to paste.
+  bool pasteVectorPoints() {
+    var e = editingVector;
+    if (e == null || _copiedShapes.isEmpty) return false;
+    _pastes++;
+    var step = 10 * VectorSpace(e).unitsPer * _pastes;
+    var (next, picks) = withPasted(e, _copiedShapes, Offset(step, step));
+    _vectorPicks = picks;
+    _vectorShape = picks.isEmpty ? -1 : picks.first.shape;
+    replaceElement(next);
+    return true;
+  }
+
+  /// pickAllVectorPoints picks every point of the drawing being edited.
+  bool pickAllVectorPoints() {
+    var e = editingVector;
+    if (e == null) return false;
+    pickVectorPoints(allPicks(e));
+    return true;
+  }
+
+  /// editPickedPoints replaces the drawing being edited with what [edit]
+  /// makes of it and the points picked, as one undo step.
+  void editPickedPoints(
+      VectorElement Function(VectorElement, Set<VectorPick>) edit) {
+    var e = editingVector;
+    if (e == null || _vectorPicks.isEmpty) return;
+    var next = edit(e, _vectorPicks);
+    if (!identical(next, e)) replaceElement(next);
+  }
+
+  /// vectorBrush is the pencil's brush as it is now -- one picked, then
+  /// changed or not -- and vectorPencilColour the colour it draws in.
+  VectorBrush get vectorBrush => _vectorBrush;
+  VectorBrush _vectorBrush = builtInBrushes.first;
+  set vectorBrush(VectorBrush b) {
+    _vectorBrush = b;
+    notifyListeners();
+  }
+
+  /// vectorPencilPoints is whether the drawing's points are shown while the
+  /// pencil is out. Off to start with: drawing, they are in the way.
+  bool get vectorPencilPoints => _vectorPencilPoints;
+  bool _vectorPencilPoints = false;
+  set vectorPencilPoints(bool on) {
+    if (_vectorPencilPoints == on) return;
+    _vectorPencilPoints = on;
+    notifyListeners();
+  }
+
+  Color get vectorPencilColour => _vectorPencilColour;
+  Color _vectorPencilColour = const Color(0xFF202124);
+  set vectorPencilColour(Color c) {
+    if (_vectorPencilColour == c) return;
+    _vectorPencilColour = c;
+    notifyListeners();
+  }
+
+  /// stylusButtons is what the pen's three buttons do with the pencil out,
+  /// in the order the pen reports them -- a right click, a middle click, a
+  /// back click, which is what a tablet's driver sends for them -- and
+  /// stylusEraser what its other end does.
+  List<StylusAction> get stylusButtons => _stylusButtons;
+  List<StylusAction> _stylusButtons = const [
+    StylusAction.pickColour,
+    StylusAction.pan,
+    StylusAction.undo,
+  ];
+  void setStylusButton(int index, StylusAction action) {
+    if (index < 0 || index >= _stylusButtons.length) return;
+    _stylusButtons = [
+      for (var (i, a) in _stylusButtons.indexed) i == index ? action : a,
+    ];
+    notifyListeners();
+  }
+
+  StylusAction get stylusEraser => _stylusEraser;
+  StylusAction _stylusEraser = StylusAction.erase;
+  set stylusEraser(StylusAction a) {
+    if (_stylusEraser == a) return;
+    _stylusEraser = a;
+    notifyListeners();
+  }
+
+  /// vectorCombining is the shapes picked with the Boolean tool, to be
+  /// combined -- each the first of its run of combined shapes.
+  Set<int> get vectorCombining => _vectorCombining;
+  Set<int> _vectorCombining = const {};
+
+  /// toggleCombining picks shape [shape] for combining, or unpicks it.
+  void toggleCombining(int shape) {
+    var next = {..._vectorCombining};
+    if (!next.remove(shape)) next.add(shape);
+    _vectorCombining = next;
+    notifyListeners();
+  }
+
+  /// clearCombining unpicks every shape picked for combining.
+  void clearCombining() {
+    if (_vectorCombining.isEmpty) return;
+    _vectorCombining = const {};
+    notifyListeners();
+  }
+
+  /// combineVector combines the shapes picked by [op], leaving the result
+  /// picked.
+  void combineVector(VectorCombine op) {
+    var e = editingVector;
+    if (e == null || _vectorCombining.length < 2) return;
+    var (next, at) = withCombined(e, _vectorCombining, op);
+    _vectorCombining = at >= 0 ? {at} : const {};
+    _vectorPicks = const {};
+    _vectorShape = -1;
+    replaceElement(next);
+  }
+
+  /// separateVector undoes the combining of every picked result.
+  void separateVector() {
+    var e = editingVector;
+    if (e == null || _vectorCombining.isEmpty) return;
+    var next = e;
+    for (var base in _vectorCombining) {
+      next = withSeparated(next, base);
+    }
+    _vectorCombining = const {};
+    replaceElement(next);
+  }
+
+  /// vectorTint is the tint brush's colour -- or gradient, laid across each
+  /// stroke as the colour picker sets it.
+  PaintSpec get vectorTint => _vectorTint;
+  PaintSpec _vectorTint = const PaintSpec(Color(0xFFE5484D));
+  set vectorTint(PaintSpec p) {
+    if (_vectorTint == p) return;
+    _vectorTint = p;
+    notifyListeners();
+  }
+
+  /// vectorBrushSize is the tint brush's width on screen, in pixels: the
+  /// same brush however far in the canvas is zoomed. vectorBrushSoft is how
+  /// far its edge fades, 0 to 1.
+  double get vectorBrushSize => _vectorBrushSize;
+  double _vectorBrushSize = 24;
+  set vectorBrushSize(double v) {
+    if (_vectorBrushSize == v) return;
+    _vectorBrushSize = v;
+    notifyListeners();
+  }
+
+  double get vectorBrushSoft => _vectorBrushSoft;
+  double _vectorBrushSoft = 0.5;
+  set vectorBrushSoft(double v) {
+    if (_vectorBrushSoft == v) return;
+    _vectorBrushSoft = v;
+    notifyListeners();
+  }
+
+  /// vectorTintLine and vectorTintFill are where the brush's tint shows: on
+  /// the drawing's lines, in its fills. Both is both.
+  bool get vectorTintLine => _vectorTintLine;
+  bool _vectorTintLine = true;
+  set vectorTintLine(bool on) {
+    if (_vectorTintLine == on) return;
+    _vectorTintLine = on;
+    notifyListeners();
+  }
+
+  bool get vectorTintFill => _vectorTintFill;
+  bool _vectorTintFill = true;
+  set vectorTintFill(bool on) {
+    if (_vectorTintFill == on) return;
+    _vectorTintFill = on;
+    notifyListeners();
+  }
+
+  /// clearVectorTints takes every tint off the drawing being edited.
+  void clearVectorTints() {
+    var e = editingVector;
+    if (e == null || e.tints.isEmpty) return;
+    replaceElement(e.copyWith(tints: const []));
   }
 
   /// editingVector is the drawing being edited, where there is one and it has
@@ -1527,8 +1868,9 @@ class CanvasController extends ChangeNotifier {
   void _resetVectorEditing() {
     _vectorShape = -1;
     _vectorPicks = const {};
-    _vectorPen = false;
-    _vectorPenShape = -1;
+    _vectorTool = VectorTool.select;
+    _vectorPenFrom = null;
+    _vectorCombining = const {};
   }
 
   void pickVectorShape(int shape) {
@@ -1571,9 +1913,9 @@ class CanvasController extends ChangeNotifier {
     if (e == null || picks.isEmpty) return false;
     var next = withoutPoints(e, picks);
     _vectorPicks = const {};
+    _vectorPenFrom = null;
     if ((next.shapes?.length ?? 0) < (e.shapes?.length ?? 0)) {
       _vectorShape = -1;
-      _vectorPenShape = -1;
     }
     replaceElement(next);
     return true;
