@@ -188,7 +188,12 @@ Path _lineOutline(VectorShape shape) {
 /// VectorDrawn is one thing a drawing draws: a shape, or a run of shapes
 /// combined -- see VectorCombine -- the first one's colours on the outline
 /// they make together.
-typedef VectorDrawn = ({VectorShape style, Path outline, bool combined});
+typedef VectorDrawn = ({
+  VectorShape style,
+  Path outline,
+  bool combined,
+  List<VectorShape> members
+});
 
 final Expando<(List<VectorShape>, Path)> _combined =
     Expando<(List<VectorShape>, Path)>();
@@ -206,7 +211,12 @@ List<VectorDrawn> vectorDrawn(List<VectorShape> shapes) {
       j++;
     }
     if (j == i + 1) {
-      out.add((style: base, outline: vectorShapePath(base), combined: false));
+      out.add((
+        style: base,
+        outline: vectorShapePath(base),
+        combined: false,
+        members: [base]
+      ));
     } else {
       var members = shapes.sublist(i, j);
       var kept = _combined[base];
@@ -224,7 +234,8 @@ List<VectorDrawn> vectorDrawn(List<VectorShape> shapes) {
         }
         _combined[base] = (members, outline);
       }
-      out.add((style: base, outline: outline, combined: true));
+      out.add(
+          (style: base, outline: outline, combined: true, members: members));
     }
     i = j;
   }
@@ -286,10 +297,14 @@ void paintVector(
   canvas.scale(p.sx, p.sy);
   // Tinted, the drawing is drawn into a layer of its own for the tint to be
   // laid on -- see _paintTints.
-  var tinted = e.tints.isNotEmpty;
-  if (tinted) canvas.saveLayer(null, Paint());
   for (var d in vectorDrawn(shapes)) {
     var shape = d.style;
+    // Tinted or rubbed out, a shape is drawn into a layer of its own for its
+    // tints to be laid on and its rub-outs taken out of -- its own, so what
+    // is drawn over it later is untouched by them. See _paintTints and
+    // _paintErasures.
+    var layered = shape.tints.isNotEmpty || shape.erasures.isNotEmpty;
+    if (layered) canvas.saveLayer(null, Paint());
     if (shape.fill case var fill? when fill.a > 0) {
       canvas.drawPath(
           d.outline,
@@ -306,10 +321,13 @@ void paintVector(
             ..color = stroke
             ..isAntiAlias = true);
     }
-  }
-  if (tinted) {
-    _paintTints(canvas, shapes, e.tints);
-    canvas.restore();
+    if (layered) {
+      if (shape.tints.isNotEmpty) _paintTints(canvas, d.members, shape.tints);
+      if (shape.erasures.isNotEmpty) {
+        _paintErasures(canvas, d.members, shape.erasures);
+      }
+      canvas.restore();
+    }
   }
   canvas.restore();
 }
@@ -360,6 +378,42 @@ void _paintTints(
     i = j;
   }
   canvas.restore();
+}
+
+/// _paintErasures takes the eraser's rub-outs out of the drawing's layer:
+/// whatever is under each, or -- for one that rubs out only lines, or only
+/// fills -- that part of it, the rub-out cut down to where the drawing's
+/// lines or fills show before it takes anything out. Rub-outs in a row that
+/// take out the same parts share one cut.
+void _paintErasures(
+    ui.Canvas canvas, List<VectorShape> shapes, List<VectorTint> erasures) {
+  var i = 0;
+  while (i < erasures.length) {
+    var t = erasures[i];
+    var j = i;
+    while (j < erasures.length &&
+        erasures[j].line == t.line &&
+        erasures[j].fill == t.fill) {
+      j++;
+    }
+    var run = erasures.sublist(i, j);
+    i = j;
+    if (!t.line && !t.fill) continue;
+    if (t.line && t.fill) {
+      for (var r in run) {
+        _paintTintStroke(canvas, r, Paint()..blendMode = BlendMode.dstOut);
+      }
+      continue;
+    }
+    canvas.saveLayer(null, Paint()..blendMode = BlendMode.dstOut);
+    for (var r in run) {
+      _paintTintStroke(canvas, r, Paint());
+    }
+    canvas.saveLayer(null, Paint()..blendMode = BlendMode.dstIn);
+    _paintCoverage(canvas, shapes, line: t.line, fill: t.fill);
+    canvas.restore();
+    canvas.restore();
+  }
 }
 
 /// _paintTintStroke draws one stroke of the brush with [paint]: its colour,

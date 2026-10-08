@@ -145,7 +145,7 @@ List<Widget> vectorSettings(
         CanvasIconButton(
           key: const ValueKey("vectorChoose"),
           icon: e.hasDrawing ? Icons.draw_outlined : Icons.add,
-          tooltip: e.hasDrawing ? "Use another drawing" : "Add a drawing",
+          tooltip: e.hasDrawing ? "Change drawing" : "Add drawing",
           onPressed: () async {
             var id = await pickCanvasVector(context);
             if (id != null) await use(id);
@@ -154,7 +154,7 @@ List<Widget> vectorSettings(
         CanvasIconButton(
           key: const ValueKey("vectorRecent"),
           icon: Icons.photo_library_outlined,
-          tooltip: "Use a drawing you have already added",
+          tooltip: "Recent drawings",
           onPressed: () async {
             var id = await showRecentPictures(context, drawings: true);
             if (id != null) await use(id);
@@ -170,7 +170,7 @@ List<Widget> vectorSettings(
         CanvasIconButton(
           key: const ValueKey("vectorEdit"),
           icon: Icons.edit_outlined,
-          tooltip: editing ? "Stop editing points" : "Edit points",
+          tooltip: editing ? "Stop editing" : "Edit points",
           active: editing,
           onPressed: () => editing
               ? controller.editVector(null)
@@ -180,7 +180,7 @@ List<Widget> vectorSettings(
           CanvasIconButton(
             key: const ValueKey("vectorRevert"),
             icon: Icons.restore,
-            tooltip: "Back to the original drawing",
+            tooltip: "Revert drawing",
             onPressed: () async {
               var sure = await askToConfirm(context,
                   title: "Back to the original?",
@@ -212,11 +212,12 @@ List<Widget> vectorSettings(
             (VectorTool.select, Icons.near_me_outlined),
             (VectorTool.pen, Icons.draw_outlined),
             (VectorTool.scale, Icons.open_in_full),
-            (VectorTool.tint, Icons.format_color_fill),
+            (VectorTool.tint, Icons.brush_outlined),
             (VectorTool.boolean, Icons.join_inner),
             (VectorTool.align, Icons.align_horizontal_center),
             (VectorTool.corner, Icons.rounded_corner),
             (VectorTool.pencil, Icons.edit),
+            (VectorTool.eraser, Icons.cleaning_services_outlined),
           ])
             CanvasIconButton(
               key: ValueKey("vectorTool-${tool.name}"),
@@ -291,7 +292,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
         CanvasIconButton(
           key: const ValueKey("vectorHandlesEven"),
           icon: Icons.straighten,
-          tooltip: "Make both handles the same length",
+          tooltip: "Even handles",
           onPressed: () => controller.editPickedPoints(withEvenHandles),
         ),
       ];
@@ -356,7 +357,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
         CanvasIconButton(
           key: const ValueKey("vectorTintLine"),
           icon: Icons.border_outer,
-          tooltip: "Tint the lines",
+          tooltip: "Tint lines",
           active: controller.vectorTintLine,
           onPressed: () =>
               controller.vectorTintLine = !controller.vectorTintLine,
@@ -364,7 +365,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
         CanvasIconButton(
           key: const ValueKey("vectorTintFill"),
           icon: Icons.square_rounded,
-          tooltip: "Tint the fills",
+          tooltip: "Tint fills",
           active: controller.vectorTintFill,
           onPressed: () =>
               controller.vectorTintFill = !controller.vectorTintFill,
@@ -386,11 +387,11 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           width: 80,
           onChanged: (v) => controller.vectorBrushSoft = v,
         ),
-        if (e.tints.isNotEmpty)
+        if (hasTints(e))
           CanvasIconButton(
             key: const ValueKey("vectorTintClear"),
             icon: Icons.layers_clear_outlined,
-            tooltip: "Take every tint off",
+            tooltip: "Clear tints",
             onPressed: controller.clearVectorTints,
           ),
       ];
@@ -406,15 +407,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           CanvasIconButton(
             key: ValueKey("vectorCombine-${op.name}"),
             icon: icon,
-            tooltip: switch (op) {
-              VectorCombine.unite => "Unite: one shape round them all",
-              VectorCombine.subtract =>
-                "Subtract: cut the others out of the lowest",
-              VectorCombine.intersect =>
-                "Intersect: keep only where they overlap",
-              VectorCombine.exclude =>
-                "Exclude: keep where they do not overlap",
-            },
+            tooltip: op.label,
             onPressed: controller.vectorCombining.length < 2
                 ? null
                 : () => controller.combineVector(op),
@@ -422,7 +415,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
         CanvasIconButton(
           key: const ValueKey("vectorSeparate"),
           icon: Icons.call_split,
-          tooltip: "Separate: each shape its own again",
+          tooltip: "Separate",
           onPressed: controller.vectorCombining
                   .any((b) => groupMembers(e, b).length > 1)
               ? controller.separateVector
@@ -431,8 +424,91 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
       ];
     case VectorTool.pencil:
       return [_brushPicker(controller)];
+    // The eraser: rubbing out, or taking out whole lines; how big, how soft,
+    // and what it rubs out.
+    case VectorTool.eraser:
+      var rub = !controller.vectorEraseWhole;
+      return [
+        CanvasDropdown<bool>(
+          key: const ValueKey("vectorEraseWhole"),
+          label: "Erase",
+          value: controller.vectorEraseWhole,
+          width: 104,
+          options: const [(false, "Rub out"), (true, "Whole lines")],
+          onChanged: (v) => controller.vectorEraseWhole = v,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("vectorEraseSize"),
+          label: "Size",
+          value: controller.vectorEraseSize,
+          min: 1,
+          max: 400,
+          decimals: 0,
+          width: 52,
+          onChanged: (v) => controller.vectorEraseSize = v,
+        ),
+        if (rub) ...[
+          CanvasSlider(
+            key: const ValueKey("vectorEraseSoft"),
+            label: "Soft",
+            value: controller.vectorEraseSoft,
+            width: 80,
+            onChanged: (v) => controller.vectorEraseSoft = v,
+          ),
+          CanvasIconButton(
+            key: const ValueKey("vectorEraseLine"),
+            icon: Icons.border_outer,
+            tooltip: "Erase lines",
+            active: controller.vectorEraseLine,
+            onPressed: () =>
+                controller.vectorEraseLine = !controller.vectorEraseLine,
+          ),
+          CanvasIconButton(
+            key: const ValueKey("vectorEraseFill"),
+            icon: Icons.square_rounded,
+            tooltip: "Erase fills",
+            active: controller.vectorEraseFill,
+            onPressed: () =>
+                controller.vectorEraseFill = !controller.vectorEraseFill,
+          ),
+          if (hasErasures(e))
+            CanvasIconButton(
+              key: const ValueKey("vectorEraseClear"),
+              icon: Icons.restore,
+              tooltip: "Undo rub-outs",
+              onPressed: controller.clearVectorErasures,
+            ),
+        ],
+      ];
+    // The picked points' own thickness, to type: a share of the shape's
+    // stroke width -- 1 as set, 2 twice as thick.
     case VectorTool.scale:
-      return const [];
+      if (picks.isEmpty) return const [];
+      var width = vectorNodeAt(e, picks.first)?.width ?? 1;
+      VectorElement thick(VectorElement e, Set<VectorPick> picks, double v) =>
+          withWidths(e, {for (var p in joinedTo(e, picks)) p: 1}, v);
+      return [
+        CanvasNumberField(
+          key: const ValueKey("vectorPointWidth"),
+          label: "Thickness",
+          value: width,
+          min: 0,
+          max: 20,
+          decimals: 2,
+          width: 64,
+          onChanged: (v) =>
+              controller.editPickedPoints((e, picks) => thick(e, picks, v)),
+        ),
+        CanvasIconButton(
+          key: const ValueKey("vectorPointWidthReset"),
+          icon: Icons.restart_alt,
+          tooltip: "Reset thickness",
+          onPressed: width == 1
+              ? null
+              : () =>
+                  controller.editPickedPoints((e, picks) => thick(e, picks, 1)),
+        ),
+      ];
   }
 }
 
@@ -496,12 +572,47 @@ Widget _brushPicker(CanvasController controller) {
             }
           },
         ),
-        CanvasColorButton(
-          key: const ValueKey("vectorPencilColour"),
-          label: "Colour",
-          color: controller.vectorPencilColour,
-          onChanged: (c) => controller.vectorPencilColour = c,
+        // A fill with no line has no line colour to choose.
+        if (brush.line || !brush.fill)
+          CanvasColorButton(
+            key: const ValueKey("vectorPencilColour"),
+            label: "Line",
+            color: controller.vectorPencilColour,
+            onChanged: (c) => controller.vectorPencilColour = c,
+          ),
+        CanvasToggle(
+          key: const ValueKey("vectorBrushFill"),
+          label: "Fill",
+          value: brush.fill,
+          onChanged: (v) => controller.vectorBrush = brush.copyWith(fill: v),
         ),
+        // The fill colour by the Fill switch, and the quick fill by that:
+        // both fill with it.
+        CanvasColorButton(
+          key: const ValueKey("vectorPencilFill"),
+          label: "Fill",
+          color: controller.vectorPencilFill,
+          onChanged: (c) => controller.vectorPencilFill = c,
+        ),
+        CanvasIconButton(
+          key: const ValueKey("vectorQuickFill"),
+          icon: Icons.format_color_fill,
+          tooltip: "Quick fill",
+          active: controller.vectorQuickFill,
+          onPressed: () =>
+              controller.vectorQuickFill = !controller.vectorQuickFill,
+        ),
+        if (controller.vectorQuickFill)
+          CanvasNumberField(
+            key: const ValueKey("vectorFillGap"),
+            label: "Gap",
+            value: controller.vectorFillGap,
+            min: 0,
+            max: 50,
+            decimals: 0,
+            width: 48,
+            onChanged: (v) => controller.vectorFillGap = v,
+          ),
         CanvasNumberField(
           key: const ValueKey("vectorBrushWidth"),
           label: "Size",
@@ -516,13 +627,28 @@ Widget _brushPicker(CanvasController controller) {
             (v) => brush.copyWith(opacity: v)),
         slider("vectorBrushSmoothing", "Steady", brush.smoothing,
             (v) => brush.copyWith(smoothing: v)),
+        CanvasIconButton(
+          key: const ValueKey("vectorMirrorAcross"),
+          icon: Icons.swap_horiz,
+          tooltip: "Vertical mirror",
+          active: controller.vectorMirrorAcross,
+          onPressed: () =>
+              controller.vectorMirrorAcross = !controller.vectorMirrorAcross,
+        ),
+        CanvasIconButton(
+          key: const ValueKey("vectorMirrorDown"),
+          icon: Icons.swap_vert,
+          tooltip: "Horizontal mirror",
+          active: controller.vectorMirrorDown,
+          onPressed: () =>
+              controller.vectorMirrorDown = !controller.vectorMirrorDown,
+        ),
         const _PenMeter(key: ValueKey("vectorPenMeter")),
         CanvasIconButton(
           key: const ValueKey("vectorPencilPoints"),
           icon: Icons.scatter_plot_outlined,
-          tooltip: controller.vectorPencilPoints
-              ? "Hide the points while drawing"
-              : "Show the points while drawing",
+          tooltip:
+              controller.vectorPencilPoints ? "Hide points" : "Show points",
           active: controller.vectorPencilPoints,
           onPressed: () =>
               controller.vectorPencilPoints = !controller.vectorPencilPoints,
@@ -538,9 +664,7 @@ Widget _brushPicker(CanvasController controller) {
         CanvasIconButton(
           key: const ValueKey("vectorBrushSave"),
           icon: Icons.bookmark_add_outlined,
-          tooltip: mine != null
-              ? "Save the changes to ${brush.name}"
-              : "Keep this as a brush of your own",
+          tooltip: mine != null ? "Save changes" : "Save brush",
           onPressed: brush.name.trim().isEmpty
               ? null
               : () async {
@@ -558,7 +682,7 @@ Widget _brushPicker(CanvasController controller) {
           CanvasIconButton(
             key: const ValueKey("vectorBrushDelete"),
             icon: Icons.delete_outline,
-            tooltip: "Delete the brush ${brush.name}",
+            tooltip: "Delete brush",
             onPressed: () async {
               await store.remove(mine.$1);
               controller.vectorBrush = builtInBrushes.first;
@@ -591,7 +715,7 @@ List<Widget> _toolMore(CanvasController controller) {
       key: const ValueKey("vectorBrushMore"),
       label: "Brush shape",
       remember: "vectorBrushMore",
-      tooltip: "Pressure, tapers, tilt and nib",
+      tooltip: "Brush shape",
       rule: false,
       row: [
         CanvasToggle(
@@ -633,6 +757,13 @@ List<Widget> _toolMore(CanvasController controller) {
             onChanged: (v) =>
                 controller.vectorBrush = brush.copyWith(nibAngle: v),
           ),
+        if (brush.fill)
+          CanvasToggle(
+            key: const ValueKey("vectorBrushLine"),
+            label: "Line",
+            value: brush.line,
+            onChanged: (v) => controller.vectorBrush = brush.copyWith(line: v),
+          ),
         CanvasToggle(
           key: const ValueKey("vectorBrushFlat"),
           label: "Flat ends",
@@ -652,7 +783,7 @@ List<Widget> _toolMore(CanvasController controller) {
       key: const ValueKey("vectorPenButtons"),
       label: "Pen buttons",
       remember: "vectorPenButtons",
-      tooltip: "What the pen's buttons and its other end do",
+      tooltip: "Pen buttons",
       rule: false,
       row: const [],
       more: [
@@ -724,6 +855,7 @@ String _toolKey(VectorTool tool) => switch (tool) {
       VectorTool.align => "A",
       VectorTool.corner => "C",
       VectorTool.pencil => "N",
+      VectorTool.eraser => "E",
     };
 
 /// _toolHint is how [tool] is used, said where the reader is looking.
@@ -746,11 +878,12 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "joint moves as one point. Click the first point to close the "
           "shape. Double-click, Return or Escape finishes the line, ready "
           "to start another; Escape again puts the pen away.",
-      VectorTool.scale => "Press on a point and drag to make the line "
-          "thicker there -- right or up -- or thinner -- left or down. The "
-          "points picked go with it, and so does any point the drag passes "
-          "over. With no point picked or pressed, the drag scales the whole "
-          "drawing, as its box's handles do.",
+      VectorTool.scale => "Drag right or up to make the line thicker, left "
+          "or down to make it thinner. Click a point to pick it -- Shift and "
+          "a click picks several -- and a drag, or Thickness, changes those "
+          "points alone; click off the points to let them go. With nothing "
+          "picked, drag across a line to thicken or thin every point the "
+          "drag passes near. The points are hidden while you drag.",
       VectorTool.tint => "Paint over the drawing to tint it. The tint shows "
           "only where the drawing is: on its lines, in its fills, or both -- "
           "Tint line and Tint fill. A soft brush blends into what is under "
@@ -768,6 +901,11 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "Shift and a click -- then line them up: to the left, middle or "
           "right of the box round them, its top, middle or bottom, or "
           "spread out with even gaps across or down.",
+      VectorTool.eraser => "Rub out what the eraser goes over -- the lines, "
+          "the fills, or both -- soft-edged if you like; or set Erase to "
+          "Whole lines to take out every line and shape it touches. Undo "
+          "rub-outs takes every rub-out back, leaving what was rubbed out "
+          "whole again.",
       VectorTool.pencil => "Draw freehand: each stroke is a line of its own, "
           "thick and thin as the brush and the pen say, to edit like any "
           "other. Pick a brush -- or make one: change it, name it, and keep "
@@ -821,7 +959,7 @@ Widget _shapeGroup(
     key: const ValueKey("vectorShapeGroup"),
     label: one ? "Shape ${picked + 1} of ${shapes.length}" : "All shapes",
     remember: "vectorShapeMore",
-    tooltip: "How the line ends and turns",
+    tooltip: "Ends & corners",
     rule: false,
     row: [
       CanvasToggle(
@@ -998,11 +1136,7 @@ class _PenMeterState extends State<_PenMeter> {
             ? (tablet.eraser ? "Pen \u2013 eraser end" : "Pen \u2013 lifted")
             : "No pen pressure yet";
     return Tooltip(
-      message: heard
-          ? "What the pen is telling the app. The bar is how hard it presses."
-          : "No reading has come from a pen. With a mouse, the line's width "
-              "comes from speed instead. A tablet pen should show its "
-              "pressure here as soon as it touches the tablet.",
+      message: "Pen pressure",
       child: SizedBox(
         width: 150,
         child: Column(

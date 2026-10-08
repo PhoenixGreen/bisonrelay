@@ -181,6 +181,7 @@ class StagePainter extends CustomPainter {
     bool boxing,
     Set<VectorPick> boxed,
     bool bare,
+    ({bool across, bool down})? mirror,
     Set<int>? combining,
   })? editingVector;
 
@@ -698,6 +699,9 @@ class StagePainter extends CustomPainter {
     if (editingVector case var editing?) {
       // Painting -- tint, or the pencil with its points hidden -- nothing is
       // picked or boxed: the drawing alone.
+      if (editing.mirror case var m?) {
+        _paintMirrorLines(canvas, editing.element, m.across, m.down);
+      }
       if (editing.bare) return;
       _paintVectorControls(canvas, editing.element, editing.shape, editing.pick,
           {...editing.picks, ...editing.boxed},
@@ -914,6 +918,37 @@ class StagePainter extends CustomPainter {
   ///
   /// [everyShape] shows every shape's points: while a box is dragged across
   /// the drawing, so what it will take in can be seen.
+  /// _paintMirrorLines draws the pencil's mirror lines through the middle of
+  /// the drawing [e] -- dashed, and through the whole of it, so what a
+  /// stroke will be mirrored across can be seen before it is drawn.
+  void _paintMirrorLines(
+      Canvas canvas, VectorElement e, bool across, bool down) {
+    if (!across && !down) return;
+    var space = VectorSpace(e);
+    var v = e.viewBox;
+    // Out past the drawing a little each way: the line reads as a line, not
+    // as an edge of the drawing.
+    var r = v.inflate(math.max(v.width, v.height) * 0.1);
+    var paint = Paint()
+      ..color = e.handleColor.withValues(alpha: 0.7)
+      ..strokeWidth = 1;
+    void dashed(Offset a, Offset b) {
+      var from = space.toCanvas(a) * scale + origin;
+      var to = space.toCanvas(b) * scale + origin;
+      var length = (to - from).distance;
+      if (length == 0) return;
+      var step = (to - from) / length;
+      for (var d = 0.0; d < length; d += 10) {
+        canvas.drawLine(
+            from + step * d, from + step * math.min(length, d + 6), paint);
+      }
+    }
+
+    if (across)
+      dashed(Offset(v.center.dx, r.top), Offset(v.center.dx, r.bottom));
+    if (down) dashed(Offset(r.left, v.center.dy), Offset(r.right, v.center.dy));
+  }
+
   void _paintVectorControls(Canvas canvas, VectorElement e, int picked,
       VectorPick? pick, Set<VectorPick> picks,
       {bool everyShape = false, Set<int>? combining}) {

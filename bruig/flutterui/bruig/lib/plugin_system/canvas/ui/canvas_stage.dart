@@ -21,6 +21,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
+import 'package:bruig/components/paint_spec.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
@@ -138,6 +141,9 @@ enum _DragMode {
   /// eraser going over lines.
   vectorPencil,
   vectorErase,
+
+  /// vectorRub is the eraser rubbing out what it goes over.
+  vectorRub,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -269,6 +275,10 @@ class CanvasStageState extends State<CanvasStage> {
   /// _lastVectorClick is where the last press on a drawing being edited
   /// was, for the pen's double-click.
   Offset _lastVectorClick = Offset.infinite;
+
+  /// _thicknessReach is how near, on screen, the line thickness tool's drag
+  /// has to pass a point to take it in.
+  static const double _thicknessReach = 24;
 
   /// _penPullMin is how far, on screen, the pen has to be dragged as a point
   /// goes down before it pulls a curve out of it.
@@ -2141,6 +2151,12 @@ class CanvasStageState extends State<CanvasStage> {
       case VectorTool.boolean:
         _pressCombine(e, doc, reach);
         return true;
+      case VectorTool.eraser:
+        _pressEraser(e, doc, reach);
+        return true;
+      case VectorTool.pencil when controller.vectorQuickFill:
+        _pressQuickFill(e, doc, reach);
+        return true;
       case VectorTool.pencil:
         _pressPencil(e, doc);
         return true;
@@ -2291,21 +2307,105 @@ class CanvasStageState extends State<CanvasStage> {
         time: ev?.timeStamp ?? Duration.zero);
   }
 
+  /// _pressEraser starts the eraser: rubbing out what it goes over -- the
+  /// lines, the fills, or both, as set -- or, set to take out whole lines,
+  /// taking out every line and shape it touches. On the page only, as the
+  /// pencil is: a hand resting off it takes nothing out.
+  void _pressEraser(VectorElement e, Offset doc, double reach) {
+    _mode = _DragMode.none;
+    if (!_onPage(doc)) return;
+    controller.beginInteraction();
+    if (controller.vectorEraseWhole) {
+      _eraseReach = math.max(reach, controller.vectorEraseSize / 2 / _scale);
+      controller.replaceElement(withoutShapesAt(e, doc, _eraseReach),
+          transient: true);
+      _mode = _DragMode.vectorErase;
+      return;
+    }
+    _startStroke(
+        e,
+        doc,
+        VectorTint(
+            points: const [],
+            paint: const PaintSpec(Color(0xFF000000)),
+            width:
+                controller.vectorEraseSize / _scale * VectorSpace(e).unitsPer,
+            soft: controller.vectorEraseSoft,
+            line: controller.vectorEraseLine,
+            fill: controller.vectorEraseFill,
+            erase: true),
+        rubOut: true);
+    _mode = _DragMode.vectorRub;
+  }
+
+  /// _pressQuickFill fills the area the lines close round the click with
+  /// the fill colour -- or, on a fill already there with no line of its
+  /// own, a quick fill made before, gives it the colour instead. An area the
+  /// lines leave open is said so, and nothing is filled.
+  void _pressQuickFill(VectorElement e, Offset doc, double reach) {
+    _mode = _DragMode.none;
+    var colour = controller.vectorPencilFill;
+    var hit = shapeAt(e, doc, reach);
+    if (hit >= 0) {
+      var s = e.shapes![hit];
+      if (s.fill != null && s.stroke == null) {
+        controller.replaceElement(e.withShape(hit, s.copyWith(fill: colour)));
+        return;
+      }
+    }
+    var gap = controller.vectorFillGap / _scale * VectorSpace(e).unitsPer;
+    var snack = SnackBarModel.of(context);
+    quickFilled(e, doc, colour, gap: gap).then((next) {
+      // Only onto the drawing it was worked out from: anything done to it
+      // in the meantime wins.
+      if (!mounted || !identical(controller.editingVector, e)) return;
+      if (next == null) {
+        snack.error("That area isn't closed: no fill");
+        return;
+      }
+      controller.replaceElement(next);
+    });
+  }
+
   /// _pressPencil starts a stroke of the pencil: a new line, on top.
+  /// _onPage is whether [doc] is on the page -- the only place the pencil
+  /// draws. A hand resting on the desk round the page, or a pen run off its
+  /// edge, puts nothing down.
+  bool _onPage(Offset doc) =>
+      (Offset.zero & controller.document.size.size).contains(doc);
+
+  /// _penRuns is the pencil stroke being drawn, as the stretches of it that
+  /// were on the page: one, unless the pen went off the edge and came back,
+  /// when each stretch is a line of its own rather than one jumping across
+  /// what was off the page.
+  List<List<PenSample>> _penRuns = [];
+
   void _pressPencil(VectorElement e, Offset doc) {
+    if (!_onPage(doc)) {
+      _mode = _DragMode.none;
+      return;
+    }
     var space = VectorSpace(e);
     _vectorBefore = e;
     _penWidth = controller.vectorBrush.size / _scale * space.unitsPer;
     _penSamples = [_penSample(doc)];
+    _penRuns = [_penSamples];
     controller.beginInteraction();
     _drawPencil();
     _mode = _DragMode.vectorPencil;
   }
 
   void _applyPencil(Offset doc) {
+    if (!_onPage(doc)) {
+      // Off the page: the stretch drawn so far ends, and the next reading
+      // back on it starts another.
+      _penSamples = [];
+      return;
+    }
     var last = _penSamples.lastOrNull;
     // A reading less than a pixel on is no new reading.
     if (last != null && (doc - last.at).distance * _scale < 1) return;
+    if (_penSamples.isEmpty) _penRuns.add(_penSamples);
     _penSamples.add(_penSample(doc));
     _drawPencil();
   }
@@ -2313,11 +2413,23 @@ class CanvasStageState extends State<CanvasStage> {
   void _drawPencil() {
     var before = _vectorBefore;
     if (before == null) return;
-    var shape = pencilShape(before, _penSamples, controller.vectorBrush,
-        controller.vectorPencilColour, _penWidth);
-    if (shape == null) return;
+    // The stroke and, with symmetry on, its mirror images: each a line of
+    // its own, drawn as it is.
+    var drawn = [
+      for (var run in _penRuns)
+        for (var (samples, brush) in mirroredStrokes(
+            before, run, controller.vectorBrush,
+            across: controller.vectorMirrorAcross,
+            down: controller.vectorMirrorDown))
+          if (pencilShape(before, samples, brush, controller.vectorPencilColour,
+                  _penWidth,
+                  fillColour: controller.vectorPencilFill)
+              case var shape?)
+            shape,
+    ];
+    if (drawn.isEmpty) return;
     controller.replaceElement(
-        before.copyWith(shapes: [...?before.shapes, shape]),
+        before.copyWith(shapes: [...?before.shapes, ...drawn]),
         transient: true);
   }
 
@@ -2517,26 +2629,49 @@ class CanvasStageState extends State<CanvasStage> {
   /// is scaling the whole drawing.
   Map<VectorPick, double> _widths = {};
   double _scaleReach = 0;
+  bool _sweeping = false;
+  bool _scaleLetsGo = false;
 
-  /// _pressScale starts the scale tool. On a point, or with points picked,
-  /// it makes the line thicker or thinner there -- the point pressed and the
-  /// others picked with it, and any point the drag goes on to pass over.
-  /// With none, it scales the whole drawing about its middle, as the box's
-  /// handles do.
+  /// _pressScale starts the line thickness tool: the line made thicker or
+  /// thinner at the points picked -- or, with none picked, at the points
+  /// nearest the press -- and at every point the drag goes on to pass near.
   bool _pressScale(VectorElement e, Offset doc, double reach) {
-    var on = anyPointAt(e, doc, reach);
+    // Near enough to take in is a good deal nearer than a point's own
+    // handle: a drag sweeps across a line's points as a brush would.
+    var near = math.max(reach, _thicknessReach / _scale);
     var picks = controller.vectorPicks;
-    var those = on == null
-        ? picks
-        : picks.contains(on)
-            ? picks
-            : {on};
+    var hit = anyPointAt(e, doc, reach);
+    // Shift and a click on a point adds it to the points picked, or takes
+    // it out, as picking does.
+    if (hit != null && _shiftHeld) {
+      controller.pickVectorPoint(hit, toggle: true);
+      _mode = _DragMode.none;
+      return true;
+    }
+    Set<VectorPick> those;
+    if (hit != null) {
+      // On a point: all those picked if it is one of them; otherwise it,
+      // picked now -- one point, its thickness alone.
+      if (!picks.contains(hit)) controller.pickVectorPoint(hit);
+      those = controller.vectorPicks;
+    } else if (picks.isNotEmpty) {
+      those = picks;
+    } else {
+      // Nothing picked: the point nearest the press, if one is near.
+      var nearest = anyPointAt(e, doc, near);
+      those = nearest == null ? const {} : {nearest};
+    }
+    // Only a drag with nothing picked sweeps up the points it passes; with
+    // points picked, it is theirs alone.
+    _sweeping = hit == null && picks.isEmpty;
+    // A click off every point, with points picked, lets them go -- back to
+    // sweeping. See _onPointerUp.
+    _scaleLetsGo = hit == null && picks.isNotEmpty;
     _widths = {
       for (var p in joinedTo(e, those))
         if (vectorNodeAt(e, p) case var n?) p: n.width,
     };
-    if (on != null && !picks.contains(on)) controller.pickVectorPoint(on);
-    _scaleReach = reach;
+    _scaleReach = near;
     _vectorBefore = e;
     _vectorFrom = doc;
     _mode = _DragMode.vectorScale;
@@ -2552,26 +2687,17 @@ class CanvasStageState extends State<CanvasStage> {
     if (before == null) return;
     var moved = (doc - _vectorFrom) * _scale;
     var factor = math.pow(2, (moved.dx - moved.dy) / 150).toDouble();
-    if (_widths.isEmpty) {
-      var b = before.bounds;
-      var w = math.max(1.0, b.width * factor);
-      var h = math.max(1.0, b.height * factor);
-      controller.replaceElement(
-          before.withBase(
-              x: b.center.dx - w / 2,
-              y: b.center.dy - h / 2,
-              width: w,
-              height: h) as VectorElement,
-          transient: true);
-      return;
-    }
-    // Drawn over, a point joins in, from the width it had.
-    if (anyPointAt(before, doc, _scaleReach) case var over?
-        when !_widths.containsKey(over)) {
+    // Passed near, a point joins in, from the width it had -- every point
+    // within reach, so a sweep across a line takes in all it crosses.
+    for (var over in _sweeping
+        ? pointsNear(before, doc, _scaleReach)
+        : const <VectorPick>{}) {
+      if (_widths.containsKey(over)) continue;
       for (var p in joinedTo(before, {over})) {
         _widths[p] = vectorNodeAt(before, p)?.width ?? 1;
       }
     }
+    if (_widths.isEmpty) return;
     controller.replaceElement(withWidths(before, _widths, factor),
         transient: true);
   }
@@ -2604,16 +2730,18 @@ class CanvasStageState extends State<CanvasStage> {
     var unit =
         (space.toDrawing(doc + const Offset(1, 0)) - space.toDrawing(doc))
             .distance;
-    var like = VectorTint(
-      points: const [],
-      paint: controller.vectorTint,
-      width: controller.vectorBrushSize / _scale * unit,
-      soft: controller.vectorBrushSoft,
-      line: controller.vectorTintLine,
-      fill: controller.vectorTintFill,
-      erase: HardwareKeyboard.instance.isAltPressed,
-    );
-    controller.replaceElement(withTintFrom(e, like, doc), transient: true);
+    _startStroke(
+        e,
+        doc,
+        VectorTint(
+          points: const [],
+          paint: controller.vectorTint,
+          width: controller.vectorBrushSize / _scale * unit,
+          soft: controller.vectorBrushSoft,
+          line: controller.vectorTintLine,
+          fill: controller.vectorTintFill,
+          erase: HardwareKeyboard.instance.isAltPressed,
+        ));
   }
 
   void _applyTint(Offset doc) {
@@ -2622,10 +2750,49 @@ class CanvasStageState extends State<CanvasStage> {
     if (_tintWaiting case var from?) {
       _tintWaiting = null;
       _startTint(e, from);
-      e = controller.editingVector!;
     }
-    var next = withTintTo(e, doc);
-    if (!identical(next, e)) controller.replaceElement(next, transient: true);
+    _carryStroke(doc);
+  }
+
+  /// _stroke is the tint stroke or rub-out being painted, _strokeOn the
+  /// shapes it has gone over so far -- the ones it is laid on -- and
+  /// _strokeRubs whether it is a rub-out. Laid, each time it grows, on the
+  /// drawing as it was when it began; see shapesUnder and withStrokeOn.
+  VectorTint? _stroke;
+  Set<int> _strokeOn = {};
+  bool _strokeRubs = false;
+
+  void _startStroke(VectorElement e, Offset doc, VectorTint like,
+      {bool rubOut = false}) {
+    var at = VectorSpace(e).toDrawing(doc);
+    _vectorBefore = e;
+    _strokeRubs = rubOut;
+    _stroke = VectorTint(
+        points: [at],
+        paint: like.paint,
+        width: like.width,
+        soft: like.soft,
+        line: like.line,
+        fill: like.fill,
+        erase: like.erase);
+    _strokeOn = shapesUnder(e, at, like.width / 2);
+    controller.replaceElement(
+        withStrokeOn(e, _strokeOn, _stroke!, rubOut: rubOut),
+        transient: true);
+  }
+
+  void _carryStroke(Offset doc) {
+    var before = _vectorBefore, stroke = _stroke;
+    if (before == null || stroke == null) return;
+    var at = VectorSpace(before).toDrawing(doc);
+    // A move of less than a tenth of the brush's width adds nothing: a
+    // stroke is a few hundred points, not one for every pixel crossed.
+    if ((at - stroke.points.last).distance < stroke.width / 10) return;
+    _stroke = stroke.withPoint(at);
+    _strokeOn = {..._strokeOn, ...shapesUnder(before, at, stroke.width / 2)};
+    controller.replaceElement(
+        withStrokeOn(before, _strokeOn, _stroke!, rubOut: _strokeRubs),
+        transient: true);
   }
 
   /// _brushAt is where the tint brush's ring is drawn: the pointer, while
@@ -2635,7 +2802,8 @@ class CanvasStageState extends State<CanvasStage> {
   void _moveBrush(Offset stage) {
     var on = controller.editingVector != null &&
         (controller.vectorTool == VectorTool.tint ||
-            controller.vectorTool == VectorTool.pencil);
+            controller.vectorTool == VectorTool.pencil ||
+            controller.vectorTool == VectorTool.eraser);
     var at = on ? stage : null;
     if (at != _brushAt) setState(() => _brushAt = at);
   }
@@ -2644,14 +2812,22 @@ class CanvasStageState extends State<CanvasStage> {
   /// stroke will be, before it is painted.
   Widget? _brushRing() {
     var at = _brushAt;
-    var pencil = controller.vectorTool == VectorTool.pencil;
+    var pencil = controller.vectorTool == VectorTool.pencil &&
+        !controller.vectorQuickFill;
+    if (controller.vectorTool == VectorTool.pencil && !pencil) return null;
+    var eraser = controller.vectorTool == VectorTool.eraser;
     if (at == null ||
         controller.editingVector == null ||
-        (controller.vectorTool != VectorTool.tint && !pencil)) {
+        (controller.vectorTool != VectorTool.tint && !pencil && !eraser)) {
       return null;
     }
     var d = math.max(
-        4.0, pencil ? controller.vectorBrush.size : controller.vectorBrushSize);
+        4.0,
+        pencil
+            ? controller.vectorBrush.size
+            : eraser
+                ? controller.vectorEraseSize
+                : controller.vectorBrushSize);
     return Positioned(
       left: at.dx - d / 2,
       top: at.dy - d / 2,
@@ -3358,6 +3534,8 @@ class CanvasStageState extends State<CanvasStage> {
         _applyCorner(doc);
       case _DragMode.vectorPencil:
         _applyPencil(doc);
+      case _DragMode.vectorRub:
+        if (_onPage(doc)) _carryStroke(doc);
       case _DragMode.vectorErase:
         if (controller.editingVector case var e?) {
           var next = withoutShapesAt(e, doc, _eraseReach);
@@ -3789,8 +3967,16 @@ class CanvasStageState extends State<CanvasStage> {
         _mode == _DragMode.vectorTint ||
         _mode == _DragMode.vectorCorner ||
         _mode == _DragMode.vectorPencil ||
-        _mode == _DragMode.vectorErase) {
+        _mode == _DragMode.vectorErase ||
+        _mode == _DragMode.vectorRub) {
+      _stroke = null;
+      _strokeOn = {};
+      if (_mode == _DragMode.vectorScale && _scaleLetsGo && !_travelled) {
+        controller.pickVectorPoints(const {});
+      }
+      _scaleLetsGo = false;
       _penSamples = [];
+      _penRuns = [];
       _vectorBefore = null;
       _widths = {};
       controller.endInteraction();
@@ -4045,6 +4231,10 @@ class CanvasStageState extends State<CanvasStage> {
         controller.vectorTool = controller.vectorTool == VectorTool.scale
             ? VectorTool.select
             : VectorTool.scale;
+      case LogicalKeyboardKey.keyE when controller.editingVector != null:
+        controller.vectorTool = controller.vectorTool == VectorTool.eraser
+            ? VectorTool.select
+            : VectorTool.eraser;
       case LogicalKeyboardKey.keyN when controller.editingVector != null:
         controller.vectorTool = controller.vectorTool == VectorTool.pencil
             ? VectorTool.select
@@ -4172,9 +4362,20 @@ class CanvasStageState extends State<CanvasStage> {
                               // and the box round them are put away -- and
                               // the pencil's too, unless it is set to show
                               // them.
-                              bare: controller.vectorTool == VectorTool.tint ||
+                              // And while the line's thickness is being
+                              // dragged: it is the line that is watched.
+                              bare: _mode == _DragMode.vectorScale ||
+                                  controller.vectorTool == VectorTool.tint ||
+                                  controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),
+                              // The pencil's mirror lines, while it is out.
+                              mirror: controller.vectorTool == VectorTool.pencil
+                                  ? (
+                                      across: controller.vectorMirrorAcross,
+                                      down: controller.vectorMirrorDown
+                                    )
+                                  : null,
                               combining:
                                   controller.vectorTool == VectorTool.boolean
                                       ? controller.vectorCombining
@@ -4444,8 +4645,15 @@ class CanvasStageState extends State<CanvasStage> {
     // Drawing with the pencil, the pointer is the brush's ring and nothing
     // more: an arrow over the line being drawn is in the way.
     if (controller.editingVector != null &&
-        controller.vectorTool == VectorTool.pencil) {
+        controller.vectorTool == VectorTool.eraser) {
       return SystemMouseCursors.none;
+    }
+    if (controller.editingVector != null &&
+        controller.vectorTool == VectorTool.pencil) {
+      // Filling, it is a point to click on; drawing, the brush's ring.
+      return controller.vectorQuickFill
+          ? SystemMouseCursors.precise
+          : SystemMouseCursors.none;
     }
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;

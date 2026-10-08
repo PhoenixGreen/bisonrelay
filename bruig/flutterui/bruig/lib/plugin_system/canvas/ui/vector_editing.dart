@@ -23,7 +23,8 @@ enum VectorTool {
   boolean("Combine shapes"),
   align("Align points"),
   corner("Round corners"),
-  pencil("Pencil");
+  pencil("Pencil"),
+  eraser("Eraser");
 
   final String label;
   const VectorTool(this.label);
@@ -338,13 +339,13 @@ VectorElement withoutHandles(VectorElement e, Set<VectorPick> picks) {
 /// VectorAlign is how the align tool lines points up.
 enum VectorAlign {
   left("Align left"),
-  centreX("Align centres across"),
+  centreX("Centre across"),
   right("Align right"),
   top("Align top"),
-  centreY("Align centres down"),
+  centreY("Centre down"),
   bottom("Align bottom"),
-  spreadX("Even gaps across"),
-  spreadY("Even gaps down");
+  spreadX("Even across"),
+  spreadY("Even down");
 
   final String label;
   const VectorAlign(this.label);
@@ -649,8 +650,25 @@ VectorElement withPointsMoved(
     paths[pick.path] = paths[pick.path].copyWith(nodes: nodes);
     shapes[pick.shape] = s.copyWith(paths: paths);
   }
+  // A shape moved whole takes its tints and rub-outs with it; one moved in
+  // part leaves them where they were painted.
+  var moved = joinedTo(e, picks);
+  for (var (i, s) in (e.shapes ?? const <VectorShape>[]).indexed) {
+    if (s.tints.isEmpty && s.erasures.isEmpty) continue;
+    var whole = [
+      for (var (p, run) in s.paths.indexed)
+        for (var n = 0; n < run.nodes.length; n++) VectorPick(i, p, n),
+    ].every(moved.contains);
+    if (whole) shapes[i] = _strokesMoved(shapes[i], by);
+  }
   return e.copyWith(shapes: shapes);
 }
+
+/// _strokesMoved is [s] with its tints and rub-outs moved [by].
+VectorShape _strokesMoved(VectorShape s, Offset by) => s.copyWith(
+      tints: [for (var t in s.tints) t.mapped((p) => p + by)],
+      erasures: [for (var t in s.erasures) t.mapped((p) => p + by)],
+    );
 
 /// picksIn is every point of [e] whose place on the canvas is inside
 /// [canvasRect] -- a box dragged across the drawing.
@@ -854,7 +872,7 @@ List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
   var before = e.shapes ?? const <VectorShape>[];
   var added = [
     for (var s in shapes)
-      s.copyWith(paths: [
+      _strokesMoved(s, by).copyWith(paths: [
         for (var run in s.paths)
           run.copyWith(nodes: [for (var n in run.nodes) n.moved(n.point + by)]),
       ]),
@@ -889,7 +907,8 @@ Set<VectorPick> allPicks(VectorElement e) => {
 /// to the points the line needs and given smooth handles through them, so a
 /// stroke of hundreds of readings is a few dozen points to edit.
 VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
-    VectorBrush brush, Color colour, double width) {
+    VectorBrush brush, Color colour, double width,
+    {Color? fillColour}) {
   if (samples.isEmpty) return null;
   var space = VectorSpace(e);
   var pts = [for (var s in samples) space.toDrawing(s.at)];
@@ -991,13 +1010,56 @@ VectorShape? pencilShape(VectorElement e, List<PenSample> samples,
         smooth: inside,
         width: double.parse((widths[i] * taper(i)).toStringAsFixed(3))));
   }
+  var opacity = brush.opacity.clamp(0.0, 1.0);
+  // A fill brush closes the stroke round on itself and fills it.
+  var filled = brush.fill && nodes.length > 2;
+  var fill = fillColour ?? colour;
   return VectorShape(
-    paths: [VectorPath(nodes)],
-    stroke: colour.withValues(alpha: colour.a * brush.opacity.clamp(0.0, 1.0)),
+    paths: [VectorPath(nodes, closed: filled)],
+    fill: filled ? fill.withValues(alpha: fill.a * opacity) : null,
+    stroke: brush.line || !filled
+        ? colour.withValues(alpha: colour.a * opacity)
+        : null,
     strokeWidth: width,
     cap: brush.cap,
     join: StrokeJoin.round,
   );
+}
+
+/// mirroredStrokes is a pencil stroke and its mirror images: [samples] as
+/// drawn, then reflected across the drawing's upright middle line where
+/// [across], across its level middle line where [down], and across both
+/// where both -- one, two or four strokes. Each with the brush it is drawn
+/// with: a broad nib's angle is mirrored with the stroke, so a calligraphy
+/// stroke's mirror is as thick and thin as it.
+List<(List<PenSample>, VectorBrush)> mirroredStrokes(
+    VectorElement e, List<PenSample> samples, VectorBrush brush,
+    {bool across = false, bool down = false}) {
+  var space = VectorSpace(e);
+  var c = e.viewBox.center;
+  List<PenSample> reflect(bool x, bool y) => [
+        for (var s in samples)
+          (() {
+            var d = space.toDrawing(s.at);
+            var m =
+                Offset(x ? 2 * c.dx - d.dx : d.dx, y ? 2 * c.dy - d.dy : d.dy);
+            return PenSample(space.toCanvas(m),
+                pressure: s.pressure, tilt: s.tilt, time: s.time);
+          })(),
+      ];
+  VectorBrush nib(bool x, bool y) {
+    var a = brush.nibAngle;
+    if (x) a = 180 - a;
+    if (y) a = -a;
+    return brush.copyWith(nibAngle: a);
+  }
+
+  return [
+    (samples, brush),
+    if (across) (reflect(true, false), nib(true, false)),
+    if (down) (reflect(false, true), nib(false, true)),
+    if (across && down) (reflect(true, true), nib(true, true)),
+  ];
 }
 
 /// _simplified is which of [pts] a line through them needs, to within
@@ -1206,35 +1268,62 @@ VectorElement withWidths(
   return next;
 }
 
-/// withTintFrom is [e] with a new stroke of the tint brush started at
-/// [canvasPoint]: [like] with that one point.
-VectorElement withTintFrom(
-        VectorElement e, VectorTint like, Offset canvasPoint) =>
-    e.copyWith(tints: [
-      ...e.tints,
-      VectorTint(
-          points: [VectorSpace(e).toDrawing(canvasPoint)],
-          paint: like.paint,
-          width: like.width,
-          soft: like.soft,
-          line: like.line,
-          fill: like.fill,
-          erase: like.erase),
-    ]);
-
-/// withTintTo is [e] with its last tint stroke carried on to [canvasPoint].
-/// A move of less than a tenth of the brush's width adds nothing: a stroke
-/// is a few hundred points, not one for every pixel the pointer crossed.
-VectorElement withTintTo(VectorElement e, Offset canvasPoint) {
-  if (e.tints.isEmpty) return e;
-  var last = e.tints.last;
-  var at = VectorSpace(e).toDrawing(canvasPoint);
-  if ((at - last.points.last).distance < last.width / 10) return e;
-  return e.copyWith(tints: [
-    ...e.tints.take(e.tints.length - 1),
-    last.withPoint(at),
-  ]);
+/// shapesUnder is the shapes of [e] a brush [radius] wide at [at] (in the
+/// drawing's units) lies over -- its fill, or within reach of its line --
+/// each as the first of its run of combined shapes, which is the one that
+/// carries tints and rub-outs for the run. What a tint or a rub-out painted
+/// there is laid on.
+Set<int> shapesUnder(VectorElement e, Offset at, double radius) {
+  var shapes = e.shapes ?? const <VectorShape>[];
+  var out = <int>{};
+  var i = 0;
+  for (var d in vectorDrawn(shapes)) {
+    var s = d.style;
+    var reach = radius + (s.stroke == null ? 0 : s.strokeWidth / 2);
+    var outline = d.outline;
+    if (outline.getBounds().inflate(reach).contains(at) &&
+        ((s.fill != null && outline.contains(at)) ||
+            _nearOutline(outline, at, reach))) {
+      out.add(i);
+    }
+    i += d.members.length;
+  }
+  return out;
 }
+
+/// withStrokeOn is [e] with [stroke] laid on each shape in [on] -- as a
+/// rub-out where [rubOut], as a tint otherwise. See VectorShape.tints.
+VectorElement withStrokeOn(VectorElement e, Set<int> on, VectorTint stroke,
+    {bool rubOut = false}) {
+  if (on.isEmpty) return e;
+  var shapes = [...?e.shapes];
+  for (var i in on) {
+    if (i < 0 || i >= shapes.length) continue;
+    var s = shapes[i];
+    shapes[i] = rubOut
+        ? s.copyWith(erasures: [...s.erasures, stroke])
+        : s.copyWith(tints: [...s.tints, stroke]);
+  }
+  return e.copyWith(shapes: shapes);
+}
+
+/// hasTints and hasErasures are whether any shape of [e] carries a tint, or
+/// a rub-out.
+bool hasTints(VectorElement e) =>
+    (e.shapes ?? const <VectorShape>[]).any((s) => s.tints.isNotEmpty);
+bool hasErasures(VectorElement e) =>
+    (e.shapes ?? const <VectorShape>[]).any((s) => s.erasures.isNotEmpty);
+
+/// withoutTints and withoutErasures are [e] with every tint, or every
+/// rub-out, taken off.
+VectorElement withoutTints(VectorElement e) => e.copyWith(shapes: [
+      for (var s in e.shapes ?? const <VectorShape>[])
+        s.tints.isEmpty ? s : s.copyWith(tints: const []),
+    ]);
+VectorElement withoutErasures(VectorElement e) => e.copyWith(shapes: [
+      for (var s in e.shapes ?? const <VectorShape>[])
+        s.erasures.isEmpty ? s : s.copyWith(erasures: const []),
+    ]);
 
 /// withPenHandles is the point at [pick] given a smooth pair of handles,
 /// the out one pulled to [canvasPoint] -- what dragging as a point is put
@@ -1263,6 +1352,18 @@ VectorElement withPenClosed(VectorElement e, VectorPick run) {
   var paths = [...s.paths];
   paths[run.path] = paths[run.path].copyWith(closed: true);
   return e.withShape(run.shape, s.copyWith(paths: paths));
+}
+
+/// pointsNear is every point of [e] within [reach] of [canvasPoint].
+Set<VectorPick> pointsNear(VectorElement e, Offset canvasPoint, double reach) {
+  var space = VectorSpace(e);
+  return {
+    for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
+      for (var (p, path) in shape.paths.indexed)
+        for (var (n, node) in path.nodes.indexed)
+          if ((space.toCanvas(node.point) - canvasPoint).distance <= reach)
+            VectorPick(s, p, n),
+  };
 }
 
 /// anyPointAt is the point of any shape of [e] within [reach] of

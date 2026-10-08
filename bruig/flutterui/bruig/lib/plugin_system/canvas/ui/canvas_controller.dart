@@ -1716,6 +1716,107 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// vectorEraseWhole is whether the eraser takes out whole lines and
+  /// shapes, where it touches them, rather than rubbing out what it goes
+  /// over; vectorEraseSize and vectorEraseSoft are its size on screen and
+  /// how far its edge fades; vectorEraseLine and vectorEraseFill whether it
+  /// rubs out lines, fills, or both.
+  bool get vectorEraseWhole => _vectorEraseWhole;
+  bool _vectorEraseWhole = false;
+  set vectorEraseWhole(bool on) {
+    if (_vectorEraseWhole == on) return;
+    _vectorEraseWhole = on;
+    notifyListeners();
+  }
+
+  double get vectorEraseSize => _vectorEraseSize;
+  double _vectorEraseSize = 20;
+  set vectorEraseSize(double v) {
+    if (_vectorEraseSize == v) return;
+    _vectorEraseSize = v;
+    notifyListeners();
+  }
+
+  double get vectorEraseSoft => _vectorEraseSoft;
+  double _vectorEraseSoft = 0;
+  set vectorEraseSoft(double v) {
+    if (_vectorEraseSoft == v) return;
+    _vectorEraseSoft = v;
+    notifyListeners();
+  }
+
+  bool get vectorEraseLine => _vectorEraseLine;
+  bool _vectorEraseLine = true;
+  set vectorEraseLine(bool on) {
+    if (_vectorEraseLine == on) return;
+    _vectorEraseLine = on;
+    notifyListeners();
+  }
+
+  bool get vectorEraseFill => _vectorEraseFill;
+  bool _vectorEraseFill = true;
+  set vectorEraseFill(bool on) {
+    if (_vectorEraseFill == on) return;
+    _vectorEraseFill = on;
+    notifyListeners();
+  }
+
+  /// clearVectorErasures takes every rub-out off the drawing being edited.
+  void clearVectorErasures() {
+    var e = editingVector;
+    if (e == null || !hasErasures(e)) return;
+    replaceElement(withoutErasures(e));
+  }
+
+  /// vectorMirrorAcross and vectorMirrorDown are the pencil's symmetry: a
+  /// stroke drawn is mirrored across the drawing's upright middle line, its
+  /// level middle line, or both -- left and right, top and bottom, all four.
+  bool get vectorMirrorAcross => _vectorMirrorAcross;
+  bool _vectorMirrorAcross = false;
+  set vectorMirrorAcross(bool on) {
+    if (_vectorMirrorAcross == on) return;
+    _vectorMirrorAcross = on;
+    notifyListeners();
+  }
+
+  bool get vectorMirrorDown => _vectorMirrorDown;
+  bool _vectorMirrorDown = false;
+  set vectorMirrorDown(bool on) {
+    if (_vectorMirrorDown == on) return;
+    _vectorMirrorDown = on;
+    notifyListeners();
+  }
+
+  /// vectorQuickFill is whether a click with the pencil fills the area the
+  /// lines close round it, rather than drawing -- the paint bucket -- and
+  /// vectorFillGap the widest opening, in pixels on screen, it still counts
+  /// as closed.
+  bool get vectorQuickFill => _vectorQuickFill;
+  bool _vectorQuickFill = false;
+  set vectorQuickFill(bool on) {
+    if (_vectorQuickFill == on) return;
+    _vectorQuickFill = on;
+    notifyListeners();
+  }
+
+  double get vectorFillGap => _vectorFillGap;
+  double _vectorFillGap = 3;
+  set vectorFillGap(double v) {
+    if (_vectorFillGap == v) return;
+    _vectorFillGap = v;
+    notifyListeners();
+  }
+
+  /// vectorPencilFill is the colour a fill brush fills its strokes with, and
+  /// the quick fill fills an area with.
+  Color get vectorPencilFill => _vectorPencilFill;
+  Color _vectorPencilFill = const Color(0xFF8AB4F8);
+  set vectorPencilFill(Color c) {
+    if (_vectorPencilFill == c) return;
+    _vectorPencilFill = c;
+    notifyListeners();
+  }
+
   Color get vectorPencilColour => _vectorPencilColour;
   Color _vectorPencilColour = const Color(0xFF202124);
   set vectorPencilColour(Color c) {
@@ -1844,8 +1945,8 @@ class CanvasController extends ChangeNotifier {
   /// clearVectorTints takes every tint off the drawing being edited.
   void clearVectorTints() {
     var e = editingVector;
-    if (e == null || e.tints.isEmpty) return;
-    replaceElement(e.copyWith(tints: const []));
+    if (e == null || !hasTints(e)) return;
+    replaceElement(withoutTints(e));
   }
 
   /// editingVector is the drawing being edited, where there is one and it has
@@ -4757,6 +4858,12 @@ class CanvasController extends ChangeNotifier {
       if (e is AudioElement && e.clip.timed && e.clip.isEmpty) {
         document = document.removeElement(e.id);
       }
+      // A drawing saved while it was being edited, before saving fitted its
+      // box: fitted now, so it opens drawn round all of it.
+      if (e is VectorElement && e.edited) {
+        var fitted = boxedToDrawing(e);
+        if (!identical(fitted, e)) document = document.withElement(fitted);
+      }
     }
     _document = document;
     this.folder = folder;
@@ -4818,6 +4925,19 @@ class CanvasController extends ChangeNotifier {
     });
   }
 
+  /// _toSave is the document as it is written out: as it is, except that a
+  /// drawing still being edited is written with its box fitted round it, as
+  /// leaving the editing would fit it. Left alone in the editor -- the box
+  /// moving under a drawing while it is drawn would move the pencil's
+  /// mirror lines with it -- but a document closed mid-edit must not come
+  /// back with a box that cuts through the drawing. See _fitEditedVector.
+  CanvasDocument get _toSave {
+    var e = editingVector;
+    if (e == null) return _document;
+    var fitted = boxedToDrawing(e);
+    return identical(fitted, e) ? _document : _document.withElement(fitted);
+  }
+
   /// save writes back to where this document came from, or nowhere when it has
   /// never been saved.
   Future<bool> save() async {
@@ -4825,7 +4945,7 @@ class CanvasController extends ChangeNotifier {
     _autosave = null;
     var f = folder, n = name;
     if (n == null) return false;
-    var ok = await CanvasStorage.save(f ?? "", n, _document);
+    var ok = await CanvasStorage.save(f ?? "", n, _toSave);
     // Not awaited: tidying the stores is bookkeeping, and a save should not
     // wait on a walk of the whole library to report that it worked. Only what
     // is not an asset goes -- see CanvasLibrary.tidy.
@@ -4843,7 +4963,7 @@ class CanvasController extends ChangeNotifier {
   /// saveAs writes to a new place and makes it this document's home.
   Future<bool> saveAs(String folder, String name) async {
     var ok =
-        await CanvasStorage.save(folder, name, _document.copyWith(title: name));
+        await CanvasStorage.save(folder, name, _toSave.copyWith(title: name));
     if (!ok) return false;
     this.folder = folder;
     this.name = name;

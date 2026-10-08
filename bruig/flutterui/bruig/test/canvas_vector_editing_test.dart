@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -50,6 +51,38 @@ VectorElement drawing(String svg, {double rotation = 0}) {
 
 const square = '<path d="M10 10 L90 10 L90 90 L10 90 Z" fill="red"/>';
 const curve = '<path d="M0 50 C0 0 100 0 100 50" stroke="blue" fill="none"/>';
+
+/// painted is [e] with a stroke like [like] painted across the canvas from
+/// [from] to [to], laid -- as the stage lays one -- on the shapes it passes
+/// over: a tint, or with [rubOut] a rub-out.
+VectorElement painted(VectorElement e, VectorTint like, Offset from, Offset to,
+    {bool rubOut = false}) {
+  var space = VectorSpace(e);
+  var pts = [
+    for (var k = 0; k <= 20; k++)
+      space.toDrawing(Offset.lerp(from, to, k / 20)!)
+  ];
+  var on = <int>{for (var p in pts) ...shapesUnder(e, p, like.width / 2)};
+  return withStrokeOn(
+      e,
+      on,
+      VectorTint(
+          points: pts,
+          paint: like.paint,
+          width: like.width,
+          soft: like.soft,
+          line: like.line,
+          fill: like.fill,
+          erase: like.erase),
+      rubOut: rubOut);
+}
+
+/// tintsOf and rubsOf are every tint stroke, and every rub-out, on the
+/// shapes of [e].
+List<VectorTint> tintsOf(VectorElement e) =>
+    [for (var s in e.shapes ?? const <VectorShape>[]) ...s.tints];
+List<VectorTint> rubsOf(VectorElement e) =>
+    [for (var s in e.shapes ?? const <VectorShape>[]) ...s.erasures];
 
 /// picksOfAll is every point of shape [shape].
 Set<VectorPick> picksOfAll(VectorElement e, int shape) => {
@@ -317,6 +350,69 @@ void main() {
       var nodes = c.editingVector!.shapes!.single.paths.single.nodes;
       expect(nodes[1].point, const Offset(10, 10));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the pencil's row: fill, its colour, quick fill; mirrors after",
+        (tester) async {
+      var c = await show(tester, drawing(square));
+      c.editVector("v");
+      c.vectorTool = VectorTool.pencil;
+      c.vectorQuickFill = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      // In reading order: down the rows, then along each.
+      Offset at(String key) => tester.getTopLeft(find.byKey(ValueKey(key)));
+      bool before(String a, String b) {
+        var p = at(a), q = at(b);
+        return (p.dy - q.dy).abs() < 8 ? p.dx < q.dx : p.dy < q.dy;
+      }
+
+      var order = [
+        "vectorBrushFill",
+        "vectorPencilFill",
+        "vectorQuickFill",
+        "vectorFillGap",
+        "vectorBrushWidth",
+        "vectorBrushSmoothing",
+        "vectorMirrorAcross",
+        "vectorMirrorDown",
+      ];
+      for (var i = 0; i + 1 < order.length; i++) {
+        expect(before(order[i], order[i + 1]), isTrue,
+            reason: "${order[i]} before ${order[i + 1]}");
+      }
+      c.vectorTool = VectorTool.select;
+      c.editVector(null);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets("Thickness types the picked points' line width",
+        (tester) async {
+      var c = await show(
+          tester,
+          drawing('<path d="M10 50 L50 50 L90 50" stroke="black" '
+              'stroke-width="4" fill="none"/>'));
+      c.editVector("v");
+      c.vectorTool = VectorTool.scale;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("vectorPointWidth")), findsNothing,
+          reason: "nothing picked, nothing to type");
+      c.pickVectorPoint(const VectorPick(0, 0, 1));
+      await tester.pumpAndSettle();
+      tester
+          .widget<CanvasNumberField>(
+              find.byKey(const ValueKey("vectorPointWidth")))
+          .onChanged(3);
+      await tester.pumpAndSettle();
+      var nodes = c.editingVector!.shapes!.single.paths.single.nodes;
+      expect([for (var n in nodes) n.width], [1, 3, 1]);
+      var reset = find.byKey(const ValueKey("vectorPointWidthReset"));
+      await tester.ensureVisible(reset);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(c.editingVector!.shapes!.single.paths.single.nodes[1].width, 1);
+      c.editVector(null);
+      await tester.pumpAndSettle();
     });
 
     testWidgets("a point picked takes its own end or corner", (tester) async {
@@ -901,6 +997,134 @@ void main() {
       expect(tablet.pressure, 1);
     });
 
+    testWidgets("the pencil's quick fill fills, and recolours what it filled",
+        (tester) async {
+      var (c, view) = await stage(tester,
+          element: drawing('<path d="M20 20 L80 20 L80 80 L20 80 Z" '
+              'stroke="black" stroke-width="2" fill="none"/>'));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.pencil;
+      c.vectorQuickFill = true;
+      c.vectorPencilFill = const Color(0xFF0000FF);
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+      var shapes = now(c).shapes!;
+      expect(shapes, hasLength(2));
+      expect(shapes.first.fill, const Color(0xFF0000FF));
+      c.vectorPencilFill = const Color(0xFFFF0000);
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.pumpAndSettle();
+      shapes = now(c).shapes!;
+      expect(shapes, hasLength(2), reason: "recoloured, not filled again");
+      expect(shapes.first.fill, const Color(0xFFFF0000));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("with a mirror on, the pencil draws a mirrored pair",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.pencil;
+      c.vectorMirrorAcross = true;
+      await settle(tester);
+      var from = onScreen(view, c, const Offset(110, 120));
+      var g = await tester.startGesture(from);
+      for (var k = 1; k <= 10; k++) {
+        await g.moveTo(from + Offset(k * 2.0, k * 3.0));
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      var shapes = now(c).shapes!;
+      expect(shapes, hasLength(3), reason: "the square, a stroke, its mirror");
+      var a = shapes[1].paths.single.nodes.first.point;
+      var b = shapes[2].paths.single.nodes.first.point;
+      expect(a.dx + b.dx, closeTo(100, 0.5), reason: "either side of 50");
+      expect(a.dy, closeTo(b.dy, 0.5));
+      c.undo();
+      expect(now(c).shapes, hasLength(1), reason: "both in one undo step");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the pencil draws only on the page", (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.pencil;
+      await settle(tester);
+      // The desk below the page: what the stage shows past its bottom edge.
+      var bottom = c.document.size.size.height;
+      var off = Offset(150, bottom + 20);
+      expect(onScreen(view, c, off).dy, lessThan(900),
+          reason: "the stage shows some desk below the page");
+      // A palm resting off the page: nothing.
+      await tester.dragFrom(onScreen(view, c, off), const Offset(10, -5));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes, hasLength(1));
+      // On the page, off its bottom edge, and back: two lines, not one
+      // jumping across the desk.
+      await settle(tester);
+      var g = await tester
+          .startGesture(onScreen(view, c, Offset(150, bottom - 30)));
+      for (var d in [-20.0, -10.0, 10.0, 20.0, 10.0, -10.0, -20.0, -30.0]) {
+        await g.moveTo(onScreen(
+            view, c, Offset(d < 0 && d > -25 ? 170 : 160, bottom + d)));
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      var shapes = now(c).shapes!;
+      expect(shapes, hasLength(3));
+      var space = VectorSpace(now(c));
+      for (var s in shapes.skip(1)) {
+        for (var n in s.paths.single.nodes) {
+          expect(space.toCanvas(n.point).dy, lessThanOrEqualTo(bottom + 0.5));
+        }
+      }
+      c.undo();
+      expect(now(c).shapes, hasLength(1), reason: "one stroke, one undo");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the eraser rubs out, or takes out whole lines",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.eraser;
+      c.vectorEraseSize = 12;
+      await settle(tester);
+      var scale = view.pageRect.width / c.document.size.size.width;
+      await tester.dragFrom(
+          onScreen(view, c, const Offset(130, 150)), Offset(40 * scale, 0));
+      await tester.pumpAndSettle();
+      var rub = rubsOf(now(c)).single;
+      expect(rub.points.length, greaterThan(1));
+      expect(rub.width, closeTo(12 / scale, 0.5),
+          reason: "its size on screen, in the drawing's units");
+      expect(now(c).shapes, hasLength(1), reason: "the square still there");
+      c.undo();
+      expect(rubsOf(now(c)), isEmpty, reason: "one rub-out, one undo");
+
+      // Off the page: nothing.
+      var bottom = c.document.size.size.height;
+      await settle(tester);
+      await tester.dragFrom(
+          onScreen(view, c, Offset(150, bottom + 20)), const Offset(10, 0));
+      await tester.pumpAndSettle();
+      expect(rubsOf(now(c)), isEmpty);
+
+      // Whole lines: the square goes.
+      c.vectorEraseWhole = true;
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("Command A, C and V pick, copy and paste points",
         (tester) async {
       var (c, view) = await stage(tester, element: drawing(square));
@@ -955,53 +1179,75 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("the scale tool thickens the line at the points drawn over",
+    testWidgets("a point pressed is picked, and its thickness changes alone",
         (tester) async {
       var (c, view) = await stage(tester,
-          element:
-              drawing('<path d="M10 50 L40 50 L70 50 L90 50" stroke="black" '
-                  'stroke-width="4" fill="none"/>'));
+          element: drawing('<path d="M10 50 L40 50 L70 50 L90 50" '
+              'stroke="black" stroke-width="4" fill="none"/>'));
       await open(tester, c, view, const Offset(150, 120));
       c.vectorTool = VectorTool.scale;
       c.pickVectorPoints(const {});
       await settle(tester);
-      // From the second point, right along the line past the third:
-      // 150 pixels on screen, so twice as thick.
-      var scale = view.pageRect.width / c.document.size.size.width;
+      // From the second point, right along the line past the third: 150
+      // pixels on screen, twice as thick -- that point alone.
       var from = onScreen(view, c, const Offset(140, 150));
-      var gesture = await tester.startGesture(from);
+      var g = await tester.startGesture(from);
       for (var k = 1; k <= 10; k++) {
-        await gesture.moveTo(from + Offset(k * 15.0, 0));
+        await g.moveTo(from + Offset(k * 15.0, 0));
         await tester.pump();
       }
-      await gesture.up();
+      await g.up();
       await tester.pumpAndSettle();
       var nodes = now(c).shapes!.single.paths.single.nodes;
-      expect(nodes[0].width, 1, reason: "never under the drag");
+      expect(c.vectorPicks, {const VectorPick(0, 0, 1)});
       expect(nodes[1].width, closeTo(2, 0.01));
-      expect(30 * scale, lessThan(150), reason: "the third is passed over");
-      expect(nodes[2].width, closeTo(2, 0.01));
-      expect(now(c).width, 100, reason: "the drawing's box left alone");
+      expect(nodes[2].width, 1, reason: "passed over, but not picked");
       c.undo();
       expect(now(c).shapes!.single.paths.single.nodes[1].width, 1,
           reason: "one undo step");
+
+      // A click off every point lets it go.
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 180)));
+      await tester.pumpAndSettle();
+      expect(c.vectorPicks, isEmpty);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("the scale tool with nothing picked scales the whole drawing",
+    testWidgets("with nothing picked, a drag thickens the points it passes",
         (tester) async {
-      var (c, view) = await stage(tester, element: drawing(square));
-      await open(tester, c, view, const Offset(150, 150));
+      var (c, view) = await stage(tester,
+          element: drawing('<path d="M10 50 L40 50 L70 50 L90 50" '
+              'stroke="black" stroke-width="4" fill="none"/>'));
+      await open(tester, c, view, const Offset(150, 120));
       c.vectorTool = VectorTool.scale;
       c.pickVectorPoints(const {});
       await settle(tester);
-      await tester.dragFrom(
-          onScreen(view, c, const Offset(150, 150)), const Offset(150, 0));
+      bool bare() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter)
+          .whereType<StagePainter>()
+          .single
+          .editingVector!
+          .bare;
+      expect(bare(), isFalse, reason: "the points shown before the drag");
+      // From beside the second point, not on it, along and past the third.
+      var from = onScreen(view, c, const Offset(140, 168));
+      var g = await tester.startGesture(from);
+      for (var k = 1; k <= 10; k++) {
+        await g.moveTo(from + Offset(k * 15.0, 0));
+        await tester.pump();
+        if (k == 5) expect(bare(), isTrue, reason: "hidden while dragging");
+      }
+      await g.up();
       await tester.pumpAndSettle();
-      var e = now(c);
-      expect([e.width, e.height], [closeTo(200, 1), closeTo(200, 1)]);
-      expect(e.bounds.center, const Offset(150, 150),
-          reason: "about its middle");
+      expect(bare(), isFalse, reason: "back once let go");
+      var nodes = now(c).shapes!.single.paths.single.nodes;
+      expect(nodes[0].width, 1, reason: "never near the drag");
+      expect(nodes[1].width, greaterThan(1.5),
+          reason: "the nearest point at the press");
+      expect(nodes[2].width, greaterThan(1.5), reason: "passed near");
+      expect(now(c).width, 100, reason: "the drawing's box left alone");
       expect(tester.takeException(), isNull);
     });
 
@@ -1018,7 +1264,7 @@ void main() {
       await tester.pump();
       expect(view.marqueeForTest, isNull);
       await tester.pumpAndSettle();
-      expect(now(c).tints, hasLength(1));
+      expect(tintsOf(now(c)), hasLength(1));
       expect(c.vectorPicks, isEmpty);
       expect(c.vectorEditing, "v");
       // A click off it, unmoved, finishes the editing.
@@ -1026,7 +1272,7 @@ void main() {
       await tester.tapAt(onScreen(view, c, const Offset(40, 40)));
       await tester.pumpAndSettle();
       expect(c.vectorEditing, isNull);
-      expect(now(c).tints, hasLength(1), reason: "nothing painted by it");
+      expect(tintsOf(now(c)), hasLength(1), reason: "nothing painted by it");
       expect(tester.takeException(), isNull);
     });
 
@@ -1043,7 +1289,7 @@ void main() {
       await tester.dragFrom(
           onScreen(view, c, const Offset(130, 150)), Offset(40 * scale, 0));
       await tester.pumpAndSettle();
-      var tints = now(c).tints;
+      var tints = tintsOf(now(c));
       expect(tints, hasLength(1));
       var t = tints.single;
       expect(t.points.length, greaterThan(2));
@@ -1053,7 +1299,7 @@ void main() {
           reason: "the brush's size on screen, in the drawing's units");
       expect([t.line, t.fill, t.erase], [true, true, false]);
       c.undo();
-      expect(now(c).tints, isEmpty, reason: "one stroke, one undo");
+      expect(tintsOf(now(c)), isEmpty, reason: "one stroke, one undo");
       expect(tester.takeException(), isNull);
     });
 
@@ -1591,6 +1837,186 @@ void main() {
       expect(withoutShapesAt(e, const Offset(150, 150), 2).shapes, isEmpty);
     });
 
+    test("a fill brush closes its stroke and fills it", () {
+      var e = drawing(square);
+      var samples = [
+        for (var i = 0; i <= 40; i++)
+          PenSample(
+              const Offset(150, 150) +
+                  Offset(math.cos(i / 40 * 2 * math.pi),
+                          math.sin(i / 40 * 2 * math.pi)) *
+                      30,
+              time: Duration(milliseconds: i * 8)),
+      ];
+      var fill = builtInBrushes.firstWhere((b) => b.name == "Fill");
+      var s = pencilShape(e, samples, fill, const Color(0xFF000000), 2,
+          fillColour: const Color(0xFF00FF00))!;
+      expect(s.paths.single.closed, isTrue);
+      expect(s.fill, const Color(0xFF00FF00));
+      expect(s.stroke, isNull, reason: "the Fill brush draws no line");
+      var both = pencilShape(
+          e, samples, fill.copyWith(line: true), const Color(0xFF000000), 2,
+          fillColour: const Color(0xFF00FF00))!;
+      expect(both.stroke, const Color(0xFF000000));
+      var plain = pencilShape(
+          e, samples, builtInBrushes.first, const Color(0xFF000000), 2)!;
+      expect([plain.paths.single.closed, plain.fill], [false, null]);
+      var back = VectorBrush.fromJson(
+          jsonDecode(jsonEncode(fill.toJson())) as Map<String, dynamic>);
+      expect([back.fill, back.line], [true, false]);
+      expect(back.sameAs(fill), isTrue);
+    });
+
+    testWidgets("a slider's number can be typed", (tester) async {
+      var value = 0.5;
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, set) => CanvasSlider(
+                label: "Soft",
+                value: value,
+                onChanged: (v) => set(() => value = v),
+              ),
+            ),
+          ),
+        ),
+      ));
+      var field = find.byType(TextField);
+      expect(tester.widget<TextField>(field).controller!.text, "0.50");
+      await tester.enterText(field, "0.73");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(value, 0.73);
+      await tester.enterText(field, "9");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(value, 1, reason: "kept to the slider's range");
+      expect(tester.widget<TextField>(field).controller!.text, "1.00");
+    });
+
+    test("quick fill: the area lines close round, holes and all", () async {
+      // Four separate strokes crossing at the corners of a box, a loop in
+      // the middle of it, and a fill-only background under them all.
+      var e =
+          drawing('<rect x="0" y="0" width="100" height="100" fill="#eeeeee"/>'
+              '<path d="M10 20 L90 20" stroke="black" stroke-width="2"/>'
+              '<path d="M80 10 L80 90" stroke="black" stroke-width="2"/>'
+              '<path d="M90 80 L10 80" stroke="black" stroke-width="2"/>'
+              '<path d="M20 90 L20 10" stroke="black" stroke-width="2"/>'
+              '<path d="M45 45 L55 45 L55 55 L45 55 Z" stroke="black" '
+              'stroke-width="2" fill="none"/>');
+      const green = Color(0xFF00AA00);
+      var filled = await quickFilled(e, const Offset(130, 130), green);
+      expect(filled, isNotNull);
+      var shapes = filled!.shapes!;
+      expect(shapes, hasLength(e.shapes!.length + 1));
+      var fill = shapes[1];
+      expect(shapes[0].stroke, isNull, reason: "the background stays under");
+      expect([fill.fill, fill.stroke], [green, null]);
+      for (var s in shapes.skip(2)) {
+        expect(s.stroke, isNotNull, reason: "the lines stay over the fill");
+      }
+      var outline = fill.path;
+      expect(outline.contains(const Offset(30, 30)), isTrue);
+      expect(outline.contains(const Offset(70, 70)), isTrue);
+      expect(outline.contains(const Offset(50, 50)), isFalse,
+          reason: "the loop inside is a hole");
+      expect(outline.contains(const Offset(5, 50)), isFalse,
+          reason: "nothing outside the lines");
+      expect(outline.contains(const Offset(20.97, 50)), isTrue,
+          reason: "tucked under the line it met");
+
+      // Outside every line: nothing closes round it.
+      expect(await quickFilled(e, const Offset(105, 105), green), isNull);
+
+      // Lines drawn out past the drawing's box, as the pencil does while
+      // the drawing is edited: the area is still found.
+      var past = drawing('<path d="M60 60 L160 60 L160 160 L60 160 Z" '
+          'stroke="black" stroke-width="2" fill="none"/>');
+      var beyond = await quickFilled(past, const Offset(240, 240), green);
+      expect(beyond, isNotNull);
+      expect(
+          beyond!.shapes!.first.path.contains(const Offset(140, 140)), isTrue);
+
+      // A box with a two-unit opening fills only with the gap allowed.
+      var open = drawing('<path d="M20 20 L80 20 L80 80 L20 80 L20 51" '
+          'stroke="black" stroke-width="1" fill="none"/>'
+          '<path d="M20 49 L20 20" stroke="black" stroke-width="1"/>');
+      expect(await quickFilled(open, const Offset(150, 150), green), isNull);
+      expect(await quickFilled(open, const Offset(150, 150), green, gap: 2),
+          isNotNull);
+    });
+
+    test("a stroke mirrored across, down, or both", () {
+      var e = drawing(square);
+      var nib = const VectorBrush(name: "n", nib: 1, nibAngle: 30);
+      var one = [const PenSample(Offset(120, 130))];
+      expect(mirroredStrokes(e, one, nib), hasLength(1));
+      var all = mirroredStrokes(e, one, nib, across: true, down: true);
+      expect([
+        for (var (s, _) in all) s.single.at
+      ], const [
+        Offset(120, 130),
+        Offset(180, 130),
+        Offset(120, 170),
+        Offset(180, 170),
+      ], reason: "about the drawing's middle, (150, 150) on the canvas");
+      expect([for (var (_, b) in all) b.nibAngle], [30, 150, -30, -150],
+          reason: "a broad nib turned with its stroke");
+    });
+
+    test("rub-outs take out lines, fills, or both, and are kept", () async {
+      Future<List<int>> draw(VectorElement e) async {
+        var rec = PictureRecorder();
+        paintVector(Canvas(rec), const Rect.fromLTWH(0, 0, 100, 100), e, null);
+        var img = await rec.endRecording().toImage(100, 100);
+        return (await img.toByteData())!.buffer.asUint8List();
+      }
+
+      int alpha(List<int> px, int x, int y) => px[(y * 100 + x) * 4 + 3];
+      // A grey square with a thick black edge, rubbed across the middle.
+      var e = drawing('<path d="M20 20 L80 20 L80 80 L20 80 Z" '
+          'fill="#808080" stroke="#000000" stroke-width="6"/>');
+      VectorElement rubbed({bool line = true, bool fill = true}) => painted(
+          e,
+          VectorTint(
+              points: const [],
+              paint: const PaintSpec(Color(0xFF000000)),
+              width: 10,
+              soft: 0,
+              line: line,
+              fill: fill,
+              erase: true),
+          const Offset(105, 150),
+          const Offset(195, 150),
+          rubOut: true);
+
+      var px = await draw(rubbed());
+      expect(alpha(px, 50, 50), 0, reason: "the fill rubbed out");
+      expect(alpha(px, 20, 50), 0, reason: "and the line");
+      expect(alpha(px, 50, 30), 255, reason: "not where it did not go");
+
+      px = await draw(rubbed(line: false));
+      expect(alpha(px, 50, 50), 0);
+      expect(alpha(px, 20, 50), 255, reason: "the line left");
+
+      px = await draw(rubbed(fill: false));
+      expect(alpha(px, 50, 50), 255, reason: "the fill left");
+      expect(alpha(px, 20, 50), lessThan(5),
+          reason: "the line's own pixels taken");
+
+      var back = (elementFromJson(
+          jsonDecode(jsonEncode(rubbed(line: false).toJson()))
+              as Map<String, dynamic>) as VectorElement);
+      var t = rubsOf(back).single;
+      expect([t.line, t.fill, t.width, t.erase], [false, true, 10, true]);
+    });
+
     test("a line made thicker at its points, and kept", () {
       var e = drawing('<path d="M10 50 L50 50 L90 50" stroke="black" '
           'stroke-width="4" fill="none"/>');
@@ -1706,17 +2132,17 @@ void main() {
               gradient: GradientSpec(to: Color(0xFF0000FF))),
           width: 8,
           fill: false);
-      var one = withTintFrom(e, like, const Offset(120, 150));
-      expect(one.tints.single.points, const [Offset(20, 50)]);
-      expect(identical(withTintTo(one, const Offset(120.5, 150)), one), isTrue,
-          reason: "too small a move to add a point");
-      var two = withTintTo(one, const Offset(180, 150));
-      expect(two.tints.single.points.last, const Offset(80, 50));
+      var two =
+          painted(e, like, const Offset(120, 150), const Offset(180, 150));
+      var laid = tintsOf(two);
+      expect(laid, hasLength(1), reason: "on the square it went over");
+      expect(laid.single.points.first, const Offset(20, 50));
+      expect(laid.single.points.last, const Offset(80, 50));
       var back = (elementFromJson(
               jsonDecode(jsonEncode(two.toJson())) as Map<String, dynamic>)
           as VectorElement);
-      var t = back.tints.single;
-      expect(t.points, two.tints.single.points);
+      var t = tintsOf(back).single;
+      expect(t.points, laid.single.points);
       expect(t.paint, like.paint);
       expect([t.width, t.line, t.fill, t.erase], [8, true, false, false]);
     });
@@ -1740,17 +2166,16 @@ void main() {
       // across it, past both sides.
       var e = drawing('<path d="M20 20 L80 20 L80 80 L20 80 Z" '
           'fill="#808080" stroke="#000000" stroke-width="6"/>');
-      VectorElement tinted({bool line = true, bool fill = true}) => withTintTo(
-          withTintFrom(
-              e,
-              VectorTint(
-                  points: const [],
-                  paint: const PaintSpec(Color(0xFFFF0000)),
-                  width: 10,
-                  soft: 0,
-                  line: line,
-                  fill: fill),
-              const Offset(105, 150)),
+      VectorElement tinted({bool line = true, bool fill = true}) => painted(
+          e,
+          VectorTint(
+              points: const [],
+              paint: const PaintSpec(Color(0xFFFF0000)),
+              width: 10,
+              soft: 0,
+              line: line,
+              fill: fill),
+          const Offset(105, 150),
           const Offset(195, 150));
 
       var px = await draw(tinted());
@@ -1769,20 +2194,107 @@ void main() {
 
       // Rubbed out again by an eraser over half of it.
       var rubbed = tinted();
-      rubbed = withTintTo(
-          withTintFrom(
-              rubbed,
-              const VectorTint(
-                  points: [],
-                  paint: PaintSpec(Color(0xFF000000)),
-                  width: 20,
-                  soft: 0,
-                  erase: true),
-              const Offset(150, 150)),
+      rubbed = painted(
+          rubbed,
+          const VectorTint(
+              points: [],
+              paint: PaintSpec(Color(0xFF000000)),
+              width: 20,
+              soft: 0,
+              erase: true),
+          const Offset(150, 150),
           const Offset(195, 150));
       px = await draw(rubbed);
       expect(at(px, 30, 50).r, greaterThan(0.9));
       expect(at(px, 70, 50).r, closeTo(0.5, 0.05), reason: "rubbed off");
+    });
+
+    test("tints and rub-outs are their shapes': what comes later is its own",
+        () async {
+      Future<List<int>> draw(VectorElement e) async {
+        var rec = PictureRecorder();
+        paintVector(Canvas(rec), const Rect.fromLTWH(0, 0, 100, 100), e, null);
+        var img = await rec.endRecording().toImage(100, 100);
+        return (await img.toByteData())!.buffer.asUint8List();
+      }
+
+      Color at(List<int> px, int x, int y) {
+        var i = (y * 100 + x) * 4;
+        return Color.fromARGB(px[i + 3], px[i], px[i + 1], px[i + 2]);
+      }
+
+      var e = drawing('<path d="M20 20 L80 20 L80 80 L20 80 Z" '
+          'fill="#808080"/>');
+      var red = const VectorTint(
+          points: [], paint: PaintSpec(Color(0xFFFF0000)), width: 20, soft: 0);
+      var tinted =
+          painted(e, red, const Offset(105, 150), const Offset(195, 150));
+      // A blue shape drawn afterwards, over the tint.
+      var later = tinted.copyWith(shapes: [
+        ...tinted.shapes!,
+        const VectorShape(paths: [
+          VectorPath([
+            VectorNode(40, 40),
+            VectorNode(60, 40),
+            VectorNode(60, 60),
+            VectorNode(40, 60)
+          ], closed: true)
+        ], fill: Color(0xFF0000FF)),
+      ]);
+      var px = await draw(later);
+      expect(at(px, 50, 50).b, greaterThan(0.9),
+          reason: "the shape drawn later is its own colour");
+      expect(at(px, 30, 50).r, greaterThan(0.9),
+          reason: "the square under the tint still tinted");
+
+      // So with a rub-out: a shape drawn after it is whole.
+      var rubbed = painted(
+          e,
+          const VectorTint(
+              points: [],
+              paint: PaintSpec(Color(0xFF000000)),
+              width: 20,
+              soft: 0,
+              erase: true),
+          const Offset(105, 150),
+          const Offset(195, 150),
+          rubOut: true);
+      later = rubbed.copyWith(shapes: [...rubbed.shapes!, later.shapes!.last]);
+      px = await draw(later);
+      expect(at(px, 50, 50).a, 1.0, reason: "drawn after: not rubbed out");
+      expect(at(px, 30, 50).a, 0, reason: "the square rubbed out");
+
+      // Moved whole, a shape takes its tint with it.
+      var moved =
+          withPointsMoved(tinted, picksOfAll(tinted, 0), const Offset(5, 0));
+      expect(tintsOf(moved).single.points.first.dx,
+          tintsOf(tinted).single.points.first.dx + 5);
+    });
+
+    test("tints kept for the whole drawing, before, go to its shapes", () {
+      var json =
+          drawing('$square<path d="M0 95 L5 95" stroke="black"/>').toJson();
+      json["tints"] = [
+        {
+          "p": [30, 50, 70, 50],
+          "c": 0xFFFF0000,
+          "w": 4,
+        }
+      ];
+      var e = elementFromJson(json) as VectorElement;
+      expect(e.shapes!.first.tints, hasLength(1), reason: "under it");
+      expect(e.shapes!.last.tints, isEmpty, reason: "nowhere near it");
+    });
+
+    test("a drawing saved mid-edit opens with its box round it", () {
+      // The box 100 square, but a line drawn out past it to (150, 50).
+      var stale = drawing('<path d="M10 50 L150 50" stroke="black"/>');
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      c.load(const CanvasDocument().addElement(stale));
+      var e = c.document.elementById("v") as VectorElement;
+      expect(e.width, greaterThan(100), reason: "fitted on opening");
+      expect(e.viewBox.right, closeTo(150, 1));
     });
 
     test("Fill covers the box, cut off rather than squashed", () {

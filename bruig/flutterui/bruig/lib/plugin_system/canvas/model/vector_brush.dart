@@ -48,6 +48,12 @@ class VectorBrush {
   /// they are round.
   final bool flat;
 
+  /// fill closes each stroke and fills it -- with the pencil's fill colour
+  /// -- and line is whether its line is drawn too. A fill with no line is a
+  /// shape painted in one stroke, round its edge.
+  final bool fill;
+  final bool line;
+
   const VectorBrush({
     required this.name,
     this.size = 4,
@@ -62,6 +68,8 @@ class VectorBrush {
     this.nib = 0,
     this.nibAngle = 45,
     this.flat = false,
+    this.fill = false,
+    this.line = true,
   });
 
   VectorBrush copyWith({
@@ -78,6 +86,8 @@ class VectorBrush {
     double? nib,
     double? nibAngle,
     bool? flat,
+    bool? fill,
+    bool? line,
   }) =>
       VectorBrush(
         name: name ?? this.name,
@@ -93,6 +103,8 @@ class VectorBrush {
         nib: nib ?? this.nib,
         nibAngle: nibAngle ?? this.nibAngle,
         flat: flat ?? this.flat,
+        fill: fill ?? this.fill,
+        line: line ?? this.line,
       );
 
   /// cap is how the line ends.
@@ -112,7 +124,9 @@ class VectorBrush {
       tilt == other.tilt &&
       nib == other.nib &&
       nibAngle == other.nibAngle &&
-      flat == other.flat;
+      flat == other.flat &&
+      fill == other.fill &&
+      line == other.line;
 
   Map<String, dynamic> toJson() => {
         "name": name,
@@ -128,6 +142,8 @@ class VectorBrush {
         "nib": nib,
         "nibAngle": nibAngle,
         "flat": flat,
+        if (fill) "fill": true,
+        if (!line) "line": false,
       };
 
   factory VectorBrush.fromJson(Map<String, dynamic> json) {
@@ -148,6 +164,8 @@ class VectorBrush {
       nib: n("nib", d.nib),
       nibAngle: n("nibAngle", d.nibAngle),
       flat: json["flat"] == true,
+      fill: json["fill"] == true,
+      line: json["line"] != false,
     );
   }
 }
@@ -204,6 +222,16 @@ const builtInBrushes = [
       nib: 0.85,
       nibAngle: 45,
       flat: true),
+  // Painted round its edge and filled: a shape in one stroke. Steadier than
+  // the others, so the edge is clean, and the same width all the way.
+  VectorBrush(
+      name: "Fill",
+      size: 2,
+      pressure: false,
+      thinnest: 1,
+      smoothing: 0.6,
+      fill: true,
+      line: false),
 ];
 
 /// StylusAction is what a button on the pen -- or its other end -- does

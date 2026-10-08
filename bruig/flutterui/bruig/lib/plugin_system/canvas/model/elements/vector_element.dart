@@ -170,6 +170,32 @@ class VectorNode {
   }
 }
 
+/// _withLegacyStrokes hands the tints and rub-outs a drawing kept for the
+/// whole of itself, before they were each shape's own, to the shapes each
+/// lay over -- what they showed on when they were saved.
+List<VectorShape> _withLegacyStrokes(
+    List<VectorShape> shapes, List<VectorTint> tints, List<VectorTint> rubs) {
+  if (tints.isEmpty && rubs.isEmpty) return shapes;
+  return [
+    for (var s in shapes)
+      (() {
+        var b = s.path.getBounds().inflate(s.strokeWidth / 2);
+        bool over(VectorTint t) => t.bounds.overlaps(b);
+        return s.copyWith(
+          tints: [...s.tints, ...tints.where(over)],
+          erasures: [...s.erasures, ...rubs.where(over)],
+        );
+      })(),
+  ];
+}
+
+/// _strokes reads a list of tint strokes or rub-outs.
+List<VectorTint> _strokes(Object? raw, {bool erase = false}) => [
+      if (raw is List)
+        for (var t in raw)
+          if (VectorTint.fromJson(t) case var tint?) erase ? tint.erased : tint,
+    ];
+
 /// _pick is [values] at the place [i] names, or null for -1, or anything
 /// that is not a place in it.
 T? _pick<T>(List<T> values, Object? i) =>
@@ -243,6 +269,14 @@ class VectorShape {
   /// day they are separated again.
   final VectorCombine? combine;
 
+  /// tints and erasures are the tint brush's strokes and the eraser's
+  /// rub-outs laid on this shape -- those it was under when they were
+  /// painted. Its own, so a shape drawn later over the same place comes out
+  /// in its own colours, whole; and a shape that goes takes them with it.
+  /// In the drawing's units, where they were painted. See VectorTint.
+  final List<VectorTint> tints;
+  final List<VectorTint> erasures;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -252,6 +286,8 @@ class VectorShape {
     this.join = StrokeJoin.miter,
     this.evenOdd = false,
     this.combine,
+    this.tints = const [],
+    this.erasures = const [],
   });
 
   VectorShape copyWith({
@@ -266,6 +302,8 @@ class VectorShape {
     bool? evenOdd,
     VectorCombine? combine,
     bool clearCombine = false,
+    List<VectorTint>? tints,
+    List<VectorTint>? erasures,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -276,6 +314,8 @@ class VectorShape {
         join: join ?? this.join,
         evenOdd: evenOdd ?? this.evenOdd,
         combine: clearCombine ? null : combine ?? this.combine,
+        tints: tints ?? this.tints,
+        erasures: erasures ?? this.erasures,
       );
 
   /// tapered is whether its line is thicker or thinner at some points than
@@ -326,6 +366,8 @@ class VectorShape {
         if (join != StrokeJoin.miter) "join": join.name,
         if (evenOdd) "eo": true,
         if (combine != null) "op": combine!.name,
+        if (tints.isNotEmpty) "tints": [for (var t in tints) t.toJson()],
+        if (erasures.isNotEmpty) "rub": [for (var t in erasures) t.toJson()],
       };
 
   static VectorShape? fromJson(Object? json) {
@@ -347,6 +389,8 @@ class VectorShape {
       evenOdd: json["eo"] == true,
       combine:
           VectorCombine.values.where((c) => c.name == json["op"]).firstOrNull,
+      tints: _strokes(json["tints"]),
+      erasures: _strokes(json["rub"], erase: true),
     );
   }
 }
@@ -410,6 +454,27 @@ class VectorTint {
     this.fill = true,
     this.erase = false,
   });
+
+  /// erased is this stroke as a rub-out.
+  VectorTint get erased => erase
+      ? this
+      : VectorTint(
+          points: points,
+          paint: paint,
+          width: width,
+          soft: soft,
+          line: line,
+          fill: fill,
+          erase: true);
+
+  /// bounds is the stroke's reach: round its points, out by half its width.
+  Rect get bounds {
+    var r = Rect.fromPoints(points.first, points.first);
+    for (var p in points) {
+      r = r.expandToInclude(Rect.fromPoints(p, p));
+    }
+    return r.inflate(width / 2);
+  }
 
   VectorTint withPoint(Offset p) => VectorTint(
       points: [...points, p],
@@ -505,10 +570,6 @@ class VectorElement extends CanvasElement {
   /// the file it came from. See the note at the top of the file.
   final List<VectorShape>? shapes;
 
-  /// tints is the tint brush's strokes, in the order painted, over the
-  /// shapes. See VectorTint.
-  final List<VectorTint> tints;
-
   final VectorFit fit;
 
   /// handleColor and handleSize are how the edit points and handles are
@@ -524,7 +585,6 @@ class VectorElement extends CanvasElement {
     this.assetId = "",
     this.viewBox = Rect.zero,
     this.shapes,
-    this.tints = const [],
     this.fit = VectorFit.contain,
     this.handleColor = defaultHandleColor,
     this.handleSize = 8,
@@ -567,7 +627,6 @@ class VectorElement extends CanvasElement {
       assetId: assetId,
       viewBox: viewBox,
       shapes: shapes,
-      tints: tints,
       fit: fit,
       handleColor: handleColor,
       handleSize: handleSize,
@@ -578,7 +637,6 @@ class VectorElement extends CanvasElement {
     Rect? viewBox,
     List<VectorShape>? shapes,
     bool clearShapes = false,
-    List<VectorTint>? tints,
     VectorFit? fit,
     Color? handleColor,
     double? handleSize,
@@ -588,7 +646,6 @@ class VectorElement extends CanvasElement {
           assetId: assetId ?? this.assetId,
           viewBox: viewBox ?? this.viewBox,
           shapes: clearShapes ? null : shapes ?? this.shapes,
-          tints: clearShapes ? const [] : tints ?? this.tints,
           fit: fit ?? this.fit,
           handleColor: handleColor ?? this.handleColor,
           handleSize: handleSize ?? this.handleSize,
@@ -618,7 +675,6 @@ class VectorElement extends CanvasElement {
         if (viewBox != Rect.zero)
           "vb": [viewBox.left, viewBox.top, viewBox.width, viewBox.height],
         if (shapes != null) "shapes": [for (var s in shapes!) s.toJson()],
-        if (tints.isNotEmpty) "tints": [for (var t in tints) t.toJson()],
         if (fit != VectorFit.contain) "fit": fit.name,
         if (handleColor != defaultHandleColor)
           "handle": colorToJson(handleColor),
@@ -639,16 +695,12 @@ class VectorElement extends CanvasElement {
                 (vb[3] as num).toDouble())
             : Rect.zero,
         shapes: raw is List
-            ? [
+            ? _withLegacyStrokes([
                 for (var s in raw)
                   if (VectorShape.fromJson(s) case var shape?) shape,
-              ]
+              ], _strokes(json["tints"]),
+                _strokes(json["erasures"], erase: true))
             : null,
-        tints: [
-          if (json["tints"] case List raw)
-            for (var t in raw)
-              if (VectorTint.fromJson(t) case var tint?) tint,
-        ],
         fit: VectorFit.fromName(json["fit"] as String?),
         handleColor: colorFromJson(json["handle"], defaultHandleColor),
         handleSize: jsonDouble(json["handleSize"], 8),

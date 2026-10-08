@@ -1729,20 +1729,109 @@ class CanvasSlider extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: decimals == 0 ? 24 : 30,
-            child: Text(
-              decimals == 0
-                  ? value.round().toString()
-                  : value.toStringAsFixed(decimals),
-              style:
-                  TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant),
-              textAlign: TextAlign.right,
+            width: decimals == 0 ? 28 : 34,
+            child: _SliderValue(
+              value: value,
+              min: min,
+              max: max,
+              decimals: decimals,
+              color: theme.colors.onSurfaceVariant,
+              onChanged: (v) {
+                onChanged(v);
+                onCommit?.call();
+              },
             ),
           ),
         ]),
       ),
     );
   }
+}
+
+/// _SliderValue is a slider's number, which can also be typed: a slider is
+/// quick and rough, and a number typed in is exact. Kept to the slider's own
+/// range, and taken when Return is pressed or the field is left.
+class _SliderValue extends StatefulWidget {
+  final double value;
+  final double min;
+  final double max;
+  final int decimals;
+  final Color color;
+  final ValueChanged<double> onChanged;
+
+  const _SliderValue({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.decimals,
+    required this.color,
+    required this.onChanged,
+  });
+
+  @override
+  State<_SliderValue> createState() => _SliderValueState();
+}
+
+class _SliderValueState extends State<_SliderValue> {
+  final _text = TextEditingController();
+  final _focus = FocusNode();
+
+  String get _shown => widget.decimals == 0
+      ? widget.value.round().toString()
+      : widget.value.toStringAsFixed(widget.decimals);
+
+  @override
+  void initState() {
+    super.initState();
+    _text.text = _shown;
+    _focus.addListener(() {
+      if (!_focus.hasFocus) _take();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_SliderValue old) {
+    super.didUpdateWidget(old);
+    // Not while it is being typed in: the slider's number would overwrite
+    // the one half typed.
+    if (!_focus.hasFocus && _text.text != _shown) _text.text = _shown;
+  }
+
+  void _take() {
+    var v = double.tryParse(_text.text.trim());
+    if (v == null) {
+      _text.text = _shown;
+      return;
+    }
+    v = v.clamp(widget.min, widget.max).toDouble();
+    if (v != widget.value) widget.onChanged(v);
+    _text.text = widget.decimals == 0
+        ? v.round().toString()
+        : v.toStringAsFixed(widget.decimals);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+        controller: _text,
+        focusNode: _focus,
+        textAlign: TextAlign.right,
+        style: TextStyle(fontSize: 10, color: widget.color),
+        keyboardType:
+            const TextInputType.numberWithOptions(decimal: true, signed: true),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+        onSubmitted: (_) => _take(),
+      );
 }
 
 /// CanvasColorButton is a swatch that opens a picker.
