@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
@@ -13,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:flutter/material.dart';
 
@@ -513,6 +516,7 @@ Widget _brushPicker(CanvasController controller) {
             (v) => brush.copyWith(opacity: v)),
         slider("vectorBrushSmoothing", "Steady", brush.smoothing,
             (v) => brush.copyWith(smoothing: v)),
+        const _PenMeter(key: ValueKey("vectorPenMeter")),
         CanvasIconButton(
           key: const ValueKey("vectorPencilPoints"),
           icon: Icons.scatter_plot_outlined,
@@ -665,6 +669,17 @@ List<Widget> _toolMore(CanvasController controller) {
             options: [for (var a in StylusAction.values) (a, a.label)],
             onChanged: (a) => controller.setStylusButton(i, a),
           ),
+        CanvasToggle(
+          key: const ValueKey("vectorReadTablet"),
+          label: "Read the tablet",
+          value: TabletInput.instance.reading,
+          onChanged: (v) {
+            TabletInput.instance.reading = v;
+            // The reader is not the controller's, so nothing else tells the
+            // panel to redraw the switch: setting the brush to itself does.
+            controller.vectorBrush = controller.vectorBrush;
+          },
+        ),
         CanvasDropdown<StylusAction>(
           key: const ValueKey("vectorStylusEraser"),
           label: "Other end",
@@ -673,12 +688,15 @@ List<Widget> _toolMore(CanvasController controller) {
           options: [for (var a in StylusAction.values) (a, a.label)],
           onChanged: (a) => controller.stylusEraser = a,
         ),
-        const CanvasHint("A tablet's driver sends the pen's buttons as mouse "
-            "clicks -- Button 1 a right click, Button 2 a middle click, "
-            "Button 3 a back click -- so set the pen's buttons to those in "
-            "the tablet's own settings (for a Wacom, Wacom Center). The "
-            "other end is the eraser end, on a pen that has one and a "
-            "platform that tells the app."),
+        const CanvasHint("A tablet's driver acts on the pen's buttons itself "
+            "unless it is told to send them on as clicks. In Wacom Center, "
+            "give Bison Relay settings of its own and set the pen's buttons "
+            "to Right click (Button 1), Middle click (Button 2) and 4th "
+            "click (Button 3); other apps keep theirs. Or hold a key as the "
+            "pen touches: Shift for Button 1, Option for Button 2, Control "
+            "for Button 3 -- the way on a pen display whose buttons are its "
+            "own, such as a MovinkPad, whose sidebar has these keys. The "
+            "other end is the eraser end, on a pen that has one."),
       ],
     ),
   ];
@@ -929,4 +947,81 @@ Widget _shapeGroup(
         ].join(" ")),
     ],
   );
+}
+
+/// _PenMeter shows what the pen is telling the app: its pressure as a bar
+/// and a number, and its tilt -- or that no pen reading is arriving, which
+/// is what a mouse, or a tablet the app cannot hear, looks like. It says,
+/// at a glance, whether the pencil is getting the pen's pressure or making
+/// do with speed.
+class _PenMeter extends StatefulWidget {
+  const _PenMeter({super.key});
+
+  @override
+  State<_PenMeter> createState() => _PenMeterState();
+}
+
+class _PenMeterState extends State<_PenMeter> {
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // A tenth of a second: quick enough to follow a press, and nothing like
+    // the couple of hundred readings a second the pen sends.
+    _tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var tablet = TabletInput.instance;
+    var theme = Theme.of(context);
+    var live = tablet.fresh;
+    var heard = tablet.heard;
+    var held = [
+      for (var (bit, n) in const [(2, 1), (4, 2), (8, 3)])
+        if (tablet.buttons & bit != 0) n,
+    ];
+    var label = live
+        ? "Pen \u2013 pressure ${(tablet.pressure * 100).round()}%, "
+            "tilt ${(tablet.tilt * 180 / math.pi).round()}\u00b0"
+            "${held.isEmpty ? "" : ", button ${held.join("+")}"}"
+        : heard
+            ? (tablet.eraser ? "Pen \u2013 eraser end" : "Pen \u2013 lifted")
+            : "No pen pressure yet";
+    return Tooltip(
+      message: heard
+          ? "What the pen is telling the app. The bar is how hard it presses."
+          : "No reading has come from a pen. With a mouse, the line's width "
+              "comes from speed instead. A tablet pen should show its "
+              "pressure here as soon as it touches the tablet.",
+      child: SizedBox(
+        width: 150,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: theme.textTheme.bodySmall, overflow: TextOverflow.fade),
+            const SizedBox(height: 3),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: live ? tablet.pressure : 0,
+                minHeight: 4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

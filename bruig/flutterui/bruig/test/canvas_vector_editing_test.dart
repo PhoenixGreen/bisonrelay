@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
@@ -775,6 +776,12 @@ void main() {
           .editingVector!
           .bare;
       expect(bare(), isTrue, reason: "the points hidden to start with");
+      expect(
+          tester
+              .widgetList<MouseRegion>(find.byType(MouseRegion))
+              .any((m) => m.cursor == SystemMouseCursors.none),
+          isTrue,
+          reason: "no arrow over the drawing: the brush's ring is the pointer");
       c.vectorPencilPoints = true;
       await tester.pump();
       expect(bare(), isFalse, reason: "shown when asked for");
@@ -806,6 +813,16 @@ void main() {
       expect(c.vectorPencilColour, const Color(0xFFFF0000));
       expect(now(c).shapes, hasLength(1), reason: "nothing drawn");
 
+      // Shift held as the pen touches stands in for Button 1.
+      c.vectorPencilColour = const Color(0xFF000000);
+      await settle(tester);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(c.vectorPencilColour, const Color(0xFFFF0000));
+      expect(now(c).shapes, hasLength(1), reason: "nothing drawn");
+
       // Button 3 -- a back click -- set to erase, rubs the square out.
       c.setStylusButton(2, StylusAction.erase);
       await settle(tester);
@@ -814,6 +831,74 @@ void main() {
       await tester.pumpAndSettle();
       expect(now(c).shapes, isEmpty);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the tablet's pressure and eraser end reach the pencil",
+        (tester) async {
+      var tablet = TabletInput.instance;
+      addTearDown(tablet.reset);
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.pencil;
+      c.vectorBrush = const VectorBrush(
+          name: "t", thinnest: 0, smoothing: 0, curve: 1, size: 10);
+      await settle(tester);
+      // A light press, as the runner reads it, then heavier.
+      var from = onScreen(view, c, const Offset(120, 130));
+      tablet.handle({"pressure": 0.2, "tiltX": 0.0, "tiltY": 0.0});
+      var g = await tester.startGesture(from);
+      for (var k = 1; k <= 10; k++) {
+        tablet.handle({"pressure": 0.2 + k * 0.08, "tiltX": 0.0, "tiltY": 0.0});
+        await g.moveTo(from + Offset(k * 8.0, 0));
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      var nodes = now(c).shapes!.last.paths.single.nodes;
+      expect(nodes.first.width, closeTo(0.2, 0.01));
+      expect(nodes.last.width, closeTo(1.0, 0.01));
+
+      // A button the tablet reports, held as the pen touches: Button 1's
+      // action, not a stroke.
+      c.setStylusButton(0, StylusAction.pickColour);
+      c.vectorPencilColour = const Color(0xFF000000);
+      tablet.handle(
+          {"pressure": 0.5, "tiltX": 0.0, "tiltY": 0.0, "buttons": 1 | 2});
+      var count = now(c).shapes!.length;
+      await settle(tester);
+      tablet.handle(
+          {"pressure": 0.5, "tiltX": 0.0, "tiltY": 0.0, "buttons": 1 | 2});
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.pumpAndSettle();
+      expect(c.vectorPencilColour, const Color(0xFFFF0000));
+      expect(now(c).shapes, hasLength(count), reason: "nothing drawn");
+      tablet
+          .handle({"pressure": 0.0, "tiltX": 0.0, "tiltY": 0.0, "buttons": 0});
+
+      // The pen turned over: its eraser end near, a press rubs out.
+      tablet.handle({"proximity": true, "eraser": true});
+      expect(tablet.eraser, isTrue);
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes!.any((s) => s.fill != null), isFalse,
+          reason: "the square rubbed out");
+      tablet.handle({"proximity": false, "eraser": true});
+      expect([tablet.eraser, tablet.near], [false, false]);
+      expect(tester.takeException(), isNull);
+    });
+
+    test("the runner's readings: pressure, tilt, and only when fresh", () {
+      var tablet = TabletInput.instance;
+      addTearDown(tablet.reset);
+      expect(tablet.fresh, isFalse);
+      tablet
+          .handle({"pressure": 1.4, "tiltX": 1.0, "tiltY": 0.0, "buttons": 1});
+      expect(tablet.pressure, 1, reason: "kept within 0 to 1");
+      expect(tablet.tilt, closeTo(math.pi / 2, 1e-9));
+      expect(tablet.fresh, isTrue);
+      tablet.handle("nonsense");
+      expect(tablet.pressure, 1);
     });
 
     testWidgets("Command A, C and V pick, copy and paste points",

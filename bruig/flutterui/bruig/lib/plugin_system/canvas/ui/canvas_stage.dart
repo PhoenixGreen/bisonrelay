@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -446,6 +447,9 @@ class CanvasStageState extends State<CanvasStage> {
   @override
   void initState() {
     super.initState();
+    // The pen's pressure and tilt, where the platform only passes them on
+    // through the runner.
+    TabletInput.instance.start();
     controller.addListener(_onChanged);
     controller.images.addListener(_onChanged);
     // Counters that say they start running do. A clock on a canvas should be
@@ -2265,6 +2269,14 @@ class CanvasStageState extends State<CanvasStage> {
   /// that passes neither on, gives null, and the brush makes do with speed.
   PenSample _penSample(Offset doc) {
     var ev = _pointer;
+    // On macOS the runner reads the pen for Flutter -- see TabletInput.
+    var tablet = TabletInput.instance;
+    if (tablet.fresh) {
+      return PenSample(doc,
+          pressure: tablet.pressure,
+          tilt: tablet.tilt,
+          time: ev?.timeStamp ?? Duration.zero);
+    }
     var pen = ev != null &&
         (ev.kind == PointerDeviceKind.stylus ||
             ev.kind == PointerDeviceKind.invertedStylus);
@@ -2309,6 +2321,29 @@ class CanvasStageState extends State<CanvasStage> {
         transient: true);
   }
 
+  /// _modifierButton is which pen button a key held as the pen touches
+  /// stands for -- Shift the first, Option the second, Control the third --
+  /// or null with none held. Command is left alone: it is shortcuts.
+  int? _modifierButton() {
+    var keys = HardwareKeyboard.instance;
+    if (keys.isMetaPressed) return null;
+    if (keys.isShiftPressed) return 0;
+    if (keys.isAltPressed) return 1;
+    if (keys.isControlPressed) return 2;
+    return null;
+  }
+
+  /// _tabletButton is which of the pen's three buttons the tablet's last
+  /// reading says is held -- 0, 1 or 2 -- or null for none, or no reading.
+  int? _tabletButton() {
+    var t = TabletInput.instance;
+    if (!t.fresh) return null;
+    for (var (i, bit) in const [(0, 2), (1, 4), (2, 8)]) {
+      if (t.buttons & bit != 0) return i;
+    }
+    return null;
+  }
+
   /// _stylusPress does what a button on the pen -- or its other end -- is
   /// set to, with the pencil out, answering whether it took the press. A
   /// tablet's driver sends the pen's buttons as mouse buttons: a right
@@ -2320,14 +2355,24 @@ class CanvasStageState extends State<CanvasStage> {
     var b = event.buttons;
     var buttons = controller.stylusButtons;
     StylusAction? action;
-    if (event.kind == PointerDeviceKind.invertedStylus) {
+    if (event.kind == PointerDeviceKind.invertedStylus ||
+        (TabletInput.instance.eraser && TabletInput.instance.near)) {
       action = controller.stylusEraser;
+    } else if (_tabletButton() case var i?) {
+      // The pen's own buttons, as the tablet reported them, where it sent
+      // them as a reading rather than as a click.
+      action = buttons[i];
     } else if (b & kSecondaryButton != 0) {
       action = buttons[0];
     } else if (b & kMiddleMouseButton != 0) {
       action = buttons[1];
     } else if (b & (kBackMouseButton | kForwardMouseButton) != 0) {
       action = buttons[2];
+    } else if (_modifierButton() case var i?) {
+      // A key held as the pen touches stands in for a button: the way to
+      // reach them on a pen display whose own buttons are taken -- the
+      // MovinkPad's open its sidebar of keys, and these are on it.
+      action = buttons[i];
     }
     if (action == null || action == StylusAction.draw) return false;
     var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
@@ -4396,6 +4441,12 @@ class CanvasStageState extends State<CanvasStage> {
     }
     if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;
     if (controller.tool == CanvasTool.pan) return SystemMouseCursors.grab;
+    // Drawing with the pencil, the pointer is the brush's ring and nothing
+    // more: an arrow over the line being drawn is in the way.
+    if (controller.editingVector != null &&
+        controller.vectorTool == VectorTool.pencil) {
+      return SystemMouseCursors.none;
+    }
     if (_mode == _DragMode.rotate) return SystemMouseCursors.grabbing;
     if (_mode == _DragMode.move) return SystemMouseCursors.move;
     // A ruler is a place you pull a guide out of, so it says so on approach
