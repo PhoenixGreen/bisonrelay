@@ -27,6 +27,7 @@ const List<ElementKind> _addable = [
   ElementKind.text,
   ElementKind.shape,
   ElementKind.image,
+  ElementKind.vector,
   ElementKind.line,
   ElementKind.chart,
   ElementKind.table,
@@ -42,6 +43,7 @@ const List<ElementKind> _addable = [
 IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.text => Icons.title,
       ElementKind.image => Icons.image_outlined,
+      ElementKind.vector => Icons.draw_outlined,
       ElementKind.shape => Icons.category_outlined,
       ElementKind.line => Icons.timeline,
       ElementKind.chart => Icons.bar_chart,

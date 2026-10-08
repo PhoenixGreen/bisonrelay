@@ -21,6 +21,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -947,6 +949,9 @@ class CanvasController extends ChangeNotifier {
   }
 
   void deleteSelected() {
+    // While a drawing is being edited, Delete takes out the point picked --
+    // not the drawing.
+    if (deleteVectorPoint()) return;
     if (_selection.isEmpty) return;
     var next = _document;
     for (var id in _selection) {
@@ -1454,6 +1459,148 @@ class CanvasController extends ChangeNotifier {
   // Selection
   // ------------------------------------------------------------------------
 
+  // ---- vector editing ----------------------------------------------------
+
+  /// vectorEditing is the Vector element being edited point by point, by id,
+  /// or null. vectorShape is the shape of it picked, and vectorPicks the
+  /// points -- one, several, or none.
+  String? get vectorEditing => _vectorEditing;
+  String? _vectorEditing;
+  int get vectorShape => _vectorShape;
+  int _vectorShape = -1;
+  Set<VectorPick> get vectorPicks => _vectorPicks;
+  Set<VectorPick> _vectorPicks = const {};
+
+  /// vectorPick is the one point picked, where exactly one is: the point
+  /// whose handles are shown and can be pulled.
+  VectorPick? get vectorPick =>
+      _vectorPicks.length == 1 ? _vectorPicks.first : null;
+
+  /// vectorPen is whether presses on the drawing put points down rather
+  /// than pick them, and vectorPenShape the shape the pen is drawing, or -1
+  /// before its first point.
+  bool get vectorPen => _vectorPen;
+  bool _vectorPen = false;
+  int get vectorPenShape => _vectorPenShape;
+  int _vectorPenShape = -1;
+
+  set vectorPen(bool on) {
+    if (_vectorPen == on) return;
+    _vectorPen = on;
+    _vectorPenShape = -1;
+    notifyListeners();
+  }
+
+  /// penDrawing records the shape the pen has started or gone on with.
+  void penDrawing(int shape) {
+    _vectorPenShape = shape;
+    _vectorShape = shape;
+    notifyListeners();
+  }
+
+  /// finishPenShape ends the shape the pen is drawing; the pen stays out,
+  /// ready to start another.
+  void finishPenShape() {
+    if (_vectorPenShape < 0) return;
+    _vectorPenShape = -1;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  /// editingVector is the drawing being edited, where there is one and it has
+  /// been taken apart -- which editing it always has. See startVectorEditing.
+  VectorElement? get editingVector {
+    var id = _vectorEditing;
+    var e = id == null ? null : _document.elementById(id);
+    return e is VectorElement && e.edited ? e : null;
+  }
+
+  /// editVector starts editing the drawing [id], or stops with null.
+  void editVector(String? id) {
+    if (_vectorEditing == id) return;
+    _fitEditedVector();
+    _vectorEditing = id;
+    _resetVectorEditing();
+    notifyListeners();
+  }
+
+  void _resetVectorEditing() {
+    _vectorShape = -1;
+    _vectorPicks = const {};
+    _vectorPen = false;
+    _vectorPenShape = -1;
+  }
+
+  void pickVectorShape(int shape) {
+    if (_vectorShape == shape && _vectorPicks.isEmpty) return;
+    _vectorShape = shape;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  /// pickVectorPoint picks [pick] alone -- or, with [toggle], adds it to the
+  /// points picked or takes it out, which is Shift and a click.
+  void pickVectorPoint(VectorPick? pick, {bool toggle = false}) {
+    Set<VectorPick> next;
+    if (pick == null) {
+      next = const {};
+    } else if (toggle) {
+      next = {..._vectorPicks};
+      if (!next.remove(pick)) next.add(pick);
+    } else {
+      next = {pick};
+    }
+    if (setEquals(next, _vectorPicks)) return;
+    _vectorPicks = next;
+    if (pick != null) _vectorShape = pick.shape;
+    notifyListeners();
+  }
+
+  /// pickVectorPoints picks [picks], all at once: a box dragged across the
+  /// drawing.
+  void pickVectorPoints(Set<VectorPick> picks) {
+    _vectorPicks = {...picks};
+    if (picks.isNotEmpty) _vectorShape = picks.first.shape;
+    notifyListeners();
+  }
+
+  /// deleteVectorPoint takes out the points picked in the drawing being
+  /// edited, returning whether there were any to take.
+  bool deleteVectorPoint() {
+    var e = editingVector, picks = _vectorPicks;
+    if (e == null || picks.isEmpty) return false;
+    var next = withoutPoints(e, picks);
+    _vectorPicks = const {};
+    if ((next.shapes?.length ?? 0) < (e.shapes?.length ?? 0)) {
+      _vectorShape = -1;
+      _vectorPenShape = -1;
+    }
+    replaceElement(next);
+    return true;
+  }
+
+  /// _leaveVectorIfUnpicked stops editing a drawing that is no longer the one
+  /// selected: picking something else is how editing is finished.
+  void _leaveVectorIfUnpicked() {
+    var id = _vectorEditing;
+    if (id == null) return;
+    if (_selection.length == 1 && _selection.first == id) return;
+    _fitEditedVector();
+    _vectorEditing = null;
+    _resetVectorEditing();
+  }
+
+  /// _fitEditedVector grows the box of the drawing being left to take in
+  /// whatever the editing carried out past it, so the box drawn round it is
+  /// round all of it. See boxedToDrawing.
+  void _fitEditedVector() {
+    var e = editingVector;
+    if (e == null) return;
+    var fitted = boxedToDrawing(e);
+    if (identical(fitted, e)) return;
+    apply(_document.withElement(fitted));
+  }
+
   void selectOnly(String id) {
     if (_selection.length == 1 &&
         _selection.first == id &&
@@ -1464,6 +1611,7 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _offCanvas = const {};
     _selection = {id};
+    _leaveVectorIfUnpicked();
     _focusedPlayer = null;
     notifyListeners();
   }
@@ -1474,6 +1622,7 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _offCanvas = const {};
     _selection = {...ids};
+    _leaveVectorIfUnpicked();
     _focusedPlayer = null;
     notifyListeners();
   }
@@ -2074,6 +2223,7 @@ class CanvasController extends ChangeNotifier {
     _focusedPlayer = null;
     _offCanvas = const {};
     _selection = {};
+    _leaveVectorIfUnpicked();
     notifyListeners();
   }
 
@@ -3814,6 +3964,7 @@ class CanvasController extends ChangeNotifier {
       switch (element) {
         ShapeElement e => e.animation,
         ImageElement e => e.animation,
+        VectorElement e => e.animation,
         LineElement e => e.animation,
         PathElement e => e.animation,
         TableElement e => e.animation,
@@ -3833,6 +3984,7 @@ class CanvasController extends ChangeNotifier {
   static bool animates(CanvasElement element) =>
       element is ShapeElement ||
       element is ImageElement ||
+      element is VectorElement ||
       element is LineElement ||
       element is PathElement ||
       element is TableElement ||
@@ -3850,6 +4002,7 @@ class CanvasController extends ChangeNotifier {
       switch (element) {
         ShapeElement e => e.copyWith(animation: animation),
         ImageElement e => e.copyWith(animation: animation),
+        VectorElement e => e.copyWith(animation: animation),
         LineElement e => e.copyWith(animation: animation),
         PathElement e => e.copyWith(animation: animation),
         TableElement e => e.copyWith(animation: animation),

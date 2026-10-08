@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -1036,6 +1037,7 @@ String _safe(String id) => id.replaceAll(RegExp(r"[^A-Za-z0-9_-]"), "_");
 ElementAnimation? _elementAnimation(CanvasElement e) => switch (e) {
       ShapeElement e => e.animation,
       ImageElement e => e.animation,
+      VectorElement e => e.animation,
       LineElement e => e.animation,
       PathElement e => e.animation,
       TableElement e => e.animation,
@@ -1351,6 +1353,7 @@ bool _travels(CanvasElement e) {
   var a = switch (e) {
     ShapeElement e => e.animation,
     ImageElement e => e.animation,
+    VectorElement e => e.animation,
     LineElement e => e.animation,
     PathElement e => e.animation,
     TableElement e => e.animation,

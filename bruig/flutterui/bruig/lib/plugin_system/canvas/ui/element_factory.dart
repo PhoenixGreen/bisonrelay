@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -45,6 +46,7 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
   return switch (kind) {
     ElementKind.text => Size(wide * 0.5, short * 0.16),
     ElementKind.image => Size(short * 0.5, short * 0.5),
+    ElementKind.vector => Size(short * 0.4, short * 0.4),
     ElementKind.shape => Size(short * 0.28, short * 0.28),
     ElementKind.line => Size(wide * 0.3, short * 0.001 + 4),
     ElementKind.chart => Size(wide * 0.6, short * 0.6),
@@ -110,6 +112,11 @@ CanvasElement newElement(
       // of its own shape is a photograph that looks wrong, and putting it back
       // by hand means finding the original numbers.
       return ImageElement(base.copyWith(lockAspect: true));
+
+    case ElementKind.vector:
+      // Proportions held, as a picture's are: a drawing pulled out of shape
+      // looks wrong the same way.
+      return VectorElement(base.copyWith(lockAspect: true));
 
     case ElementKind.shape:
       return ShapeElement(base,

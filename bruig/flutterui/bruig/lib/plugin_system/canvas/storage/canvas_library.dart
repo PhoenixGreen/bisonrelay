@@ -33,7 +33,11 @@ import 'package:path/path.dart' as path;
 enum AssetKind {
   picture("Pictures"),
   video("Videos"),
-  audio("Audio");
+  audio("Audio"),
+
+  /// vector is the drawings -- .svg files, kept in their own store and
+  /// placed as a Vector element. See VectorElement.
+  vector("Vectors");
 
   final String label;
   const AssetKind(this.label);
@@ -166,7 +170,11 @@ class LibraryAsset {
     String text(String key) => json[key] is String ? json[key] as String : "";
     return LibraryAsset(
       id: id,
-      kind: AssetKind.fromName(json["kind"] as String?),
+      // A drawing listed as a picture before the two were separated is a
+      // drawing.
+      kind: path.extension(id) == ".svg"
+          ? AssetKind.vector
+          : AssetKind.fromName(json["kind"] as String?),
       name: json["name"] is String ? json["name"] as String : id,
       added: DateTime.tryParse(json["added"] as String? ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0),
@@ -238,7 +246,15 @@ class CanvasLibrary {
     ];
   }
 
+  /// _movedVectors is whether this session has moved the drawings out of the
+  /// pictures yet -- once, before the library is first read.
+  static bool _movedVectors = false;
+
   static Future<List<LibraryAsset>> _read() async {
+    if (!_movedVectors) {
+      _movedVectors = true;
+      await CanvasMedia.migrateVectors();
+    }
     var file = await _path();
     if (!await file.exists()) {
       // The first time: whatever is already stored joins the library, named
@@ -316,6 +332,10 @@ class CanvasLibrary {
         height: height));
   }
 
+  /// addVector puts a drawing in the library, under the Vectors.
+  static Future<void> addVector(String id, String name) => add(LibraryAsset(
+      id: id, kind: AssetKind.vector, name: name, added: DateTime.now()));
+
   /// named is what the library calls [id], or null where it is not an asset.
   static Future<String?> named(String id) async {
     for (var a in await list()) {
@@ -382,6 +402,8 @@ class CanvasLibrary {
     if (file == owner.poster ||
         (owner.kind == AssetKind.picture && file == owner.id)) {
       where = await CanvasAssets.pathOf(file);
+    } else if (owner.kind == AssetKind.vector && file == owner.id) {
+      where = await CanvasMedia.existingPath(MediaKind.vector, file);
     } else {
       where = await CanvasMedia.existingPath(CanvasMedia.kindOf(file), file);
     }
@@ -416,7 +438,8 @@ class CanvasLibrary {
       };
       return await CanvasAssets.sweep(keep) +
           await CanvasMedia.sweep(MediaKind.audio, keep) +
-          await CanvasMedia.sweep(MediaKind.video, keep);
+          await CanvasMedia.sweep(MediaKind.video, keep) +
+          await CanvasMedia.sweep(MediaKind.vector, keep);
     } catch (_) {
       return 0;
     }
@@ -487,7 +510,7 @@ class CanvasLibrary {
 
     var pictures = 0;
     for (var id in await CanvasAssets.stored()) {
-      if (extras.contains(id)) continue;
+      if (extras.contains(id) || path.extension(id) == ".svg") continue;
       var name = names[id];
       out.add(LibraryAsset(
         id: id,
@@ -501,7 +524,12 @@ class CanvasLibrary {
         if (extras.contains(id)) continue;
         var source = sources[id] ?? MediaSource(assetId: id);
         out.add(LibraryAsset.fromSource(
-            kind == MediaKind.video ? AssetKind.video : AssetKind.audio, source,
+            switch (kind) {
+              MediaKind.video => AssetKind.video,
+              MediaKind.audio => AssetKind.audio,
+              MediaKind.vector => AssetKind.vector,
+            },
+            source,
             added: await when(await CanvasMedia.existingPath(kind, id))));
       }
     }

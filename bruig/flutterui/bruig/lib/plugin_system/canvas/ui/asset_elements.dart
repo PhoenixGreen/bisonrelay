@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -44,6 +45,10 @@ CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
           as VideoElement;
       return shaped(e.copyWith(clip: MediaClip(playlist: [asset.source])))
           .withBase(name: asset.name);
+    case AssetKind.vector:
+      var e = newElement(ElementKind.vector, document, center: center)
+          as VectorElement;
+      return shaped(e.copyWith(assetId: asset.id)).withBase(name: asset.name);
     case AssetKind.audio:
       var e = newElement(ElementKind.audio, document, center: center)
           as AudioElement;

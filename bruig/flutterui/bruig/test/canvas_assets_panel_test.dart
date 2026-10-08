@@ -19,6 +19,8 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -112,6 +114,28 @@ void main() {
     expect(find.text("Goal"), findsOneWidget);
     expect(find.text("Anthem"), findsOneWidget);
     expect(find.byKey(const ValueKey("addAsset-picture")), findsOneWidget);
+  });
+
+  // A drawing's thumbnail is the drawing. It was read from the pictures
+  // only, so once drawings had a store of their own, the Vectors section
+  // showed empty tiles.
+  testWidgets("a drawing shows its drawing in the Vectors section",
+      (tester) async {
+    late String id;
+    await tester.runAsync(() async {
+      id = (await CanvasMedia.saveVector(
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+                  '<rect width="10" height="10" fill="red"/></svg>'
+              .codeUnits))!;
+      await CanvasLibrary.addVector(id, "Logo");
+    });
+    await show(tester, sidebar);
+    await idle(tester);
+    var tile = find
+        .ancestor(of: find.text("Logo"), matching: find.byType(MouseRegion))
+        .first;
+    expect(find.descendant(of: tile, matching: find.byType(SvgPicture)),
+        findsOneWidget);
   });
 
   // Put in one row, the three sections are tabs. Unkeyed, one section was

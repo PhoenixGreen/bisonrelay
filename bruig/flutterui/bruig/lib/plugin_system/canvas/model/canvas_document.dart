@@ -23,6 +23,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -128,6 +130,11 @@ class CanvasBackground {
   final VideoElement? video;
   final AudioElement? sound;
 
+  /// drawing is a vector drawing behind everything, laid over the picture
+  /// and under the video -- what a background picture that was an .svg is
+  /// now, since drawings and pictures were separated. See VectorElement.
+  final VectorElement? drawing;
+
   const CanvasBackground({
     this.spec = const ProceduralSpec(),
     this.imageAssetId = "",
@@ -135,6 +142,7 @@ class CanvasBackground {
     this.picture,
     this.video,
     this.sound,
+    this.drawing,
   });
 
   /// shownPicture is the picture to draw: the one with settings, or the one
@@ -157,11 +165,13 @@ class CanvasBackground {
   Set<String> get assetIds => {
         ...?shownPicture?.assetIds,
         ...?video?.assetIds,
+        ...?drawing?.assetIds,
       };
 
   Set<String> get mediaIds => {
         ...?video?.mediaIds,
         ...?sound?.mediaIds,
+        ...?drawing?.mediaIds,
       };
 
   CanvasBackground copyWith({
@@ -171,9 +181,11 @@ class CanvasBackground {
     ImageElement? picture,
     VideoElement? video,
     AudioElement? sound,
+    VectorElement? drawing,
     bool clearPicture = false,
     bool clearVideo = false,
     bool clearSound = false,
+    bool clearDrawing = false,
   }) =>
       CanvasBackground(
         spec: spec ?? this.spec,
@@ -185,6 +197,7 @@ class CanvasBackground {
         picture: clearPicture ? null : picture ?? this.picture,
         video: clearVideo ? null : video ?? this.video,
         sound: clearSound ? null : sound ?? this.sound,
+        drawing: clearDrawing ? null : drawing ?? this.drawing,
       );
 
   Map<String, dynamic> toJson() => {
@@ -194,6 +207,7 @@ class CanvasBackground {
         if (picture != null) "picture": picture!.toJson(),
         if (video != null) "video": video!.toJson(),
         if (sound != null) "sound": sound!.toJson(),
+        if (drawing != null) "drawing": drawing!.toJson(),
       };
 
   factory CanvasBackground.fromJson(Map<String, dynamic> json) {
@@ -201,14 +215,30 @@ class CanvasBackground {
         raw is Map<String, dynamic> && elementFromJson(raw) is T
             ? elementFromJson(raw) as T
             : null;
+    // A picture saved before drawings and pictures were separated, that was
+    // a drawing, is the background's drawing now -- read as a picture it
+    // would come back as nothing, since a drawing is not one any more.
+    var image = jsonString(json["image"], "");
+    var drawing = element<VectorElement>(json["drawing"]) ??
+        element<VectorElement>(json["picture"]) ??
+        (image.endsWith(".svg")
+            ? VectorElement(const ElementBase(id: "backgroundDrawing"),
+                assetId: image,
+                fit: json["fit"] == "stretch"
+                    ? VectorFit.stretch
+                    : json["fit"] == "contain"
+                        ? VectorFit.contain
+                        : VectorFit.cover)
+            : null);
     return CanvasBackground(
       spec: jsonSpec(
           json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-      imageAssetId: jsonString(json["image"], ""),
+      imageAssetId: image.endsWith(".svg") ? "" : image,
       imageFit: ImageFit.fromName(json["fit"] as String?),
       picture: element<ImageElement>(json["picture"]),
       video: element<VideoElement>(json["video"]),
       sound: element<AudioElement>(json["sound"]),
+      drawing: drawing,
     );
   }
 }
@@ -1325,6 +1355,21 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     case ElementKind.text:
       return TextElement.fromJson(json, base);
     case ElementKind.image:
+      // A picture that is a drawing is a Vector element now: drawings and
+      // pictures were one element before they were separated. Its box, its
+      // name and how it arrives come with it; a picture's own settings --
+      // crop, filters, outline -- mean nothing to a drawing.
+      if (jsonString(json["asset"], "").endsWith(".svg")) {
+        return VectorElement(base,
+            assetId: jsonString(json["asset"], ""),
+            fit: switch (json["fit"]) {
+              "stretch" => VectorFit.stretch,
+              "contain" => VectorFit.contain,
+              _ => VectorFit.cover,
+            },
+            animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
+                const ElementAnimation()));
+      }
       return ImageElement.fromJson(json, base);
     case ElementKind.shape:
       return ShapeElement.fromJson(json, base);
@@ -1348,5 +1393,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return AudioElement.fromJson(json, base);
     case ElementKind.video:
       return VideoElement.fromJson(json, base);
+    case ElementKind.vector:
+      return VectorElement.fromJson(json, base);
   }
 }

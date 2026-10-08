@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/components/md_elements.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/picture_options_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -100,13 +101,26 @@ String _mimeOf(List<int> bytes) =>
 /// pickCanvasImage asks for a picture, offers to compress it, stores it, and
 /// returns its asset id -- or null if the reader changed their mind at any
 /// point along the way.
-Future<String?> pickCanvasImage(BuildContext context) async {
+///
+/// [vectors] offers drawings (.svg) as well, for the places a drawing serves
+/// as a picture -- a text element's icon, a badge in a table cell. A drawing
+/// chosen is stored with the drawings, in the Vectors store. Off for the
+/// Image element, which is for pictures; drawings are the Vector element's.
+Future<String?> pickCanvasImage(BuildContext context,
+    {bool vectors = true}) async {
   // The extensions rather than FileType.image, which is the platform's idea
   // of a picture and does not include SVG on macOS -- so the one format a
   // badge in a table cell is nearly always in could not be chosen at all.
   var picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+    allowedExtensions: [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      if (vectors) "svg",
+    ],
     withData: false,
   );
   var chosen = picked?.files.singleOrNull?.path;
@@ -131,6 +145,19 @@ Future<String?> pickCanvasImage(BuildContext context) async {
       bytes = result;
     }
 
+    if (isSvgMime(mime)) {
+      var vector = await CanvasMedia.saveVector(bytes);
+      if (vector == null) {
+        if (context.mounted) {
+          _report(context, "That drawing is too large for a canvas.");
+        }
+        return null;
+      }
+      await CanvasLibrary.addVector(
+          vector, path.basenameWithoutExtension(chosen.trim()));
+      return vector;
+    }
+
     var id = await CanvasAssets.save(bytes);
     if (id == null) {
       if (context.mounted) {
@@ -147,6 +174,44 @@ Future<String?> pickCanvasImage(BuildContext context) async {
       _report(context, "Unable to read ${path.basename(chosen)}: $exception");
     } else {
       debugPrint("Unable to read ${path.basename(chosen)}: $exception");
+    }
+    return null;
+  }
+}
+
+/// pickCanvasVector asks for a drawing (.svg), stores it with the drawings
+/// and puts it in the library, and returns its id -- or null for none.
+Future<String?> pickCanvasVector(BuildContext context) async {
+  var picked = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ["svg"],
+    withData: false,
+  );
+  var chosen = picked?.files.singleOrNull?.path;
+  if (chosen == null || chosen.trim().isEmpty) return null;
+  try {
+    var bytes = await File(chosen.trim()).readAsBytes();
+    if (!String.fromCharCodes(bytes.take(4096))
+        .toLowerCase()
+        .contains("<svg")) {
+      if (context.mounted) {
+        _report(context, "${path.basename(chosen)} is not a drawing.");
+      }
+      return null;
+    }
+    var id = await CanvasMedia.saveVector(bytes);
+    if (id == null) {
+      if (context.mounted) {
+        _report(context, "That drawing is too large for a canvas.");
+      }
+      return null;
+    }
+    await CanvasLibrary.addVector(
+        id, path.basenameWithoutExtension(chosen.trim()));
+    return id;
+  } catch (exception) {
+    if (context.mounted) {
+      _report(context, "Unable to read ${path.basename(chosen)}: $exception");
     }
     return null;
   }

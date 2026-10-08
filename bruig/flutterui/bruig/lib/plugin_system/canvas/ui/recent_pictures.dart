@@ -1,5 +1,6 @@
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -17,13 +18,19 @@ import 'package:flutter/material.dart';
 
 /// showRecentPictures opens the picker and returns the chosen picture's id, or
 /// null if nothing was chosen.
-Future<String?> showRecentPictures(BuildContext context) => showDialog<String>(
+///
+/// [drawings] shows the drawings -- the Vectors store -- instead of the
+/// pictures.
+Future<String?> showRecentPictures(BuildContext context,
+        {bool drawings = false}) =>
+    showDialog<String>(
       context: context,
-      builder: (context) => const _RecentPicturesDialog(),
+      builder: (context) => _RecentPicturesDialog(drawings: drawings),
     );
 
 class _RecentPicturesDialog extends StatefulWidget {
-  const _RecentPicturesDialog();
+  final bool drawings;
+  const _RecentPicturesDialog({required this.drawings});
 
   @override
   State<_RecentPicturesDialog> createState() => _RecentPicturesDialogState();
@@ -37,7 +44,15 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
   @override
   void initState() {
     super.initState();
-    CanvasAssets.stored().then((ids) {
+    var read = widget.drawings
+        ? CanvasMedia.stored(MediaKind.vector)
+        // A drawing not yet moved out of the pictures is a drawing, and is
+        // offered with them, not here.
+        : CanvasAssets.stored().then((ids) => [
+              for (var id in ids)
+                if (!id.endsWith(".svg")) id
+            ]);
+    read.then((ids) {
       if (mounted) setState(() => _ids = ids);
     });
   }
@@ -48,16 +63,21 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
     var ids = _ids;
 
     return AlertDialog(
-      title: const Txt.L("Pictures you have used"),
+      title: Txt.L(widget.drawings
+          ? "Drawings you have used"
+          : "Pictures you have used"),
       content: SizedBox(
         width: 520,
         height: 360,
         child: ids == null
             ? const Center(child: CircularProgressIndicator())
             : ids.isEmpty
-                ? const Center(
-                    child: Txt.S("No pictures yet. Add one and it will be "
-                        "here for the next canvas."))
+                ? Center(
+                    child: Txt.S(widget.drawings
+                        ? "No drawings yet. Add one and it will be here for "
+                            "the next canvas."
+                        : "No pictures yet. Add one and it will be here for "
+                            "the next canvas."))
                 : GridView.builder(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(

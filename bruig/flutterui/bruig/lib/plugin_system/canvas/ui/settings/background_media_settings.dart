@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -57,6 +58,7 @@ List<Widget> backgroundMediaSettings(
       );
 
   var picture = bg.shownPicture;
+  var drawing = bg.drawing;
   var video = bg.video;
   var sound = bg.sound;
   var begin = controller.beginInteraction;
@@ -82,7 +84,7 @@ List<Widget> backgroundMediaSettings(
                     icon: Icons.add_photo_alternate,
                     tooltip: "Put a picture behind everything",
                     onPressed: () async {
-                      var id = await pickCanvasImage(context);
+                      var id = await pickCanvasImage(context, vectors: false);
                       if (id == null) return;
                       now(current().copyWith(
                           picture: ImageElement(fresh("Background picture"),
@@ -113,6 +115,75 @@ List<Widget> backgroundMediaSettings(
                 commit,
                 background: true),
           ],
+        ],
+      ),
+    ),
+    // A drawing behind everything: an .svg, kept a drawing, sharp at any
+    // size. Over the picture and under the video.
+    boxed(
+      context,
+      CanvasExpander(
+        key: const ValueKey("backgroundDrawing"),
+        label: "Drawing",
+        remember: "backgroundDrawing",
+        trailing: drawing == null ? "None" : null,
+        children: [
+          CanvasControlGroup(
+              label: "Drawing",
+              hideCaption: true,
+              rule: false,
+              children: [
+                CanvasIconButton(
+                  key: const ValueKey("backgroundAddDrawing"),
+                  icon: drawing == null ? Icons.add : Icons.draw_outlined,
+                  tooltip: drawing == null
+                      ? "Put a drawing behind everything"
+                      : "Use another drawing",
+                  onPressed: () async {
+                    var id = await pickCanvasVector(context);
+                    if (id == null) return;
+                    now(current().copyWith(
+                        drawing: (drawing ??
+                                VectorElement(fresh("Background drawing"),
+                                    fit: VectorFit.cover))
+                            .copyWith(
+                                assetId: id,
+                                viewBox: Rect.zero,
+                                clearShapes: true)));
+                  },
+                ),
+                CanvasIconButton(
+                  icon: Icons.photo_library_outlined,
+                  tooltip: "Use a drawing you have already added",
+                  onPressed: () async {
+                    var id = await showRecentPictures(context, drawings: true);
+                    if (id == null) return;
+                    now(current().copyWith(
+                        drawing: (drawing ??
+                                VectorElement(fresh("Background drawing"),
+                                    fit: VectorFit.cover))
+                            .copyWith(
+                                assetId: id,
+                                viewBox: Rect.zero,
+                                clearShapes: true)));
+                  },
+                ),
+                if (drawing != null) ...[
+                  CanvasDropdown<VectorFit>(
+                    key: const ValueKey("backgroundDrawingFit"),
+                    label: "Fit",
+                    value: drawing.fit,
+                    width: 86,
+                    options: [for (var f in VectorFit.values) (f, f.label)],
+                    onChanged: (v) {
+                      now(current()
+                          .copyWith(drawing: drawing.copyWith(fit: v)));
+                    },
+                  ),
+                  remove("drawing",
+                      () => now(current().copyWith(clearDrawing: true))),
+                ],
+              ]),
         ],
       ),
     ),

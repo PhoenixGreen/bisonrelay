@@ -55,7 +55,7 @@ List<Widget> imageSettings(
             icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
             tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
             onPressed: () async {
-              var id = await pickCanvasImage(context);
+              var id = await pickCanvasImage(context, vectors: false);
               if (id != null) await use(id);
             },
           ),

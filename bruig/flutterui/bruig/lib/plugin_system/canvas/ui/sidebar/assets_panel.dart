@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -41,9 +42,12 @@ class CanvasAssetsPanel extends StatelessWidget {
                 label: kind.label,
                 icon: _iconOf(kind),
                 hint: switch (kind) {
-                  AssetKind.picture || AssetKind.video => "Click one to put it "
-                      "in the middle of the canvas, or drag it where you want "
-                      "it. Double-click a name to rename it.",
+                  AssetKind.picture ||
+                  AssetKind.video ||
+                  AssetKind.vector =>
+                    "Click one to put it "
+                        "in the middle of the canvas, or drag it where you want "
+                        "it. Double-click a name to rename it.",
                   AssetKind.audio => "Click one for a speaker in the middle "
                       "of the canvas, or drag it onto a channel on the "
                       "timeline to play it there. Double-click a name to "
@@ -81,6 +85,7 @@ IconData _iconOf(AssetKind kind) => switch (kind) {
       AssetKind.picture => Icons.image_outlined,
       AssetKind.video => Icons.movie_outlined,
       AssetKind.audio => Icons.music_note_outlined,
+      AssetKind.vector => Icons.draw_outlined,
     };
 
 /// AssetView is how a section shows its assets.
@@ -155,7 +160,9 @@ class _AssetSectionState extends State<AssetSection> {
     var controller = widget.controller;
     switch (widget.kind) {
       case AssetKind.picture:
-        await pickCanvasImage(context);
+        await pickCanvasImage(context, vectors: false);
+      case AssetKind.vector:
+        await pickCanvasVector(context);
       case AssetKind.video:
         await pickCanvasVideo(context, controller);
       case AssetKind.audio:
@@ -298,7 +305,7 @@ class _Still extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var still = switch (asset.kind) {
-      AssetKind.picture => asset.id,
+      AssetKind.picture || AssetKind.vector => asset.id,
       AssetKind.video => asset.poster,
       AssetKind.audio => "",
     };
@@ -606,6 +613,11 @@ String _duration(double seconds) {
 
 /// AssetThumb is a stored picture, small: read once and kept while the
 /// sidebar is open, so scrolling does not read it again.
+bool _isSvg(Uint8List bytes) =>
+    String.fromCharCodes(bytes.take(4096).where((b) => b < 128))
+        .toLowerCase()
+        .contains("<svg");
+
 class AssetThumb extends StatefulWidget {
   final String id;
   const AssetThumb({required this.id, super.key});
@@ -627,7 +639,10 @@ class _AssetThumbState extends State<AssetThumb> {
   Future<void> _read() async {
     var bytes = _cache[widget.id];
     if (bytes == null) {
-      var read = await CanvasAssets.load(widget.id);
+      // A drawing is in the Vectors store, a picture in the pictures -- and a
+      // drawing added before the two were separated may still be there.
+      var read = await CanvasMedia.load(MediaKind.vector, widget.id) ??
+          await CanvasAssets.load(widget.id);
       if (read == null) return;
       bytes = Uint8List.fromList(read);
       if (_cache.length > 200) _cache.remove(_cache.keys.first);
@@ -640,7 +655,8 @@ class _AssetThumbState extends State<AssetThumb> {
   Widget build(BuildContext context) {
     var bytes = _bytes;
     if (bytes == null) return const SizedBox.expand();
-    if (widget.id.endsWith(".svg")) {
+    // By what it is, not by its name: an old drawing's id has no extension.
+    if (widget.id.endsWith(".svg") || _isSvg(bytes)) {
       return SvgPicture.memory(bytes, fit: BoxFit.contain);
     }
     return Image.memory(bytes,

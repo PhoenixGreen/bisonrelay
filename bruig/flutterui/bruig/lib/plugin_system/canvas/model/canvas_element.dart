@@ -39,7 +39,9 @@ enum ElementKind {
   // A sound, and the icon a reader presses to hear it. See AudioElement.
   audio("Audio"),
   // A moving picture, from a file or a link. See VideoElement.
-  video("Video");
+  video("Video"),
+  // A drawing -- an .svg -- edited point by point. See VectorElement.
+  vector("Vector");
 
   final String label;
   const ElementKind(this.label);

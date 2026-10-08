@@ -9,6 +9,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
@@ -168,6 +171,17 @@ class StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// editingVector is the drawing being edited point by point, the shape of
+  /// it picked and the point picked -- drawn in place of a selection box.
+  final ({
+    VectorElement element,
+    int shape,
+    VectorPick? pick,
+    Set<VectorPick> picks,
+    bool boxing,
+    Set<VectorPick> boxed,
+  })? editingVector;
+
   /// chartLabels is the boxes of the selected chart's placed labels, in
   /// document units. Outlined so that a title somebody has taken control of
   /// looks like something that can be taken hold of -- placed and then not
@@ -274,6 +288,7 @@ class StagePainter extends CustomPainter {
     required this.guides,
     required this.snapped,
     required this.selectedPath,
+    this.editingVector,
     required this.chartLabels,
     required this.tableColumns,
     required this.editingText,
@@ -678,6 +693,12 @@ class StagePainter extends CustomPainter {
       _paintPathControls(canvas, path);
       return;
     }
+    if (editingVector case var editing?) {
+      _paintVectorControls(canvas, editing.element, editing.shape, editing.pick,
+          {...editing.picks, ...editing.boxed},
+          everyShape: editing.boxing);
+      return;
+    }
 
     var bounds = selectionBounds;
     if (bounds == null) return;
@@ -880,6 +901,124 @@ class StagePainter extends CustomPainter {
   /// Handles only where there are any: an unbent node's handles sit exactly on
   /// top of it, and drawing them there would be three overlapping dots that
   /// cannot be told apart or aimed at separately.
+  /// _paintVectorControls draws a drawing being edited: every shape's
+  /// outline, faint; the picked shape's in the drawing's own handle colour,
+  /// with its points -- and the points of any shape with points picked, since
+  /// a box dragged across the drawing can pick from several -- and the
+  /// handles of the one point picked, where exactly one is.
+  ///
+  /// [everyShape] shows every shape's points: while a box is dragged across
+  /// the drawing, so what it will take in can be seen.
+  void _paintVectorControls(Canvas canvas, VectorElement e, int picked,
+      VectorPick? pick, Set<VectorPick> picks,
+      {bool everyShape = false}) {
+    var shapes = e.shapes;
+    if (shapes == null) return;
+    var space = VectorSpace(e);
+    var colour = e.handleColor;
+    Offset screen(Offset v) => space.toCanvas(v) * scale + origin;
+
+    // The outlines, drawn through the same placement the drawing is drawn
+    // with -- and its turn -- so they lie exactly on it.
+    var place = e.placement(e.bounds, e.viewBox);
+    var centre = e.bounds.center;
+    canvas.save();
+    canvas.translate(origin.dx, origin.dy);
+    canvas.scale(scale);
+    canvas.translate(centre.dx, centre.dy);
+    canvas.rotate(e.rotation * math.pi / 180);
+    canvas.translate(-centre.dx, -centre.dy);
+    canvas.translate(place.dx, place.dy);
+    canvas.scale(place.sx, place.sy);
+    var hair = 1 / (scale * math.max(1e-6, math.min(place.sx, place.sy)));
+    for (var i = 0; i < shapes.length; i++) {
+      canvas.drawPath(
+          vectorShapePath(shapes[i]),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = (i == picked ? 1.5 : 1) * hair
+            ..color = i == picked
+                ? colour
+                : colour.withValues(alpha: colour.a * 0.35));
+    }
+    canvas.restore();
+
+    // Every shape's points while a box is dragged -- and while nothing is
+    // picked, which is how the drawing opens: there is always something to
+    // take hold of.
+    if (picked < 0 && picks.isEmpty) everyShape = true;
+    var shown = <int>{
+      if (everyShape) ...[for (var i = 0; i < shapes.length; i++) i],
+      if (picked >= 0 && picked < shapes.length) picked,
+      for (var p in picks)
+        if (p.shape < shapes.length) p.shape,
+    };
+    if (shown.isEmpty) return;
+    // The box round several picked points, faint: it says where a press
+    // takes hold of them all.
+    if (picksBox(e, picks) case var box?) {
+      var r = Rect.fromPoints(
+              box.topLeft * scale + origin, box.bottomRight * scale + origin)
+          .inflate(e.handleSize);
+      canvas.drawRect(r, Paint()..color = colour.withValues(alpha: 0.08));
+      canvas.drawRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = colour.withValues(alpha: 0.6));
+    }
+    var size = e.handleSize;
+    var fill = Paint()..color = const Color(0xFFFFFFFF);
+    var ink = Paint()..color = colour;
+    var edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = colour;
+    var line = Paint()
+      ..strokeWidth = 1
+      ..color = colour;
+
+    // The picked point's handles first, so the points sit on top of their
+    // lines.
+    if (pick != null && pick.shape < shapes.length) {
+      var node = vectorNodeAt(e, pick);
+      if (node != null) {
+        var at = screen(node.point);
+        for (var (has, handle) in [
+          (node.hasIn, node.inHandle),
+          (node.hasOut, node.outHandle),
+        ]) {
+          if (!has) continue;
+          var h = screen(handle);
+          canvas.drawLine(at, h, line);
+          canvas.drawCircle(h, size / 2, fill);
+          canvas.drawCircle(h, size / 2, edge);
+        }
+      }
+    }
+    for (var showing in shown) {
+      var paths = shapes[showing].paths;
+      for (var p = 0; p < paths.length; p++) {
+        for (var n = 0; n < paths[p].nodes.length; n++) {
+          var node = paths[p].nodes[n];
+          var at = screen(node.point);
+          var chosen = picks.contains(VectorPick(showing, p, n));
+          // A smooth point is round, a corner square: the two kinds can be
+          // told apart at a glance, which is what decides how a handle moves.
+          if (node.smooth) {
+            canvas.drawCircle(at, size / 2, chosen ? ink : fill);
+            canvas.drawCircle(at, size / 2, edge);
+          } else {
+            var square = Rect.fromCenter(center: at, width: size, height: size);
+            canvas.drawRect(square, chosen ? ink : fill);
+            canvas.drawRect(square, edge);
+          }
+        }
+      }
+    }
+  }
+
   void _paintPathControls(Canvas canvas, PathElement path) {
     Offset at(Offset doc) => doc * scale + origin;
 
@@ -1194,6 +1333,7 @@ class StagePainter extends CustomPainter {
       old.showAllBounds != showAllBounds ||
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
+      old.editingVector != editingVector ||
       old.editingText != editingText ||
       old.editingItem != editingItem ||
       !identical(old.preview, preview) ||

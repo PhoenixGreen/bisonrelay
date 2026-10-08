@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -96,6 +98,8 @@ List<Widget> elementSettings(
         lineSettings(context, controller, e, write, begin, commit),
       ImageElement e =>
         imageSettings(context, controller, e, write, begin, commit),
+      VectorElement e =>
+        vectorSettings(context, controller, e, write, begin, commit),
       ChartElement e =>
         chartSettings(context, controller, e, write, begin, commit),
       TableElement e =>

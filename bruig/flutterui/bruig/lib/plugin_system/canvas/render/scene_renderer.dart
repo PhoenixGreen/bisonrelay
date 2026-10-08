@@ -11,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -357,6 +359,9 @@ void _paintDocumentBackground(
   if (picture != null && decoded != null) {
     _paintImage(canvas, rect, onPage(picture), images);
   }
+  if (bg.drawing case var drawing? when drawing.hasDrawing) {
+    paintVector(canvas, rect, onPage(drawing), images);
+  }
   if (bg.video case var video? when !video.clip.isEmpty) {
     var page = onPage(video);
     _paintVideo(canvas, rect, page,
@@ -584,6 +589,9 @@ void paintElement(
     case ImageElement e:
       paintArriving(canvas, bounds, e.animation, pose,
           () => _paintImage(canvas, bounds, e, images));
+    case VectorElement e:
+      paintArriving(canvas, bounds, e.animation, pose,
+          () => paintVector(canvas, bounds, e, images));
     case ChartElement e:
       // How much of it has arrived. A chart with no animation on it has no
       // keyframe pinning this and gets 1, which is all of it.

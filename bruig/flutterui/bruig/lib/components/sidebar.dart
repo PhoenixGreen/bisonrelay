@@ -358,7 +358,13 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                                 color: theme.colors.onSurfaceVariant,
                                 fontSize: 12)),
                       ),
-                    NotificationsDrawerHeader(widget.ntfns),
+                    // On a Material of its own: its notifications are
+                    // ListTiles, which draw their highlight on the nearest
+                    // Material -- and a themed bar's background and border
+                    // above them would hide it (and Flutter says so).
+                    Material(
+                        type: MaterialType.transparency,
+                        child: NotificationsDrawerHeader(widget.ntfns)),
                   ])),
             ]),
             controller: ctrl,

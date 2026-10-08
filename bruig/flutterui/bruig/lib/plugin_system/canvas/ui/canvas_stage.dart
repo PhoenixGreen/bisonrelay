@@ -19,6 +19,9 @@ import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
@@ -107,6 +110,19 @@ enum _DragMode {
   /// pulled out of a ruler. Not an element at all: it moves nothing on the
   /// canvas, it moves the thing the canvas is being lined up against.
   guide,
+
+  /// vectorPoint is a point of a drawing being edited, or one of its
+  /// handles, being dragged. See vector_editing.dart.
+  vectorPoint,
+
+  /// vectorPoints is several picked points of a drawing dragged together,
+  /// and vectorMarquee a box dragged across one to pick the points inside it.
+  vectorPoints,
+  vectorMarquee,
+
+  /// vectorPen is the pen's point just put down, its handles being pulled
+  /// out by the drag.
+  vectorPen,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -1572,6 +1588,14 @@ class CanvasStageState extends State<CanvasStage> {
     // picked up again.
     if (_startGuideDrag(stage, doc)) return;
 
+    // A drawing being edited takes the press first: its points and handles,
+    // its shapes, and anywhere inside it. A press outside it finishes the
+    // editing, and goes on to do whatever it would have done.
+    if (controller.editingVector case var vector?
+        when _pressVector(vector, doc)) {
+      return;
+    }
+
     // A selected path's points and handles are grabbed before anything
     // else, exactly as a team's players are: they are drawn on top of the
     // curve and are the thing being aimed at.
@@ -1874,6 +1898,29 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
 
+    // A second click on a drawing that is already selected opens it for
+    // editing point by point -- the same second click that opens text for
+    // typing.
+    if (element is VectorElement &&
+        !_shiftHeld &&
+        !element.locked &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id &&
+        _pressedAt != Offset.zero &&
+        DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
+      _mode = _DragMode.none;
+      // And the shape that was double-clicked picked, ready to be worked on.
+      var at = doc;
+      unawaited(startVectorEditing(context, controller, element).then((_) {
+        var e = controller.editingVector;
+        if (!mounted || e == null || e.id != element.id) return;
+        var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
+        var shape = shapeAt(e, at, reach);
+        if (shape >= 0) controller.pickVectorShape(shape);
+      }));
+      return;
+    }
+
     // A second click on a picture that is already selected reframes it:
     // dragging then moves the picture inside its box instead of moving the
     // box. Only for a picture that fills its box -- see ImageFraming -- and
@@ -1993,6 +2040,159 @@ class CanvasStageState extends State<CanvasStage> {
       }
     }
     return null;
+  }
+
+  /// _vectorPart is which part of the picked point a drag has hold of.
+  VectorPart _vectorPart = VectorPart.point;
+
+  /// _vectorBefore and _vectorFrom are the drawing and the press a drag of
+  /// several points started from, so the drag is applied to where they were
+  /// rather than adding up as it goes.
+  VectorElement? _vectorBefore;
+  Offset _vectorFrom = Offset.zero;
+
+  /// _vectorShapeUnder is the shape a box was started on, which a click --
+  /// a box that never grew -- picks.
+  int _vectorShapeUnder = -1;
+
+  /// _pressVector answers a press on a drawing being edited, returning
+  /// whether it took the press.
+  ///
+  /// With the pen out, a press puts a point down. Otherwise: a point or
+  /// handle is taken hold of -- Shift adds it to the points picked or takes
+  /// it out, and one of several picked drags them all; a second click on
+  /// the point picked makes it a corner or smooth; a second click on the
+  /// picked shape's outline puts a point in it there; a press on a shape
+  /// picks it and drags it whole; and a press on the drawing's empty space
+  /// drags a box to pick the points inside it. Outside the drawing the
+  /// editing ends, and the press is left for whatever else wants it.
+  bool _pressVector(VectorElement e, Offset doc) {
+    var reach = (e.handleSize / 2 + handleHitSlop) / _scale;
+    var twice = DateTime.now().difference(_lastClickAt) < _doubleClickWindow;
+    _lastClickAt = DateTime.now();
+    if (controller.vectorPen) {
+      _pressPen(e, doc, reach);
+      return true;
+    }
+    var hit = hitVector(e, doc, reach,
+        shape: controller.vectorShape,
+        picked: controller.vectorPick,
+        picks: controller.vectorPicks);
+    if (hit != null) {
+      var point = hit.part == VectorPart.point;
+      if (point && _shiftHeld) {
+        controller.pickVectorPoint(hit.pick, toggle: true);
+        _mode = _DragMode.none;
+        return true;
+      }
+      if (twice && point && controller.vectorPick == hit.pick) {
+        controller.replaceElement(withSmoothToggled(e, hit.pick));
+        _mode = _DragMode.none;
+        return true;
+      }
+      if (point &&
+          controller.vectorPicks.length > 1 &&
+          controller.vectorPicks.contains(hit.pick)) {
+        _vectorBefore = e;
+        _vectorFrom = doc;
+        _mode = _DragMode.vectorPoints;
+        controller.beginInteraction();
+        return true;
+      }
+      if (point) controller.pickVectorPoint(hit.pick);
+      _vectorPart = hit.part;
+      _mode = _DragMode.vectorPoint;
+      controller.beginInteraction();
+      return true;
+    }
+    // Inside the box round several picked points: they are dragged, all
+    // together, by their middle as well as by any one of them.
+    if (!twice && !_shiftHeld) {
+      var box = picksBox(e, controller.vectorPicks);
+      // As far out as the box is drawn: a handle's width round the points.
+      if (box != null && box.inflate(e.handleSize / _scale).contains(doc)) {
+        _vectorBefore = e;
+        _vectorFrom = doc;
+        _mode = _DragMode.vectorPoints;
+        controller.beginInteraction();
+        return true;
+      }
+    }
+    if (twice && controller.vectorShape >= 0) {
+      var at = nearestSegment(e, controller.vectorShape, doc, reach * 1.5);
+      if (at != null) {
+        var (next, pick) =
+            withPointAdded(e, controller.vectorShape, at.$1, at.$2, at.$3);
+        controller.replaceElement(next);
+        controller.pickVectorPoint(pick);
+        _mode = _DragMode.none;
+        return true;
+      }
+    }
+    // Anywhere else -- on a shape, on the drawing's empty space, or off the
+    // drawing altogether -- starts a box to pick points with: in edit mode a
+    // drag picks points, and moving the drawing whole is what a drag does
+    // out of it. Let go without moving, the press is a click: on a shape it
+    // picks the shape. See _onPointerUp.
+    _vectorShapeUnder = shapeAt(e, doc, reach);
+    // A box started off the drawing can sweep up its edge points from the
+    // outside; a click off it that does not move finishes the editing. And
+    // nothing is let go of yet: what is picked stays picked, and shown,
+    // until the box is let go and says what is picked instead.
+    _vectorPressedOutside = !_visualBounds(e).contains(doc);
+    _dragStart = doc;
+    setState(() => _marquee = Rect.fromPoints(doc, doc));
+    _mode = _DragMode.vectorMarquee;
+    return true;
+  }
+
+  /// _vectorPressedOutside is whether the press a box started from was
+  /// outside the drawing -- so that, let go without moving, it is a click
+  /// off the drawing, which finishes the editing.
+  bool _vectorPressedOutside = false;
+
+  /// _pressPen puts the pen's next point down: on the end of the shape it is
+  /// drawing, or as the first point of a new one -- painted like the shape
+  /// picked, where one is. A press on the first point of a shape of three or
+  /// more closes it and finishes it. The drag that follows pulls the new
+  /// point's handles out; the press and the drag are one undo step.
+  void _pressPen(VectorElement e, Offset doc, double reach) {
+    var shapes = e.shapes ?? const <VectorShape>[];
+    var drawing = controller.vectorPenShape;
+    if (drawing >= 0 && drawing < shapes.length) {
+      var run = shapes[drawing].paths.last;
+      var first = VectorSpace(e).toCanvas(run.nodes.first.point);
+      if (run.nodes.length >= 3 && (first - doc).distance <= reach) {
+        controller.replaceElement(withPenClosed(e, drawing));
+        controller.finishPenShape();
+        _mode = _DragMode.none;
+        return;
+      }
+    } else {
+      drawing = -1;
+    }
+    var picked = controller.vectorShape;
+    var like = drawing < 0 && picked >= 0 && picked < shapes.length
+        ? shapes[picked]
+        : null;
+    controller.beginInteraction();
+    var (next, pick) = withPenPoint(e, drawing, doc, like: like);
+    controller.replaceElement(next, transient: true);
+    controller.penDrawing(pick.shape);
+    controller.pickVectorPoint(pick);
+    _mode = _DragMode.vectorPen;
+  }
+
+  /// _applyVectorMove drags the picked point of the drawing being edited, or
+  /// one of its handles. Alt moves a smooth point's handle on its own, making
+  /// the point a corner -- as it does on a path.
+  void _applyVectorMove(Offset doc) {
+    var e = controller.editingVector, pick = controller.vectorPick;
+    if (e == null || pick == null) return;
+    controller.replaceElement(
+        movedVector(e, pick, _vectorPart, doc,
+            breakHandles: HardwareKeyboard.instance.isAltPressed),
+        transient: true);
   }
 
   /// _applyNodeMove drags a point or one of its handles.
@@ -2645,6 +2845,25 @@ class CanvasStageState extends State<CanvasStage> {
         setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
         _applyPlayerMove(doc);
+      case _DragMode.vectorPoint:
+        _applyVectorMove(doc);
+      case _DragMode.vectorPoints:
+        var before = _vectorBefore;
+        if (before != null) {
+          var space = VectorSpace(before);
+          var by = space.toDrawing(doc) - space.toDrawing(_vectorFrom);
+          controller.replaceElement(
+              withPointsMoved(before, controller.vectorPicks, by),
+              transient: true);
+        }
+      case _DragMode.vectorMarquee:
+        setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
+      case _DragMode.vectorPen:
+        var e = controller.editingVector, pick = controller.vectorPick;
+        if (e != null && pick != null) {
+          controller.replaceElement(withPenHandles(e, pick, doc),
+              transient: true);
+        }
       case _DragMode.node:
         _applyNodeMove(doc, handle: false);
       case _DragMode.handle:
@@ -3025,6 +3244,37 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    if (_mode == _DragMode.vectorMarquee) {
+      var box = _marquee, e = controller.editingVector;
+      if (box != null && e != null && box.width > 2 && box.height > 2) {
+        var inside = picksIn(e, box);
+        controller.pickVectorPoints(
+            _shiftHeld ? {...controller.vectorPicks, ...inside} : inside);
+      } else if (_vectorShapeUnder >= 0 && !_travelled) {
+        // A click on a shape picks it.
+        controller.pickVectorShape(_vectorShapeUnder);
+      } else if (!_vectorPressedOutside && !_shiftHeld) {
+        // A click on the drawing's empty space lets go of what was picked.
+        controller.pickVectorShape(-1);
+      } else if (_vectorPressedOutside && !_travelled) {
+        // A click off the drawing: the editing is finished, and the click
+        // does what it would have -- picks what it landed on, or nothing.
+        controller.editVector(null);
+        var hit = _hitElement(_dragStart);
+        if (hit == null) {
+          controller.clearSelection();
+        } else if (hit.id != controller.selected?.id) {
+          controller.selectOnly(hit.id);
+        }
+      }
+      _vectorPressedOutside = false;
+      _vectorShapeUnder = -1;
+      setState(() => _marquee = null);
+    }
+    if (_mode == _DragMode.vectorPoints || _mode == _DragMode.vectorPen) {
+      _vectorBefore = null;
+      controller.endInteraction();
+    }
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
       if (box != null && box.width > 3 && box.height > 3) {
@@ -3060,6 +3310,7 @@ class CanvasStageState extends State<CanvasStage> {
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
+        _mode == _DragMode.vectorPoint ||
         _mode == _DragMode.guide) {
       controller.endInteraction();
     }
@@ -3233,11 +3484,30 @@ class CanvasStageState extends State<CanvasStage> {
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
         controller.deleteSelected();
+      // Return finishes the shape the pen is drawing, left open.
+      case LogicalKeyboardKey.enter || LogicalKeyboardKey.numpadEnter
+          when controller.vectorPenShape >= 0:
+        controller.finishPenShape();
+      // P takes the pen out, or puts it away, while a drawing is edited.
+      case LogicalKeyboardKey.keyP when controller.editingVector != null:
+        controller.vectorPen = !controller.vectorPen;
       case LogicalKeyboardKey.escape:
         // One thing at a time: the first Escape leaves the picture's frame,
         // and only then does the next one drop the selection.
         if (_framing != null) {
           setState(() => _framing = null);
+        } else if (controller.vectorEditing != null) {
+          // Out of a drawing a step at a time: the shape the pen is drawing,
+          // then the pen, then the points picked, then the editing.
+          if (controller.vectorPenShape >= 0) {
+            controller.finishPenShape();
+          } else if (controller.vectorPen) {
+            controller.vectorPen = false;
+          } else if (controller.vectorPicks.isNotEmpty) {
+            controller.pickVectorPoint(null);
+          } else {
+            controller.editVector(null);
+          }
         } else {
           controller.clearSelection();
         }
@@ -3315,6 +3585,23 @@ class CanvasStageState extends State<CanvasStage> {
                         selection: {for (var e in _chosen) e.id},
                         showHelpers: controller.showHelpers,
                         selectedPath: _selectedPath(),
+                        editingVector: switch (controller.editingVector) {
+                          var v? => (
+                              element: v,
+                              shape: controller.vectorShape,
+                              pick: controller.vectorPick,
+                              picks: controller.vectorPicks,
+                              // While a box is dragged across it, every point
+                              // is shown, and those in the box lit.
+                              boxing: _mode == _DragMode.vectorMarquee &&
+                                  _marquee != null,
+                              boxed: _mode == _DragMode.vectorMarquee &&
+                                      _marquee != null
+                                  ? picksIn(v, _marquee!)
+                                  : const <VectorPick>{},
+                            ),
+                          null => null,
+                        },
                         chartLabels: _selectedChartLabels(),
                         tableColumns: _selectedTableColumns(),
                         editingText: _editingText,

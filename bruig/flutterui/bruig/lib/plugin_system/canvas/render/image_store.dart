@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -172,7 +173,10 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
 
   Future<void> _loadVector(String assetId, String key) async {
     try {
-      var bytes = await CanvasAssets.load(assetId);
+      // From the drawings first, where an .svg now lives, and the pictures
+      // after -- where one added before the two were separated still is.
+      var bytes = await CanvasMedia.load(MediaKind.vector, assetId) ??
+          await CanvasAssets.load(assetId);
       if (bytes == null || !_looksLikeSvg(Uint8List.fromList(bytes))) {
         _failed.add(key);
         return;
@@ -201,7 +205,10 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   Future<void> _load(
       String assetId, BackgroundRemoval removal, String key) async {
     try {
-      var bytes = await CanvasAssets.load(assetId);
+      // A drawing used as a picture -- a text element's icon, a badge --
+      // is in the Vectors store now, and is drawn from there.
+      var bytes = await CanvasAssets.load(assetId) ??
+          await CanvasMedia.load(MediaKind.vector, assetId);
       if (bytes == null) {
         _failed.add(key);
         return;

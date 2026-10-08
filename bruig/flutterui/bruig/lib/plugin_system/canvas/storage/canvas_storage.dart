@@ -38,6 +38,11 @@ const canvasPicturesFolder = "Pictures";
 const canvasAudioFolder = "Audio";
 const canvasVideoFolder = "Videos";
 
+/// canvasVectorFolder is where vector drawings live -- .svg files, kept apart
+/// from the pictures because a drawing is edited point by point and a
+/// picture is not. See VectorElement.
+const canvasVectorFolder = "Vectors";
+
 /// canvasExtension is what a saved canvas is called on disk.
 ///
 /// A distinct extension rather than ".json" so that the library listing does
@@ -212,7 +217,8 @@ class CanvasStorage {
         // rather than relying on it being hidden.
         if (base == canvasPicturesFolder ||
             base == canvasAudioFolder ||
-            base == canvasVideoFolder) {
+            base == canvasVideoFolder ||
+            base == canvasVectorFolder) {
           continue;
         }
 

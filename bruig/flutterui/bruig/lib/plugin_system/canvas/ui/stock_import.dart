@@ -55,6 +55,7 @@ Future<LibraryAsset?> fetchStockItem(
   if (ext.isEmpty || ext.length > 5) {
     ext = switch (item.kind) {
       AssetKind.picture => ".png",
+      AssetKind.vector => ".svg",
       AssetKind.video => ".mp4",
       AssetKind.audio => ".mp3",
     };
@@ -67,6 +68,7 @@ Future<LibraryAsset?> fetchStockItem(
     var got = await StockClient.instance.download(item.media, file,
         maxBytes: switch (item.kind) {
           AssetKind.picture => maxAssetBytes,
+          AssetKind.vector => MediaKind.vector.maxBytes,
           AssetKind.video => MediaKind.video.maxBytes,
           AssetKind.audio => MediaKind.audio.maxBytes,
         },
@@ -79,8 +81,21 @@ Future<LibraryAsset?> fetchStockItem(
 
     String? id;
     switch (item.kind) {
-      case AssetKind.picture:
+      case AssetKind.picture || AssetKind.vector:
         var bytes = await file.readAsBytes();
+        // A drawing -- an icon library's are -- goes with the drawings,
+        // whatever the library called it.
+        if (String.fromCharCodes(bytes.take(4096))
+            .toLowerCase()
+            .contains("<svg")) {
+          id = await CanvasMedia.saveVector(bytes);
+          if (id == null) {
+            report("${item.title} is too large a drawing for a canvas.");
+            return null;
+          }
+          await CanvasLibrary.addVector(id, item.title);
+          break;
+        }
         id = await CanvasAssets.save(bytes);
         if (id == null) {
           report("${item.title} is not a picture the canvas can keep.");

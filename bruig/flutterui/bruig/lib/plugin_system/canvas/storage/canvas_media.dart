@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -23,7 +24,10 @@ import 'package:path/path.dart' as path;
 /// MediaKind is which of the two folders a file belongs in.
 enum MediaKind {
   audio(canvasAudioFolder, 512 * 1024 * 1024),
-  video(canvasVideoFolder, 4 * 1024 * 1024 * 1024);
+  video(canvasVideoFolder, 4 * 1024 * 1024 * 1024),
+
+  /// vector is the drawings: .svg files, bounded as pictures are.
+  vector(canvasVectorFolder, 20 * 1024 * 1024);
 
   final String folder;
 
@@ -35,6 +39,11 @@ enum MediaKind {
 }
 
 final _idPattern = RegExp(r"^[a-f0-9]{16}\.[a-z0-9]{2,5}$");
+
+/// _pictureIdPattern is a picture store id: what a drawing moved out of the
+/// pictures keeps, so the documents naming it still find it. See
+/// CanvasAssets and migrateVectors.
+final _pictureIdPattern = RegExp(r"^[A-Za-z0-9]{16}(\.[a-z0-9]{2,5})?$");
 
 /// playableAudio is what the audio engine can open as it is. Anything else is
 /// converted on the way in -- see media_import.dart.
@@ -54,18 +63,54 @@ class CanvasMedia {
   /// document naming "../../something" names nothing.
   static bool isId(String id) => _idPattern.hasMatch(id);
 
+  static bool _isIdFor(MediaKind kind, String id) =>
+      isId(id) || (kind == MediaKind.vector && _pictureIdPattern.hasMatch(id));
+
   /// pathFor is where [id] is kept, whether or not it is there yet.
   static Future<String?> pathFor(MediaKind kind, String id,
       {bool create = false}) async {
-    if (!isId(id)) return null;
+    if (!_isIdFor(kind, id)) return null;
     return path.join(await _dir(kind, create: create), id);
   }
 
   /// existingPath is [pathFor] for a file that is actually there.
+  ///
+  /// A drawing not yet moved out of the pictures is found there: one added
+  /// before the two were separated, or an extensionless id that cannot be
+  /// told for a drawing without opening it. See migrateVectors.
   static Future<String?> existingPath(MediaKind kind, String id) async {
     var file = await pathFor(kind, id);
-    if (file == null || !await File(file).exists()) return null;
-    return file;
+    if (file != null && await File(file).exists()) return file;
+    if (kind == MediaKind.vector) return CanvasAssets.pathOf(id);
+    return null;
+  }
+
+  /// migrateVectors moves the drawings out of the pictures and into their
+  /// own store, keeping their ids -- so every saved canvas naming one still
+  /// finds it. Only ids that say they are drawings (".svg") are moved; an
+  /// old id with no extension stays where it is and is still found there.
+  /// Safe to run again: nothing to move, nothing happens.
+  static Future<int> migrateVectors() async {
+    var moved = 0;
+    try {
+      for (var id in await CanvasAssets.stored()) {
+        if (path.extension(id) != ".svg") continue;
+        var from = await CanvasAssets.pathOf(id);
+        var to = await pathFor(MediaKind.vector, id, create: true);
+        if (from == null || to == null) continue;
+        try {
+          if (await File(to).exists()) {
+            await File(from).delete();
+          } else {
+            await File(from).rename(to);
+          }
+          moved++;
+        } catch (_) {
+          // Left where it is, and still found there.
+        }
+      }
+    } catch (_) {}
+    return moved;
   }
 
   /// saveFile copies [sourcePath] into the store and returns its id, or null
@@ -118,6 +163,14 @@ class CanvasMedia {
     }
   }
 
+  /// saveVector stores a drawing's bytes and returns its id -- the file's own
+  /// digest and ".svg", so the same drawing added twice is one file -- or
+  /// null where it could not be stored.
+  static Future<String?> saveVector(List<int> bytes) async {
+    var id = "${sha256.convert(bytes).toString().substring(0, 16)}.svg";
+    return await saveBytes(MediaKind.vector, id, bytes) ? id : null;
+  }
+
   /// load reads a stored file whole, for packing into a bundle.
   static Future<List<int>?> load(MediaKind kind, String id) async {
     var file = await existingPath(kind, id);
@@ -130,8 +183,9 @@ class CanvasMedia {
   }
 
   /// kindOf is which store an id belongs in, from its extension.
-  static MediaKind kindOf(String id) =>
-      _videoExtensions.contains(path.extension(id))
+  static MediaKind kindOf(String id) => path.extension(id) == ".svg"
+      ? MediaKind.vector
+      : _videoExtensions.contains(path.extension(id))
           ? MediaKind.video
           : MediaKind.audio;
 
@@ -141,7 +195,7 @@ class CanvasMedia {
       var dir = Directory(await _dir(kind));
       return [
         await for (var entry in dir.list(followLinks: false))
-          if (entry is File && _idPattern.hasMatch(path.basename(entry.path)))
+          if (entry is File && _isIdFor(kind, path.basename(entry.path)))
             path.basename(entry.path),
       ];
     } catch (_) {
@@ -180,8 +234,12 @@ class CanvasMedia {
   static Future<int> sweepUnused({Set<String> open = const {}}) async {
     try {
       var live = {...await CanvasStorage.liveMediaIds(), ...open};
+      // A drawing can be named as a picture too -- a text element's icon
+      // reads either store -- so the drawings keep whatever either names.
+      var drawn = {...live, ...await CanvasStorage.liveAssetIds()};
       return await sweep(MediaKind.audio, live) +
-          await sweep(MediaKind.video, live);
+          await sweep(MediaKind.video, live) +
+          await sweep(MediaKind.vector, drawn);
     } catch (_) {
       return 0;
     }
