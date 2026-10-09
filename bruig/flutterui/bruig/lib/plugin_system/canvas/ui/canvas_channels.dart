@@ -81,8 +81,12 @@ class CanvasChannels extends StatefulWidget {
   /// keyframe on the same frame are on the same line. See TimelineView.
   final TimelineView view;
 
+  /// leading is rows above the channels that scroll with them: a drawing's
+  /// shapes, where they are shown. See VectorShapeLanes.
+  final Widget? leading;
+
   const CanvasChannels(
-      {required this.controller, required this.view, super.key});
+      {required this.controller, required this.view, this.leading, super.key});
 
   /// hint is what the empty lane says after its name.
   static const String hint = "drop a sound or video here";
@@ -534,6 +538,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           ListView(
             padding: EdgeInsets.zero,
             children: [
+              if (widget.leading case var leading?) leading,
               for (var channel in channels)
                 _row(channel.key, _heightOf(channel.key), width,
                     moving: channel.key == _moving,

@@ -557,7 +557,7 @@ class PathElement extends CanvasElement {
         if (closed) "closed": true,
         if (guide) "guide": true,
         if (follow != null) "follow": follow!.toJson(),
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory PathElement.fromJson(Map<String, dynamic> json, ElementBase b) {

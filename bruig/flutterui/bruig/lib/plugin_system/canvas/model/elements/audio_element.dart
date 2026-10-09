@@ -163,7 +163,7 @@ class AudioElement extends CanvasElement {
         "accent": colorToJson(accent),
         "box": box.toJson(),
         "controls": [for (var c in controls) c.name],
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory AudioElement.fromJson(Map<String, dynamic> json, ElementBase b) {

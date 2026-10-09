@@ -10,7 +10,10 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/foundation.dart';
@@ -100,6 +103,10 @@ const double _stripGap = 10;
 /// keyframes, labelled, and empty on nearly every canvas; they are flags on
 /// the ruler now, over the frames they are on -- see _paintMarkers.
 const double _markRow = _rulerHeight + 14;
+
+/// _loopBelow is how far under the keyframes the selected element's loop
+/// bar runs.
+const double _loopBelow = 8;
 const double _stripHeight = _markRow + 12;
 
 /// keyframeBarHeight is the floating pose bar's height.
@@ -216,6 +223,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// _pressedFrame is the mark under the pointer when it went down, before any
   /// drag was recognised. See onHorizontalDragDown.
   int? _pressedFrame;
+
+  /// _pressedLoop and _dragLoop are the end of the loop's bar a press is on
+  /// and a drag is moving -- false its start, true its end -- or null.
+  bool? _pressedLoop;
+  bool? _dragLoop;
 
   /// _selectedKeys are the frames of the marks that have been clicked.
   ///
@@ -1003,8 +1015,31 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           top: _markRow - 8 + _sceneGap,
           height: 16,
           child: Row(children: [
-            Icon(Icons.diamond_outlined,
-                size: 11, color: colors.onSurfaceVariant),
+            // A drawing's shapes: none, the one picked, or all of them, on
+            // lanes of their own under these keyframes.
+            if (vectorLanesFor(controller) != null)
+              InkResponse(
+                key: const ValueKey("vectorLanesToggle"),
+                radius: 12,
+                onTap: () =>
+                    controller.vectorLanes = controller.vectorLanes.next,
+                child: Tooltip(
+                  message: controller.vectorLanes.next.label,
+                  child: Icon(
+                      switch (controller.vectorLanes) {
+                        VectorLanes.none => Icons.chevron_right,
+                        VectorLanes.picked => Icons.expand_more,
+                        VectorLanes.all => Icons.unfold_more,
+                      },
+                      size: 14,
+                      color: controller.vectorLanes == VectorLanes.none
+                          ? colors.onSurfaceVariant
+                          : colors.primary),
+                ),
+              )
+            else
+              Icon(Icons.diamond_outlined,
+                  size: 11, color: colors.onSurfaceVariant),
             if (named) ...[
               const SizedBox(width: 4),
               Expanded(
@@ -1490,6 +1525,9 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       // there finds nothing, and every attempt to retime one scrubbed
                       // instead.
                       onHorizontalDragDown: (details) {
+                        // An end of the loop's bar, under the keyframes.
+                        _pressedLoop = _loopEndAt(
+                            details.localPosition, constraints.maxWidth);
                         // A flag on the ruler first: it is what the press is
                         // on, and dragged, it moves.
                         _pressedFlag = _flagAt(
@@ -1509,6 +1547,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       },
                       onHorizontalDragStart: (details) {
                         controller.pause();
+                        _dragLoop = _pressedLoop;
+                        if (_dragLoop != null) {
+                          controller.beginInteraction();
+                          return;
+                        }
                         _dragFlag = _pressedFlag;
                         if (_dragFlag != null) controller.beginInteraction();
                         _dragKey = _pressedFrame;
@@ -1519,6 +1562,10 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       onHorizontalDragUpdate: (details) {
                         var at = _frameAt(
                             details.localPosition.dx, constraints.maxWidth);
+                        if (_dragLoop != null) {
+                          _moveLoopEnd(_dragLoop!, at);
+                          return;
+                        }
                         if (_dragFlag != null) {
                           if (_moveAction(_dragFlag!, at)) _dragFlag = at;
                           return;
@@ -1536,6 +1583,9 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         _dragKey = at;
                       },
                       onHorizontalDragEnd: (_) {
+                        if (_dragLoop != null) controller.endInteraction();
+                        _dragLoop = null;
+                        _pressedLoop = null;
                         if (_dragFlag != null) controller.endInteraction();
                         _dragFlag = null;
                         _pressedFlag = null;
@@ -1545,6 +1595,9 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         _pressedBand = null;
                       },
                       onHorizontalDragCancel: () {
+                        if (_dragLoop != null) controller.endInteraction();
+                        _dragLoop = null;
+                        _pressedLoop = null;
                         if (_dragFlag != null) controller.endInteraction();
                         _dragFlag = null;
                         _pressedFlag = null;
@@ -1582,6 +1635,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                           // another's.
                           keyframes: _targetTrack?.keys ?? const [],
                           bands: _bands,
+                          loop: _loopBar,
                           selected: _selectedKeys,
                           actions: document.actions,
                           colors: theme.colors,
@@ -1609,9 +1663,15 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
           ),
         // The channels: the media on the timeline, one lane each, in
         // whatever room the timeline has been dragged open to.
+        // The channels -- under a drawing's shape lanes, where they are
+        // shown, which scroll with them. See VectorShapeLanes.
         if (widget.height > timelineHeight + 4)
           Expanded(
-              child: CanvasChannels(controller: controller, view: _sceneView)),
+              child: CanvasChannels(
+                  controller: controller,
+                  view: _sceneView,
+                  leading: VectorShapeLanes(
+                      controller: controller, view: _sceneView))),
         // Which stretch of the timeline is on screen, and a handle to move
         // it: under the frames, not the strip column.
         if (!_collapsed)
@@ -1726,6 +1786,47 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
       best = key.frame;
     }
     return best;
+  }
+
+  /// _loopBar is the selected element's loop on the timeline -- where it
+  /// starts and stops, its cycle and its gap -- or null where it has none.
+  (int, int, int, int)? get _loopBar {
+    if (controller.focusedPlayer != null || _selectedPath != null) return null;
+    var element = controller.selected;
+    if (element == null || !CanvasController.animates(element)) return null;
+    var loop = CanvasController.elementAnimationOf(element).loop;
+    if (!loop.on) return null;
+    var (start, end) = loop.span(
+        arrived: arrivalEnd(element), last: controller.document.frames - 1);
+    return (start, end, loop.cycle, loop.gap);
+  }
+
+  /// _loopEndAt is which end of the loop's bar is under [local] -- false
+  /// its start, true its end -- or null for neither.
+  bool? _loopEndAt(Offset local, double width) {
+    var bar = _loopBar;
+    if (bar == null) return null;
+    if ((local.dy - _markRow - _sceneGap - _loopBelow).abs() > 6) return null;
+    var (start, end, _, _) = bar;
+    if ((local.dx - _xFor(end + 1, width)).abs() <= 7) return true;
+    if ((local.dx - _xFor(start, width)).abs() <= 7) return false;
+    return null;
+  }
+
+  /// _moveLoopEnd puts the end of the loop's bar being dragged on [frame]:
+  /// its start, or where it stops -- never past each other.
+  void _moveLoopEnd(bool end, int frame) {
+    var element = controller.selected;
+    var bar = _loopBar;
+    if (element == null || bar == null) return;
+    var loop = CanvasController.elementAnimationOf(element).loop;
+    var (start, stop, _, _) = bar;
+    controller.setElementLoop(
+        element,
+        end
+            ? loop.copyWith(to: math.max(start, frame - 1), repeats: 0)
+            : loop.copyWith(from: math.min(stop, frame)),
+        transient: true);
   }
 
   /// _bands is the pairs of keyframes on the target that belong together.
@@ -1862,7 +1963,13 @@ class _TimelinePainter extends CustomPainter {
   final ColorScheme colors;
   final double Function(int) xFor;
 
+  /// loop is the selected element's loop, where it has one: the frame it
+  /// starts on, the one it stops on, its cycle and its gap. Drawn as a thin
+  /// bar under the keyframes, ticked where each go round starts.
+  final (int, int, int, int)? loop;
+
   const _TimelinePainter({
+    this.loop,
     required this.view,
     required this.frames,
     required this.scene,
@@ -1950,6 +2057,7 @@ class _TimelinePainter extends CustomPainter {
     // nothing between them are two marks somebody will separate by accident.
     // Dragging the bar moves both -- see _shiftBand.
     _paintBands(canvas, y: marks);
+    _paintLoop(canvas, y: marks + _loopBelow);
 
     _paintMarks(
       canvas,
@@ -2023,6 +2131,42 @@ class _TimelinePainter extends CustomPainter {
         )..layout(maxWidth: 140);
         text.paint(canvas, Offset(x + _flagWidth + 3, 1));
       }
+    }
+  }
+
+  /// _paintLoop draws the loop's bar: from where it starts to where it
+  /// stops, a tick where each go round starts, and a grip at each end.
+  void _paintLoop(Canvas canvas, {required double y}) {
+    var span = loop;
+    if (span == null) return;
+    var (start, end, cycle, gap) = span;
+    var from = xFor(start), to = xFor(end + 1);
+    var ink = colors.primary;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          Rect.fromLTRB(from, y - 2, to, y + 2), const Radius.circular(2)),
+      Paint()..color = ink.withValues(alpha: 0.35),
+    );
+    var tick = Paint()
+      ..color = ink.withValues(alpha: 0.8)
+      ..strokeWidth = 1;
+    var period = math.max(1, cycle + gap);
+    // Not one for every frame of a loop zoomed out a long way: no closer
+    // than four pixels apart.
+    var every =
+        math.max(1, (4 / math.max(0.0001, xFor(1) - xFor(0)) / period).ceil());
+    for (var f = start, i = 0; f <= end; f += period, i++) {
+      if (i % every != 0) continue;
+      var x = xFor(f);
+      canvas.drawLine(Offset(x, y - 3), Offset(x, y + 3), tick);
+    }
+    for (var x in [from, to]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(x, y), width: 4, height: 9),
+            const Radius.circular(1.5)),
+        Paint()..color = ink,
+      );
     }
   }
 
@@ -2119,7 +2263,8 @@ class _TimelinePainter extends CustomPainter {
       old.keyframes != keyframes ||
       !_sameBands(old.bands, bands) ||
       !setEquals(old.selected, selected) ||
-      old.actions != actions;
+      old.actions != actions ||
+      old.loop != loop;
 }
 
 /// CanvasKeyframeBar is what the keyframe at the playhead actually does:

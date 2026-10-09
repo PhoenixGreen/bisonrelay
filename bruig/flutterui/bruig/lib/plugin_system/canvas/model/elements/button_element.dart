@@ -202,7 +202,7 @@ class ButtonElement extends CanvasElement {
         if (hoverFill.a > 0) "hoverFill": colorToJson(hoverFill),
         if (hoverTextColor.a > 0) "hoverText": colorToJson(hoverTextColor),
         "action": action.toJson(),
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory ButtonElement.fromJson(Map<String, dynamic> json, ElementBase b) =>

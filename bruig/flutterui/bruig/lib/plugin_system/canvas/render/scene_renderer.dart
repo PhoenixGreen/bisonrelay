@@ -1,8 +1,11 @@
+import 'dart:typed_data';
 import 'package:bruig/components/paint_spec.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -13,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/loop_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -202,6 +206,10 @@ void paintCanvasDocument(
   /// backdrop is the background already rasterised, for a caller drawing many
   /// frames of a document whose background does not move. See ExportBackdrop.
   ui.Image? backdrop,
+
+  /// previewing is one element drawn at a frame of its own, while it alone
+  /// is being previewed. See CanvasController.previewing.
+  ({String id, int frame})? previewing,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
@@ -239,7 +247,8 @@ void paintCanvasDocument(
       counterPressed: counterPressed,
       counterRunning: counterRunning,
       audioState: audioState,
-      videoShow: videoShow);
+      videoShow: videoShow,
+      previewing: previewing);
 }
 
 /// _paintScene draws one canvas's worth of elements.
@@ -268,6 +277,7 @@ void _paintScene(
   /// videoShow is where each video has got to -- its frame, its play bar.
   /// Null in an export, which shows the poster.
   VideoShow Function(VideoElement)? videoShow,
+  ({String id, int frame})? previewing,
 }) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -283,7 +293,8 @@ void _paintScene(
         hidden.contains(element.id)) {
       continue;
     }
-    paintElement(canvas, element, frame,
+    paintElement(canvas, element,
+        element.id == previewing?.id ? previewing!.frame : frame,
         frameRate: doc.frameRate,
         images: images,
         editing: editing,
@@ -565,6 +576,19 @@ void paintElement(
     canvas.translate(-c.dx, -c.dy);
   }
 
+  // Its loop, over whatever its keyframes have done: moved, turned and
+  // sized about the loop's own pivot, and faded with the rest of it. See
+  // ElementLoop.
+  if (_animationOf(element)?.loop case var loop? when loop.on) {
+    var swing = loop.poseAt(frame,
+        arrived: arrivalEnd(element),
+        last: (document?.frames ?? (1 << 30)) - 1);
+    if (swing != null) {
+      _applyLoopPose(canvas, bounds, swing);
+      alpha = (alpha * swing.opacity).clamp(0.0, 1.0);
+    }
+  }
+
   var layered = alpha < 0.999;
   if (layered) {
     // Grown before saving the layer, because a shadow, an outline or a glow
@@ -576,104 +600,128 @@ void paintElement(
   }
 
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
-  switch (element) {
-    case TextElement e:
-      _paintText(canvas, bounds, e, document,
-          pose: pose, frame: frame, images: images, skipItem: skipTextItem);
-    case ShapeElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintShape(canvas, bounds, e, images));
-    case LineElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintLine(canvas, _bowed(e, pose)));
-    case ImageElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintImage(canvas, bounds, e, images));
-    case VectorElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => paintVector(canvas, bounds, e, images));
-    case ChartElement e:
-      // How much of it has arrived. A chart with no animation on it has no
-      // keyframe pinning this and gets 1, which is all of it.
-      paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
-          reveal: pose.values[KeyframeChannel.reveal] ?? 1,
-          // And how much of it has left again, which is a second pair of
-          // keyframes and is zero for every chart that has none.
-          close: pose.values[KeyframeChannel.close] ?? 0,
-          // And how much of each series has arrived, where they have been
-          // offset from one another in time.
-          seriesReveal: chartSeriesReveal(e, frame, frameRate));
-    case TableElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => paintTable(canvas, bounds, e, images: images));
-    case ButtonElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintButton(canvas, bounds, e, hovered, images));
-    case CounterElement e:
-      // A page number on a page that has none is not drawn at all. It used to
-      // fall back to the counter's start value, so a cover wore a 1 -- and
-      // because that 1 was the same whatever the numbering said, turning
-      // "Covers count" and "Number on covers" on and off did nothing
-      // visible, which is how both settings came to look broken.
-      if (e.isPageNumber && document?.pageNumber == null) break;
-      // Keyed, the number is whatever the timeline says here; live, it is
-      // whatever the thing running it says -- and in a picture, where nothing
-      // is running, it is where the count starts. A live counter exported as
-      // a PNG is a photograph of a stopped clock, which is the only thing a
-      // still picture of one can be.
-      paintArriving(
-          canvas,
-          bounds,
-          e.animation,
-          pose,
-          () => paintCounter(
-              canvas,
-              bounds,
-              e,
-              // Keyed, the number is the timeline's and nothing else may
-              // answer for it: the live callback is asked for *live* counters
-              // only. Asked for both, it answered "wherever this counter's
-              // clock has got to" for a counter that has no clock -- which is
-              // its starting value, at every frame, however many keyframes
-              // had been laid on it.
-              // A page number is read off the page rather than run or
-              // keyed: the same element on the master canvas says a
-              // different number on every leaf, which is the whole of what
-              // makes it a page number. See CounterSource.page.
-              e.isPageNumber
-                  ? (document?.pageNumber ?? 0).toDouble()
-                  : e.live
-                      ? (counterValue?.call(e) ?? e.from)
-                      : (pose.values[KeyframeChannel.count] ?? e.from),
-              pressed: counterPressed?.call(e) ?? -1,
-              running: counterRunning?.call(e)));
-    case AudioElement e:
-      paintArriving(
-          canvas,
-          bounds,
-          e.animation,
-          pose,
-          () => paintAudio(
-              canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
-              images: images));
-    case VideoElement e:
-      paintArriving(
-          canvas,
-          bounds,
-          e.animation,
-          pose,
-          () => _paintVideo(canvas, bounds, e,
-              videoShow?.call(e) ?? VideoShow.idle(e), images));
-    case BackgroundElement e:
-      _paintBackgroundElement(
-          canvas, bounds, e, time, frameRate.toDouble(), images);
-    case PathElement e:
-      paintArriving(canvas, bounds, e.animation, pose,
-          () => _paintPath(canvas, bounds, e, editing));
-    case TeamElement e:
-      _paintTeam(canvas, bounds, e, frame);
-    default:
-      break;
+  // What draws it: once, as a rule, but as often as a loop that draws into
+  // it or over it needs -- see paintLoopEffect.
+  void body() {
+    switch (element) {
+      case TextElement e:
+        _paintText(canvas, bounds, e, document,
+            pose: pose, frame: frame, images: images, skipItem: skipTextItem);
+      case ShapeElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => _paintShape(canvas, bounds, e, images));
+      case LineElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => _paintLine(canvas, _bowed(e, pose)));
+      case ImageElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => _paintImage(canvas, bounds, e, images));
+      case VectorElement e:
+        if (_shapeByShape(e, pose)) {
+          _paintVectorInTurn(canvas, bounds, e, pose, frame,
+              (document?.frames ?? (1 << 30)) - 1);
+        } else {
+          paintArriving(canvas, bounds, e.animation, pose,
+              () => paintVector(canvas, bounds, e, images));
+        }
+      case ChartElement e:
+        // How much of it has arrived. A chart with no animation on it has no
+        // keyframe pinning this and gets 1, which is all of it.
+        paintChart(canvas, bounds.deflate(bounds.shortestSide * 0.02), e,
+            reveal: pose.values[KeyframeChannel.reveal] ?? 1,
+            // And how much of it has left again, which is a second pair of
+            // keyframes and is zero for every chart that has none.
+            close: pose.values[KeyframeChannel.close] ?? 0,
+            // And how much of each series has arrived, where they have been
+            // offset from one another in time.
+            seriesReveal: chartSeriesReveal(e, frame, frameRate));
+      case TableElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => paintTable(canvas, bounds, e, images: images));
+      case ButtonElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => _paintButton(canvas, bounds, e, hovered, images));
+      case CounterElement e:
+        // A page number on a page that has none is not drawn at all. It used to
+        // fall back to the counter's start value, so a cover wore a 1 -- and
+        // because that 1 was the same whatever the numbering said, turning
+        // "Covers count" and "Number on covers" on and off did nothing
+        // visible, which is how both settings came to look broken.
+        if (e.isPageNumber && document?.pageNumber == null) break;
+        // Keyed, the number is whatever the timeline says here; live, it is
+        // whatever the thing running it says -- and in a picture, where nothing
+        // is running, it is where the count starts. A live counter exported as
+        // a PNG is a photograph of a stopped clock, which is the only thing a
+        // still picture of one can be.
+        paintArriving(
+            canvas,
+            bounds,
+            e.animation,
+            pose,
+            () => paintCounter(
+                canvas,
+                bounds,
+                e,
+                // Keyed, the number is the timeline's and nothing else may
+                // answer for it: the live callback is asked for *live* counters
+                // only. Asked for both, it answered "wherever this counter's
+                // clock has got to" for a counter that has no clock -- which is
+                // its starting value, at every frame, however many keyframes
+                // had been laid on it.
+                // A page number is read off the page rather than run or
+                // keyed: the same element on the master canvas says a
+                // different number on every leaf, which is the whole of what
+                // makes it a page number. See CounterSource.page.
+                e.isPageNumber
+                    ? (document?.pageNumber ?? 0).toDouble()
+                    : e.live
+                        ? (counterValue?.call(e) ?? e.from)
+                        : (pose.values[KeyframeChannel.count] ?? e.from),
+                pressed: counterPressed?.call(e) ?? -1,
+                running: counterRunning?.call(e)));
+      case AudioElement e:
+        paintArriving(
+            canvas,
+            bounds,
+            e.animation,
+            pose,
+            () => paintAudio(
+                canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
+                images: images));
+      case VideoElement e:
+        paintArriving(
+            canvas,
+            bounds,
+            e.animation,
+            pose,
+            () => _paintVideo(canvas, bounds, e,
+                videoShow?.call(e) ?? VideoShow.idle(e), images));
+      case BackgroundElement e:
+        _paintBackgroundElement(
+            canvas, bounds, e, time, frameRate.toDouble(), images);
+      case PathElement e:
+        paintArriving(canvas, bounds, e.animation, pose,
+            () => _paintPath(canvas, bounds, e, editing));
+      case TeamElement e:
+        _paintTeam(canvas, bounds, e, frame);
+      default:
+        break;
+    }
+  }
+
+  // A loop that draws -- light swept through it, its outline run round, a
+  // ripple -- draws it itself; anything else, it is simply drawn.
+  var looping = _animationOf(element)?.loop;
+  var phase = looping == null || !looping.on || looping.preset.moves
+      ? null
+      : looping.phaseAt(frame,
+          arrived: arrivalEnd(element),
+          last: (document?.frames ?? (1 << 30)) - 1);
+  if (looping != null && phase != null) {
+    paintLoopEffect(canvas, bounds, looping, phase.$1, phase.$2,
+        element.id.hashCode, _loopOutline(element, bounds, frame), body);
+  } else {
+    body();
   }
 
   if (layered) canvas.restore();
@@ -2023,4 +2071,175 @@ void _paintArrowHead(
         tip.dy - size * math.sin(angle + 0.4))
     ..close();
   canvas.drawPath(head, Paint()..color = color);
+}
+
+/// _shapeByShape is whether a drawing is drawn a shape at a time rather
+/// than as one: where a shape has an arrival or a loop of its own, or the
+/// drawing's arrival brings its shapes in one after another -- and it is not
+/// on its way out, which it leaves as one. See VectorCue.
+bool _shapeByShape(VectorElement e, Keyframe pose) {
+  var shapes = e.shapes;
+  if (shapes == null || shapes.isEmpty) return false;
+  if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return false;
+  if (vectorDrawn(shapes)
+      .any((d) => d.style.arrival != null || d.style.loop.on)) {
+    return true;
+  }
+  return e.animation.on && sequenced(shapes) && vectorArrivalSpan(e) != null;
+}
+
+/// _paintVectorInTurn draws a drawing a shape at a time: each shape, with
+/// whatever is combined into it, in its own box -- coming in as its own
+/// arrival says, or as the drawing's does, starting where its cue puts it
+/// and taking its own length; then looping as its own loop says, from when
+/// it has come in. [last] is the scene's last frame.
+void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
+    Keyframe pose, int frame, int last) {
+  var shapes = e.shapes!;
+  var arrival = vectorArrivalSpan(e);
+  var times = arrival == null ? null : cueTimes(shapes, arrival.$2);
+  for (var (i, d) in vectorDrawn(shapes).indexed) {
+    var box = vectorGroupBox(bounds, e, d);
+    var arriving = d.style.arrival ?? e.animation;
+    // How far in it is, and when it is all in: with no arrival keyframes on
+    // the drawing, it is there from the start.
+    var reveal = 1.0;
+    int? arrived;
+    if (arrival != null && times != null) {
+      var (at, _) = arrival;
+      var (start, length) = times[i];
+      reveal = ((frame - at - start) / length).clamp(0.0, 1.0);
+      arrived = (at + start + length).round();
+    }
+    void draw() =>
+        _paintGroupLooped(canvas, bounds, box, e, d, i, frame, arrived, last);
+    if (!arriving.on) {
+      // Nothing to play coming in: there from its turn.
+      if (reveal > 0) draw();
+      continue;
+    }
+    paintArriving(
+        canvas,
+        box,
+        arriving,
+        pose.copyWith(values: {...pose.values, KeyframeChannel.reveal: reveal}),
+        draw);
+  }
+}
+
+/// _paintGroupLooped draws one shape of a drawing with its own loop, about
+/// its own box [box] and along its own outline, from [arrived] -- when it
+/// has come in -- or the loop's own start.
+void _paintGroupLooped(ui.Canvas canvas, Rect bounds, Rect box, VectorElement e,
+    VectorDrawn d, int index, int frame, int? arrived, int last) {
+  var loop = d.style.loop;
+  void plain() => paintVectorGroup(canvas, bounds, e, d);
+  if (!loop.on) return plain();
+  if (loop.preset.moves) {
+    var swing = loop.poseAt(frame, arrived: arrived, last: last);
+    if (swing == null) return plain();
+    canvas.save();
+    _applyLoopPose(canvas, box, swing);
+    var faded = swing.opacity < 0.999;
+    if (faded) {
+      canvas.saveLayer(box.inflate(box.longestSide),
+          Paint()..color = Color.fromRGBO(0, 0, 0, swing.opacity));
+    }
+    plain();
+    if (faded) canvas.restore();
+    canvas.restore();
+    return;
+  }
+  var phase = loop.phaseAt(frame, arrived: arrived, last: last);
+  if (phase == null) return plain();
+  var p = e.placement(bounds, e.viewBox);
+  var outline = d.outline.transform(Float64List.fromList([
+    p.sx, 0, 0, 0, //
+    0, p.sy, 0, 0, //
+    0, 0, 1, 0, //
+    p.dx, p.dy, 0, 1,
+  ]));
+  paintLoopEffect(canvas, box, loop, phase.$1, phase.$2,
+      Object.hash(e.id, index), outline, plain);
+}
+
+/// _applyLoopPose moves, turns and sizes the canvas as [swing] says, for
+/// something drawn in [box]: shifted by shares of it, turned and sized about
+/// its pivot. Its fading is the caller's.
+void _applyLoopPose(ui.Canvas canvas, Rect box, LoopPose swing) {
+  canvas.translate(swing.dx * box.width, swing.dy * box.height);
+  if (swing.turn != 0 || swing.sx != 1 || swing.sy != 1) {
+    var pivot = Offset(box.left + box.width * swing.pivot.dx,
+        box.top + box.height * swing.pivot.dy);
+    canvas.translate(pivot.dx, pivot.dy);
+    if (swing.turn != 0) canvas.rotate(swing.turn * math.pi / 180);
+    if (swing.sx != 1 || swing.sy != 1) canvas.scale(swing.sx, swing.sy);
+    canvas.translate(-pivot.dx, -pivot.dy);
+  }
+}
+
+/// _animationOf is [element]'s arrival, exit and loop, for the kinds that
+/// have them -- see CanvasController.animates -- or null.
+ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
+      ShapeElement e => e.animation,
+      ImageElement e => e.animation,
+      VectorElement e => e.animation,
+      LineElement e => e.animation,
+      PathElement e => e.animation,
+      TableElement e => e.animation,
+      CounterElement e => e.animation,
+      ButtonElement e => e.animation,
+      AudioElement e => e.animation,
+      VideoElement e => e.animation,
+      _ => null,
+    };
+
+/// _loopOutline is [element]'s own outline, where it is drawn, for the loops
+/// that run along it: a shape's, a drawing's shapes', a line's -- and for
+/// anything else its box.
+Path _loopOutline(CanvasElement element, Rect bounds, int frame) {
+  switch (element) {
+    case ShapeElement e:
+      var rect = bounds;
+      if (e.shape.isRegular) {
+        var side = rect.shortestSide;
+        rect = Rect.fromCenter(center: rect.center, width: side, height: side);
+      }
+      return shapePath(e.shape, rect,
+          points: e.points,
+          inner: e.innerRatio,
+          cornerRadius: e.cornerRadius,
+          corners: e.corners,
+          bubble: e.bubble);
+    case VectorElement e when e.shapes != null:
+      var p = e.placement(bounds, e.viewBox);
+      var matrix = Float64List.fromList([
+        p.sx, 0, 0, 0, //
+        0, p.sy, 0, 0, //
+        0, 0, 1, 0, //
+        p.dx, p.dy, 0, 1,
+      ]);
+      var out = Path();
+      for (var d in vectorDrawn(e.shapes!)) {
+        out.addPath(d.outline.transform(matrix), Offset.zero);
+      }
+      return out;
+    case LineElement e:
+      var points = _curvePoints(lineWithPose(e, frame));
+      if (points != null && points.length > 1) return _polyline(points);
+    case PathElement e:
+      var points = _curvePoints(e);
+      if (points != null && points.length > 1) return _polyline(points);
+    default:
+      break;
+  }
+  return Path()..addRect(bounds);
+}
+
+Path _polyline(List<Offset> points) {
+  var out = Path()..moveTo(points.first.dx, points.first.dy);
+  for (var q in points.skip(1)) {
+    out.lineTo(q.dx, q.dy);
+  }
+  return out;
 }

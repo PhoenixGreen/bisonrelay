@@ -91,7 +91,9 @@ enum ChartAnimationPreset {
 /// and which of the two is wanted is not something a drawing routine can know.
 enum ChartEase {
   linear("Linear"),
+  easeIn("Ease in"),
   easeOut("Ease out"),
+  easeInOut("Ease in & out"),
   overshoot("Overshoot"),
   bounce("Bounce"),
   spring("Spring");
@@ -110,8 +112,14 @@ enum ChartEase {
     switch (this) {
       case ChartEase.linear:
         return t;
+      case ChartEase.easeIn:
+        return t * t * t;
       case ChartEase.easeOut:
         return 1 - math.pow(1 - t, 3).toDouble();
+      case ChartEase.easeInOut:
+        return t < 0.5
+            ? 4 * t * t * t
+            : 1 - math.pow(-2 * t + 2, 3).toDouble() / 2;
       case ChartEase.overshoot:
         // The standard back-out: one overshoot and a settle, no wobble.
         const c = 1.70158;

@@ -390,7 +390,7 @@ class ShapeElement extends CanvasElement {
         if (text.isNotEmpty) "text": text,
         if (text.isNotEmpty) "textSpec": textSpec.toJson(),
         if (shape == ShapeKind.speechBubble) "bubble": bubble.toJson(),
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory ShapeElement.fromJson(Map<String, dynamic> json, ElementBase b) =>

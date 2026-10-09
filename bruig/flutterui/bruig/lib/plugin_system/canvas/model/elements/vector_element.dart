@@ -4,6 +4,7 @@ import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 
 // vector_element.dart is a drawing: an .svg, placed on the canvas and kept a
 // drawing all the way to the screen and the export, so it is sharp at any
@@ -277,6 +278,26 @@ class VectorShape {
   final List<VectorTint> tints;
   final List<VectorTint> erasures;
 
+  /// cue is when this shape comes in, in the playlist -- see VectorCue --
+  /// and cueGap the frames after the shape before it, for VectorCue.gap.
+  /// Read for the first of a run of combined shapes, which come in as one.
+  final VectorCue cue;
+  final int cueGap;
+
+  /// cueLength is how many frames this shape takes to come in, or null for
+  /// as long as the drawing's own arrival takes.
+  final int? cueLength;
+
+  /// arrival is how this shape comes in, when it has a way of its own: its
+  /// preset and easing -- the timing is the playlist's -- or null to come in
+  /// as the drawing does. A preset of none appears, unanimated, as its turn
+  /// comes. Read for the first of a run of combined shapes.
+  final ElementAnimation? arrival;
+
+  /// loop is what this shape goes on doing once it has come in, on its own
+  /// -- see ElementLoop -- over whatever the drawing's own loop does.
+  final ElementLoop loop;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -288,6 +309,11 @@ class VectorShape {
     this.combine,
     this.tints = const [],
     this.erasures = const [],
+    this.cue = VectorCue.together,
+    this.cueGap = 12,
+    this.cueLength,
+    this.arrival,
+    this.loop = const ElementLoop(),
   });
 
   VectorShape copyWith({
@@ -304,6 +330,13 @@ class VectorShape {
     bool clearCombine = false,
     List<VectorTint>? tints,
     List<VectorTint>? erasures,
+    VectorCue? cue,
+    int? cueGap,
+    int? cueLength,
+    bool clearCueLength = false,
+    ElementAnimation? arrival,
+    bool clearArrival = false,
+    ElementLoop? loop,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -316,6 +349,11 @@ class VectorShape {
         combine: clearCombine ? null : combine ?? this.combine,
         tints: tints ?? this.tints,
         erasures: erasures ?? this.erasures,
+        cue: cue ?? this.cue,
+        cueGap: cueGap ?? this.cueGap,
+        cueLength: clearCueLength ? null : cueLength ?? this.cueLength,
+        arrival: clearArrival ? null : arrival ?? this.arrival,
+        loop: loop ?? this.loop,
       );
 
   /// tapered is whether its line is thicker or thinner at some points than
@@ -368,6 +406,11 @@ class VectorShape {
         if (combine != null) "op": combine!.name,
         if (tints.isNotEmpty) "tints": [for (var t in tints) t.toJson()],
         if (erasures.isNotEmpty) "rub": [for (var t in erasures) t.toJson()],
+        if (cue != VectorCue.together) "cue": cue.name,
+        if (cueGap != 12) "cueGap": cueGap,
+        if (cueLength != null) "cueLength": cueLength,
+        if (arrival != null) "arrive": arrival!.toJson(),
+        if (loop.on) "loop": loop.toJson(),
       };
 
   static VectorShape? fromJson(Object? json) {
@@ -391,8 +434,36 @@ class VectorShape {
           VectorCombine.values.where((c) => c.name == json["op"]).firstOrNull,
       tints: _strokes(json["tints"]),
       erasures: _strokes(json["rub"], erase: true),
+      cue: VectorCue.values.where((c) => c.name == json["cue"]).firstOrNull ??
+          VectorCue.together,
+      cueGap: json["cueGap"] is int ? json["cueGap"] as int : 12,
+      cueLength: json["cueLength"] is int ? json["cueLength"] as int : null,
+      arrival: json["arrive"] is Map<String, dynamic>
+          ? ElementAnimation.fromJson(json["arrive"] as Map<String, dynamic>)
+          : null,
+      loop: json["loop"] is Map<String, dynamic>
+          ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
+          : const ElementLoop(),
     );
   }
+}
+
+/// VectorCue is when a shape comes in, in the drawing's playlist: with the
+/// shape before it, as that one finishes coming in, or a number of frames
+/// after. Each comes in as the drawing's Animation says, taking as long as
+/// that animation does; with every shape together -- the start -- the
+/// drawing comes in as one, as it always has.
+enum VectorCue {
+  together("With previous"),
+  after("After previous"),
+  gap("After a gap");
+
+  final String label;
+  const VectorCue(this.label);
+
+  /// next is the cue after this one, round again -- a playlist row's
+  /// button steps through them.
+  VectorCue get next => values[(index + 1) % values.length];
 }
 
 /// VectorCombine is how a shape is combined with the shapes before it --
@@ -679,7 +750,7 @@ class VectorElement extends CanvasElement {
         if (handleColor != defaultHandleColor)
           "handle": colorToJson(handleColor),
         if (handleSize != 8) "handleSize": handleSize,
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory VectorElement.fromJson(Map<String, dynamic> json, ElementBase b) {

@@ -1565,6 +1565,10 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   /// removeTip is what that cross says it will do.
   final String Function(T)? removeTip;
 
+  /// leading draws something before each option's name -- in the list and
+  /// in the closed box: an easing's curve, say. Null draws nothing.
+  final Widget Function(T)? leading;
+
   /// grow lets this take some of the room left over on its line.
   ///
   /// [width] is then the least it will be rather than the whole of it. See
@@ -1586,8 +1590,21 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     this.marked = const {},
     this.onRemove,
     this.removeTip,
+    this.leading,
     super.key,
   });
+
+  /// _named is an option's name, with its leading drawing where it has one.
+  Widget _named(T v, String text) {
+    var name = Text(text, overflow: TextOverflow.ellipsis);
+    var lead = leading;
+    if (lead == null) return name;
+    return Row(children: [
+      lead(v),
+      const SizedBox(width: 6),
+      Flexible(child: name),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1639,13 +1656,15 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
               // this it draws the chosen item's own widget, which for a
               // marked option is the background and the cross as well --
               // a row of controls inside a box an inch wide.
-              selectedItemBuilder: marked.isEmpty
+              selectedItemBuilder: marked.isEmpty && leading == null
                   ? null
                   : (context) => [
-                        for (var (_, text) in options)
+                        for (var (v, text) in options)
                           Align(
                             alignment: Alignment.centerLeft,
-                            child: Text(text, overflow: TextOverflow.ellipsis),
+                            child: marked.isEmpty
+                                ? _named(v, text)
+                                : Text(text, overflow: TextOverflow.ellipsis),
                           ),
                       ],
               items: [
@@ -1654,7 +1673,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
                     value: v,
                     child: marked.contains(v)
                         ? _markedOption(theme, v, text)
-                        : Text(text, overflow: TextOverflow.ellipsis),
+                        : _named(v, text),
                   ),
               ],
               onChanged: enabled

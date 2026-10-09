@@ -24,7 +24,8 @@ enum VectorTool {
   align("Align points"),
   corner("Round corners"),
   pencil("Pencil"),
-  eraser("Eraser");
+  eraser("Eraser"),
+  shapes("Shapes");
 
   final String label;
   const VectorTool(this.label);
@@ -512,6 +513,65 @@ Offset _bezier(VectorNode a, VectorNode b, double t) {
     e.withShape(shape, s.copyWith(paths: paths)),
     VectorPick(shape, path, from + 1)
   );
+}
+
+/// cornerAt is the rounded corner the point at [pick] is one end of -- two
+/// corner points joined by a curve, as withCornered makes them, a rounded
+/// box's corners among them -- taken back to the corner it rounds: the
+/// drawing with the pair put back as the one sharp point where its two
+/// sides meet, that point's pick, how far back along each side the
+/// rounding went, and the pair's picks. Null where the point is no such
+/// corner's: a smooth point, a circle's, a plain corner.
+(VectorElement, VectorPick, double, Set<VectorPick>)? cornerAt(
+    VectorElement e, VectorPick pick) {
+  var shapes = e.shapes;
+  if (shapes == null || pick.shape >= shapes.length) return null;
+  var s = shapes[pick.shape];
+  if (pick.path >= s.paths.length) return null;
+  var run = s.paths[pick.path];
+  var nodes = run.nodes;
+  var n = nodes.length;
+  if (pick.node >= n || n < 3) return null;
+  Offset unit(Offset v) => v.distance == 0 ? Offset.zero : v / v.distance;
+  // The pair the point is in: it and the one after, or the one before and
+  // it -- whichever is a curve between two corners.
+  for (var j in [pick.node, pick.node - 1]) {
+    if (!run.closed && (j < 1 || j + 2 > n)) continue;
+    var ai = (j + n) % n, bi = (j + 1) % n;
+    var a = nodes[ai], b = nodes[bi];
+    if (!a.hasOut || !b.hasIn || a.smooth || b.smooth) continue;
+    var prev = nodes[(ai - 1 + n) % n], next = nodes[(bi + 1) % n];
+    // The way the line runs into the first point, and out of the second.
+    var into = unit(a.hasIn ? -Offset(a.inX, a.inY) : a.point - prev.point);
+    var outOf = unit(b.hasOut ? Offset(b.outX, b.outY) : next.point - b.point);
+    // Where the two sides meet: a + into*u == b - outOf*v, so
+    // into*u + outOf*v == b - a.
+    var det = into.dx * outOf.dy - into.dy * outOf.dx;
+    if (det.abs() < 1e-9) continue;
+    var d = b.point - a.point;
+    var u = (d.dx * outOf.dy - d.dy * outOf.dx) / det;
+    var v = (into.dx * d.dy - into.dy * d.dx) / det;
+    if (u <= 0 || v <= 0) continue;
+    var corner = a.point + into * u;
+    var sharp = VectorNode(corner.dx, corner.dy,
+        inX: a.inX, inY: a.inY, outX: b.outX, outY: b.outY);
+    var kept = [...nodes];
+    kept[ai] = sharp;
+    kept.removeAt(bi);
+    var at = bi == 0 ? ai - 1 : ai;
+    var paths = [...s.paths];
+    paths[pick.path] = run.copyWith(nodes: kept);
+    return (
+      e.withShape(pick.shape, s.copyWith(paths: paths)),
+      VectorPick(pick.shape, pick.path, at),
+      (u + v) / 2,
+      {
+        VectorPick(pick.shape, pick.path, ai),
+        VectorPick(pick.shape, pick.path, bi),
+      },
+    );
+  }
+  return null;
 }
 
 /// withCornered rounds -- or, with [round] off, cuts -- the corner at
@@ -1117,6 +1177,262 @@ VectorElement withoutShapesAt(
     }
     next = next.copyWith(shapes: shapes);
   }
+}
+
+/// groupStarts is where each of [e]'s groups -- each shape, with the
+/// shapes combined into it -- starts in its shapes, in order: what the
+/// playlist lists and moves.
+List<int> groupStarts(VectorElement e) {
+  var out = <int>[];
+  var i = 0;
+  for (var d in vectorDrawn(e.shapes ?? const <VectorShape>[])) {
+    out.add(i);
+    i += d.members.length;
+  }
+  return out;
+}
+
+/// withGroupMoved is [e] with its group [from] moved to be group [to] --
+/// a shape and the shapes combined into it moved up or down the playlist
+/// together, which is the order they are drawn in as well.
+VectorElement withGroupMoved(VectorElement e, int from, int to) {
+  var groups = [
+    for (var d in vectorDrawn(e.shapes ?? const <VectorShape>[])) d.members
+  ];
+  if (from < 0 || from >= groups.length || to < 0 || to >= groups.length) {
+    return e;
+  }
+  if (from == to) return e;
+  var moving = groups.removeAt(from);
+  groups.insert(to, moving);
+  return e.copyWith(shapes: [for (var g in groups) ...g]);
+}
+
+/// withCue is [e] with group [group]'s cue -- and gap -- set.
+VectorElement withCue(VectorElement e, int group, {VectorCue? cue, int? gap}) {
+  var starts = groupStarts(e);
+  if (group < 0 || group >= starts.length) return e;
+  var i = starts[group];
+  var s = e.shapes![i];
+  return e.withShape(i, s.copyWith(cue: cue, cueGap: gap));
+}
+
+/// withStagger is [e] with its shapes coming in one after another, each
+/// starting a third of the way before the one ahead of it has finished:
+/// every one taking the arrival's [span] in its own frames, and the whole
+/// fitted into the arrival as any timing is -- see cueTimes.
+VectorElement withStagger(VectorElement e, int span) {
+  var overlap = -(span / 3).round();
+  var next = e;
+  for (var (g, i) in groupStarts(e).indexed) {
+    var s = next.shapes![i];
+    next = next.withShape(
+        i,
+        g == 0
+            ? s.copyWith(clearCueLength: true)
+            : s.copyWith(
+                cue: VectorCue.gap, cueGap: overlap, clearCueLength: true));
+  }
+  return next;
+}
+
+/// withCueLength is [e] with group [group] taking [length] frames to come
+/// in -- or, null, as long as the drawing's arrival.
+VectorElement withCueLength(VectorElement e, int group, int? length) {
+  var starts = groupStarts(e);
+  if (group < 0 || group >= starts.length) return e;
+  var i = starts[group];
+  var s = e.shapes![i];
+  return e.withShape(
+      i,
+      length == null
+          ? s.copyWith(clearCueLength: true)
+          : s.copyWith(cueLength: math.max(1, length)));
+}
+
+/// withStartAt is [e] with group [group] -- not the first -- starting
+/// [start] frames into the drawing's arrival, in the shapes' own frames,
+/// said as the cue that puts it there: with the one before, where that one
+/// starts; after it, where that one finishes; or after a gap -- less than
+/// nought where it overlaps -- of however many frames. Never before the one
+/// before starts. [span] is the drawing's arrival, for the shapes that take
+/// as long as it. See withTimingBaked, which makes the shapes' own frames
+/// the timeline's.
+VectorElement withStartAt(VectorElement e, int group, int start, int span) {
+  if (group <= 0) return e;
+  var times = naturalTimes(e.shapes ?? const <VectorShape>[], span);
+  if (group >= times.length) return e;
+  var (before, took) = times[group - 1];
+  var end = (before + took).round();
+  if (start <= before.round()) {
+    return withCue(e, group, cue: VectorCue.together);
+  }
+  if (start == end) return withCue(e, group, cue: VectorCue.after);
+  return withCue(e, group, cue: VectorCue.gap, gap: start - end);
+}
+
+/// withTimingBaked is [e] with its shapes' timing written out in the
+/// timeline's frames, as it plays now: each shape's length set, and every
+/// gap scaled, by however much the drawing's arrival has been stretched or
+/// squeezed round them. Done before a shape's own timing is changed, so the
+/// change is in frames somebody can see on the timeline.
+VectorElement withTimingBaked(VectorElement e) {
+  var shapes = e.shapes;
+  var span = vectorArrivalSpan(e)?.$2;
+  if (shapes == null || shapes.isEmpty || span == null) return e;
+  var whole = naturalLength(shapes, span);
+  var k = whole <= 0 ? 1.0 : span / whole;
+  var next = [...shapes];
+  for (var start in groupStarts(e)) {
+    var s = next[start];
+    var length = (s.cueLength ?? span) * k;
+    next[start] = s.copyWith(
+        cueLength: math.max(1, length.round()), cueGap: (s.cueGap * k).round());
+  }
+  return e.copyWith(shapes: next);
+}
+
+/// withSpanFitted is [e] with its arrival's last keyframe moved so the
+/// arrival covers every shape's coming in, exactly -- the shapes' own frames
+/// the timeline's. See withTimingBaked.
+VectorElement withSpanFitted(VectorElement e) {
+  var shapes = e.shapes;
+  var arrival = vectorArrivalSpan(e);
+  var track = e.track;
+  if (shapes == null || arrival == null || track == null) return e;
+  var (at, span) = arrival;
+  var whole = naturalLength(shapes, span).round();
+  if (whole == span || whole < 1) return e;
+  var last = track.keyAt(at + span);
+  if (last == null) return e;
+  var next =
+      track.withoutFrame(at + span).withKey(last.copyWith(frame: at + whole));
+  return e.withBase(track: next) as VectorElement;
+}
+
+/// VectorLanes is how much of a drawing's shapes the timeline shows under
+/// its own keyframes: none -- the start -- the shape picked, or every one.
+enum VectorLanes {
+  none("Drawing only"),
+  picked("Shape picked"),
+  all("Every shape");
+
+  final String label;
+  const VectorLanes(this.label);
+
+  /// next is the one after, round again: the toggle steps through them.
+  VectorLanes get next => values[(index + 1) % values.length];
+}
+
+/// groupExtent is where group [group] of [e] lies -- its shapes' outlines,
+/// without their lines' widths -- in the drawing's units: the box the
+/// shapes tool moves and resizes it by.
+Rect? groupExtent(VectorElement e, int group) {
+  var starts = groupStarts(e);
+  if (group < 0 || group >= starts.length) return null;
+  var members = groupMembers(e, starts[group]);
+  Rect? box;
+  for (var i in members) {
+    var b = shapeExtent(e.shapes![i].copyWith(clearStroke: true));
+    if (b == null) continue;
+    box = box == null ? b : box.expandToInclude(b);
+  }
+  return box;
+}
+
+/// withGroupFitted is [e] with group [group] moved and stretched from the
+/// box [from] to the box [to]: every point, its handles, and the tints and
+/// rub-outs laid on it, the way a picture is stretched by its corners.
+VectorElement withGroupFitted(VectorElement e, int group, Rect from, Rect to) {
+  var starts = groupStarts(e);
+  if (group < 0 || group >= starts.length) return e;
+  var sx = from.width == 0 ? 1.0 : to.width / from.width;
+  var sy = from.height == 0 ? 1.0 : to.height / from.height;
+  Offset map(Offset p) => Offset(
+      to.left + (p.dx - from.left) * sx, to.top + (p.dy - from.top) * sy);
+  var shapes = [...?e.shapes];
+  for (var i in groupMembers(e, starts[group])) {
+    var s = shapes[i];
+    shapes[i] = s.copyWith(
+      paths: [
+        for (var run in s.paths)
+          run.copyWith(nodes: [
+            for (var n in run.nodes)
+              n.copyWith(
+                  x: map(n.point).dx,
+                  y: map(n.point).dy,
+                  inX: n.inX * sx,
+                  inY: n.inY * sy,
+                  outX: n.outX * sx,
+                  outY: n.outY * sy),
+          ]),
+      ],
+      tints: [for (var t in s.tints) t.mapped(map)],
+      erasures: [for (var t in s.erasures) t.mapped(map)],
+    );
+  }
+  return e.copyWith(shapes: shapes);
+}
+
+/// boxHandles is the eight handles round [box]: its corners, top-left
+/// first and on round, then the middles of its top, right, bottom and left.
+List<Offset> boxHandles(Rect box) => [
+      box.topLeft,
+      box.topRight,
+      box.bottomRight,
+      box.bottomLeft,
+      box.topCenter,
+      box.centerRight,
+      box.bottomCenter,
+      box.centerLeft,
+    ];
+
+/// boxResized is [box] with handle [handle] -- see boxHandles -- dragged to
+/// [to], the opposite side staying put; with [even], a corner keeps the
+/// box's proportions. Never less than [least] across.
+Rect boxResized(Rect box, int handle, Offset to,
+    {bool even = false, double least = 0.5}) {
+  double l = box.left, t = box.top, r = box.right, b = box.bottom;
+  switch (handle) {
+    case 0:
+      l = to.dx;
+      t = to.dy;
+    case 1:
+      r = to.dx;
+      t = to.dy;
+    case 2:
+      r = to.dx;
+      b = to.dy;
+    case 3:
+      l = to.dx;
+      b = to.dy;
+    case 4:
+      t = to.dy;
+    case 5:
+      r = to.dx;
+    case 6:
+      b = to.dy;
+    case 7:
+      l = to.dx;
+  }
+  var next = Rect.fromLTRB(
+      math.min(l, r), math.min(t, b), math.max(l, r), math.max(t, b));
+  if (even && handle < 4 && box.width > 0 && box.height > 0) {
+    // As far as the drag went along the box's longer way, both ways alike,
+    // from the corner that stays.
+    var k = math.max(next.width / box.width, next.height / box.height);
+    var w = box.width * k, h = box.height * k;
+    var anchor = boxHandles(box)[(handle + 2) % 4];
+    next = Rect.fromPoints(
+        anchor,
+        Offset(anchor.dx + (to.dx >= anchor.dx ? w : -w),
+            anchor.dy + (to.dy >= anchor.dy ? h : -h)));
+  }
+  if (next.width < least)
+    next = Rect.fromLTWH(next.left, next.top, least, next.height);
+  if (next.height < least)
+    next = Rect.fromLTWH(next.left, next.top, next.width, least);
+  return next;
 }
 
 /// groupOf is the shape the run of combining shapes that shape [index] is

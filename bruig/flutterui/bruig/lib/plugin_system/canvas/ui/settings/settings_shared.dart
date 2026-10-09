@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -5,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
@@ -1365,11 +1367,13 @@ Widget elementAnimationSection(
   return CanvasExpander(
     label: "Animation",
     remember: "elementAnimation",
-    trailing: animation.on
-        ? (animation.closes
-            ? "${animation.preset.label} · ${animation.exit.label}"
-            : animation.preset.label)
-        : (animation.closes ? animation.exit.label : null),
+    trailing: animation.any
+        ? [
+            if (animation.on) presetName(animation.preset),
+            if (animation.closes) presetName(animation.exit),
+            if (animation.loop.on) "${animation.loop.preset.label} loop",
+          ].join(" · ")
+        : null,
     children: [
       const CanvasHint(
           "Choosing one brings the element on over two seconds and puts a "
@@ -1377,6 +1381,10 @@ Widget elementAnimationSection(
           "how long it takes and when it happens — the same two keyframes a "
           "chart and a headline use, so everything on the canvas can arrive "
           "together."),
+      if (animation.any)
+        CanvasControlGroup(label: "Preview", hideCaption: true, children: [
+          previewButton(controller, element),
+        ]),
       CanvasControlGroup(label: "Arriving", children: [
         CanvasDropdown<ElementAnimationFamily?>(
           key: const ValueKey("elementAnimationFamily"),
@@ -1394,7 +1402,7 @@ Widget elementAnimationSection(
                   ? ElementAnimationPreset.none
                   : ElementAnimationPreset.inFamily(family).first),
         ),
-        if (animation.on)
+        if (animation.on && !oneOfAKind(animation.preset))
           CanvasDropdown<ElementAnimationPreset>(
             key: const ValueKey("elementAnimationPreset"),
             label: "Which",
@@ -1426,7 +1434,7 @@ Widget elementAnimationSection(
                     ? ElementAnimationPreset.none
                     : ElementAnimationPreset.inFamily(family).first),
           ),
-          if (animation.closes)
+          if (animation.closes && !oneOfAKind(animation.exit))
             CanvasDropdown<ElementAnimationPreset>(
               key: const ValueKey("elementAnimationExit"),
               label: "Which",
@@ -1440,6 +1448,18 @@ Widget elementAnimationSection(
               onChanged: (v) => controller.applyElementExit(element, v),
             ),
         ]),
+      if (animation.directed || animation.strengthens)
+        CanvasControlGroup(
+            label: "Motion",
+            children: motionControls(animation, now, (next) {
+              begin();
+              write(next);
+            }, commit)),
+      loopGroup(controller, animation.loop,
+          (loop) => now(animation.copyWith(loop: loop)), (loop) {
+        begin();
+        write(animation.copyWith(loop: loop));
+      }, commit),
       // A destruction is an exit, and somebody looking for one will be
       // looking in the arrival list. Said here rather than left to be found:
       // the exits are the arrivals played backwards, so the pieces of Build
@@ -1462,29 +1482,67 @@ Widget elementAnimationSection(
       keyframeEasingGroup(controller, element, begin, commit),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Timing", children: [
-          CanvasNumberField(
-            key: const ValueKey("elementAnimationLength"),
-            label: "Length",
-            min: 1,
-            max: 3600,
-            decimals: 0,
-            width: 62,
-            value: (animation.length > 0
-                    ? animation.length
-                    : controller.defaultAnimationFrames)
-                .toDouble(),
-            onChanged: (v) {
-              begin();
-              write(animation.copyWith(length: v.round()));
-            },
-            onCommit: commit,
-          ),
-          CanvasDropdown<ChartEase>(
+          // Where the arrival is on the timeline, typed: the same two
+          // keyframes dragging moves. Before there is one, how long the
+          // next is laid down.
+          if (controller.elementAnimationSpan(element)
+              case (var at?, var span?)) ...[
+            CanvasNumberField(
+              key: const ValueKey("elementAnimationDelay"),
+              label: "Delay",
+              min: 0,
+              max: 100000,
+              decimals: 0,
+              width: 62,
+              value: at.toDouble(),
+              onChanged: (v) {
+                begin();
+                controller.setElementArrivalTiming(
+                    controller.document.elementById(element.id) ?? element,
+                    delay: v.round());
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("elementAnimationLength"),
+              label: "Length",
+              min: 1,
+              max: 100000,
+              decimals: 0,
+              width: 62,
+              value: span.toDouble(),
+              onChanged: (v) {
+                begin();
+                controller.setElementArrivalTiming(
+                    controller.document.elementById(element.id) ?? element,
+                    length: v.round());
+              },
+              onCommit: commit,
+            ),
+          ] else
+            CanvasNumberField(
+              key: const ValueKey("elementAnimationLength"),
+              label: "Length",
+              min: 1,
+              max: 3600,
+              decimals: 0,
+              width: 62,
+              value: (animation.length > 0
+                      ? animation.length
+                      : controller.defaultAnimationFrames)
+                  .toDouble(),
+              onChanged: (v) {
+                begin();
+                write(animation.copyWith(length: v.round()));
+              },
+              onCommit: commit,
+            ),
+          easeDropdown<ChartEase>(
             key: const ValueKey("elementAnimationEase"),
-            label: "Curve",
             value: animation.ease,
-            width: 120,
-            options: [for (var e in ChartEase.values) (e, e.label)],
+            values: ChartEase.values,
+            name: (c) => c.label,
+            curve: (c) => c.apply,
             onChanged: (v) => now(animation.copyWith(ease: v)),
           ),
           if (animation.scales)
@@ -1504,13 +1562,232 @@ Widget elementAnimationSection(
               onCommit: commit,
             ),
           const CanvasHint(
-              "How many frames a new arrival or exit is laid down with. Once "
-              "it is on the timeline the keyframes are where it is: changing "
-              "this does not move them, and neither does trying another "
-              "preset."),
+              "In frames: Delay is how far into the scene the arrival "
+              "starts, Length how long it takes -- the same two keyframes "
+              "you can drag on the timeline."),
         ]),
     ],
   );
+}
+
+/// presetName is what an arrival is called where it is summed up: a slide
+/// is one choice now, its way round being the Direction's.
+String presetName(ElementAnimationPreset p) =>
+    p.family == ElementAnimationFamily.slide ? "Slide" : p.label;
+
+/// oneOfAKind is whether [p]'s family is one choice, with nothing to pick
+/// between -- the slides, which differ only in their direction.
+bool oneOfAKind(ElementAnimationPreset p) =>
+    p.family == ElementAnimationFamily.slide;
+
+/// motionControls are an arrival's direction and strength, where they mean
+/// something for what is chosen. [now] writes a change as one step; [live]
+/// and [commit] are for a slider being dragged. [keys] starts their keys.
+List<Widget> motionControls(
+    ElementAnimation animation,
+    void Function(ElementAnimation) now,
+    void Function(ElementAnimation) live,
+    VoidCallback commit,
+    {String keys = "element"}) {
+  var shown = animation.on ? animation.preset : animation.exit;
+  return [
+    if (animation.directed)
+      CanvasDropdown<AnimationDirection>(
+        key: ValueKey("${keys}AnimationDirection"),
+        label: "Direction",
+        value: animation.directionOf(shown) ?? AnimationDirection.left,
+        width: 148,
+        options: [for (var d in AnimationDirection.values) (d, d.label)],
+        onChanged: (d) => now(animation.copyWith(direction: d)),
+      ),
+    if (animation.strengthens)
+      CanvasSlider(
+        key: ValueKey("${keys}AnimationStrength"),
+        label: "Strength",
+        value: animation.strength,
+        max: 3,
+        width: 90,
+        onChanged: (v) => live(animation.copyWith(strength: v)),
+        onCommit: commit,
+      ),
+  ];
+}
+
+/// previewButton plays [element]'s animation alone, once -- or, while it
+/// is, stops it. See CanvasController.previewElement.
+Widget previewButton(CanvasController controller, CanvasElement element) {
+  var going = controller.previewing?.id == element.id;
+  return CanvasIconButton(
+    key: const ValueKey("elementAnimationPreview"),
+    icon: going ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+    tooltip: going ? "Stop" : "Preview",
+    active: going,
+    onPressed: () =>
+        going ? controller.pause() : controller.previewElement(element.id),
+  );
+}
+
+/// loopGroup is an element's loop: which, how long each go round takes and
+/// rests, how many times, how strongly, and from when until when. [now]
+/// writes a change as one step; [live] and [commit] are for a number being
+/// typed. [keys] starts its controls' keys, so that two can be shown at
+/// once -- a drawing's and one of its shapes'. See ElementLoop.
+Widget loopGroup(
+    CanvasController controller,
+    ElementLoop loop,
+    void Function(ElementLoop) now,
+    void Function(ElementLoop) live,
+    VoidCallback commit,
+    {String keys = "element",
+    String label = "Looping"}) {
+  Widget frames(String key, String label, int value, int least,
+          ElementLoop Function(int) set) =>
+      CanvasNumberField(
+        key: ValueKey(key),
+        label: label,
+        min: least.toDouble(),
+        max: 100000,
+        decimals: 0,
+        width: 58,
+        value: value.toDouble(),
+        onChanged: (v) => live(set(v.round())),
+        onCommit: commit,
+      );
+  return CanvasControlGroup(label: label, children: [
+    CanvasDropdown<LoopFamily?>(
+      key: ValueKey("${keys}LoopFamily"),
+      label: "Kind",
+      value: loop.on ? loop.preset.family : null,
+      width: 132,
+      options: [
+        (null, "None"),
+        for (var family in LoopFamily.values) (family, family.label),
+      ],
+      onChanged: (family) => now(loop.copyWith(
+          preset: family == null
+              ? LoopPreset.none
+              : LoopPreset.inFamily(family).first)),
+    ),
+    if (loop.on) ...[
+      CanvasDropdown<LoopPreset>(
+        key: ValueKey("${keys}LoopPreset"),
+        label: "Which",
+        value: loop.preset,
+        width: 132,
+        options: [
+          for (var preset in LoopPreset.inFamily(loop.preset.family))
+            (preset, preset.label),
+        ],
+        onChanged: (v) => now(loop.copyWith(preset: v)),
+      ),
+      frames("${keys}LoopCycle", "Cycle", loop.cycle, 1,
+          (v) => loop.copyWith(cycle: v)),
+      frames(
+          "${keys}LoopGap", "Gap", loop.gap, 0, (v) => loop.copyWith(gap: v)),
+      frames("${keys}LoopRepeats", "Repeats", loop.repeats, 0,
+          (v) => loop.copyWith(repeats: v)),
+      // How each go round is paced. Only the curves that stay inside it: a
+      // round's phase stops at its ends, so an overshoot would be a pause.
+      easeDropdown<ChartEase>(
+        key: ValueKey("${keys}LoopEase"),
+        value: loop.ease,
+        values: const [
+          ChartEase.linear,
+          ChartEase.easeIn,
+          ChartEase.easeOut,
+          ChartEase.easeInOut,
+        ],
+        name: (c) => c.label,
+        curve: (c) => c.apply,
+        onChanged: (c) => now(loop.copyWith(ease: c)),
+      ),
+      // The colour it draws with, for the loops that draw -- a gradient for
+      // a colour wave, whose band is the gradient -- and the band's width
+      // and lean, for the loops that sweep one.
+      if (loop.preset.coloured)
+        CanvasColorButton(
+          key: ValueKey("${keys}LoopColour"),
+          label: "Colour",
+          color: loop.colour.color,
+          gradient: loop.preset == LoopPreset.colourWave
+              ? loop.colour.gradient
+              : null,
+          onGradientChanged: loop.preset == LoopPreset.colourWave
+              ? (g) => now(loop.copyWith(
+                  colour: g == null
+                      ? loop.colour.copyWith(plain: true)
+                      : loop.colour.copyWith(gradient: g)))
+              : null,
+          onChanged: (c) =>
+              now(loop.copyWith(colour: loop.colour.copyWith(color: c))),
+        ),
+      if (loop.preset.banded) ...[
+        CanvasSlider(
+          key: ValueKey("${keys}LoopBand"),
+          label: "Band",
+          value: loop.band,
+          min: 0.05,
+          max: 1,
+          width: 80,
+          onChanged: (v) => live(loop.copyWith(band: v)),
+          onCommit: commit,
+        ),
+        CanvasNumberField(
+          key: ValueKey("${keys}LoopAngle"),
+          label: "Angle",
+          min: -90,
+          max: 90,
+          decimals: 0,
+          width: 52,
+          value: loop.angle,
+          onChanged: (v) => live(loop.copyWith(angle: v)),
+          onCommit: commit,
+        ),
+      ],
+      CanvasSlider(
+        key: ValueKey("${keys}LoopStrength"),
+        label: "Strength",
+        value: loop.strength,
+        max: 3,
+        width: 90,
+        onChanged: (v) => live(loop.copyWith(strength: v)),
+        onCommit: commit,
+      ),
+      CanvasDropdown<bool>(
+        key: ValueKey("${keys}LoopStarts"),
+        label: "Starts",
+        value: loop.from == null,
+        width: 120,
+        options: const [(true, "After arriving"), (false, "At a frame")],
+        onChanged: (after) => now(after
+            ? loop.copyWith(clearFrom: true)
+            : loop.copyWith(from: controller.frame)),
+      ),
+      if (loop.from case var from?)
+        frames("${keys}LoopFrom", "Frame", from + 1, 1,
+            (v) => loop.copyWith(from: v - 1)),
+      CanvasDropdown<bool>(
+        key: ValueKey("${keys}LoopEnds"),
+        label: "Ends",
+        value: loop.to == null,
+        width: 120,
+        options: const [(true, "Scene end"), (false, "At a frame")],
+        onChanged: (end) => now(end
+            ? loop.copyWith(clearTo: true)
+            : loop.copyWith(
+                to: math.max(loop.from ?? 0, controller.document.frames - 1))),
+      ),
+      if (loop.to case var to?)
+        frames("${keys}LoopTo", "Frame", to + 1, 1,
+            (v) => loop.copyWith(to: v - 1)),
+      const CanvasHint(
+          "A loop goes on after the arrival -- or on its own, from a frame "
+          "of its own -- until the scene ends, or for as many repeats as "
+          "set. Cycle is the frames one go round takes; Gap the frames it "
+          "rests between them. Its bar on the timeline can be dragged by "
+          "either end."),
+    ],
+  ]);
 }
 
 /// keyframeEasingGroup is how the element travels *out of* the keyframe the
@@ -1532,21 +1809,20 @@ Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
   var here = element.track?.keyAt(controller.frame);
 
   return CanvasControlGroup(label: "This keyframe", children: [
-    CanvasDropdown<KeyframeEasing>(
+    easeDropdown<KeyframeEasing>(
       key: const ValueKey("elementKeyframeEasing"),
       label: "Easing",
       value: here?.easing ?? KeyframeEasing.linear,
-      width: 132,
+      width: 160,
       enabled: here != null,
-      options: [
-        for (var easing in KeyframeEasing.values)
-          (
-            easing,
-            easing == KeyframeEasing.hold
-                ? "Hold (stays the same)"
-                : easing.label
-          ),
-      ],
+      values: KeyframeEasing.values,
+      name: (easing) => easing == KeyframeEasing.hold
+          ? "Hold (stays the same)"
+          : easing.label,
+      // A hold stays where it was until the next keyframe, then jumps.
+      curve: (easing) => easing == KeyframeEasing.hold
+          ? (t) => t >= 1 ? 1.0 : 0.0
+          : easing.apply,
       onChanged: (v) {
         begin();
         controller.setKeyframeEasing(element, v);
@@ -1765,3 +2041,84 @@ List<Widget> roomFields(
             onCommit: commit,
           ),
     ];
+
+/// easeDropdown is a choice of easing, each drawn as its curve beside its
+/// name -- what it does to a thing over its time, seen before it is picked.
+/// [curve] is the easing as a function of 0..1.
+Widget easeDropdown<T>({
+  Key? key,
+  String label = "Curve",
+  required T value,
+  required List<T> values,
+  required String Function(T) name,
+  required double Function(double) Function(T) curve,
+  required ValueChanged<T> onChanged,
+  double width = 148,
+  bool enabled = true,
+}) =>
+    CanvasDropdown<T>(
+      key: key,
+      label: label,
+      value: value,
+      width: width,
+      enabled: enabled,
+      options: [for (var v in values) (v, name(v))],
+      leading: (v) => EaseCurve(curve(v)),
+      onChanged: onChanged,
+    );
+
+/// EaseCurve is a small drawing of an easing: time along, progress up, with
+/// the start and the end level marked, so an overshoot is seen to overshoot.
+class EaseCurve extends StatelessWidget {
+  final double Function(double) curve;
+  const EaseCurve(this.curve, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var colors = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 22,
+      height: 14,
+      child: CustomPaint(
+          painter: _EaseCurvePainter(
+              curve, colors.primary, colors.outline.withValues(alpha: 0.35))),
+    );
+  }
+}
+
+class _EaseCurvePainter extends CustomPainter {
+  final double Function(double) curve;
+  final Color ink;
+  final Color guide;
+  _EaseCurvePainter(this.curve, this.ink, this.guide);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Room above and below for a curve that goes past either end.
+    var top = size.height * 0.22, bottom = size.height * 0.85;
+    double y(double v) => bottom - (bottom - top) * v;
+    var lines = Paint()
+      ..color = guide
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(0, y(0)), Offset(size.width, y(0)), lines);
+    canvas.drawLine(Offset(0, y(1)), Offset(size.width, y(1)), lines);
+    var path = Path();
+    const steps = 40;
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      var at = Offset(size.width * t, y(curve(t)).clamp(0.0, size.height));
+      i == 0 ? path.moveTo(at.dx, at.dy) : path.lineTo(at.dx, at.dy);
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = ink
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..strokeJoin = StrokeJoin.round);
+  }
+
+  @override
+  bool shouldRepaint(_EaseCurvePainter old) =>
+      old.curve != curve || old.ink != ink || old.guide != guide;
+}

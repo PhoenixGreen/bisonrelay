@@ -84,6 +84,10 @@ class StagePainter extends CustomPainter {
   /// will be published. See paintSequenceFrame.
   final int? previewAt;
 
+  /// previewing is the one element being previewed, at its own frame. See
+  /// CanvasController.previewing.
+  final ({String id, int frame})? previewing;
+
   /// scale is document units to screen pixels -- the fitted size times the
   /// reader's zoom, already combined by the stage.
   final double scale;
@@ -182,6 +186,7 @@ class StagePainter extends CustomPainter {
     Set<VectorPick> boxed,
     bool bare,
     ({bool across, bool down})? mirror,
+    Rect? shapeBox,
     Set<int>? combining,
   })? editingVector;
 
@@ -304,6 +309,7 @@ class StagePainter extends CustomPainter {
     required this.document,
     required this.frame,
     this.previewAt,
+    this.previewing,
     required this.scale,
     required this.origin,
     required this.images,
@@ -616,7 +622,8 @@ class StagePainter extends CustomPainter {
         // Guide paths show here and nowhere else: the line describing a run is
         // scaffolding, and a published diagram with every run drawn on it is
         // unreadable.
-        editing: true);
+        editing: true,
+        previewing: previewing);
   }
 
   /// _paintChartLabels outlines a chart's placed title and description, with a
@@ -701,6 +708,9 @@ class StagePainter extends CustomPainter {
       // picked or boxed: the drawing alone.
       if (editing.mirror case var m?) {
         _paintMirrorLines(canvas, editing.element, m.across, m.down);
+      }
+      if (editing.shapeBox case var box?) {
+        _paintShapeBox(canvas, editing.element, box);
       }
       if (editing.bare) return;
       _paintVectorControls(canvas, editing.element, editing.shape, editing.pick,
@@ -918,6 +928,34 @@ class StagePainter extends CustomPainter {
   ///
   /// [everyShape] shows every shape's points: while a box is dragged across
   /// the drawing, so what it will take in can be seen.
+  /// _paintShapeBox draws the box round the shape the shapes tool has
+  /// picked, in the drawing's units [box], with a handle at each corner and
+  /// each side's middle: what moves and resizes it.
+  void _paintShapeBox(Canvas canvas, VectorElement e, Rect box) {
+    var space = VectorSpace(e);
+    Offset screen(Offset p) => space.toCanvas(p) * scale + origin;
+    var colour = e.handleColor;
+    var corners = [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft]
+        .map(screen)
+        .toList();
+    canvas.drawPath(
+        Path()..addPolygon(corners, true),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = colour);
+    for (var h in boxHandles(box)) {
+      var r = Rect.fromCenter(center: screen(h), width: 8, height: 8);
+      canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));
+      canvas.drawRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
+    }
+  }
+
   /// _paintMirrorLines draws the pencil's mirror lines through the middle of
   /// the drawing [e] -- dashed, and through the whole of it, so what a
   /// stroke will be mirrored across can be seen before it is drawn.
@@ -1384,6 +1422,7 @@ class StagePainter extends CustomPainter {
       old.document != document ||
       old.frame != frame ||
       old.previewAt != previewAt ||
+      old.previewing != previewing ||
       old.scale != scale ||
       old.origin != origin ||
       old.page != page ||

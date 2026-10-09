@@ -358,8 +358,8 @@ void paintArriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
     return;
   }
 
-  var frame = applyMotionSpec(canvas, bounds, playing.preset.spec, p,
-      from: playing.scaleFor(playing.preset));
+  var spec = playing.spec;
+  var frame = applyMotionSpec(canvas, bounds, spec, p, from: spec.from);
   if (frame.alpha >= 0.999) {
     what();
   } else if (frame.alpha > 0.002) {

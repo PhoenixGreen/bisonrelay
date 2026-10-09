@@ -260,7 +260,7 @@ class VideoElement extends CanvasElement {
         "look": look.props(),
         "controls": [for (var c in controls) c.name],
         "accent": colorToJson(accent),
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory VideoElement.fromJson(Map<String, dynamic> json, ElementBase b) {

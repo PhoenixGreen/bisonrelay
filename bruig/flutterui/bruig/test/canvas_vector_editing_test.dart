@@ -7,6 +7,9 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
@@ -18,12 +21,16 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Path;
@@ -413,6 +420,70 @@ void main() {
       expect(c.editingVector!.shapes!.single.paths.single.nodes[1].width, 1);
       c.editVector(null);
       await tester.pumpAndSettle();
+    });
+
+    testWidgets("the playlist lists the shapes, steps cues, and moves them",
+        (tester) async {
+      var c = await show(
+          tester,
+          drawing('$square'
+              '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>'
+              '<path d="M30 30 L40 30 L40 40 Z" fill="green"/>'));
+      tester.view.physicalSize = const Size(1400, 2400);
+      await tester.pumpAndSettle();
+      if (find.byKey(const ValueKey("vectorPlaylist-0")).evaluate().isEmpty) {
+        var heading = find.byWidgetPredicate(
+            (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+        await tester.ensureVisible(heading);
+        await tester.tap(heading);
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const ValueKey("vectorPlaylist-2")), findsOneWidget);
+      VectorElement now() => c.document.elementById("v") as VectorElement;
+
+      // The cue steps on with each press.
+      await tester.tap(find.byKey(const ValueKey("vectorCue-1")));
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].cue, VectorCue.after);
+      await tester.tap(find.byKey(const ValueKey("vectorCue-1")));
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].cue, VectorCue.gap);
+      await tester.tap(find.byKey(const ValueKey("vectorGapMore-1")));
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].cueGap, 13);
+
+      // A row picks its shape.
+      await tester.tap(find.byKey(const ValueKey("vectorPlaylist-2")));
+      await tester.pumpAndSettle();
+      expect(c.vectorShape, 2);
+
+      // The arrows move a shape -- and with it its cue.
+      await tester.tap(find.byKey(const ValueKey("vectorUp-1")));
+      await tester.pumpAndSettle();
+      expect(now().shapes!.first.fill, const Color(0xFF0000FF));
+      expect(now().shapes!.first.cue, VectorCue.gap);
+
+      // And a drag with the mouse, hovering first, as a hand would.
+      var handle = find.descendant(
+          of: find.byKey(const ValueKey("vectorPlaylist-0")),
+          matching: find.byIcon(Icons.drag_indicator));
+      var g = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await g.addPointer(location: tester.getCenter(handle));
+      await g.moveTo(tester.getCenter(handle));
+      await tester.pump(const Duration(seconds: 2));
+      await g.down(tester.getCenter(handle));
+      await tester.pump(const Duration(milliseconds: 100));
+      var rowHeight =
+          tester.getSize(find.byKey(const ValueKey("vectorPlaylist-0"))).height;
+      for (var k = 1; k <= 10; k++) {
+        await g.moveBy(Offset(0, rowHeight * 2.2 / 10));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(now().shapes!.last.fill, const Color(0xFF0000FF),
+          reason: "dragged to the end");
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets("a point picked takes its own end or corner", (tester) async {
@@ -1122,6 +1193,97 @@ void main() {
       await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
       await tester.pumpAndSettle();
       expect(now(c).shapes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the shapes tool draws a shape where it is dragged",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.shapes;
+      c.vectorShapeKind = VectorShapeKind.oval;
+      await settle(tester);
+      var a = onScreen(view, c, const Offset(120, 130));
+      var b = onScreen(view, c, const Offset(180, 160));
+      var g = await tester.startGesture(a);
+      for (var k = 1; k <= 6; k++) {
+        await g.moveTo(Offset.lerp(a, b, k / 6)!);
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      var shapes = now(c).shapes!;
+      expect(shapes, hasLength(2));
+      // The oval's four points, at the middles of the box dragged out --
+      // (120, 130) to (180, 160) on the canvas.
+      expect([
+        for (var n in shapes.last.paths.single.nodes) n.point
+      ], const [
+        Offset(50, 30),
+        Offset(80, 45),
+        Offset(50, 60),
+        Offset(20, 45),
+      ]);
+      expect(c.vectorShape, 1, reason: "the new shape picked");
+      c.undo();
+      expect(now(c).shapes, hasLength(1), reason: "one shape, one undo");
+
+      // A click: one of a standard size, round the click.
+      c.vectorShapeKind = VectorShapeKind.star;
+      await settle(tester);
+      await tester.tapAt(onScreen(view, c, const Offset(150, 150)));
+      await tester.pumpAndSettle();
+      var star = shapeExtent(now(c).shapes!.last)!;
+      expect(star.center.dx, closeTo(50, 0.6));
+      expect(star.width, greaterThan(10));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the shape just drawn moves and resizes by its box",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.vectorTool = VectorTool.shapes;
+      c.vectorShapeKind = VectorShapeKind.box;
+      c.vectorShapeLine = null;
+      await settle(tester);
+      Future<void> drag(Offset from, Offset to) async {
+        var a = onScreen(view, c, from), b = onScreen(view, c, to);
+        var g = await tester.startGesture(a);
+        for (var k = 1; k <= 6; k++) {
+          await g.moveTo(Offset.lerp(a, b, k / 6)!);
+          await tester.pump();
+        }
+        await g.up();
+        await tester.pumpAndSettle();
+      }
+
+      List<Offset> points() =>
+          [for (var n in now(c).shapes!.last.paths.single.nodes) n.point];
+      await drag(const Offset(120, 120), const Offset(140, 140));
+      expect(now(c).shapes, hasLength(2));
+      expect(points().first, const Offset(20, 20));
+
+      // Inside it: moved, not another drawn.
+      await settle(tester);
+      await drag(const Offset(130, 130), const Offset(160, 135));
+      expect(now(c).shapes, hasLength(2));
+      expect(points().first.dx, closeTo(50, 0.6));
+      expect(points().first.dy, closeTo(25, 0.6));
+
+      // Its bottom-right handle: resized, the top-left staying put.
+      await settle(tester);
+      await drag(const Offset(170, 145), const Offset(190, 175));
+      expect(now(c).shapes, hasLength(2));
+      var box = groupExtent(now(c), 1)!;
+      expect(box.left, closeTo(50, 0.6));
+      expect(box.right, closeTo(90, 0.6));
+      expect(box.bottom, closeTo(75, 0.6));
+
+      // Anywhere else: a new one.
+      await settle(tester);
+      await drag(const Offset(105, 160), const Offset(115, 170));
+      expect(now(c).shapes, hasLength(3));
       expect(tester.takeException(), isNull);
     });
 
@@ -2297,6 +2459,169 @@ void main() {
       expect(e.viewBox.right, closeTo(150, 1));
     });
 
+    test("the shapes tool's shapes fill the box they are drawn in", () {
+      const r = Rect.fromLTWH(10, 20, 80, 60);
+      for (var k in VectorShapeKind.values) {
+        if (k.fromEnds) continue;
+        var s = shapeOf(k, r, fill: const Color(0xFF00FF00));
+        var b = shapeExtent(s.copyWith(clearStroke: true))!;
+        if (k.lined) {
+          // A mark sits a little in from its box's edges.
+          expect(r.inflate(0.01).contains(b.topLeft), isTrue, reason: "$k");
+          expect(r.inflate(0.01).contains(b.bottomRight), isTrue, reason: "$k");
+        } else {
+          expect(b.left, closeTo(r.left, 1e-6), reason: "$k");
+          expect(b.right, closeTo(r.right, 1e-6), reason: "$k");
+          expect(b.top, closeTo(r.top, 1e-6), reason: "$k");
+          expect(b.bottom, closeTo(r.bottom, 1e-6), reason: "$k");
+        }
+        expect([s.fill == null, s.stroke == null],
+            k.lined ? [true, false] : [false, true],
+            reason: "$k: a mark is a line; an area takes the fill");
+      }
+      expect(shapeOf(VectorShapeKind.polygon, r, sides: 7).paths.single.nodes,
+          hasLength(7));
+      expect(shapeOf(VectorShapeKind.star, r, sides: 5).paths.single.nodes,
+          hasLength(10));
+      var circle = shapeOf(VectorShapeKind.circle, r).paths.single.nodes;
+      expect(circle, hasLength(4));
+      expect(circle.first.handles, VectorHandles.mirrored);
+      var rounded = shapeOf(VectorShapeKind.roundedBox, r, corner: 10);
+      expect(rounded.paths.single.nodes, hasLength(8));
+      var line = shapeOf(VectorShapeKind.line, r,
+          from: const Offset(5, 5), to: const Offset(50, 40));
+      expect([for (var n in line.paths.single.nodes) n.point],
+          const [Offset(5, 5), Offset(50, 40)]);
+      var arrow = shapeOf(VectorShapeKind.arrow, r,
+          from: const Offset(0, 0), to: const Offset(100, 0));
+      expect(arrow.paths, hasLength(2), reason: "a shaft and a head");
+      expect(arrow.paths[1].nodes[1].point, const Offset(100, 0));
+    });
+
+    test("the playlist: cues, order, and kept", () {
+      var e = drawing('$square'
+          '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>'
+          '<path d="M30 30 L40 30 L40 40 Z" fill="green"/>');
+      expect(sequenced(e.shapes!), isFalse, reason: "all together at first");
+      expect(cueStarts(e.shapes!, 10), [0, 0, 0]);
+      e = withCue(e, 1, cue: VectorCue.after);
+      e = withCue(e, 2, cue: VectorCue.gap, gap: 4);
+      expect(sequenced(e.shapes!), isTrue);
+      expect([for (var t in naturalTimes(e.shapes!, 10)) t.$1], [0, 10, 24],
+          reason: "after the first; then four frames after the second");
+      var back = (elementFromJson(
+              jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>)
+          as VectorElement);
+      expect([for (var s in back.shapes!) s.cue],
+          [VectorCue.together, VectorCue.after, VectorCue.gap]);
+      expect(back.shapes![2].cueGap, 4);
+      // Moved: the green one first, drawn at the back.
+      var moved = withGroupMoved(e, 2, 0);
+      expect(moved.shapes!.first.fill, const Color(0xFF008000));
+      expect(moved.shapes!.last.fill, const Color(0xFF0000FF));
+      // A shape and what is combined into it move as one.
+      var (joined, _) = withCombined(e, {0, 1}, VectorCombine.unite);
+      expect(groupStarts(joined), [0, 2]);
+      var swapped = withGroupMoved(joined, 1, 0);
+      expect([
+        for (var s in swapped.shapes!) s.fill
+      ], [
+        const Color(0xFF008000),
+        const Color(0xFFFF0000),
+        const Color(0xFF0000FF),
+      ]);
+      expect(VectorCue.gap.next, VectorCue.together);
+    });
+
+    test("shapes come in one after another, as their cues say", () async {
+      // Two squares side by side; the second comes in after the first.
+      var e = drawing('<path d="M0 0 L50 0 L50 100 L0 100 Z" fill="red"/>'
+          '<path d="M50 0 L100 0 L100 100 L50 100 Z" fill="blue"/>');
+      e = withCue(e, 1, cue: VectorCue.after);
+      e = e
+          .copyWith(
+              animation:
+                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
+          .withBase(
+              x: 0,
+              y: 0,
+              track: ElementTrack(const [
+                Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+                Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+              ])) as VectorElement;
+      Future<(double, double)> at(int frame) async {
+        var rec = PictureRecorder();
+        paintElement(Canvas(rec), e, frame);
+        var img = await rec.endRecording().toImage(100, 100);
+        var px = (await img.toByteData())!.buffer.asUint8List();
+        double alpha(int x) => px[(50 * 100 + x) * 4 + 3] / 255;
+        return (alpha(25), alpha(75));
+      }
+
+      // The arrival's ten frames cover both: five each, one after the other.
+      var (a, b) = await at(2);
+      // Part way in -- the fade eases, so not exactly half.
+      expect(a, inExclusiveRange(0.2, 0.99), reason: "the first part in");
+      expect(b, 0, reason: "the second not started");
+      (a, b) = await at(7);
+      expect(a, closeTo(1, 0.01));
+      expect(b, inExclusiveRange(0.2, 0.99), reason: "the second part in");
+      (a, b) = await at(12);
+      expect([a, b], [closeTo(1, 0.01), closeTo(1, 0.01)]);
+      // All together again: the drawing comes in as one.
+      var together = withCue(e, 1, cue: VectorCue.together);
+      e = together;
+      (a, b) = await at(5);
+      expect(a, closeTo(b, 0.02));
+    });
+
+    test("each shape's own length, and a start said as a cue", () {
+      var e = drawing('$square'
+          '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>'
+          '<path d="M30 30 L40 30 L40 40 Z" fill="green"/>');
+      e = withCue(e, 1, cue: VectorCue.after);
+      e = withCue(e, 2, cue: VectorCue.after);
+      expect(naturalTimes(e.shapes!, 10), [(0, 10), (10, 10), (20, 10)]);
+      // Fitted into the drawing's own ten frames: a third each.
+      var fitted = cueTimes(e.shapes!, 10);
+      expect(fitted[1].$1, closeTo(10 / 3, 1e-9));
+      expect(fitted[2].$1 + fitted[2].$2, closeTo(10, 1e-9));
+      e = withCueLength(e, 1, 4);
+      expect(naturalTimes(e.shapes!, 10), [(0, 10), (10, 4), (14, 10)],
+          reason: "the third follows the second's own length");
+      expect(
+          sequenced(withCue(withCue(e, 1, cue: VectorCue.together), 2,
+                  cue: VectorCue.together)
+              .shapes!),
+          isTrue,
+          reason: "a length of its own is a sequence too");
+      // A start, said as the cue that puts it there.
+      expect(withStartAt(e, 2, 10, 10).shapes![2].cue, VectorCue.together);
+      expect(withStartAt(e, 2, 14, 10).shapes![2].cue, VectorCue.after);
+      var gap = withStartAt(e, 2, 17, 10).shapes![2];
+      expect([gap.cue, gap.cueGap], [VectorCue.gap, 3]);
+      var overlap = withStartAt(e, 2, 12, 10).shapes![2];
+      expect([overlap.cue, overlap.cueGap], [VectorCue.gap, -2]);
+      expect(naturalTimes(withStartAt(e, 2, 12, 10).shapes!, 10)[2], (12, 10));
+      var back = (elementFromJson(
+              jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>)
+          as VectorElement);
+      expect(back.shapes![1].cueLength, 4);
+      expect(withCueLength(e, 1, null).shapes![1].cueLength, isNull);
+    });
+
+    test("a box resized by a handle; Shift keeps a corner's proportions", () {
+      const r = Rect.fromLTWH(10, 10, 40, 20);
+      expect(boxResized(r, 2, const Offset(70, 50)),
+          const Rect.fromLTRB(10, 10, 70, 50));
+      expect(boxResized(r, 4, const Offset(0, 0)),
+          const Rect.fromLTRB(10, 0, 50, 30),
+          reason: "the top edge alone");
+      var even = boxResized(r, 2, const Offset(90, 20), even: true);
+      expect(even.width / even.height, closeTo(2, 1e-9));
+      expect(even.topLeft, r.topLeft);
+    });
+
     test("Fill covers the box, cut off rather than squashed", () {
       var e = VectorElement(const ElementBase(id: "v"),
           viewBox: const Rect.fromLTWH(0, 0, 100, 50), fit: VectorFit.cover);
@@ -2401,6 +2726,274 @@ void main() {
       c.editVector(null);
       expect([c.vectorPen, c.vectorPicks.isEmpty], [false, true],
           reason: "leaving puts it all away");
+    });
+  });
+
+  group("the shapes on the timeline", () {
+    testWidgets("a lane each: picked by a click, retimed by a drag",
+        (tester) async {
+      var e = drawing('$square'
+              '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+          .copyWith(
+              animation:
+                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
+          .withBase(
+              track: ElementTrack(const [
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+            Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+          ])) as VectorElement;
+      var c = CanvasController(
+          const CanvasDocument().copyWith(frames: 100).addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly("v");
+      expect(vectorLanesFor(c), isNotNull);
+      // None shown at first: only the drawing's own keyframes.
+      expect(vectorLanesShown(c, vectorLanesFor(c)!), isEmpty);
+      c.vectorLanes = VectorLanes.picked;
+      c.pickVectorShape(1);
+      expect(vectorLanesShown(c, vectorLanesFor(c)!), [1]);
+      c.vectorLanes = VectorLanes.all;
+      c.pickVectorShape(-1);
+      expect(vectorLanesShown(c, vectorLanesFor(c)!), [0, 1]);
+      tester.view.physicalSize = const Size(1200, 300);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      const view = TimelineView(0, 100);
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: ListenableBuilder(
+                  listenable: c,
+                  builder: (context, _) =>
+                      VectorShapeLanes(controller: c, view: view)))));
+      VectorElement now() => c.document.elementById("v") as VectorElement;
+      var lanes = find.byKey(const ValueKey("vectorShapeLanes"));
+      var origin = tester.getTopLeft(lanes) + Offset(c.headerWidth, 0);
+      var width = 1200 - c.headerWidth;
+      Offset at(int frame, int lane) =>
+          origin +
+          Offset(view.centreOf(frame, width),
+              lane * vectorLaneHeight + vectorLaneHeight / 2);
+
+      // A click on the second lane picks the second shape.
+      await tester.tapAt(at(5, 1));
+      await tester.pump();
+      expect(c.vectorShape, 1);
+
+      // Its end dragged from frame 10 to 4: it takes four frames.
+      await tester.dragFrom(at(10, 1), at(4, 1) - at(10, 1));
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].cueLength, 4);
+
+      // Its bar dragged on to where the first ends: after it.
+      await tester.dragFrom(at(2, 1), at(12, 1) - at(2, 1));
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].cue, VectorCue.after);
+      expect(vectorArrivalSpan(now()), (0, 14),
+          reason: "the arrival fitted round both again: ten, then four");
+      c.undo();
+      expect(now().shapes![1].cue, VectorCue.together,
+          reason: "a drag is one undo step");
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("the shape lanes in the timeline", () {
+    testWidgets("hidden at first; the toggle shows the shape picked, then all",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var e = (drawing('$square<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+          .copyWith(
+              animation:
+                  const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
+          .withBase(
+              track: ElementTrack(const [
+            Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+            Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+          ])) as VectorElement);
+      var c = CanvasController(
+          const CanvasDocument().copyWith(frames: 40).addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly("v");
+      c.pickVectorShape(1);
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: CanvasTimeline(
+                        controller: c, height: timelineHeight + 160)))),
+      ));
+      await tester.pumpAndSettle();
+      var toggle = find.byKey(const ValueKey("vectorLanesToggle"));
+      expect(toggle, findsOneWidget);
+      int lanes() {
+        var found = find.byKey(const ValueKey("vectorShapeLanes"));
+        if (found.evaluate().isEmpty) return 0;
+        return (tester.getSize(found).height / vectorLaneHeight).round();
+      }
+
+      expect(lanes(), 0, reason: "only the drawing's own keyframes");
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(c.vectorLanes, VectorLanes.picked);
+      expect(lanes(), 1, reason: "the shape picked");
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(lanes(), 2, reason: "every shape");
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(lanes(), 0);
+
+      // Not for an element with no shapes to show.
+      c.clearSelection();
+      await tester.pumpAndSettle();
+      expect(toggle, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("the arrival covers every shape", () {
+    VectorElement animated() => (drawing('$square'
+            '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')
+        .copyWith(
+            animation:
+                const ElementAnimation(preset: ElementAnimationPreset.fadeIn))
+        .withBase(
+            track: ElementTrack(const [
+          Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+          Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}),
+        ])) as VectorElement);
+
+    test("its keyframes stretch every shape's timing alike", () {
+      var e = withCue(animated(), 1, cue: VectorCue.after);
+      expect(cueTimes(e.shapes!, 10), [(0, 5), (5, 5)]);
+      // The last keyframe dragged out to frame 20: twice as long, all of it.
+      var longer = e.withBase(
+          track: e.track!.withoutFrame(10).withKey(const Keyframe(
+              frame: 20,
+              values: {KeyframeChannel.reveal: 1}))) as VectorElement;
+      expect(cueTimes(longer.shapes!, vectorArrivalSpan(longer)!.$2),
+          [(0, 10), (10, 10)]);
+    });
+
+    test("a shape's own timing changed refits the arrival round them all", () {
+      var c = CanvasController(
+          const CanvasDocument().copyWith(frames: 30).addElement(animated()));
+      addTearDown(c.dispose);
+      VectorElement now() => c.document.elementById("v") as VectorElement;
+      // After the first, in the timeline's frames: ten, then ten more.
+      c.retimeShapes(now(), (b) => withCue(b, 1, cue: VectorCue.after));
+      expect(vectorArrivalSpan(now()), (0, 20));
+      expect(cueTimes(now().shapes!, 20), [(0, 10), (10, 10)]);
+      // Squeezed by its keyframe, then a gap added: in the frames shown.
+      c.replaceElement(now().withBase(
+          track: now().track!.withoutFrame(20).withKey(
+              const Keyframe(frame: 10, values: {KeyframeChannel.reveal: 1}))));
+      c.retimeShapes(now(), (b) => withCue(b, 1, cue: VectorCue.gap, gap: 2));
+      expect(cueTimes(now().shapes!, vectorArrivalSpan(now())!.$2),
+          [(0, 5), (7, 5)]);
+      expect(vectorArrivalSpan(now()), (0, 12));
+      c.undo();
+      expect(vectorArrivalSpan(now()), (0, 10), reason: "one undo step");
+    });
+  });
+
+  group("a rounded corner, reshaped", () {
+    test("a rounded box's corner is found, taken back, and reshaped", () {
+      var box = shapeOf(
+          VectorShapeKind.roundedBox, const Rect.fromLTWH(10, 10, 80, 80),
+          corner: 10, fill: const Color(0xFFFF0000));
+      var e = drawing(square).copyWith(shapes: [box]);
+      // Its top-left corner is the pair at the end of the run and its start.
+      var found = cornerAt(e, const VectorPick(0, 0, 0));
+      expect(found, isNotNull);
+      var (sharp, at, reach, pair) = found!;
+      expect(reach, closeTo(10, 1e-6));
+      expect(pair, {const VectorPick(0, 0, 7), const VectorPick(0, 0, 0)});
+      expect(vectorNodeAt(sharp, at)!.point, const Offset(10, 10));
+      expect(sharp.shapes!.single.paths.single.nodes, hasLength(7));
+      // The same corner from its other point.
+      expect(cornerAt(e, const VectorPick(0, 0, 7))?.$2, at);
+      // A circle's points are smooth: no corner there.
+      var circle = drawing(square).copyWith(shapes: [
+        shapeOf(VectorShapeKind.circle, const Rect.fromLTWH(10, 10, 80, 80))
+      ]);
+      expect(cornerAt(circle, const VectorPick(0, 0, 0)), isNull);
+
+      // Taken up by the controller, its size read, and changed.
+      var c = CanvasController(const CanvasDocument().addElement(e));
+      addTearDown(c.dispose);
+      c.editVector("v");
+      expect(c.adoptCorner(const VectorPick(0, 0, 0)), isTrue);
+      expect(c.vectorCornerActive, isTrue);
+      expect(c.vectorCornerSize, 10);
+      c.vectorCornerSize = 25;
+      var nodes = (c.document.elementById("v") as VectorElement)
+          .shapes!
+          .single
+          .paths
+          .single
+          .nodes;
+      expect(nodes, hasLength(8), reason: "the same corner, reshaped");
+      expect(nodes.any((n) => (n.point - const Offset(35, 10)).distance < 1e-6),
+          isTrue,
+          reason: "now twenty-five back along the top");
+    });
+  });
+
+  group("editing and the selection", () {
+    CanvasController make() {
+      var c = CanvasController(const CanvasDocument().addElement(
+          drawing('$square<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>')));
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    VectorElement? v(CanvasController c) =>
+        c.document.elementById("v") as VectorElement?;
+
+    test("Delete with a shape picked takes out that shape, not the drawing",
+        () {
+      var c = make();
+      c.editVector("v");
+      expect(c.selection, {"v"}, reason: "edited is selected");
+      c.pickVectorShape(1);
+      c.deleteSelected();
+      expect(v(c), isNotNull, reason: "the drawing is still there");
+      expect(v(c)!.shapes, hasLength(1));
+      expect(v(c)!.shapes!.single.fill, const Color(0xFFFF0000));
+      expect(c.vectorEditing, "v");
+      // Nothing picked: nothing taken.
+      c.deleteSelected();
+      expect(v(c)!.shapes, hasLength(1));
+    });
+
+    test("the editing ends when the drawing is no longer the one selected", () {
+      var c = make();
+      c.editVector("v");
+      c.clearSelection();
+      expect(c.vectorEditing, isNull);
+      expect(c.editingVector, isNull);
+
+      // Gone and brought back by an undo: not still being edited, beside
+      // whatever settings are showing.
+      c.selectOnly("v");
+      c.editVector("v");
+      c.editVector(null);
+      c.selectOnly("v");
+      c.deleteSelected();
+      expect(v(c), isNull);
+      c.undo();
+      expect(v(c), isNotNull);
+      expect(c.vectorEditing, isNull);
     });
   });
 

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
@@ -298,38 +299,139 @@ void paintVector(
   // Tinted, the drawing is drawn into a layer of its own for the tint to be
   // laid on -- see _paintTints.
   for (var d in vectorDrawn(shapes)) {
-    var shape = d.style;
-    // Tinted or rubbed out, a shape is drawn into a layer of its own for its
-    // tints to be laid on and its rub-outs taken out of -- its own, so what
-    // is drawn over it later is untouched by them. See _paintTints and
-    // _paintErasures.
-    var layered = shape.tints.isNotEmpty || shape.erasures.isNotEmpty;
-    if (layered) canvas.saveLayer(null, Paint());
-    if (shape.fill case var fill? when fill.a > 0) {
-      canvas.drawPath(
-          d.outline,
-          Paint()
-            ..color = fill
-            ..isAntiAlias = true);
-    }
-    if (shape.stroke case var stroke?
-        when stroke.a > 0 && shape.strokeWidth > 0) {
-      _strokeDrawn(
-          canvas,
-          d,
-          Paint()
-            ..color = stroke
-            ..isAntiAlias = true);
-    }
-    if (layered) {
-      if (shape.tints.isNotEmpty) _paintTints(canvas, d.members, shape.tints);
-      if (shape.erasures.isNotEmpty) {
-        _paintErasures(canvas, d.members, shape.erasures);
-      }
-      canvas.restore();
-    }
+    _paintGroup(canvas, d);
   }
   canvas.restore();
+}
+
+/// _paintGroup draws one shape -- with whatever is combined into it, its
+/// tints and its rub-outs -- in the drawing's own units.
+void _paintGroup(ui.Canvas canvas, VectorDrawn d) {
+  var shape = d.style;
+  // Tinted or rubbed out, a shape is drawn into a layer of its own for its
+  // tints to be laid on and its rub-outs taken out of -- its own, so what
+  // is drawn over it later is untouched by them. See _paintTints and
+  // _paintErasures.
+  var layered = shape.tints.isNotEmpty || shape.erasures.isNotEmpty;
+  if (layered) canvas.saveLayer(null, Paint());
+  if (shape.fill case var fill? when fill.a > 0) {
+    canvas.drawPath(
+        d.outline,
+        Paint()
+          ..color = fill
+          ..isAntiAlias = true);
+  }
+  if (shape.stroke case var stroke?
+      when stroke.a > 0 && shape.strokeWidth > 0) {
+    _strokeDrawn(
+        canvas,
+        d,
+        Paint()
+          ..color = stroke
+          ..isAntiAlias = true);
+  }
+  if (layered) {
+    if (shape.tints.isNotEmpty) _paintTints(canvas, d.members, shape.tints);
+    if (shape.erasures.isNotEmpty) {
+      _paintErasures(canvas, d.members, shape.erasures);
+    }
+    canvas.restore();
+  }
+}
+
+/// naturalTimes is when each of [shapes]' groups comes in, in its own
+/// frames, before the drawing's arrival is fitted round them all: the frame
+/// it starts on, counted from the first, and how many it takes -- its own
+/// length, or [span], the drawing's. With the one before, it starts as that
+/// one starts; after it, as that one finishes; after a gap, that many frames
+/// after -- or, a gap less than nought, that many before, overlapping it.
+/// See VectorCue.
+List<(double, double)> naturalTimes(List<VectorShape> shapes, int span) {
+  var out = <(double, double)>[];
+  for (var (i, d) in vectorDrawn(shapes).indexed) {
+    var s = d.style;
+    var length = math.max(1, s.cueLength ?? span).toDouble();
+    var start = 0.0;
+    if (i > 0) {
+      var (before, took) = out[i - 1];
+      start = switch (s.cue) {
+        VectorCue.together => before,
+        VectorCue.after => before + took,
+        VectorCue.gap => math.max(before, before + took + s.cueGap),
+      };
+    }
+    out.add((start, length));
+  }
+  return out;
+}
+
+/// naturalLength is how many of their own frames [shapes] take to come in,
+/// first start to last finish.
+double naturalLength(List<VectorShape> shapes, int span) {
+  var times = naturalTimes(shapes, span);
+  if (times.isEmpty) return span.toDouble();
+  return times.map((t) => t.$1 + t.$2).reduce(math.max);
+}
+
+/// cueTimes is when each of [shapes]' groups comes in, in frames from where
+/// the drawing's arrival starts, the whole of them fitted into the arrival's
+/// [span]: the arrival covers every shape's, and stretching it stretches
+/// them all alike. See naturalTimes.
+List<(double, double)> cueTimes(List<VectorShape> shapes, int span) {
+  var times = naturalTimes(shapes, span);
+  var whole = naturalLength(shapes, span);
+  var k = whole <= 0 ? 1.0 : span / whole;
+  return [for (var (start, length) in times) (start * k, length * k)];
+}
+
+/// cueStarts is the frame each group starts on -- see cueTimes.
+List<double> cueStarts(List<VectorShape> shapes, int span) =>
+    [for (var (start, _) in cueTimes(shapes, span)) start];
+
+/// sequenced is whether any of [shapes] comes in other than with the one
+/// before -- whether the drawing comes in shape by shape rather than as one.
+bool sequenced(List<VectorShape> shapes) {
+  var groups = vectorDrawn(shapes);
+  return groups.skip(1).any((d) => d.style.cue != VectorCue.together) ||
+      groups.any((d) => d.style.cueLength != null);
+}
+
+/// vectorArrivalSpan is where [e]'s arrival starts on the timeline and how
+/// many frames it takes -- the frames of its reveal keyframes -- or null
+/// where it has none.
+(int, int)? vectorArrivalSpan(VectorElement e) {
+  int? from, to;
+  for (var key in e.track?.keys ?? const <Keyframe>[]) {
+    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+    from = from == null ? key.frame : math.min(from, key.frame);
+    to = to == null ? key.frame : math.max(to, key.frame);
+  }
+  if (from == null || to == null || to <= from) return null;
+  return (from, to - from);
+}
+
+/// paintVectorGroup draws [d], one of [e]'s groups, alone, fitted into
+/// [box] as the whole drawing is: what a drawing coming in shape by shape
+/// draws, one shape at a time. See VectorCue.
+void paintVectorGroup(
+    ui.Canvas canvas, Rect box, VectorElement e, VectorDrawn d) {
+  var p = e.placement(box, e.viewBox);
+  canvas.save();
+  canvas.translate(p.dx, p.dy);
+  canvas.scale(p.sx, p.sy);
+  _paintGroup(canvas, d);
+  canvas.restore();
+}
+
+/// vectorGroupBox is where [d], one of [e]'s groups, lies when the drawing
+/// is fitted into [box]: the box it comes in in, shape by shape.
+Rect vectorGroupBox(Rect box, VectorElement e, VectorDrawn d) {
+  var p = e.placement(box, e.viewBox);
+  var r = d.outline
+      .getBounds()
+      .inflate(d.style.stroke == null ? 0 : d.style.strokeWidth / 2);
+  return Rect.fromLTRB(r.left * p.sx + p.dx, r.top * p.sy + p.dy,
+      r.right * p.sx + p.dx, r.bottom * p.sy + p.dy);
 }
 
 /// _paintTints lays the tint brush's strokes over [shapes], each seen only

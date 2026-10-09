@@ -1125,7 +1125,7 @@ class TableElement extends CanvasElement {
         if (sort.on || !sort.pinFirstColumn) "sort": sort.toJson(),
         if (source.on) "source": source.toJson(),
         if (hiddenHeaders.isNotEmpty) "hiddenHeaders": hiddenHeaders,
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory TableElement.fromJson(Map<String, dynamic> json, ElementBase b) {

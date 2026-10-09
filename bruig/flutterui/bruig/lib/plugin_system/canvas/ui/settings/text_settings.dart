@@ -975,6 +975,11 @@ Widget _animationSection(CanvasController controller, TextElement e,
       // The same group every other element's animation section carries: the
       // easing belongs to the keyframe, and a caption's keyframes are
       // keyframes like any other.
+      if (animation.on || animation.closes)
+        CanvasControlGroup(
+            label: "Preview",
+            hideCaption: true,
+            children: [previewButton(controller, e)]),
       keyframeEasingGroup(controller, e, begin, commit),
       const CanvasHint(
           "Choosing one draws the words on over two seconds and puts a "
@@ -1352,11 +1357,12 @@ List<Widget> _animationBits(
               "they arrive too large and settle. On the way out it is where "
               "they go — 2 and above carries them off the screen, 0 shrinks "
               "them to nothing."),
-        CanvasDropdown<ChartEase>(
+        easeDropdown<ChartEase>(
           label: "End curve",
           value: a.ease,
-          width: 118,
-          options: [for (var c in ChartEase.values) (c, c.label)],
+          values: ChartEase.values,
+          name: (c) => c.label,
+          curve: (c) => c.apply,
           onChanged: (v) {
             now(a.copyWith(ease: v));
           },

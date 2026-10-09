@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 
 // element_animation.dart is how a shape or a picture arrives and leaves.
@@ -128,6 +131,39 @@ enum ElementAnimationPreset {
       ];
 }
 
+/// AnimationDirection is where a moving arrival comes in from -- or a wipe
+/// starts -- in place of the preset's own: one control, rather than a preset
+/// for every way round. [dx] and [dy] point from where the element ends up
+/// toward where it starts.
+enum AnimationDirection {
+  left("From the left", -1, 0),
+  right("From the right", 1, 0),
+  above("From above", 0, -1),
+  below("From below", 0, 1),
+  aboveLeft("From top left", -1, -1),
+  aboveRight("From top right", 1, -1),
+  belowLeft("From bottom left", -1, 1),
+  belowRight("From bottom right", 1, 1);
+
+  final String label;
+  final double dx;
+  final double dy;
+  const AnimationDirection(this.label, this.dx, this.dy);
+
+  static AnimationDirection? fromName(String? name) =>
+      values.where((d) => d.name == name).firstOrNull;
+
+  /// of is the direction [dx], [dy] points in, to the nearest of the eight,
+  /// or null where it points nowhere.
+  static AnimationDirection? of(double dx, double dy) {
+    if (dx == 0 && dy == 0) return null;
+    int sign(double v, double other) =>
+        v.abs() * 2.4 < other.abs() ? 0 : v.sign.toInt();
+    var x = sign(dx, dy), y = sign(dy, dx);
+    return values.firstWhere((d) => d.dx == x && d.dy == y);
+  }
+}
+
 /// ElementAnimation is one element's arrival and exit.
 class ElementAnimation {
   final ElementAnimationPreset preset;
@@ -149,6 +185,18 @@ class ElementAnimation {
   /// laid down with.
   final int length;
 
+  /// loop is what it goes on doing after it has arrived -- or instead of
+  /// arriving: see ElementLoop.
+  final ElementLoop loop;
+
+  /// direction is where a moving arrival comes in from, or a wipe starts,
+  /// or null for the preset's own. The way out goes the same way.
+  final AnimationDirection? direction;
+
+  /// strength is how far it moves, how much it grows or how far it turns,
+  /// against the preset's own: 1 is the preset as it is.
+  final double strength;
+
   const ElementAnimation({
     this.preset = ElementAnimationPreset.none,
     this.exit = ElementAnimationPreset.none,
@@ -156,10 +204,17 @@ class ElementAnimation {
     this.effect = const EffectSpec(),
     this.ease = ChartEase.easeOut,
     this.length = 0,
+    this.loop = const ElementLoop(),
+    this.direction,
+    this.strength = 1,
   });
 
   bool get on => preset != ElementAnimationPreset.none;
   bool get closes => exit != ElementAnimationPreset.none;
+
+  /// any is whether there is anything to it at all -- an arrival, an exit or
+  /// a loop: whether it is worth saving.
+  bool get any => on || closes || loop.on;
 
   /// cuts is whether the effect settings mean anything for what is chosen.
   bool get cuts => preset.cuts || exit.cuts;
@@ -177,6 +232,57 @@ class ElementAnimation {
   /// or the preset's own number when nothing has.
   double scaleFor(ElementAnimationPreset preset) =>
       scale > 0 ? scale : preset.from;
+
+  /// directed is whether a direction means anything for what is chosen: a
+  /// thing that slides in, or is wiped on.
+  bool get directed => _directs(preset) || _directs(exit);
+  static bool _directs(ElementAnimationPreset p) =>
+      p != ElementAnimationPreset.none &&
+      ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||
+          p.motion == TextMotion.wipe);
+
+  /// strengthens is whether strength means anything for what is chosen: a
+  /// thing that slides, grows or turns.
+  bool get strengthens => _strengthens(preset) || _strengthens(exit);
+  static bool _strengthens(ElementAnimationPreset p) =>
+      p != ElementAnimationPreset.none &&
+      ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||
+          p.motion == TextMotion.grow ||
+          p.motion == TextMotion.spin);
+
+  /// directionOf is the way [p] goes as this animation has it: its own
+  /// direction where one is set, or the preset's.
+  AnimationDirection? directionOf(ElementAnimationPreset p) =>
+      direction ??
+      (p.motion == TextMotion.wipe
+          ? AnimationDirection.left
+          : AnimationDirection.of(p.dx, p.dy));
+
+  /// specFor is [p]'s motion as this animation plays it -- turned to its
+  /// direction, and moved, grown and turned as far as its strength says.
+  MotionSpec specFor(ElementAnimationPreset p) {
+    var dx = p.dx, dy = p.dy;
+    var way = direction;
+    if (way != null && p.motion == TextMotion.wipe) {
+      // A wipe goes nowhere: what it takes is the edge it starts from.
+      dx = way.dx;
+      dy = way.dy;
+    } else if (way != null && (dx != 0 || dy != 0)) {
+      var far = math.sqrt(dx * dx + dy * dy);
+      var unit = math.sqrt(way.dx * way.dx + way.dy * way.dy);
+      dx = way.dx / unit * far;
+      dy = way.dy / unit * far;
+    }
+    var s = p.motion == TextMotion.wipe ? 1.0 : strength;
+    return MotionSpec(p.motion,
+        dx: dx * s,
+        dy: dy * s,
+        from: 1 + (scaleFor(p) - 1) * strength,
+        turns: p.turns * strength);
+  }
+
+  /// spec is the motion of what is playing -- see specFor.
+  MotionSpec get spec => specFor(preset);
 
   /// progressAt eases [reveal] the way this animation asks for.
   ///
@@ -197,6 +303,10 @@ class ElementAnimation {
     EffectSpec? effect,
     ChartEase? ease,
     int? length,
+    ElementLoop? loop,
+    AnimationDirection? direction,
+    bool clearDirection = false,
+    double? strength,
   }) =>
       ElementAnimation(
         preset: preset ?? this.preset,
@@ -205,6 +315,9 @@ class ElementAnimation {
         effect: effect ?? this.effect,
         ease: ease ?? this.ease,
         length: length ?? this.length,
+        loop: loop ?? this.loop,
+        direction: clearDirection ? null : direction ?? this.direction,
+        strength: strength ?? this.strength,
       );
 
   Map<String, dynamic> toJson() => {
@@ -214,6 +327,9 @@ class ElementAnimation {
         if (cuts) "effect": effect.toJson(),
         "ease": ease.name,
         if (length > 0) "length": length,
+        if (loop.on) "loop": loop.toJson(),
+        if (direction != null) "direction": direction!.name,
+        if (strength != 1) "strength": strength,
       };
 
   factory ElementAnimation.fromJson(Map<String, dynamic> json) =>
@@ -226,6 +342,11 @@ class ElementAnimation {
             : const EffectSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
+        loop: json["loop"] is Map<String, dynamic>
+            ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
+            : const ElementLoop(),
+        direction: AnimationDirection.fromName(json["direction"] as String?),
+        strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
       );
 
   @override
@@ -237,8 +358,12 @@ class ElementAnimation {
           other.scale == scale &&
           other.effect == effect &&
           other.ease == ease &&
-          other.length == length;
+          other.length == length &&
+          other.loop == loop &&
+          other.direction == direction &&
+          other.strength == strength;
 
   @override
-  int get hashCode => Object.hash(preset, exit, scale, effect, ease, length);
+  int get hashCode => Object.hash(
+      preset, exit, scale, effect, ease, length, loop, direction, strength);
 }

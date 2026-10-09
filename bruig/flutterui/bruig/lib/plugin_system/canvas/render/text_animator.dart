@@ -669,8 +669,14 @@ MotionFrame applyMotionSpec(
       depth = 2;
 
     case TextMotion.wipe:
-      canvas.clipRect(
-          clip = Rect.fromLTWH(box.left, box.top, box.width * p, box.height));
+      // From the left, unless the spec points elsewhere -- a shape's wipe
+      // takes a direction, and dx and dy say which edge, or corner, it
+      // starts from. See ElementAnimation.specFor.
+      var w = preset.dx == 0 && preset.dy != 0 ? box.width : box.width * p;
+      var h = preset.dy == 0 ? box.height : box.height * p;
+      clip = Rect.fromLTWH(preset.dx > 0 ? box.right - w : box.left,
+          preset.dy > 0 ? box.bottom - h : box.top, w, h);
+      canvas.clipRect(clip);
       clipped = true;
       alpha = 1;
 

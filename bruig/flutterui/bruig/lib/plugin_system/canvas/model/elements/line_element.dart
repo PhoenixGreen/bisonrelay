@@ -224,7 +224,7 @@ class LineElement extends CanvasElement {
         if (dash > 0) "dash": dash,
         if (curvature != 0) "curve": curvature,
         if (flipped) "flipped": true,
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory LineElement.fromJson(Map<String, dynamic> json, ElementBase b) {

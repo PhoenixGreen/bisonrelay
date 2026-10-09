@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
@@ -16,7 +18,9 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter/material.dart';
 
 // vector_settings.dart is a drawing's settings: which drawing, how it sits in
@@ -218,6 +222,7 @@ List<Widget> vectorSettings(
             (VectorTool.corner, Icons.rounded_corner),
             (VectorTool.pencil, Icons.edit),
             (VectorTool.eraser, Icons.cleaning_services_outlined),
+            (VectorTool.shapes, Icons.category_outlined),
           ])
             CanvasIconButton(
               key: ValueKey("vectorTool-${tool.name}"),
@@ -252,7 +257,217 @@ List<Widget> vectorSettings(
         }
         now(next);
       }),
+    // The picked shape's own way in and loop.
+    if (e.edited && one)
+      ..._shapeAnimation(
+          controller, e, groupOf(e, picked), write, begin, commit),
+    // Every shape, in order, and when each comes in.
+    if (e.edited && shapes.isNotEmpty)
+      _VectorPlaylist(
+          key: const ValueKey("vectorPlaylist"),
+          controller: controller,
+          element: e,
+          onChanged: now),
+    elementAnimationSection(controller, e, e.animation,
+        (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
+}
+
+/// _VectorPlaylist is every shape of the drawing, in order -- the order it
+/// is drawn in, back to front, and the order it comes in -- with what each
+/// is painted in and when it comes in. A row picks its shape for the
+/// settings above; dragging one, or its arrows, moves it.
+///
+/// Nothing in a row opens anything over the page -- no tooltip, no menu:
+/// a row is moved, not rebuilt, as it is dragged, and anything floating
+/// over it comes apart. The cue is a button that steps through the cues.
+class _VectorPlaylist extends StatelessWidget {
+  final CanvasController controller;
+  final VectorElement element;
+  final void Function(VectorElement) onChanged;
+
+  /// _stagger brings [e]'s shapes in one after another, a little
+  /// overlapping, over the drawing's arrival -- giving it one, the same
+  /// change, where it has none to stagger them over. See withStagger.
+  void _stagger(VectorElement e) {
+    var span = vectorArrivalSpan(e)?.$2;
+    if (span != null && e.animation.on) {
+      onChanged(withStagger(e, span));
+      return;
+    }
+    controller.beginInteraction();
+    controller.replaceElement(withStagger(e, controller.defaultAnimationFrames),
+        transient: true);
+    if (controller.document.elementById(e.id) case var fresh?) {
+      controller.applyElementAnimation(fresh,
+          e.animation.on ? e.animation.preset : ElementAnimationPreset.fadeUp);
+    }
+    controller.endInteraction();
+  }
+
+  const _VectorPlaylist(
+      {required this.controller,
+      required this.element,
+      required this.onChanged,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var e = element;
+    var groups = vectorDrawn(e.shapes ?? const <VectorShape>[]);
+    var starts = groupStarts(e);
+    var picked = controller.vectorShape;
+    var theme = Theme.of(context);
+    var muted = theme.colorScheme.onSurfaceVariant;
+    var span = vectorArrivalSpan(e)?.$2;
+    // The drawing's arrival covers every shape's coming in.
+    var length = span == null || !e.animation.on ? null : span;
+    // A change to when a shape comes in: in the timeline's frames, and the
+    // arrival fitted round them all again, where there is one -- see
+    // CanvasController.retimeShapes.
+    void retime(VectorElement Function(VectorElement) edit) =>
+        length == null ? onChanged(edit(e)) : controller.retimeShapes(e, edit);
+    Widget swatch(Color? c) => Container(
+          width: 14,
+          height: 14,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: muted.withValues(alpha: 0.6)),
+          ),
+          child: c == null
+              ? Icon(Icons.block, size: 10, color: muted.withValues(alpha: 0.6))
+              : null,
+        );
+    Widget tap(String key, Widget child, VoidCallback? onTap) => InkWell(
+          key: ValueKey(key),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Padding(padding: const EdgeInsets.all(3), child: child),
+        );
+
+    return CanvasExpander(
+      label: "Playlist",
+      remember: "vectorPlaylist",
+      trailing: "${groups.length} shape${groups.length == 1 ? "" : "s"}",
+      children: [
+        // Every shape after the one before, a little overlapping: one
+        // press, rather than a cue on every row.
+        if (groups.length > 1)
+          CanvasControlGroup(
+            label: "Stagger",
+            hideCaption: true,
+            rule: false,
+            children: [
+              CanvasIconButton(
+                key: const ValueKey("vectorStagger"),
+                icon: Icons.stacked_line_chart,
+                tooltip: "Stagger",
+                onPressed: () => _stagger(e),
+              ),
+            ],
+          ),
+        ReorderableListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          buildDefaultDragHandles: false,
+          onReorder: (from, to) {
+            if (to > from) to -= 1;
+            controller.pickVectorShape(-1);
+            onChanged(withGroupMoved(e, from, to));
+          },
+          children: [
+            for (var (i, d) in groups.indexed)
+              Container(
+                key: ValueKey("vectorPlaylist-$i"),
+                color: starts[i] == picked
+                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                    : null,
+                child: InkWell(
+                  onTap: () => controller.pickVectorShape(starts[i]),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(children: [
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: Semantics(
+                          label: "Drag to move",
+                          child: Icon(Icons.drag_indicator,
+                              size: 16, color: muted),
+                        ),
+                      ),
+                      SizedBox(
+                          width: 22,
+                          child: Text("${i + 1}",
+                              style: theme.textTheme.bodySmall)),
+                      swatch(d.style.fill),
+                      swatch(d.style.stroke),
+                      const Spacer(),
+                      // When it comes in: the first comes in as the
+                      // drawing's arrival starts, and has no cue.
+                      if (i == 0)
+                        Text("First",
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: muted))
+                      else ...[
+                        tap(
+                            "vectorCue-$i",
+                            Text(d.style.cue.label,
+                                style: theme.textTheme.bodySmall),
+                            () => retime(
+                                (b) => withCue(b, i, cue: d.style.cue.next))),
+                        if (d.style.cue == VectorCue.gap) ...[
+                          tap(
+                              "vectorGapLess-$i",
+                              Icon(Icons.remove, size: 14, color: muted),
+                              // Below nought it overlaps the one before.
+                              () => retime((b) => withCue(b, i,
+                                  gap: b.shapes![starts[i]].cueGap - 1))),
+                          Text("${d.style.cueGap}f",
+                              key: ValueKey("vectorGap-$i"),
+                              style: theme.textTheme.bodySmall),
+                          tap(
+                              "vectorGapMore-$i",
+                              Icon(Icons.add, size: 14, color: muted),
+                              () => retime((b) => withCue(b, i,
+                                  gap: b.shapes![starts[i]].cueGap + 1))),
+                        ],
+                      ],
+                      tap(
+                          "vectorUp-$i",
+                          Icon(Icons.arrow_upward, size: 14, color: muted),
+                          i == 0
+                              ? null
+                              : () => onChanged(withGroupMoved(e, i, i - 1))),
+                      tap(
+                          "vectorDown-$i",
+                          Icon(Icons.arrow_downward, size: 14, color: muted),
+                          i == groups.length - 1
+                              ? null
+                              : () => onChanged(withGroupMoved(e, i, i + 1))),
+                    ]),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        CanvasHint([
+          "Back to front: the first is drawn underneath. Drag a shape, or "
+              "use its arrows, to move it; click one to pick it.",
+          "With an animation set below, each shape comes in as it says -- "
+              "with the one before, after it, or a number of frames after "
+              "it. Left with the one before, they all come in together. "
+              "Each shape has a lane on the timeline: drag its bar, or either "
+              "end, to set when it comes in and how long it takes.",
+          if (length != null)
+            "All of them come in over the drawing's arrival, $length frames: "
+                "drag either of its keyframes and every shape's timing "
+                "stretches with it.",
+        ].join(" ")),
+      ],
+    );
+  }
 }
 
 /// _toolSettings is the settings of the tool in hand, for the row under
@@ -424,6 +639,103 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
       ];
     case VectorTool.pencil:
       return [_brushPicker(controller)];
+    // The shapes: which to draw, its own settings, and its colours.
+    case VectorTool.shapes:
+      var kind = controller.vectorShapeKind;
+      return [
+        for (var (k, icon) in const [
+          (VectorShapeKind.box, Icons.crop_square),
+          (VectorShapeKind.roundedBox, Icons.check_box_outline_blank),
+          (VectorShapeKind.circle, Icons.circle_outlined),
+          (VectorShapeKind.oval, Icons.egg_outlined),
+          (VectorShapeKind.polygon, Icons.hexagon_outlined),
+          (VectorShapeKind.star, Icons.star_outline),
+          (VectorShapeKind.line, Icons.horizontal_rule),
+          (VectorShapeKind.arrow, Icons.arrow_right_alt),
+          (VectorShapeKind.check, Icons.check),
+          (VectorShapeKind.cross, Icons.close),
+          (VectorShapeKind.plus, Icons.add),
+          (VectorShapeKind.heart, Icons.favorite_border),
+        ])
+          CanvasIconButton(
+            key: ValueKey("vectorShape-${k.name}"),
+            icon: icon,
+            tooltip: k.label,
+            active: kind == k,
+            onPressed: () => controller.vectorShapeKind = k,
+          ),
+        if (kind == VectorShapeKind.polygon || kind == VectorShapeKind.star)
+          CanvasNumberField(
+            key: const ValueKey("vectorShapeSides"),
+            label: kind == VectorShapeKind.star ? "Points" : "Sides",
+            value: controller.vectorShapeSides.toDouble(),
+            min: 3,
+            max: 40,
+            decimals: 0,
+            width: 52,
+            onChanged: (v) => controller.vectorShapeSides = v.round(),
+          ),
+        if (kind == VectorShapeKind.star)
+          CanvasSlider(
+            key: const ValueKey("vectorStarInner"),
+            label: "Depth",
+            value: 1 - controller.vectorStarInner,
+            min: 0,
+            max: 0.95,
+            width: 80,
+            onChanged: (v) => controller.vectorStarInner = 1 - v,
+          ),
+        if (kind == VectorShapeKind.roundedBox)
+          CanvasSlider(
+            key: const ValueKey("vectorShapeCorner"),
+            label: "Corners",
+            value: controller.vectorShapeCorner,
+            max: 0.5,
+            width: 80,
+            onChanged: (v) => controller.vectorShapeCorner = v,
+          ),
+        if (!kind.lined) ...[
+          CanvasToggle(
+            key: const ValueKey("vectorShapeFillOn"),
+            label: "Fill",
+            value: controller.vectorShapeFill != null,
+            onChanged: (on) => controller.vectorShapeFill =
+                on ? const Color(0xFF8AB4F8) : null,
+          ),
+          if (controller.vectorShapeFill case var fill?)
+            CanvasColorButton(
+              key: const ValueKey("vectorShapeFill"),
+              label: "Fill",
+              color: fill,
+              onChanged: (c) => controller.vectorShapeFill = c,
+            ),
+          CanvasToggle(
+            key: const ValueKey("vectorShapeLineOn"),
+            label: "Line",
+            value: controller.vectorShapeLine != null,
+            onChanged: (on) => controller.vectorShapeLine =
+                on ? const Color(0xFF202124) : null,
+          ),
+        ],
+        if (controller.vectorShapeLine != null || kind.lined) ...[
+          CanvasColorButton(
+            key: const ValueKey("vectorShapeLine"),
+            label: "Line",
+            color: controller.vectorShapeLine ?? const Color(0xFF202124),
+            onChanged: (c) => controller.vectorShapeLine = c,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("vectorShapeWidth"),
+            label: "Width",
+            value: controller.vectorShapeWidth,
+            min: 0.5,
+            max: 100,
+            decimals: 1,
+            width: 52,
+            onChanged: (v) => controller.vectorShapeWidth = v,
+          ),
+        ],
+      ];
     // The eraser: rubbing out, or taking out whole lines; how big, how soft,
     // and what it rubs out.
     case VectorTool.eraser:
@@ -856,6 +1168,7 @@ String _toolKey(VectorTool tool) => switch (tool) {
       VectorTool.corner => "C",
       VectorTool.pencil => "N",
       VectorTool.eraser => "E",
+      VectorTool.shapes => "R",
     };
 
 /// _toolHint is how [tool] is used, said where the reader is looking.
@@ -901,6 +1214,11 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "Shift and a click -- then line them up: to the left, middle or "
           "right of the box round them, its top, middle or bottom, or "
           "spread out with even gaps across or down.",
+      VectorTool.shapes => "Pick a shape and drag it out where you want it, "
+          "the size you want it. Shift keeps a box square and a line to "
+          "steps of forty-five degrees; Option draws out from the middle. A "
+          "click puts one down at a standard size. Every shape is points "
+          "and handles, to edit like anything else.",
       VectorTool.eraser => "Rub out what the eraser goes over -- the lines, "
           "the fills, or both -- soft-edged if you like; or set Erase to "
           "Whole lines to take out every line and shape it touches. Undo "
@@ -1158,4 +1476,104 @@ class _PenMeterState extends State<_PenMeter> {
       ),
     );
   }
+}
+
+/// _shapeAnimation is how the shape picked -- with whatever is combined into
+/// it -- comes in and loops, where not as the drawing does: "As drawing", or
+/// an arrival and curve of its own; and a loop of its own, from when it has
+/// come in. When it comes in, and for how long, stays with the playlist and
+/// its lanes. See VectorShape.arrival and VectorShape.loop.
+List<Widget> _shapeAnimation(CanvasController controller, VectorElement e,
+    int base, SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var shapes = e.shapes!;
+  var shape = shapes[base];
+  var own = shape.arrival;
+  VectorElement withShape(VectorShape s) => e
+      .copyWith(shapes: [for (var (i, t) in shapes.indexed) i == base ? s : t]);
+  void now(VectorShape s) {
+    begin();
+    write(withShape(s));
+    commit();
+  }
+
+  /// arrive gives the shape [preset] of its own; where the drawing has no
+  /// arrival on the timeline yet there is nothing to time it by, so the
+  /// drawing is given the same one -- in the same undo step.
+  void arrive(ElementAnimationPreset preset) {
+    var next = shape.copyWith(
+        arrival: (own ?? ElementAnimation(ease: e.animation.ease))
+            .copyWith(preset: preset));
+    if (vectorArrivalSpan(e) != null) return now(next);
+    begin();
+    write(withShape(next));
+    if (controller.document.elementById(e.id) case var fresh?) {
+      controller.applyElementAnimation(fresh, preset);
+    }
+    commit();
+  }
+
+  var family = own == null ? null : (own.on ? own.preset.family : null);
+  return [
+    CanvasControlGroup(
+      key: const ValueKey("vectorShapeArrival"),
+      label: "Shape arriving",
+      children: [
+        CanvasDropdown<Object?>(
+          key: const ValueKey("vectorShapeArrivalKind"),
+          label: "Kind",
+          value: own == null ? "drawing" : family,
+          width: 132,
+          options: [
+            ("drawing", "As drawing"),
+            (null, "None"),
+            for (var f in ElementAnimationFamily.values) (f, f.label),
+          ],
+          onChanged: (v) => switch (v) {
+            "drawing" => now(shape.copyWith(clearArrival: true)),
+            ElementAnimationFamily f =>
+              arrive(ElementAnimationPreset.inFamily(f).first),
+            _ => now(shape.copyWith(
+                arrival: (own ?? const ElementAnimation())
+                    .copyWith(preset: ElementAnimationPreset.none))),
+          },
+        ),
+        if (own != null && own.on) ...[
+          if (!oneOfAKind(own.preset))
+            CanvasDropdown<ElementAnimationPreset>(
+              key: const ValueKey("vectorShapeArrivalPreset"),
+              label: "Which",
+              value: own.preset,
+              width: 168,
+              options: [
+                for (var p
+                    in ElementAnimationPreset.inFamily(own.preset.family))
+                  (p, p.label),
+              ],
+              onChanged: (p) => arrive(p),
+            ),
+          easeDropdown<ChartEase>(
+            key: const ValueKey("vectorShapeArrivalEase"),
+            value: own.ease,
+            values: ChartEase.values,
+            name: (c) => c.label,
+            curve: (c) => c.apply,
+            onChanged: (c) =>
+                now(shape.copyWith(arrival: own.copyWith(ease: c))),
+          ),
+          ...motionControls(own, (a) => now(shape.copyWith(arrival: a)), (a) {
+            begin();
+            write(withShape(shape.copyWith(arrival: a)));
+          }, commit, keys: "vectorShape"),
+        ],
+        if (own != null && own.on && !e.animation.on)
+          const CanvasHint(
+              "The drawing has no arrival on the timeline, so there is "
+              "nothing to time this shape's by: it is there from the start."),
+      ],
+    ),
+    loopGroup(controller, shape.loop, (l) => now(shape.copyWith(loop: l)), (l) {
+      begin();
+      write(withShape(shape.copyWith(loop: l)));
+    }, commit, keys: "vectorShape", label: "Shape looping"),
+  ];
 }

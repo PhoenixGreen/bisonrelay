@@ -26,6 +26,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -144,6 +145,11 @@ enum _DragMode {
 
   /// vectorRub is the eraser rubbing out what it goes over.
   vectorRub,
+
+  /// vectorShapeDraw is a shape being dragged out with the shapes tool;
+  /// vectorShapeFit the one picked being moved or resized by its box.
+  vectorShapeDraw,
+  vectorShapeFit,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -2154,6 +2160,21 @@ class CanvasStageState extends State<CanvasStage> {
       case VectorTool.eraser:
         _pressEraser(e, doc, reach);
         return true;
+      case VectorTool.shapes:
+        _vectorBefore = e;
+        _shapeFrom = doc;
+        controller.beginInteraction();
+        // On the shape just drawn -- or picked -- or on one of the handles
+        // of its box: moved or resized, not another drawn.
+        if (_shapeGrabbed(e, doc) case (var group, var box, var handle)?) {
+          _shapeGroup = group;
+          _shapeBox = box;
+          _shapeHandle = handle;
+          _mode = _DragMode.vectorShapeFit;
+          return true;
+        }
+        _mode = _DragMode.vectorShapeDraw;
+        return true;
       case VectorTool.pencil when controller.vectorQuickFill:
         _pressQuickFill(e, doc, reach);
         return true;
@@ -2336,6 +2357,104 @@ class CanvasStageState extends State<CanvasStage> {
             erase: true),
         rubOut: true);
     _mode = _DragMode.vectorRub;
+  }
+
+  /// _shapeFrom is where the shape being drawn was started, on the canvas.
+  Offset _shapeFrom = Offset.zero;
+
+  /// _shapeGroup, _shapeBox and _shapeHandle are the shape the shapes tool
+  /// is moving or resizing: its group, its box when the drag began (in the
+  /// drawing's units), and the handle held -- see boxHandles -- or null for
+  /// the whole of it, being moved.
+  int _shapeGroup = -1;
+  Rect _shapeBox = Rect.zero;
+  int? _shapeHandle;
+
+  /// _shapeGrabbed is the shape picked -- what the shapes tool last drew, or
+  /// whatever was picked -- where [doc] is on it or on a handle of its box:
+  /// its group, its box, and the handle, or null for inside it. Null where
+  /// the press is elsewhere, and draws a new shape.
+  (int, Rect, int?)? _shapeGrabbed(VectorElement e, Offset doc) {
+    var picked = controller.vectorShapeMade;
+    if (picked < 0) return null;
+    var group = groupStarts(e).indexOf(groupOf(e, picked));
+    var box = groupExtent(e, group);
+    if (group < 0 || box == null) return null;
+    var space = VectorSpace(e);
+    for (var (i, h) in boxHandles(box).indexed) {
+      if ((space.toCanvas(h) - doc).distance * _scale <= 7) {
+        return (group, box, i);
+      }
+    }
+    if (box.contains(space.toDrawing(doc))) return (group, box, null);
+    return null;
+  }
+
+  /// _fitShape moves or resizes the shape held to follow [doc]: by its
+  /// handle, the opposite side staying put -- Shift keeps a corner's
+  /// proportions -- or, held inside, the whole of it.
+  void _fitShape(Offset doc) {
+    var before = _vectorBefore;
+    if (before == null) return;
+    var space = VectorSpace(before);
+    var at = space.toDrawing(doc);
+    var box = _shapeBox;
+    var next = _shapeHandle == null
+        ? box.shift(at - space.toDrawing(_shapeFrom))
+        : boxResized(box, _shapeHandle!, at,
+            even: _shiftHeld, least: space.unitsPer);
+    controller.replaceElement(withGroupFitted(before, _shapeGroup, box, next),
+        transient: true);
+  }
+
+  /// _drawShape draws the shapes tool's shape from where the drag began to
+  /// [doc]: in the box between them, or from one to the other for a line or
+  /// an arrow. Shift keeps a box square and a line to steps of forty-five
+  /// degrees; Alt draws out from the middle. [clicked] draws one of a good
+  /// size round the click, for a click that never became a drag.
+  void _drawShape(Offset doc, {bool clicked = false}) {
+    var before = _vectorBefore;
+    if (before == null) return;
+    var kind = controller.vectorShapeKind;
+    var shift = _shiftHeld, alt = HardwareKeyboard.instance.isAltPressed;
+    var a = _shapeFrom, b = doc;
+    if (clicked) {
+      var half = 40 / _scale;
+      a = _shapeFrom - Offset(half, kind.fromEnds ? 0 : half);
+      b = _shapeFrom + Offset(half, kind.fromEnds ? 0 : half);
+    } else if (kind.fromEnds) {
+      var d = b - a;
+      if (shift && d.distance > 0) {
+        const step = math.pi / 4;
+        var angle = (math.atan2(d.dy, d.dx) / step).round() * step;
+        d = Offset(math.cos(angle), math.sin(angle)) * d.distance;
+      }
+      b = a + d;
+      if (alt) a = a - d;
+    } else {
+      var d = b - a;
+      if (kind.even || shift) {
+        var m = math.max(d.dx.abs(), d.dy.abs());
+        d = Offset(d.dx < 0 ? -m : m, d.dy < 0 ? -m : m);
+      }
+      b = a + d;
+      if (alt) a = a - d;
+    }
+    var space = VectorSpace(before);
+    var from = space.toDrawing(a), to = space.toDrawing(b);
+    var box = Rect.fromPoints(from, to);
+    var shape = shapeOf(kind, box,
+        from: from,
+        to: to,
+        sides: controller.vectorShapeSides,
+        inner: controller.vectorStarInner,
+        corner: controller.vectorShapeCorner * math.min(box.width, box.height),
+        fill: controller.vectorShapeFill,
+        stroke: controller.vectorShapeLine,
+        strokeWidth: controller.vectorShapeWidth / _scale * space.unitsPer);
+    controller.replaceElement(
+        before.copyWith(shapes: [...?before.shapes, shape]),
+        transient: true);
   }
 
   /// _pressQuickFill fills the area the lines close round the click with
@@ -2545,6 +2664,16 @@ class CanvasStageState extends State<CanvasStage> {
     }
     if (on == null) return false;
     _mode = _DragMode.none;
+    // On a corner already rounded -- one made before, or a rounded box's --
+    // that corner is taken up to be reshaped, not rounded again.
+    if (controller.adoptCorner(on)) {
+      if (controller.vectorCornerPoint case var was?) {
+        controller.beginInteraction();
+        _cornerFrom = VectorSpace(e).toCanvas(was);
+        _mode = _DragMode.vectorCorner;
+      }
+      return true;
+    }
     var node = vectorNodeAt(e, on);
     if (node == null) return true;
     controller.beginInteraction();
@@ -3534,6 +3663,10 @@ class CanvasStageState extends State<CanvasStage> {
         _applyCorner(doc);
       case _DragMode.vectorPencil:
         _applyPencil(doc);
+      case _DragMode.vectorShapeDraw:
+        _drawShape(doc);
+      case _DragMode.vectorShapeFit:
+        _fitShape(doc);
       case _DragMode.vectorRub:
         if (_onPage(doc)) _carryStroke(doc);
       case _DragMode.vectorErase:
@@ -3968,7 +4101,17 @@ class CanvasStageState extends State<CanvasStage> {
         _mode == _DragMode.vectorCorner ||
         _mode == _DragMode.vectorPencil ||
         _mode == _DragMode.vectorErase ||
-        _mode == _DragMode.vectorRub) {
+        _mode == _DragMode.vectorRub ||
+        _mode == _DragMode.vectorShapeDraw ||
+        _mode == _DragMode.vectorShapeFit) {
+      if (_mode == _DragMode.vectorShapeDraw) {
+        // A click, not a drag: a shape of a good size, centred on it.
+        if (!_travelled) _drawShape(_shapeFrom, clicked: true);
+        if (_vectorBefore?.shapes case var was?) {
+          controller.vectorShapeMade = was.length;
+          controller.pickVectorShape(was.length);
+        }
+      }
       _stroke = null;
       _strokeOn = {};
       if (_mode == _DragMode.vectorScale && _scaleLetsGo && !_travelled) {
@@ -4231,6 +4374,10 @@ class CanvasStageState extends State<CanvasStage> {
         controller.vectorTool = controller.vectorTool == VectorTool.scale
             ? VectorTool.select
             : VectorTool.scale;
+      case LogicalKeyboardKey.keyR when controller.editingVector != null:
+        controller.vectorTool = controller.vectorTool == VectorTool.shapes
+            ? VectorTool.select
+            : VectorTool.shapes;
       case LogicalKeyboardKey.keyE when controller.editingVector != null:
         controller.vectorTool = controller.vectorTool == VectorTool.eraser
             ? VectorTool.select
@@ -4337,6 +4484,7 @@ class CanvasStageState extends State<CanvasStage> {
                         document: document,
                         frame: controller.frame,
                         previewAt: controller.previewAt,
+                        previewing: controller.previewing,
                         scale: _scale,
                         origin: _origin,
                         images: controller.images,
@@ -4365,10 +4513,20 @@ class CanvasStageState extends State<CanvasStage> {
                               // And while the line's thickness is being
                               // dragged: it is the line that is watched.
                               bare: _mode == _DragMode.vectorScale ||
+                                  controller.vectorTool == VectorTool.shapes ||
                                   controller.vectorTool == VectorTool.tint ||
                                   controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),
+                              // The shapes tool's box round the shape picked.
+                              shapeBox:
+                                  controller.vectorTool == VectorTool.shapes &&
+                                          controller.vectorShapeMade >= 0
+                                      ? groupExtent(
+                                          v,
+                                          groupStarts(v).indexOf(groupOf(
+                                              v, controller.vectorShapeMade)))
+                                      : null,
                               // The pencil's mirror lines, while it is out.
                               mirror: controller.vectorTool == VectorTool.pencil
                                   ? (

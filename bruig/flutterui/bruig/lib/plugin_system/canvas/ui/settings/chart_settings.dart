@@ -951,6 +951,11 @@ List<Widget> chartSettings(
           // The same group every other element's animation section carries:
           // the easing belongs to the keyframe, and a chart's keyframes are
           // keyframes like any other.
+          if (e.animation.on || e.animation.closes)
+            CanvasControlGroup(
+                label: "Preview",
+                hideCaption: true,
+                children: [previewButton(controller, e)]),
           keyframeEasingGroup(controller, e, begin, commit),
           const CanvasHint(
               "Choosing one draws the chart on over two seconds and puts a "
@@ -1063,12 +1068,12 @@ List<Widget> chartSettings(
                 },
                 onCommit: commit,
               ),
-              CanvasDropdown<ChartEase>(
+              easeDropdown<ChartEase>(
                 key: const ValueKey("chartAnimationEase"),
-                label: "Curve",
                 value: e.animation.ease,
-                width: 118,
-                options: [for (var c in ChartEase.values) (c, c.label)],
+                values: ChartEase.values,
+                name: (c) => c.label,
+                curve: (c) => c.apply,
                 onChanged: (v) =>
                     now(e.copyWith(animation: e.animation.copyWith(ease: v))),
               ),

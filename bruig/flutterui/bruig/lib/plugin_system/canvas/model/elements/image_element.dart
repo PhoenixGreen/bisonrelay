@@ -768,7 +768,7 @@ class ImageElement extends CanvasElement {
         if (outline.on) "outline": outline.toJson(),
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (blend != OverlayBlend.none) "blend": blend.name,
-        if (animation.on || animation.closes) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>

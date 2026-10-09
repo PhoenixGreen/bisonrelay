@@ -23,9 +23,12 @@ import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
@@ -389,6 +392,19 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void notifyListeners() {
+    // A drawing is edited only while it is there and is the one thing
+    // selected. Whatever took that away -- an undo, a delete, a click on
+    // the background, a selection pruned -- ends the editing, rather than
+    // leaving its points drawn beside another element's settings.
+    var editing = _vectorEditing;
+    if (editing != null &&
+        (_backgroundSelected ||
+            _selection.length != 1 ||
+            _selection.first != editing ||
+            _document.elementById(editing) is! VectorElement)) {
+      _vectorEditing = null;
+      _resetVectorEditing();
+    }
     if (!_viewOnly) _revision++;
     super.notifyListeners();
   }
@@ -952,9 +968,12 @@ class CanvasController extends ChangeNotifier {
   }
 
   void deleteSelected() {
-    // While a drawing is being edited, Delete takes out the point picked --
-    // not the drawing.
-    if (deleteVectorPoint()) return;
+    // While a drawing is being edited, Delete takes out the points picked,
+    // or the shape picked -- and with neither, nothing: never the drawing.
+    if (editingVector != null) {
+      deleteVectorPoint();
+      return;
+    }
     if (_selection.isEmpty) return;
     var next = _document;
     for (var id in _selection) {
@@ -1491,6 +1510,17 @@ class CanvasController extends ChangeNotifier {
     _vectorPenFrom = tool == VectorTool.pen && _vectorPicks.length == 1
         ? _vectorPicks.first
         : null;
+    // The corner tool taken out with a rounded corner's point picked takes
+    // that corner up, to be reshaped.
+    if (tool == VectorTool.corner && _vectorPicks.length <= 2) {
+      if (_vectorPicks.firstOrNull case var p?) {
+        if (editingVector case var e? when cornerAt(e, p) != null) {
+          _vectorTool = tool;
+          adoptCorner(p);
+          return;
+        }
+      }
+    }
     // The Boolean tool taken out with a shape picked starts from that one.
     var e = editingVector;
     _vectorCombining = tool == VectorTool.boolean &&
@@ -1586,6 +1616,25 @@ class CanvasController extends ChangeNotifier {
     if (!vectorCornerActive) return null;
     var c = _corner!;
     return vectorNodeAt(c.before, c.at)?.point;
+  }
+
+  /// adoptCorner takes up the rounded corner the point at [pick] is one end
+  /// of -- one made before, or a rounded box's -- as the corner being made,
+  /// so its size and a drag reshape it: the size set to its own. Answers
+  /// whether the point was one.
+  bool adoptCorner(VectorPick pick) {
+    var e = editingVector;
+    if (e == null) return false;
+    var found = cornerAt(e, pick);
+    if (found == null) return false;
+    var (before, at, reach, picks) = found;
+    _corner = (before: before, at: at, after: e, picks: picks);
+    _vectorPicks = picks;
+    _vectorShape = pick.shape;
+    _vectorCornerRound = true;
+    _vectorCornerSize = (reach / VectorSpace(e).unitsPer).roundToDouble();
+    notifyListeners();
+    return true;
   }
 
   /// roundCorner rounds -- or cuts -- the corner at [at] as the corner
@@ -1713,6 +1762,108 @@ class CanvasController extends ChangeNotifier {
   set vectorPencilPoints(bool on) {
     if (_vectorPencilPoints == on) return;
     _vectorPencilPoints = on;
+    notifyListeners();
+  }
+
+  /// vectorLanes is how much of a drawing's shapes the timeline shows
+  /// under the drawing's own keyframes: none of them, the shape picked, or
+  /// every one. See VectorShapeLanes.
+  VectorLanes get vectorLanes => _vectorLanes;
+  VectorLanes _vectorLanes = VectorLanes.none;
+  set vectorLanes(VectorLanes l) {
+    if (_vectorLanes == l) return;
+    _vectorLanes = l;
+    notifyListeners();
+  }
+
+  /// retimeShapes changes when [e]'s shapes come in by [edit]: the shapes'
+  /// timing first written out in the timeline's frames, as it plays now --
+  /// see withTimingBaked -- so the change is in frames that can be seen; and
+  /// the drawing's arrival then fitted round all of them again, the timeline
+  /// lengthened where it has to be to hold it. [transient] while a drag is
+  /// still making it.
+  void retimeShapes(VectorElement e, VectorElement Function(VectorElement) edit,
+      {bool transient = false}) {
+    var next = withSpanFitted(edit(withTimingBaked(e)));
+    var document = _document;
+    if (vectorArrivalSpan(next) case (var at, var span)
+        when at + span > document.frames - 1) {
+      document = document.copyWith(frames: at + span + 1);
+    }
+    apply(document.withElement(next), transient: transient);
+  }
+
+  /// vectorShapeMade is the shape the shapes tool last drew, while it is
+  /// still the one picked: the one its box moves and resizes. -1 with none.
+  int get vectorShapeMade =>
+      _vectorShapeMade >= 0 && _vectorShapeMade == _vectorShape
+          ? _vectorShapeMade
+          : -1;
+  int _vectorShapeMade = -1;
+  set vectorShapeMade(int i) => _vectorShapeMade = i;
+
+  /// vectorShapeKind is the shape the shapes tool draws; vectorShapeSides a
+  /// polygon's sides and a star's points; vectorStarInner how far in a
+  /// star's inner points sit, as a share of its outer ones; and
+  /// vectorShapeCorner a rounded box's corners, as a share of its shorter
+  /// side.
+  VectorShapeKind get vectorShapeKind => _vectorShapeKind;
+  VectorShapeKind _vectorShapeKind = VectorShapeKind.box;
+  set vectorShapeKind(VectorShapeKind k) {
+    if (_vectorShapeKind == k) return;
+    _vectorShapeKind = k;
+    notifyListeners();
+  }
+
+  int get vectorShapeSides => _vectorShapeSides;
+  int _vectorShapeSides = 5;
+  set vectorShapeSides(int n) {
+    if (_vectorShapeSides == n) return;
+    _vectorShapeSides = n;
+    notifyListeners();
+  }
+
+  double get vectorStarInner => _vectorStarInner;
+  double _vectorStarInner = 0.45;
+  set vectorStarInner(double v) {
+    if (_vectorStarInner == v) return;
+    _vectorStarInner = v;
+    notifyListeners();
+  }
+
+  double get vectorShapeCorner => _vectorShapeCorner;
+  double _vectorShapeCorner = 0.2;
+  set vectorShapeCorner(double v) {
+    if (_vectorShapeCorner == v) return;
+    _vectorShapeCorner = v;
+    notifyListeners();
+  }
+
+  /// vectorShapeFill and vectorShapeLine are the colours a new shape is
+  /// drawn in, or null for none; vectorShapeWidth its line's width, in
+  /// pixels on screen as it is drawn. A line, an arrow or a mark is always
+  /// a line, whatever the fill is set to.
+  Color? get vectorShapeFill => _vectorShapeFill;
+  Color? _vectorShapeFill = const Color(0xFF8AB4F8);
+  set vectorShapeFill(Color? c) {
+    if (_vectorShapeFill == c) return;
+    _vectorShapeFill = c;
+    notifyListeners();
+  }
+
+  Color? get vectorShapeLine => _vectorShapeLine;
+  Color? _vectorShapeLine = const Color(0xFF202124);
+  set vectorShapeLine(Color? c) {
+    if (_vectorShapeLine == c) return;
+    _vectorShapeLine = c;
+    notifyListeners();
+  }
+
+  double get vectorShapeWidth => _vectorShapeWidth;
+  double _vectorShapeWidth = 3;
+  set vectorShapeWidth(double v) {
+    if (_vectorShapeWidth == v) return;
+    _vectorShapeWidth = v;
     notifyListeners();
   }
 
@@ -1963,6 +2114,12 @@ class CanvasController extends ChangeNotifier {
     _fitEditedVector();
     _vectorEditing = id;
     _resetVectorEditing();
+    // Edited is selected: the drawing being edited is the one thing picked,
+    // so the settings beside it are its own. See notifyListeners.
+    if (id != null) {
+      _selection = {id};
+      _backgroundSelected = false;
+    }
     notifyListeners();
   }
 
@@ -1972,6 +2129,7 @@ class CanvasController extends ChangeNotifier {
     _vectorTool = VectorTool.select;
     _vectorPenFrom = null;
     _vectorCombining = const {};
+    _vectorShapeMade = -1;
   }
 
   void pickVectorShape(int shape) {
@@ -2011,7 +2169,19 @@ class CanvasController extends ChangeNotifier {
   /// edited, returning whether there were any to take.
   bool deleteVectorPoint() {
     var e = editingVector, picks = _vectorPicks;
-    if (e == null || picks.isEmpty) return false;
+    if (e == null) return false;
+    // A shape picked whole, with no points: every point of it.
+    if (picks.isEmpty && _vectorShape >= 0) {
+      var shape = e.shapes?.elementAtOrNull(_vectorShape);
+      if (shape != null) {
+        picks = {
+          for (var (p, run) in shape.paths.indexed)
+            for (var n = 0; n < run.nodes.length; n++)
+              VectorPick(_vectorShape, p, n),
+        };
+      }
+    }
+    if (picks.isEmpty) return false;
     var next = withoutPoints(e, picks);
     _vectorPicks = const {};
     _vectorPenFrom = null;
@@ -2916,6 +3086,7 @@ class CanvasController extends ChangeNotifier {
   void pause() {
     _playback?.cancel();
     _playback = null;
+    _previewing = null;
     // A run of every scene, stopped, is the scene it stopped on at the frame
     // it stopped at -- which is where the playhead already is. Holding on to
     // the run's own frame kept the canvas drawing it while the playhead was
@@ -2957,6 +3128,16 @@ class CanvasController extends ChangeNotifier {
   /// marker on frame 30 means "having reached 30, stop" -- which is what
   /// putting a marker on a frame looks like it should mean.
   void _step() {
+    // Previewing one element: it alone moves on, and the playhead stays.
+    if (_previewing case var one?) {
+      if (one.frame + 1 > _previewingEnd) {
+        pause();
+        return;
+      }
+      _previewing = (id: one.id, frame: one.frame + 1);
+      notifyListeners();
+      return;
+    }
     // Watching a transition: the playhead is running through the whole
     // document rather than through the scene, and it stops at the end of the
     // stretch that was asked for rather than looping.
@@ -4456,6 +4637,16 @@ class CanvasController extends ChangeNotifier {
         _ => element,
       };
 
+  /// setElementLoop gives [element] [loop] -- [transient] while a drag on
+  /// its bar is still making it. See ElementLoop.
+  void setElementLoop(CanvasElement element, ElementLoop loop,
+      {bool transient = false}) {
+    if (!animates(element)) return;
+    var was = elementAnimationOf(element);
+    replaceElement(_withElementAnimation(element, was.copyWith(loop: loop)),
+        transient: transient);
+  }
+
   /// applyElementAnimation puts an arrival on a shape or a picture and lays
   /// the pair of keyframes that runs it.
   ///
@@ -4539,6 +4730,97 @@ class CanvasController extends ChangeNotifier {
     }
     if (from == null || to == null || to <= from) return (from, null);
     return (from, to - from);
+  }
+
+  /// setElementArrivalTiming moves [element]'s arrival on the timeline: to
+  /// start [delay] frames into the scene, and to take [length] frames --
+  /// either or both, the other left where it is. The scene grows to hold it.
+  /// Part of whatever change is under way: the caller begins and ends it.
+  void setElementArrivalTiming(CanvasElement element,
+      {int? delay, int? length}) {
+    var (at, span) = elementAnimationSpan(element);
+    if (at == null || span == null) return;
+    var from = math.max(0, delay ?? at);
+    var took = math.max(1, length ?? span);
+    if (from == at && took == span) return;
+    var track =
+        _without(element.track, KeyframeChannel.reveal) ?? ElementTrack.empty;
+    track = _pinning(_pinning(track, from, KeyframeChannel.reveal, 0),
+        from + took, KeyframeChannel.reveal, 1);
+    var document = _document;
+    if (from + took > document.frames - 1) {
+      document = document.copyWith(frames: from + took + 1);
+    }
+    var next = element.withBase(track: track);
+    // And what the next one is laid down with, so that trying another
+    // preset keeps the length that was typed.
+    if (length != null) {
+      next = _withElementAnimation(
+          next, elementAnimationOf(element).copyWith(length: took));
+    }
+    apply(document.withElement(next), transient: true);
+  }
+
+  /// previewSpanOf is the stretch of the scene a Preview of [element] plays:
+  /// its arrival, its way out, and its loops -- its own and, for a drawing,
+  /// its shapes' -- twice round, with a moment after. Two seconds from the
+  /// start where it has none of them.
+  (int, int) previewSpanOf(CanvasElement element) {
+    var last = math.max(0, _document.frames - 1);
+    var rate = math.max(1, _document.frameRate);
+    int? start, end;
+    void take(int a, int b) {
+      start = math.min(start ?? a, a);
+      end = math.max(end ?? b, b);
+    }
+
+    var (at, span) = elementAnimationSpan(element);
+    if (at != null && span != null) take(at, at + span);
+    int? closeFrom, closeTo;
+    for (var key in element.track?.keys ?? const <Keyframe>[]) {
+      if (!key.values.containsKey(KeyframeChannel.close)) continue;
+      closeFrom = math.min(closeFrom ?? key.frame, key.frame);
+      closeTo = math.max(closeTo ?? key.frame, key.frame);
+    }
+    if (closeFrom != null && closeTo != null) take(closeFrom, closeTo);
+    var arrived = arrivalEnd(element);
+    var loops = [
+      elementAnimationOf(element).loop,
+      if (element is VectorElement)
+        for (var d in vectorDrawn(element.shapes ?? const [])) d.style.loop,
+    ];
+    for (var loop in loops) {
+      if (!loop.on) continue;
+      var (from, to) = loop.span(arrived: arrived, last: last);
+      take(from, math.min(to, from + 2 * (loop.cycle + loop.gap) - loop.gap));
+    }
+    var a = start ?? 0;
+    var b = end ?? a + rate * 2;
+    b = math.min(last, b + (rate * 0.3).round());
+    if (b <= a) b = math.min(last, a + 1);
+    return (math.min(a, last), b);
+  }
+
+  /// previewing is the one element being previewed and the frame it is at, while
+  /// a Preview plays: that element runs through its animation and everything
+  /// else stays as it is at the playhead, which does not move. See
+  /// previewElement.
+  ({String id, int frame})? get previewing => _previewing;
+  ({String id, int frame})? _previewing;
+  int _previewingEnd = 0;
+
+  /// previewElement plays [id]'s animation, and nothing else's, once. See
+  /// previewing. Anything else playing stops first; pausing stops it.
+  void previewElement(String id) {
+    var element = _document.elementById(id);
+    if (element == null) return;
+    pause();
+    stopPreview();
+    var (from, to) = previewSpanOf(element);
+    _previewing = (id: id, frame: from);
+    _previewingEnd = to;
+    _startTimer();
+    notifyListeners();
   }
 
   /// applyElementExit is the way out for a shape or a picture, on its own
