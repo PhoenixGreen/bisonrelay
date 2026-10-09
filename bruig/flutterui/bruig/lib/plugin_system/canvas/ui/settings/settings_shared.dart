@@ -276,7 +276,8 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           onChanged: (v) {
             begin();
             if (!posing) {
-              write(e.withBase(rotation: v));
+              // About its anchor, which stays where it is.
+              write(e.turnedTo(v));
               return;
             }
             var track = (e.track ?? ElementTrack.empty).seededFor(frame);
@@ -310,6 +311,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           },
           onCommit: commit,
         ),
+        anchorButtons(controller, e, write, begin, commit),
         poseDot,
         // A counter on a document of pages can be the page number, and this
         // is where it is said. Beside what the element *is* on this page
@@ -1356,17 +1358,33 @@ Widget elementAnimationSection(
   ElementAnimation animation,
   void Function(ElementAnimation) write,
   VoidCallback begin,
-  VoidCallback commit,
-) {
+  VoidCallback commit, {
+  void Function(ElementAnimationPreset)? arrive,
+  void Function(ElementAnimationPreset)? leave,
+  List<Widget> heading = const [],
+  bool timing = true,
+  bool preview = true,
+}) {
   void now(ElementAnimation next) {
     begin();
     write(next);
     commit();
   }
 
+  // Choosing an arrival or an exit lays its keyframes as well as naming it
+  // -- unless whoever is showing this says otherwise: a drawing's shape
+  // takes its own, on the drawing's keyframes.
+  var arriveWith =
+      arrive ?? (p) => controller.applyElementAnimation(element, p);
+  var leaveWith = leave ?? (p) => controller.applyElementExit(element, p);
+
   return CanvasExpander(
     label: "Animation",
     remember: "elementAnimation",
+    // Preview in the heading, where it works open or shut -- or, for a
+    // drawing, in its playlist's.
+    action:
+        preview && animation.any ? previewButton(controller, element) : null,
     trailing: animation.any
         ? [
             if (animation.on) presetName(animation.preset),
@@ -1375,16 +1393,7 @@ Widget elementAnimationSection(
           ].join(" · ")
         : null,
     children: [
-      const CanvasHint(
-          "Choosing one brings the element on over two seconds and puts a "
-          "keyframe at each end of it on the timeline. Drag those to decide "
-          "how long it takes and when it happens — the same two keyframes a "
-          "chart and a headline use, so everything on the canvas can arrive "
-          "together."),
-      if (animation.any)
-        CanvasControlGroup(label: "Preview", hideCaption: true, children: [
-          previewButton(controller, element),
-        ]),
+      ...heading,
       CanvasControlGroup(label: "Arriving", children: [
         CanvasDropdown<ElementAnimationFamily?>(
           key: const ValueKey("elementAnimationFamily"),
@@ -1396,11 +1405,9 @@ Widget elementAnimationSection(
             for (var family in ElementAnimationFamily.values)
               (family, family.label),
           ],
-          onChanged: (family) => controller.applyElementAnimation(
-              element,
-              family == null
-                  ? ElementAnimationPreset.none
-                  : ElementAnimationPreset.inFamily(family).first),
+          onChanged: (family) => arriveWith(family == null
+              ? ElementAnimationPreset.none
+              : ElementAnimationPreset.inFamily(family).first),
         ),
         if (animation.on && !oneOfAKind(animation.preset))
           CanvasDropdown<ElementAnimationPreset>(
@@ -1413,7 +1420,7 @@ Widget elementAnimationSection(
                   in ElementAnimationPreset.inFamily(animation.preset.family))
                 (preset, preset.label),
             ],
-            onChanged: (v) => controller.applyElementAnimation(element, v),
+            onChanged: arriveWith,
           ),
       ]),
       if (animation.on || animation.closes)
@@ -1428,11 +1435,9 @@ Widget elementAnimationSection(
               for (var family in ElementAnimationFamily.values)
                 (family, family.label),
             ],
-            onChanged: (family) => controller.applyElementExit(
-                element,
-                family == null
-                    ? ElementAnimationPreset.none
-                    : ElementAnimationPreset.inFamily(family).first),
+            onChanged: (family) => leaveWith(family == null
+                ? ElementAnimationPreset.none
+                : ElementAnimationPreset.inFamily(family).first),
           ),
           if (animation.closes && !oneOfAKind(animation.exit))
             CanvasDropdown<ElementAnimationPreset>(
@@ -1445,7 +1450,7 @@ Widget elementAnimationSection(
                     in ElementAnimationPreset.inFamily(animation.exit.family))
                   (preset, "${preset.label}, reversed"),
               ],
-              onChanged: (v) => controller.applyElementExit(element, v),
+              onChanged: leaveWith,
             ),
         ]),
       if (animation.directed || animation.strengthens)
@@ -1460,15 +1465,6 @@ Widget elementAnimationSection(
         begin();
         write(animation.copyWith(loop: loop));
       }, commit),
-      // A destruction is an exit, and somebody looking for one will be
-      // looking in the arrival list. Said here rather than left to be found:
-      // the exits are the arrivals played backwards, so the pieces of Build
-      // up run the other way are a thing coming apart.
-      if (animation.cuts)
-        const CanvasHint(
-            "Break apart and Build up are the same cut run in opposite "
-            "directions. Set one of them as the way *out* and the element "
-            "comes apart and leaves; set it as the way in and it assembles."),
       if (animation.cuts)
         ...effectBits(
             animation.effect,
@@ -1479,8 +1475,8 @@ Widget elementAnimationSection(
           begin();
           write(animation.copyWith(effect: next));
         }),
-      keyframeEasingGroup(controller, element, begin, commit),
-      if (animation.on || animation.closes)
+      if (timing) keyframeEasingGroup(controller, element, begin, commit),
+      if (timing && (animation.on || animation.closes))
         CanvasControlGroup(label: "Timing", children: [
           // Where the arrival is on the timeline, typed: the same two
           // keyframes dragging moves. Before there is one, how long the
@@ -1561,13 +1557,56 @@ Widget elementAnimationSection(
               },
               onCommit: commit,
             ),
-          const CanvasHint(
-              "In frames: Delay is how far into the scene the arrival "
-              "starts, Length how long it takes -- the same two keyframes "
-              "you can drag on the timeline."),
         ]),
     ],
   );
+}
+
+/// anchorButtons are an element's anchor point: shown on the stage, where
+/// it can be dragged, or hidden and so left where it is; and, while it is
+/// shown, locked there, or put back in the middle. See ElementBase.anchorX.
+Widget anchorButtons(CanvasController controller, CanvasElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var shown = controller.anchorShown(e.id);
+  var locked = e.base.anchorLocked;
+  // One cluster: three buttons about one thing, kept together on the line.
+  return Row(
+      key: const ValueKey("elementAnchor"),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CanvasIconButton(
+          key: const ValueKey("elementAnchorShow"),
+          icon: shown ? Icons.gps_fixed : Icons.gps_not_fixed,
+          tooltip: shown ? "Hide anchor" : "Show anchor",
+          active: shown,
+          onPressed: () => controller.showAnchor(e.id, !shown),
+        ),
+        if (shown) ...[
+          CanvasIconButton(
+            key: const ValueKey("elementAnchorLock"),
+            icon: locked ? Icons.lock_outline : Icons.lock_open,
+            tooltip: locked ? "Unlock anchor" : "Lock anchor",
+            active: locked,
+            onPressed: () {
+              begin();
+              write(e.withBase(anchorLocked: !locked));
+              commit();
+            },
+          ),
+          CanvasIconButton(
+            key: const ValueKey("elementAnchorReset"),
+            icon: Icons.center_focus_strong_outlined,
+            tooltip: "Centre anchor",
+            onPressed: e.anchorCentred
+                ? null
+                : () {
+                    begin();
+                    write(e.withBase(anchorX: 0.5, anchorY: 0.5));
+                    commit();
+                  },
+          ),
+        ],
+      ]);
 }
 
 /// presetName is what an arrival is called where it is summed up: a slide
@@ -1843,14 +1882,6 @@ Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
               commit();
             },
     ),
-    CanvasHint(here == null
-        ? "How this element travels out of a keyframe, set on the keyframe "
-            "itself. Put the playhead on one of its ${keys.length} marks on "
-            "the timeline and this is about that one."
-        : "How this element travels from the keyframe on frame "
-            "${controller.frame} to the next one. Hold does not travel: it "
-            "stays exactly as it is and changes at the next keyframe, which "
-            "is what a cut is."),
   ]);
 }
 

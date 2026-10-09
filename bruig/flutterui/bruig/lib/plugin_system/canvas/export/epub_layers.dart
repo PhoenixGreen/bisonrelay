@@ -118,7 +118,7 @@ class EpubLayer {
   /// visible is whether it is showing when the page opens.
   final bool visible;
 
-  /// originX and originY are the element's centre, in the page's pixels:
+  /// originX and originY are the element's anchor, in the page's pixels:
   /// what its pose turns and grows it about.
   final double originX;
   final double originY;
@@ -592,8 +592,10 @@ class _LayerMaker {
     return EpubLayer(
       id: e.id,
       visible: e.visible,
-      originX: box.center.dx * pixels,
-      originY: box.center.dy * pixels,
+      // What a keyframe turns and grows it about: its anchor, where it is
+      // on the page. See ElementBase.anchorX.
+      originX: e.turnedAboutCentre(e.anchorIn(box), box.center).dx * pixels,
+      originY: e.turnedAboutCentre(e.anchorIn(box), box.center).dy * pixels,
       pose: _poseKeys(),
       parts: parts,
       clip: clip,

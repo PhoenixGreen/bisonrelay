@@ -88,6 +88,17 @@ class StagePainter extends CustomPainter {
   /// CanvasController.previewing.
   final ({String id, int frame})? previewing;
 
+  /// anchors are the anchor points shown, where they are on the page, and
+  /// whether each is locked. See ElementBase.anchorX.
+  final List<({Offset at, bool locked})> anchors;
+
+  /// knife is the knife's line, on the page, while it is being drawn.
+  final List<Offset> knife;
+
+  /// caret is where the caret of a drawing's text being typed is, top to
+  /// bottom, on the page.
+  final (Offset, Offset)? caret;
+
   /// scale is document units to screen pixels -- the fitted size times the
   /// reader's zoom, already combined by the stage.
   final double scale;
@@ -310,6 +321,9 @@ class StagePainter extends CustomPainter {
     required this.frame,
     this.previewAt,
     this.previewing,
+    this.anchors = const [],
+    this.knife = const [],
+    this.caret,
     required this.scale,
     required this.origin,
     required this.images,
@@ -488,6 +502,16 @@ class StagePainter extends CustomPainter {
     _paintGuides(canvas);
     _paintFraming(canvas);
     _paintSelection(canvas);
+    _paintAnchors(canvas);
+    _paintKnife(canvas);
+    if (caret case (var top, var bottom)?) {
+      canvas.drawLine(
+          top * scale + origin,
+          bottom * scale + origin,
+          Paint()
+            ..color = const Color(0xFF3D7EFF)
+            ..strokeWidth = 1.5);
+    }
 
     if (marquee != null) {
       var box = Rect.fromPoints(marquee!.topLeft * scale + origin,
@@ -683,6 +707,58 @@ class StagePainter extends CustomPainter {
                 const Radius.circular(2)),
             paint);
       }
+    }
+  }
+
+  /// _paintAnchors draws each anchor shown: a ring with a cross through it,
+  /// greyed where it is locked and cannot be dragged.
+  /// _paintKnife draws the knife's line: a thin dashed cut over a pale
+  /// edge, so it shows on anything.
+  void _paintKnife(Canvas canvas) {
+    if (knife.length < 2) return;
+    var path = Path()
+      ..moveTo(knife.first.dx * scale + origin.dx,
+          knife.first.dy * scale + origin.dy);
+    for (var p in knife.skip(1)) {
+      path.lineTo(p.dx * scale + origin.dx, p.dy * scale + origin.dy);
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xCCFFFFFF));
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2
+          ..strokeJoin = StrokeJoin.round
+          ..color = const Color(0xFFE53935));
+  }
+
+  void _paintAnchors(Canvas canvas) {
+    for (var a in anchors) {
+      var c = a.at * scale + origin;
+      var ink = a.locked ? const Color(0xFF9E9E9E) : const Color(0xFF3D7EFF);
+      var halo = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.5
+        ..color = const Color(0xCCFFFFFF);
+      var line = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = ink;
+      for (var paint in [halo, line]) {
+        canvas.drawCircle(c, 6, paint);
+        canvas.drawLine(
+            c - const Offset(10, 0), c + const Offset(10, 0), paint);
+        canvas.drawLine(
+            c - const Offset(0, 10), c + const Offset(0, 10), paint);
+      }
+      canvas.drawCircle(c, 1.8, Paint()..color = ink);
     }
   }
 
@@ -1423,6 +1499,9 @@ class StagePainter extends CustomPainter {
       old.frame != frame ||
       old.previewAt != previewAt ||
       old.previewing != previewing ||
+      !listEquals(old.anchors, anchors) ||
+      !identical(old.knife, knife) ||
+      old.caret != caret ||
       old.scale != scale ||
       old.origin != origin ||
       old.page != page ||

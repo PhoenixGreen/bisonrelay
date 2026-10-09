@@ -567,24 +567,36 @@ void paintElement(
   // around where it was drawn.
   if (outer.dx != 0 || outer.dy != 0) canvas.translate(outer.dx, outer.dy);
 
-  var spin = element.rotationRadians + outer.rotate * math.pi / 180;
-  if (spin != 0 || outer.scale != 1) {
+  // Its own angle about its centre, as it rests; then a keyframe's turn
+  // and size about its anchor -- the same thing while the anchor is in the
+  // middle. See ElementBase.anchorX.
+  var spin = element.rotationRadians;
+  if (spin != 0) {
     var c = bounds.center;
     canvas.translate(c.dx, c.dy);
-    if (spin != 0) canvas.rotate(spin);
-    if (outer.scale != 1) canvas.scale(outer.scale);
+    canvas.rotate(spin);
     canvas.translate(-c.dx, -c.dy);
+  }
+  if (outer.rotate != 0 || outer.scale != 1) {
+    var a = element.anchorIn(bounds);
+    canvas.translate(a.dx, a.dy);
+    if (outer.rotate != 0) canvas.rotate(outer.rotate * math.pi / 180);
+    if (outer.scale != 1) canvas.scale(outer.scale);
+    canvas.translate(-a.dx, -a.dy);
   }
 
   // Its loop, over whatever its keyframes have done: moved, turned and
   // sized about the loop's own pivot, and faded with the rest of it. See
   // ElementLoop.
-  if (_animationOf(element)?.loop case var loop? when loop.on) {
+  if (_wholeLoop(element) case var loop? when loop.on) {
     var swing = loop.poseAt(frame,
         arrived: arrivalEnd(element),
         last: (document?.frames ?? (1 << 30)) - 1);
     if (swing != null) {
-      _applyLoopPose(canvas, bounds, swing);
+      _applyLoopPose(canvas, bounds, swing,
+          anchor: element.anchorCentred
+              ? null
+              : Offset(element.base.anchorX, element.base.anchorY));
       alpha = (alpha * swing.opacity).clamp(0.0, 1.0);
     }
   }
@@ -602,26 +614,32 @@ void paintElement(
   var time = frame / (frameRate <= 0 ? 1 : frameRate);
   // What draws it: once, as a rule, but as often as a loop that draws into
   // it or over it needs -- see paintLoopEffect.
+  // An arrival grows, spins and flips about the anchor, where it has been
+  // moved. See ElementBase.anchorX.
+  var pivot = element.anchorCentred ? null : element.anchorIn(bounds);
+  void arriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
+          Keyframe pose, void Function() what) =>
+      paintArriving(canvas, box, animation, pose, what, pivot: pivot);
   void body() {
     switch (element) {
       case TextElement e:
         _paintText(canvas, bounds, e, document,
             pose: pose, frame: frame, images: images, skipItem: skipTextItem);
       case ShapeElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => _paintShape(canvas, bounds, e, images));
       case LineElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => _paintLine(canvas, _bowed(e, pose)));
       case ImageElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => _paintImage(canvas, bounds, e, images));
       case VectorElement e:
         if (_shapeByShape(e, pose)) {
           _paintVectorInTurn(canvas, bounds, e, pose, frame,
               (document?.frames ?? (1 << 30)) - 1);
         } else {
-          paintArriving(canvas, bounds, e.animation, pose,
+          arriving(canvas, bounds, e.animation, pose,
               () => paintVector(canvas, bounds, e, images));
         }
       case ChartElement e:
@@ -636,10 +654,10 @@ void paintElement(
             // offset from one another in time.
             seriesReveal: chartSeriesReveal(e, frame, frameRate));
       case TableElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => paintTable(canvas, bounds, e, images: images));
       case ButtonElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => _paintButton(canvas, bounds, e, hovered, images));
       case CounterElement e:
         // A page number on a page that has none is not drawn at all. It used to
@@ -653,7 +671,7 @@ void paintElement(
         // is running, it is where the count starts. A live counter exported as
         // a PNG is a photograph of a stopped clock, which is the only thing a
         // still picture of one can be.
-        paintArriving(
+        arriving(
             canvas,
             bounds,
             e.animation,
@@ -680,7 +698,7 @@ void paintElement(
                 pressed: counterPressed?.call(e) ?? -1,
                 running: counterRunning?.call(e)));
       case AudioElement e:
-        paintArriving(
+        arriving(
             canvas,
             bounds,
             e.animation,
@@ -689,7 +707,7 @@ void paintElement(
                 canvas, bounds, e, audioState?.call(e) ?? AudioState.idle(e),
                 images: images));
       case VideoElement e:
-        paintArriving(
+        arriving(
             canvas,
             bounds,
             e.animation,
@@ -700,7 +718,7 @@ void paintElement(
         _paintBackgroundElement(
             canvas, bounds, e, time, frameRate.toDouble(), images);
       case PathElement e:
-        paintArriving(canvas, bounds, e.animation, pose,
+        arriving(canvas, bounds, e.animation, pose,
             () => _paintPath(canvas, bounds, e, editing));
       case TeamElement e:
         _paintTeam(canvas, bounds, e, frame);
@@ -711,7 +729,7 @@ void paintElement(
 
   // A loop that draws -- light swept through it, its outline run round, a
   // ripple -- draws it itself; anything else, it is simply drawn.
-  var looping = _animationOf(element)?.loop;
+  var looping = _wholeLoop(element);
   var phase = looping == null || !looping.on || looping.preset.moves
       ? null
       : looping.phaseAt(frame,
@@ -2073,47 +2091,80 @@ void _paintArrowHead(
   canvas.drawPath(head, Paint()..color = color);
 }
 
+/// _ownShapes is whether any of [e]'s shapes has an animation of its own.
+bool _ownShapes(VectorElement e) => vectorDrawn(e.shapes ?? const [])
+    .any((d) => d.style.animation != null && d.style.owns.isNotEmpty);
+
+/// _wholeLoop is [element]'s loop where it loops as one -- for a drawing
+/// with shapes of their own, each shape loops on its own instead, those
+/// left as the drawing with the drawing's loop. See _paintVectorInTurn.
+ElementLoop? _wholeLoop(CanvasElement element) {
+  if (element is VectorElement && _ownShapes(element)) return null;
+  return _animationOf(element)?.loop;
+}
+
 /// _shapeByShape is whether a drawing is drawn a shape at a time rather
-/// than as one: where a shape has an arrival or a loop of its own, or the
-/// drawing's arrival brings its shapes in one after another -- and it is not
-/// on its way out, which it leaves as one. See VectorCue.
+/// than as one: where a shape has an animation of its own -- coming in,
+/// looping and leaving -- or the drawing's arrival brings its shapes in one
+/// after another, and it is not on its way out. See VectorCue.
 bool _shapeByShape(VectorElement e, Keyframe pose) {
   var shapes = e.shapes;
   if (shapes == null || shapes.isEmpty) return false;
+  if (_ownShapes(e)) return true;
   if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return false;
-  if (vectorDrawn(shapes)
-      .any((d) => d.style.arrival != null || d.style.loop.on)) {
-    return true;
-  }
   return e.animation.on && sequenced(shapes) && vectorArrivalSpan(e) != null;
 }
 
 /// _paintVectorInTurn draws a drawing a shape at a time: each shape, with
-/// whatever is combined into it, in its own box -- coming in as its own
-/// arrival says, or as the drawing's does, starting where its cue puts it
-/// and taking its own length; then looping as its own loop says, from when
-/// it has come in. [last] is the scene's last frame.
+/// whatever is combined into it, animated as its own animation says or as
+/// the drawing's does. Coming in, in its own box, where its cue puts it and
+/// for its own length; looping, from when it has come in; leaving, with the
+/// drawing's way-out keyframes. A shape left as the drawing loops and leaves
+/// about the whole drawing, as if it were drawn as one. [last] is the
+/// scene's last frame.
 void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     Keyframe pose, int frame, int last) {
   var shapes = e.shapes!;
   var arrival = vectorArrivalSpan(e);
   var times = arrival == null ? null : cueTimes(shapes, arrival.$2);
+  var own = _ownShapes(e);
+  var leaving = (pose.values[KeyframeChannel.close] ?? 0) > 0;
+  // How far through its arrival the drawing is, as its keyframes -- and
+  // their easing -- say: the clock every shape's turn is read off.
+  var through = pose.values[KeyframeChannel.reveal] ?? 1;
   for (var (i, d) in vectorDrawn(shapes).indexed) {
     var box = vectorGroupBox(bounds, e, d);
-    var arriving = d.style.arrival ?? e.animation;
+    var owns =
+        d.style.animation == null ? const <ShapeAnimationPart>{} : d.style.owns;
+    var animation = animatedAs(e.animation, d.style.animation, owns);
     // How far in it is, and when it is all in: with no arrival keyframes on
     // the drawing, it is there from the start.
     var reveal = 1.0;
     int? arrived;
+    var loopsOwn = owns.contains(ShapeAnimationPart.looping);
     if (arrival != null && times != null) {
-      var (at, _) = arrival;
+      var (at, span) = arrival;
       var (start, length) = times[i];
-      reveal = ((frame - at - start) / length).clamp(0.0, 1.0);
-      arrived = (at + start + length).round();
+      reveal = ((through * span - start) / length).clamp(0.0, 1.0);
+      arrived = loopsOwn ? (at + start + length).round() : at + span;
     }
-    void draw() =>
-        _paintGroupLooped(canvas, bounds, box, e, d, i, frame, arrived, last);
-    if (!arriving.on) {
+    // A loop of its own about its own box; the drawing's, where the drawing
+    // is not looping as one, about the drawing's.
+    var loop = loopsOwn
+        ? animation.loop
+        : (own ? e.animation.loop : const ElementLoop());
+    void draw() => _paintGroupLooped(canvas, bounds, loopsOwn ? box : bounds, e,
+        d, i, loop, frame, arrived, last);
+    if (leaving) {
+      paintArriving(
+          canvas,
+          owns.contains(ShapeAnimationPart.leaving) ? box : bounds,
+          animation,
+          pose,
+          draw);
+      continue;
+    }
+    if (!animation.on) {
       // Nothing to play coming in: there from its turn.
       if (reveal > 0) draw();
       continue;
@@ -2121,18 +2172,26 @@ void _paintVectorInTurn(ui.Canvas canvas, Rect bounds, VectorElement e,
     paintArriving(
         canvas,
         box,
-        arriving,
+        animation,
         pose.copyWith(values: {...pose.values, KeyframeChannel.reveal: reveal}),
         draw);
   }
 }
 
-/// _paintGroupLooped draws one shape of a drawing with its own loop, about
-/// its own box [box] and along its own outline, from [arrived] -- when it
-/// has come in -- or the loop's own start.
-void _paintGroupLooped(ui.Canvas canvas, Rect bounds, Rect box, VectorElement e,
-    VectorDrawn d, int index, int frame, int? arrived, int last) {
-  var loop = d.style.loop;
+/// _paintGroupLooped draws one shape of a drawing with [loop], about [box]
+/// and along its own outline, from [arrived] -- when it has come in -- or
+/// the loop's own start.
+void _paintGroupLooped(
+    ui.Canvas canvas,
+    Rect bounds,
+    Rect box,
+    VectorElement e,
+    VectorDrawn d,
+    int index,
+    ElementLoop loop,
+    int frame,
+    int? arrived,
+    int last) {
   void plain() => paintVectorGroup(canvas, bounds, e, d);
   if (!loop.on) return plain();
   if (loop.preset.moves) {
@@ -2165,12 +2224,17 @@ void _paintGroupLooped(ui.Canvas canvas, Rect bounds, Rect box, VectorElement e,
 
 /// _applyLoopPose moves, turns and sizes the canvas as [swing] says, for
 /// something drawn in [box]: shifted by shares of it, turned and sized about
-/// its pivot. Its fading is the caller's.
-void _applyLoopPose(ui.Canvas canvas, Rect box, LoopPose swing) {
+/// its pivot -- or [anchor], shares of [box], where given. Its fading is
+/// the caller's.
+void _applyLoopPose(ui.Canvas canvas, Rect box, LoopPose swing,
+    {Offset? anchor}) {
   canvas.translate(swing.dx * box.width, swing.dy * box.height);
   if (swing.turn != 0 || swing.sx != 1 || swing.sy != 1) {
-    var pivot = Offset(box.left + box.width * swing.pivot.dx,
-        box.top + box.height * swing.pivot.dy);
+    // About the element's anchor where it has been moved; otherwise where
+    // the loop itself turns -- a swing hangs from its top.
+    var at = anchor ?? swing.pivot;
+    var pivot =
+        Offset(box.left + box.width * at.dx, box.top + box.height * at.dy);
     canvas.translate(pivot.dx, pivot.dy);
     if (swing.turn != 0) canvas.rotate(swing.turn * math.pi / 180);
     if (swing.sx != 1 || swing.sy != 1) canvas.scale(swing.sx, swing.sy);

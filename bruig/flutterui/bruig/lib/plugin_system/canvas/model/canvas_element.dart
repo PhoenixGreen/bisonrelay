@@ -132,6 +132,17 @@ class ElementBase {
   /// width changes the size without changing the shape.
   final bool lockAspect;
 
+  /// anchorX and anchorY are the element's anchor point, as shares of its
+  /// width and height from its top-left corner: what it turns and grows
+  /// about when it is animated -- a keyframe's angle and size, a loop's
+  /// swing, an arrival's spin -- and what stays put when it is turned. A
+  /// half and a half, its centre, unless it has been moved.
+  final double anchorX;
+  final double anchorY;
+
+  /// anchorLocked keeps the anchor where it is, even while it is shown.
+  final bool anchorLocked;
+
   /// track is this element's animation, or null when it does not move.
   final ElementTrack? track;
 
@@ -205,6 +216,9 @@ class ElementBase {
     this.visible = true,
     this.locked = false,
     this.lockAspect = false,
+    this.anchorX = 0.5,
+    this.anchorY = 0.5,
+    this.anchorLocked = false,
     this.track,
     this.layouts = const {},
     this.typeScale = 1,
@@ -225,6 +239,9 @@ class ElementBase {
     bool? visible,
     bool? locked,
     bool? lockAspect,
+    double? anchorX,
+    double? anchorY,
+    bool? anchorLocked,
     ElementTrack? track,
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
@@ -246,6 +263,9 @@ class ElementBase {
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
         lockAspect: lockAspect ?? this.lockAspect,
+        anchorX: anchorX ?? this.anchorX,
+        anchorY: anchorY ?? this.anchorY,
+        anchorLocked: anchorLocked ?? this.anchorLocked,
         track: clearTrack ? null : (track ?? this.track),
         layouts: layouts ?? this.layouts,
         typeScale: typeScale ?? this.typeScale,
@@ -268,6 +288,9 @@ class ElementBase {
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
       lockAspect: _b(json["aspect"], false),
+      anchorX: _d(json["ax"], 0.5),
+      anchorY: _d(json["ay"], 0.5),
+      anchorLocked: _b(json["anchorLocked"], false),
       track: trackJson is Map<String, dynamic>
           ? ElementTrack.fromJson(trackJson)
           : null,
@@ -305,6 +328,9 @@ class ElementBase {
         // ImageElement.fromJson. An absent key that could also mean "off"
         // would make that impossible to tell.
         "aspect": lockAspect,
+        if (anchorX != 0.5) "ax": anchorX,
+        if (anchorY != 0.5) "ay": anchorY,
+        if (anchorLocked) "anchorLocked": true,
         if (track != null && !track!.isEmpty) "track": track!.toJson(),
         if (typeScale != 1) "typeScale": typeScale,
         if (ownText) "ownText": true,
@@ -569,11 +595,72 @@ abstract class CanvasElement {
     var pose = poseAt(frame);
     var box = bounds.shift(Offset(pose.dx, pose.dy));
     if (pose.scale == 1) return box;
-    return Rect.fromCenter(
-      center: box.center,
-      width: box.width * pose.scale,
-      height: box.height * pose.scale,
+    // Grown about the anchor, which stays where it is.
+    var a = anchorIn(box);
+    return Rect.fromLTRB(
+      a.dx + (box.left - a.dx) * pose.scale,
+      a.dy + (box.top - a.dy) * pose.scale,
+      a.dx + (box.right - a.dx) * pose.scale,
+      a.dy + (box.bottom - a.dy) * pose.scale,
     );
+  }
+
+  /// centred is whether the anchor is where it starts, in the middle.
+  bool get anchorCentred => base.anchorX == 0.5 && base.anchorY == 0.5;
+
+  /// anchorIn is where the anchor is in [box], before any turn: the point
+  /// of [box] at the anchor's shares of it.
+  Offset anchorIn(Rect box) => Offset(
+      box.left + box.width * base.anchorX, box.top + box.height * base.anchorY);
+
+  /// anchorAt is where the anchor is on the page at [frame]: in the box
+  /// moved as the pose moves it, and turned with it about its centre. A
+  /// keyframe's own turn and size are about the anchor, so they leave it
+  /// where it is.
+  Offset anchorAt(int frame) {
+    var pose = poseAt(frame);
+    var box = bounds.shift(Offset(pose.dx, pose.dy));
+    return turnedAboutCentre(anchorIn(box), box.center);
+  }
+
+  /// turnedAboutCentre is [p] turned as the element is, about [centre].
+  Offset turnedAboutCentre(Offset p, Offset centre) {
+    var r = rotationRadians;
+    if (r == 0) return p;
+    var d = p - centre;
+    var c = math.cos(r), s = math.sin(r);
+    return centre + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
+  }
+
+  /// withAnchorAt is this element with its anchor moved to [page], a point
+  /// on the page at [frame], turned back into the element's own box. The
+  /// element does not move: it turns about its centre at rest, and the
+  /// anchor is only what its animation turns and grows about.
+  CanvasElement withAnchorAt(Offset page, int frame) {
+    var pose = poseAt(frame);
+    var box = bounds.shift(Offset(pose.dx, pose.dy));
+    var r = -rotationRadians;
+    var d = page - box.center;
+    var c = math.cos(r), s = math.sin(r);
+    var local = box.center + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
+    return withBase(
+      anchorX: box.width <= 0 ? 0.5 : (local.dx - box.left) / box.width,
+      anchorY: box.height <= 0 ? 0.5 : (local.dy - box.top) / box.height,
+    );
+  }
+
+  /// turnedTo is this element turned to [degrees] about its anchor rather
+  /// than its centre: moved as well as turned, so that the anchor stays
+  /// where it is on the page. The same as a plain turn while the anchor is
+  /// in the middle.
+  CanvasElement turnedTo(double degrees) {
+    if (anchorCentred) return withBase(rotation: degrees);
+    var box = bounds;
+    var before = turnedAboutCentre(anchorIn(box), box.center);
+    var turned = withBase(rotation: degrees);
+    var after = turned.turnedAboutCentre(anchorIn(box), box.center);
+    var shift = before - after;
+    return turned.withBase(x: base.x + shift.dx, y: base.y + shift.dy);
   }
 
   /// rotationAt and opacityAt are the same question for the other two things a
@@ -647,6 +734,9 @@ abstract class CanvasElement {
     bool? visible,
     bool? locked,
     bool? lockAspect,
+    double? anchorX,
+    double? anchorY,
+    bool? anchorLocked,
     ElementTrack? track,
     bool clearTrack = false,
     Map<String, ElementLayout>? layouts,
@@ -667,6 +757,9 @@ abstract class CanvasElement {
         visible: visible,
         locked: locked,
         lockAspect: lockAspect,
+        anchorX: anchorX,
+        anchorY: anchorY,
+        anchorLocked: anchorLocked,
         track: track,
         clearTrack: clearTrack,
         layouts: layouts,

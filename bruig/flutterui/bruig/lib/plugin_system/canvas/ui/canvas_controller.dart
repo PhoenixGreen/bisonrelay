@@ -25,6 +25,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
+import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
@@ -1505,6 +1507,7 @@ class CanvasController extends ChangeNotifier {
 
   set vectorTool(VectorTool tool) {
     if (_vectorTool == tool) return;
+    if (tool != VectorTool.text) stopVectorTyping();
     _vectorTool = tool;
     // The pen taken out with one point picked carries on from that point.
     _vectorPenFrom = tool == VectorTool.pen && _vectorPicks.length == 1
@@ -1950,6 +1953,180 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// vectorTextStyle is the type new text in a drawing is set in -- its
+  /// size in the canvas's own pixels -- and vectorTextColour its colour.
+  VectorText get vectorTextStyle => _vectorTextStyle;
+  VectorText _vectorTextStyle = const VectorText();
+  Color get vectorTextColour => _vectorTextColour;
+  Color _vectorTextColour = const Color(0xFF000000);
+  set vectorTextColour(Color c) {
+    _vectorTextColour = c;
+    var e = editingVector;
+    var i = _vectorTyping >= 0 ? _vectorTyping : _vectorShape;
+    if (e?.shapes case var shapes? when i >= 0 && i < shapes.length) {
+      if (shapes[i].liveText != null) {
+        replaceElement(e!.withShape(i, shapes[i].copyWith(fill: c)),
+            transient: _vectorTyping >= 0);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// vectorTyping is the shape of the drawing being typed into with the
+  /// text tool, or -1.
+  int get vectorTyping => _vectorTyping;
+  int _vectorTyping = -1;
+
+  /// _typedShape is the drawing, the shape being typed into and its index,
+  /// while there is one.
+  (VectorElement, int, VectorShape)? _typedShape() {
+    var e = editingVector;
+    var i = _vectorTyping;
+    var shapes = e?.shapes;
+    if (e == null || shapes == null || i < 0 || i >= shapes.length) {
+      return null;
+    }
+    return (e, i, shapes[i]);
+  }
+
+  /// typedText is the text being typed, or the text of the shape picked
+  /// where it is still text: what the text tool's settings show.
+  VectorText? get typedText {
+    if (_typedShape() case (_, _, var s)?) return s.liveText;
+    var e = editingVector;
+    var i = _vectorShape;
+    if (e?.shapes case var shapes? when i >= 0 && i < shapes.length) {
+      return shapes[i].liveText;
+    }
+    return null;
+  }
+
+  /// setVectorTextStyle sets the type new text is set in -- [size] here in
+  /// the canvas's pixels -- and the text being typed, or picked, with it.
+  void setVectorTextStyle(VectorText style) {
+    // The type and nothing else: the words, the place and the signature of
+    // whatever text the settings were showing are that text's, and new text
+    // started with another's signature was never text at all -- it could
+    // not be typed into.
+    _vectorTextStyle = VectorText(
+        family: style.family,
+        weight: style.weight,
+        italic: style.italic,
+        size: style.size,
+        spacing: style.spacing,
+        leading: style.leading,
+        align: style.align);
+    var e = editingVector;
+    var i = _vectorTyping >= 0 ? _vectorTyping : _vectorShape;
+    var s = e?.shapes != null && i >= 0 && i < e!.shapes!.length
+        ? e.shapes![i]
+        : null;
+    var t = s?.liveText;
+    if (e != null && t != null) {
+      var px = VectorSpace(e).unitsPer;
+      retypeVectorText(
+          i,
+          t.copyWith(
+              family: style.family,
+              weight: style.weight,
+              italic: style.italic,
+              size: style.size * px,
+              spacing: style.spacing,
+              leading: style.leading,
+              align: style.align));
+    }
+    notifyListeners();
+  }
+
+  /// retypeVectorText lays shape [shape] out again as [t] -- once its font
+  /// is read, which is at once where it has been already.
+  void retypeVectorText(int shape, VectorText t) {
+    var pick = FontFiles.instance.cached(t.family, t.weight, t.italic);
+    if (pick == null) {
+      FontFiles.instance.load(t.family, t.weight, t.italic).then((p) {
+        if (p != null) retypeVectorText(shape, t);
+      });
+      return;
+    }
+    var e = editingVector;
+    var shapes = e?.shapes;
+    if (e == null || shapes == null || shape >= shapes.length) return;
+    var s = shapes[shape];
+    var origin = s.textOrigin ?? s.text?.origin ?? t.origin;
+    replaceElement(e.withShape(shape, typed(s, t, origin, pick)),
+        transient: true);
+  }
+
+  /// newVectorText starts new text in the drawing being edited, its first
+  /// line starting at [at] in the drawing's own units, and starts typing
+  /// into it.
+  Future<void> newVectorText(Offset at) async {
+    stopVectorTyping();
+    var e = editingVector;
+    if (e == null) return;
+    var style = _vectorTextStyle;
+    var t = VectorText(
+        family: style.family,
+        weight: style.weight,
+        italic: style.italic,
+        size: style.size * VectorSpace(e).unitsPer,
+        spacing: style.spacing,
+        leading: style.leading,
+        align: style.align,
+        origin: at);
+    await FontFiles.instance.load(t.family, t.weight, t.italic);
+    e = editingVector;
+    if (e == null) return;
+    var shapes = e.shapes ?? const <VectorShape>[];
+    beginInteraction();
+    replaceElement(
+        e.copyWith(shapes: [
+          ...shapes,
+          VectorShape(paths: const [], fill: _vectorTextColour, text: t),
+        ]),
+        transient: true);
+    _vectorTyping = shapes.length;
+    _vectorShape = shapes.length;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  /// startVectorTyping types into shape [shape], text already.
+  void startVectorTyping(int shape) {
+    if (_vectorTyping == shape) return;
+    stopVectorTyping();
+    beginInteraction();
+    _vectorTyping = shape;
+    _vectorShape = shape;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  /// stopVectorTyping finishes the text being typed: what was typed is one
+  /// change, and text left empty is taken away.
+  void stopVectorTyping() {
+    if (_vectorTyping < 0) return;
+    if (_typedShape() case (var e, var i, var s)?
+        when (s.liveText?.text.trim() ?? "x").isEmpty) {
+      var shapes = [...e.shapes!]..removeAt(i);
+      replaceElement(e.copyWith(shapes: shapes), transient: true);
+      if (_vectorShape == i) _vectorShape = -1;
+    }
+    _vectorTyping = -1;
+    endInteraction();
+    notifyListeners();
+  }
+
+  /// vectorKnifeGap is how far apart the knife leaves the two sides of a
+  /// cut, in the canvas's own pixels.
+  double get vectorKnifeGap => _vectorKnifeGap;
+  double _vectorKnifeGap = 1;
+  set vectorKnifeGap(double v) {
+    if (_vectorKnifeGap == v) return;
+    _vectorKnifeGap = v;
+    notifyListeners();
+  }
+
   double get vectorFillGap => _vectorFillGap;
   double _vectorFillGap = 3;
   set vectorFillGap(double v) {
@@ -2111,6 +2288,7 @@ class CanvasController extends ChangeNotifier {
   /// editVector starts editing the drawing [id], or stops with null.
   void editVector(String? id) {
     if (_vectorEditing == id) return;
+    stopVectorTyping();
     _fitEditedVector();
     _vectorEditing = id;
     _resetVectorEditing();
@@ -4732,6 +4910,17 @@ class CanvasController extends ChangeNotifier {
     return (from, to - from);
   }
 
+  /// anchorShown is whether [id]'s anchor point is drawn on the stage, where
+  /// it can be dragged unless it is locked. A way of looking rather than
+  /// part of the design: not saved, and not undone.
+  bool anchorShown(String id) => _anchorsShown.contains(id);
+  final Set<String> _anchorsShown = {};
+
+  void showAnchor(String id, bool shown) {
+    if (shown ? !_anchorsShown.add(id) : !_anchorsShown.remove(id)) return;
+    notifyListeners();
+  }
+
   /// setElementArrivalTiming moves [element]'s arrival on the timeline: to
   /// start [delay] frames into the scene, and to take [length] frames --
   /// either or both, the other left where it is. The scene grows to hold it.
@@ -4787,7 +4976,10 @@ class CanvasController extends ChangeNotifier {
     var loops = [
       elementAnimationOf(element).loop,
       if (element is VectorElement)
-        for (var d in vectorDrawn(element.shapes ?? const [])) d.style.loop,
+        for (var d in vectorDrawn(element.shapes ?? const []))
+          if (d.style.animation case var own?
+              when d.style.owns.contains(ShapeAnimationPart.looping))
+            own.loop,
     ];
     for (var loop in loops) {
       if (!loop.on) continue;

@@ -966,6 +966,8 @@ Widget _animationSection(CanvasController controller, TextElement e,
   return CanvasExpander(
     label: "Animation",
     remember: "textAnimation",
+    action:
+        animation.on || animation.closes ? previewButton(controller, e) : null,
     trailing: animation.on
         ? (animation.closes
             ? "${animation.preset.label} · ${animation.exit.label}"
@@ -975,11 +977,6 @@ Widget _animationSection(CanvasController controller, TextElement e,
       // The same group every other element's animation section carries: the
       // easing belongs to the keyframe, and a caption's keyframes are
       // keyframes like any other.
-      if (animation.on || animation.closes)
-        CanvasControlGroup(
-            label: "Preview",
-            hideCaption: true,
-            children: [previewButton(controller, e)]),
       keyframeEasingGroup(controller, e, begin, commit),
       const CanvasHint(
           "Choosing one draws the words on over two seconds and puts a "

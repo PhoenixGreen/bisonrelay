@@ -223,14 +223,22 @@ class VectorPath {
   final List<VectorNode> nodes;
   final bool closed;
 
-  const VectorPath(this.nodes, {this.closed = false});
+  /// part is which piece of its shape this run is in, once the shape has
+  /// been cut: the runs of one part are picked and moved together, and the
+  /// shape is still one shape. Nought, for a shape never cut. See
+  /// vector_cut.dart.
+  final int part;
 
-  VectorPath copyWith({List<VectorNode>? nodes, bool? closed}) =>
-      VectorPath(nodes ?? this.nodes, closed: closed ?? this.closed);
+  const VectorPath(this.nodes, {this.closed = false, this.part = 0});
+
+  VectorPath copyWith({List<VectorNode>? nodes, bool? closed, int? part}) =>
+      VectorPath(nodes ?? this.nodes,
+          closed: closed ?? this.closed, part: part ?? this.part);
 
   Map<String, dynamic> toJson() => {
         "n": [for (var n in nodes) n.toJson()],
         if (closed) "c": true,
+        if (part != 0) "pt": part,
       };
 
   static VectorPath? fromJson(Object? json) {
@@ -240,9 +248,15 @@ class VectorPath {
       if (raw is List)
         for (var n in raw)
           if (VectorNode.fromJson(n) case var node?) node,
-    ], closed: json["c"] == true);
+    ],
+        closed: json["c"] == true,
+        part: json["pt"] is int ? json["pt"] as int : 0);
   }
 }
+
+/// ShapeAnimationPart is one of the three things a drawing's shape can do
+/// its own way rather than the drawing's.
+enum ShapeAnimationPart { arriving, looping, leaving }
 
 /// VectorShape is one shape of the drawing: its outline -- one or more runs
 /// of points -- and how it is painted.
@@ -288,15 +302,22 @@ class VectorShape {
   /// as long as the drawing's own arrival takes.
   final int? cueLength;
 
-  /// arrival is how this shape comes in, when it has a way of its own: its
-  /// preset and easing -- the timing is the playlist's -- or null to come in
-  /// as the drawing does. A preset of none appears, unanimated, as its turn
-  /// comes. Read for the first of a run of combined shapes.
-  final ElementAnimation? arrival;
+  /// owns is which parts of [animation] this shape has made its own --
+  /// coming in, looping, leaving. Every other part is the drawing's, and
+  /// follows it. See animatedAs.
+  final Set<ShapeAnimationPart> owns;
 
-  /// loop is what this shape goes on doing once it has come in, on its own
-  /// -- see ElementLoop -- over whatever the drawing's own loop does.
-  final ElementLoop loop;
+  /// text is the words this shape is the letters of, while it is still
+  /// text: typed with the text tool, its runs drawn from the font. Once its
+  /// points are edited any other way it is a shape like any other -- see
+  /// liveText -- and this is only what it was.
+  final VectorText? text;
+
+  /// animation is this shape's own animation in place of the drawing's --
+  /// how it comes in, loops and leaves -- or null to animate as the drawing
+  /// does. Its timing is the playlist's and the drawing's keyframes'. Read
+  /// for the first of a run of combined shapes.
+  final ElementAnimation? animation;
 
   const VectorShape({
     required this.paths,
@@ -312,8 +333,9 @@ class VectorShape {
     this.cue = VectorCue.together,
     this.cueGap = 12,
     this.cueLength,
-    this.arrival,
-    this.loop = const ElementLoop(),
+    this.animation,
+    this.owns = const {},
+    this.text,
   });
 
   VectorShape copyWith({
@@ -334,9 +356,11 @@ class VectorShape {
     int? cueGap,
     int? cueLength,
     bool clearCueLength = false,
-    ElementAnimation? arrival,
-    bool clearArrival = false,
-    ElementLoop? loop,
+    ElementAnimation? animation,
+    Set<ShapeAnimationPart>? owns,
+    bool clearAnimation = false,
+    VectorText? text,
+    bool clearText = false,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -352,8 +376,9 @@ class VectorShape {
         cue: cue ?? this.cue,
         cueGap: cueGap ?? this.cueGap,
         cueLength: clearCueLength ? null : cueLength ?? this.cueLength,
-        arrival: clearArrival ? null : arrival ?? this.arrival,
-        loop: loop ?? this.loop,
+        animation: clearAnimation ? null : animation ?? this.animation,
+        owns: clearAnimation ? const {} : owns ?? this.owns,
+        text: clearText ? null : text ?? this.text,
       );
 
   /// tapered is whether its line is thicker or thinner at some points than
@@ -409,9 +434,46 @@ class VectorShape {
         if (cue != VectorCue.together) "cue": cue.name,
         if (cueGap != 12) "cueGap": cueGap,
         if (cueLength != null) "cueLength": cueLength,
-        if (arrival != null) "arrive": arrival!.toJson(),
-        if (loop.on) "loop": loop.toJson(),
+        if (animation != null) "anim": animation!.toJson(),
+        if (animation != null) "animOwn": [for (var p in owns) p.name],
+        if (liveText case var t?) "text": t.toJson(),
       };
+
+  /// liveText is [text] while this shape is still the letters it was laid
+  /// out as -- moved, perhaps, but not otherwise changed -- or null once it
+  /// has been edited into a shape of its own.
+  VectorText? get liveText {
+    var t = text;
+    if (t == null || t.signature != pathSignature(paths)) return null;
+    return t;
+  }
+
+  /// textOrigin is where [liveText]'s first line starts, on its baseline,
+  /// wherever the shape has been moved to.
+  Offset? get textOrigin {
+    var t = liveText;
+    if (t == null) return null;
+    var first = paths.where((r) => r.nodes.isNotEmpty).firstOrNull;
+    return first == null ? t.origin : first.nodes.first.point + t.fromFirst;
+  }
+
+  /// _animationFromJson reads a shape's own animation -- or the arrival and
+  /// loop it was kept as, separately, for a little while before.
+  static ElementAnimation? _animationFromJson(Map<String, dynamic> json) {
+    if (json["anim"] case Map<String, dynamic> own) {
+      return ElementAnimation.fromJson(own);
+    }
+    var arrive = json["arrive"], loop = json["loop"];
+    if (arrive is! Map<String, dynamic> && loop is! Map<String, dynamic>) {
+      return null;
+    }
+    var a = arrive is Map<String, dynamic>
+        ? ElementAnimation.fromJson(arrive)
+        : const ElementAnimation();
+    return loop is Map<String, dynamic>
+        ? a.copyWith(loop: ElementLoop.fromJson(loop))
+        : a;
+  }
 
   static VectorShape? fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return null;
@@ -438,12 +500,19 @@ class VectorShape {
           VectorCue.together,
       cueGap: json["cueGap"] is int ? json["cueGap"] as int : 12,
       cueLength: json["cueLength"] is int ? json["cueLength"] as int : null,
-      arrival: json["arrive"] is Map<String, dynamic>
-          ? ElementAnimation.fromJson(json["arrive"] as Map<String, dynamic>)
+      text: json["text"] is Map<String, dynamic>
+          ? VectorText.fromJson(json["text"] as Map<String, dynamic>)
           : null,
-      loop: json["loop"] is Map<String, dynamic>
-          ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
-          : const ElementLoop(),
+      animation: _animationFromJson(json),
+      // Kept before the parts were told apart: all of them its own.
+      owns: json["animOwn"] is List
+          ? {
+              for (var n in json["animOwn"] as List)
+                ...ShapeAnimationPart.values.where((p) => p.name == n),
+            }
+          : _animationFromJson(json) == null
+              ? const {}
+              : ShapeAnimationPart.values.toSet(),
     );
   }
 }
@@ -777,5 +846,189 @@ class VectorElement extends CanvasElement {
         handleSize: jsonDouble(json["handleSize"], 8),
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+  }
+}
+
+/// animatedAs is how a shape animates, given the drawing's [drawing]
+/// animation: the drawing's, with whatever parts [own] says the shape has
+/// made its own taken from [mine] instead.
+ElementAnimation animatedAs(ElementAnimation drawing, ElementAnimation? mine,
+    Set<ShapeAnimationPart> own) {
+  if (mine == null || own.isEmpty) return drawing;
+  var a = drawing;
+  if (own.contains(ShapeAnimationPart.arriving)) {
+    a = a.copyWith(
+        preset: mine.preset,
+        ease: mine.ease,
+        scale: mine.scale,
+        effect: mine.effect,
+        direction: mine.direction,
+        clearDirection: mine.direction == null,
+        strength: mine.strength);
+  }
+  if (own.contains(ShapeAnimationPart.looping)) a = a.copyWith(loop: mine.loop);
+  if (own.contains(ShapeAnimationPart.leaving)) a = a.copyWith(exit: mine.exit);
+  return a;
+}
+
+/// partsChanged is which parts differ between [was] and [now].
+Set<ShapeAnimationPart> partsChanged(
+        ElementAnimation was, ElementAnimation now) =>
+    {
+      if (was.preset != now.preset ||
+          was.ease != now.ease ||
+          was.scale != now.scale ||
+          was.effect != now.effect ||
+          was.direction != now.direction ||
+          was.strength != now.strength)
+        ShapeAnimationPart.arriving,
+      if (was.loop != now.loop) ShapeAnimationPart.looping,
+      if (was.exit != now.exit) ShapeAnimationPart.leaving,
+    };
+
+/// pathSignature is [runs]' shape wherever they are: their points measured
+/// from the first, so that moving them all leaves it as it was and changing
+/// any one of them does not.
+int pathSignature(List<VectorPath> runs) {
+  var first = runs.where((r) => r.nodes.isNotEmpty).firstOrNull?.nodes.first;
+  if (first == null) return 0;
+  int r(double v) => (v * 100).round();
+  return Object.hashAll([
+    for (var run in runs) ...[
+      run.nodes.length,
+      run.closed,
+      for (var n in run.nodes) ...[
+        r(n.x - first.x),
+        r(n.y - first.y),
+        r(n.inX),
+        r(n.inY),
+        r(n.outX),
+        r(n.outY),
+      ],
+    ],
+  ]);
+}
+
+/// VectorTextAlign is how the lines of a drawing's text line up on where
+/// it starts.
+enum VectorTextAlign {
+  left("Left"),
+  centre("Centre"),
+  right("Right");
+
+  final String label;
+  const VectorTextAlign(this.label);
+}
+
+/// VectorText is text in a drawing: the words, and the type they are set
+/// in. [size] is in the drawing's own units; [spacing] is between letters,
+/// as a share of the size; [leading] is the distance from line to line, as
+/// a share of the font's own.
+class VectorText {
+  final String text;
+  final String family;
+  final int weight;
+  final bool italic;
+  final double size;
+  final double spacing;
+  final double leading;
+  final VectorTextAlign align;
+
+  /// origin is where the first line started, on its baseline, when it was
+  /// laid out; fromFirst the same measured from the first point of its
+  /// runs, which is what carries it with them when they are moved.
+  final Offset origin;
+  final Offset fromFirst;
+
+  /// signature is the runs' [pathSignature] as laid out: while it is still
+  /// theirs, the shape is still this text.
+  final int signature;
+
+  const VectorText({
+    this.text = "",
+    this.family = "Inter",
+    this.weight = 400,
+    this.italic = false,
+    this.size = 48,
+    this.spacing = 0,
+    this.leading = 1,
+    this.align = VectorTextAlign.left,
+    this.origin = Offset.zero,
+    this.fromFirst = Offset.zero,
+    this.signature = 0,
+  });
+
+  VectorText copyWith({
+    String? text,
+    String? family,
+    int? weight,
+    bool? italic,
+    double? size,
+    double? spacing,
+    double? leading,
+    VectorTextAlign? align,
+    Offset? origin,
+    Offset? fromFirst,
+    int? signature,
+  }) =>
+      VectorText(
+        text: text ?? this.text,
+        family: family ?? this.family,
+        weight: weight ?? this.weight,
+        italic: italic ?? this.italic,
+        size: size ?? this.size,
+        spacing: spacing ?? this.spacing,
+        leading: leading ?? this.leading,
+        align: align ?? this.align,
+        origin: origin ?? this.origin,
+        fromFirst: fromFirst ?? this.fromFirst,
+        signature: signature ?? this.signature,
+      );
+
+  /// sameType is whether [other] is set in the same type -- the words and
+  /// where they are aside.
+  bool sameType(VectorText other) =>
+      family == other.family &&
+      weight == other.weight &&
+      italic == other.italic &&
+      size == other.size &&
+      spacing == other.spacing &&
+      leading == other.leading &&
+      align == other.align;
+
+  Map<String, dynamic> toJson() => {
+        "t": text,
+        "font": family,
+        if (weight != 400) "weight": weight,
+        if (italic) "italic": true,
+        "size": size,
+        if (spacing != 0) "spacing": spacing,
+        if (leading != 1) "leading": leading,
+        if (align != VectorTextAlign.left) "align": align.name,
+        "at": [origin.dx, origin.dy],
+        "from": [fromFirst.dx, fromFirst.dy],
+        "sig": signature,
+      };
+
+  static VectorText fromJson(Map<String, dynamic> json) {
+    Offset pair(Object? v) => v is List && v.length == 2
+        ? Offset(jsonDouble(v[0], 0), jsonDouble(v[1], 0))
+        : Offset.zero;
+    return VectorText(
+      text: json["t"] is String ? json["t"] as String : "",
+      family: json["font"] is String ? json["font"] as String : "Inter",
+      weight: json["weight"] is int ? json["weight"] as int : 400,
+      italic: json["italic"] == true,
+      size: jsonDouble(json["size"], 48),
+      spacing: jsonDouble(json["spacing"], 0),
+      leading: jsonDouble(json["leading"], 1),
+      align: VectorTextAlign.values
+              .where((a) => a.name == json["align"])
+              .firstOrNull ??
+          VectorTextAlign.left,
+      origin: pair(json["at"]),
+      fromFirst: pair(json["from"]),
+      signature: json["sig"] is int ? json["sig"] as int : 0,
+    );
   }
 }

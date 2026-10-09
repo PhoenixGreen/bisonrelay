@@ -207,17 +207,19 @@ void main() {
 
   group("a drawing's own shapes", () {
     /// pair is a drawing of two squares side by side, red then blue, each
-    /// 40 across, at (100, 100) and (160, 100) -- the second with [arrival]
-    /// and [loop] of its own; the drawing with [animation], fading in over
-    /// frames 0 to 20 where it has one.
+    /// 40 across, at (100, 100) and (160, 100) -- the second with [own]
+    /// animation in place of the drawing's; the drawing with [animation],
+    /// coming in over frames 0 to 20 where it has one, and leaving over 30
+    /// to 40 where it leaves.
     VectorElement pair(
-        {ElementAnimation? arrival,
-        ElementLoop loop = const ElementLoop(),
+        {ElementAnimation? own,
         ElementAnimation animation = const ElementAnimation()}) {
       var second = shapeOf(
               VectorShapeKind.box, const Rect.fromLTWH(60, 0, 40, 40),
               fill: const Color(0xFF0000FF))
-          .copyWith(arrival: arrival, loop: loop);
+          .copyWith(
+              animation: own,
+              owns: own == null ? null : ShapeAnimationPart.values.toSet());
       return VectorElement(
           ElementBase(
               id: "v",
@@ -225,12 +227,16 @@ void main() {
               y: 100,
               width: 100,
               height: 40,
-              track: animation.on
-                  ? ElementTrack(const [
-                      Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
-                      Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
-                    ])
-                  : null),
+              track: ElementTrack([
+                if (animation.on) ...const [
+                  Keyframe(frame: 0, values: {KeyframeChannel.reveal: 0}),
+                  Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
+                ],
+                if (animation.closes) ...const [
+                  Keyframe(frame: 30, values: {KeyframeChannel.close: 0}),
+                  Keyframe(frame: 40, values: {KeyframeChannel.close: 1}),
+                ],
+              ])),
           viewBox: const Rect.fromLTWH(0, 0, 100, 40),
           shapes: [
             shapeOf(VectorShapeKind.box, const Rect.fromLTWH(0, 0, 40, 40),
@@ -255,22 +261,33 @@ void main() {
       return -1;
     }
 
-    test("kept with the shape", () {
+    int alphaAt(List<int> px, int x) => px[(120 * 240 + x) * 4 + 3];
+    const floating = ElementLoop(preset: LoopPreset.float, cycle: 40);
+    const fading = ElementAnimation(preset: ElementAnimationPreset.fadeIn);
+
+    test("kept with the shape -- and read from the two it was kept as", () {
       var e = pair(
-          arrival: const ElementAnimation(
-              preset: ElementAnimationPreset.fadeUp, ease: ChartEase.easeOut),
-          loop: const ElementLoop(preset: LoopPreset.sparkle, cycle: 30));
+          own: const ElementAnimation(
+              preset: ElementAnimationPreset.fadeUp,
+              exit: ElementAnimationPreset.blurIn,
+              loop: ElementLoop(preset: LoopPreset.sparkle, cycle: 30)));
       var back = elementFromJson(
               jsonDecode(jsonEncode(e.toJson())) as Map<String, dynamic>)
           as VectorElement;
-      expect(back.shapes![1].arrival, e.shapes![1].arrival);
-      expect(back.shapes![1].loop, e.shapes![1].loop);
-      expect(back.shapes![0].arrival, isNull, reason: "as the drawing");
+      expect(back.shapes![1].animation, e.shapes![1].animation);
+      expect(back.shapes![0].animation, isNull, reason: "as the drawing");
+
+      var before = VectorShape.fromJson({
+        "p": [],
+        "arrive": {"preset": "fadeUp", "ease": "linear"},
+        "loop": {"preset": "pulse"},
+      })!;
+      expect(before.animation?.preset, ElementAnimationPreset.fadeUp);
+      expect(before.animation?.loop.preset, LoopPreset.pulse);
     });
 
     test("a shape loops on its own, about its own box", () async {
-      var e =
-          pair(loop: const ElementLoop(preset: LoopPreset.float, cycle: 40));
+      var e = pair(own: const ElementAnimation(loop: floating));
       var start = await draw(e, 0), quarter = await draw(e, 10);
       expect(topmost(start, 180), 100);
       // A quarter of the way round: up by 6% of its own 40.
@@ -279,29 +296,84 @@ void main() {
     });
 
     test("a shape loops once it has come in", () async {
-      var e = pair(
-          animation:
-              const ElementAnimation(preset: ElementAnimationPreset.fadeIn),
-          loop: const ElementLoop(preset: LoopPreset.float, cycle: 40));
+      var e = pair(animation: fading, own: fading.copyWith(loop: floating));
       // Coming in over 0-20, together: its loop starts at 20.
       expect(topmost(await draw(e, 20), 180), 100);
       expect(topmost(await draw(e, 30), 180), closeTo(100 - 2.4, 1));
     });
 
+    test("its own loop is in place of the drawing's", () async {
+      // The drawing floats; the second shape has an animation of its own
+      // with no loop, so it alone stays still.
+      var e = pair(
+          animation: const ElementAnimation(loop: floating),
+          own: const ElementAnimation());
+      var quarter = await draw(e, 10);
+      expect(topmost(quarter, 120), closeTo(100 - 2.4, 1),
+          reason: "as the drawing");
+      expect(topmost(quarter, 180), 100, reason: "its own: none");
+    });
+
     test("a shape comes in its own way, or as the drawing does", () async {
-      const fading = ElementAnimation(preset: ElementAnimationPreset.fadeIn);
-      int alphaAt(List<int> px, int x) => px[(120 * 240 + x) * 4 + 3];
       var asDrawing = await draw(pair(animation: fading), 10);
       var none = await draw(
-          pair(
-              animation: fading,
-              arrival:
-                  const ElementAnimation(preset: ElementAnimationPreset.none)),
-          10);
+          pair(animation: fading, own: const ElementAnimation()), 10);
       expect(alphaAt(asDrawing, 180), lessThan(230), reason: "half faded");
       expect(alphaAt(none, 180), 255, reason: "no way in of its own");
       expect(alphaAt(none, 120), lessThan(230),
           reason: "the other still fades, as the drawing");
+    });
+
+    test("what a shape has not made its own follows the drawing", () async {
+      // Its own loop, and nothing else: the drawing's way in still brings it
+      // in, and changing that changes it.
+      var second = shapeOf(
+              VectorShapeKind.box, const Rect.fromLTWH(60, 0, 40, 40),
+              fill: const Color(0xFF0000FF))
+          .copyWith(
+              animation: const ElementAnimation(loop: floating),
+              owns: {ShapeAnimationPart.looping});
+      VectorElement with_(ElementAnimation drawing) => pair(animation: drawing)
+          .copyWith(shapes: [pair().shapes!.first, second]);
+      var fades = await draw(with_(fading), 10);
+      expect(alphaAt(fades, 180), lessThan(230),
+          reason: "the drawing's fade, half way in");
+      var none = await draw(with_(const ElementAnimation()), 10);
+      expect(alphaAt(none, 180), 255, reason: "no arrival on the drawing");
+      // And it is kept knowing which parts are its own.
+      var back = elementFromJson(jsonDecode(jsonEncode(with_(fading).toJson()))
+          as Map<String, dynamic>) as VectorElement;
+      expect(back.shapes![1].owns, {ShapeAnimationPart.looping});
+    });
+
+    test("the drawing's keyframe easing paces shapes coming in in turn",
+        () async {
+      VectorElement turned(KeyframeEasing easing) {
+        var e = pair(animation: fading);
+        return e.copyWith(shapes: [
+          e.shapes!.first,
+          e.shapes![1].copyWith(cue: VectorCue.after),
+        ]).withBase(
+            track: ElementTrack([
+          Keyframe(
+              frame: 0,
+              values: const {KeyframeChannel.reveal: 0},
+              easing: easing),
+          const Keyframe(frame: 20, values: {KeyframeChannel.reveal: 1}),
+        ])) as VectorElement;
+      }
+
+      // Eased in, the first shape is less far in a quarter of the way.
+      var linear = await draw(turned(KeyframeEasing.linear), 5);
+      var eased = await draw(turned(KeyframeEasing.easeIn), 5);
+      expect(alphaAt(eased, 120), lessThan(alphaAt(linear, 120)));
+    });
+
+    test("a shape leaves its own way, or as the drawing does", () async {
+      var leaving = fading.copyWith(exit: ElementAnimationPreset.fadeIn);
+      var px = await draw(pair(animation: leaving, own: fading), 35);
+      expect(alphaAt(px, 120), lessThan(230), reason: "the drawing's way out");
+      expect(alphaAt(px, 180), 255, reason: "its own: staying");
     });
   });
 
@@ -368,7 +440,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a picked shape takes a loop and a way in of its own",
+    testWidgets("with a shape picked, the Animation section is the shape's",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var two = box();
@@ -401,28 +473,58 @@ void main() {
       ));
       await tester.pumpAndSettle();
       VectorElement now() => c.document.elementById("v") as VectorElement;
+      Text scope() => tester.widget<Text>(
+          find.byKey(const ValueKey("vectorShapeAnimationScope")));
+
+      var family = find.byKey(const ValueKey("elementLoopFamily"));
+      if (family.evaluate().isEmpty) {
+        var heading = find.byWidgetPredicate(
+            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
+        await tester.ensureVisible(heading.first);
+        await tester.tap(heading.first);
+        await tester.pumpAndSettle();
+      }
+      expect(find.text("Shape arriving"), findsNothing);
+      expect(find.text("Shape looping"), findsNothing);
+      expect(scope().data, contains("as the drawing"));
 
       tester
-          .widget<CanvasDropdown<LoopFamily?>>(
-              find.byKey(const ValueKey("vectorShapeLoopFamily")))
+          .widget<CanvasDropdown<LoopFamily?>>(family)
           .onChanged(LoopFamily.light);
       await tester.pumpAndSettle();
-      expect(now().shapes![1].loop.preset, LoopPreset.shimmer);
-      expect(now().shapes![0].loop.on, isFalse);
+      expect(now().shapes![1].animation?.loop.preset, LoopPreset.shimmer);
+      expect(now().shapes![0].animation, isNull);
       expect(now().animation.loop.on, isFalse, reason: "not the drawing's");
+      expect(scope().data, contains("own looping"));
 
       // A way in, with nothing on the timeline to time it by: the drawing
       // is given one too, in the same step.
       tester
-          .widget<CanvasDropdown<Object?>>(
-              find.byKey(const ValueKey("vectorShapeArrivalKind")))
+          .widget<CanvasDropdown<ElementAnimationFamily?>>(
+              find.byKey(const ValueKey("elementAnimationFamily")))
           .onChanged(ElementAnimationFamily.fade);
       await tester.pumpAndSettle();
-      expect(now().shapes![1].arrival?.on, isTrue);
+      expect(now().shapes![1].animation?.on, isTrue);
       expect(now().animation.on, isTrue);
       c.undo();
-      expect(now().shapes![1].arrival, isNull, reason: "one undo step");
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].animation?.on, isFalse, reason: "one undo step");
       expect(now().animation.on, isFalse);
+
+      // Back to the drawing's.
+      var reset = find.byKey(const ValueKey("vectorShapeAnimationReset"));
+      await tester.ensureVisible(reset);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(now().shapes![1].animation, isNull);
+
+      // And the drawing's own, with no shape picked.
+      var drawing = find.byKey(const ValueKey("vectorShapeAnimationDrawing"));
+      await tester.ensureVisible(drawing);
+      await tester.tap(drawing);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("vectorShapeAnimationScope")),
+          findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

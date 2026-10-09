@@ -25,7 +25,9 @@ enum VectorTool {
   corner("Round corners"),
   pencil("Pencil"),
   eraser("Eraser"),
-  shapes("Shapes");
+  shapes("Shapes"),
+  knife("Knife"),
+  text("Text");
 
   final String label;
   const VectorTool(this.label);
@@ -816,7 +818,9 @@ VectorElement withoutPoints(VectorElement e, Set<VectorPick> picks) {
       }
       var piece = <VectorNode>[];
       void finish() {
-        if (piece.length >= 2) paths.add(VectorPath(piece, closed: closed));
+        if (piece.length >= 2) {
+          paths.add(VectorPath(piece, closed: closed, part: run.part));
+        }
         piece = [];
       }
 
@@ -904,7 +908,7 @@ List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
           : 0;
       var piece = <VectorNode>[];
       void finish() {
-        if (piece.length >= 2) runs.add(VectorPath(piece));
+        if (piece.length >= 2) runs.add(VectorPath(piece, part: run.part));
         piece = [];
       }
 

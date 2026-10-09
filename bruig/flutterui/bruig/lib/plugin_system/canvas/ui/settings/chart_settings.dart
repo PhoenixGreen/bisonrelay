@@ -942,6 +942,9 @@ List<Widget> chartSettings(
       CanvasExpander(
         label: "Animation",
         remember: "chartAnimation",
+        action: e.animation.on || e.animation.closes
+            ? previewButton(controller, e)
+            : null,
         trailing: e.animation.on
             ? (e.animation.closes
                 ? "${e.animation.preset.label} · ${e.animation.exit.label}"
@@ -951,11 +954,6 @@ List<Widget> chartSettings(
           // The same group every other element's animation section carries:
           // the easing belongs to the keyframe, and a chart's keyframes are
           // keyframes like any other.
-          if (e.animation.on || e.animation.closes)
-            CanvasControlGroup(
-                label: "Preview",
-                hideCaption: true,
-                children: [previewButton(controller, e)]),
           keyframeEasingGroup(controller, e, begin, commit),
           const CanvasHint(
               "Choosing one draws the chart on over two seconds and puts a "

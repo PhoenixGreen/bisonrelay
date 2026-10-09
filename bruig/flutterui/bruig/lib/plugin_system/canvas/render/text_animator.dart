@@ -605,8 +605,12 @@ MotionFrame applyMotionSpec(
   double p, {
   double? from,
   int seed = 0,
+
+  /// pivot is what it grows, spins and flips about: its centre unless it
+  /// has an anchor of its own.
+  Offset? pivot,
 }) {
-  var centre = box.center;
+  var centre = pivot ?? box.center;
   var alpha = p.clamp(0.0, 1.0);
   var depth = 1;
   var clipped = false;

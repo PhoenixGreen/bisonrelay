@@ -20,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -336,5 +337,41 @@ void main() {
       expect(sequenced(now().shapes!), isFalse);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets("a playlist row picked is taken out with Backspace",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(const CanvasDocument()
+        .copyWith(frames: 120)
+        .addElement(drawing(count: 3)));
+    addTearDown(c.dispose);
+    c.selectOnly("v");
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(panel(c));
+    await tester.pumpAndSettle();
+    VectorElement now() => c.document.elementById("v") as VectorElement;
+    var row = find.byKey(const ValueKey("vectorPlaylist-1"));
+    if (row.evaluate().isEmpty) {
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+      await tester.ensureVisible(heading.first);
+      await tester.tap(heading.first);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(row);
+    await tester.tap(find.descendant(of: row, matching: find.text("2")));
+    await tester.pumpAndSettle();
+    var middle = now().shapes![1];
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pumpAndSettle();
+    expect(c.document.elementById("v"), isNotNull, reason: "not the drawing");
+    expect(now().shapes!.length, 2);
+    expect(now().shapes!.contains(middle), isFalse, reason: "the one picked");
+    c.undo();
+    expect(now().shapes!.length, 3, reason: "one undo step");
+    expect(tester.takeException(), isNull);
   });
 }

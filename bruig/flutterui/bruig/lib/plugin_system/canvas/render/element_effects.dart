@@ -312,7 +312,8 @@ Float64List _about(double x, double y, double by) => Float64List.fromList([
 /// gets 1 and 0, which is "all of it, and not leaving", and is drawn exactly
 /// as it was before any of this existed.
 void paintArriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
-    Keyframe pose, void Function() what) {
+    Keyframe pose, void Function() what,
+    {Offset? pivot}) {
   // A line drawn flat has a box with no height at all, and every motion here
   // is a fraction of the box: a slide would travel nothing and a grid of
   // tiles would have no rows. Given some, they behave like anything else.
@@ -359,7 +360,8 @@ void paintArriving(ui.Canvas canvas, Rect box, ElementAnimation animation,
   }
 
   var spec = playing.spec;
-  var frame = applyMotionSpec(canvas, bounds, spec, p, from: spec.from);
+  var frame =
+      applyMotionSpec(canvas, bounds, spec, p, from: spec.from, pivot: pivot);
   if (frame.alpha >= 0.999) {
     what();
   } else if (frame.alpha > 0.002) {

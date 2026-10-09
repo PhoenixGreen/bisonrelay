@@ -20,6 +20,9 @@ import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_cut.dart';
+import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
+import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/models/snackbar.dart';
@@ -78,6 +81,10 @@ import 'package:flutter/services.dart';
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
   none,
+
+  /// anchor is an element's anchor point being dragged. See
+  /// ElementBase.anchorX.
+  anchor,
   move,
   resize,
   rotate,
@@ -141,6 +148,10 @@ enum _DragMode {
   /// vectorPencil is a pencil stroke being drawn; vectorErase the pen's
   /// eraser going over lines.
   vectorPencil,
+
+  /// vectorKnife is the knife's line being drawn through a drawing. See
+  /// vector_cut.dart.
+  vectorKnife,
   vectorErase,
 
   /// vectorRub is the eraser rubbing out what it goes over.
@@ -463,6 +474,12 @@ class CanvasStageState extends State<CanvasStage> {
   @override
   void initState() {
     super.initState();
+    // The caret moved by the keys -- not only by what is typed.
+    _typing.addListener(() {
+      if (mounted && !_filling && controller.vectorTyping >= 0) {
+        setState(() {});
+      }
+    });
     // The pen's pressure and tilt, where the platform only passes them on
     // through the runner.
     TabletInput.instance.start();
@@ -491,6 +508,8 @@ class CanvasStageState extends State<CanvasStage> {
 
   @override
   void dispose() {
+    _typing.dispose();
+    _typingFocus.dispose();
     _previewDebounce?.cancel();
     _legendHold?.cancel();
     _backgrounds.dispose();
@@ -1640,6 +1659,15 @@ class CanvasStageState extends State<CanvasStage> {
     // picked up again.
     if (_startGuideDrag(stage, doc)) return;
 
+    // An anchor point shown and not locked, before the element it sits on:
+    // it is the small thing drawn on top, and the thing being aimed at.
+    if (_anchorUnder(stage) case var id?) {
+      _anchorOf = id;
+      _mode = _DragMode.anchor;
+      controller.beginInteraction();
+      return;
+    }
+
     // A drawing being edited takes the press first: its points and handles,
     // its shapes, and anywhere inside it. A press outside it finishes the
     // editing, and goes on to do whatever it would have done.
@@ -2160,6 +2188,23 @@ class CanvasStageState extends State<CanvasStage> {
       case VectorTool.eraser:
         _pressEraser(e, doc, reach);
         return true;
+      case VectorTool.text:
+        // On text: type into it. Anywhere else: new text, starting there.
+        var under = shapeAt(e, doc, reach);
+        var shapes = e.shapes ?? const <VectorShape>[];
+        if (under >= 0 && shapes[under].liveText != null) {
+          controller.startVectorTyping(under);
+          _typingFor = -2;
+        } else {
+          controller.newVectorText(VectorSpace(e).toDrawing(doc));
+          _typingFor = -2;
+        }
+        _mode = _DragMode.none;
+        return true;
+      case VectorTool.knife:
+        _knife = [doc];
+        _mode = _DragMode.vectorKnife;
+        return true;
       case VectorTool.shapes:
         _vectorBefore = e;
         _shapeFrom = doc;
@@ -2266,6 +2311,30 @@ class CanvasStageState extends State<CanvasStage> {
             connectedPicks(e, under, VectorSpace(e).toDrawing(doc)));
         _mode = _DragMode.none;
         return true;
+      }
+    }
+    // A shape cut into pieces: a press on a piece picks it -- every point
+    // of it -- and a drag moves it alone. See vector_cut.dart.
+    if (!twice && !_shiftHeld && controller.vectorTool == VectorTool.select) {
+      var under = shapeAt(e, doc, reach);
+      var shapes = e.shapes ?? const <VectorShape>[];
+      if (under >= 0 && partsOf(shapes[under]).length > 1) {
+        var space = VectorSpace(e);
+        var shape = shapes[under];
+        if (partAt(shape, space.toDrawing(doc), reach * space.unitsPer)
+            case var part?) {
+          controller.pickVectorPoints({
+            for (var (p, run) in shape.paths.indexed)
+              if (run.part == part)
+                for (var n = 0; n < run.nodes.length; n++)
+                  VectorPick(under, p, n),
+          });
+          _vectorBefore = e;
+          _vectorFrom = doc;
+          _mode = _DragMode.vectorPoints;
+          controller.beginInteraction();
+          return true;
+        }
       }
     }
     // Anywhere else -- on a shape, on the drawing's empty space, or off the
@@ -2455,6 +2524,141 @@ class CanvasStageState extends State<CanvasStage> {
     controller.replaceElement(
         before.copyWith(shapes: [...?before.shapes, shape]),
         transient: true);
+  }
+
+  /// _typing holds what is typed into a drawing's text, in a field the
+  /// reader never sees: it is what takes the keys -- and the caret's
+  /// moves, the selections, the input methods -- and the letters appear on
+  /// the drawing as they are typed. _typingFor is the shape it was last
+  /// filled from, so a different one starts it afresh.
+  final TextEditingController _typing = TextEditingController();
+  final FocusNode _typingFocus = FocusNode(debugLabel: "vectorTyping");
+  int _typingFor = -1;
+  bool _filling = false;
+
+  /// _typedLayout is the text being typed, laid out, with the drawing and
+  /// the shape -- or null.
+  (VectorElement, VectorTextLayout)? _typedLayout() {
+    var e = controller.editingVector;
+    var i = controller.vectorTyping;
+    var shapes = e?.shapes;
+    if (e == null || shapes == null || i < 0 || i >= shapes.length) {
+      return null;
+    }
+    var s = shapes[i];
+    var t = s.liveText;
+    if (t == null) return null;
+    var pick = FontFiles.instance.cached(t.family, t.weight, t.italic);
+    if (pick == null) return null;
+    return (e, layoutVectorText(t, s.textOrigin ?? t.origin, pick));
+  }
+
+  /// _caret is where the caret is drawn, top to bottom, on the page.
+  (Offset, Offset)? _caret() {
+    if (_typedLayout() case (var e, var laid)?) {
+      var at =
+          _typing.selection.baseOffset.clamp(0, laid.carets.length - 1).toInt();
+      var p = laid.carets[at];
+      var space = VectorSpace(e);
+      return (
+        space.toCanvas(p - Offset(0, laid.ascent)),
+        space.toCanvas(p + Offset(0, laid.descent)),
+      );
+    }
+    return null;
+  }
+
+  /// _typingField is the unseen field typed into, while text is.
+  Widget? _typingField() {
+    var i = controller.vectorTyping;
+    if (i < 0) {
+      _typingFor = -1;
+      return null;
+    }
+    var e = controller.editingVector;
+    var t = (e?.shapes != null && i < e!.shapes!.length)
+        ? e.shapes![i].liveText
+        : null;
+    if (_typingFor != i) {
+      _typingFor = i;
+      var text = t?.text ?? "";
+      // Filled while the stage is being built, which is the rebuild.
+      _filling = true;
+      _typing.value = TextEditingValue(
+          text: text, selection: TextSelection.collapsed(offset: text.length));
+      _filling = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _typingFocus.requestFocus();
+      });
+    }
+    var caret = _caret();
+    var at = caret == null ? Offset.zero : _toStage(caret.$1);
+    return Positioned(
+      left: at.dx,
+      top: at.dy,
+      width: 2,
+      height: 2,
+      child: Opacity(
+        opacity: 0,
+        child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is KeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.escape) {
+              controller.stopVectorTyping();
+              _focus.requestFocus();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(
+            key: const ValueKey("vectorTypingField"),
+            controller: _typing,
+            focusNode: _typingFocus,
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            onChanged: (v) {
+              var e = controller.editingVector;
+              var i = controller.vectorTyping;
+              var shape = e?.shapes != null && i >= 0 && i < e!.shapes!.length
+                  ? e.shapes![i]
+                  : null;
+              var t = shape?.liveText;
+              if (t != null)
+                controller.retypeVectorText(i, t.copyWith(text: v));
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// _knife is the knife's line, on the page, while it is being drawn.
+  List<Offset> _knife = const [];
+
+  /// _finishKnife cuts what the knife's line went through -- the shape
+  /// picked, or every shape it crossed -- as one change.
+  void _finishKnife() {
+    var line = _knife;
+    setState(() => _knife = const []);
+    var e = controller.editingVector;
+    if (e == null || line.length < 2) return;
+    var space = VectorSpace(e);
+    var drawn = simplifiedKnife([for (var p in line) space.toDrawing(p)],
+        0.5 / _scale * space.unitsPer);
+    var gap = controller.vectorKnifeGap * space.unitsPer;
+    var shapes = e.shapes ?? const <VectorShape>[];
+    var only = controller.vectorShape;
+    var next = <VectorShape>[];
+    var cut = false;
+    for (var (i, s) in shapes.indexed) {
+      var pieces = only >= 0 && i != only ? null : cutShape(s, drawn, gap);
+      cut |= pieces != null;
+      next.add(pieces ?? s);
+    }
+    if (!cut) return;
+    controller.replaceElement(e.copyWith(shapes: next));
+    // The points have new numbers: nothing of them stays picked.
+    controller.pickVectorShape(only);
   }
 
   /// _pressQuickFill fills the area the lines close round the click with
@@ -3638,6 +3842,11 @@ class CanvasStageState extends State<CanvasStage> {
         _applyResize(delta);
       case _DragMode.rotate:
         _applyRotate(doc);
+      case _DragMode.anchor:
+        if (document.elementById(_anchorOf ?? "") case var e?) {
+          controller.replaceElement(e.withAnchorAt(doc, controller.frame),
+              transient: true);
+        }
       case _DragMode.marquee:
         setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
@@ -3663,6 +3872,11 @@ class CanvasStageState extends State<CanvasStage> {
         _applyCorner(doc);
       case _DragMode.vectorPencil:
         _applyPencil(doc);
+      case _DragMode.vectorKnife:
+        // A point a couple of pixels on from the last, no closer.
+        if ((doc - _knife.last).distance * _scale >= 2) {
+          setState(() => _knife = [..._knife, doc]);
+        }
       case _DragMode.vectorShapeDraw:
         _drawShape(doc);
       case _DragMode.vectorShapeFit:
@@ -3955,10 +4169,44 @@ class CanvasStageState extends State<CanvasStage> {
     return Offset(dx, dy);
   }
 
+  /// _anchorOf is the element whose anchor is being dragged.
+  String? _anchorOf;
+
+  /// _anchorsShown is every selected element's anchor that is shown: where
+  /// it is on the page now, and whether it is locked.
+  List<({Offset at, bool locked})> _anchorsShown() => [
+        for (var id in controller.selection)
+          if (controller.anchorShown(id))
+            if (document.elementById(id) case var e?)
+              (at: e.anchorAt(controller.frame), locked: e.base.anchorLocked),
+      ];
+
+  /// _anchorUnder is the element whose anchor -- shown, and not locked -- is
+  /// under [stage], or null.
+  String? _anchorUnder(Offset stage) {
+    for (var id in controller.selection) {
+      if (!controller.anchorShown(id)) continue;
+      var e = document.elementById(id);
+      if (e == null || e.base.anchorLocked || e.locked) continue;
+      if ((_toStage(e.anchorAt(controller.frame)) - stage).distance <= 10) {
+        return id;
+      }
+    }
+    return null;
+  }
+
   void _applyRotate(Offset doc) {
     var bounds = _selectionBounds;
     if (bounds == null) return;
     var centre = bounds.center;
+    // One element turns about its anchor, which stays where it is.
+    if (controller.selection.length == 1) {
+      var one = document.elementById(controller.selection.first);
+      if (one != null && !one.anchorCentred) {
+        centre =
+            one.turnedAboutCentre(one.anchorIn(one.bounds), one.bounds.center);
+      }
+    }
 
     var from = math.atan2(_dragStart.dy - centre.dy, _dragStart.dx - centre.dx);
     var to = math.atan2(doc.dy - centre.dy, doc.dx - centre.dx);
@@ -3972,7 +4220,7 @@ class CanvasStageState extends State<CanvasStage> {
       // Shift snaps to fifteen degrees, which covers every angle anybody
       // actually wants and makes "put it back to straight" reachable.
       if (_shiftHeld) rotation = (rotation / 15).round() * 15;
-      next = next.withElement(element.withBase(rotation: rotation));
+      next = next.withElement(element.turnedTo(rotation));
     }
     controller.apply(next, transient: true);
   }
@@ -4157,7 +4405,9 @@ class CanvasStageState extends State<CanvasStage> {
     // gesture came next, so undoing after nudging a chart's title also undid
     // the move that followed it.
     if (_mode == _DragMode.guide) _finishGuide();
+    if (_mode == _DragMode.vectorKnife) _finishKnife();
     if (_mode == _DragMode.move ||
+        _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
@@ -4374,6 +4624,14 @@ class CanvasStageState extends State<CanvasStage> {
         controller.vectorTool = controller.vectorTool == VectorTool.scale
             ? VectorTool.select
             : VectorTool.scale;
+      case LogicalKeyboardKey.keyT when controller.editingVector != null:
+        controller.vectorTool = controller.vectorTool == VectorTool.text
+            ? VectorTool.select
+            : VectorTool.text;
+      case LogicalKeyboardKey.keyK when controller.editingVector != null:
+        controller.vectorTool = controller.vectorTool == VectorTool.knife
+            ? VectorTool.select
+            : VectorTool.knife;
       case LogicalKeyboardKey.keyR when controller.editingVector != null:
         controller.vectorTool = controller.vectorTool == VectorTool.shapes
             ? VectorTool.select
@@ -4485,6 +4743,7 @@ class CanvasStageState extends State<CanvasStage> {
                         frame: controller.frame,
                         previewAt: controller.previewAt,
                         previewing: controller.previewing,
+                        anchors: _anchorsShown(),
                         scale: _scale,
                         origin: _origin,
                         images: controller.images,
@@ -4514,6 +4773,8 @@ class CanvasStageState extends State<CanvasStage> {
                               // dragged: it is the line that is watched.
                               bare: _mode == _DragMode.vectorScale ||
                                   controller.vectorTool == VectorTool.shapes ||
+                                  // Typing: the letters, not their points.
+                                  controller.vectorTool == VectorTool.text ||
                                   controller.vectorTool == VectorTool.tint ||
                                   controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
@@ -4556,6 +4817,8 @@ class CanvasStageState extends State<CanvasStage> {
                         preview: _preview,
                         previewOn: _previewPlacement(),
                         liveStroke: _liveCanvas,
+                        knife: _knife,
+                        caret: _caret(),
                         liveStrokeRadius: _liveRadius,
                         liveStrokeKeeps: controller.retouch.keeps,
                         selectionBounds: _selectionBounds,
@@ -4577,6 +4840,7 @@ class CanvasStageState extends State<CanvasStage> {
                 ),
               )),
               if (_editorFor() case var editor?) editor,
+              if (_typingField() case var typing?) typing,
               if (_brushRing() case var ring?) ring,
               if (_cellEditorFor() case var cell?) cell,
               if (_counterInputFor() case var setting?) setting,
@@ -4805,6 +5069,10 @@ class CanvasStageState extends State<CanvasStage> {
     if (controller.editingVector != null &&
         controller.vectorTool == VectorTool.eraser) {
       return SystemMouseCursors.none;
+    }
+    if (controller.editingVector != null &&
+        controller.vectorTool == VectorTool.knife) {
+      return SystemMouseCursors.precise;
     }
     if (controller.editingVector != null &&
         controller.vectorTool == VectorTool.pencil) {

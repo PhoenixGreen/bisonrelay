@@ -3862,6 +3862,10 @@ void main() {
       }
       return () async {
         if (!open) {
+          // Scrolled to first: tapped where it was, under the panel's own
+          // heading, it shut the whole panel for every test after.
+          await tester.ensureVisible(find.text("ANIMATION"));
+          await tester.pumpAndSettle();
           await tester.tap(find.text("ANIMATION"));
           await tester.pumpAndSettle();
         }
@@ -3935,13 +3939,6 @@ void main() {
       expect(tester.widget<CanvasDropdown<KeyframeEasing>>(easing).enabled,
           isFalse,
           reason: "and greyed, because there is no keyframe on this frame");
-      expect(
-          tester
-              .widgetList<CanvasHint>(find.byType(CanvasHint))
-              .map((h) => h.message)
-              .where((m) => m.contains("2 marks")),
-          isNotEmpty,
-          reason: "and says where to put the playhead to use it");
       await shut();
     });
 
