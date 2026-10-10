@@ -1209,7 +1209,10 @@ List<Widget> fillBits(
         label: "Pattern",
         value: fill.pattern.style,
         width: 150,
-        options: [for (var s in ProceduralStyle.values) (s, s.label)],
+        options: [
+          for (var s in ProceduralStyle.values)
+            if (!s.hidden || s == fill.pattern.style) (s, s.label),
+        ],
         onChanged: (v) =>
             now(fill.copyWith(pattern: fill.pattern.copyWith(style: v))),
       ),
@@ -1656,15 +1659,42 @@ List<Widget> motionControls(
     {String keys = "element",
     bool leaving = false}) {
   var preset = leaving ? animation.exit : animation.preset;
-  var directed = leaving ? animation.exitDirected : animation.arrivalDirected;
-  var strengthens =
-      leaving ? animation.exitStrengthens : animation.arrivalStrengthens;
-  var direction = (leaving ? animation.exitDirection : animation.direction) ??
-      (preset.motion == TextMotion.wipe
-          ? AnimationDirection.left
-          : AnimationDirection.of(preset.dx, preset.dy)) ??
-      AnimationDirection.left;
-  var strength = leaving ? animation.exitStrength : animation.strength;
+  return directionStrength(
+    keys: keys,
+    leaving: leaving,
+    directed: leaving ? animation.exitDirected : animation.arrivalDirected,
+    strengthens:
+        leaving ? animation.exitStrengthens : animation.arrivalStrengthens,
+    direction: (leaving ? animation.exitDirection : animation.direction) ??
+        (preset.motion == TextMotion.wipe
+            ? AnimationDirection.left
+            : AnimationDirection.of(preset.dx, preset.dy)) ??
+        AnimationDirection.left,
+    strength: leaving ? animation.exitStrength : animation.strength,
+    onDirection: (d) => now(leaving
+        ? animation.copyWith(exitDirection: d)
+        : animation.copyWith(direction: d)),
+    onStrength: (v) => live(leaving
+        ? animation.copyWith(exitStrength: v)
+        : animation.copyWith(strength: v)),
+    commit: commit,
+  );
+}
+
+/// directionStrength is a way in's -- or, [leaving], a way out's -- Direction
+/// and Strength, where they mean something: the one control set every kind
+/// of element's animation uses, whatever it keeps them in.
+List<Widget> directionStrength({
+  required String keys,
+  required bool leaving,
+  required bool directed,
+  required bool strengthens,
+  required AnimationDirection direction,
+  required double strength,
+  required ValueChanged<AnimationDirection> onDirection,
+  required ValueChanged<double> onStrength,
+  required VoidCallback commit,
+}) {
   var side = leaving ? "Exit" : "";
   return [
     if (directed)
@@ -1677,9 +1707,7 @@ List<Widget> motionControls(
           for (var d in AnimationDirection.values)
             (d, leaving ? _goingTo(d) : d.label),
         ],
-        onChanged: (d) => now(leaving
-            ? animation.copyWith(exitDirection: d)
-            : animation.copyWith(direction: d)),
+        onChanged: onDirection,
       ),
     if (strengthens)
       CanvasSlider(
@@ -1688,9 +1716,7 @@ List<Widget> motionControls(
         value: strength,
         max: 3,
         width: 90,
-        onChanged: (v) => live(leaving
-            ? animation.copyWith(exitStrength: v)
-            : animation.copyWith(strength: v)),
+        onChanged: onStrength,
         onCommit: commit,
       ),
   ];

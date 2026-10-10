@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 
 // chart_animation.dart is how a chart arrives: which preset, how much its
 // items overlap, and what the end of the movement does.
@@ -266,7 +267,15 @@ class ChartAnimation {
     this.gap = 0.55,
     this.ease = ChartEase.easeOut,
     this.length = 0,
+    this.loop = const ElementLoop(),
   });
+
+  /// loop is what the chart goes on doing after it has arrived, or instead
+  /// of arriving: see ElementLoop.
+  final ElementLoop loop;
+
+  /// any is whether there is anything to it: an arrival, an exit or a loop.
+  bool get any => on || closes || loop.on;
 
   bool get on => preset != ChartAnimationPreset.none;
 
@@ -290,6 +299,7 @@ class ChartAnimation {
     double? gap,
     ChartEase? ease,
     int? length,
+    ElementLoop? loop,
   }) =>
       ChartAnimation(
         preset: preset ?? this.preset,
@@ -299,6 +309,7 @@ class ChartAnimation {
         gap: gap ?? this.gap,
         ease: ease ?? this.ease,
         length: length ?? this.length,
+        loop: loop ?? this.loop,
       );
 
   /// progressAt is how far item [index] of [count] has got when the whole
@@ -359,6 +370,7 @@ class ChartAnimation {
         "gap": gap,
         "ease": ease.name,
         if (length > 0) "length": length,
+        if (loop.on) "loop": loop.toJson(),
       };
 
   factory ChartAnimation.fromJson(Map<String, dynamic> json) => ChartAnimation(
@@ -368,5 +380,8 @@ class ChartAnimation {
         gap: jsonDouble(json["gap"], 0.55).clamp(0.0, 4.0),
         ease: ChartEase.fromName(json["ease"] as String?),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
+        loop: json["loop"] is Map<String, dynamic>
+            ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
+            : const ElementLoop(),
       );
 }

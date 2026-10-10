@@ -1,6 +1,9 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 
 // text_animation.dart is how a text element arrives.
 //
@@ -792,6 +795,18 @@ class TextAnimation {
   /// never saved. See ChartAnimation.flipOrder.
   final bool flipOrder;
 
+  /// direction and strength turn and size a moving arrival, as a shape's do
+  /// -- see ElementAnimation.specFor; exitDirection and exitStrength the
+  /// same for the way out, its own.
+  final AnimationDirection? direction;
+  final double strength;
+  final AnimationDirection? exitDirection;
+  final double exitStrength;
+
+  /// loop is what the words go on doing after they have arrived, or instead
+  /// of arriving: see ElementLoop.
+  final ElementLoop loop;
+
   const TextAnimation({
     this.preset = TextAnimationPreset.none,
     this.exit = TextAnimationPreset.none,
@@ -804,6 +819,11 @@ class TextAnimation {
     this.ease = ChartEase.easeOut,
     this.length = 0,
     this.flipOrder = false,
+    this.direction,
+    this.strength = 1,
+    this.exitDirection,
+    this.exitStrength = 1,
+    this.loop = const ElementLoop(),
   });
 
   bool get on => preset != TextAnimationPreset.none;
@@ -850,7 +870,61 @@ class TextAnimation {
   bool get closes => exit != TextAnimationPreset.none;
 
   /// leaving is this animation as it is played on the way out.
-  TextAnimation get leaving => copyWith(preset: exit, flipOrder: exitInOrder);
+  TextAnimation get leaving => copyWith(
+      preset: exit,
+      flipOrder: exitInOrder,
+      direction: exitDirection,
+      clearDirection: exitDirection == null,
+      strength: exitStrength);
+
+  /// any is whether there is anything to it: an arrival, an exit or a loop.
+  bool get any => on || closes || loop.on;
+
+  static bool _directs(TextAnimationPreset p) =>
+      p != TextAnimationPreset.none &&
+      ((p.motion == TextMotion.rise || p.motion == TextMotion.trail) &&
+              (p.dx != 0 || p.dy != 0) ||
+          p.motion == TextMotion.wipe);
+  static bool _strengthens(TextAnimationPreset p) =>
+      p != TextAnimationPreset.none &&
+      (((p.motion == TextMotion.rise || p.motion == TextMotion.trail) &&
+              (p.dx != 0 || p.dy != 0)) ||
+          p.motion == TextMotion.grow ||
+          p.motion == TextMotion.spin);
+
+  /// arrivalDirected and the rest are whether a direction, or a strength,
+  /// means anything for the way in, or the way out.
+  bool get arrivalDirected => _directs(preset);
+  bool get exitDirected => _directs(exit);
+  bool get arrivalStrengthens => _strengthens(preset);
+  bool get exitStrengthens => _strengthens(exit);
+
+  /// spec is the arrival's motion as this animation plays it: turned to its
+  /// direction, and moved, grown and turned as far as its strength says.
+  /// The way out's is [leaving]'s.
+  MotionSpec get spec {
+    var p = preset;
+    var base = p.spec;
+    var dx = base.dx, dy = base.dy;
+    var way = direction;
+    if (way != null && base.motion == TextMotion.wipe) {
+      dx = way.dx;
+      dy = way.dy;
+    } else if (way != null && (dx != 0 || dy != 0)) {
+      var far = math.sqrt(dx * dx + dy * dy);
+      var unit = math.sqrt(way.dx * way.dx + way.dy * way.dy);
+      dx = way.dx / unit * far;
+      dy = way.dy / unit * far;
+    }
+    var k = base.motion == TextMotion.wipe ? 1.0 : strength;
+    return MotionSpec(base.motion,
+        dx: dx * k,
+        dy: dy * k,
+        from: 1 + (scaleFor(p) - 1) * strength,
+        turns: base.turns * strength,
+        clipped: base.clipped,
+        stretch: base.stretch);
+  }
 
   TextAnimation copyWith({
     TextAnimationPreset? preset,
@@ -864,6 +938,12 @@ class TextAnimation {
     ChartEase? ease,
     int? length,
     bool? flipOrder,
+    AnimationDirection? direction,
+    bool clearDirection = false,
+    double? strength,
+    AnimationDirection? exitDirection,
+    double? exitStrength,
+    ElementLoop? loop,
   }) =>
       TextAnimation(
         preset: preset ?? this.preset,
@@ -877,6 +957,11 @@ class TextAnimation {
         ease: ease ?? this.ease,
         length: length ?? this.length,
         flipOrder: flipOrder ?? this.flipOrder,
+        direction: clearDirection ? null : direction ?? this.direction,
+        strength: strength ?? this.strength,
+        exitDirection: exitDirection ?? this.exitDirection,
+        exitStrength: exitStrength ?? this.exitStrength,
+        loop: loop ?? this.loop,
       );
 
   /// progressAt is how far piece [index] of [count] has got when the whole
@@ -908,6 +993,11 @@ class TextAnimation {
         if (cuts) "effect": effect.toJson(),
         "ease": ease.name,
         if (length > 0) "length": length,
+        if (direction != null) "direction": direction!.name,
+        if (strength != 1) "strength": strength,
+        if (exitDirection != null) "exitDirection": exitDirection!.name,
+        if (exitStrength != 1) "exitStrength": exitStrength,
+        if (loop.on) "loop": loop.toJson(),
       };
 
   factory TextAnimation.fromJson(Map<String, dynamic> json) => TextAnimation(
@@ -927,5 +1017,13 @@ class TextAnimation {
             : const EffectSpec(),
         ease: ChartEase.fromName(json["ease"] as String?),
         length: jsonInt(json["length"], 0).clamp(0, 100000),
+        direction: AnimationDirection.fromName(json["direction"] as String?),
+        strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
+        exitDirection:
+            AnimationDirection.fromName(json["exitDirection"] as String?),
+        exitStrength: jsonDouble(json["exitStrength"], 1).clamp(0.0, 10.0),
+        loop: json["loop"] is Map<String, dynamic>
+            ? ElementLoop.fromJson(json["loop"] as Map<String, dynamic>)
+            : const ElementLoop(),
       );
 }

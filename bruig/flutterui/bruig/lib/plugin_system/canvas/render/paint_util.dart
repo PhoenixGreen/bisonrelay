@@ -262,9 +262,9 @@ void paintThroughText(ui.Canvas canvas, Rect box, TextFill fill,
       moving != null &&
       movesAsOneBlock(animation) &&
       (reveal < 1 || animation.keeps)) {
-    var carried = applyMotion(
-        canvas, moving, animation.preset, animation.progressAt(reveal, 0, 1),
-        from: animation.scaleFor(animation.preset));
+    var carried = applyMotionSpec(
+        canvas, moving, animation.spec, animation.progressAt(reveal, 0, 1),
+        from: animation.spec.from);
     depth = carried.depth;
   }
 
@@ -575,8 +575,9 @@ void paintPartMarks(
       // came apart into a letter's worth of stripes would not be one.
       var frame = moving == null || !moving.on
           ? const MotionFrame(1, 0, false)
-          : applyMotion(canvas, box, moving.preset, moving.progressAt(at, 0, 1),
-              from: moving.scaleFor(moving.preset));
+          : applyMotionSpec(
+              canvas, box, moving.spec, moving.progressAt(at, 0, 1),
+              from: moving.spec.from);
       _fadeInto(canvas, box, frame.alpha, () {
         if (behind) {
           _paintPartHighlight(canvas, box, part.highlight!);
@@ -1589,9 +1590,9 @@ void paintTextInColumns(
   var asBlock = moving && movesAsOneBlock(animation);
   var depth = 0;
   if (asBlock) {
-    var carried = applyMotion(
-        canvas, box, animation.preset, animation.progressAt(reveal, 0, 1),
-        from: animation.scaleFor(animation.preset));
+    var carried = applyMotionSpec(
+        canvas, box, animation.spec, animation.progressAt(reveal, 0, 1),
+        from: animation.spec.from);
     depth = carried.depth;
     if (carried.alpha <= 0) {
       for (var r = 0; r < depth; r++) {
@@ -2111,8 +2112,8 @@ void paintTextOnPath(
 
     var frame = anim == null
         ? const MotionFrame(1, 0, false)
-        : applyMotion(canvas, local, anim.preset, p,
-            from: anim.scaleFor(anim.preset), seed: g.index);
+        : applyMotionSpec(canvas, local, anim.spec, p,
+            from: anim.spec.from, seed: g.index);
 
     // A mark drawn along the words follows the curve because it is drawn a
     // letter at a time, each in its own frame: the band under a bend is a

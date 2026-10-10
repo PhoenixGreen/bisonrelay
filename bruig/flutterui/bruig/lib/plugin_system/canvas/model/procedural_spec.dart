@@ -2,8 +2,12 @@ import 'dart:ui';
 
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_params.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 
 // procedural_spec.dart is the recipe for a generated background: which
 // algorithm, which colours, how dense, and which seed.
@@ -41,6 +45,8 @@ enum ProceduralStyle {
   rain("Symbol rain", "Columns of falling glyphs, brightest at the head"),
   symbolField("Symbol field", "Scattered glyphs at varying size and angle"),
   rings("Rings", "Concentric rings radiating from a point"),
+  blockchain("Blockchain",
+      "Chained blocks, a node network, a ledger, a Merkle tree or a field of blocks"),
   // The drawn ones. Every other style here is a field or a grid -- these are
   // marks somebody would make with a pen or a brush, which is what a pattern
   // *inside lettering* wants: a halftone behind a comic caption, rays behind
@@ -54,16 +60,51 @@ enum ProceduralStyle {
   // A surface rather than a pattern. The others are marks on a ground; this
   // one is the ground itself, which is what a title plate, a panel behind a
   // logo or an industrial-looking banner wants underneath it.
-  metal("Metal texture", "Brushed metal, with rust, damage and a sheen");
+  metal("Metal texture", "Brushed metal, with rust, damage and a sheen"),
+  // The other materials a surface can be, each built the way the metal is.
+  surface("Surface",
+      "Paper, concrete, wood, marble, carbon fibre, fabric or leather");
 
   final String label;
   final String description;
   const ProceduralStyle(this.label, this.description);
 
+  /// family is which heading it is listed under.
+  StyleFamily get family => switch (this) {
+        plain ||
+        gradientMesh ||
+        bokeh ||
+        flowWaves ||
+        rings ||
+        starfield =>
+          StyleFamily.light,
+        dotGrid ||
+        lineGrid ||
+        hexGrid ||
+        ledGrid ||
+        circuit ||
+        blockchain ||
+        rain ||
+        symbolField =>
+          StyleFamily.tech,
+        contours || flames => StyleFamily.organic,
+        halftone || speedLines || crosshatch || splatter => StyleFamily.graphic,
+        metal || surface => StyleFamily.surface,
+        pitch => StyleFamily.sport,
+      };
+
+  /// params is the settings this style has of its own. See StyleParam.
+  List<StyleParam> get params => paramsOf(this);
+
   static ProceduralStyle fromName(String? name) => values.firstWhere(
         (s) => s.name == name,
         orElse: () => ProceduralStyle.plain,
       );
+
+  /// hidden is whether it has been folded into another style and is no
+  /// longer offered. Kept so that anything still naming it draws as it did;
+  /// a saved document naming it is moved onto the style that took it in.
+  bool get hidden => this == ledGrid || this == symbolField;
 
   /// usesGlyphs is whether the glyph set is worth showing in the settings
   /// bar. Showing every control for every style buries the three that matter.
@@ -74,13 +115,27 @@ enum ProceduralStyle {
   /// advances. A ruled grid does not; rain does.
   bool get canAnimate => switch (this) {
         ProceduralStyle.plain ||
-        ProceduralStyle.lineGrid ||
-        ProceduralStyle.hexGrid ||
+        ProceduralStyle.surface ||
         ProceduralStyle.pitch ||
         ProceduralStyle.metal =>
           false,
         _ => true,
       };
+}
+
+/// StyleFamily is a heading in the list of styles: the kinds of background
+/// there are, so that twenty-odd of them are a short walk rather than a long
+/// list.
+enum StyleFamily {
+  light("Gradient & light"),
+  tech("Grids & tech"),
+  organic("Organic"),
+  graphic("Graphic & comic"),
+  surface("Surfaces"),
+  sport("Sport");
+
+  final String label;
+  const StyleFamily(this.label);
 }
 
 /// PitchSport is which surface [ProceduralStyle.pitch] marks out.
@@ -143,6 +198,11 @@ class ProceduralSpec {
   /// and which is three controls in the Colours group for something most
   /// backgrounds do not do. See GradientSpec.
   final GradientSpec? gradient;
+
+  /// foregroundFade and accentFade fade the generator's own two colours
+  /// across the frame, or null for flat ones. See paintProcedural.
+  final GradientSpec? foregroundFade;
+  final GradientSpec? accentFade;
 
   /// density is roughly "how much of it": 0 draws nothing at all and 1 fills
   /// the frame. Every generator is written so that turning this down leaves a
@@ -230,6 +290,18 @@ class ProceduralSpec {
   /// than as a pattern -- it puts the middle of the canvas forward.
   final double vignette;
 
+  /// effects is what is done to the pattern once it is drawn. See
+  /// EffectsSpec.
+  final EffectsSpec effects;
+
+  /// params is the style's own settings, by id, where they differ from the
+  /// style's defaults. Read through [p]. See StyleParam.
+  final Map<String, double> params;
+
+  /// layers is the patterns laid over this one, bottom first. See
+  /// BackgroundLayer.
+  final List<BackgroundLayer> layers;
+
   const ProceduralSpec({
     this.style = ProceduralStyle.plain,
     this.seed = 1,
@@ -237,6 +309,8 @@ class ProceduralSpec {
     this.foreground = const Color(0xFF2FE08A),
     this.accent = const Color(0xFFDFFFF0),
     this.gradient,
+    this.foregroundFade,
+    this.accentFade,
     this.density = 0.5,
     this.scale = 0.05,
     this.intensity = 0.8,
@@ -256,7 +330,32 @@ class ProceduralSpec {
     this.light = const LightSpec(),
     this.metal = const MetalSpec(),
     this.vignette = 0.25,
+    this.effects = const EffectsSpec(),
+    this.params = const {},
+    this.layers = const [],
   });
+
+  /// p is the style's own setting [id]: what it has been set to, or the
+  /// style's default for it.
+  double p(String id) {
+    var set = params[id];
+    for (var param in style.params) {
+      if (param.id == id) {
+        return set == null ? param.initial : param.clamped(set);
+      }
+    }
+    return set ?? 0;
+  }
+
+  /// choice is [p] for a setting that is a choice, as the index chosen.
+  int choice(String id) => p(id).round();
+
+  /// on is [p] for a switch.
+  bool on(String id) => p(id) >= 0.5;
+
+  /// withParam is this with the style's own setting [id] set to [value].
+  ProceduralSpec withParam(String id, double value) =>
+      copyWith(params: {...params, id: value});
 
   /// inRuns is whether the movement is counted in runs rather than going
   /// round for ever: one run that then holds, a set number of them, or runs
@@ -271,6 +370,10 @@ class ProceduralSpec {
     Color? accent,
     GradientSpec? gradient,
     bool flatBackground = false,
+    GradientSpec? foregroundFade,
+    bool flatForeground = false,
+    GradientSpec? accentFade,
+    bool flatAccent = false,
     double? density,
     double? scale,
     double? intensity,
@@ -290,6 +393,9 @@ class ProceduralSpec {
     LightSpec? light,
     MetalSpec? metal,
     double? vignette,
+    EffectsSpec? effects,
+    Map<String, double>? params,
+    List<BackgroundLayer>? layers,
   }) =>
       ProceduralSpec(
         style: style ?? this.style,
@@ -298,6 +404,9 @@ class ProceduralSpec {
         foreground: foreground ?? this.foreground,
         accent: accent ?? this.accent,
         gradient: flatBackground ? null : (gradient ?? this.gradient),
+        foregroundFade:
+            flatForeground ? null : (foregroundFade ?? this.foregroundFade),
+        accentFade: flatAccent ? null : (accentFade ?? this.accentFade),
         density: density ?? this.density,
         scale: scale ?? this.scale,
         intensity: intensity ?? this.intensity,
@@ -317,6 +426,9 @@ class ProceduralSpec {
         light: light ?? this.light,
         metal: metal ?? this.metal,
         vignette: vignette ?? this.vignette,
+        effects: effects ?? this.effects,
+        params: params ?? this.params,
+        layers: layers ?? this.layers,
       );
 
   /// shuffled is the next seed along. Sequential rather than random, so the
@@ -331,6 +443,8 @@ class ProceduralSpec {
         "fg": colorToJson(foreground),
         "accent": colorToJson(accent),
         if (gradient != null) "gradient": gradient!.toJson(),
+        if (foregroundFade != null) "fgFade": foregroundFade!.toJson(),
+        if (accentFade != null) "accentFade": accentFade!.toJson(),
         "density": density,
         "scale": scale,
         "intensity": intensity,
@@ -352,15 +466,50 @@ class ProceduralSpec {
         if (light.on) "light": light.toJson(),
         if (style == ProceduralStyle.metal) "metal": metal.toJson(),
         "vignette": vignette,
+        if (effects.toJson() case var e when e.isNotEmpty) "effects": e,
+        // Only this style's own, and only where they differ from its
+        // defaults. Settings left over from a style it used to be are kept
+        // while the document is open -- turning back finds them -- and
+        // dropped when it is saved.
+        if (_ownParams() case var own when own.isNotEmpty) "params": own,
+        if (layers.isNotEmpty) "layers": [for (var l in layers) l.toJson()],
       };
 
-  factory ProceduralSpec.fromJson(Map<String, dynamic> json) => ProceduralSpec(
+  Map<String, double> _ownParams() => {
+        for (var param in style.params)
+          if (params[param.id] case var v?)
+            if (param.clamped(v) != param.initial) param.id: param.clamped(v),
+      };
+
+  factory ProceduralSpec.fromJson(Map<String, dynamic> json) =>
+      _moved(ProceduralSpec._fromJson(json));
+
+  /// _moved is [spec] with a style that has been folded into another moved
+  /// onto that one, drawn the way it was.
+  static ProceduralSpec _moved(ProceduralSpec spec) => switch (spec.style) {
+        ProceduralStyle.ledGrid => spec.copyWith(
+            style: ProceduralStyle.dotGrid,
+            params: {...spec.params, "dotKind": 1}),
+        ProceduralStyle.symbolField => spec.copyWith(
+            style: ProceduralStyle.rain, params: {...spec.params, "mode": 1}),
+        _ => spec,
+      };
+
+  factory ProceduralSpec._fromJson(Map<String, dynamic> json) => ProceduralSpec(
         style: ProceduralStyle.fromName(json["style"] as String?),
         seed: jsonInt(json["seed"], 1),
         background: colorFromJson(json["bg"], const Color(0xFF0B0F14)),
         foreground: colorFromJson(json["fg"], const Color(0xFF2FE08A)),
         accent: colorFromJson(json["accent"], const Color(0xFFDFFFF0)),
         gradient: _fadeFromJson(json),
+        foregroundFade: json["fgFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["fgFade"] as Map).cast<String, dynamic>())
+            : null,
+        accentFade: json["accentFade"] is Map
+            ? GradientSpec.fromJson(
+                (json["accentFade"] as Map).cast<String, dynamic>())
+            : null,
         density: jsonDouble(json["density"], 0.5).clamp(0.0, 1.0),
         scale: jsonDouble(json["scale"], 0.05).clamp(0.002, 0.5),
         intensity: jsonDouble(json["intensity"], 0.8).clamp(0.0, 1.0),
@@ -390,6 +539,25 @@ class ProceduralSpec {
             ? MetalSpec.fromJson((json["metal"] as Map).cast<String, dynamic>())
             : const MetalSpec(),
         vignette: jsonDouble(json["vignette"], 0.25).clamp(0.0, 1.0),
+        effects: json["effects"] is Map
+            ? EffectsSpec.fromJson(
+                (json["effects"] as Map).cast<String, dynamic>())
+            : const EffectsSpec(),
+        params: json["params"] is Map
+            ? {
+                for (var MapEntry(:key, :value)
+                    in (json["params"] as Map).entries)
+                  if (value is num) "$key": value.toDouble(),
+              }
+            : const {},
+        layers: json["layers"] is List
+            ? [
+                for (var l
+                    in (json["layers"] as List).take(maxBackgroundLayers))
+                  if (l is Map)
+                    BackgroundLayer.fromJson(l.cast<String, dynamic>()),
+              ]
+            : const [],
       );
 }
 

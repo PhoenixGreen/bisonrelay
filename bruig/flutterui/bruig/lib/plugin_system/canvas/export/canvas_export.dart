@@ -478,7 +478,8 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       ProceduralStyle.bokeh ||
       ProceduralStyle.flowWaves ||
       ProceduralStyle.starfield ||
-      ProceduralStyle.circuit =>
+      ProceduralStyle.circuit ||
+      ProceduralStyle.blockchain =>
         0.30,
       ProceduralStyle.ledGrid ||
       ProceduralStyle.rain ||
@@ -487,7 +488,7 @@ double _backgroundWeight(ProceduralStyle style) => switch (style) {
       // The worst case there is: a different value in every pixel, by design.
       // Brushing is noise and rust is noise on top of it, and a filter has
       // nothing to predict from.
-      ProceduralStyle.metal => 0.55,
+      ProceduralStyle.metal || ProceduralStyle.surface => 0.55,
     };
 
 /// estimateAnimationBytes is the same guess for a GIF.

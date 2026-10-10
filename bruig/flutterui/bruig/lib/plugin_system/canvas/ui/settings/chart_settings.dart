@@ -942,25 +942,16 @@ List<Widget> chartSettings(
       CanvasExpander(
         label: "Animation",
         remember: "chartAnimation",
-        action: e.animation.on || e.animation.closes
-            ? previewButton(controller, e)
+        action: e.animation.any ? previewButton(controller, e) : null,
+        trailing: e.animation.any
+            ? [
+                if (e.animation.on) e.animation.preset.label,
+                if (e.animation.closes) e.animation.exit.label,
+                if (e.animation.loop.on)
+                  "${e.animation.loop.preset.label} loop",
+              ].join(" · ")
             : null,
-        trailing: e.animation.on
-            ? (e.animation.closes
-                ? "${e.animation.preset.label} · ${e.animation.exit.label}"
-                : e.animation.preset.label)
-            : (e.animation.closes ? e.animation.exit.label : null),
         children: [
-          // The same group every other element's animation section carries:
-          // the easing belongs to the keyframe, and a chart's keyframes are
-          // keyframes like any other.
-          keyframeEasingGroup(controller, e, begin, commit),
-          const CanvasHint(
-              "Choosing one draws the chart on over two seconds and puts a "
-              "keyframe at each end of it on the timeline. Drag those to "
-              "decide how long it takes and when it happens — the same two "
-              "keyframes a headline uses, so a chart and the words above it "
-              "can arrive together."),
           // A dropdown rather than a row of switches, which is what this was.
           // Switches say "any number of these", and only one of them can be
           // on; the one that is on is also the hardest to find, since it
@@ -1031,79 +1022,105 @@ List<Widget> chartSettings(
                 onChanged: (v) => now(e.copyWith(
                     animation: e.animation.copyWith(exitInOrder: v))),
               ),
-            if (e.animation.closes)
-              const CanvasHint(
-                  "A second pair of keyframes at the end of the timeline, "
-                  "so the chart arrives, sits there, and leaves. The two "
-                  "ends of each pair are joined on the strip below: drag "
-                  "the bar to move both, or either mark to change how long "
-                  "it takes."),
-            if (e.animation.closes && e.animation.exit.staggers)
-              CanvasHint(e.animation.exitInOrder
-                  ? "The first bar goes first and the last goes last, so "
-                      "the chart empties the way it filled."
-                  : "The last bar goes first, which is the entrance played "
-                      "backwards — the chart unwinds. Switch it on above to "
-                      "empty it from the front instead."),
           ]),
-          if (e.animation.on || e.animation.closes)
-            CanvasControlGroup(label: "Timing", children: [
-              CanvasNumberField(
-                key: const ValueKey("chartAnimationLength"),
-                label: "Length",
-                min: 1,
-                max: 3600,
-                decimals: 0,
-                width: 62,
-                value: (e.animation.length > 0
-                        ? e.animation.length
-                        : controller.defaultAnimationFrames)
-                    .toDouble(),
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(
-                      animation: e.animation.copyWith(length: v.round())));
-                },
-                onCommit: commit,
-              ),
-              easeDropdown<ChartEase>(
-                key: const ValueKey("chartAnimationEase"),
-                value: e.animation.ease,
-                values: ChartEase.values,
-                name: (c) => c.label,
-                curve: (c) => c.apply,
-                onChanged: (v) =>
-                    now(e.copyWith(animation: e.animation.copyWith(ease: v))),
-              ),
-              // Only where there is more than one thing to space out. A wipe
-              // and a sweep are one edge crossing everything at once.
-              if (e.animation.preset.staggers || e.animation.exit.staggers)
-                CanvasNumberField(
-                  key: const ValueKey("chartAnimationGap"),
-                  label: "Gap",
-                  min: 0,
-                  max: 4,
-                  decimals: 2,
-                  width: 62,
-                  value: e.animation.gap,
-                  onChanged: (v) {
-                    begin();
-                    write(e.copyWith(animation: e.animation.copyWith(gap: v)));
-                  },
-                  onCommit: commit,
+          // What the chart goes on doing, after it has arrived or instead.
+          loopGroup(controller, e.animation.loop,
+              (l) => now(e.copyWith(animation: e.animation.copyWith(loop: l))),
+              (l) {
+            begin();
+            write(e.copyWith(animation: e.animation.copyWith(loop: l)));
+          }, commit, keys: "chart"),
+          // When it comes in and how it is paced, and -- on the line below
+          // -- how it travels out of the keyframe the playhead is on.
+          if (e.animation.on ||
+              e.animation.closes ||
+              (e.track?.keys.isNotEmpty ?? false))
+            CanvasControlGroup(label: "Timing / Keyframe", children: [
+              if (e.animation.on || e.animation.closes) ...[
+                if (controller.elementAnimationSpan(e)
+                    case (var at?, var span?)) ...[
+                  CanvasNumberField(
+                    key: const ValueKey("chartAnimationDelay"),
+                    label: "Delay",
+                    min: 0,
+                    max: 100000,
+                    decimals: 0,
+                    width: 62,
+                    value: at.toDouble(),
+                    onChanged: (v) {
+                      begin();
+                      controller.setElementArrivalTiming(
+                          controller.document.elementById(e.id) ?? e,
+                          delay: v.round());
+                    },
+                    onCommit: commit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("chartAnimationLength"),
+                    label: "Length",
+                    min: 1,
+                    max: 100000,
+                    decimals: 0,
+                    width: 62,
+                    value: span.toDouble(),
+                    onChanged: (v) {
+                      begin();
+                      controller.setElementArrivalTiming(
+                          controller.document.elementById(e.id) ?? e,
+                          length: v.round());
+                    },
+                    onCommit: commit,
+                  ),
+                ] else
+                  CanvasNumberField(
+                    key: const ValueKey("chartAnimationLength"),
+                    label: "Length",
+                    min: 1,
+                    max: 3600,
+                    decimals: 0,
+                    width: 62,
+                    value: (e.animation.length > 0
+                            ? e.animation.length
+                            : controller.defaultAnimationFrames)
+                        .toDouble(),
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(
+                          animation: e.animation.copyWith(length: v.round())));
+                    },
+                    onCommit: commit,
+                  ),
+                easeDropdown<ChartEase>(
+                  key: const ValueKey("chartAnimationEase"),
+                  value: e.animation.ease,
+                  values: ChartEase.values,
+                  name: (c) => c.label,
+                  curve: (c) => c.apply,
+                  onChanged: (v) =>
+                      now(e.copyWith(animation: e.animation.copyWith(ease: v))),
                 ),
-              const CanvasHint(
-                  "Length is how many frames a new arrival or exit is laid "
-                  "down with. Once it is on the timeline the keyframes are "
-                  "where it is: changing this does not move them, and neither "
-                  "does trying another preset."),
-              if (e.animation.preset.staggers || e.animation.exit.staggers)
-                const CanvasHint(
-                    "Gap is how long after one bar starts before the next "
-                    "does, as a share of one bar's own movement. 1 is "
-                    "strictly one after another; below 1 they overlap; above "
-                    "1 leaves a pause between them. It is shared by the way "
-                    "in and the way out."),
+                // Only where there is more than one thing to space out. A
+                // wipe and a sweep are one edge crossing everything at once.
+                if (e.animation.preset.staggers || e.animation.exit.staggers)
+                  CanvasNumberField(
+                    key: const ValueKey("chartAnimationGap"),
+                    label: "Gap",
+                    min: 0,
+                    max: 4,
+                    decimals: 2,
+                    width: 62,
+                    value: e.animation.gap,
+                    onChanged: (v) {
+                      begin();
+                      write(
+                          e.copyWith(animation: e.animation.copyWith(gap: v)));
+                    },
+                    onCommit: commit,
+                  ),
+                const CanvasLineBreak(),
+              ],
+              ...keyframeEasingControls(controller, e, begin, commit,
+                  label: "Keyframe"),
             ]),
         ],
       ),

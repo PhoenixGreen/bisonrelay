@@ -1793,8 +1793,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   (int, int, int, int)? get _loopBar {
     if (controller.focusedPlayer != null || _selectedPath != null) return null;
     var element = controller.selected;
-    if (element == null || !CanvasController.animates(element)) return null;
-    var loop = CanvasController.elementAnimationOf(element).loop;
+    if (element == null || !CanvasController.loops(element)) return null;
+    var loop = CanvasController.elementLoopOf(element);
     if (!loop.on) return null;
     var (start, end) = loop.span(
         arrived: arrivalEnd(element), last: controller.document.frames - 1);
@@ -1819,7 +1819,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var element = controller.selected;
     var bar = _loopBar;
     if (element == null || bar == null) return;
-    var loop = CanvasController.elementAnimationOf(element).loop;
+    var loop = CanvasController.elementLoopOf(element);
     var (start, stop, _, _) = bar;
     controller.setElementLoop(
         element,

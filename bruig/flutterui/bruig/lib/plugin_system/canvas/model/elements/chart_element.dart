@@ -847,7 +847,7 @@ class ChartElement extends CanvasElement {
         if (descriptionBox.toJson().isNotEmpty)
           "descBox": descriptionBox.toJson(),
         if (!body.isWhole) "body": body.toJson(),
-        if (animation.on) "anim": animation.toJson(),
+        if (animation.any) "anim": animation.toJson(),
         // Kept even with the legend switched off: turning it off and on
         // again should find it where it was left, not back at the top in a
         // row.

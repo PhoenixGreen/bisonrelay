@@ -72,11 +72,13 @@ class ProceduralCache extends ChangeNotifier {
   /// _ready is which of a design's pictures can be drawn right now.
   static String _ready(ProceduralSpec spec, CanvasImageSource? images) {
     if (images == null) return "";
+    // The background's own rings, and any laid over it as a layer.
     var assets = [
-      for (var icon in spec.rings.icons) ...[
-        icon.asset,
-        for (var pick in icon.also) pick.asset,
-      ],
+      for (var s in [spec, for (var l in spec.layers) l.spec])
+        for (var icon in s.rings.icons) ...[
+          icon.asset,
+          for (var pick in icon.also) pick.asset,
+        ],
     ];
     if (assets.isEmpty) return "";
     return [

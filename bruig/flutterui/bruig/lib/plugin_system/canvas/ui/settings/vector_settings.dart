@@ -459,10 +459,19 @@ class _VectorPlaylist extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 1, right: 6),
                 child: Icon(Icons.layers_outlined, size: 14, color: muted),
               ),
-              Text("Master", style: theme.textTheme.bodySmall),
+              Flexible(
+                child: Text("Master",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall),
+              ),
               const Spacer(),
-              Text("Every shape",
-                  style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+              Flexible(
+                child: Text("Every shape",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+              ),
               const SizedBox(width: 6),
             ]),
           ),
@@ -505,37 +514,54 @@ class _VectorPlaylist extends StatelessWidget {
                               style: theme.textTheme.bodySmall)),
                       swatch(d.style.fill),
                       swatch(d.style.stroke),
-                      const Spacer(),
                       // When it comes in: the first comes in as the
-                      // drawing's arrival starts, and has no cue.
-                      if (i == 0)
-                        Text("First",
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: muted))
-                      else ...[
-                        tap(
-                            "vectorCue-$i",
-                            Text(d.style.cue.label,
-                                style: theme.textTheme.bodySmall),
-                            () => retime(
-                                (b) => withCue(b, i, cue: d.style.cue.next))),
-                        if (d.style.cue == VectorCue.gap) ...[
-                          tap(
-                              "vectorGapLess-$i",
-                              Icon(Icons.remove, size: 14, color: muted),
-                              // Below nought it overlaps the one before.
-                              () => retime((b) => withCue(b, i,
-                                  gap: b.shapes![starts[i]].cueGap - 1))),
-                          Text("${d.style.cueGap}f",
-                              key: ValueKey("vectorGap-$i"),
-                              style: theme.textTheme.bodySmall),
-                          tap(
-                              "vectorGapMore-$i",
-                              Icon(Icons.add, size: 14, color: muted),
-                              () => retime((b) => withCue(b, i,
-                                  gap: b.shapes![starts[i]].cueGap + 1))),
-                        ],
-                      ],
+                      // drawing's arrival starts, and has no cue. Given
+                      // what room is left, the words giving way first.
+                      Expanded(
+                        child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (i == 0)
+                                Flexible(
+                                  child: Text("First",
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(color: muted)),
+                                )
+                              else ...[
+                                Flexible(
+                                  child: tap(
+                                      "vectorCue-$i",
+                                      Text(d.style.cue.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall),
+                                      () => retime((b) => withCue(b, i,
+                                          cue: d.style.cue.next))),
+                                ),
+                                if (d.style.cue == VectorCue.gap) ...[
+                                  tap(
+                                      "vectorGapLess-$i",
+                                      Icon(Icons.remove,
+                                          size: 14, color: muted),
+                                      // Below nought it overlaps the one
+                                      // before.
+                                      () => retime((b) => withCue(b, i,
+                                          gap: b.shapes![starts[i]].cueGap -
+                                              1))),
+                                  Text("${d.style.cueGap}f",
+                                      key: ValueKey("vectorGap-$i"),
+                                      style: theme.textTheme.bodySmall),
+                                  tap(
+                                      "vectorGapMore-$i",
+                                      Icon(Icons.add, size: 14, color: muted),
+                                      () => retime((b) => withCue(b, i,
+                                          gap: b.shapes![starts[i]].cueGap +
+                                              1))),
+                                ],
+                              ],
+                            ]),
+                      ),
                       tap(
                           "vectorUp-$i",
                           Icon(Icons.arrow_upward, size: 14, color: muted),
@@ -1421,7 +1447,10 @@ Widget _shapeGroup(
           key: const ValueKey("vectorFill"),
           label: "Fill",
           color: shown.fill!,
+          gradient: shown.fillFade,
           onChanged: (c) => change((s) => s.copyWith(fill: c)),
+          onGradientChanged: (g) => change((s) =>
+              g == null ? s.copyWith(flatFill: true) : s.copyWith(fillFade: g)),
         ),
       CanvasToggle(
         key: const ValueKey("vectorStrokeOn"),
@@ -1438,7 +1467,11 @@ Widget _shapeGroup(
           key: const ValueKey("vectorStroke"),
           label: "Stroke",
           color: shown.stroke!,
+          gradient: shown.strokeFade,
           onChanged: (c) => change((s) => s.copyWith(stroke: c)),
+          onGradientChanged: (g) => change((s) => g == null
+              ? s.copyWith(flatStroke: true)
+              : s.copyWith(strokeFade: g)),
         ),
         CanvasNumberField(
           key: const ValueKey("vectorStrokeWidth"),

@@ -864,9 +864,9 @@ void _paintTextBody(
         outlineSpec: outlineSpecFor(spec,
             parts: drawn, animation: animation, reveal: reveal));
     var frameOf = animation.on && (reveal < 1 || animation.keeps)
-        ? applyMotion(
-            canvas, inner, animation.preset, animation.progressAt(reveal, 0, 1),
-            from: animation.scaleFor(animation.preset))
+        ? applyMotionSpec(
+            canvas, inner, animation.spec, animation.progressAt(reveal, 0, 1),
+            from: animation.spec.from)
         : const MotionFrame(1, 0, false);
     if (frameOf.alpha > 0) {
       if (frameOf.alpha < 1) {
@@ -2100,6 +2100,9 @@ bool _ownShapes(VectorElement e) => vectorDrawn(e.shapes ?? const [])
 /// left as the drawing with the drawing's loop. See _paintVectorInTurn.
 ElementLoop? _wholeLoop(CanvasElement element) {
   if (element is VectorElement && _ownShapes(element)) return null;
+  // The words' and a chart's are in animations of their own.
+  if (element is TextElement) return element.animation.loop;
+  if (element is ChartElement) return element.animation.loop;
   return _animationOf(element)?.loop;
 }
 

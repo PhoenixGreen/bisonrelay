@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/components/paint_spec.dart';
+
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -314,21 +316,28 @@ void _paintGroup(ui.Canvas canvas, VectorDrawn d) {
   // _paintErasures.
   var layered = shape.tints.isNotEmpty || shape.erasures.isNotEmpty;
   if (layered) canvas.saveLayer(null, Paint());
+  // A fade runs across the shape's own box, as a shape element's does.
+  Paint paintOf(Color c, GradientSpec? fade, Rect area) {
+    var paint = Paint()
+      ..color = c
+      ..isAntiAlias = true;
+    if (fade != null) {
+      paint.shader = PaintSpec(c, gradient: fade).shaderFor(area);
+    }
+    return paint;
+  }
+
   if (shape.fill case var fill? when fill.a > 0) {
     canvas.drawPath(
-        d.outline,
-        Paint()
-          ..color = fill
-          ..isAntiAlias = true);
+        d.outline, paintOf(fill, shape.fillFade, d.outline.getBounds()));
   }
   if (shape.stroke case var stroke?
       when stroke.a > 0 && shape.strokeWidth > 0) {
     _strokeDrawn(
         canvas,
         d,
-        Paint()
-          ..color = stroke
-          ..isAntiAlias = true);
+        paintOf(stroke, shape.strokeFade,
+            d.outline.getBounds().inflate(shape.strokeWidth / 2)));
   }
   if (layered) {
     if (shape.tints.isNotEmpty) _paintTints(canvas, d.members, shape.tints);

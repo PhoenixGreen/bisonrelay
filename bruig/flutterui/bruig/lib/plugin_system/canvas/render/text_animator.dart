@@ -775,6 +775,7 @@ void paintAnimatedPieces(
     var p = animation.progressAt(reveal, i, all.length);
     if (p <= 0) continue;
     _paintPiece(canvas, painter, offset, all[i], animation.preset, p, spec,
+        motion: animation.spec,
         outline: outline,
         soft: soft,
         effect: animation.effect,
@@ -793,7 +794,8 @@ void paintAnimatedPieces(
 /// setting where it has one and the preset's number otherwise.
 void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
     TextPiece piece, TextAnimationPreset preset, double p, TextSpec spec,
-    {TextPainter? outline,
+    {MotionSpec? motion,
+    TextPainter? outline,
     TextPainter? soft,
     double? from,
     TextDrawSpec? draw,
@@ -809,8 +811,12 @@ void _paintPiece(ui.Canvas canvas, TextPainter painter, Offset offset,
   // The motions themselves are shared with the curve -- see applyMotion --
   // so a preset moves a paragraph and a letter riding a line the same way,
   // rather than by two switches that agree until one of them is edited.
-  var frame =
-      applyMotion(canvas, box, preset, p, from: from, seed: piece.start);
+  // As the animation plays it -- turned and sized as it says -- where it
+  // is handed one; the preset's own otherwise.
+  var frame = motion != null
+      ? applyMotionSpec(canvas, box, motion, p,
+          from: motion.from, seed: piece.start)
+      : applyMotion(canvas, box, preset, p, from: from, seed: piece.start);
   var alpha = frame.alpha;
 
   // Everything but a whole-paragraph piece is drawn by clipping the same

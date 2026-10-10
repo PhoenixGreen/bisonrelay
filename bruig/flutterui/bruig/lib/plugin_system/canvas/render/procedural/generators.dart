@@ -5,13 +5,21 @@ import 'dart:ui' as ui;
 import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/blockchain.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/noise.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:flutter/painting.dart';
+
+part 'light.dart';
+part 'marks.dart';
+part 'surfaces.dart';
+part 'tech.dart';
 
 // generators.dart draws every procedural background.
 //
@@ -110,6 +118,14 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     {double time = 0, double frameRate = 0, CanvasImageSource? images}) {
   if (rect.width <= 0 || rect.height <= 0) return;
   var spec = input;
+  var fx = spec.effects;
+
+  // The colour grade is over everything the background is -- base, pattern,
+  // light and lens -- and under the grain, which is the film it was shot on
+  // rather than part of what was in front of the camera.
+  if (fx.grades) {
+    canvas.saveLayer(rect, Paint()..colorFilter = gradeFilter(fx));
+  }
 
   canvas.save();
   canvas.clipRect(rect);
@@ -163,11 +179,58 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     var run = proceduralRunSeconds(spec);
     if (run > 0) round = (t / run).floor();
   }
+  _patternLayer(canvas, rect, spec, t, round, images);
+
+  // The layers over it, each its own pattern with its own effects, laid on
+  // through a layer of its own so that its opacity and its blend apply to
+  // all of it at once. A plain layer is its colour: a wash, or a fade laid
+  // over everything under it.
+  for (var layer in input.layers) {
+    if (!layer.visible || layer.opacity <= 0) continue;
+    var ls = layer.spec;
+    canvas.saveLayer(
+        rect,
+        Paint()
+          ..blendMode = layer.blend.mode
+          ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0)));
+    if (ls.style == ProceduralStyle.plain) _paintBase(canvas, rect, ls);
+    // On the background's clock, at the layer's own pace.
+    _patternLayer(
+        canvas, rect, ls, spec.animated ? moment * ls.speed : 0, round, images);
+    canvas.restore();
+  }
+
+  canvas.restore();
+
+  // The light, then the vignette. The light is part of the scene -- something
+  // shining on the pattern -- and the vignette is the lens it is all being
+  // looked at through, so the lens goes last.
+  if (spec.light.on) paintLight(canvas, rect, spec.light);
+
+  if (spec.vignette > 0) _vignette(canvas, rect, spec.vignette);
+
+  if (fx.scanlines > 0) _scanlines(canvas, rect, fx);
+
+  if (fx.grades) canvas.restore();
+
+  if (fx.grain > 0) {
+    // Moving grain is a new draw of it every frame, as film is.
+    var frame = spec.animated && fx.grainMoves
+        ? (time * (frameRate > 0 ? frameRate : 24)).floor()
+        : 0;
+    _grain(canvas, rect, fx, spec.seed * 7919 + frame);
+  }
+}
+
+/// _patternLayer draws [spec]'s pattern -- turned, faded and finished by its
+/// own effects -- over whatever is already on [canvas], at time [t].
+///
+/// Once for the background's own pattern and once for each layer over it.
+void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
+    int round, CanvasImageSource? images) {
+  var fx = spec.effects;
   var area = rect;
   if (spec.rotation != 0) {
-    canvas.translate(rect.center.dx, rect.center.dy);
-    canvas.rotate(spec.rotation * math.pi / 180);
-    canvas.translate(-rect.center.dx, -rect.center.dy);
     // Grown until its own shorter side is the page's diagonal, which is the
     // least that covers every corner at every angle. Half the width plus
     // half the height, as it was, is several times that.
@@ -184,59 +247,335 @@ void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     if (grown > 0) spec = spec.copyWith(scale: spec.scale / grown);
   }
 
-  switch (spec.style) {
-    case ProceduralStyle.plain:
-      break;
-    case ProceduralStyle.gradientMesh:
-      _gradientMesh(canvas, area, spec, t);
-    case ProceduralStyle.dotGrid:
-      _dotGrid(canvas, area, spec, t);
-    case ProceduralStyle.lineGrid:
-      _lineGrid(canvas, area, spec);
-    case ProceduralStyle.hexGrid:
-      _hexGrid(canvas, area, spec);
-    case ProceduralStyle.contours:
-      _contours(canvas, area, spec, t);
-    case ProceduralStyle.flowWaves:
-      _flowWaves(canvas, area, spec, t);
-    case ProceduralStyle.bokeh:
-      _bokeh(canvas, area, spec, t);
-    case ProceduralStyle.starfield:
-      _starfield(canvas, area, spec, t);
-    case ProceduralStyle.ledGrid:
-      _ledGrid(canvas, area, spec, t);
-    case ProceduralStyle.circuit:
-      _circuit(canvas, area, spec, t);
-    case ProceduralStyle.rain:
-      _rain(canvas, area, spec, t);
-    case ProceduralStyle.symbolField:
-      _symbolField(canvas, area, spec, t);
-    case ProceduralStyle.rings:
-      _rings(canvas, area, rect, spec, t, round, images);
-    case ProceduralStyle.halftone:
-      _halftone(canvas, area, spec, t);
-    case ProceduralStyle.speedLines:
-      _speedLines(canvas, area, spec, t);
-    case ProceduralStyle.crosshatch:
-      _crosshatch(canvas, area, spec);
-    case ProceduralStyle.splatter:
-      _splatter(canvas, area, spec, t);
-    case ProceduralStyle.flames:
-      _flames(canvas, area, spec, t);
-    case ProceduralStyle.pitch:
-      paintPitch(canvas, area, spec);
-    case ProceduralStyle.metal:
-      _metal(canvas, area, spec);
+  void pattern(ui.Canvas canvas, ProceduralSpec s) {
+    switch (s.style) {
+      case ProceduralStyle.plain:
+        break;
+      case ProceduralStyle.gradientMesh:
+        _gradientMesh(canvas, area, s, t);
+      case ProceduralStyle.dotGrid:
+        _dotGrid(canvas, area, s, t);
+      case ProceduralStyle.lineGrid:
+        _lineGrid(canvas, area, s, t);
+      case ProceduralStyle.hexGrid:
+        _hexGrid(canvas, area, s, t);
+      case ProceduralStyle.contours:
+        _contours(canvas, area, s, t);
+      case ProceduralStyle.flowWaves:
+        _flowWaves(canvas, area, s, t);
+      case ProceduralStyle.bokeh:
+        _bokeh(canvas, area, s, t);
+      case ProceduralStyle.starfield:
+        _starfield(canvas, area, s, t);
+      case ProceduralStyle.ledGrid:
+        _ledGrid(canvas, area, s, t);
+      case ProceduralStyle.circuit:
+        _circuit(canvas, area, s, t);
+      case ProceduralStyle.rain:
+        _rain(canvas, area, s, t);
+      case ProceduralStyle.symbolField:
+        _symbolField(canvas, area, s, t);
+      case ProceduralStyle.blockchain:
+        paintBlockchain(canvas, area, s, t);
+      case ProceduralStyle.rings:
+        _rings(canvas, area, rect, s, t, round, images);
+      case ProceduralStyle.halftone:
+        _halftone(canvas, area, s, t);
+      case ProceduralStyle.speedLines:
+        _speedLines(canvas, area, s, t);
+      case ProceduralStyle.crosshatch:
+        _crosshatch(canvas, area, s);
+      case ProceduralStyle.splatter:
+        _splatter(canvas, area, s, t);
+      case ProceduralStyle.flames:
+        _flames(canvas, area, s, t);
+      case ProceduralStyle.pitch:
+        paintPitch(canvas, area, s);
+      case ProceduralStyle.metal:
+        _metal(canvas, area, s);
+      case ProceduralStyle.surface:
+        _surface(canvas, area, s);
+    }
   }
 
-  canvas.restore();
+  // A colour of the generator's own that fades is drawn on a layer of its
+  // own: the pattern with that colour white and the other one clear -- which
+  // is where that colour falls, and how much -- and the fade painted through
+  // it. Each generator goes on drawing in flat colours and knows nothing of
+  // the fade. A layer per faded colour, and only where one fades.
+  void drawPattern(ui.Canvas canvas) {
+    canvas.save();
+    if (spec.rotation != 0) {
+      canvas.translate(rect.center.dx, rect.center.dy);
+      canvas.rotate(spec.rotation * math.pi / 180);
+      canvas.translate(-rect.center.dx, -rect.center.dy);
+    }
+    var fg = spec.foregroundFade, ac = spec.accentFade;
+    if (fg == null && ac == null) {
+      pattern(canvas, spec);
+    } else {
+      const clear = Color(0x00000000);
+      Color white(Color c) => Color.fromRGBO(255, 255, 255, c.a);
+      void through(ProceduralSpec masked, Color colour, GradientSpec fade) {
+        canvas.saveLayer(area, Paint());
+        pattern(canvas, masked);
+        canvas.drawRect(
+            area,
+            Paint()
+              ..blendMode = BlendMode.srcIn
+              ..shader = PaintSpec(colour, gradient: fade).shaderFor(rect));
+        canvas.restore();
+      }
 
-  // The light, then the vignette. The light is part of the scene -- something
-  // shining on the pattern -- and the vignette is the lens it is all being
-  // looked at through, so the lens goes last.
-  if (spec.light.on) paintLight(canvas, rect, spec.light);
+      if (fg != null) {
+        through(
+            spec.copyWith(foreground: white(spec.foreground), accent: clear),
+            spec.foreground,
+            fg);
+      } else {
+        pattern(canvas, spec.copyWith(accent: clear));
+      }
+      if (ac != null) {
+        through(spec.copyWith(accent: white(spec.accent), foreground: clear),
+            spec.accent, ac);
+      } else {
+        pattern(canvas, spec.copyWith(foreground: clear));
+      }
+    }
+    canvas.restore();
+  }
 
-  if (spec.vignette > 0) _vignette(canvas, rect, spec.vignette);
+  // Drawn straight onto the canvas where nothing is done to it afterwards,
+  // which is most backgrounds. Otherwise the pattern is recorded once and
+  // laid down as many times as the effects need it -- once for itself and
+  // once more for a glow -- through a layer that masks, softens and fades
+  // it without touching the base underneath.
+  var short = math.min(rect.width, rect.height);
+  if (fx.opacity >= 1 && !fx.masks && fx.blur <= 0 && fx.glow <= 0) {
+    drawPattern(canvas);
+  } else if (fx.opacity > 0) {
+    var recorder = ui.PictureRecorder();
+    drawPattern(ui.Canvas(recorder));
+    var picture = recorder.endRecording();
+    void lay(Paint paint) {
+      canvas.saveLayer(rect, paint);
+      canvas.drawPicture(picture);
+      if (fx.masks) _masks(canvas, rect, fx);
+      canvas.restore();
+    }
+
+    var soft = fx.blur * short * 0.02;
+    lay(Paint()
+      ..color = Color.fromRGBO(0, 0, 0, fx.opacity.clamp(0.0, 1.0))
+      ..imageFilter =
+          soft > 0.05 ? ui.ImageFilter.blur(sigmaX: soft, sigmaY: soft) : null);
+    // A bloom is the pattern again, spread wide and added over itself, so
+    // that it brightens what is around the bright parts and never darkens
+    // anything. Past one it is laid twice.
+    var spread = math.max(0.5, short * (0.004 + fx.glowSize * 0.04));
+    for (var left = fx.glow * fx.opacity; left > 0.001; left -= 1) {
+      lay(Paint()
+        ..blendMode = BlendMode.plus
+        ..color = Color.fromRGBO(0, 0, 0, left.clamp(0.0, 1.0))
+        ..imageFilter = ui.ImageFilter.blur(sigmaX: spread, sigmaY: spread));
+    }
+    picture.dispose();
+  }
+}
+
+/// gradeFilter is the colour grade as one matrix: hue turned, then
+/// saturation, then contrast and brightness.
+ui.ColorFilter gradeFilter(EffectsSpec fx) {
+  // Turning the hue round the grey axis, weighted by how bright each primary
+  // looks, so that a turn keeps the picture as light as it was.
+  var a = fx.hue * math.pi / 180, c = math.cos(a), s = math.sin(a);
+  const lr = 0.213, lg = 0.715, lb = 0.072;
+  var hue = [
+    [
+      lr + c * (1 - lr) - s * lr,
+      lg - c * lg - s * lg,
+      lb - c * lb + s * (1 - lb)
+    ],
+    [
+      lr - c * lr + s * 0.143,
+      lg + c * (1 - lg) + s * 0.140,
+      lb - c * lb - s * 0.283
+    ],
+    [
+      lr - c * lr - s * (1 - lr),
+      lg - c * lg + s * lg,
+      lb + c * (1 - lb) + s * lb
+    ],
+  ];
+  var k = 1 + fx.saturation;
+  var sr = (1 - k) * 0.2126, sg = (1 - k) * 0.7152, sb = (1 - k) * 0.0722;
+  var sat = [
+    [sr + k, sg, sb],
+    [sr, sg + k, sb],
+    [sr, sg, sb + k],
+  ];
+  List<List<double>> times(List<List<double>> x, List<List<double>> y) => [
+        for (var i = 0; i < 3; i++)
+          [
+            for (var j = 0; j < 3; j++)
+              x[i][0] * y[0][j] + x[i][1] * y[1][j] + x[i][2] * y[2][j],
+          ],
+      ];
+  var m = times(sat, hue);
+  // Contrast pivots on middle grey; brightness slides everything.
+  var gain = fx.contrast >= 0 ? 1 + fx.contrast * 2 : 1 + fx.contrast;
+  var offset = (0.5 * (1 - gain) + fx.brightness * 0.5) * 255;
+  return ui.ColorFilter.matrix([
+    for (var i = 0; i < 3; i++) ...[
+      m[i][0] * gain,
+      m[i][1] * gain,
+      m[i][2] * gain,
+      0,
+      offset,
+    ],
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]);
+}
+
+/// _masks takes the pattern away where the effects say it should not be:
+/// away from the focus, and out of the area kept clear.
+void _masks(ui.Canvas canvas, Rect rect, EffectsSpec fx) {
+  var long = math.max(rect.width, rect.height);
+  if (fx.focus > 0) {
+    var centre = Offset(
+        rect.left + rect.width * fx.focusX, rect.top + rect.height * fx.focusY);
+    var inner = long * fx.focusSize;
+    var outer = inner + long * 0.65;
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = ui.Gradient.radial(centre, outer, [
+            const Color(0xFFFFFFFF),
+            const Color(0xFFFFFFFF),
+            Color.fromRGBO(255, 255, 255, 1 - fx.focus),
+          ], [
+            0,
+            inner / outer,
+            1
+          ]));
+  }
+
+  if (fx.clear == ClearArea.none || fx.clearAmount <= 0) return;
+  var gone = Color.fromRGBO(0, 0, 0, fx.clearAmount);
+  var none = const Color(0x00000000);
+  // Full strength out to a little short of the edge of the area, and nothing
+  // a little past it: softness spreads the change across the edge rather
+  // than moving the edge.
+  var soft = fx.clearSoftness.clamp(0.0, 1.0);
+  var size = fx.clearSize.clamp(0.0, 1.0);
+  var hard = size * (1 - soft * 0.6), fade = size * (1 + soft * 0.4) + 1e-4;
+  var paint = Paint()..blendMode = BlendMode.dstOut;
+
+  // From an edge, across a fraction of the frame.
+  Shader fromEdge(Offset edge, Offset across) => ui.Gradient.linear(
+      edge, edge + across * fade, [gone, gone, none], [0, hard / fade, 1]);
+  // Out from the middle line, both ways.
+  Shader fromMiddle(Offset middle, Offset across) {
+    var half = across * (fade / 2);
+    var h = hard / fade;
+    return ui.Gradient.linear(middle - half, middle + half,
+        [none, gone, gone, none], [0, 0.5 - h / 2, 0.5 + h / 2, 1]);
+  }
+
+  var w = Offset(rect.width, 0), h = Offset(0, rect.height);
+  switch (fx.clear) {
+    case ClearArea.none:
+      return;
+    case ClearArea.centre:
+      // An oval the shape of the frame, so a wide banner keeps a wide space
+      // clear in its middle rather than a circle.
+      canvas.save();
+      canvas.translate(rect.center.dx, rect.center.dy);
+      canvas.scale(1, rect.height / rect.width);
+      var r = rect.width * 0.7 * fade;
+      paint.shader = ui.Gradient.radial(
+          Offset.zero, r, [gone, gone, none], [0, hard / fade, 1]);
+      canvas.drawCircle(Offset.zero, r, paint);
+      canvas.restore();
+      return;
+    case ClearArea.left:
+      paint.shader = fromEdge(rect.centerLeft, w);
+    case ClearArea.right:
+      paint.shader = fromEdge(rect.centerRight, -w);
+    case ClearArea.top:
+      paint.shader = fromEdge(rect.topCenter, h);
+    case ClearArea.bottom:
+      paint.shader = fromEdge(rect.bottomCenter, -h);
+    case ClearArea.band:
+      paint.shader = fromMiddle(rect.center, h);
+    case ClearArea.column:
+      paint.shader = fromMiddle(rect.center, w);
+  }
+  canvas.drawRect(rect, paint);
+}
+
+/// _scanlines darkens every other line of the frame, as a screen does.
+void _scanlines(ui.Canvas canvas, Rect rect, EffectsSpec fx) {
+  var short = math.min(rect.width, rect.height);
+  var step = math.max(2.0, short * fx.scanlineSize / 1000);
+  var paint = Paint()
+    ..color = Color.fromRGBO(0, 0, 0, (fx.scanlines * 0.6).clamp(0.0, 1.0));
+  for (var y = rect.top; y < rect.bottom; y += step) {
+    canvas.drawRect(
+        Rect.fromLTWH(rect.left, y, rect.width, step * 0.45), paint);
+  }
+}
+
+/// _grain is film grain: a speck in every few pixels, lighter or darker than
+/// what is under it.
+///
+/// Points rather than a noise picture, so it is as fine at an export four
+/// times the width as it is on the stage -- grain is measured against the
+/// frame, like everything else, and a picture of it would have to be made
+/// again at every size anyway.
+void _grain(ui.Canvas canvas, Rect rect, EffectsSpec fx, int seed) {
+  var short = math.min(rect.width, rect.height);
+  var dot = math.max(0.6, short * fx.grainSize / 1000);
+  var cell = dot * 1.6;
+  // No more than a few hundred thousand specks, however big the frame: past
+  // that the grain is coarsened rather than the export slowed to a crawl.
+  var cells = rect.width * rect.height / (cell * cell);
+  if (cells > 260000) {
+    cell *= math.sqrt(cells / 260000);
+    dot = cell / 1.6;
+  }
+  var cols = (rect.width / cell).ceil(), rows = (rect.height / cell).ceil();
+  var buckets = List.generate(4, (_) => <double>[]);
+  for (var iy = 0; iy < rows; iy++) {
+    for (var ix = 0; ix < cols; ix++) {
+      var v = hash(seed, ix, iy);
+      var b = v < 0.25 ? 0 : (v < 0.5 ? 1 : (v < 0.75 ? 2 : 3));
+      buckets[b]
+        ..add(rect.left + (ix + hash(seed + 1, ix, iy)) * cell)
+        ..add(rect.top + (iy + hash(seed + 2, ix, iy)) * cell);
+    }
+  }
+  var a = fx.grain.clamp(0.0, 1.0);
+  const tones = [
+    (Color(0xFF000000), 0.30),
+    (Color(0xFF000000), 0.12),
+    (Color(0xFFFFFFFF), 0.10),
+    (Color(0xFFFFFFFF), 0.24),
+  ];
+  for (var (i, (colour, strength)) in tones.indexed) {
+    canvas.drawRawPoints(
+        ui.PointMode.points,
+        Float32List.fromList(buckets[i]),
+        Paint()
+          ..strokeWidth = dot
+          ..strokeCap = StrokeCap.square
+          ..color = colour.withValues(alpha: strength * a));
+  }
 }
 
 /// paintLight throws one light across the finished background.
@@ -708,135 +1047,6 @@ Color _fade(Color c, double a) => c.withValues(alpha: (c.a * a).clamp(0, 1));
 // The generators
 // --------------------------------------------------------------------------
 
-/// _gradientMesh is a handful of soft radial blooms, blended additively.
-///
-/// Additive rather than alpha-blended: overlapping blooms should get brighter
-/// where they meet, which is what makes it read as light rather than as
-/// several coloured circles lying on top of one another.
-void _gradientMesh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var rnd = SeededRandom(spec.seed);
-  var count = 3 + (spec.density * 9).round();
-  var maxR = math.max(rect.width, rect.height) * (0.3 + spec.scale * 4);
-
-  canvas.saveLayer(rect, Paint());
-  for (var i = 0; i < count; i++) {
-    var px = rnd.next(), py = rnd.next(), pick = rnd.next();
-    var drift = rnd.range(0.2, 1.0);
-    var c = Offset(
-      rect.left +
-          rect.width * px +
-          math.sin(t * drift + i) * rect.width * 0.05 * spec.variation,
-      rect.top +
-          rect.height * py +
-          math.cos(t * drift * 0.8 + i) * rect.height * 0.05 * spec.variation,
-    );
-    var r = maxR * rnd.range(0.4, 1.0);
-    var color = pick < 0.5 ? spec.foreground : spec.accent;
-    canvas.drawCircle(
-      c,
-      r,
-      Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = ui.Gradient.radial(c, r, [
-          _fade(color, spec.intensity * 0.7),
-          _fade(color, 0),
-        ], [
-          0.0,
-          1.0
-        ]),
-    );
-  }
-  canvas.restore();
-}
-
-/// _dotGrid is an even field of dots, jittered and sized by the noise so it
-/// does not read as graph paper.
-void _dotGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var step = _unit(rect, spec) * 2;
-  var noise = ValueNoise(spec.seed);
-  var paint = Paint();
-  var cols = (rect.width / step).ceil() + 1;
-  var rows = (rect.height / step).ceil() + 1;
-
-  for (var iy = 0; iy < rows; iy++) {
-    for (var ix = 0; ix < cols; ix++) {
-      var h = hash(spec.seed, ix, iy);
-      if (h > spec.density) continue;
-
-      var jx = (hash(spec.seed + 7, ix, iy) - 0.5) * step * spec.variation;
-      var jy = (hash(spec.seed + 13, ix, iy) - 0.5) * step * spec.variation;
-      var p = Offset(rect.left + ix * step + jx, rect.top + iy * step + jy);
-
-      // The field decides brightness rather than the per-dot hash, so the
-      // dots cluster into drifts of light instead of being uniform static.
-      var f = noise.fbm(ix * 0.15 + t * 0.2, iy * 0.15, octaves: 3);
-      var alpha = (f * spec.intensity).clamp(0.0, 1.0);
-      paint.color =
-          _fade(h < spec.density * 0.15 ? spec.accent : spec.foreground, alpha);
-      canvas.drawCircle(p, step * 0.12 * (0.5 + f), paint);
-    }
-  }
-}
-
-/// _lineGrid is ruled lines, with every fourth one heavier.
-void _lineGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
-  var step = _unit(rect, spec) * 2;
-  var thin = Paint()
-    ..color = _fade(spec.foreground, spec.intensity * 0.35)
-    ..strokeWidth = math.max(0.5, step * 0.012);
-  var thick = Paint()
-    ..color = _fade(spec.accent, spec.intensity * 0.6)
-    ..strokeWidth = math.max(1, step * 0.03);
-
-  var cols = (rect.width / step).ceil() + 1;
-  for (var i = 0; i <= cols; i++) {
-    var x = rect.left + i * step;
-    canvas.drawLine(
-        Offset(x, rect.top), Offset(x, rect.bottom), i % 4 == 0 ? thick : thin);
-  }
-  var rows = (rect.height / step).ceil() + 1;
-  for (var i = 0; i <= rows; i++) {
-    var y = rect.top + i * step;
-    canvas.drawLine(
-        Offset(rect.left, y), Offset(rect.right, y), i % 4 == 0 ? thick : thin);
-  }
-}
-
-/// _hexGrid is a honeycomb of outlined cells, with a share of them filled.
-void _hexGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
-  var r = _unit(rect, spec) * 1.5;
-  var w = r * math.sqrt(3);
-  var h = r * 1.5;
-  var stroke = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = math.max(0.5, r * 0.04)
-    ..color = _fade(spec.foreground, spec.intensity * 0.5);
-
-  var rows = (rect.height / h).ceil() + 2;
-  var cols = (rect.width / w).ceil() + 2;
-  for (var iy = -1; iy < rows; iy++) {
-    for (var ix = -1; ix < cols; ix++) {
-      var cx = rect.left + ix * w + (iy.isOdd ? w / 2 : 0);
-      var cy = rect.top + iy * h;
-      var path = Path();
-      for (var k = 0; k < 6; k++) {
-        var a = math.pi / 180 * (60 * k - 90);
-        var p = Offset(cx + math.cos(a) * r, cy + math.sin(a) * r);
-        k == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-      }
-      path.close();
-      if (hash(spec.seed, ix, iy) < spec.density * 0.4) {
-        canvas.drawPath(
-            path,
-            Paint()
-              ..color = _fade(spec.accent,
-                  spec.intensity * hash(spec.seed + 3, ix, iy) * 0.5));
-      }
-      canvas.drawPath(path, stroke);
-    }
-  }
-}
-
 /// _contours draws iso-lines through a noise field, by marching squares.
 ///
 /// Marching squares rather than sampling every pixel: the field is evaluated
@@ -865,6 +1075,14 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     growable: false,
   );
 
+  // Terrain: the bands between the lines filled, low ground in the base
+  // colour rising through the main colour to the accent at the peaks.
+  if (spec.choice("contourKind") == 1) {
+    _terrain(canvas, rect, spec, field, cols, rows, cell, levels);
+  }
+  var weight = spec.p("weight");
+  var every = spec.p("major").round();
+
   for (var l = 1; l < levels; l++) {
     var level = l / levels;
     var path = Path();
@@ -879,8 +1097,13 @@ void _contours(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         path,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = math.max(0.6, cell * 0.05)
-          ..color = _fade(l.isEven ? spec.foreground : spec.accent,
+          ..strokeWidth = math.max(0.6, cell * 0.05) *
+              weight *
+              (every > 0 && l % every == 0 ? 2 : 1)
+          ..color = _fade(
+              every > 0
+                  ? (l % every == 0 ? spec.accent : spec.foreground)
+                  : (l.isEven ? spec.foreground : spec.accent),
               spec.intensity * (1 - mid * 0.6)));
   }
 }
@@ -945,373 +1168,6 @@ void _marchCell(Path path, List<List<double>> f, int ix, int iy, double level,
 
 double _mix(double a, double b, double level) =>
     (b - a).abs() < 1e-9 ? 0.5 : ((level - a) / (b - a)).clamp(0.0, 1.0);
-
-/// _flowWaves traces ribbons through a flow field, glowing where they bunch.
-///
-/// This is the one the reference images called "waves": long smooth strands
-/// that bend together and apart. They are drawn in bands of neighbouring
-/// start points so that a band stays together as it flows, which is what makes
-/// the ribbons read as ribbons rather than as unrelated strands.
-void _flowWaves(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var noise = ValueNoise(spec.seed);
-  var bands = 3 + (spec.density * 9).round();
-  var perBand = 6 + (spec.density * 22).round();
-  var stepLen = math.max(3.0, _unit(rect, spec) * 0.5);
-  var steps = (rect.width / stepLen * 1.4).round().clamp(20, 900);
-  var turns = 0.6 + spec.variation * 2.2;
-  var freq = 0.0012 * (1 + spec.scale * 6);
-
-  canvas.saveLayer(rect, Paint());
-  var rnd = SeededRandom(spec.seed);
-  for (var b = 0; b < bands; b++) {
-    var bandY = rnd.next();
-    var spread = rnd.range(0.02, 0.14);
-    var color = rnd.next() < 0.35 ? spec.accent : spec.foreground;
-    var width = math.max(0.7, _unit(rect, spec) * rnd.range(0.03, 0.12));
-
-    // The band's strands are built once and drawn twice: the glow blurs a
-    // layer holding all of them, and the filament goes over the top.
-    //
-    // One blur for the band rather than one for each strand, which is what
-    // this did and is why a banner took the best part of a second to draw.
-    // A blur is the most expensive thing there is on a canvas and there were
-    // a hundred and forty of them; a band shares its width, so its strands
-    // share a blur and the picture is the same picture.
-    var strands = <Path>[];
-    for (var s = 0; s < perBand; s++) {
-      var frac = perBand == 1 ? 0.5 : s / (perBand - 1);
-      var y = rect.top +
-          rect.height * (bandY + (frac - 0.5) * spread).clamp(-0.2, 1.2);
-      var p = Offset(rect.left - stepLen * 4, y);
-
-      var path = Path()..moveTo(p.dx, p.dy);
-      for (var i = 0; i < steps; i++) {
-        var a = angleNoise(noise, p.dx * freq + t * 0.15, p.dy * freq, turns);
-        // Biased strongly to the right so the strands cross the frame rather
-        // than curling up in one corner, which is what an unbiased flow field
-        // does almost every time.
-        var dir = Offset(math.cos(a) * 0.45 + 0.9, math.sin(a) * 0.85);
-        p = p + dir * stepLen;
-        path.lineTo(p.dx, p.dy);
-        if (p.dx > rect.right + stepLen * 4) break;
-      }
-
-      strands.add(path);
-    }
-
-    // Two passes: a wide soft one for the glow, a thin bright one for the
-    // strand. A single stroke with a blur gives the glow but loses the
-    // filament in the middle, and it is the filament that reads as light.
-    canvas.saveLayer(
-        rect,
-        Paint()
-          ..blendMode = BlendMode.plus
-          ..imageFilter = ui.ImageFilter.blur(
-              sigmaX: width * 3, sigmaY: width * 3, tileMode: TileMode.decal));
-    var glow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width * 5
-      ..strokeCap = StrokeCap.round
-      ..color = _fade(color, spec.intensity * 0.10);
-    for (var path in strands) {
-      canvas.drawPath(path, glow);
-    }
-    canvas.restore();
-
-    var filament = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width
-      ..strokeCap = StrokeCap.round
-      ..blendMode = BlendMode.plus
-      ..color = _fade(color, spec.intensity * 0.5);
-    for (var path in strands) {
-      canvas.drawPath(path, filament);
-    }
-  }
-  canvas.restore();
-}
-
-/// _bokeh is out-of-focus discs of light.
-///
-/// Each disc is brighter at its rim than at its centre, which is what an
-/// out-of-focus highlight actually looks like through a real lens and is the
-/// difference between this and a picture of some circles.
-void _bokeh(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var rnd = SeededRandom(spec.seed);
-  var count = 8 + (spec.density * 90).round();
-  var base = _unit(rect, spec) * 3;
-
-  canvas.saveLayer(rect, Paint());
-  for (var i = 0; i < count; i++) {
-    var px = rnd.next(), py = rnd.next();
-    var sizeF = rnd.range(0.25, 1.0 + spec.variation * 1.6);
-    var pick = rnd.next();
-    var drift = rnd.range(-1, 1);
-
-    var r = base * sizeF;
-    var c = Offset(
-      rect.left +
-          rect.width * px +
-          math.sin(t * 0.4 + i) * r * 0.3 * spec.variation,
-      rect.top + rect.height * py + drift * t * 6,
-    );
-    var color = pick < 0.3 ? spec.accent : spec.foreground;
-    var alpha = spec.intensity * (0.10 + 0.35 * (1 - sizeF).abs());
-
-    canvas.drawCircle(
-      c,
-      r,
-      Paint()
-        ..blendMode = BlendMode.plus
-        ..shader = ui.Gradient.radial(c, r, [
-          _fade(color, alpha * 0.55),
-          _fade(color, alpha * 0.75),
-          _fade(color, 0),
-        ], [
-          0.0,
-          0.82,
-          1.0
-        ]),
-    );
-  }
-  canvas.restore();
-}
-
-/// _starfield is scattered points of light, densest and brightest in the
-/// middle so the frame has somewhere to look.
-void _starfield(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var rnd = SeededRandom(spec.seed);
-  var count = 40 + (spec.density * 700).round();
-  var unit = _unit(rect, spec);
-
-  for (var i = 0; i < count; i++) {
-    var px = rnd.next(), py = rnd.next();
-    var mag = rnd.next();
-    var twinkle = rnd.range(0.5, 3.0);
-    var p = Offset(rect.left + rect.width * px, rect.top + rect.height * py);
-
-    var d =
-        (p - rect.center).distance / (math.max(rect.width, rect.height) * 0.7);
-    var falloff = (1 - d * spec.variation).clamp(0.05, 1.0);
-    var flicker =
-        spec.animated ? 0.6 + 0.4 * math.sin(t * twinkle + i.toDouble()) : 1.0;
-    var alpha = spec.intensity * falloff * flicker * (0.2 + mag * 0.8);
-    var r = unit * 0.08 * (0.4 + mag * 1.6);
-
-    canvas.drawCircle(
-        p,
-        r,
-        Paint()
-          ..color = _fade(mag > 0.93 ? spec.accent : spec.foreground, alpha));
-    // The brightest few get a cross of light, which is what makes a starfield
-    // read as stars rather than as noise.
-    if (mag > 0.96) {
-      var arm = r * 6;
-      var paint = Paint()
-        ..strokeWidth = r * 0.5
-        ..color = _fade(spec.accent, alpha * 0.5);
-      canvas.drawLine(p.translate(-arm, 0), p.translate(arm, 0), paint);
-      canvas.drawLine(p.translate(0, -arm), p.translate(0, arm), paint);
-    }
-  }
-}
-
-/// _ledGrid is a dot-matrix wall: cells lit in clusters rather than at random.
-///
-/// The clustering is what the reference image has and what a plain per-cell
-/// hash does not: lit cells form blocks and runs, because a noise field
-/// decides the region's brightness and the per-cell hash only decides whether
-/// this cell reaches it.
-void _ledGrid(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var cell = _unit(rect, spec);
-  var cols = (rect.width / cell).ceil() + 1;
-  var rows = (rect.height / cell).ceil() + 1;
-  var noise = ValueNoise(spec.seed);
-  var dot = cell * 0.34;
-
-  canvas.saveLayer(rect, Paint());
-  for (var iy = 0; iy < rows; iy++) {
-    for (var ix = 0; ix < cols; ix++) {
-      var region = noise.fbm(ix * 0.08, iy * 0.08 + t * 0.25, octaves: 3);
-      var h = hash(spec.seed, ix, iy);
-      var lit = h < region * spec.density * 1.8;
-      if (!lit) continue;
-
-      var p =
-          Offset(rect.left + (ix + 0.5) * cell, rect.top + (iy + 0.5) * cell);
-      var hot = hash(spec.seed + 91, ix, iy);
-      var color = hot > 0.86 ? spec.accent : spec.foreground;
-      var alpha = spec.intensity * (0.25 + region * 0.75);
-
-      // A diamond for a share of the cells, which is what breaks the grid up
-      // in the reference and costs one branch.
-      var diamond = hash(spec.seed + 41, ix, iy) < spec.variation * 0.45;
-      var paint = Paint()
-        ..blendMode = BlendMode.plus
-        ..color = _fade(color, alpha);
-      if (diamond) {
-        canvas.drawPath(
-            Path()
-              ..moveTo(p.dx, p.dy - dot)
-              ..lineTo(p.dx + dot, p.dy)
-              ..lineTo(p.dx, p.dy + dot)
-              ..lineTo(p.dx - dot, p.dy)
-              ..close(),
-            paint);
-      } else {
-        canvas.drawCircle(p, dot, paint);
-      }
-
-      if (hot > 0.97) {
-        canvas.drawCircle(
-            p,
-            dot * 3.2,
-            Paint()
-              ..blendMode = BlendMode.plus
-              ..shader = ui.Gradient.radial(p, dot * 3.2, [
-                _fade(spec.accent, alpha * 0.5),
-                _fade(spec.accent, 0),
-              ]));
-      }
-    }
-  }
-  canvas.restore();
-}
-
-/// _circuit is right-angled traces with pads where they turn.
-void _circuit(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var cell = _unit(rect, spec) * 1.6;
-  var cols = math.max(2, (rect.width / cell).ceil());
-  var rows = math.max(2, (rect.height / cell).ceil());
-  var rnd = SeededRandom(spec.seed);
-  var traces = 4 + (spec.density * 60).round();
-  var stroke = math.max(0.8, cell * 0.06);
-
-  var glow = Paint()
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = stroke
-    ..strokeJoin = StrokeJoin.round
-    ..strokeCap = StrokeCap.round;
-
-  for (var i = 0; i < traces; i++) {
-    var x = rnd.intRange(0, cols);
-    var y = rnd.intRange(0, rows);
-    var len = 3 + rnd.intRange(0, 6 + (spec.variation * 14).round());
-    var path = Path()..moveTo(rect.left + x * cell, rect.top + y * cell);
-    var pads = <Offset>[];
-
-    var horizontal = rnd.next() < 0.5;
-    for (var s = 0; s < len; s++) {
-      var run = 1 + rnd.intRange(0, 4);
-      if (horizontal) {
-        x += rnd.next() < 0.5 ? run : -run;
-      } else {
-        y += rnd.next() < 0.5 ? run : -run;
-      }
-      x = x.clamp(0, cols);
-      y = y.clamp(0, rows);
-      var p = Offset(rect.left + x * cell, rect.top + y * cell);
-      path.lineTo(p.dx, p.dy);
-      pads.add(p);
-      horizontal = !horizontal;
-    }
-
-    // A slow pulse along the traces when animated, so the board looks powered
-    // rather than printed. Each trace gets its own phase from the sequence, so
-    // they do not all breathe together.
-    var phase = rnd.next() * math.pi * 2;
-    var pulse = spec.animated ? 0.55 + 0.45 * math.sin(t * 1.6 + phase) : 1.0;
-    glow.color = _fade(spec.foreground, spec.intensity * 0.45 * pulse);
-    canvas.drawPath(path, glow);
-
-    var padPaint = Paint()
-      ..color = _fade(spec.accent, spec.intensity * 0.7 * pulse);
-    for (var p in pads) {
-      canvas.drawCircle(p, stroke * 1.8, padPaint);
-    }
-  }
-}
-
-/// _rain is columns of falling glyphs, brightest at the head of each column.
-void _rain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var glyphs = spec.glyphs.isEmpty ? defaultGlyphs : spec.glyphs;
-  var size = _unit(rect, spec);
-  var colWidth = size * 0.9;
-  var cols = (rect.width / colWidth).ceil() + 1;
-  var rowsOnScreen = (rect.height / size).ceil() + 2;
-
-  for (var ix = 0; ix < cols; ix++) {
-    if (hash(spec.seed + 5, ix, 0) > spec.density * 1.4) continue;
-
-    var speed =
-        0.4 + hash(spec.seed + 11, ix, 1) * (0.6 + spec.variation * 2.5);
-    var tail =
-        4 + (hash(spec.seed + 17, ix, 2) * (6 + spec.variation * 26)).round();
-    // The head is measured in rows and advances with time. Offsetting by the
-    // column's own hash is what stops every column starting level, which is
-    // the single most obvious giveaway that a rain effect is generated.
-    var head = (hash(spec.seed + 23, ix, 3) * rowsOnScreen * 3) +
-        (spec.animated ? t * speed * 6 : 0);
-
-    var x = rect.left + ix * colWidth;
-    for (var k = 0; k < tail; k++) {
-      var row = (head - k) % (rowsOnScreen + tail);
-      var y = rect.top + row * size;
-      if (y < rect.top - size || y > rect.bottom + size) continue;
-
-      // The glyph is chosen from the *cell*, not from the position in the
-      // tail, so a column's characters stay put while the light runs down
-      // through them -- which is what the film does and what makes it read as
-      // falling light rather than as scrolling text.
-      var cellRow = row.floor();
-      var gi = (hash(spec.seed + 31, ix,
-                  cellRow + (spec.animated ? (t * speed).floor() : 0)) *
-              glyphs.length)
-          .floor()
-          .clamp(0, glyphs.length - 1);
-
-      var fade = k == 0 ? 1.0 : (1 - k / tail);
-      var color = k == 0 ? spec.accent : spec.foreground;
-      _drawGlyph(canvas, glyphs[gi], Offset(x, y), size,
-          _fade(color, spec.intensity * fade * fade));
-    }
-  }
-}
-
-/// _symbolField scatters glyphs at varying size and angle.
-void _symbolField(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  var glyphs = spec.glyphs.isEmpty ? defaultGlyphs : spec.glyphs;
-  var rnd = SeededRandom(spec.seed);
-  var base = _unit(rect, spec);
-  var count = 10 + (spec.density * 400).round();
-
-  for (var i = 0; i < count; i++) {
-    var px = rnd.next(), py = rnd.next();
-    var sizeF = rnd.range(0.4, 1 + spec.variation * 2.5);
-    var angle = rnd.range(-1, 1) * spec.variation * math.pi;
-    var gi = rnd.intRange(0, glyphs.length);
-    var pick = rnd.next();
-    var bob = rnd.range(0.3, 1.6);
-
-    var p = Offset(
-      rect.left + rect.width * px,
-      rect.top +
-          rect.height * py +
-          (spec.animated ? math.sin(t * bob + i) * base * 0.4 : 0),
-    );
-    canvas.save();
-    canvas.translate(p.dx, p.dy);
-    canvas.rotate(angle);
-    _drawGlyph(
-        canvas,
-        glyphs[gi],
-        Offset.zero,
-        base * sizeF,
-        _fade(pick < 0.2 ? spec.accent : spec.foreground,
-            spec.intensity * rnd.range(0.15, 0.9)));
-    canvas.restore();
-  }
-}
 
 /// _rings is concentric rings travelling out of -- or into -- a point.
 ///
@@ -1823,11 +1679,12 @@ final Map<String, TextPainter> _glyphCache = {};
 const int _maxGlyphCache = 4096;
 
 void _drawGlyph(
-    ui.Canvas canvas, String glyph, Offset at, double size, Color color) {
+    ui.Canvas canvas, String glyph, Offset at, double size, Color color,
+    [String? family]) {
   if (color.a <= 0.004 || size < 1) return;
 
   var bucket = (color.a * 15).round();
-  var key = "$glyph|${size.round()}|"
+  var key = "$glyph|$family|${size.round()}|"
       "${(color.r * 255).round()},${(color.g * 255).round()},"
       "${(color.b * 255).round()}|$bucket";
 
@@ -1838,6 +1695,7 @@ void _drawGlyph(
       text: TextSpan(
         text: glyph,
         style: TextStyle(
+          fontFamily: family,
           fontSize: size,
           height: 1,
           color: color.withValues(alpha: bucket / 15),
@@ -1872,6 +1730,9 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var cols = (reach / step).ceil();
   var rows = (reach / step).ceil();
   var centre = rect.center;
+  var shape = spec.choice("dotShape");
+  var inkKind = spec.choice("ink");
+  var far = math.sqrt(rect.width * rect.width + rect.height * rect.height) / 2;
 
   for (var iy = -rows; iy <= rows; iy++) {
     for (var ix = -cols; ix <= cols; ix++) {
@@ -1884,15 +1745,35 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 
       // How much ink is here: a smooth field, so the dots grow and shrink in
       // drifts rather than at random.
-      var ink = noise.fbm(
-          (p.dx / rect.width) * 3 + t * 0.15, (p.dy / rect.height) * 3,
-          octaves: 3);
+      var ink = switch (inkKind) {
+        // Heavy at one side and nothing at the other: the classic comic
+        // fade, which is a gradient drawn in dots.
+        1 => ((p.dx - rect.left) / rect.width * 0.95 +
+                (noise.fbm(p.dx / rect.width * 4, p.dy / rect.height * 4,
+                            octaves: 2) -
+                        0.5) *
+                    0.15 *
+                    spec.variation)
+            .clamp(0.0, 1.0),
+        2 => (1 - (p - rect.center).distance / far).clamp(0.0, 1.0),
+        _ => noise.fbm(
+            (p.dx / rect.width) * 3 + t * 0.15, (p.dy / rect.height) * 3,
+            octaves: 3),
+      };
       var size = step * 0.62 * ink * (0.35 + spec.density * 1.3);
       if (size <= 0.15) continue;
 
-      paint.color = _fade(ink > 0.72 ? spec.accent : spec.foreground,
+      // The accent where the ink is heaviest, in drifts. A fade is one ink
+      // getting heavier, and an accent switched in part way along it is a
+      // hard-edged blob.
+      paint.color = _fade(
+          inkKind == 0 && ink > 0.72 ? spec.accent : spec.foreground,
           spec.intensity.clamp(0.0, 1.0));
-      canvas.drawCircle(p, size, paint);
+      if (shape == 0) {
+        canvas.drawCircle(p, size, paint);
+      } else {
+        _screenDot(canvas, p, size, step, shape, cos, sin, paint);
+      }
     }
   }
 }
@@ -1904,12 +1785,20 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// constant-width ray reads as a starburst clip-art, which is the wrong
 /// decade.
 void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  if (spec.choice("burstKind") == 1)
+    return _parallelLines(canvas, rect, spec, t);
   // The vanishing point wanders with the seed, but stays near the middle: a
-  // burst centred on a corner is a fan, not a burst.
-  var from = Offset(
-    rect.center.dx + (hash(spec.seed, 3, 1) - 0.5) * rect.width * 0.4,
-    rect.center.dy + (hash(spec.seed, 5, 2) - 0.5) * rect.height * 0.4,
-  );
+  // burst centred on a corner is a fan, not a burst. Unless it is put
+  // somewhere, which is what a burst behind a figure off to one side wants.
+  var from = switch (spec.choice("aim")) {
+    1 => rect.center,
+    2 => Offset(rect.left + rect.width * spec.p("aimX"),
+        rect.top + rect.height * spec.p("aimY")),
+    _ => Offset(
+        rect.center.dx + (hash(spec.seed, 3, 1) - 0.5) * rect.width * 0.4,
+        rect.center.dy + (hash(spec.seed, 5, 2) - 0.5) * rect.height * 0.4,
+      ),
+  };
   var reach = (rect.width + rect.height) * 0.9;
   var count = (12 + spec.density * 90).round();
   var paint = Paint();
@@ -1949,6 +1838,9 @@ void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// a third where it is laid on heavily.
 void _crosshatch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var step = math.max(2.0, _unit(rect, spec) * 0.9);
+  var shaded = spec.choice("tone") == 1;
+  var wobble = spec.p("wobble");
+  var noise = ValueNoise(spec.seed + 3);
   var reach = rect.width + rect.height;
   var passes = spec.density > 0.66 ? 3 : (spec.density > 0.33 ? 2 : 1);
 
@@ -1972,7 +1864,12 @@ void _crosshatch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
           2 *
           (0.75 +
               hash(spec.seed + pass * 7, i, 3) * 0.5 * (0.3 + spec.variation));
-      canvas.drawLine(mid - across * half, mid + across * half, paint);
+      if (!shaded && wobble <= 0) {
+        canvas.drawLine(mid - across * half, mid + across * half, paint);
+      } else {
+        _hatchLine(canvas, rect, mid, across, along, half, step, pass, i,
+            shaded, wobble, noise, spec.seed, paint);
+      }
     }
   }
 }
@@ -1980,6 +1877,12 @@ void _crosshatch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
 /// _splatter is thrown ink: heavy blobs, satellite droplets around them, and
 /// a drip or two running off the big ones.
 void _splatter(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  switch (spec.choice("splatKind")) {
+    case 1:
+      return _drips(canvas, rect, spec, t);
+    case 2:
+      return _spray(canvas, rect, spec, t);
+  }
   var unit = _unit(rect, spec);
   var blobs = (2 + spec.density * 22).round();
   var paint = Paint();
@@ -2041,7 +1944,10 @@ void _splatter(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// _flames is fire: tongues rising from the bottom edge, each a teardrop bent
 /// by a slow field so it licks rather than points.
 void _flames(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  if (spec.p("embers") > 0) _embers(canvas, rect, spec, t);
+  if (spec.choice("flameKind") == 1) return _softFire(canvas, rect, spec, t);
   var noise = ValueNoise(spec.seed);
+  var tall = spec.p("height");
   var tongues = (3 + spec.density * 26).round();
 
   for (var i = 0; i < tongues; i++) {
@@ -2049,7 +1955,8 @@ void _flames(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
         (i + 0.5) / tongues * rect.width +
         hashRange(spec.seed + 3, i, 0, -1, 1) * rect.width / tongues * 0.4;
     var height = rect.height *
-        (0.25 + hash(spec.seed + 5, i, 1) * 0.85 * (0.4 + spec.density));
+        (0.25 + hash(spec.seed + 5, i, 1) * 0.85 * (0.4 + spec.density)) *
+        tall;
     var wide = rect.width / tongues * (0.45 + hash(spec.seed + 7, i, 2) * 0.7);
 
     // Up one side and down the other, both bent by the same field so the two

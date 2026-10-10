@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
@@ -963,27 +964,58 @@ Widget _animationSection(CanvasController controller, TextElement e,
   }
 
   var animation = e.animation;
+  void live(TextAnimation next) {
+    begin();
+    write(e.copyWith(animation: next));
+  }
+
+  // Which way in and how far -- and, apart, which way out and how far. See
+  // directionStrength.
+  List<Widget> motion({required bool leaving}) {
+    var p = leaving ? animation.exit : animation.preset;
+    var shown = (leaving
+            ? animation.exitDirected
+            : animation.arrivalDirected) ||
+        (leaving ? animation.exitStrengthens : animation.arrivalStrengthens);
+    if (!shown) return const [];
+    return [
+      const CanvasLineBreak(),
+      ...directionStrength(
+        keys: "text",
+        leaving: leaving,
+        directed: leaving ? animation.exitDirected : animation.arrivalDirected,
+        strengthens:
+            leaving ? animation.exitStrengthens : animation.arrivalStrengthens,
+        direction: (leaving ? animation.exitDirection : animation.direction) ??
+            (p.motion == TextMotion.wipe
+                ? AnimationDirection.left
+                : AnimationDirection.of(p.dx, p.dy)) ??
+            AnimationDirection.left,
+        strength: leaving ? animation.exitStrength : animation.strength,
+        onDirection: (d) => now(e.copyWith(
+            animation: leaving
+                ? animation.copyWith(exitDirection: d)
+                : animation.copyWith(direction: d))),
+        onStrength: (v) => live(leaving
+            ? animation.copyWith(exitStrength: v)
+            : animation.copyWith(strength: v)),
+        commit: commit,
+      ),
+    ];
+  }
+
   return CanvasExpander(
     label: "Animation",
     remember: "textAnimation",
-    action:
-        animation.on || animation.closes ? previewButton(controller, e) : null,
-    trailing: animation.on
-        ? (animation.closes
-            ? "${animation.preset.label} · ${animation.exit.label}"
-            : animation.preset.label)
-        : (animation.closes ? animation.exit.label : null),
+    action: animation.any ? previewButton(controller, e) : null,
+    trailing: animation.any
+        ? [
+            if (animation.on) animation.preset.label,
+            if (animation.closes) animation.exit.label,
+            if (animation.loop.on) "${animation.loop.preset.label} loop",
+          ].join(" · ")
+        : null,
     children: [
-      // The same group every other element's animation section carries: the
-      // easing belongs to the keyframe, and a caption's keyframes are
-      // keyframes like any other.
-      keyframeEasingGroup(controller, e, begin, commit),
-      const CanvasHint(
-          "Choosing one draws the words on over two seconds and puts a "
-          "keyframe at each end of it on the timeline. Drag those to decide "
-          "how long it takes and when it happens — the same two keyframes a "
-          "chart's animation uses, so a headline and a chart can arrive "
-          "together."),
       // The family first, then the animation. Thirty names in one list is a
       // wall of text nobody reads to the end of; asked in two steps the
       // question is "what kind of arrival" and then "which one", which is how
@@ -997,7 +1029,8 @@ Widget _animationSection(CanvasController controller, TextElement e,
           key: const ValueKey("textAnimationFamily"),
           label: "Kind",
           value: animation.on ? animation.preset.family : null,
-          width: 132,
+          // The same as Which beside it: the two share the line evenly.
+          width: 110,
           options: [
             (null, "None"),
             for (var family in TextAnimationFamily.values)
@@ -1009,12 +1042,14 @@ Widget _animationSection(CanvasController controller, TextElement e,
                   ? TextAnimationPreset.none
                   : TextAnimationPreset.inFamily(family).first),
         ),
-        if (animation.on)
+        // A slide is one choice: which way round is the Direction's.
+        if (animation.on &&
+            animation.preset.family != TextAnimationFamily.slide)
           CanvasDropdown<TextAnimationPreset>(
             key: const ValueKey("textAnimationPreset"),
             label: "Which",
             value: animation.preset,
-            width: 168,
+            width: 110,
             options: [
               for (var preset
                   in TextAnimationPreset.inFamily(animation.preset.family))
@@ -1022,6 +1057,7 @@ Widget _animationSection(CanvasController controller, TextElement e,
             ],
             onChanged: (v) => controller.applyTextAnimation(e, v),
           ),
+        if (animation.on) ...motion(leaving: false),
       ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Leaving", children: [
@@ -1029,7 +1065,7 @@ Widget _animationSection(CanvasController controller, TextElement e,
             key: const ValueKey("textAnimationExitFamily"),
             label: "Kind",
             value: animation.closes ? animation.exit.family : null,
-            width: 132,
+            width: 110,
             options: [
               (null, "None"),
               for (var family in TextAnimationFamily.values)
@@ -1042,26 +1078,36 @@ Widget _animationSection(CanvasController controller, TextElement e,
                     : TextAnimationPreset.inFamily(family).first),
           ),
           if (animation.closes) ...[
-            CanvasDropdown<TextAnimationPreset>(
-              key: const ValueKey("textAnimationExit"),
-              label: "Which",
-              value: animation.exit,
-              width: 168,
-              options: [
-                for (var preset
-                    in TextAnimationPreset.inFamily(animation.exit.family))
-                  (preset, "${preset.label}, reversed"),
-              ],
-              onChanged: (v) => controller.applyTextExit(e, v),
-            ),
+            if (animation.exit.family != TextAnimationFamily.slide)
+              CanvasDropdown<TextAnimationPreset>(
+                key: const ValueKey("textAnimationExit"),
+                label: "Which",
+                value: animation.exit,
+                width: 110,
+                options: [
+                  for (var preset
+                      in TextAnimationPreset.inFamily(animation.exit.family))
+                    (preset, "${preset.label}, reversed"),
+                ],
+                onChanged: (v) => controller.applyTextExit(e, v),
+              ),
             CanvasToggle(
               label: "In the same order",
               value: animation.exitInOrder,
               onChanged: (v) => now(
                   e.copyWith(animation: animation.copyWith(exitInOrder: v))),
             ),
+            ...motion(leaving: true),
           ],
         ]),
+      // What the words go on doing, after they have arrived or instead.
+      loopGroup(
+          controller,
+          animation.loop,
+          (l) => now(e.copyWith(animation: animation.copyWith(loop: l))),
+          (l) => live(animation.copyWith(loop: l)),
+          commit,
+          keys: "text"),
       ..._animationBits(
         animation,
         textColor: e.textSpec.color,
@@ -1070,36 +1116,62 @@ Widget _animationSection(CanvasController controller, TextElement e,
           write(e.copyWith(animation: next));
         },
         done: commit,
+        timingLabel: "Timing / Keyframe",
+        // Where the arrival is on the timeline, typed -- the same two
+        // keyframes dragging moves; before there is one, how long the next
+        // is laid down.
         timingFirst: [
-          // How long an arrival or an exit is laid down with, in frames. A
-          // setting rather than a reading of the timeline: the default is
-          // rarely the length wanted, and dragging a keyframe is a poor way
-          // to ask for twelve frames.
-          CanvasNumberField(
-            key: const ValueKey("textAnimationLength"),
-            label: "Length",
-            min: 1,
-            max: 3600,
-            decimals: 0,
-            width: 62,
-            value: (animation.length > 0
-                    ? animation.length
-                    : controller.defaultAnimationFrames)
-                .toDouble(),
-            onChanged: (v) {
-              begin();
-              write(
-                  e.copyWith(animation: animation.copyWith(length: v.round())));
-            },
-            onCommit: commit,
-          ),
-          const CanvasHint(
-              "How many frames a new arrival or exit is laid down with. Once "
-              "it is on the timeline the keyframes are where it is: changing "
-              "this does not move them, and neither does trying another "
-              "preset. Delete a keyframe and the animation is gone — the next "
-              "one chosen is laid down at this length again."),
+          if (controller.elementAnimationSpan(e) case (var at?, var span?)) ...[
+            CanvasNumberField(
+              key: const ValueKey("textAnimationDelay"),
+              label: "Delay",
+              min: 0,
+              max: 100000,
+              decimals: 0,
+              width: 62,
+              value: at.toDouble(),
+              onChanged: (v) {
+                begin();
+                controller.setElementArrivalTiming(
+                    controller.document.elementById(e.id) ?? e,
+                    delay: v.round());
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("textAnimationLength"),
+              label: "Length",
+              min: 1,
+              max: 100000,
+              decimals: 0,
+              width: 62,
+              value: span.toDouble(),
+              onChanged: (v) {
+                begin();
+                controller.setElementArrivalTiming(
+                    controller.document.elementById(e.id) ?? e,
+                    length: v.round());
+              },
+              onCommit: commit,
+            ),
+          ] else
+            CanvasNumberField(
+              key: const ValueKey("textAnimationLength"),
+              label: "Length",
+              min: 1,
+              max: 3600,
+              decimals: 0,
+              width: 62,
+              value: (animation.length > 0
+                      ? animation.length
+                      : controller.defaultAnimationFrames)
+                  .toDouble(),
+              onChanged: (v) => live(animation.copyWith(length: v.round())),
+              onCommit: commit,
+            ),
         ],
+        timingLast: keyframeEasingControls(controller, e, begin, commit,
+            label: "Keyframe"),
       ),
     ],
   );
@@ -1126,6 +1198,8 @@ List<Widget> _animationBits(
   required void Function(TextAnimation) live,
   required VoidCallback done,
   List<Widget> timingFirst = const [],
+  List<Widget> timingLast = const [],
+  String timingLabel = "Timing",
 }) {
   void now(TextAnimation next) {
     live(next);
@@ -1137,11 +1211,6 @@ List<Widget> _animationBits(
     // a shape's panel: somebody looking for one will be looking in the
     // arrival list, and the two are one cut run in opposite directions.
     if (a.cuts)
-      const CanvasHint(
-          "Break apart and Build up are the same cut run in opposite "
-          "directions. Set one as the way *out* and the words come apart and "
-          "leave; set it as the way in and they assemble."),
-    if (a.cuts)
       ...effectBits(a.effect, a.scatters,
           (next) => now(a.copyWith(effect: next)), done, done,
           live: (next) => live(a.copyWith(effect: next))),
@@ -1152,92 +1221,85 @@ List<Widget> _animationBits(
     // thing the name led somebody to expect.
     if (a.preset == TextAnimationPreset.strokeOn ||
         a.exit == TextAnimationPreset.strokeOn)
-      const CanvasHint(
-          "Draw the outline draws a stroke onto words that are already "
-          "there, line by line, the way a pen would. It draws the type's own "
-          "Outline where it has one; where it has not, give the mark a "
-          "colour below and it draws one in that. With neither there is "
-          "nothing for it to draw."),
-    // What a drawn mark looks like: an underline's line, a highlight's
-    // band. Only where something is drawn -- on a fade there is no mark to
-    // colour.
-    if (a.draws)
-      CanvasControlGroup(label: "The mark", children: [
-        CanvasColorButton(
-          label: "Colour",
-          color: a.draw.color ?? textColor,
-          onChanged: (c) => now(a.copyWith(draw: a.draw.copyWith(color: c))),
-        ),
-        CanvasDropdown<TextDrawStart>(
-          key: const ValueKey("textDrawStart"),
-          label: "The words are",
-          value: a.draw.start,
-          width: 148,
-          options: [for (var s in TextDrawStart.values) (s, s.label)],
-          onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
-        ),
-        const CanvasLineBreak(),
-        // The room round the words is a band's and a line's; a stroke follows
-        // the letterform and has nowhere to put it.
-        if (a.preset != TextAnimationPreset.strokeOn) ...[
-          // One field for all four sides, and the four on their own under it.
-          // A band tight around the letters reads as a mistake; one with a
-          // little air reads as a highlighter.
-          CanvasNumberField(
-            label: "Padding",
-            value: a.draw.evenPad ?? 0,
-            min: 0,
-            max: 200,
-            decimals: 0,
-            width: 62,
-            onChanged: (v) {
-              live(a.copyWith(draw: a.draw.withEvenPad(v)));
-            },
-            onCommit: done,
+      // What a drawn mark looks like: an underline's line, a highlight's
+      // band. Only where something is drawn -- on a fade there is no mark to
+      // colour.
+      if (a.draws)
+        CanvasControlGroup(label: "The mark", children: [
+          CanvasColorButton(
+            label: "Colour",
+            color: a.draw.color ?? textColor,
+            onChanged: (c) => now(a.copyWith(draw: a.draw.copyWith(color: c))),
           ),
-          for (var (name, at, set)
-              in <(String, double, TextDrawSpec Function(double))>[
-            ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
-            ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
-            ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
-            ("Bottom", a.draw.padBottom, (v) => a.draw.copyWith(padBottom: v)),
-          ])
+          CanvasDropdown<TextDrawStart>(
+            key: const ValueKey("textDrawStart"),
+            label: "The words are",
+            value: a.draw.start,
+            width: 148,
+            options: [for (var s in TextDrawStart.values) (s, s.label)],
+            onChanged: (v) => now(a.copyWith(draw: a.draw.copyWith(start: v))),
+          ),
+          const CanvasLineBreak(),
+          // The room round the words is a band's and a line's; a stroke follows
+          // the letterform and has nowhere to put it.
+          if (a.preset != TextAnimationPreset.strokeOn) ...[
+            // One field for all four sides, and the four on their own under it.
+            // A band tight around the letters reads as a mistake; one with a
+            // little air reads as a highlighter.
             CanvasNumberField(
-              label: name,
-              value: at,
-              min: 0,
-              max: 200,
-              decimals: 0,
-              width: 56,
-              onChanged: (v) {
-                live(a.copyWith(draw: set(v)));
-              },
-              onCommit: done,
-            ),
-          // A band's corners, the same setting a part's own highlight has.
-          // Drawn square while the other one could be rounded, the same mark
-          // looked like two different marks.
-          if (a.preset == TextAnimationPreset.highlight)
-            CanvasNumberField(
-              key: const ValueKey("textMarkRadius"),
-              label: "Corners",
-              value: a.draw.radius,
+              label: "Padding",
+              value: a.draw.evenPad ?? 0,
               min: 0,
               max: 200,
               decimals: 0,
               width: 62,
               onChanged: (v) {
-                live(a.copyWith(draw: a.draw.copyWith(radius: v)));
+                live(a.copyWith(draw: a.draw.withEvenPad(v)));
               },
               onCommit: done,
             ),
-          const CanvasHint(
-              "Padding is the room around the words the mark takes in: none "
-              "of it for an underline tight under the letters, a few pixels "
-              "for a highlighter. The one field sets all four sides; the four "
-              "under it set one each."),
-        ],
-      ]),
+            for (var (name, at, set)
+                in <(String, double, TextDrawSpec Function(double))>[
+              ("Left", a.draw.padLeft, (v) => a.draw.copyWith(padLeft: v)),
+              ("Top", a.draw.padTop, (v) => a.draw.copyWith(padTop: v)),
+              ("Right", a.draw.padRight, (v) => a.draw.copyWith(padRight: v)),
+              (
+                "Bottom",
+                a.draw.padBottom,
+                (v) => a.draw.copyWith(padBottom: v)
+              ),
+            ])
+              CanvasNumberField(
+                label: name,
+                value: at,
+                min: 0,
+                max: 200,
+                decimals: 0,
+                width: 56,
+                onChanged: (v) {
+                  live(a.copyWith(draw: set(v)));
+                },
+                onCommit: done,
+              ),
+            // A band's corners, the same setting a part's own highlight has.
+            // Drawn square while the other one could be rounded, the same mark
+            // looked like two different marks.
+            if (a.preset == TextAnimationPreset.highlight)
+              CanvasNumberField(
+                key: const ValueKey("textMarkRadius"),
+                label: "Corners",
+                value: a.draw.radius,
+                min: 0,
+                max: 200,
+                decimals: 0,
+                width: 62,
+                onChanged: (v) {
+                  live(a.copyWith(draw: a.draw.copyWith(radius: v)));
+                },
+                onCommit: done,
+              ),
+          ],
+        ]),
     // How the copies of an echo are arranged: how many, how far apart, how
     // much quieter each one is, and whether they shrink away.
     if (a.echoes)
@@ -1295,75 +1357,58 @@ List<Widget> _animationBits(
           value: a.echo.resolve,
           onChanged: (v) => now(a.copyWith(echo: a.echo.copyWith(resolve: v))),
         ),
-        const CanvasHint(
-            "Resolves sends the copies on their way instead of leaving them "
-            "there: they fan out, carry on in the direction they were "
-            "headed, and are gone by the end — which turns the echo from a "
-            "look into a way in."),
-        const CanvasHint(
-            "Apart is measured in line heights, so the same setting reads "
-            "the same on a headline and on a caption. Fade is how much of "
-            "one copy's strength the next one keeps — a little over half is "
-            "a trail, 1 is a stack. The copies stay when the animation is "
-            "over: it is a look as much as an arrival."),
       ]),
-    if (a.on || a.closes)
-      CanvasControlGroup(label: "Timing", children: [
-        // Whatever the caller wants first in here -- the element's own
-        // Length, which a part has no use for: a part has an offset and a
-        // length of its own, measured against that one.
-        ...timingFirst,
-        if (a.preset.staggers || a.exit.staggers)
-          CanvasNumberField(
-            label: "Gap",
-            min: 0,
-            max: 4,
-            decimals: 2,
-            width: 62,
-            value: a.gap,
+    if (a.on || a.closes || timingLast.isNotEmpty)
+      CanvasControlGroup(label: timingLabel, children: [
+        if (a.on || a.closes) ...[
+          // Whatever the caller wants first in here -- the element's own
+          // Length, which a part has no use for: a part has an offset and a
+          // length of its own, measured against that one.
+          ...timingFirst,
+          if (a.preset.staggers || a.exit.staggers)
+            CanvasNumberField(
+              label: "Gap",
+              min: 0,
+              max: 4,
+              decimals: 2,
+              width: 62,
+              value: a.gap,
+              onChanged: (v) {
+                live(a.copyWith(gap: v));
+              },
+              onCommit: done,
+            ),
+          // Where a scaling preset starts from, and on the way out where it
+          // goes: above 1 it carries the words off the screen, at 0 it
+          // shrinks them to nothing.
+          if (a.scales)
+            CanvasNumberField(
+              label: "From size",
+              min: 0,
+              max: 8,
+              decimals: 2,
+              width: 66,
+              value: a.scale > 0 ? a.scale : a.preset.from,
+              onChanged: (v) {
+                live(a.copyWith(scale: v));
+              },
+              onCommit: done,
+            ),
+          easeDropdown<ChartEase>(
+            label: "End curve",
+            value: a.ease,
+            values: ChartEase.values,
+            name: (c) => c.label,
+            curve: (c) => c.apply,
             onChanged: (v) {
-              live(a.copyWith(gap: v));
+              now(a.copyWith(ease: v));
             },
-            onCommit: done,
           ),
-        if (a.preset.staggers || a.exit.staggers)
-          const CanvasHint(
-              "How long after one letter, word or line starts before the "
-              "next does, as a share of one piece's own movement. 1 is "
-              "strictly one after another; below 1 they overlap; above 1 "
-              "leaves a pause between them."),
-        // Where a scaling preset starts from, and on the way out where it
-        // goes: above 1 it carries the words off the screen, at 0 it
-        // shrinks them to nothing.
-        if (a.scales)
-          CanvasNumberField(
-            label: "From size",
-            min: 0,
-            max: 8,
-            decimals: 2,
-            width: 66,
-            value: a.scale > 0 ? a.scale : a.preset.from,
-            onChanged: (v) {
-              live(a.copyWith(scale: v));
-            },
-            onCommit: done,
-          ),
-        if (a.scales)
-          const CanvasHint(
-              "1 is full size. Below it the words grow into place; above it "
-              "they arrive too large and settle. On the way out it is where "
-              "they go — 2 and above carries them off the screen, 0 shrinks "
-              "them to nothing."),
-        easeDropdown<ChartEase>(
-          label: "End curve",
-          value: a.ease,
-          values: ChartEase.values,
-          name: (c) => c.label,
-          curve: (c) => c.apply,
-          onChanged: (v) {
-            now(a.copyWith(ease: v));
-          },
-        ),
+        ],
+        if (timingLast.isNotEmpty) ...[
+          if (a.on || a.closes) const CanvasLineBreak(),
+          ...timingLast,
+        ],
       ]),
   ];
 }

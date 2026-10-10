@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -289,6 +290,15 @@ class AppColorPicker extends StatefulWidget {
   /// what it holds and a LayoutBuilder cannot answer that question.
   final double width;
 
+  /// compact lays the picker out for a sidebar rather than a dialog: the
+  /// ways of choosing as small icons, with the numbers and the notation, to
+  /// the right of [leading]; a shorter field under them; no saved colours.
+  final bool compact;
+
+  /// leading is drawn at the top left of a compact picker -- what the
+  /// colour being chosen belongs to.
+  final Widget? leading;
+
   const AppColorPicker({
     required this.color,
     required this.onChanged,
@@ -296,6 +306,8 @@ class AppColorPicker extends StatefulWidget {
     this.onGradientChanged,
     this.allowAlpha = true,
     this.width = 320,
+    this.compact = false,
+    this.leading,
     super.key,
   });
 
@@ -325,6 +337,9 @@ double _dialogPad(double screen) => screen < _wideAt ? 8 : 24;
 /// dialog -- the palette editor's expanding row, which measures the room it
 /// has and caps it with this.
 const double pickerWidest = 700;
+
+/// _compactLeast is the narrowest a compact picker lays itself out.
+const double _compactLeast = 220;
 
 /// _wideAt is the width at which the picker lays itself out in two columns.
 ///
@@ -926,6 +941,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
     // the screen's edge and this.
     var width = widget.width;
     var theme = Theme.of(context).colorScheme;
+    if (widget.compact) return _compactLayout(theme, width);
     var wide = width >= _wideAt;
     // What is left after the numbers have had what they need, up to what the
     // colour column would like and down to what it will accept. The colour
@@ -985,6 +1001,62 @@ class _AppColorPickerState extends State<AppColorPicker> {
                 Expanded(child: settings),
               ],
             ),
+        ],
+      ),
+    );
+  }
+
+  /// _compactLayout is the picker for a sidebar: [AppColorPicker.leading]
+  /// and, beside it, the ways of choosing, the channels and the notation;
+  /// under them, the colour itself, picked from a shorter field.
+  Widget _compactLayout(ColorScheme theme, double room) {
+    // Never laid out narrower than it can be: squeezed past this -- a
+    // sidebar being dragged thin, a panel opening -- it keeps this width and
+    // the side is cut off, rather than every box in it overflowing.
+    if (room < _compactLeast) {
+      return UnconstrainedBox(
+        constrainedAxis: Axis.vertical,
+        alignment: Alignment.topLeft,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+            width: _compactLeast, child: _compactLayout(theme, _compactLeast)),
+      );
+    }
+    var width = room;
+    var picking = switch (_mode) {
+      ColorPickerMode.sliders => _slidersMode(theme, width),
+      ColorPickerMode.wheel => _wheelMode(theme, width),
+      ColorPickerMode.palette => _paletteMode(theme, width),
+      ColorPickerMode.gradient => _gradientMode(theme, width),
+    };
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (widget.leading case var lead?) ...[
+              lead,
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) =>
+                    _channels(theme, compact: box.maxWidth),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          picking,
+          const SizedBox(height: 6),
+          _SavedRow(
+            current: _current,
+            onPick: (c) => setState(() {
+              _tookFromOutside(c);
+              _say();
+            }),
+          ),
         ],
       ),
     );
@@ -1096,10 +1168,10 @@ class _AppColorPickerState extends State<AppColorPicker> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _field(theme, width),
-          const SizedBox(height: 12),
+          SizedBox(height: widget.compact ? 6 : 12),
           ..._fieldBars(theme, width),
           if (widget.allowAlpha) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: widget.compact ? 6 : 10),
             _alphaBar(theme, width),
           ],
         ],
@@ -1108,7 +1180,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
   /// _field is the two-dimensional part of whichever notation is chosen.
   Widget _field(ColorScheme theme, double width) {
     var flat = _format == ColorFormat.grey;
-    var height = flat ? 40.0 : width * 0.52;
+    var height = flat ? 40.0 : width * (widget.compact ? 0.3 : 0.52);
     return _Draggable(
       onAt: (local, size, _) => _fromField(
           local.dx / size.width, flat ? _fy : local.dy / size.height),
@@ -1799,8 +1871,163 @@ class _AppColorPickerState extends State<AppColorPicker> {
   /// width actually handed down by the layout are two different numbers the
   /// moment a dialog trims anything -- and the difference comes out as an
   /// overflow stripe rather than as a narrower picker.
-  Widget _channels(ColorScheme theme) {
+  Widget _channels(ColorScheme theme, {double? compact}) {
     var c = _current;
+    List<Widget> fieldsAt(double box) => <Widget>[
+          _ChannelField(
+              width: box,
+              height: compact == null ? 28 : 22,
+              label: "R",
+              value: (c.r * 255).roundToDouble(),
+              onChanged: (v) => _channel(0, v)),
+          _ChannelField(
+              width: box,
+              height: compact == null ? 28 : 22,
+              label: "G",
+              value: (c.g * 255).roundToDouble(),
+              onChanged: (v) => _channel(1, v)),
+          _ChannelField(
+              width: box,
+              height: compact == null ? 28 : 22,
+              label: "B",
+              value: (c.b * 255).roundToDouble(),
+              onChanged: (v) => _channel(2, v)),
+          if (widget.allowAlpha)
+            _ChannelField(
+                width: box,
+                height: compact == null ? 28 : 22,
+                label: "A",
+                value: (_alpha * 255).roundToDouble(),
+                onChanged: (v) => setState(() {
+                      _alpha = (v / 255).clamp(0.0, 1.0);
+                      _say();
+                    })),
+        ];
+    var fields = fieldsAt(_channelWidth);
+    var format = SizedBox(
+      height: compact == null ? 16 : 24,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<ColorFormat>(
+          key: const ValueKey("colorFormat"),
+          isDense: true,
+          isExpanded: compact != null,
+          // Shut and small, one line and a short name; open, every name in
+          // full.
+          menuWidth: compact == null ? null : 120,
+          selectedItemBuilder: compact == null
+              ? null
+              : (context) => [
+                    for (var f in ColorFormat.values)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(f == ColorFormat.grey ? "Grey" : f.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+          value: _format,
+          iconSize: 16,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: theme.onSurfaceVariant),
+          items: [
+            for (var f in ColorFormat.values)
+              DropdownMenuItem(value: f, child: Text(f.label)),
+          ],
+          onChanged: (f) => setState(() {
+            _format = f ?? _format;
+            // Where the colour sits in the new notation's field, and
+            // -- for greyscale -- the fact that it no longer has a hue
+            // to sit at. Told to work in greys, the picker works in
+            // greys, and the grey it starts from is how bright the
+            // colour was: dropping the saturation and keeping the value
+            // instead turns a dark red into a light grey, because
+            // brightness in HSV is not brightness to an eye.
+            if (_format == ColorFormat.grey) {
+              var level = greyOf(_current).round().clamp(0, 255);
+              _rgb = Color.fromARGB(255, level, level, level);
+              _sat = 0;
+            }
+            _readWheel();
+            _readThird();
+            _readField();
+            _write();
+            _say();
+          }),
+        ),
+      ),
+    );
+    var value = SizedBox(
+      height: compact == null ? 30 : 24,
+      width: double.infinity,
+      child: TextField(
+        key: const ValueKey("colorPickerHex"),
+        controller: _text,
+        focusNode: _textFocus,
+        // No monospace: the family is not on every machine this runs on,
+        // and what came of asking for one was a hex whose "ff" sat tight
+        // and whose other characters did not.
+        style: const TextStyle(fontSize: 12, letterSpacing: 0.6),
+        decoration: InputDecoration(
+          isDense: true,
+          prefixText: _format == ColorFormat.hex ? "#" : null,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          border: const OutlineInputBorder(),
+          hintText: ColorText.hint(_format, widget.allowAlpha),
+          hintStyle: TextStyle(
+              fontSize: 11,
+              color: theme.onSurfaceVariant.withValues(alpha: 0.5)),
+        ),
+        inputFormatters: [
+          if (_format == ColorFormat.hex)
+            FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F#]"))
+          else
+            FilteringTextInputFormatter.allow(RegExp(r"[0-9,.\-% ]")),
+          _KeepWhatArrived(24),
+        ],
+        onChanged: _read,
+        onSubmitted: _read,
+      ),
+    );
+    if (compact != null) {
+      // The channels share out exactly the room left beside the menu of
+      // ways of choosing -- measured, not worked out, so they never run a
+      // fraction past it -- and the notation and its value, under them,
+      // end where they end: the notation under the first two, the value
+      // under the rest.
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: LayoutBuilder(builder: (context, room) {
+            var count = widget.allowAlpha ? 4 : 3;
+            var box = (room.maxWidth / count - 4).clamp(0.0, _channelWidth);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(children: fieldsAt(box)),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: count * (box + 4) - 4,
+                  child: Row(children: [
+                    SizedBox(width: box * 2 + 4, child: format),
+                    const SizedBox(width: 4),
+                    Expanded(child: value),
+                  ]),
+                ),
+              ],
+            );
+          }),
+        ),
+        // Level with the boxes, below the letters over them.
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: _modeMenu(theme),
+        ),
+      ]);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1808,108 +2035,80 @@ class _AppColorPickerState extends State<AppColorPicker> {
         // Wrapped rather than a row: in the narrowest dialog four boxes and
         // their gaps are wider than the column, and a Row that does not fit
         // is a stripe rather than a second line.
-        Wrap(children: [
-          _ChannelField(
-              label: "R",
-              value: (c.r * 255).roundToDouble(),
-              onChanged: (v) => _channel(0, v)),
-          _ChannelField(
-              label: "G",
-              value: (c.g * 255).roundToDouble(),
-              onChanged: (v) => _channel(1, v)),
-          _ChannelField(
-              label: "B",
-              value: (c.b * 255).roundToDouble(),
-              onChanged: (v) => _channel(2, v)),
-          if (widget.allowAlpha)
-            _ChannelField(
-                label: "A",
-                value: (_alpha * 255).roundToDouble(),
-                onChanged: (v) => setState(() {
-                      _alpha = (v / 255).clamp(0.0, 1.0);
-                      _say();
-                    })),
-        ]),
+        Wrap(children: fields),
         const SizedBox(height: 10),
         // The notation and the value in it, laid out the way a channel is:
         // the name over the box rather than beside it, so this row and the
         // one above line up instead of sitting at two different heights. The
         // name is the dropdown -- what the field is holding is the title it
         // needs.
-        SizedBox(
-          height: 16,
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<ColorFormat>(
-              key: const ValueKey("colorFormat"),
-              isDense: true,
-              value: _format,
-              iconSize: 16,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: theme.onSurfaceVariant),
-              items: [
-                for (var f in ColorFormat.values)
-                  DropdownMenuItem(value: f, child: Text(f.label)),
-              ],
-              onChanged: (f) => setState(() {
-                _format = f ?? _format;
-                // Where the colour sits in the new notation's field, and
-                // -- for greyscale -- the fact that it no longer has a hue
-                // to sit at. Told to work in greys, the picker works in
-                // greys, and the grey it starts from is how bright the
-                // colour was: dropping the saturation and keeping the value
-                // instead turns a dark red into a light grey, because
-                // brightness in HSV is not brightness to an eye.
-                if (_format == ColorFormat.grey) {
-                  var level = greyOf(_current).round().clamp(0, 255);
-                  _rgb = Color.fromARGB(255, level, level, level);
-                  _sat = 0;
-                }
-                _readWheel();
-                _readThird();
-                _readField();
-                _write();
-                _say();
-              }),
-            ),
-          ),
-        ),
+        format,
         const SizedBox(height: 2),
-        SizedBox(
-          height: 30,
-          width: double.infinity,
-          child: TextField(
-            key: const ValueKey("colorPickerHex"),
-            controller: _text,
-            focusNode: _textFocus,
-            // No monospace: the family is not on every machine this runs on,
-            // and what came of asking for one was a hex whose "ff" sat tight
-            // and whose other characters did not.
-            style: const TextStyle(fontSize: 12, letterSpacing: 0.6),
-            decoration: InputDecoration(
-              isDense: true,
-              prefixText: _format == ColorFormat.hex ? "#" : null,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              border: const OutlineInputBorder(),
-              hintText: ColorText.hint(_format, widget.allowAlpha),
-              hintStyle: TextStyle(
-                  fontSize: 11,
-                  color: theme.onSurfaceVariant.withValues(alpha: 0.5)),
-            ),
-            inputFormatters: [
-              if (_format == ColorFormat.hex)
-                FilteringTextInputFormatter.allow(RegExp(r"[0-9a-fA-F#]"))
-              else
-                FilteringTextInputFormatter.allow(RegExp(r"[0-9,.\-% ]")),
-              _KeepWhatArrived(24),
-            ],
-            onChanged: _read,
-            onSubmitted: _read,
-          ),
-        ),
+        value,
       ],
+    );
+  }
+
+  /// _modeMenu is the ways of choosing for a compact picker: one icon -- the
+  /// way in use -- that opens to every way, each with its icon and its
+  /// name, and the reset under them.
+  Widget _modeMenu(ColorScheme theme) {
+    TextStyle style(bool on) => TextStyle(
+        fontSize: 12, color: on ? theme.onSurface : theme.onSurfaceVariant);
+    return SizedBox(
+      height: 24,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<ColorPickerMode?>(
+          key: const ValueKey("colorModeMenu"),
+          value: _mode,
+          isDense: true,
+          // Wider open than shut: each way by its name as well as its icon.
+          menuWidth: 160,
+          iconSize: 14,
+          focusColor: Colors.transparent,
+          // Shut, the icon of the way in use; open, every way by name.
+          selectedItemBuilder: (context) => [
+            for (var _ in [..._modesOffered, null])
+              Icon(_mode.icon, size: 16, color: theme.onSurfaceVariant),
+          ],
+          items: [
+            for (var mode in _modesOffered)
+              DropdownMenuItem(
+                key: ValueKey("colorMode${mode.name}"),
+                value: mode,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(mode.icon, size: 15, color: theme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(mode.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: style(mode == _mode)),
+                  ),
+                ]),
+              ),
+            DropdownMenuItem(
+              key: const ValueKey("colorReset"),
+              value: null,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.restart_alt,
+                    size: 15, color: theme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text("Reset",
+                      overflow: TextOverflow.ellipsis, style: style(false)),
+                ),
+              ]),
+            ),
+          ],
+          onChanged: (mode) {
+            if (mode == null) return _reset();
+            setState(() {
+              _mode = mode;
+              if (mode == ColorPickerMode.palette) _leadFromCurrent();
+            });
+          },
+        ),
+      ),
     );
   }
 
@@ -2428,10 +2627,16 @@ class _ChannelField extends StatefulWidget {
   final double value;
   final ValueChanged<double> onChanged;
 
+  /// width and height are the box's, smaller in a compact picker.
+  final double width;
+  final double height;
+
   const _ChannelField({
     required this.label,
     required this.value,
     required this.onChanged,
+    this.width = _channelWidth,
+    this.height = 28,
   });
 
   @override
@@ -2466,6 +2671,15 @@ class _ChannelFieldState extends State<_ChannelField> {
   double _startX = 0;
   bool _dragging = false;
 
+  /// _hold runs while the number is pressed, before the press is a drag.
+  Timer? _hold;
+
+  void _letGo() {
+    _hold?.cancel();
+    _hold = null;
+    _dragging = false;
+  }
+
   @override
   void didUpdateWidget(_ChannelField old) {
     super.didUpdateWidget(old);
@@ -2476,6 +2690,7 @@ class _ChannelFieldState extends State<_ChannelField> {
 
   @override
   void dispose() {
+    _hold?.cancel();
     _text.dispose();
     _focus.dispose();
     super.dispose();
@@ -2489,7 +2704,7 @@ class _ChannelFieldState extends State<_ChannelField> {
     // Theme above it, rather than only where the notifier has been provided.
     var theme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: EdgeInsets.only(right: widget.height < 28 ? 4 : 6),
       child: Column(
         // Over the middle of the box it names, rather than up against its
         // left edge: the numbers underneath are centred, and a caption
@@ -2523,7 +2738,7 @@ class _ChannelFieldState extends State<_ChannelField> {
               onPointerUp: (_) => _dragging = false,
               onPointerCancel: (_) => _dragging = false,
               child: SizedBox(
-                width: _channelWidth,
+                width: widget.width,
                 child: Text(
                   widget.label,
                   key: ValueKey("channel${widget.label}"),
@@ -2544,29 +2759,62 @@ class _ChannelFieldState extends State<_ChannelField> {
           ),
           const SizedBox(height: 2),
           SizedBox(
-            width: _channelWidth,
-            height: 28,
-            child: TextField(
-              controller: _text,
-              focusNode: _focus,
-              style: const TextStyle(fontSize: 12),
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                _KeepWhatArrived(3),
-              ],
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (typed) {
-                var value = int.tryParse(typed);
-                if (value == null) return;
-                widget.onChanged(value.clamp(0, 255).toDouble());
+            width: widget.width,
+            height: widget.height,
+            // The number is dragged as well as its letter: held a moment,
+            // then moved -- a press that moves at once is the field's own,
+            // selecting the digits to retype them. As every number in the
+            // canvas settings is.
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) {
+                _from = widget.value;
+                _startX = event.position.dx;
+                _hold?.cancel();
+                _hold = Timer(const Duration(milliseconds: 350), () {
+                  _hold = null;
+                  _dragging = true;
+                });
               },
+              onPointerMove: (event) {
+                var travelled = event.position.dx - _startX;
+                if (!_dragging) {
+                  if (travelled.abs() > 14) {
+                    _hold?.cancel();
+                    _hold = null;
+                  }
+                  return;
+                }
+                var step = HardwareKeyboard.instance.isShiftPressed ? 0.2 : 1.0;
+                widget.onChanged((_from + travelled * step)
+                    .clamp(0.0, 255.0)
+                    .roundToDouble());
+              },
+              onPointerUp: (_) => _letGo(),
+              onPointerCancel: (_) => _letGo(),
+              child: TextField(
+                controller: _text,
+                focusNode: _focus,
+                mouseCursor: SystemMouseCursors.resizeLeftRight,
+                style: TextStyle(fontSize: widget.height < 28 ? 10 : 12),
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  _KeepWhatArrived(3),
+                ],
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (typed) {
+                  var value = int.tryParse(typed);
+                  if (value == null) return;
+                  widget.onChanged(value.clamp(0, 255).toDouble());
+                },
+              ),
             ),
           ),
         ],

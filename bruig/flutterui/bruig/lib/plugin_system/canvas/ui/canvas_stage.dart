@@ -3082,9 +3082,17 @@ class CanvasStageState extends State<CanvasStage> {
     var shapes = e.shapes ?? const <VectorShape>[];
     if (from != null && vectorNodeAt(e, from) == null) from = null;
     var picked = controller.vectorShape;
+    // A new shape is drawn like the shape picked -- or, with none, in the
+    // colours set for new shapes. See ColourPanel.
+    var view = e.viewBox;
     var like = from == null && picked >= 0 && picked < shapes.length
         ? shapes[picked]
-        : null;
+        : VectorShape(
+            paths: const [],
+            stroke: controller.vectorShapeLine ?? const Color(0xFF000000),
+            strokeWidth: math.max(1.0, math.min(view.width, view.height) / 100),
+            cap: StrokeCap.round,
+            join: StrokeJoin.round);
     controller.beginInteraction();
     _vectorFrom = doc;
     var (next, pick) = withPenPoint(e, from, doc, like: like);

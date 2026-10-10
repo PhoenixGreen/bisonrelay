@@ -267,6 +267,11 @@ class VectorShape {
   final Color? fill;
   final Color? stroke;
 
+  /// fillFade and strokeFade fade the fill and the line across the shape
+  /// towards a second colour, or null for flat ones.
+  final GradientSpec? fillFade;
+  final GradientSpec? strokeFade;
+
   /// strokeWidth is in the drawing's own units, so it scales with the
   /// drawing as the file's own lines do.
   final double strokeWidth;
@@ -323,6 +328,8 @@ class VectorShape {
     required this.paths,
     this.fill,
     this.stroke,
+    this.fillFade,
+    this.strokeFade,
     this.strokeWidth = 1,
     this.cap = StrokeCap.butt,
     this.join = StrokeJoin.miter,
@@ -342,6 +349,10 @@ class VectorShape {
     List<VectorPath>? paths,
     Color? fill,
     Color? stroke,
+    GradientSpec? fillFade,
+    bool flatFill = false,
+    GradientSpec? strokeFade,
+    bool flatStroke = false,
     bool clearFill = false,
     bool clearStroke = false,
     double? strokeWidth,
@@ -366,6 +377,9 @@ class VectorShape {
         paths: paths ?? this.paths,
         fill: clearFill ? null : fill ?? this.fill,
         stroke: clearStroke ? null : stroke ?? this.stroke,
+        fillFade: flatFill || clearFill ? null : fillFade ?? this.fillFade,
+        strokeFade:
+            flatStroke || clearStroke ? null : strokeFade ?? this.strokeFade,
         strokeWidth: strokeWidth ?? this.strokeWidth,
         cap: cap ?? this.cap,
         join: join ?? this.join,
@@ -424,6 +438,8 @@ class VectorShape {
         "p": [for (var p in paths) p.toJson()],
         if (fill != null) "f": colorToJson(fill!),
         if (stroke != null) "s": colorToJson(stroke!),
+        if (fillFade != null) "ff": fillFade!.toJson(),
+        if (strokeFade != null) "sf": strokeFade!.toJson(),
         if (strokeWidth != 1) "w": strokeWidth,
         if (cap != StrokeCap.butt) "cap": cap.name,
         if (join != StrokeJoin.miter) "join": join.name,
@@ -486,6 +502,12 @@ class VectorShape {
       ],
       fill: json["f"] == null ? null : colorFromJson(json["f"]),
       stroke: json["s"] == null ? null : colorFromJson(json["s"]),
+      fillFade: json["ff"] is Map
+          ? GradientSpec.fromJson((json["ff"] as Map).cast<String, dynamic>())
+          : null,
+      strokeFade: json["sf"] is Map
+          ? GradientSpec.fromJson((json["sf"] as Map).cast<String, dynamic>())
+          : null,
       strokeWidth: jsonDouble(json["w"], 1),
       cap: StrokeCap.values.firstWhere((c) => c.name == json["cap"],
           orElse: () => StrokeCap.butt),

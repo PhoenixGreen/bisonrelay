@@ -4874,6 +4874,14 @@ class CanvasController extends ChangeNotifier {
   /// and nine do not, and a getter on the base class would be a promise that
   /// every element can be animated this way -- which a line, a background or
   /// a chart cannot, each for its own reason.
+  /// elementLoopOf is [element]'s loop, whatever kind of element: the words'
+  /// and a chart's are in animations of their own.
+  static ElementLoop elementLoopOf(CanvasElement element) => switch (element) {
+        TextElement e => e.animation.loop,
+        ChartElement e => e.animation.loop,
+        _ => elementAnimationOf(element).loop,
+      };
+
   static ElementAnimation elementAnimationOf(CanvasElement element) =>
       switch (element) {
         ShapeElement e => e.animation,
@@ -4895,6 +4903,11 @@ class CanvasController extends ChangeNotifier {
   /// a slice are -- see applyChartAnimation -- and not a text element, whose
   /// presets are scoped to words and letters. Everything else on the canvas
   /// is a thing in a box, and a thing in a box arrives the same way.
+  /// loops is whether [element] can loop: everything that animates, and the
+  /// words and charts, whose animations are their own.
+  static bool loops(CanvasElement element) =>
+      animates(element) || element is TextElement || element is ChartElement;
+
   static bool animates(CanvasElement element) =>
       element is ShapeElement ||
       element is ImageElement ||
@@ -4931,6 +4944,19 @@ class CanvasController extends ChangeNotifier {
   /// its bar is still making it. See ElementLoop.
   void setElementLoop(CanvasElement element, ElementLoop loop,
       {bool transient = false}) {
+    // Words and charts keep theirs in animations of their own.
+    if (element is TextElement) {
+      replaceElement(
+          element.copyWith(animation: element.animation.copyWith(loop: loop)),
+          transient: transient);
+      return;
+    }
+    if (element is ChartElement) {
+      replaceElement(
+          element.copyWith(animation: element.animation.copyWith(loop: loop)),
+          transient: transient);
+      return;
+    }
     if (!animates(element)) return;
     var was = elementAnimationOf(element);
     replaceElement(_withElementAnimation(element, was.copyWith(loop: loop)),
@@ -5056,8 +5082,14 @@ class CanvasController extends ChangeNotifier {
     // And what the next one is laid down with, so that trying another
     // preset keeps the length that was typed.
     if (length != null) {
-      next = _withElementAnimation(
-          next, elementAnimationOf(element).copyWith(length: took));
+      next = switch (next) {
+        TextElement t =>
+          t.copyWith(animation: t.animation.copyWith(length: took)),
+        ChartElement c =>
+          c.copyWith(animation: c.animation.copyWith(length: took)),
+        _ => _withElementAnimation(
+            next, elementAnimationOf(element).copyWith(length: took)),
+      };
     }
     apply(document.withElement(next), transient: true);
   }
@@ -5086,7 +5118,7 @@ class CanvasController extends ChangeNotifier {
     if (closeFrom != null && closeTo != null) take(closeFrom, closeTo);
     var arrived = arrivalEnd(element);
     var loops = [
-      elementAnimationOf(element).loop,
+      elementLoopOf(element),
       if (element is VectorElement)
         for (var d in vectorDrawn(element.shapes ?? const []))
           if (d.style.animation case var own?

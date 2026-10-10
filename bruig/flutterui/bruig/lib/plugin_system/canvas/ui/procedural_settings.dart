@@ -1,9 +1,17 @@
+import 'package:bruig/plugin_system/canvas/model/procedural_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_palettes.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_params.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
+import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
+import 'package:bruig/plugin_system/canvas/ui/procedural_thumb.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // procedural_settings.dart is the controls for a generated background.
@@ -44,6 +52,12 @@ class ProceduralSettings extends StatelessWidget {
   /// parameter because a third place showing these would need one.
   final String label;
 
+  /// layer is whether this is one of the layers laid over a background
+  /// rather than the background itself: only its pattern is drawn, so the
+  /// things that belong to the whole picture -- the light, the lens, the
+  /// film, the run of the movement -- are not offered.
+  final bool layer;
+
   const ProceduralSettings({
     required this.spec,
     required this.onChanged,
@@ -52,6 +66,7 @@ class ProceduralSettings extends StatelessWidget {
     this.onReset,
     this.canvasFrames,
     this.label = "",
+    this.layer = false,
     super.key,
   });
 
@@ -505,6 +520,7 @@ class ProceduralSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!layer) return _Layered(owner: this);
     var groups = _groups(context);
     // Down the column like every other element's settings. A Row of five
     // groups in a 280px sidebar is a thousand pixels of overflow, and it does
@@ -527,12 +543,29 @@ class ProceduralSettings extends StatelessWidget {
 
   List<Widget> _groups(BuildContext context) => [
         CanvasControlGroup(label: label, hideCaption: label.isEmpty, children: [
+          // Shown rather than named, and listed under the kind of thing each
+          // one is. Choosing one starts from its first look: a style in the
+          // last style's colours and numbers is rarely a good picture of it.
           CanvasDropdown<ProceduralStyle>(
+            key: const ValueKey("backgroundStyle"),
             label: "Style",
             value: spec.style,
-            width: 138,
-            options: [for (var s in ProceduralStyle.values) (s, s.label)],
-            onChanged: (v) => _setNow(spec.copyWith(style: v)),
+            width: 150,
+            options: [
+              for (var f in StyleFamily.values)
+                for (var s in ProceduralStyle.values)
+                  if (s.family == f && (!s.hidden || s == spec.style))
+                    (s, s.label),
+            ],
+            groupOf: (s) => s.family.label,
+            leading: (s) => ProceduralThumb(styleThumbSpec(s)),
+            onChanged: (v) {
+              if (v == spec.style) return;
+              var first = looksFor(v).firstOrNull;
+              _setNow(first == null
+                  ? spec.copyWith(style: v, params: const {})
+                  : withLook(spec, first));
+            },
           ),
           // The seed and its shuffle sit together, because the number is
           // almost never typed -- what it is for is pressing the button
@@ -556,7 +589,7 @@ class ProceduralSettings extends StatelessWidget {
           // two ways out of a pattern that has been fiddled with past the
           // point of remembering what it was -- one goes somewhere new, this
           // one goes back.
-          if (onReset != null)
+          if (onReset != null && !layer)
             CanvasIconButton(
               key: const ValueKey("resetBackground"),
               icon: Icons.restart_alt,
@@ -572,30 +605,78 @@ class ProceduralSettings extends StatelessWidget {
               onChanged: (v) => _setNow(spec.copyWith(sport: v)),
             ),
         ]),
+        if (looksFor(spec.style).isNotEmpty)
+          CanvasExpander(
+            label: "Looks",
+            remember: "background.looks",
+            initiallyOpen: true,
+            trailing: lookMatching(spec)?.name ?? "Custom",
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: canvasGroupGap - 10),
+                child: LooksGrid(
+                  spec: spec,
+                  onPick: (look) => _setNow(withLook(spec, look)),
+                ),
+              ),
+            ],
+          ),
         CanvasControlGroup(label: "Colours", children: [
+          // All three at once, chosen to go together -- and the colours the
+          // app itself is wearing, for a background that matches it.
+          CanvasDropdown<String>(
+            key: const ValueKey("backgroundPalette"),
+            label: "Palette",
+            value: _paletteName(context),
+            width: 150,
+            options: [
+              if (_paletteName(context) == "") ("", "Custom"),
+              ("theme", "My theme"),
+              for (var p in backgroundPalettes) (p.name, p.name),
+            ],
+            leading: (name) => _paletteSwatch(
+                name == "theme" ? _themePalette(context) : paletteNamed(name)),
+            onChanged: (name) {
+              var p =
+                  name == "theme" ? _themePalette(context) : paletteNamed(name);
+              if (p != null) _setNow(p.on(spec));
+            },
+          ),
+          const CanvasLineBreak(),
           // The base colour, and the second one it fades to if it fades: both
           // in the picker, which is where a gradient is set now. That is
           // three controls out of this group -- a Gradient toggle, a To
           // swatch and an Angle field -- for something most backgrounds do
           // not do at all.
-          CanvasColorButton(
-            label: "Base",
-            color: spec.background,
-            gradient: spec.gradient,
-            onChanged: (c) => _setNow(spec.copyWith(background: c)),
-            onGradientChanged: (g) => _setNow(g == null
-                ? spec.copyWith(flatBackground: true)
-                : spec.copyWith(gradient: g)),
-          ),
+          // A layer's base is the background's, unless the layer is plain --
+          // a wash of colour, which is nothing but its base.
+          if (!layer || spec.style == ProceduralStyle.plain)
+            CanvasColorButton(
+              label: "Base",
+              color: spec.background,
+              gradient: spec.gradient,
+              onChanged: (c) => _setNow(spec.copyWith(background: c)),
+              onGradientChanged: (g) => _setNow(g == null
+                  ? spec.copyWith(flatBackground: true)
+                  : spec.copyWith(gradient: g)),
+            ),
           CanvasColorButton(
             label: "Main",
             color: spec.foreground,
+            gradient: spec.foregroundFade,
             onChanged: (c) => _setNow(spec.copyWith(foreground: c)),
+            onGradientChanged: (g) => _setNow(g == null
+                ? spec.copyWith(flatForeground: true)
+                : spec.copyWith(foregroundFade: g)),
           ),
           CanvasColorButton(
             label: "Accent",
             color: spec.accent,
+            gradient: spec.accentFade,
             onChanged: (c) => _setNow(spec.copyWith(accent: c)),
+            onGradientChanged: (g) => _setNow(g == null
+                ? spec.copyWith(flatAccent: true)
+                : spec.copyWith(accentFade: g)),
           ),
         ]),
         CanvasControlGroup(label: "Amount", children: [
@@ -659,19 +740,6 @@ class ProceduralSettings extends StatelessWidget {
               onCommit: onCommit,
             ),
           CanvasNumberField(
-            label: "Vignette",
-            min: 0,
-            max: 1,
-            decimals: 2,
-            width: 62,
-            value: spec.vignette,
-            onChanged: (v) {
-              onBegin();
-              _set(spec.copyWith(vignette: v));
-            },
-            onCommit: onCommit,
-          ),
-          CanvasNumberField(
             label: "Rotation",
             value: spec.rotation,
             min: -360,
@@ -682,12 +750,30 @@ class ProceduralSettings extends StatelessWidget {
             onCommit: onCommit,
           ),
         ]),
+        ..._ownGroups(),
         if (spec.style.usesGlyphs)
           CanvasControlGroup(label: "Symbols", children: [
-            // The whole set as one string, so adding a character means
-            // typing it. A picker of symbol categories would be a longer
-            // walk to the same place, and would not let somebody use their
-            // own initials as the rain.
+            // A set to start from, and the set itself as one string -- so
+            // adding a character means typing it, and somebody's own
+            // initials can be the rain.
+            CanvasDropdown<String>(
+              key: const ValueKey("glyphSet"),
+              label: "Set",
+              value:
+                  glyphSets.where((g) => g.$2 == spec.glyphs).firstOrNull?.$1 ??
+                      "",
+              width: 110,
+              options: [
+                if (!glyphSets.any((g) => g.$2 == spec.glyphs))
+                  ("", "Your own"),
+                for (var (name, _) in glyphSets) (name, name),
+              ],
+              onChanged: (name) {
+                for (var (n, glyphs) in glyphSets) {
+                  if (n == name) _setNow(spec.copyWith(glyphs: glyphs));
+                }
+              },
+            ),
             CanvasTextField(
               label: "Characters used",
               value: spec.glyphs,
@@ -1126,7 +1212,26 @@ class ProceduralSettings extends StatelessWidget {
             ),
           ),
         ],
-        if (spec.style.canAnimate)
+        _effects(),
+        // A layer keeps the background's time, at a pace of its own.
+        if (layer && spec.style.canAnimate)
+          CanvasControlGroup(label: "Movement", children: [
+            CanvasNumberField(
+              key: const ValueKey("layerSpeed"),
+              label: "Speed",
+              decimals: 2,
+              width: 62,
+              value: spec.speed,
+              min: 0,
+              max: 6,
+              onChanged: (v) {
+                onBegin();
+                _set(spec.copyWith(speed: v));
+              },
+              onCommit: onCommit,
+            ),
+          ]),
+        if (!layer && spec.style.canAnimate)
           CanvasControlGroup(label: "Movement", children: [
             CanvasToggle(
               key: const ValueKey("animate"),
@@ -1273,142 +1378,609 @@ class ProceduralSettings extends StatelessWidget {
         // it is wanted, because most backgrounds are not lit and a switch
         // plus seven numbers at the foot of the panel would be in the way of
         // the ones that do the work.
-        CanvasExpander(
-          label: "Lights",
-          remember: "background.light",
-          trailing: light.on ? "Spotlight" : "None",
-          children: [
-            CanvasControlGroup(label: "Lights", hideCaption: true, children: [
-              CanvasToggle(
-                key: const ValueKey("lightOn"),
-                label: "Spotlight",
-                value: light.on,
-                onChanged: (v) => _lightNow(light.copyWith(on: v)),
+        if (!layer)
+          CanvasExpander(
+            label: "Lights",
+            remember: "background.light",
+            trailing: light.on ? "Spotlight" : "None",
+            children: [
+              CanvasControlGroup(label: "Lights", hideCaption: true, children: [
+                CanvasToggle(
+                  key: const ValueKey("lightOn"),
+                  label: "Spotlight",
+                  value: light.on,
+                  onChanged: (v) => _lightNow(light.copyWith(on: v)),
+                ),
+                if (!light.on)
+                  const CanvasHint("A single light thrown over the background, "
+                      "whichever one it is. A pattern lit from somewhere reads "
+                      "as a place rather than as wallpaper."),
+                if (light.on) ...[
+                  CanvasColorButton(
+                    key: const ValueKey("lightColour"),
+                    label: "Colour",
+                    color: light.color,
+                    onChanged: (c) => _lightNow(light.copyWith(color: c)),
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightBrightness"),
+                    label: "Brightness",
+                    value: light.brightness,
+                    min: 0,
+                    max: 2,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(brightness: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightSize"),
+                    label: "Size",
+                    value: light.size,
+                    min: 0.02,
+                    max: 3,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(size: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightFalloff"),
+                    label: "Falloff",
+                    value: light.falloff,
+                    min: 0,
+                    max: 1,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(falloff: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  const CanvasLineBreak(),
+                  // Where it is, as a fraction of the frame rather than in
+                  // pixels, so a light set on the stage is in the same place in
+                  // an export four times the width.
+                  CanvasNumberField(
+                    key: const ValueKey("lightX"),
+                    label: "X",
+                    value: light.x,
+                    min: -1,
+                    max: 2,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(x: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightY"),
+                    label: "Y",
+                    value: light.y,
+                    min: -1,
+                    max: 2,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(y: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightDirection"),
+                    label: "Direction",
+                    value: light.direction,
+                    min: -360,
+                    max: 360,
+                    width: 58,
+                    suffix: "°",
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(direction: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasNumberField(
+                    key: const ValueKey("lightReach"),
+                    label: "Reach",
+                    value: light.reach,
+                    min: 0,
+                    max: 1,
+                    decimals: 2,
+                    width: 58,
+                    onChanged: (v) {
+                      onBegin();
+                      _light(light.copyWith(reach: v));
+                    },
+                    onCommit: onCommit,
+                  ),
+                  CanvasHint(light.reach > 0
+                      ? "Direction is which way the light is thrown, off a "
+                          "compass. Reach is how far it rakes across the "
+                          "surface, and the pool is thrown forward from X and "
+                          "Y rather than sitting in the middle of it."
+                      : "A light shone straight on lands as a circle whichever "
+                          "way it is pointed. Turn Reach up to rake it across "
+                          "the surface and the direction starts to show."),
+                ],
+              ]),
+            ],
+          ),
+      ];
+
+  /// _paletteName is the palette the colours are now, "theme" for the app's
+  /// own, or empty for colours of somebody's own choosing.
+  String _paletteName(BuildContext context) {
+    if (_themePalette(context).matches(spec)) return "theme";
+    for (var p in backgroundPalettes) {
+      if (p.matches(spec)) return p.name;
+    }
+    return "";
+  }
+
+  /// _themePalette is the colours the app is wearing, as a palette.
+  BackgroundPalette _themePalette(BuildContext context) {
+    var c = Theme.of(context).colorScheme;
+    return BackgroundPalette("My theme", c.surface, c.primary, c.secondary,
+        baseTo: c.surfaceContainerHighest);
+  }
+
+  Widget _paletteSwatch(BackgroundPalette? p) => SizedBox(
+        width: 36,
+        height: 16,
+        child: p == null
+            ? null
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var c in p.colours)
+                        Expanded(child: ColoredBox(color: c)),
+                    ]),
               ),
-              if (!light.on)
-                const CanvasHint("A single light thrown over the background, "
-                    "whichever one it is. A pattern lit from somewhere reads "
-                    "as a place rather than as wallpaper."),
-              if (light.on) ...[
-                CanvasColorButton(
-                  key: const ValueKey("lightColour"),
-                  label: "Colour",
-                  color: light.color,
-                  onChanged: (c) => _lightNow(light.copyWith(color: c)),
-                ),
+      );
+
+  /// _ownGroups is the style's own settings, under their headings. See
+  /// StyleParam.
+  List<Widget> _ownGroups() {
+    var params = spec.style.params;
+    if (params.isEmpty) return const [];
+    bool shows(StyleParam p) =>
+        p.onlyWhen.entries.every((w) => w.value.contains(spec.choice(w.key)));
+
+    var groups = <String, List<Widget>>{};
+    for (var p in params) {
+      if (!shows(p)) continue;
+      (groups[p.group ?? spec.style.label] ??= []).add(_paramControl(p));
+    }
+    return [
+      for (var MapEntry(key: label, value: children) in groups.entries)
+        CanvasControlGroup(label: label, children: children),
+    ];
+  }
+
+  Widget _paramControl(StyleParam p) {
+    var key = ValueKey("param-${p.id}");
+    if (p.isChoice) {
+      return CanvasDropdown<int>(
+        key: key,
+        label: p.label,
+        value: spec.choice(p.id),
+        width: 110,
+        options: [for (var (i, c) in p.choices.indexed) (i, c)],
+        onChanged: (v) => _setNow(spec.withParam(p.id, v.toDouble())),
+      );
+    }
+    if (p.toggle) {
+      return CanvasToggle(
+        key: key,
+        label: p.label,
+        value: spec.on(p.id),
+        onChanged: (v) => _setNow(spec.withParam(p.id, v ? 1 : 0)),
+      );
+    }
+    return CanvasNumberField(
+      key: key,
+      label: p.label,
+      value: spec.p(p.id),
+      min: p.min,
+      max: p.max,
+      decimals: p.decimals,
+      width: 62,
+      onChanged: (v) {
+        onBegin();
+        _set(spec.withParam(p.id, v));
+      },
+      onCommit: onCommit,
+    );
+  }
+
+  EffectsSpec get fx => spec.effects;
+
+  /// _fxField is one of the effects' numbers.
+  Widget _fxField(String id, String label, double value, double min, double max,
+          EffectsSpec Function(double) put,
+          {int decimals = 2, String suffix = ""}) =>
+      CanvasNumberField(
+        key: ValueKey("fx-$id"),
+        label: label,
+        value: value,
+        min: min,
+        max: max,
+        decimals: decimals,
+        suffix: suffix,
+        width: 62,
+        onChanged: (v) {
+          onBegin();
+          _set(spec.copyWith(effects: put(v)));
+        },
+        onCommit: onCommit,
+      );
+
+  /// _effects is what is done to the pattern once it is drawn. Behind a
+  /// heading, like the light: every one of them is off until it is wanted.
+  ///
+  /// With room under it, as the rings' Icons have: shut, a heading sitting
+  /// straight on top of the next group reads as one section with two names.
+  Widget _effects() => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: CanvasExpander(
+          label: "Effects",
+          remember: "background.effects",
+          trailing: fx.any ? "On" : "None",
+          children: [
+            CanvasControlGroup(label: "Finish", children: [
+              _fxField("opacity", "Pattern", fx.opacity, 0, 1,
+                  (v) => fx.copyWith(opacity: v)),
+              _fxField(
+                  "glow", "Glow", fx.glow, 0, 2, (v) => fx.copyWith(glow: v)),
+              if (fx.glow > 0)
+                _fxField("glowSize", "Spread", fx.glowSize, 0, 1,
+                    (v) => fx.copyWith(glowSize: v)),
+              _fxField(
+                  "blur", "Blur", fx.blur, 0, 1, (v) => fx.copyWith(blur: v)),
+              if (!layer)
                 CanvasNumberField(
-                  key: const ValueKey("lightBrightness"),
-                  label: "Brightness",
-                  value: light.brightness,
-                  min: 0,
-                  max: 2,
-                  decimals: 2,
-                  width: 62,
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(brightness: v));
-                  },
-                  onCommit: onCommit,
-                ),
-                CanvasNumberField(
-                  key: const ValueKey("lightSize"),
-                  label: "Size",
-                  value: light.size,
-                  min: 0.02,
-                  max: 3,
-                  decimals: 2,
-                  width: 62,
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(size: v));
-                  },
-                  onCommit: onCommit,
-                ),
-                CanvasNumberField(
-                  key: const ValueKey("lightFalloff"),
-                  label: "Falloff",
-                  value: light.falloff,
+                  key: const ValueKey("fx-vignette"),
+                  label: "Vignette",
                   min: 0,
                   max: 1,
                   decimals: 2,
                   width: 62,
+                  value: spec.vignette,
                   onChanged: (v) {
                     onBegin();
-                    _light(light.copyWith(falloff: v));
+                    _set(spec.copyWith(vignette: v));
                   },
                   onCommit: onCommit,
                 ),
+              if (!layer) ...[
                 const CanvasLineBreak(),
-                // Where it is, as a fraction of the frame rather than in
-                // pixels, so a light set on the stage is in the same place in
-                // an export four times the width.
-                CanvasNumberField(
-                  key: const ValueKey("lightX"),
-                  label: "X",
-                  value: light.x,
-                  min: -1,
-                  max: 2,
-                  decimals: 2,
-                  width: 58,
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(x: v));
-                  },
-                  onCommit: onCommit,
+                _fxField("grain", "Grain", fx.grain, 0, 1,
+                    (v) => fx.copyWith(grain: v)),
+              ],
+              if (fx.grain > 0 && !layer)
+                _fxField("grainSize", "Grain size", fx.grainSize, 0.3, 12,
+                    (v) => fx.copyWith(grainSize: v),
+                    decimals: 1),
+              if (fx.grain > 0 && spec.animated && !layer)
+                CanvasToggle(
+                  key: const ValueKey("fx-grainMoves"),
+                  label: "Moves",
+                  value: fx.grainMoves,
+                  onChanged: (v) => _setNow(
+                      spec.copyWith(effects: fx.copyWith(grainMoves: v))),
                 ),
-                CanvasNumberField(
-                  key: const ValueKey("lightY"),
-                  label: "Y",
-                  value: light.y,
-                  min: -1,
-                  max: 2,
-                  decimals: 2,
-                  width: 58,
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(y: v));
-                  },
-                  onCommit: onCommit,
-                ),
-                CanvasNumberField(
-                  key: const ValueKey("lightDirection"),
-                  label: "Direction",
-                  value: light.direction,
-                  min: -360,
-                  max: 360,
-                  width: 58,
-                  suffix: "°",
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(direction: v));
-                  },
-                  onCommit: onCommit,
-                ),
-                CanvasNumberField(
-                  key: const ValueKey("lightReach"),
-                  label: "Reach",
-                  value: light.reach,
-                  min: 0,
-                  max: 1,
-                  decimals: 2,
-                  width: 58,
-                  onChanged: (v) {
-                    onBegin();
-                    _light(light.copyWith(reach: v));
-                  },
-                  onCommit: onCommit,
-                ),
-                CanvasHint(light.reach > 0
-                    ? "Direction is which way the light is thrown, off a "
-                        "compass. Reach is how far it rakes across the "
-                        "surface, and the pool is thrown forward from X and "
-                        "Y rather than sitting in the middle of it."
-                    : "A light shone straight on lands as a circle whichever "
-                        "way it is pointed. Turn Reach up to rake it across "
-                        "the surface and the direction starts to show."),
+              if (!layer)
+                _fxField("scanlines", "Scanlines", fx.scanlines, 0, 1,
+                    (v) => fx.copyWith(scanlines: v)),
+              if (fx.scanlines > 0 && !layer)
+                _fxField("scanlineSize", "Line gap", fx.scanlineSize, 1, 40,
+                    (v) => fx.copyWith(scanlineSize: v),
+                    decimals: 1),
+            ]),
+            // Where the eye goes, and where the pattern keeps out of the way of
+            // what is put on top of it.
+            CanvasControlGroup(label: "Focus", children: [
+              _fxField("focus", "Fade out", fx.focus, 0, 1,
+                  (v) => fx.copyWith(focus: v)),
+              if (fx.focus > 0) ...[
+                _fxField("focusSize", "Size", fx.focusSize, 0, 2,
+                    (v) => fx.copyWith(focusSize: v)),
+                _fxField("focusX", "X", fx.focusX, -0.5, 1.5,
+                    (v) => fx.copyWith(focusX: v)),
+                _fxField("focusY", "Y", fx.focusY, -0.5, 1.5,
+                    (v) => fx.copyWith(focusY: v)),
               ],
             ]),
+            CanvasControlGroup(label: "Keep clear", children: [
+              CanvasDropdown<ClearArea>(
+                key: const ValueKey("fx-clear"),
+                label: "Area",
+                value: fx.clear,
+                width: 90,
+                options: [for (var a in ClearArea.values) (a, a.label)],
+                onChanged: (v) =>
+                    _setNow(spec.copyWith(effects: fx.copyWith(clear: v))),
+              ),
+              if (fx.clear != ClearArea.none) ...[
+                _fxField("clearSize", "Size", fx.clearSize, 0, 1,
+                    (v) => fx.copyWith(clearSize: v)),
+                _fxField("clearSoftness", "Softness", fx.clearSoftness, 0, 1,
+                    (v) => fx.copyWith(clearSoftness: v)),
+                _fxField("clearAmount", "Amount", fx.clearAmount, 0, 1,
+                    (v) => fx.copyWith(clearAmount: v)),
+              ],
+            ]),
+            if (!layer)
+              CanvasControlGroup(label: "Colour grade", children: [
+                _fxField(
+                    "hue", "Hue", fx.hue, -180, 180, (v) => fx.copyWith(hue: v),
+                    decimals: 0, suffix: "°"),
+                _fxField("saturation", "Saturation", fx.saturation, -1, 1,
+                    (v) => fx.copyWith(saturation: v)),
+                _fxField("contrast", "Contrast", fx.contrast, -1, 1,
+                    (v) => fx.copyWith(contrast: v)),
+                _fxField("brightness", "Brightness", fx.brightness, -1, 1,
+                    (v) => fx.copyWith(brightness: v)),
+              ]),
           ],
         ),
+      );
+}
+
+/// _Layered is a background's settings with its layers: a list of them over
+/// the settings of whichever one is chosen.
+///
+/// Which one is chosen is this panel's to remember rather than the
+/// document's -- it is where somebody is looking, not part of the design.
+class _Layered extends StatefulWidget {
+  final ProceduralSettings owner;
+  const _Layered({required this.owner});
+
+  @override
+  State<_Layered> createState() => _LayeredState();
+}
+
+class _LayeredState extends State<_Layered> {
+  /// editing is nought for the background's own pattern, or one more than
+  /// the index of the layer being edited.
+  int editing = 0;
+
+  ProceduralSettings get owner => widget.owner;
+  ProceduralSpec get spec => owner.spec;
+
+  void _layers(List<BackgroundLayer> next, {int? select}) {
+    owner.onBegin();
+    owner.onChanged(spec.copyWith(layers: next));
+    owner.onCommit();
+    if (select != null) setState(() => editing = select);
+  }
+
+  void _put(int i, BackgroundLayer next, {bool now = true}) {
+    var layers = [...spec.layers];
+    layers[i] = next;
+    if (now) {
+      _layers(layers);
+    } else {
+      owner.onChanged(spec.copyWith(layers: layers));
+    }
+  }
+
+  /// _added is a new layer: a fine dot grid in the background's own colours,
+  /// screened over it -- something to see at once, and to change from there.
+  BackgroundLayer _added() {
+    var first = looksFor(ProceduralStyle.dotGrid).firstOrNull?.spec ??
+        const ProceduralSpec(style: ProceduralStyle.dotGrid);
+    return BackgroundLayer(
+      spec: first.copyWith(
+        background: spec.background,
+        foreground: spec.foreground,
+        accent: spec.accent,
+        vignette: 0,
+      ),
+      opacity: 0.6,
+      blend: LayerBlend.screen,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var layers = spec.layers;
+    var at = editing.clamp(0, layers.length);
+    var theme = ThemeNotifier.of(context);
+
+    Widget row(int index) {
+      // Index nought is the background; the rest are layers, top first.
+      var isBase = index == 0;
+      var layer = isBase ? null : layers[index - 1];
+      var shown = isBase
+          ? spec.copyWith(layers: const [])
+          : layer!.spec.copyWith(
+              background: layer.spec.style == ProceduralStyle.plain
+                  ? null
+                  : spec.background,
+              vignette: 0);
+      var chosen = at == index;
+      return Material(
+        key: ValueKey("layerRow-$index"),
+        color:
+            chosen ? theme.colors.surfaceContainerHighest : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => setState(() => editing = index),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            child: Row(children: [
+              Opacity(
+                opacity: layer?.visible == false ? 0.35 : 1,
+                child: ProceduralThumb(shown),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isBase
+                      ? "Background · ${spec.style.label}"
+                      : "${layer!.spec.style.label}"
+                          "${layer.blend == LayerBlend.normal ? "" : " · ${layer.blend.label}"}",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: chosen
+                          ? theme.colors.onSurface
+                          : theme.colors.onSurfaceVariant),
+                ),
+              ),
+              if (!isBase) ...[
+                CanvasIconButton(
+                  key: ValueKey("layerEye-$index"),
+                  icon: layer!.visible
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  tooltip: layer.visible ? "Hide" : "Show",
+                  tight: true,
+                  onPressed: () =>
+                      _put(index - 1, layer.copyWith(visible: !layer.visible)),
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerUp-$index"),
+                  icon: Icons.arrow_upward,
+                  tooltip: "Move up",
+                  tight: true,
+                  onPressed: index == layers.length
+                      ? null
+                      : () {
+                          var next = [...layers];
+                          next.insert(index, next.removeAt(index - 1));
+                          _layers(next, select: index + 1);
+                        },
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerDown-$index"),
+                  icon: Icons.arrow_downward,
+                  tooltip: "Move down",
+                  tight: true,
+                  onPressed: index == 1
+                      ? null
+                      : () {
+                          var next = [...layers];
+                          next.insert(index - 2, next.removeAt(index - 1));
+                          _layers(next, select: index - 1);
+                        },
+                ),
+                CanvasIconButton(
+                  key: ValueKey("layerDelete-$index"),
+                  icon: Icons.delete_outline,
+                  tooltip: "Remove",
+                  tight: true,
+                  onPressed: () =>
+                      _layers([...layers]..removeAt(index - 1), select: 0),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      );
+    }
+
+    var list = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Top first, as a stack is seen from above: the background is at
+        // the bottom because everything else is laid on it.
+        for (var i = layers.length; i >= 0; i--) row(i),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            key: const ValueKey("addLayer"),
+            onPressed: layers.length >= maxBackgroundLayers
+                ? null
+                : () =>
+                    _layers([...layers, _added()], select: layers.length + 1),
+            icon: const Icon(Icons.add, size: 16),
+            label: Text(layers.length >= maxBackgroundLayers
+                ? "Three layers at most"
+                : "Add layer"),
+          ),
+        ),
+      ],
+    );
+
+    List<Widget> body;
+    if (at == 0) {
+      body = owner._groups(context);
+    } else {
+      var layer = layers[at - 1];
+      body = [
+        CanvasControlGroup(label: "Layer", children: [
+          CanvasNumberField(
+            key: const ValueKey("layerOpacity"),
+            label: "Opacity",
+            value: layer.opacity,
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            onChanged: (v) {
+              owner.onBegin();
+              _put(at - 1, layer.copyWith(opacity: v), now: false);
+            },
+            onCommit: owner.onCommit,
+          ),
+          CanvasDropdown<LayerBlend>(
+            key: const ValueKey("layerBlend"),
+            label: "Blend",
+            value: layer.blend,
+            width: 110,
+            options: [for (var b in LayerBlend.values) (b, b.label)],
+            onChanged: (v) => _put(at - 1, layer.copyWith(blend: v)),
+          ),
+        ]),
+        ProceduralSettings(
+          key: ValueKey("layerSettings-$at"),
+          layer: true,
+          spec: layer.spec,
+          onBegin: owner.onBegin,
+          onCommit: owner.onCommit,
+          onChanged: (s) => _put(at - 1, layer.copyWith(spec: s), now: false),
+        ),
       ];
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // "Pattern layers" rather than "Layers", which is already the name
+        // of the sidebar's list of everything on the canvas.
+        CanvasExpander(
+          label: "Pattern layers",
+          remember: "background.layers",
+          initiallyOpen: true,
+          trailing: layers.isEmpty ? "None" : "${layers.length}",
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: canvasGroupGap - 10),
+              child: list,
+            ),
+          ],
+        ),
+        ...body,
+      ],
+    );
+  }
 }

@@ -514,7 +514,7 @@ class TextElement extends CanvasElement {
         // -- so a one-column box that had it turned off saved nothing at all
         // and opened with it on again.
         if (columns.says) "columns": columns.toJson(),
-        if (animation.on || animation.closes) "animation": animation.toJson(),
+        if (animation.any) "animation": animation.toJson(),
         if (slot != null) "slot": slot!.name,
         if (items.isNotEmpty) "items": [for (var i in items) i.toJson()],
         if (parts.isNotEmpty) "parts": [for (var p in parts) p.toJson()],

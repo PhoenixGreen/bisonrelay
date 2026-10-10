@@ -1569,6 +1569,10 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   /// in the closed box: an easing's curve, say. Null draws nothing.
   final Widget Function(T)? leading;
 
+  /// groupOf puts a heading in the list above each run of options it gives
+  /// the same answer for. Null lists them without headings.
+  final String Function(T)? groupOf;
+
   /// grow lets this take some of the room left over on its line.
   ///
   /// [width] is then the least it will be rather than the whole of it. See
@@ -1591,8 +1595,25 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     this.onRemove,
     this.removeTip,
     this.leading,
+    this.groupOf,
     super.key,
   });
+
+  /// _rows is the options in the order the list shows them, with a heading
+  /// -- null in the first place -- before each group.
+  List<(T?, String, bool)> _rows() {
+    var group = groupOf;
+    if (group == null) return [for (var (v, t) in options) (v, t, false)];
+    var rows = <(T?, String, bool)>[];
+    String? last;
+    for (var (v, t) in options) {
+      var g = group(v);
+      if (g != last) rows.add((null, g, true));
+      last = g;
+      rows.add((v, t, false));
+    }
+    return rows;
+  }
 
   /// _named is an option's name, with its leading drawing where it has one.
   Widget _named(T v, String text) {
@@ -1656,25 +1677,42 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
               // this it draws the chosen item's own widget, which for a
               // marked option is the background and the cross as well --
               // a row of controls inside a box an inch wide.
-              selectedItemBuilder: marked.isEmpty && leading == null
-                  ? null
-                  : (context) => [
-                        for (var (v, text) in options)
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: marked.isEmpty
-                                ? _named(v, text)
-                                : Text(text, overflow: TextOverflow.ellipsis),
-                          ),
-                      ],
+              selectedItemBuilder:
+                  marked.isEmpty && leading == null && groupOf == null
+                      ? null
+                      : (context) => [
+                            for (var (v, text, heading) in _rows())
+                              heading
+                                  ? const SizedBox.shrink()
+                                  : Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: marked.isEmpty
+                                          ? _named(v as T, text)
+                                          : Text(text,
+                                              overflow: TextOverflow.ellipsis),
+                                    ),
+                          ],
               items: [
-                for (var (v, text) in options)
-                  DropdownMenuItem(
-                    value: v,
-                    child: marked.contains(v)
-                        ? _markedOption(theme, v, text)
-                        : _named(v, text),
-                  ),
+                for (var (v, text, heading) in _rows())
+                  if (heading)
+                    DropdownMenuItem<T>(
+                      enabled: false,
+                      child: Text(text.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 0.8,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colors.onSurfaceVariant)),
+                    )
+                  else
+                    DropdownMenuItem<T>(
+                      value: v,
+                      child: marked.contains(v)
+                          ? _markedOption(theme, v as T, text)
+                          : _named(v as T, text),
+                    ),
               ],
               onChanged: enabled
                   ? (v) {
