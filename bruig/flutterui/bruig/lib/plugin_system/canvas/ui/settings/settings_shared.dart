@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
+import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -1203,20 +1205,31 @@ List<Widget> fillBits(
         ),
       ],
     ],
-    if (fill.kind == TextFillKind.pattern)
-      CanvasDropdown<ProceduralStyle>(
-        key: ValueKey("${keyPrefix}FillPattern"),
-        label: "Pattern",
-        value: fill.pattern.style,
-        width: 150,
-        options: [
-          for (var s in ProceduralStyle.values)
-            if (!s.hidden || s == fill.pattern.style) (s, s.label),
-        ],
-        onChanged: (v) =>
-            now(fill.copyWith(pattern: fill.pattern.copyWith(style: v))),
-      ),
     if (fill.kind == TextFillKind.pattern) ...[
+      // The same three choices a background starts from -- which style,
+      // which of its looks, which colours -- since a pattern in a word is
+      // the same pattern, and the same few good versions of it.
+      patternStyleDropdown(
+        key: ValueKey("${keyPrefix}FillPattern"),
+        width: 138,
+        label: "Pattern",
+        spec: fill.pattern,
+        onChanged: (p) => now(fill.copyWith(pattern: p)),
+      ),
+      patternLookDropdown(
+        key: ValueKey("${keyPrefix}FillPatternLook"),
+        width: 138,
+        spec: fill.pattern,
+        onChanged: (p) => now(fill.copyWith(pattern: p)),
+      ),
+      patternPaletteDropdown(
+        context,
+        key: ValueKey("${keyPrefix}FillPalette"),
+        width: 138,
+        spec: fill.pattern,
+        onChanged: (p) => now(fill.copyWith(pattern: p)),
+      ),
+      const CanvasLineBreak(),
       // The same colour a generated background's "Base" is, so the second
       // colour it fades to is chosen in the same picker and the pattern
       // behind a word can fade the way the one behind a whole canvas does.
@@ -1290,8 +1303,11 @@ List<Widget> fillBits(
         key: ValueKey("${keyPrefix}FillReset"),
         icon: Icons.restart_alt,
         tooltip: "Put this pattern back to how it started",
-        onPressed: () => now(
-            fill.copyWith(pattern: ProceduralSpec(style: fill.pattern.style))),
+        onPressed: () => now(fill.copyWith(
+            pattern: switch (looksFor(fill.pattern.style).firstOrNull) {
+          var first? => withLook(fill.pattern, first),
+          null => ProceduralSpec(style: fill.pattern.style),
+        })),
       ),
     ],
     // How much of it lands, for both kinds: a picture or a pattern knocked
@@ -1334,6 +1350,32 @@ List<Widget> fillBits(
           "the words rather than restarting inside each one. Zoom sizes it "
           "against them: 1 fits it across the words, 2 shows a quarter of it "
           "at twice the size."),
+    // And the rest of what the pattern's style can be told -- its own
+    // settings and the effects -- behind a heading, the full width of the
+    // panel: the same controls a background has, minus what is on the row
+    // above.
+    if (fill.kind == TextFillKind.pattern) ...[
+      const CanvasLineBreak(),
+      CanvasFill(
+        child: SizedBox(
+          width: 200,
+          child: CanvasExpander(
+            key: ValueKey("${keyPrefix}FillPatternMore"),
+            label: "Pattern settings",
+            remember: "$keyPrefix.patternMore",
+            children: [
+              ProceduralSettings(
+                fill: true,
+                spec: fill.pattern,
+                onChanged: (p) => onChanged(fill.copyWith(pattern: p)),
+                onBegin: begin,
+                onCommit: commit,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
     if (fill.on && fill.locked)
       const CanvasHint(
           "Locked, the picture travels with the words while they arrive, so "

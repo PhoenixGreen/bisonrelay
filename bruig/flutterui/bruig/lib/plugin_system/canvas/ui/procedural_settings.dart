@@ -58,6 +58,12 @@ class ProceduralSettings extends StatelessWidget {
   /// film, the run of the movement -- are not offered.
   final bool layer;
 
+  /// fill is whether this is a pattern painted into letters, a box or a
+  /// shape, whose style, look, colours and amounts are already on the row
+  /// above: what is left to show is the style's own settings and the
+  /// effects.
+  final bool fill;
+
   const ProceduralSettings({
     required this.spec,
     required this.onChanged,
@@ -67,6 +73,7 @@ class ProceduralSettings extends StatelessWidget {
     this.canvasFrames,
     this.label = "",
     this.layer = false,
+    this.fill = false,
     super.key,
   });
 
@@ -520,6 +527,17 @@ class ProceduralSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (fill) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ..._ownGroups(),
+            if (spec.style.usesGlyphs) _symbols(),
+            if (spec.style == ProceduralStyle.metal) _metalGroup(),
+            _effects(),
+          ]);
+    }
     if (!layer) return _Layered(owner: this);
     var groups = _groups(context);
     // Down the column like every other element's settings. A Row of five
@@ -546,26 +564,10 @@ class ProceduralSettings extends StatelessWidget {
           // Shown rather than named, and listed under the kind of thing each
           // one is. Choosing one starts from its first look: a style in the
           // last style's colours and numbers is rarely a good picture of it.
-          CanvasDropdown<ProceduralStyle>(
+          patternStyleDropdown(
             key: const ValueKey("backgroundStyle"),
-            label: "Style",
-            value: spec.style,
-            width: 150,
-            options: [
-              for (var f in StyleFamily.values)
-                for (var s in ProceduralStyle.values)
-                  if (s.family == f && (!s.hidden || s == spec.style))
-                    (s, s.label),
-            ],
-            groupOf: (s) => s.family.label,
-            leading: (s) => ProceduralThumb(styleThumbSpec(s)),
-            onChanged: (v) {
-              if (v == spec.style) return;
-              var first = looksFor(v).firstOrNull;
-              _setNow(first == null
-                  ? spec.copyWith(style: v, params: const {})
-                  : withLook(spec, first));
-            },
+            spec: spec,
+            onChanged: _setNow,
           ),
           // The seed and its shuffle sit together, because the number is
           // almost never typed -- what it is for is pressing the button
@@ -624,23 +626,11 @@ class ProceduralSettings extends StatelessWidget {
         CanvasControlGroup(label: "Colours", children: [
           // All three at once, chosen to go together -- and the colours the
           // app itself is wearing, for a background that matches it.
-          CanvasDropdown<String>(
+          patternPaletteDropdown(
+            context,
             key: const ValueKey("backgroundPalette"),
-            label: "Palette",
-            value: _paletteName(context),
-            width: 150,
-            options: [
-              if (_paletteName(context) == "") ("", "Custom"),
-              ("theme", "My theme"),
-              for (var p in backgroundPalettes) (p.name, p.name),
-            ],
-            leading: (name) => _paletteSwatch(
-                name == "theme" ? _themePalette(context) : paletteNamed(name)),
-            onChanged: (name) {
-              var p =
-                  name == "theme" ? _themePalette(context) : paletteNamed(name);
-              if (p != null) _setNow(p.on(spec));
-            },
+            spec: spec,
+            onChanged: _setNow,
           ),
           const CanvasLineBreak(),
           // The base colour, and the second one it fades to if it fades: both
@@ -751,109 +741,13 @@ class ProceduralSettings extends StatelessWidget {
           ),
         ]),
         ..._ownGroups(),
-        if (spec.style.usesGlyphs)
-          CanvasControlGroup(label: "Symbols", children: [
-            // A set to start from, and the set itself as one string -- so
-            // adding a character means typing it, and somebody's own
-            // initials can be the rain.
-            CanvasDropdown<String>(
-              key: const ValueKey("glyphSet"),
-              label: "Set",
-              value:
-                  glyphSets.where((g) => g.$2 == spec.glyphs).firstOrNull?.$1 ??
-                      "",
-              width: 110,
-              options: [
-                if (!glyphSets.any((g) => g.$2 == spec.glyphs))
-                  ("", "Your own"),
-                for (var (name, _) in glyphSets) (name, name),
-              ],
-              onChanged: (name) {
-                for (var (n, glyphs) in glyphSets) {
-                  if (n == name) _setNow(spec.copyWith(glyphs: glyphs));
-                }
-              },
-            ),
-            CanvasTextField(
-              label: "Characters used",
-              value: spec.glyphs,
-              width: 240,
-              onChanged: (v) => _set(spec.copyWith(glyphs: v)),
-              onCommit: onCommit,
-            ),
-            CanvasIconButton(
-              icon: Icons.restart_alt,
-              tooltip: "Back to the default characters",
-              onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
-            ),
-          ]),
+        if (spec.style.usesGlyphs) _symbols(),
         // The Metal texture's own settings, for the same reason the Rings
         // style has its own: "more" and "bigger" are not the questions
         // anybody has about a sheet of metal. What the shared five would have
         // to stand in for -- how coarse the brushing is, how far the rust has
         // got -- has no sensible name among them.
-        if (spec.style == ProceduralStyle.metal)
-          CanvasControlGroup(label: "Metal", children: [
-            CanvasNumberField(
-              key: const ValueKey("metalRoughness"),
-              label: "Roughness",
-              value: metal.roughness,
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              onChanged: (v) {
-                onBegin();
-                _metalSet(metal.copyWith(roughness: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("metalShine"),
-              label: "Shine",
-              value: metal.shine,
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              onChanged: (v) {
-                onBegin();
-                _metalSet(metal.copyWith(shine: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("metalRust"),
-              label: "Rust",
-              value: metal.rust,
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              onChanged: (v) {
-                onBegin();
-                _metalSet(metal.copyWith(rust: v));
-              },
-              onCommit: onCommit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("metalDamage"),
-              label: "Damage",
-              value: metal.damage,
-              min: 0,
-              max: 1,
-              decimals: 2,
-              width: 62,
-              onChanged: (v) {
-                onBegin();
-                _metalSet(metal.copyWith(damage: v));
-              },
-              onCommit: onCommit,
-            ),
-            const CanvasHint("The colours above are the sheet: Base is the "
-                "metal, Main is the sheen along the brushing, and Accent is "
-                "the rust. Shine is matt at nought and mirrored at one."),
-          ]),
+        if (spec.style == ProceduralStyle.metal) _metalGroup(),
         // The Rings style's own settings. Its own group rather than more of
         // the shared five, because what a set of rings raises -- where each
         // one starts, where it ends, and what happens to it on the way -- is
@@ -1288,6 +1182,46 @@ class ProceduralSettings extends StatelessWidget {
                 },
                 onCommit: onCommit,
               ),
+            // A loop that comes back to where it began, for an export that
+            // goes round without a jump. See paintProcedural.
+            if (spec.animated && !spec.inRuns) ...[
+              CanvasNumberField(
+                key: const ValueKey("seamlessFrames"),
+                label: "Loop every",
+                width: 62,
+                value: spec.loopFrames.toDouble(),
+                min: 0,
+                max: 100000,
+                onChanged: (v) {
+                  onBegin();
+                  _set(spec.copyWith(loopFrames: v.round()));
+                },
+                onCommit: onCommit,
+              ),
+              if (canvasFrames != null)
+                CanvasIconButton(
+                  key: const ValueKey("seamlessFit"),
+                  icon: Icons.all_inclusive,
+                  tooltip: "Loop the canvas",
+                  onPressed: () =>
+                      _setNow(spec.copyWith(loopFrames: canvasFrames)),
+                ),
+              if (spec.loopFrames > 0)
+                CanvasNumberField(
+                  key: const ValueKey("seamlessBlend"),
+                  label: "Blend",
+                  decimals: 2,
+                  width: 58,
+                  value: spec.loopBlend,
+                  min: 0.02,
+                  max: 1,
+                  onChanged: (v) {
+                    onBegin();
+                    _set(spec.copyWith(loopBlend: v));
+                  },
+                  onCommit: onCommit,
+                ),
+            ],
             if (spec.inRuns) ...[
               CanvasNumberField(
                 key: const ValueKey("passFrames"),
@@ -1518,38 +1452,103 @@ class ProceduralSettings extends StatelessWidget {
           ),
       ];
 
-  /// _paletteName is the palette the colours are now, "theme" for the app's
-  /// own, or empty for colours of somebody's own choosing.
-  String _paletteName(BuildContext context) {
-    if (_themePalette(context).matches(spec)) return "theme";
-    for (var p in backgroundPalettes) {
-      if (p.matches(spec)) return p.name;
-    }
-    return "";
-  }
+  /// _symbols is the character set the glyph styles draw from.
+  Widget _symbols() => CanvasControlGroup(label: "Symbols", children: [
+        // A set to start from, and the set itself as one string -- so
+        // adding a character means typing it, and somebody's own
+        // initials can be the rain.
+        CanvasDropdown<String>(
+          key: const ValueKey("glyphSet"),
+          label: "Set",
+          value:
+              glyphSets.where((g) => g.$2 == spec.glyphs).firstOrNull?.$1 ?? "",
+          width: 110,
+          options: [
+            if (!glyphSets.any((g) => g.$2 == spec.glyphs)) ("", "Your own"),
+            for (var (name, _) in glyphSets) (name, name),
+          ],
+          onChanged: (name) {
+            for (var (n, glyphs) in glyphSets) {
+              if (n == name) _setNow(spec.copyWith(glyphs: glyphs));
+            }
+          },
+        ),
+        CanvasTextField(
+          label: "Characters used",
+          value: spec.glyphs,
+          width: 240,
+          onChanged: (v) => _set(spec.copyWith(glyphs: v)),
+          onCommit: onCommit,
+        ),
+        CanvasIconButton(
+          icon: Icons.restart_alt,
+          tooltip: "Back to the default characters",
+          onPressed: () => _setNow(spec.copyWith(glyphs: defaultGlyphs)),
+        ),
+      ]);
 
-  /// _themePalette is the colours the app is wearing, as a palette.
-  BackgroundPalette _themePalette(BuildContext context) {
-    var c = Theme.of(context).colorScheme;
-    return BackgroundPalette("My theme", c.surface, c.primary, c.secondary,
-        baseTo: c.surfaceContainerHighest);
-  }
-
-  Widget _paletteSwatch(BackgroundPalette? p) => SizedBox(
-        width: 36,
-        height: 16,
-        child: p == null
-            ? null
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var c in p.colours)
-                        Expanded(child: ColoredBox(color: c)),
-                    ]),
-              ),
-      );
+  /// _metalGroup is the Metal texture's own settings.
+  Widget _metalGroup() => CanvasControlGroup(label: "Metal", children: [
+        CanvasNumberField(
+          key: const ValueKey("metalRoughness"),
+          label: "Roughness",
+          value: metal.roughness,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(roughness: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalShine"),
+          label: "Shine",
+          value: metal.shine,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(shine: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalRust"),
+          label: "Rust",
+          value: metal.rust,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(rust: v));
+          },
+          onCommit: onCommit,
+        ),
+        CanvasNumberField(
+          key: const ValueKey("metalDamage"),
+          label: "Damage",
+          value: metal.damage,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _metalSet(metal.copyWith(damage: v));
+          },
+          onCommit: onCommit,
+        ),
+        const CanvasHint("The colours above are the sheet: Base is the "
+            "metal, Main is the sheen along the brushing, and Accent is "
+            "the rust. Shine is matt at nought and mirrored at one."),
+      ]);
 
   /// _ownGroups is the style's own settings, under their headings. See
   /// StyleParam.
@@ -1984,3 +1983,125 @@ class _LayeredState extends State<_Layered> {
     );
   }
 }
+
+/// patternStyleDropdown chooses a generated pattern's style: shown rather
+/// than named, under the kind of thing each one is. Choosing one starts from
+/// its first look, since a style in the last style's colours and numbers is
+/// rarely a good picture of it.
+Widget patternStyleDropdown({
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  String label = "Style",
+  double width = 150,
+}) =>
+    CanvasDropdown<ProceduralStyle>(
+      key: key,
+      label: label,
+      value: spec.style,
+      width: width,
+      options: [
+        for (var f in StyleFamily.values)
+          for (var s in ProceduralStyle.values)
+            if (s.family == f && (!s.hidden || s == spec.style)) (s, s.label),
+      ],
+      groupOf: (s) => s.family.label,
+      leading: (s) => ProceduralThumb(styleThumbSpec(s)),
+      onChanged: (v) {
+        if (v == spec.style) return;
+        var first = looksFor(v).firstOrNull;
+        onChanged(first == null
+            ? spec.copyWith(style: v, params: const {})
+            : withLook(spec, first));
+      },
+    );
+
+/// patternLookDropdown chooses one of a style's looks, each shown.
+Widget patternLookDropdown({
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  double width = 150,
+}) {
+  var looks = looksFor(spec.style);
+  var chosen = lookMatching(spec)?.name ?? "";
+  return CanvasDropdown<String>(
+    key: key,
+    label: "Look",
+    value: chosen,
+    width: width,
+    options: [
+      if (chosen.isEmpty) ("", "Custom"),
+      for (var l in looks) (l.name, l.name),
+    ],
+    leading: (name) {
+      var look = looks.where((l) => l.name == name).firstOrNull;
+      return look == null
+          ? const SizedBox(width: 36, height: 20)
+          : ProceduralThumb(look.spec);
+    },
+    onChanged: (name) {
+      for (var l in looks) {
+        if (l.name == name) onChanged(withLook(spec, l));
+      }
+    },
+  );
+}
+
+/// patternPaletteDropdown recolours a pattern with one of the palettes, or
+/// the colours the app is wearing.
+Widget patternPaletteDropdown(
+  BuildContext context, {
+  Key? key,
+  required ProceduralSpec spec,
+  required ValueChanged<ProceduralSpec> onChanged,
+  double width = 150,
+}) {
+  var theme = themePalette(context);
+  var name = theme.matches(spec)
+      ? "theme"
+      : backgroundPalettes.where((p) => p.matches(spec)).firstOrNull?.name ??
+          "";
+  BackgroundPalette? named(String n) => n == "theme" ? theme : paletteNamed(n);
+  return CanvasDropdown<String>(
+    key: key,
+    label: "Palette",
+    value: name,
+    width: width,
+    options: [
+      if (name == "") ("", "Custom"),
+      ("theme", "My theme"),
+      for (var p in backgroundPalettes) (p.name, p.name),
+    ],
+    leading: (n) => paletteSwatch(named(n)),
+    onChanged: (n) {
+      var p = named(n);
+      if (p != null) onChanged(p.on(spec));
+    },
+  );
+}
+
+/// themePalette is the colours the app is wearing, as a palette.
+BackgroundPalette themePalette(BuildContext context) {
+  var c = Theme.of(context).colorScheme;
+  return BackgroundPalette("My theme", c.surface, c.primary, c.secondary,
+      baseTo: c.surfaceContainerHighest);
+}
+
+/// paletteSwatch is a palette's colours side by side, or a blank the same
+/// size for none.
+Widget paletteSwatch(BackgroundPalette? p) => SizedBox(
+      width: 36,
+      height: 16,
+      child: p == null
+          ? null
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var c in p.colours)
+                      Expanded(child: ColoredBox(color: c)),
+                  ]),
+            ),
+    );

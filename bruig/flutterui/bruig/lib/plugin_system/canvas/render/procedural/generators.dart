@@ -117,6 +117,37 @@ double pausedFrame(double frame, ProceduralSpec spec) {
 void paintProcedural(ui.Canvas canvas, Rect rect, ProceduralSpec input,
     {double time = 0, double frameRate = 0, CanvasImageSource? images}) {
   if (rect.width <= 0 || rect.height <= 0) return;
+  if (!input.seamless) {
+    return _paintOnce(canvas, rect, input, time, frameRate, images);
+  }
+
+  // A seamless loop. Hardly any of these movements comes back to where it
+  // began of its own accord -- a flow field flows, rain falls -- so instead
+  // the end of each loop is blended into its start: over the last part of
+  // the loop, what the movement is doing now is faded out and what it was
+  // doing one loop earlier faded in. At the end of the loop that is all the
+  // earlier picture -- which is the moment just before the first frame, so
+  // the last frame runs into the first without a jump. And it is the whole
+  // background drawn twice, so the layers, the grain and everything else
+  // loop with it.
+  var rate = frameRate > 0 ? frameRate : 30.0;
+  var length = input.loopFrames / rate;
+  var at = time % length;
+  var blend = (input.loopBlend * length).clamp(1 / rate, length);
+  var into = at - (length - blend);
+  _paintOnce(canvas, rect, input, at, frameRate, images);
+  if (into <= 0) return;
+  var w = (into / blend).clamp(0.0, 1.0);
+  // Eased, so the change of weight has no corner in it either.
+  w = w * w * (3 - 2 * w);
+  canvas.saveLayer(rect, Paint()..color = Color.fromRGBO(0, 0, 0, w));
+  _paintOnce(canvas, rect, input, at - length, frameRate, images);
+  canvas.restore();
+}
+
+/// _paintOnce draws the background at one moment. See paintProcedural.
+void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
+    double frameRate, CanvasImageSource? images) {
   var spec = input;
   var fx = spec.effects;
 

@@ -290,6 +290,16 @@ class ProceduralSpec {
   /// than as a pattern -- it puts the middle of the canvas forward.
   final double vignette;
 
+  /// loopFrames makes the movement come back to where it began every this
+  /// many frames, so that an exported GIF or video loops without a jump;
+  /// nought leaves it running on. loopBlend is how much of the loop, at its
+  /// end, is spent blending back into its start. See paintProcedural.
+  final int loopFrames;
+  final double loopBlend;
+
+  /// seamless is whether the movement is made to loop.
+  bool get seamless => animated && !inRuns && loopFrames > 0;
+
   /// effects is what is done to the pattern once it is drawn. See
   /// EffectsSpec.
   final EffectsSpec effects;
@@ -330,6 +340,8 @@ class ProceduralSpec {
     this.light = const LightSpec(),
     this.metal = const MetalSpec(),
     this.vignette = 0.25,
+    this.loopFrames = 0,
+    this.loopBlend = 0.3,
     this.effects = const EffectsSpec(),
     this.params = const {},
     this.layers = const [],
@@ -394,6 +406,8 @@ class ProceduralSpec {
     MetalSpec? metal,
     double? vignette,
     EffectsSpec? effects,
+    int? loopFrames,
+    double? loopBlend,
     Map<String, double>? params,
     List<BackgroundLayer>? layers,
   }) =>
@@ -427,6 +441,8 @@ class ProceduralSpec {
         metal: metal ?? this.metal,
         vignette: vignette ?? this.vignette,
         effects: effects ?? this.effects,
+        loopFrames: loopFrames ?? this.loopFrames,
+        loopBlend: loopBlend ?? this.loopBlend,
         params: params ?? this.params,
         layers: layers ?? this.layers,
       );
@@ -459,6 +475,8 @@ class ProceduralSpec {
         if (animated && pauseFor > 0) "pauseAt": pauseAt,
         if (animated && pauseFor > 0) "pauseFor": pauseFor,
         if (animated && pauseFor > 0) "pauseEase": pauseEase,
+        if (animated && loopFrames > 0) "loopFrames": loopFrames,
+        if (animated && loopFrames > 0) "loopBlend": loopBlend,
         if (style == ProceduralStyle.pitch) "sport": sport.name,
         if (style == ProceduralStyle.rings) "rings": rings.toJson(),
         // Only where there is one. A light that has never been switched on is
@@ -528,6 +546,8 @@ class ProceduralSpec {
         pauseAt: jsonInt(json["pauseAt"], 0).clamp(0, 100000),
         pauseFor: jsonInt(json["pauseFor"], 0).clamp(0, 100000),
         pauseEase: jsonInt(json["pauseEase"], 6).clamp(0, 1000),
+        loopFrames: jsonInt(json["loopFrames"], 0).clamp(0, 100000),
+        loopBlend: jsonDouble(json["loopBlend"], 0.3).clamp(0.02, 1.0),
         sport: PitchSport.fromName(json["sport"] as String?),
         rings: json["rings"] is Map
             ? RingSpec.fromJson((json["rings"] as Map).cast<String, dynamic>())
