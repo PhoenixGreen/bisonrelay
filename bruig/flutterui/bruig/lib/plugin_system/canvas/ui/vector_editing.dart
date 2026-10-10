@@ -17,11 +17,12 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 /// VectorTool is what a press on a drawing being edited does.
 enum VectorTool {
   select("Select points"),
+  selectShapes("Select shapes"),
   pen("Pen"),
   scale("Line thickness"),
   tint("Tint"),
   boolean("Combine shapes"),
-  align("Align points"),
+  align("Align"),
   corner("Round corners"),
   pencil("Pencil"),
   eraser("Eraser"),

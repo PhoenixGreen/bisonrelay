@@ -32,6 +32,10 @@ import 'package:flutter/material.dart';
 // and draws them. It never asks a question, which is why it can be read on
 // its own; deciding is the stage's half.
 
+/// shapeTurnReach is how far above a shape's box, on screen, the handle
+/// that turns it sits.
+const double shapeTurnReach = 22;
+
 /// StageFraming is a picture being repositioned inside its frame, worked out
 /// by the stage and drawn by [StagePainter].
 ///
@@ -198,6 +202,7 @@ class StagePainter extends CustomPainter {
     bool bare,
     ({bool across, bool down})? mirror,
     Rect? shapeBox,
+    bool turnable,
     Set<int>? combining,
   })? editingVector;
 
@@ -786,7 +791,8 @@ class StagePainter extends CustomPainter {
         _paintMirrorLines(canvas, editing.element, m.across, m.down);
       }
       if (editing.shapeBox case var box?) {
-        _paintShapeBox(canvas, editing.element, box);
+        _paintShapeBox(canvas, editing.element, box,
+            turnable: editing.turnable);
       }
       if (editing.bare) return;
       _paintVectorControls(canvas, editing.element, editing.shape, editing.pick,
@@ -1007,7 +1013,8 @@ class StagePainter extends CustomPainter {
   /// _paintShapeBox draws the box round the shape the shapes tool has
   /// picked, in the drawing's units [box], with a handle at each corner and
   /// each side's middle: what moves and resizes it.
-  void _paintShapeBox(Canvas canvas, VectorElement e, Rect box) {
+  void _paintShapeBox(Canvas canvas, VectorElement e, Rect box,
+      {bool turnable = false}) {
     var space = VectorSpace(e);
     Offset screen(Offset p) => space.toCanvas(p) * scale + origin;
     var colour = e.handleColor;
@@ -1020,6 +1027,26 @@ class StagePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
           ..color = colour);
+    // The round handle above the box, on a stalk, that turns what is in
+    // it -- as an element's does.
+    if (turnable) {
+      var top = screen(box.topCenter);
+      var knob = top - const Offset(0, shapeTurnReach);
+      canvas.drawLine(
+          top,
+          knob,
+          Paint()
+            ..strokeWidth = 1
+            ..color = colour);
+      canvas.drawCircle(knob, 5, Paint()..color = const Color(0xFFFFFFFF));
+      canvas.drawCircle(
+          knob,
+          5,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
+    }
     for (var h in boxHandles(box)) {
       var r = Rect.fromCenter(center: screen(h), width: 8, height: 8);
       canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));

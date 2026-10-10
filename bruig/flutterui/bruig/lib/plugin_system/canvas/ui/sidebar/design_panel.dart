@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
 import 'package:bruig/components/panel_stack.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
 import 'package:flutter/material.dart';
 
 // design_panel.dart is the three things you use to build a canvas, in one
@@ -149,6 +150,14 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             // elements, because the background is a layer too.
             trailing: "${controller.document.elements.length + 1}",
             body: _layers,
+          ),
+          StackPanel(
+            id: "colour",
+            label: "Colour",
+            icon: Icons.palette_outlined,
+            // Shut to begin with: opened, the column remembers it open.
+            startsOpen: false,
+            body: ColourPanel(controller: controller),
           ),
           StackPanel(
             id: "settings",

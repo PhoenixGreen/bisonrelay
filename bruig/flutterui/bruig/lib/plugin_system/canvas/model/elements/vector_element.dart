@@ -867,7 +867,12 @@ ElementAnimation animatedAs(ElementAnimation drawing, ElementAnimation? mine,
         strength: mine.strength);
   }
   if (own.contains(ShapeAnimationPart.looping)) a = a.copyWith(loop: mine.loop);
-  if (own.contains(ShapeAnimationPart.leaving)) a = a.copyWith(exit: mine.exit);
+  if (own.contains(ShapeAnimationPart.leaving)) {
+    a = a.copyWith(
+        exit: mine.exit,
+        exitDirection: mine.exitDirection,
+        exitStrength: mine.exitStrength);
+  }
   return a;
 }
 
@@ -883,7 +888,10 @@ Set<ShapeAnimationPart> partsChanged(
           was.strength != now.strength)
         ShapeAnimationPart.arriving,
       if (was.loop != now.loop) ShapeAnimationPart.looping,
-      if (was.exit != now.exit) ShapeAnimationPart.leaving,
+      if (was.exit != now.exit ||
+          was.exitDirection != now.exitDirection ||
+          was.exitStrength != now.exitStrength)
+        ShapeAnimationPart.leaving,
     };
 
 /// pathSignature is [runs]' shape wherever they are: their points measured

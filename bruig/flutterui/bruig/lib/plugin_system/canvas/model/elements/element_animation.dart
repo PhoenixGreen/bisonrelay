@@ -190,12 +190,18 @@ class ElementAnimation {
   final ElementLoop loop;
 
   /// direction is where a moving arrival comes in from, or a wipe starts,
-  /// or null for the preset's own. The way out goes the same way.
+  /// or null for the preset's own.
   final AnimationDirection? direction;
 
   /// strength is how far it moves, how much it grows or how far it turns,
   /// against the preset's own: 1 is the preset as it is.
   final double strength;
+
+  /// exitDirection and exitStrength are the same for the way out: which
+  /// way it leaves, and how far -- its own, not the arrival's, so a thing
+  /// can come in from the left and go out to the right.
+  final AnimationDirection? exitDirection;
+  final double exitStrength;
 
   const ElementAnimation({
     this.preset = ElementAnimationPreset.none,
@@ -207,6 +213,8 @@ class ElementAnimation {
     this.loop = const ElementLoop(),
     this.direction,
     this.strength = 1,
+    this.exitDirection,
+    this.exitStrength = 1,
   });
 
   bool get on => preset != ElementAnimationPreset.none;
@@ -234,8 +242,15 @@ class ElementAnimation {
       scale > 0 ? scale : preset.from;
 
   /// directed is whether a direction means anything for what is chosen: a
-  /// thing that slides in, or is wiped on.
+  /// thing that slides in, or is wiped on -- or out.
   bool get directed => _directs(preset) || _directs(exit);
+
+  /// arrivalDirected, arrivalStrengthens, exitDirected and exitStrengthens
+  /// are the same, for the way in and the way out alone.
+  bool get arrivalDirected => _directs(preset);
+  bool get exitDirected => _directs(exit);
+  bool get arrivalStrengthens => _strengthens(preset);
+  bool get exitStrengthens => _strengthens(exit);
   static bool _directs(ElementAnimationPreset p) =>
       p != ElementAnimationPreset.none &&
       ((p.motion == TextMotion.rise && (p.dx != 0 || p.dy != 0)) ||
@@ -294,7 +309,12 @@ class ElementAnimation {
       on ? ease.apply(reveal.clamp(0.0, 1.0)) : reveal.clamp(0.0, 1.0);
 
   /// leaving is this animation as it is played on the way out.
-  ElementAnimation get leaving => copyWith(preset: exit);
+  /// Played with the way out's own direction and strength.
+  ElementAnimation get leaving => copyWith(
+      preset: exit,
+      direction: exitDirection,
+      clearDirection: exitDirection == null,
+      strength: exitStrength);
 
   ElementAnimation copyWith({
     ElementAnimationPreset? preset,
@@ -307,6 +327,8 @@ class ElementAnimation {
     AnimationDirection? direction,
     bool clearDirection = false,
     double? strength,
+    AnimationDirection? exitDirection,
+    double? exitStrength,
   }) =>
       ElementAnimation(
         preset: preset ?? this.preset,
@@ -318,6 +340,8 @@ class ElementAnimation {
         loop: loop ?? this.loop,
         direction: clearDirection ? null : direction ?? this.direction,
         strength: strength ?? this.strength,
+        exitDirection: exitDirection ?? this.exitDirection,
+        exitStrength: exitStrength ?? this.exitStrength,
       );
 
   Map<String, dynamic> toJson() => {
@@ -330,6 +354,12 @@ class ElementAnimation {
         if (loop.on) "loop": loop.toJson(),
         if (direction != null) "direction": direction!.name,
         if (strength != 1) "strength": strength,
+        // Written out wherever the arrival has its own, even when the way
+        // out has none: kept without, the way out reads as the arrival's,
+        // which is what it was before it could be told apart.
+        if (direction != null || exitDirection != null)
+          "exitDirection": exitDirection?.name,
+        if (strength != 1 || exitStrength != 1) "exitStrength": exitStrength,
       };
 
   factory ElementAnimation.fromJson(Map<String, dynamic> json) =>
@@ -347,6 +377,12 @@ class ElementAnimation {
             : const ElementLoop(),
         direction: AnimationDirection.fromName(json["direction"] as String?),
         strength: jsonDouble(json["strength"], 1).clamp(0.0, 10.0),
+        // Kept before the way out had its own: the arrival's, as it was.
+        exitDirection: json.containsKey("exitDirection")
+            ? AnimationDirection.fromName(json["exitDirection"] as String?)
+            : AnimationDirection.fromName(json["direction"] as String?),
+        exitStrength: jsonDouble(json["exitStrength"] ?? json["strength"], 1)
+            .clamp(0.0, 10.0),
       );
 
   @override
@@ -361,9 +397,11 @@ class ElementAnimation {
           other.length == length &&
           other.loop == loop &&
           other.direction == direction &&
-          other.strength == strength;
+          other.strength == strength &&
+          other.exitDirection == exitDirection &&
+          other.exitStrength == exitStrength;
 
   @override
-  int get hashCode => Object.hash(
-      preset, exit, scale, effect, ease, length, loop, direction, strength);
+  int get hashCode => Object.hash(preset, exit, scale, effect, ease, length,
+      loop, direction, strength, exitDirection, exitStrength);
 }

@@ -217,6 +217,7 @@ List<Widget> vectorSettings(
         children: [
           for (var (tool, icon) in const [
             (VectorTool.select, Icons.near_me_outlined),
+            (VectorTool.selectShapes, Icons.near_me),
             (VectorTool.pen, Icons.draw_outlined),
             (VectorTool.scale, Icons.open_in_full),
             (VectorTool.tint, Icons.brush_outlined),
@@ -233,7 +234,14 @@ List<Widget> vectorSettings(
               key: ValueKey("vectorTool-${tool.name}"),
               icon: icon,
               tooltip: "${tool.label} (${_toolKey(tool)})",
-              active: controller.vectorTool == tool,
+              // The align tool lights the select tool whose picks it
+              // lines up, as well as itself.
+              active: controller.vectorTool == tool ||
+                  (controller.vectorTool == VectorTool.align &&
+                      tool ==
+                          (controller.vectorAlignsShapes
+                              ? VectorTool.selectShapes
+                              : VectorTool.select)),
               onPressed: () => controller.vectorTool = tool,
             ),
         ],
@@ -417,8 +425,48 @@ class _VectorPlaylist extends StatelessWidget {
                 tooltip: "Stagger",
                 onPressed: () => _stagger(e),
               ),
+              // Every shape back to the Master animation, at once.
+              CanvasIconButton(
+                key: const ValueKey("vectorResetAllAnimation"),
+                icon: Icons.restore,
+                tooltip: "Reset all",
+                onPressed: (e.shapes ?? const <VectorShape>[])
+                        .any((s) => s.animation != null)
+                    ? () => onChanged(e.copyWith(shapes: [
+                          for (var s in e.shapes!)
+                            s.copyWith(clearAnimation: true),
+                        ]))
+                    : null,
+              ),
             ],
           ),
+        // The drawing itself, above its shapes: picked, the animation
+        // below is the one every shape starts with.
+        InkWell(
+          key: const ValueKey("vectorPlaylistMaster"),
+          onTap: () {
+            controller.pickVectorItem(null);
+            controller.pickVectorShape(-1);
+            Focus.of(context).requestFocus();
+          },
+          child: Container(
+            color: picked < 0
+                ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                : null,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 1, right: 6),
+                child: Icon(Icons.layers_outlined, size: 14, color: muted),
+              ),
+              Text("Master", style: theme.textTheme.bodySmall),
+              const Spacer(),
+              Text("Every shape",
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+              const SizedBox(width: 6),
+            ]),
+          ),
+        ),
         ReorderableListView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -552,7 +600,14 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           onPressed: () => controller.editPickedPoints(withEvenHandles),
         ),
       ];
+    case VectorTool.selectShapes:
+      return const [];
     case VectorTool.align:
+      // Shapes, where the select shapes tool was the last used; points
+      // otherwise.
+      var shapes = controller.vectorAlignsShapes;
+      var enough =
+          shapes ? controller.vectorItems.length >= 2 : picks.length >= 2;
       return [
         for (var (how, icon) in const [
           (VectorAlign.left, Icons.align_horizontal_left),
@@ -568,10 +623,12 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
             key: ValueKey("vectorAlign-${how.name}"),
             icon: icon,
             tooltip: how.label,
-            onPressed: picks.length < 2
+            onPressed: !enough
                 ? null
-                : () => controller
-                    .editPickedPoints((e, picks) => withAligned(e, picks, how)),
+                : shapes
+                    ? () => controller.alignVectorItems(how)
+                    : () => controller.editPickedPoints(
+                        (e, picks) => withAligned(e, picks, how)),
           ),
       ];
     case VectorTool.corner:
@@ -1216,6 +1273,7 @@ String _joinName(StrokeJoin j) => switch (j) {
 /// _toolKey is the key that picks [tool] while a drawing is edited.
 String _toolKey(VectorTool tool) => switch (tool) {
       VectorTool.select => "V",
+      VectorTool.selectShapes => "G",
       VectorTool.pen => "P",
       VectorTool.scale => "S",
       VectorTool.tint => "I",
@@ -1268,15 +1326,19 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "shape's colours. The shapes keep their own points, to edit with "
           "the other tools, and Separate makes them shapes of their own "
           "again.",
-      VectorTool.align => "Pick points as with the select tool -- a box, or "
-          "Shift and a click -- then line them up: to the left, middle or "
-          "right of the box round them, its top, middle or bottom, or "
-          "spread out with even gaps across or down.",
+      VectorTool.align => "Lines up what the last select tool picked -- "
+          "points with Select points, shapes with Select shapes: to the "
+          "left, middle or right of the box round them, its top, middle or "
+          "bottom, or spread out evenly across or down.",
       VectorTool.shapes => "Pick a shape and drag it out where you want it, "
           "the size you want it. Shift keeps a box square and a line to "
           "steps of forty-five degrees; Option draws out from the middle. A "
           "click puts one down at a standard size. Every shape is points "
           "and handles, to edit like anything else.",
+      VectorTool.selectShapes => "Click a shape -- or a piece of one cut "
+          "with the knife -- to pick it, Shift-click to pick more. Drag it "
+          "to move it, a handle of its box to size it, and the round handle "
+          "above to turn it. The align tool lines up the shapes picked here.",
       VectorTool.text => "Click to start text and type it on the drawing; "
           "click text to type into it again. It stays text -- its font and "
           "size can be changed -- until its points are edited with another "
@@ -1626,35 +1688,40 @@ Widget _animationSection(CanvasController controller, VectorElement e,
         hideCaption: true,
         rule: false,
         children: [
+          // The words and the button in one row, centred on each other.
           Builder(
-            builder: (context) => Padding(
-              padding: const EdgeInsets.only(top: 4, right: 6),
-              child: Text(
-                  "Shape ${starts.indexOf(base) + 1} of ${starts.length} · "
-                  "${owns.isEmpty ? "as the drawing" : "own ${[
-                      for (var p in ShapeAnimationPart.values)
-                        if (owns.contains(p)) p.name
-                    ].join(", ")}"}",
-                  key: const ValueKey("vectorShapeAnimationScope"),
-                  style: Theme.of(context).textTheme.bodySmall),
-            ),
-          ),
-          if (owns.isNotEmpty)
-            CanvasIconButton(
-              key: const ValueKey("vectorShapeAnimationReset"),
-              icon: Icons.restore,
-              tooltip: "As drawing",
-              onPressed: () {
-                begin();
-                write(withOwn(null));
-                commit();
-              },
-            ),
-          CanvasIconButton(
-            key: const ValueKey("vectorShapeAnimationDrawing"),
-            icon: Icons.layers_outlined,
-            tooltip: "Drawing's",
-            onPressed: () => controller.pickVectorShape(-1),
+            builder: (context) =>
+                Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                  child: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Text(
+                    "Shape ${starts.indexOf(base) + 1} of ${starts.length} · "
+                    "${owns.isEmpty ? "as the drawing" : "own ${[
+                        for (var p in ShapeAnimationPart.values)
+                          if (owns.contains(p)) p.name
+                      ].join(", ")}"}",
+                    key: const ValueKey("vectorShapeAnimationScope"),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall),
+              )),
+              // Back to the drawing's animation, which every shape starts
+              // with.
+              CanvasIconButton(
+                key: const ValueKey("vectorShapeAnimationReset"),
+                icon: Icons.restore,
+                tooltip: "Reset",
+                tight: true,
+                onPressed: owns.isEmpty
+                    ? null
+                    : () {
+                        begin();
+                        write(withOwn(null));
+                        commit();
+                      },
+              ),
+            ]),
           ),
         ],
       ),

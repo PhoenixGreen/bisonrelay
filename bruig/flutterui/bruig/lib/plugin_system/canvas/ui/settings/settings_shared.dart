@@ -1371,12 +1371,24 @@ Widget elementAnimationSection(
     commit();
   }
 
+  var keyed = timing
+      ? keyframeEasingControls(controller, element, begin, commit,
+          label: "Keyframe")
+      : const <Widget>[];
+
   // Choosing an arrival or an exit lays its keyframes as well as naming it
   // -- unless whoever is showing this says otherwise: a drawing's shape
   // takes its own, on the drawing's keyframes.
   var arriveWith =
       arrive ?? (p) => controller.applyElementAnimation(element, p);
   var leaveWith = leave ?? (p) => controller.applyElementExit(element, p);
+
+  // Which way it comes in, and how far -- and, apart from that, which way
+  // it goes out, and how far.
+  void live(ElementAnimation next) {
+    begin();
+    write(next);
+  }
 
   return CanvasExpander(
     label: "Animation",
@@ -1399,7 +1411,8 @@ Widget elementAnimationSection(
           key: const ValueKey("elementAnimationFamily"),
           label: "Kind",
           value: animation.on ? animation.preset.family : null,
-          width: 132,
+          // The same as Which beside it: the two share the line evenly.
+          width: 110,
           options: [
             (null, "None"),
             for (var family in ElementAnimationFamily.values)
@@ -1414,7 +1427,7 @@ Widget elementAnimationSection(
             key: const ValueKey("elementAnimationPreset"),
             label: "Which",
             value: animation.preset,
-            width: 168,
+            width: 110,
             options: [
               for (var preset
                   in ElementAnimationPreset.inFamily(animation.preset.family))
@@ -1422,6 +1435,12 @@ Widget elementAnimationSection(
             ],
             onChanged: arriveWith,
           ),
+        // Kind and Which share their line; the motion has the next.
+        if (animation.on &&
+            (animation.arrivalDirected || animation.arrivalStrengthens)) ...[
+          const CanvasLineBreak(),
+          ...motionControls(animation, now, live, commit),
+        ],
       ]),
       if (animation.on || animation.closes)
         CanvasControlGroup(label: "Leaving", children: [
@@ -1429,7 +1448,7 @@ Widget elementAnimationSection(
             key: const ValueKey("elementAnimationExitFamily"),
             label: "Kind",
             value: animation.closes ? animation.exit.family : null,
-            width: 132,
+            width: 110,
             options: [
               (null, "None"),
               for (var family in ElementAnimationFamily.values)
@@ -1444,7 +1463,7 @@ Widget elementAnimationSection(
               key: const ValueKey("elementAnimationExit"),
               label: "Which",
               value: animation.exit,
-              width: 168,
+              width: 110,
               options: [
                 for (var preset
                     in ElementAnimationPreset.inFamily(animation.exit.family))
@@ -1452,14 +1471,12 @@ Widget elementAnimationSection(
               ],
               onChanged: leaveWith,
             ),
+          if (animation.closes &&
+              (animation.exitDirected || animation.exitStrengthens)) ...[
+            const CanvasLineBreak(),
+            ...motionControls(animation, now, live, commit, leaving: true),
+          ],
         ]),
-      if (animation.directed || animation.strengthens)
-        CanvasControlGroup(
-            label: "Motion",
-            children: motionControls(animation, now, (next) {
-              begin();
-              write(next);
-            }, commit)),
       loopGroup(controller, animation.loop,
           (loop) => now(animation.copyWith(loop: loop)), (loop) {
         begin();
@@ -1475,88 +1492,97 @@ Widget elementAnimationSection(
           begin();
           write(animation.copyWith(effect: next));
         }),
-      if (timing) keyframeEasingGroup(controller, element, begin, commit),
-      if (timing && (animation.on || animation.closes))
-        CanvasControlGroup(label: "Timing", children: [
-          // Where the arrival is on the timeline, typed: the same two
-          // keyframes dragging moves. Before there is one, how long the
-          // next is laid down.
-          if (controller.elementAnimationSpan(element)
-              case (var at?, var span?)) ...[
-            CanvasNumberField(
-              key: const ValueKey("elementAnimationDelay"),
-              label: "Delay",
-              min: 0,
-              max: 100000,
-              decimals: 0,
-              width: 62,
-              value: at.toDouble(),
-              onChanged: (v) {
-                begin();
-                controller.setElementArrivalTiming(
-                    controller.document.elementById(element.id) ?? element,
-                    delay: v.round());
-              },
-              onCommit: commit,
+      // When it comes in and how it is paced, and -- on the line below --
+      // how it travels out of the keyframe the playhead is on: the two
+      // questions about time, in one place.
+      if (timing && ((animation.on || animation.closes) || keyed.isNotEmpty))
+        CanvasControlGroup(label: "Timing / Keyframe", children: [
+          if (animation.on || animation.closes) ...[
+            // Where the arrival is on the timeline, typed: the same two
+            // keyframes dragging moves. Before there is one, how long the
+            // next is laid down.
+            if (controller.elementAnimationSpan(element)
+                case (var at?, var span?)) ...[
+              CanvasNumberField(
+                key: const ValueKey("elementAnimationDelay"),
+                label: "Delay",
+                min: 0,
+                max: 100000,
+                decimals: 0,
+                width: 62,
+                value: at.toDouble(),
+                onChanged: (v) {
+                  begin();
+                  controller.setElementArrivalTiming(
+                      controller.document.elementById(element.id) ?? element,
+                      delay: v.round());
+                },
+                onCommit: commit,
+              ),
+              CanvasNumberField(
+                key: const ValueKey("elementAnimationLength"),
+                label: "Length",
+                min: 1,
+                max: 100000,
+                decimals: 0,
+                width: 62,
+                value: span.toDouble(),
+                onChanged: (v) {
+                  begin();
+                  controller.setElementArrivalTiming(
+                      controller.document.elementById(element.id) ?? element,
+                      length: v.round());
+                },
+                onCommit: commit,
+              ),
+            ] else
+              CanvasNumberField(
+                key: const ValueKey("elementAnimationLength"),
+                label: "Length",
+                min: 1,
+                max: 3600,
+                decimals: 0,
+                width: 62,
+                value: (animation.length > 0
+                        ? animation.length
+                        : controller.defaultAnimationFrames)
+                    .toDouble(),
+                onChanged: (v) {
+                  begin();
+                  write(animation.copyWith(length: v.round()));
+                },
+                onCommit: commit,
+              ),
+            easeDropdown<ChartEase>(
+              key: const ValueKey("elementAnimationEase"),
+              value: animation.ease,
+              values: ChartEase.values,
+              name: (c) => c.label,
+              curve: (c) => c.apply,
+              onChanged: (v) => now(animation.copyWith(ease: v)),
             ),
-            CanvasNumberField(
-              key: const ValueKey("elementAnimationLength"),
-              label: "Length",
-              min: 1,
-              max: 100000,
-              decimals: 0,
-              width: 62,
-              value: span.toDouble(),
-              onChanged: (v) {
-                begin();
-                controller.setElementArrivalTiming(
-                    controller.document.elementById(element.id) ?? element,
-                    length: v.round());
-              },
-              onCommit: commit,
-            ),
-          ] else
-            CanvasNumberField(
-              key: const ValueKey("elementAnimationLength"),
-              label: "Length",
-              min: 1,
-              max: 3600,
-              decimals: 0,
-              width: 62,
-              value: (animation.length > 0
-                      ? animation.length
-                      : controller.defaultAnimationFrames)
-                  .toDouble(),
-              onChanged: (v) {
-                begin();
-                write(animation.copyWith(length: v.round()));
-              },
-              onCommit: commit,
-            ),
-          easeDropdown<ChartEase>(
-            key: const ValueKey("elementAnimationEase"),
-            value: animation.ease,
-            values: ChartEase.values,
-            name: (c) => c.label,
-            curve: (c) => c.apply,
-            onChanged: (v) => now(animation.copyWith(ease: v)),
-          ),
-          if (animation.scales)
-            CanvasNumberField(
-              key: const ValueKey("elementAnimationScale"),
-              label: "From",
-              min: 0,
-              max: 8,
-              decimals: 2,
-              width: 62,
-              value:
-                  animation.scale > 0 ? animation.scale : animation.preset.from,
-              onChanged: (v) {
-                begin();
-                write(animation.copyWith(scale: v));
-              },
-              onCommit: commit,
-            ),
+            if (animation.scales)
+              CanvasNumberField(
+                key: const ValueKey("elementAnimationScale"),
+                label: "From",
+                min: 0,
+                max: 8,
+                decimals: 2,
+                width: 62,
+                value: animation.scale > 0
+                    ? animation.scale
+                    : animation.preset.from,
+                onChanged: (v) {
+                  begin();
+                  write(animation.copyWith(scale: v));
+                },
+                onCommit: commit,
+              ),
+          ],
+          if (keyed.isNotEmpty) ...[
+            if (animation.on || animation.closes) const CanvasLineBreak(),
+            ...keyed,
+          ],
         ]),
     ],
   );
@@ -1627,30 +1653,60 @@ List<Widget> motionControls(
     void Function(ElementAnimation) now,
     void Function(ElementAnimation) live,
     VoidCallback commit,
-    {String keys = "element"}) {
-  var shown = animation.on ? animation.preset : animation.exit;
+    {String keys = "element",
+    bool leaving = false}) {
+  var preset = leaving ? animation.exit : animation.preset;
+  var directed = leaving ? animation.exitDirected : animation.arrivalDirected;
+  var strengthens =
+      leaving ? animation.exitStrengthens : animation.arrivalStrengthens;
+  var direction = (leaving ? animation.exitDirection : animation.direction) ??
+      (preset.motion == TextMotion.wipe
+          ? AnimationDirection.left
+          : AnimationDirection.of(preset.dx, preset.dy)) ??
+      AnimationDirection.left;
+  var strength = leaving ? animation.exitStrength : animation.strength;
+  var side = leaving ? "Exit" : "";
   return [
-    if (animation.directed)
+    if (directed)
       CanvasDropdown<AnimationDirection>(
-        key: ValueKey("${keys}AnimationDirection"),
+        key: ValueKey("${keys}Animation${side}Direction"),
         label: "Direction",
-        value: animation.directionOf(shown) ?? AnimationDirection.left,
+        value: direction,
         width: 148,
-        options: [for (var d in AnimationDirection.values) (d, d.label)],
-        onChanged: (d) => now(animation.copyWith(direction: d)),
+        options: [
+          for (var d in AnimationDirection.values)
+            (d, leaving ? _goingTo(d) : d.label),
+        ],
+        onChanged: (d) => now(leaving
+            ? animation.copyWith(exitDirection: d)
+            : animation.copyWith(direction: d)),
       ),
-    if (animation.strengthens)
+    if (strengthens)
       CanvasSlider(
-        key: ValueKey("${keys}AnimationStrength"),
+        key: ValueKey("${keys}Animation${side}Strength"),
         label: "Strength",
-        value: animation.strength,
+        value: strength,
         max: 3,
         width: 90,
-        onChanged: (v) => live(animation.copyWith(strength: v)),
+        onChanged: (v) => live(leaving
+            ? animation.copyWith(exitStrength: v)
+            : animation.copyWith(strength: v)),
         onCommit: commit,
       ),
   ];
 }
+
+/// _goingTo is [d] said as where a thing goes out to.
+String _goingTo(AnimationDirection d) => switch (d) {
+      AnimationDirection.left => "To the left",
+      AnimationDirection.right => "To the right",
+      AnimationDirection.above => "Up",
+      AnimationDirection.below => "Down",
+      AnimationDirection.aboveLeft => "To top left",
+      AnimationDirection.aboveRight => "To top right",
+      AnimationDirection.belowLeft => "To bottom left",
+      AnimationDirection.belowRight => "To bottom right",
+    };
 
 /// previewButton plays [element]'s animation alone, once -- or, while it
 /// is, stops it. See CanvasController.previewElement.
@@ -1658,6 +1714,8 @@ Widget previewButton(CanvasController controller, CanvasElement element) {
   var going = controller.previewing?.id == element.id;
   return CanvasIconButton(
     key: const ValueKey("elementAnimationPreview"),
+    // In a section's heading, beside its words, not below them.
+    tight: true,
     icon: going ? Icons.stop_circle_outlined : Icons.play_circle_outline,
     tooltip: going ? "Stop" : "Preview",
     active: going,
@@ -1819,12 +1877,6 @@ Widget loopGroup(
       if (loop.to case var to?)
         frames("${keys}LoopTo", "Frame", to + 1, 1,
             (v) => loop.copyWith(to: v - 1)),
-      const CanvasHint(
-          "A loop goes on after the arrival -- or on its own, from a frame "
-          "of its own -- until the scene ends, or for as many repeats as "
-          "set. Cycle is the frames one go round takes; Gap the frames it "
-          "rests between them. Its bar on the timeline can be dragged by "
-          "either end."),
     ],
   ]);
 }
@@ -1843,14 +1895,25 @@ Widget loopGroup(
 /// from one that is waiting for the playhead to be somewhere else.
 Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
     VoidCallback begin, VoidCallback commit) {
+  var controls = keyframeEasingControls(controller, element, begin, commit);
+  if (controls.isEmpty) return const SizedBox.shrink();
+  return CanvasControlGroup(label: "This keyframe", children: controls);
+}
+
+/// keyframeEasingControls are the keyframe's easing and the button that
+/// gives every keyframe the same -- nothing, for an element with no
+/// keyframes. See keyframeEasingGroup.
+List<Widget> keyframeEasingControls(CanvasController controller,
+    CanvasElement element, VoidCallback begin, VoidCallback commit,
+    {String label = "Easing"}) {
   var keys = element.track?.keys ?? const <Keyframe>[];
-  if (keys.isEmpty) return const SizedBox.shrink();
+  if (keys.isEmpty) return const [];
   var here = element.track?.keyAt(controller.frame);
 
-  return CanvasControlGroup(label: "This keyframe", children: [
+  return [
     easeDropdown<KeyframeEasing>(
       key: const ValueKey("elementKeyframeEasing"),
-      label: "Easing",
+      label: label,
       value: here?.easing ?? KeyframeEasing.linear,
       width: 160,
       enabled: here != null,
@@ -1870,10 +1933,8 @@ Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
     ),
     CanvasIconButton(
       key: const ValueKey("elementKeyframeEasingAll"),
-      icon: Icons.format_line_spacing,
-      tooltip: here == null
-          ? "Put the playhead on a keyframe to choose an easing first"
-          : "Give every keyframe on this element the same easing",
+      icon: Icons.restart_alt,
+      tooltip: "Apply to all",
       onPressed: here == null
           ? null
           : () {
@@ -1882,7 +1943,7 @@ Widget keyframeEasingGroup(CanvasController controller, CanvasElement element,
               commit();
             },
     ),
-  ]);
+  ];
 }
 
 /// effectBits are the settings a cutting preset has: how many pieces, how far

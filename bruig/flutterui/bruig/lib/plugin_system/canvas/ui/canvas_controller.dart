@@ -29,6 +29,7 @@ import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -1507,6 +1508,10 @@ class CanvasController extends ChangeNotifier {
 
   set vectorTool(VectorTool tool) {
     if (_vectorTool == tool) return;
+    // The align tool lines up what the last of the two select tools picked.
+    if (tool == VectorTool.select || tool == VectorTool.selectShapes) {
+      _lastSelect = tool;
+    }
     if (tool != VectorTool.text) stopVectorTyping();
     _vectorTool = tool;
     // The pen taken out with one point picked carries on from that point.
@@ -1700,8 +1705,13 @@ class CanvasController extends ChangeNotifier {
   /// answering whether there was anything to copy.
   bool copyVectorPoints() {
     var e = editingVector;
-    if (e == null || _vectorPicks.isEmpty) return false;
-    var copied = copiedShapes(e, _vectorPicks);
+    if (e == null) return false;
+    // Shapes picked whole: every point of them.
+    var picks = _vectorPicks.isEmpty && _picksShapes
+        ? itemPicks(e, vectorItems)
+        : _vectorPicks;
+    if (picks.isEmpty) return false;
+    var copied = copiedShapes(e, picks);
     if (copied.isEmpty) return false;
     _copiedShapes = copied;
     _pastes = 0;
@@ -1711,6 +1721,10 @@ class CanvasController extends ChangeNotifier {
   /// cutVectorPoints copies the points picked and takes them out.
   bool cutVectorPoints() {
     if (!copyVectorPoints()) return false;
+    if (_vectorPicks.isEmpty && _picksShapes) {
+      if (editingVector case var e?) _vectorPicks = itemPicks(e, vectorItems);
+      _vectorItems = const {};
+    }
     deleteVectorPoint();
     _pastes = -1;
     return true;
@@ -1725,7 +1739,14 @@ class CanvasController extends ChangeNotifier {
     _pastes++;
     var step = 10 * VectorSpace(e).unitsPer * _pastes;
     var (next, picks) = withPasted(e, _copiedShapes, Offset(step, step));
-    _vectorPicks = picks;
+    // Picking shapes, what is pasted is picked as shapes -- its box to move
+    // it by; picking points, its points.
+    if (_picksShapes) {
+      _vectorItems = itemsOf(next, picks);
+      _vectorPicks = const {};
+    } else {
+      _vectorPicks = picks;
+    }
     _vectorShape = picks.isEmpty ? -1 : picks.first.shape;
     replaceElement(next);
     return true;
@@ -1735,6 +1756,11 @@ class CanvasController extends ChangeNotifier {
   bool pickAllVectorPoints() {
     var e = editingVector;
     if (e == null) return false;
+    if (_picksShapes) {
+      _vectorItems = allItems(e);
+      notifyListeners();
+      return true;
+    }
     pickVectorPoints(allPicks(e));
     return true;
   }
@@ -2117,6 +2143,34 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// sampling is whether the eyedropper is out: the next press on the canvas
+  /// takes the colour under it, and gives it to [_onSampled]. sampled is
+  /// the colour it last took.
+  bool get sampling => _onSampled != null;
+  ValueChanged<Color>? _onSampled;
+  Color? get sampled => _sampled;
+  Color? _sampled;
+
+  void startSampling(ValueChanged<Color> onSampled) {
+    _onSampled = onSampled;
+    notifyListeners();
+  }
+
+  void stopSampling() {
+    if (_onSampled == null) return;
+    _onSampled = null;
+    notifyListeners();
+  }
+
+  /// sampledColour hands the eyedropper what it took, and puts it away.
+  void sampledColour(Color c) {
+    var give = _onSampled;
+    _onSampled = null;
+    _sampled = c;
+    give?.call(c);
+    notifyListeners();
+  }
+
   /// vectorKnifeGap is how far apart the knife leaves the two sides of a
   /// cut, in the canvas's own pixels.
   double get vectorKnifeGap => _vectorKnifeGap;
@@ -2302,12 +2356,70 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _resetVectorEditing() {
+    _vectorItems = const {};
+    _lastSelect = VectorTool.select;
     _vectorShape = -1;
     _vectorPicks = const {};
     _vectorTool = VectorTool.select;
     _vectorPenFrom = null;
     _vectorCombining = const {};
     _vectorShapeMade = -1;
+  }
+
+  /// vectorItems is what the select shapes tool has picked: whole shapes,
+  /// and pieces of cut ones. See VectorItem.
+  Set<VectorItem> get vectorItems {
+    var e = editingVector;
+    if (e == null) return const {};
+    return liveItems(e, _vectorItems);
+  }
+
+  Set<VectorItem> _vectorItems = const {};
+
+  /// pickVectorItem picks [item] alone -- or, with [toggle], adds it to
+  /// what is picked or takes it out; null lets everything go.
+  void pickVectorItem(VectorItem? item, {bool toggle = false}) {
+    if (item == null) {
+      _vectorItems = const {};
+    } else if (toggle) {
+      var next = {...vectorItems};
+      if (!next.remove(item)) next.add(item);
+      _vectorItems = next;
+    } else {
+      _vectorItems = {item};
+    }
+    // The shape's own settings follow the last one picked.
+    _vectorShape = item?.shape ?? -1;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  /// vectorAlignsShapes is whether the align tool lines up shapes -- the
+  /// select shapes tool was the last select tool used -- or points.
+  bool get vectorAlignsShapes => _lastSelect == VectorTool.selectShapes;
+
+  /// _picksShapes is whether what is picked is shapes rather than points:
+  /// the select shapes tool, or the align tool after it.
+  bool get _picksShapes =>
+      _vectorTool == VectorTool.selectShapes ||
+      (_vectorTool == VectorTool.align && vectorAlignsShapes);
+
+  /// pickVectorItems picks [items] -- or, with [add], adds them.
+  void pickVectorItems(Set<VectorItem> items, {bool add = false}) {
+    _vectorItems = add ? {...vectorItems, ...items} : {...items};
+    _vectorShape = items.isEmpty ? _vectorShape : items.first.shape;
+    _vectorPicks = const {};
+    notifyListeners();
+  }
+
+  VectorTool _lastSelect = VectorTool.select;
+
+  /// alignVectorItems lines the shapes picked up as [how] says.
+  void alignVectorItems(VectorAlign how) {
+    var e = editingVector;
+    var items = vectorItems.toList();
+    if (e == null || items.length < 2) return;
+    replaceElement(withItemsAligned(e, items, how));
   }
 
   void pickVectorShape(int shape) {

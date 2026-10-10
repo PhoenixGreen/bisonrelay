@@ -519,7 +519,14 @@ void main() {
       expect(now().shapes![1].animation, isNull);
 
       // And the drawing's own, with no shape picked.
-      var drawing = find.byKey(const ValueKey("vectorShapeAnimationDrawing"));
+      var drawing = find.byKey(const ValueKey("vectorPlaylistMaster"));
+      if (drawing.evaluate().isEmpty) {
+        var heading = find.byWidgetPredicate(
+            (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+        await tester.ensureVisible(heading.first);
+        await tester.tap(heading.first);
+        await tester.pumpAndSettle();
+      }
       await tester.ensureVisible(drawing);
       await tester.tap(drawing);
       await tester.pumpAndSettle();

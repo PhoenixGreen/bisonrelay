@@ -1694,11 +1694,8 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   }
 }
 
-/// CanvasSlider is a value with a range, shown with its number beside it.
-///
-/// The number is not editable, on purpose: a slider is for the properties
-/// where the value is meaningless on its own -- a density of 0.42 -- and where
-/// what somebody is actually doing is looking at the canvas while they drag.
+/// CanvasSlider is a value with a range -- kept as a name for the places
+/// that ask for one, and drawn as a number to type or scrub, like the rest.
 class CanvasSlider extends StatelessWidget {
   final String label;
   final double value;
@@ -1721,50 +1718,21 @@ class CanvasSlider extends StatelessWidget {
     super.key,
   });
 
+  /// Drawn as a number field: typed, or scrubbed by dragging across the
+  /// number or its caption, as every other number in the settings is. A
+  /// slider beside a number that can be dragged was two controls for one
+  /// thing, and the only one of them that could not be typed into.
   @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return _labelled(
-      theme,
-      label,
-      SizedBox(
-        width: CanvasControlScope.widthFor(context, width),
-        height: controlHeight,
-        child: Row(children: [
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 2,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-              ),
-              child: Slider(
-                value: value.clamp(min, max),
-                min: min,
-                max: max,
-                onChanged: onChanged,
-                onChangeEnd: (_) => onCommit?.call(),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: decimals == 0 ? 28 : 34,
-            child: _SliderValue(
-              value: value,
-              min: min,
-              max: max,
-              decimals: decimals,
-              color: theme.colors.onSurfaceVariant,
-              onChanged: (v) {
-                onChanged(v);
-                onCommit?.call();
-              },
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => CanvasNumberField(
+        label: label,
+        value: value.clamp(min, max).toDouble(),
+        min: min,
+        max: max,
+        decimals: decimals,
+        width: width < 62 ? width : 62,
+        onChanged: onChanged,
+        onCommit: onCommit,
+      );
 }
 
 /// _SliderValue is a slider's number, which can also be typed: a slider is

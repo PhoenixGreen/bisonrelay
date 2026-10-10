@@ -124,6 +124,43 @@ void main() {
           isTrue);
     });
 
+    test("the way in and the way out each have their own", () {
+      const a = ElementAnimation(
+          preset: ElementAnimationPreset.slideLeft,
+          exit: ElementAnimationPreset.slideLeft,
+          direction: AnimationDirection.left,
+          exitDirection: AnimationDirection.right,
+          strength: 1,
+          exitStrength: 2);
+      expect(a.spec.dx, lessThan(0), reason: "comes in from the left");
+      expect(a.leaving.spec.dx, closeTo(1.8, 1e-9),
+          reason: "goes out to the right, twice as far");
+      var b = a.copyWith(direction: AnimationDirection.above);
+      expect(b.leaving.spec.dx, closeTo(1.8, 1e-9),
+          reason: "the arrival changed, not the way out");
+      var back = ElementAnimation.fromJson(
+          jsonDecode(jsonEncode(a.toJson())) as Map<String, dynamic>);
+      expect(back, a);
+      // Set on the way in only: the way out stays the preset's own.
+      var inOnly = const ElementAnimation(
+          preset: ElementAnimationPreset.slideLeft,
+          exit: ElementAnimationPreset.slideLeft,
+          direction: AnimationDirection.above);
+      var again = ElementAnimation.fromJson(
+          jsonDecode(jsonEncode(inOnly.toJson())) as Map<String, dynamic>);
+      expect(again.exitDirection, isNull);
+      // Kept before they were told apart: the way out as it was, the
+      // arrival's.
+      var old = ElementAnimation.fromJson(const {
+        "preset": "slideLeft",
+        "exit": "slideLeft",
+        "direction": "below",
+        "strength": 1.5,
+      });
+      expect(old.exitDirection, AnimationDirection.below);
+      expect(old.exitStrength, 1.5);
+    });
+
     test("kept with the element", () {
       var e = drawing(
           animation: const ElementAnimation(
@@ -274,6 +311,22 @@ void main() {
           .onChanged(AnimationDirection.below);
       await tester.pumpAndSettle();
       expect(now().animation.direction, AnimationDirection.below);
+      // The way out, with its own.
+      tester
+          .widget<CanvasDropdown<ElementAnimationFamily?>>(
+              find.byKey(const ValueKey("elementAnimationExitFamily")))
+          .onChanged(ElementAnimationFamily.slide);
+      await tester.pumpAndSettle();
+      tester
+          .widget<CanvasDropdown<AnimationDirection>>(
+              find.byKey(const ValueKey("elementAnimationExitDirection")))
+          .onChanged(AnimationDirection.right);
+      await tester.pumpAndSettle();
+      expect(now().animation.exitDirection, AnimationDirection.right);
+      expect(now().animation.direction, AnimationDirection.below,
+          reason: "the way in left as it was");
+      expect(find.byKey(const ValueKey("elementAnimationExitStrength")),
+          findsOneWidget);
       expect(find.byKey(const ValueKey("elementAnimationStrength")),
           findsOneWidget);
 
@@ -372,6 +425,196 @@ void main() {
     expect(now().shapes!.contains(middle), isFalse, reason: "the one picked");
     c.undo();
     expect(now().shapes!.length, 3, reason: "one undo step");
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("the playlist: Preview level with its words; Master, Reset",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(const CanvasDocument()
+        .copyWith(frames: 120)
+        .addElement(drawing(
+            count: 2,
+            animation: const ElementAnimation(
+                preset: ElementAnimationPreset.fadeIn))));
+    addTearDown(c.dispose);
+    c.selectOnly("v");
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(panel(c));
+    await tester.pumpAndSettle();
+    VectorElement now() => c.document.elementById("v") as VectorElement;
+
+    var words = find.byWidgetPredicate(
+        (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+    var preview = find.byKey(const ValueKey("elementAnimationPreview"));
+    expect(
+        (tester.getCenter(preview).dy - tester.getCenter(words.first).dy).abs(),
+        lessThan(2),
+        reason: "the button in line with the heading");
+
+    var master = find.byKey(const ValueKey("vectorPlaylistMaster"));
+    if (master.evaluate().isEmpty) {
+      await tester.tap(words.first);
+      await tester.pumpAndSettle();
+    }
+    // A shape picked, and given its own loop.
+    c.editVector("v");
+    c.pickVectorShape(1);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey("vectorShapeAnimationScope")),
+        findsOneWidget);
+    var family = find.byKey(const ValueKey("elementLoopFamily"));
+    if (family.evaluate().isEmpty) {
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
+      await tester.ensureVisible(heading.first);
+      await tester.tap(heading.first);
+      await tester.pumpAndSettle();
+    }
+    tester
+        .widget<CanvasDropdown<LoopFamily?>>(family)
+        .onChanged(LoopFamily.motion);
+    await tester.pumpAndSettle();
+    expect(now().shapes![1].owns, isNotEmpty);
+    var reset = find.byKey(const ValueKey("vectorShapeAnimationReset"));
+    expect(
+        (tester.getCenter(reset).dy -
+                tester
+                    .getCenter(
+                        find.byKey(const ValueKey("vectorShapeAnimationScope")))
+                    .dy)
+            .abs(),
+        lessThan(2),
+        reason: "Reset level with the words beside it");
+    await tester.ensureVisible(reset);
+    await tester.tap(reset);
+    await tester.pumpAndSettle();
+    expect(now().shapes![1].animation, isNull, reason: "back to the drawing's");
+
+    // Master: the drawing's own animation, no shape picked.
+    await tester.ensureVisible(master);
+    await tester.tap(master);
+    await tester.pumpAndSettle();
+    expect(c.vectorShape, -1);
+    expect(
+        find.byKey(const ValueKey("vectorShapeAnimationScope")), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("the align tool lights the select tool it works with",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(const CanvasDocument()
+        .copyWith(frames: 120)
+        .addElement(drawing(count: 2)));
+    addTearDown(c.dispose);
+    c.selectOnly("v");
+    c.editVector("v");
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(panel(c));
+    await tester.pumpAndSettle();
+    bool lit(String tool) => tester
+        .widget<CanvasIconButton>(find.byKey(ValueKey("vectorTool-$tool")))
+        .active;
+    c.vectorTool = VectorTool.align;
+    await tester.pumpAndSettle();
+    expect(lit("align"), isTrue);
+    expect(lit("select"), isTrue, reason: "points, with Select points");
+    expect(lit("selectShapes"), isFalse);
+    c.vectorTool = VectorTool.selectShapes;
+    c.vectorTool = VectorTool.align;
+    await tester.pumpAndSettle();
+    expect(lit("selectShapes"), isTrue, reason: "shapes, with Select shapes");
+    expect(lit("select"), isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("Reset all puts every shape back to the Master, in one step",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var e = drawing(count: 3);
+    e = e.copyWith(shapes: [
+      for (var s in e.shapes!)
+        s.copyWith(
+            animation: const ElementAnimation(
+                loop: ElementLoop(preset: LoopPreset.pulse)),
+            owns: {ShapeAnimationPart.looping}),
+    ]);
+    var c = CanvasController(
+        const CanvasDocument().copyWith(frames: 120).addElement(e));
+    addTearDown(c.dispose);
+    c.selectOnly("v");
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(panel(c));
+    await tester.pumpAndSettle();
+    VectorElement now() => c.document.elementById("v") as VectorElement;
+    var all = find.byKey(const ValueKey("vectorResetAllAnimation"));
+    if (all.evaluate().isEmpty) {
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+      await tester.ensureVisible(heading.first);
+      await tester.tap(heading.first);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(all);
+    await tester.tap(all);
+    await tester.pumpAndSettle();
+    expect(now().shapes!.every((s) => s.animation == null), isTrue);
+    expect(tester.widget<CanvasIconButton>(all).onPressed, isNull,
+        reason: "nothing left to reset");
+    c.undo();
+    expect(now().shapes!.every((s) => s.animation != null), isTrue,
+        reason: "one undo step");
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("Kind and Which share a line; numbers, not sliders",
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(const CanvasDocument()
+        .copyWith(frames: 120)
+        .addElement(drawing(
+            animation: const ElementAnimation(
+                preset: ElementAnimationPreset.scaleIn,
+                exit: ElementAnimationPreset.fadeUp,
+                loop: ElementLoop(preset: LoopPreset.shimmer)))));
+    addTearDown(c.dispose);
+    c.selectOnly("v");
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(panel(c));
+    await tester.pumpAndSettle();
+    var kind = find.byKey(const ValueKey("elementAnimationFamily"));
+    if (kind.evaluate().isEmpty) {
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
+      await tester.ensureVisible(heading.first);
+      await tester.tap(heading.first);
+      await tester.pumpAndSettle();
+    }
+    for (var (k, w) in const [
+      ("elementAnimationFamily", "elementAnimationPreset"),
+      ("elementAnimationExitFamily", "elementAnimationExit"),
+    ]) {
+      var a = tester.getRect(find.byKey(ValueKey(k)));
+      var b = tester.getRect(find.byKey(ValueKey(w)));
+      expect(a.top, closeTo(b.top, 1), reason: "$k beside $w");
+      expect(a.width, closeTo(b.width, 1), reason: "half each");
+    }
+    var strength = find.byKey(const ValueKey("elementAnimationStrength"));
+    expect(
+        tester.getRect(strength).top, greaterThan(tester.getRect(kind).bottom),
+        reason: "the motion on the line below");
+    expect(find.byType(Slider), findsNothing, reason: "numbers to scrub");
+    expect(find.text("TIMING / KEYFRAME"), findsOneWidget);
+    expect(find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

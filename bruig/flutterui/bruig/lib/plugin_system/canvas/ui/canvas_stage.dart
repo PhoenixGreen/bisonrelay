@@ -29,6 +29,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -161,6 +162,14 @@ enum _DragMode {
   /// vectorShapeFit the one picked being moved or resized by its box.
   vectorShapeDraw,
   vectorShapeFit,
+
+  /// vectorItems is the shapes the select shapes tool has picked being
+  /// moved, sized or turned by their box. See vector_items.dart.
+  vectorItems,
+
+  /// vectorItemsBox is a box being dragged across a drawing to pick the
+  /// shapes it touches.
+  vectorItemsBox,
 }
 
 class CanvasStage extends StatefulWidget {
@@ -1622,6 +1631,13 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
+    // The eyedropper: the colour under the press, and nothing else.
+    if (controller.sampling) {
+      _mode = _DragMode.none;
+      _sampleAt(doc);
+      return;
+    }
+
     // The pen's buttons and its other end, with the pencil out, do what
     // they are set to -- before the middle button's pan, which one of them
     // may be set to do something else.
@@ -2188,6 +2204,12 @@ class CanvasStageState extends State<CanvasStage> {
       case VectorTool.eraser:
         _pressEraser(e, doc, reach);
         return true;
+      case VectorTool.selectShapes:
+        _pressItems(e, doc, reach);
+        return true;
+      case VectorTool.align when controller.vectorAlignsShapes:
+        _pressItems(e, doc, reach);
+        return true;
       case VectorTool.text:
         // On text: type into it. Anywhere else: new text, starting there.
         var under = shapeAt(e, doc, reach);
@@ -2428,6 +2450,103 @@ class CanvasStageState extends State<CanvasStage> {
     _mode = _DragMode.vectorRub;
   }
 
+  /// _picksShapes is whether presses on the drawing pick whole shapes: the
+  /// select shapes tool, or the align tool after it.
+  bool get _picksShapes =>
+      controller.vectorTool == VectorTool.selectShapes ||
+      (controller.vectorTool == VectorTool.align &&
+          controller.vectorAlignsShapes);
+
+  /// _itemsBox is the box round the shapes picked when the drag began, in
+  /// the drawing's units; _itemsHandle the handle held -- see boxHandles --
+  /// or -1 for the turning handle, or null for the whole, moved.
+  Rect _itemsBox = Rect.zero;
+  int? _itemsHandle;
+
+  /// _pressItems is a press with the select shapes tool: on a handle of the
+  /// box round what is picked, that handle; on a shape, it -- with Shift,
+  /// added to what is picked or taken out -- held to be moved; inside the
+  /// box, everything picked, held; anywhere else, nothing picked.
+  void _pressItems(VectorElement e, Offset doc, double reach) {
+    _mode = _DragMode.none;
+    var space = VectorSpace(e);
+    var items = controller.vectorItems;
+    var box = itemsExtent(e, items);
+    void hold(Rect box, int? handle) {
+      _vectorBefore = e;
+      _shapeFrom = doc;
+      _itemsBox = box;
+      _itemsHandle = handle;
+      controller.beginInteraction();
+      _mode = _DragMode.vectorItems;
+    }
+
+    if (box != null && !_shiftHeld) {
+      var top = space.toCanvas(box.topCenter) * _scale;
+      if ((doc * _scale - (top - const Offset(0, shapeTurnReach))).distance <=
+          8) {
+        return hold(box, -1);
+      }
+      for (var (i, h) in boxHandles(box).indexed) {
+        if ((space.toCanvas(h) - doc).distance * _scale <= 7) {
+          return hold(box, i);
+        }
+      }
+    }
+    var under = itemAt(e, doc, reach);
+    if (under != null) {
+      if (_shiftHeld) {
+        controller.pickVectorItem(under, toggle: true);
+        return;
+      }
+      if (!items.contains(under)) controller.pickVectorItem(under);
+      var now = itemsExtent(e, controller.vectorItems);
+      if (now != null) hold(now, null);
+      return;
+    }
+    if (box != null && box.contains(space.toDrawing(doc)) && !_shiftHeld) {
+      return hold(box, null);
+    }
+    // Empty space: a box dragged across it picks every shape it touches.
+    // Let go without moving, it was a click: nothing picked.
+    if (!_shiftHeld) controller.pickVectorItem(null);
+    _dragStart = doc;
+    setState(() => _marquee = Rect.fromPoints(doc, doc));
+    _mode = _DragMode.vectorItemsBox;
+  }
+
+  /// _dragItems moves, sizes or turns what is picked to follow [doc]: by a
+  /// handle, the opposite side staying put -- Shift keeps a corner's
+  /// proportions; by the turning handle, about the box's middle -- Shift in
+  /// steps of fifteen degrees; held inside, the whole of it.
+  void _dragItems(Offset doc) {
+    var before = _vectorBefore;
+    if (before == null) return;
+    var space = VectorSpace(before);
+    var at = space.toDrawing(doc);
+    var from = space.toDrawing(_shapeFrom);
+    var box = _itemsBox;
+    var items = controller.vectorItems;
+    VectorElement next;
+    if (_itemsHandle == -1) {
+      var c = box.center;
+      var turn = math.atan2(at.dy - c.dy, at.dx - c.dx) -
+          math.atan2(from.dy - c.dy, from.dx - c.dx);
+      if (_shiftHeld) {
+        const step = math.pi / 12;
+        turn = (turn / step).round() * step;
+      }
+      next = withItemsTurned(before, items, c, turn);
+    } else {
+      var to = _itemsHandle == null
+          ? box.shift(at - from)
+          : boxResized(box, _itemsHandle!, at,
+              even: _shiftHeld, least: space.unitsPer);
+      next = withItemsFitted(before, items, box, to);
+    }
+    controller.replaceElement(next, transient: true);
+  }
+
   /// _shapeFrom is where the shape being drawn was started, on the canvas.
   Offset _shapeFrom = Offset.zero;
 
@@ -2630,6 +2749,24 @@ class CanvasStageState extends State<CanvasStage> {
         ),
       ),
     );
+  }
+
+  /// _sampleAt takes the colour of the canvas at [doc] -- everything on it,
+  /// as it is drawn at this frame -- for the eyedropper.
+  Future<void> _sampleAt(Offset doc) async {
+    var rec = ui.PictureRecorder();
+    var canvas = Canvas(rec);
+    canvas.translate(-doc.dx, -doc.dy);
+    paintCanvasDocument(canvas, controller.document,
+        frame: controller.frame, images: controller.images);
+    var picture = rec.endRecording();
+    var image = await picture.toImage(1, 1);
+    var bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    picture.dispose();
+    if (bytes == null || !mounted) return;
+    controller.sampledColour(Color.fromARGB(bytes.getUint8(3),
+        bytes.getUint8(0), bytes.getUint8(1), bytes.getUint8(2)));
   }
 
   /// _knife is the knife's line, on the page, while it is being drawn.
@@ -3881,6 +4018,10 @@ class CanvasStageState extends State<CanvasStage> {
         _drawShape(doc);
       case _DragMode.vectorShapeFit:
         _fitShape(doc);
+      case _DragMode.vectorItems:
+        _dragItems(doc);
+      case _DragMode.vectorItemsBox:
+        setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.vectorRub:
         if (_onPage(doc)) _carryStroke(doc);
       case _DragMode.vectorErase:
@@ -4351,7 +4492,8 @@ class CanvasStageState extends State<CanvasStage> {
         _mode == _DragMode.vectorErase ||
         _mode == _DragMode.vectorRub ||
         _mode == _DragMode.vectorShapeDraw ||
-        _mode == _DragMode.vectorShapeFit) {
+        _mode == _DragMode.vectorShapeFit ||
+        _mode == _DragMode.vectorItems) {
       if (_mode == _DragMode.vectorShapeDraw) {
         // A click, not a drag: a shape of a good size, centred on it.
         if (!_travelled) _drawShape(_shapeFrom, clicked: true);
@@ -4406,6 +4548,14 @@ class CanvasStageState extends State<CanvasStage> {
     // the move that followed it.
     if (_mode == _DragMode.guide) _finishGuide();
     if (_mode == _DragMode.vectorKnife) _finishKnife();
+    if (_mode == _DragMode.vectorItemsBox) {
+      var box = _marquee;
+      var e = controller.editingVector;
+      if (box != null && e != null && _travelled) {
+        controller.pickVectorItems(itemsIn(e, box), add: _shiftHeld);
+      }
+      setState(() => _marquee = null);
+    }
     if (_mode == _DragMode.move ||
         _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||
@@ -4617,6 +4767,8 @@ class CanvasStageState extends State<CanvasStage> {
       // S scales, I tints. A tool's key again goes back to picking.
       case LogicalKeyboardKey.keyV when controller.editingVector != null:
         controller.vectorTool = VectorTool.select;
+      case LogicalKeyboardKey.keyG when controller.editingVector != null:
+        controller.vectorTool = VectorTool.selectShapes;
       case LogicalKeyboardKey.keyP when controller.editingVector != null:
         controller.vectorTool =
             controller.vectorPen ? VectorTool.select : VectorTool.pen;
@@ -4773,6 +4925,9 @@ class CanvasStageState extends State<CanvasStage> {
                               // dragged: it is the line that is watched.
                               bare: _mode == _DragMode.vectorScale ||
                                   controller.vectorTool == VectorTool.shapes ||
+                                  // Shapes picked whole: their box, not
+                                  // their points.
+                                  _picksShapes ||
                                   // Typing: the letters, not their points.
                                   controller.vectorTool == VectorTool.text ||
                                   controller.vectorTool == VectorTool.tint ||
@@ -4780,8 +4935,11 @@ class CanvasStageState extends State<CanvasStage> {
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),
                               // The shapes tool's box round the shape picked.
-                              shapeBox:
-                                  controller.vectorTool == VectorTool.shapes &&
+                              turnable: _picksShapes,
+                              shapeBox: _picksShapes
+                                  ? itemsExtent(v, controller.vectorItems)
+                                  : controller.vectorTool ==
+                                              VectorTool.shapes &&
                                           controller.vectorShapeMade >= 0
                                       ? groupExtent(
                                           v,
@@ -5070,6 +5228,7 @@ class CanvasStageState extends State<CanvasStage> {
         controller.vectorTool == VectorTool.eraser) {
       return SystemMouseCursors.none;
     }
+    if (controller.sampling) return SystemMouseCursors.precise;
     if (controller.editingVector != null &&
         controller.vectorTool == VectorTool.knife) {
       return SystemMouseCursors.precise;

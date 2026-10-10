@@ -3766,12 +3766,12 @@ void main() {
       // One handle each. The name is the switch, so it cannot also be the
       // grip -- a panel that moved when you tried to open it would be a panel
       // you could not open.
-      // One per panel: Add, Scenes, Layers and the settings.
-      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(4),
+      // One per panel: Add, Scenes, Layers, Colour and the settings.
+      expect(find.byType(Draggable<PanelDrag>), findsNWidgets(5),
           reason: "and carried as their own type, not as the plain strings "
               "the layer list drags -- otherwise a panel could be dropped on "
               "a layer");
-      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(4));
+      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(5));
     });
 
     testWidgets("the boundaries are the grips, and the top has none",
@@ -3789,8 +3789,8 @@ void main() {
               matching: find.byWidgetPredicate((w) =>
                   w is MouseRegion &&
                   w.cursor == SystemMouseCursors.resizeUpDown)),
-          findsNWidgets(3),
-          reason: "four panels have three boundaries, and the top of the "
+          findsNWidgets(4),
+          reason: "five panels have four boundaries, and the top of the "
               "first is not one of them");
     });
 
@@ -3803,7 +3803,7 @@ void main() {
       await panel(tester);
       var handles =
           tester.widgetList<Widget>(find.byIcon(Icons.drag_indicator)).length;
-      expect(handles, 4);
+      expect(handles, 5);
 
       var rights = [
         for (var i = 0; i < handles; i++)
@@ -6964,7 +6964,7 @@ void main() {
       // Saved with those two as one place: "add+layers".
       var saved = await StorageManager.readString("canvasDesign.order");
       expect(saved, contains("+"));
-      expect(saved.split(",").length, 3,
+      expect(saved.split(",").length, 4,
           reason: "one place fewer than there are panels: $saved");
     });
 
@@ -7084,8 +7084,9 @@ void main() {
       // colour row each is a panel nothing can be found in. Everywhere else
       // the colour keeps a row of its own -- see the table below.
       await panel(tester);
-      expect(find.text("COLOUR"), findsNothing,
-          reason: "no group of its own here");
+      expect(find.text("COLOUR"), findsOneWidget,
+          reason: "the sidebar's Colour section, and no group of its own "
+              "here");
       expect(find.text("Outline"), findsNothing, reason: "nor its controls");
 
       var button = find.byTooltip("Spacing, alignment and case");

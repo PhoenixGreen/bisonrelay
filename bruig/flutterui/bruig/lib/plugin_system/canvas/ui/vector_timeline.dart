@@ -244,13 +244,7 @@ class _LanesPainter extends CustomPainter {
       var y = row * vectorLaneHeight + vectorLaneHeight / 2;
       var lit = g == picked;
       var ink = lit ? colors.primary : colors.onSurfaceVariant;
-      // A faint line along every lane, so the lanes read as rows.
-      canvas.drawLine(
-          Offset(0, (row + 1) * vectorLaneHeight - 0.5),
-          Offset(size.width, (row + 1) * vectorLaneHeight - 0.5),
-          Paint()
-            ..color = colors.outline.withValues(alpha: 0.18)
-            ..strokeWidth = 1);
+      // No line between the lanes: they are all the one drawing's.
       var from = xFor(at + start), to = xFor(at + start + length);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
