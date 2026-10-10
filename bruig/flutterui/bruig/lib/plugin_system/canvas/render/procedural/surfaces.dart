@@ -327,10 +327,36 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     }
   }
 
-  // Lit from up and to the left, as the metal is.
-  var gain = 0.6 + spec.density * 0.2;
-  var slopeX = gain / math.max(0.0001, 2 * stepX / short);
-  var slopeY = gain / math.max(0.0001, 2 * stepY / short);
+  _shadeLattice(
+      canvas, rect, spec, cols, rows, height, red, green, blue, gloss);
+}
+
+/// _shadeLattice lights a lattice of heights and colours and draws it.
+///
+/// Lit from up and to the left, as the metal is: a diffuse light lifted so
+/// the side away from it is shaded rather than black, and a highlight as
+/// tight as each point's gloss. [metal] is how much each point mirrors its
+/// surroundings rather than scattering the light -- which, more than any
+/// highlight, is what makes a surface read as metal: a mirror shows the room
+/// it is in, tinted by its own colour.
+void _shadeLattice(
+    ui.Canvas canvas,
+    Rect rect,
+    ProceduralSpec spec,
+    int cols,
+    int rows,
+    Float64List height,
+    Float64List red,
+    Float64List green,
+    Float64List blue,
+    Float64List gloss,
+    {Float64List? metal,
+    double gain = 0}) {
+  var short = math.min(rect.width, rect.height);
+  var stepX = rect.width / cols, stepY = rect.height / rows;
+  var g0 = gain > 0 ? gain : 0.6 + spec.density * 0.2;
+  var slopeX = g0 / math.max(0.0001, 2 * stepX / short);
+  var slopeY = g0 / math.max(0.0001, 2 * stepY / short);
   const lx = -0.42, ly = -0.58, lz = 0.70;
   var hx = lx, hy = ly, hz = lz + 1;
   var hl = math.sqrt(hx * hx + hy * hy + hz * hz);
@@ -364,13 +390,26 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
     nx /= len;
     ny /= len;
     var nz = 1 / len;
-    // Lambert, lifted so the side away from the light is shaded rather than
-    // black: a surface in a room is lit from everywhere a little.
     var diffuse = 0.45 + 0.55 * (nx * lx + ny * ly + nz * lz) / 0.70;
     var g = gloss[at];
     var hDot = (nx * hx + ny * hy + nz * hz).clamp(0.0, 1.0);
     var spec_ = g <= 0 ? 0.0 : curveFor(g)[(hDot * steps).round()];
-    double ch(double c) => ((c * diffuse * bright) + spec_).clamp(0.0, 1.0);
+    var m = metal == null ? 0.0 : metal[at];
+    var env = 0.0;
+    if (m > 0) {
+      // What the surface sees, reflected: a bright sky above a dark
+      // horizon, swept down the sheet and bent by every slope in it.
+      var t = fv * 0.9 + fu * 0.15 + ny * 2.2 + nx * 0.6;
+      env = 0.62 +
+          0.38 * math.cos(t * math.pi * 1.4) -
+          0.55 * math.exp(-math.pow((t - 0.52) / 0.07, 2));
+    }
+    double ch(double c) {
+      var lit = c * diffuse * bright;
+      var mirrored = c * env * bright * 1.15;
+      return (lit * (1 - m) + mirrored * m + spec_).clamp(0.0, 1.0);
+    }
+
     return 0xFF000000 |
         ((ch(red[at]) * 255).round() << 16) |
         ((ch(green[at]) * 255).round() << 8) |

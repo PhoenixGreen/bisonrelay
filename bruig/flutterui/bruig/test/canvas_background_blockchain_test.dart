@@ -102,7 +102,7 @@ void main() {
     test("are held inside what they can be", () {
       var spec = _base.withParam("rows", 40).withParam("mode", 9);
       expect(spec.p("rows"), 8);
-      expect(spec.choice("mode"), 4);
+      expect(spec.choice("mode"), BlockchainMode.globe);
     });
 
     test("left over from another style are not saved", () {
@@ -204,7 +204,7 @@ void main() {
       var modes = {
         for (var l in looksFor(ProceduralStyle.blockchain)) l.spec.choice("mode")
       };
-      expect(modes, {0, 1, 2, 3, 4});
+      expect(modes, {0, 1, 2, 3, 4, 5});
     });
   });
 }

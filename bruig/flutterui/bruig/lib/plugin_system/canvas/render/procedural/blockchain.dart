@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
@@ -31,6 +32,8 @@ void paintBlockchain(
       _merkle(canvas, rect, spec, t);
     case BlockchainMode.field:
       _field(canvas, rect, spec, t);
+    case BlockchainMode.globe:
+      _globe(canvas, rect, spec, t);
     default:
       _chain(canvas, rect, spec, t);
   }
@@ -123,7 +126,12 @@ class _BlockLook {
   final Color line;
   final Color fill;
   final double stroke;
-  const _BlockLook(this.shape, this.depth, this.line, this.fill, this.stroke);
+
+  /// base is what a solid block is shaded from -- the background -- or null
+  /// for one drawn as a translucent outline.
+  final Color? base;
+  const _BlockLook(this.shape, this.depth, this.line, this.fill, this.stroke,
+      [this.base]);
 }
 
 /// _block draws one block, its front face [face], and returns that face.
@@ -134,6 +142,8 @@ void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
     ..strokeJoin = StrokeJoin.round
     ..color = look.line;
   var fill = Paint()..color = look.fill;
+  var base = look.base;
+  if (base != null) return _solidBlock(canvas, face, look, base, stroke);
   switch (look.shape) {
     case 1:
       canvas.drawRect(face, fill);
@@ -168,6 +178,61 @@ void _block(ui.Canvas canvas, Rect face, _BlockLook look) {
       canvas.drawPath(side, stroke);
       canvas.drawRect(face, stroke);
   }
+}
+
+/// _solidBlock is a block drawn as a solid thing, lit from above: its top
+/// catching the light, its side in shade, its front fading down, and a
+/// bright edge where the top meets the front.
+void _solidBlock(
+    ui.Canvas canvas, Rect face, _BlockLook look, Color base, Paint stroke) {
+  var tint = look.fill.withValues(alpha: 1);
+  var strength = look.fill.a.clamp(0.0, 1.0);
+  Color mix(double k) =>
+      Color.lerp(base, tint, (k * strength).clamp(0.0, 1.0))!;
+  var front = Paint()
+    ..shader = ui.Gradient.linear(
+        face.topCenter, face.bottomCenter, [mix(1.0), mix(0.62)]);
+  switch (look.shape) {
+    case 1:
+      canvas.drawRect(face, front);
+      canvas.drawRect(face, stroke);
+    case 2:
+      var r = RRect.fromRectAndRadius(face, Radius.circular(face.width * 0.18));
+      canvas.drawRRect(r, front);
+      canvas.drawRRect(r, stroke);
+    default:
+      var d = Offset(look.depth * 0.8, -look.depth * 0.6);
+      var top = Path()
+        ..moveTo(face.left, face.top)
+        ..lineTo(face.right, face.top)
+        ..relativeLineTo(d.dx, d.dy)
+        ..lineTo(face.left + d.dx, face.top + d.dy)
+        ..close();
+      var side = Path()
+        ..moveTo(face.right, face.top)
+        ..relativeLineTo(d.dx, d.dy)
+        ..lineTo(face.right + d.dx, face.bottom + d.dy)
+        ..lineTo(face.right, face.bottom)
+        ..close();
+      canvas.drawPath(top, Paint()..color = mix(1.55));
+      canvas.drawPath(
+          side,
+          Paint()
+            ..shader = ui.Gradient.linear(
+                face.topRight, face.bottomRight + d, [mix(0.55), mix(0.3)]));
+      canvas.drawRect(face, front);
+      canvas.drawPath(top, stroke);
+      canvas.drawPath(side, stroke);
+      canvas.drawRect(face, stroke);
+  }
+  // The lit edge.
+  canvas.drawLine(
+      face.topLeft,
+      face.topRight,
+      Paint()
+        ..strokeWidth = look.stroke * 1.2
+        ..color = Color.lerp(look.line, const Color(0xFFFFFFFF), 0.5)!
+            .withValues(alpha: look.line.a));
 }
 
 /// _blockText is a block's height, its hash and its transactions, inside
@@ -279,67 +344,121 @@ void _pulse(ui.Canvas canvas, Offset at, double r, Color color) {
 // --------------------------------------------------------------------------
 
 /// _chain is rows of blocks, each linked to the one before it, the newest
-/// arriving from the right and the chain moving off to the left.
+/// arriving from the right and the chain moving off to the left -- laid flat
+/// in rows, in rows at different depths, or running away into the picture.
 void _chain(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
   var short = math.min(rect.width, rect.height);
-  var b = math.max(10.0, short * spec.scale * 2.4);
-  var pitch = b + b * spec.p("blockGap");
+  var b0 = math.max(10.0, short * spec.scale * 2.4);
+  var gap = spec.p("blockGap");
   var rows = spec.p("rows").round().clamp(1, 8);
   var shape = spec.choice("blockShape");
-  var depth = shape == 0 ? spec.p("blockDepth") * b * 0.6 : 0.0;
   var linkStyle = spec.choice("link");
   var words = spec.on("hashText");
-  var band = rect.height / rows;
-  var fg = spec.foreground, ac = spec.accent;
+  var fg = spec.foreground, ac = spec.accent, bg = spec.background;
   var bright = spec.intensity;
+  var layout = spec.choice("layout");
 
-  for (var r = 0; r < rows; r++) {
+  /// block draws block [k] of the chain seeded [seed] with its front face
+  /// [face], dimmed by [dim], and the link from it to [next].
+  void block(
+      int seed, int k, Rect face, double dim, Offset? next, double wave) {
+    var b = face.width;
+    var depth = shape == 0 ? spec.p("blockDepth") * b * 0.6 : 0.0;
+    var lit = hash(seed, k, 5) < spec.density * 0.35;
+    var where = (face.center.dx - rect.left) / rect.width;
+    var conf = spec.animated && spec.on("ripple")
+        ? math.exp(-math.pow((where - wave) / 0.07, 2))
+        : 0.0;
+    var line =
+        Color.lerp(_a(fg, bright * 0.85 * dim), _a(ac, bright * dim), conf)!;
+    if (next != null && (next - face.centerRight).distance > 1) {
+      _link(canvas, face.centerRight, next, linkStyle, b,
+          _a(lit ? ac : fg, bright * 0.6 * dim));
+      if (spec.p("pulses") > 0 && hash(seed, k, 6) < spec.p("pulses")) {
+        var f = _frac(t * 0.8 + hash(seed, k, 7));
+        _pulse(canvas, Offset.lerp(face.centerRight, next, f)!,
+            math.max(1.2, b * 0.035), _a(ac, bright * dim));
+      }
+    }
+    _block(
+        canvas,
+        face,
+        _BlockLook(
+          shape,
+          depth,
+          lit ? _a(ac, bright * dim) : line,
+          lit
+              ? _a(ac, (0.55 + conf * 0.3) * dim)
+              : _a(fg, (0.32 + conf * 0.4) * dim),
+          math.max(1.0, b * 0.022),
+          bg,
+        ));
+    _blockText(canvas, face.deflate(1), seed, k,
+        _a(lit ? ac : Color.lerp(fg, ac, conf)!, dim), words);
+  }
+
+  if (layout == 2) {
+    // Running away into the picture: from a block at the near corner,
+    // shrinking towards a point high on the far side -- and, with more than
+    // one chain, others running alongside it.
+    var vanish =
+        Offset(rect.right - rect.width * 0.12, rect.top + rect.height * 0.28);
+    const focal = 4.0;
+    for (var r = rows - 1; r >= 0; r--) {
+      var seed = spec.seed * 97 + r * 7919;
+      var start = Offset(rect.left + rect.width * (0.04 + r * 0.16),
+          rect.bottom - rect.height * (0.18 + r * 0.3));
+      var speed = 0.25 + hash(seed, 2, 2) * 0.2;
+      var along = t * speed + hash(seed, 3, 3) * 50;
+      var first = along.floor() - 1;
+      var wave = 1.15 - _frac(t * 0.22 + hash(seed, 4, 4)) * 1.5;
+      Rect faceAt(int k) {
+        var d = (k - along) * (1 + gap);
+        var s = focal / (focal + math.max(-0.9 * focal, d));
+        var c = vanish + (start - vanish) * s;
+        var b = b0 * 1.8 * s;
+        return Rect.fromCenter(center: c, width: b, height: b);
+      }
+
+      for (var k = first + 60; k >= first; k--) {
+        var face = faceAt(k);
+        if (face.width < 2) continue;
+        var dim = (face.width / (b0 * 1.8)).clamp(0.25, 1.0);
+        block(seed, k, face, dim, faceAt(k + 1).centerLeft, wave);
+      }
+    }
+    return;
+  }
+
+  var band = rect.height / rows;
+  // Far rows first, so the near ones are drawn over them.
+  var order = [for (var r = 0; r < rows; r++) r];
+  double scaleOf(int r) =>
+      layout == 1 && rows > 1 ? 1 - 0.6 * (rows - 1 - r) / (rows - 1) : 1.0;
+  order.sort((a, b) => scaleOf(a).compareTo(scaleOf(b)));
+  for (var r in order) {
     var seed = spec.seed * 97 + r * 7919;
+    var s = scaleOf(r);
+    var b = b0 * s;
+    var pitch = b + b * gap;
+    var depth = shape == 0 ? spec.p("blockDepth") * b * 0.6 : 0.0;
     var y = rect.top +
         band * (r + 0.5) +
         (hash(seed, 1, 1) - 0.5) * band * 0.4 * spec.variation +
         depth * 0.3;
-    // Each chain at its own pace, so the rows do not march in step.
-    var speed = 0.25 + hash(seed, 2, 2) * 0.35 * (0.3 + spec.variation);
+    // Each chain at its own pace, so the rows do not march in step -- and
+    // the far ones slower, as things further off seem to move.
+    var speed = (0.25 + hash(seed, 2, 2) * 0.35 * (0.3 + spec.variation)) * s;
     var along = t * speed + hash(seed, 3, 3) * 50;
     var first = (along - 1).floor();
     var count = (rect.width / pitch).ceil() + 3;
-
     // A confirmation running back down the chain from the newest block.
     var wave = 1.15 - _frac(t * 0.22 + hash(seed, 4, 4)) * 1.5;
-
+    var dim = 0.35 + 0.65 * s;
     for (var k = first; k < first + count; k++) {
       var x = rect.left + (k - along) * pitch;
-      var face = Rect.fromLTWH(x, y - b / 2, b, b);
-      var next = Offset(x + pitch, y);
-
-      var lit = hash(seed, k, 5) < spec.density * 0.35;
-      var where = (x + b / 2 - rect.left) / rect.width;
-      var conf = spec.animated && spec.on("ripple")
-          ? math.exp(-math.pow((where - wave) / 0.07, 2))
-          : 0.0;
-      var line = Color.lerp(_a(fg, bright * 0.85), _a(ac, bright), conf)!;
-
-      if (pitch - b > 1) {
-        _link(canvas, Offset(x + b, y), next, linkStyle, b,
-            _a(lit ? ac : fg, bright * 0.6));
-        if (spec.p("pulses") > 0 && hash(seed, k, 6) < spec.p("pulses")) {
-          var f = _frac(t * 0.8 + hash(seed, k, 7));
-          _pulse(canvas, Offset(x + b + (pitch - b) * f, y),
-              math.max(1.2, b * 0.035), _a(ac, bright));
-        }
-      }
-      _block(
-          canvas,
-          face,
-          _BlockLook(
-            shape,
-            depth,
-            lit ? _a(ac, bright) : line,
-            lit ? _a(ac, 0.22 * bright) : _a(fg, (0.09 + conf * 0.2) * bright),
-            math.max(1.0, b * 0.022),
-          ));
-      _blockText(canvas, face.deflate(1), seed, k, lit ? ac : line, words);
+      block(seed, k, Rect.fromLTWH(x, y - b / 2, b, b), dim,
+          Offset(x + pitch, y), wave);
     }
   }
 }
@@ -638,8 +757,9 @@ void _merkle(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
               shape,
               depth,
               _a(lit ? ac : fg, bright * (lit ? 1 : 0.8)),
-              _a(lit ? ac : fg, bright * (lit ? 0.25 : 0.1)),
-              math.max(1.0, b * 0.025)));
+              _a(lit ? ac : fg, bright * (lit ? 0.6 : 0.3)),
+              math.max(1.0, b * 0.025),
+              spec.background));
       if (words && b > 22) {
         var label = level == 0 ? "root" : _hex(spec.seed, level, i, 4);
         _text(canvas, label, c, b * 0.2,
@@ -736,5 +856,176 @@ void _field(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       canvas.drawLine(Offset(top.dx, top.dy + halfH),
           Offset(top.dx, top.dy + halfH + h), edge);
     }
+  }
+}
+
+// --------------------------------------------------------------------------
+// Globe
+// --------------------------------------------------------------------------
+
+/// _globe is the network laid round the world: a planet of dots turning
+/// slowly, with nodes on it and transactions arcing between them above its
+/// surface.
+void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var short = math.min(rect.width, rect.height);
+  var radius = short * 0.4 * math.pow(spec.scale / 0.05, 0.35).toDouble();
+  var centre = rect.center;
+  var fg = spec.foreground, ac = spec.accent, bg = spec.background;
+  var bright = spec.intensity;
+  var yaw = t * 0.12 + hash(spec.seed, 1, 1) * math.pi * 2;
+  const tilt = 0.38;
+  var ct = math.cos(tilt), st = math.sin(tilt);
+  var noise = ValueNoise(spec.seed + 5);
+
+  /// at is a point on the globe -- or [lift] above it -- on the page, and
+  /// how far it faces the viewer.
+  (Offset, double) at(double lat, double lon, [double lift = 0]) {
+    var r = 1 + lift;
+    var x = math.cos(lat) * math.sin(lon + yaw) * r;
+    var y = math.sin(lat) * r;
+    var z = math.cos(lat) * math.cos(lon + yaw) * r;
+    var y2 = y * ct - z * st, z2 = y * st + z * ct;
+    return (centre + Offset(x, -y2) * radius, z2);
+  }
+
+  // The atmosphere, and the planet's dark body inside it.
+  canvas.drawCircle(
+      centre,
+      radius * 1.3,
+      Paint()
+        ..shader = ui.Gradient.radial(centre, radius * 1.3, [
+          _a(ac, 0.0),
+          _a(ac, 0.28 * bright),
+          _a(ac, 0),
+        ], [
+          0.72,
+          0.78,
+          1
+        ]));
+  canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+            centre + Offset(-radius * 0.35, -radius * 0.4), radius * 1.4, [
+          Color.lerp(bg, fg, 0.16)!,
+          Color.lerp(bg, const Color(0xFF000000), 0.3)!,
+        ]));
+
+  // The land, as dots on a grid of latitude and longitude: only where a
+  // field says there is land, so the globe has continents to it.
+  var land = spec.on("landmass");
+  var dots = <double>[];
+  var backDots = <double>[];
+  var edgeDots = <double>[];
+  var step = (3.2 + (1 - spec.density) * 3) * math.pi / 180;
+  for (var lat = -math.pi / 2 + step; lat < math.pi / 2; lat += step) {
+    var n = math.max(1, (math.cos(lat) * math.pi * 2 / step).round());
+    for (var i = 0; i < n; i++) {
+      var lon = i / n * math.pi * 2;
+      if (land) {
+        // Sampled on the sphere itself rather than on the map, so the land
+        // has no seam and no bands running round the poles.
+        var px = math.cos(lat) * math.cos(lon),
+            py = math.cos(lat) * math.sin(lon);
+        var pz = math.sin(lat);
+        var f = noise.fbm(px * 1.7 + pz * 0.8 + 5, py * 1.7 - pz * 0.9 + 3,
+            octaves: 4);
+        if (f < 0.53) continue;
+      }
+      var (p, z) = at(lat, lon);
+      // Brightest facing the viewer and fading towards the edge, which is
+      // what makes a disc of dots a ball.
+      (z > 0.45 ? dots : (z > 0 ? edgeDots : backDots))
+        ..add(p.dx)
+        ..add(p.dy);
+    }
+  }
+  var dotSize = math.max(1.0, radius * step * 0.45);
+  canvas.drawRawPoints(
+      ui.PointMode.points,
+      Float32List.fromList(backDots),
+      Paint()
+        ..strokeWidth = dotSize * 0.8
+        ..strokeCap = StrokeCap.round
+        ..color = _a(fg, 0.08 * bright));
+  canvas.drawRawPoints(
+      ui.PointMode.points,
+      Float32List.fromList(edgeDots),
+      Paint()
+        ..strokeWidth = dotSize * 0.9
+        ..strokeCap = StrokeCap.round
+        ..color = _a(fg, 0.38 * bright));
+  canvas.drawRawPoints(
+      ui.PointMode.points,
+      Float32List.fromList(dots),
+      Paint()
+        ..strokeWidth = dotSize
+        ..strokeCap = StrokeCap.round
+        ..color = _a(fg, 0.75 * bright));
+
+  // The nodes, and the arcs between them.
+  var count = 8 + (spec.density * 26).round();
+  var nodes = [
+    for (var i = 0; i < count; i++)
+      (
+        math.asin(hash(spec.seed, i, 2) * 1.6 - 0.8),
+        hash(spec.seed, i, 3) * math.pi * 2
+      ),
+  ];
+  var arcs = (count * (0.6 + spec.p("pulses"))).round();
+  var line = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..strokeWidth = math.max(0.8, radius * 0.006);
+  for (var k = 0; k < arcs; k++) {
+    var (lat1, lon1) = nodes[(hash(spec.seed, k, 4) * count).floor() % count];
+    var (lat2, lon2) = nodes[(hash(spec.seed, k, 5) * count).floor() % count];
+    if (lat1 == lat2 && lon1 == lon2) continue;
+    // Along the great circle between them, rising above the surface the
+    // further apart they are.
+    var a = [
+      math.cos(lat1) * math.cos(lon1),
+      math.cos(lat1) * math.sin(lon1),
+      math.sin(lat1)
+    ];
+    var b = [
+      math.cos(lat2) * math.cos(lon2),
+      math.cos(lat2) * math.sin(lon2),
+      math.sin(lat2)
+    ];
+    var dot = (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]).clamp(-0.999, 0.999);
+    var omega = math.acos(dot);
+    var lift = 0.08 + omega * 0.18;
+    var pts = <(Offset, double)>[];
+    const segs = 28;
+    for (var i = 0; i <= segs; i++) {
+      var f = i / segs;
+      var sa = math.sin((1 - f) * omega) / math.sin(omega);
+      var sb = math.sin(f * omega) / math.sin(omega);
+      var v = [for (var j = 0; j < 3; j++) a[j] * sa + b[j] * sb];
+      var lat = math.asin(v[2].clamp(-1.0, 1.0));
+      var lon = math.atan2(v[1], v[0]);
+      pts.add(at(lat, lon, lift * math.sin(f * math.pi)));
+    }
+    for (var i = 0; i < segs; i++) {
+      var (p0, z0) = pts[i];
+      var (p1, z1) = pts[i + 1];
+      var front = ((z0 + z1) / 2 + 0.15).clamp(0.0, 1.0);
+      line.color = _a(ac, bright * (0.12 + 0.6 * front));
+      canvas.drawLine(p0, p1, line);
+    }
+    // A transaction on its way.
+    var f =
+        _frac(t * (0.18 + hash(spec.seed, k, 6) * 0.2) + hash(spec.seed, k, 7));
+    var (p, z) = pts[(f * segs).floor().clamp(0, segs)];
+    if (z > -0.1)
+      _pulse(canvas, p, math.max(1.2, radius * 0.012), _a(ac, bright));
+  }
+  for (var (lat, lon) in nodes) {
+    var (p, z) = at(lat, lon);
+    if (z <= 0) continue;
+    _pulse(canvas, p, math.max(1.5, radius * 0.016),
+        _a(Color.lerp(fg, ac, 0.5)!, bright));
   }
 }

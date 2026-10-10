@@ -18,6 +18,7 @@ import 'package:flutter/painting.dart';
 
 part 'light.dart';
 part 'marks.dart';
+part 'metals.dart';
 part 'surfaces.dart';
 part 'tech.dart';
 
@@ -323,7 +324,13 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
       case ProceduralStyle.pitch:
         paintPitch(canvas, area, s);
       case ProceduralStyle.metal:
-        _metal(canvas, area, s);
+        // The original brushing is the first finish; the rest are built
+        // like the surfaces. See metals.dart.
+        if (s.choice("finish") == MetalFinish.brushed) {
+          _metal(canvas, area, s);
+        } else {
+          _metalFinish(canvas, area, s);
+        }
       case ProceduralStyle.surface:
         _surface(canvas, area, s);
     }
@@ -1913,6 +1920,10 @@ void _splatter(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
       return _drips(canvas, rect, spec, t);
     case 2:
       return _spray(canvas, rect, spec, t);
+    case 3:
+      return _splash(canvas, rect, spec, t);
+    case 4:
+      return _watercolour(canvas, rect, spec, t);
   }
   var unit = _unit(rect, spec);
   var blobs = (2 + spec.density * 22).round();

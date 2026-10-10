@@ -22,6 +22,8 @@ List<StyleParam> paramsOf(ProceduralStyle style) => switch (style) {
       ProceduralStyle.crosshatch => hatchParams,
       ProceduralStyle.splatter => splatParams,
       ProceduralStyle.surface => surfaceParams,
+      ProceduralStyle.pitch => pitchParams,
+      ProceduralStyle.metal => metalParams,
       _ => const [],
     };
 
@@ -33,6 +35,7 @@ abstract final class BlockchainMode {
   static const ledger = 2;
   static const merkle = 3;
   static const field = 4;
+  static const globe = 5;
 }
 
 const _chain = {
@@ -44,7 +47,12 @@ const _blocks = {
 
 const List<StyleParam> blockchainParams = [
   StyleParam.choice("mode", "Draw",
-      ["Chain", "Network", "Ledger", "Merkle tree", "Block field"]),
+      ["Chain", "Network", "Ledger", "Merkle tree", "Block field", "Globe"]),
+  StyleParam.choice("layout", "Layout", ["Rows", "Depth", "Perspective"],
+      onlyWhen: _chain),
+  StyleParam.toggle("landmass", "Land", initial: true, onlyWhen: {
+    "mode": [BlockchainMode.globe]
+  }),
   // Chain, and the blocks a Merkle tree is made of.
   StyleParam("rows", "Chains",
       min: 1, max: 8, initial: 3, decimals: 0, onlyWhen: _chain),
@@ -83,7 +91,8 @@ const List<StyleParam> blockchainParams = [
     "mode": [
       BlockchainMode.chain,
       BlockchainMode.network,
-      BlockchainMode.merkle
+      BlockchainMode.merkle,
+      BlockchainMode.globe
     ]
   }),
   // Ledger.
@@ -315,7 +324,8 @@ const List<StyleParam> hatchParams = [
 ];
 
 const List<StyleParam> splatParams = [
-  StyleParam.choice("splatKind", "Kind", ["Blobs", "Drips", "Spray"]),
+  StyleParam.choice("splatKind", "Kind",
+      ["Blobs", "Drips", "Spray", "Splash", "Watercolour"]),
 ];
 
 // --------------------------------------------------------------------------
@@ -349,4 +359,78 @@ const List<StyleParam> surfaceParams = [
   ], onlyWhen: {
     "surfaceKind": [5]
   }),
+];
+
+// --------------------------------------------------------------------------
+// Sport
+// --------------------------------------------------------------------------
+
+/// PitchView is [ProceduralStyle.pitch]'s "view" setting.
+abstract final class PitchViewKind {
+  static const flat = 0;
+  static const isometric = 1;
+  static const broadcast = 2;
+  static const endOn = 3;
+}
+
+/// PitchSurface is its "surface" setting. Auto is whatever the sport is
+/// usually played on.
+abstract final class PitchSurface {
+  static const auto = 0;
+  static const stripes = 1;
+  static const checks = 2;
+  static const plain = 3;
+  static const wood = 4;
+  static const hardCourt = 5;
+  static const clay = 6;
+  static const ice = 7;
+}
+
+const _angled = {
+  "view": [1, 2, 3]
+};
+
+const List<StyleParam> pitchParams = [
+  StyleParam.choice("area", "Show", ["Whole", "Half"]),
+  StyleParam.choice("runs", "Runs", ["Across", "Up the page"]),
+  StyleParam.choice(
+      "view", "View", ["Flat", "Isometric", "Broadcast", "End on"]),
+  StyleParam("tilt", "Tilt", initial: 0.5, onlyWhen: _angled),
+  StyleParam("spin", "Turn",
+      min: -180, max: 180, initial: 0, decimals: 0, onlyWhen: _angled),
+  StyleParam.choice("surround", "Surround", ["Plain", "Stadium", "Track"]),
+  StyleParam.choice(
+      "surface",
+      "Surface",
+      [
+        "Auto",
+        "Stripes",
+        "Checks",
+        "Plain",
+        "Wood floor",
+        "Hard court",
+        "Clay",
+        "Ice",
+      ],
+      group: "Surface"),
+  StyleParam("lineWeight", "Lines",
+      min: 0.5, max: 4, initial: 1, decimals: 1, group: "Surface"),
+  StyleParam.toggle("painted", "Painted areas",
+      initial: true, group: "Surface"),
+  StyleParam.toggle("goals", "Goals", initial: true, group: "Surface"),
+  StyleParam.toggle("numbers", "Numbers", initial: true, group: "Surface"),
+  StyleParam.toggle("floodlights", "Floodlights", group: "Surface"),
+];
+
+const List<StyleParam> metalParams = [
+  StyleParam.choice("finish", "Finish", [
+    "Brushed",
+    "Fine brushed",
+    "Polished",
+    "Diamond plate",
+    "Hammered",
+    "Corrugated",
+    "Perforated",
+    "Riveted panels",
+  ]),
 ];

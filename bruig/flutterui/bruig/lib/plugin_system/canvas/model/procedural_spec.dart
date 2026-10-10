@@ -145,12 +145,18 @@ enum StyleFamily {
 /// pitch stretched to 21:9 is not a pitch, and a strategy diagram drawn on a
 /// stretched one puts the players in the wrong places.
 enum PitchSport {
+  // The names are what documents saved; the labels and the order are free to
+  // change.
   football("Football", 105 / 68),
-  basketball("Basketball", 28 / 15),
+  futsal("Futsal", 40 / 20),
+  basketball("Basketball (FIBA)", 28 / 15),
+  basketballNba("Basketball (NBA)", 28.65 / 15.24),
   tennis("Tennis", 23.77 / 10.97),
-  hockey("Hockey", 91.4 / 55),
-  rugby("Rugby", 100 / 70),
-  americanFootball("American football", 109.7 / 48.8),
+  hockey("Field hockey", 91.4 / 55),
+  iceHockey("Ice hockey (NHL)", 60.96 / 25.91),
+  rugby("Rugby union", 100 / 70),
+  rugbyLeague("Rugby league", 100 / 68),
+  americanFootball("American football", 109.728 / 48.768),
   blank("Blank field", 105 / 68);
 
   final String label;

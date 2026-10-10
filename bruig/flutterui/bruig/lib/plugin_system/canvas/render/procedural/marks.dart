@@ -305,3 +305,196 @@ void _embers(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     canvas.drawCircle(Offset(x, y), r, Paint()..color = _fade(spec.accent, a));
   }
 }
+
+/// _smoothClosed is a closed curve passing smoothly through [pts]: a
+/// Catmull-Rom spline, turned into the cubic curves a Path takes.
+Path _smoothClosed(List<Offset> pts) {
+  var path = Path();
+  var n = pts.length;
+  if (n < 3) return path;
+  path.moveTo(pts[0].dx, pts[0].dy);
+  for (var i = 0; i < n; i++) {
+    var p0 = pts[(i - 1 + n) % n], p1 = pts[i];
+    var p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    var c1 = p1 + (p2 - p0) / 6, c2 = p2 - (p3 - p1) / 6;
+    path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+  }
+  return path..close();
+}
+
+/// _splash is paint thrown hard at a wall: a smooth body, spikes shot out
+/// from it with drops pinching off their tips, teardrops flung further, and
+/// a fine mist round it all.
+void _splash(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var unit = _unit(rect, spec);
+  var splats = (1 + spec.density * 9).round();
+  var short = math.min(rect.width, rect.height);
+  for (var k = 0; k < splats; k++) {
+    var seed = spec.seed * 31 + k * 977;
+    var c = Offset(rect.left + hash(seed, 1, 0) * rect.width,
+        rect.top + hash(seed, 2, 0) * rect.height);
+    var r = short * (0.04 + hash(seed, 3, 0) * 0.08) * (unit / (short * 0.05));
+    var colour = hash(seed, 4, 0) < 0.25 ? spec.accent : spec.foreground;
+    var paint = Paint()
+      ..color = _fade(colour, spec.intensity.clamp(0.0, 1.0))
+      ..isAntiAlias = true;
+    var wild = 0.4 + spec.variation;
+
+    // The body: lumpy, but smooth -- liquid has no corners.
+    const around = 28;
+    var body = [
+      for (var i = 0; i < around; i++)
+        (() {
+          var a = i / around * math.pi * 2;
+          var lump = 0.78 +
+              0.3 * hash(seed, i, 5) * wild +
+              0.12 * math.sin(a * 3 + hash(seed, 6, 0) * 6);
+          return c + Offset(math.cos(a), math.sin(a)) * r * lump;
+        })(),
+    ];
+    canvas.drawPath(_smoothClosed(body), paint);
+
+    // The spikes: tapering from the edge of the body to a point, and some
+    // with a drop pinched off the end.
+    var spikes = (6 + wild * 12).round();
+    for (var i = 0; i < spikes; i++) {
+      var a = hash(seed, i, 7) * math.pi * 2;
+      var dir = Offset(math.cos(a), math.sin(a));
+      var side = Offset(-dir.dy, dir.dx);
+      var len = r * (0.5 + hash(seed, i, 8) * 1.4 * wild);
+      var w = r * (0.08 + hash(seed, i, 9) * 0.14);
+      var base = c + dir * r * 0.7;
+      var tip = base + dir * (r * 0.3 + len);
+      var path = Path()
+        ..moveTo((base + side * w).dx, (base + side * w).dy)
+        ..quadraticBezierTo((base + dir * len * 0.5 + side * w * 0.35).dx,
+            (base + dir * len * 0.5 + side * w * 0.35).dy, tip.dx, tip.dy)
+        ..quadraticBezierTo(
+            (base + dir * len * 0.5 - side * w * 0.35).dx,
+            (base + dir * len * 0.5 - side * w * 0.35).dy,
+            (base - side * w).dx,
+            (base - side * w).dy)
+        ..close();
+      canvas.drawPath(path, paint);
+      if (hash(seed, i, 10) < 0.55) {
+        var drop = tip + dir * w * (1.2 + hash(seed, i, 11) * 2);
+        canvas.drawCircle(drop, w * (0.5 + hash(seed, i, 12) * 0.6), paint);
+      }
+    }
+
+    // Teardrops flung further, each pointing back the way it came.
+    var drops = (8 + wild * 22).round();
+    for (var i = 0; i < drops; i++) {
+      var a = hash(seed, i, 13) * math.pi * 2;
+      var dir = Offset(math.cos(a), math.sin(a));
+      var far = r * (1.5 + math.pow(hash(seed, i, 14), 1.5) * 3.5 * wild);
+      var size = r *
+          0.12 *
+          (1.2 - far / (r * 5.5)).clamp(0.15, 1.0) *
+          (0.5 + hash(seed, i, 15));
+      var at = c + dir * far;
+      canvas.save();
+      canvas.translate(at.dx, at.dy);
+      canvas.rotate(a);
+      canvas.drawPath(
+          Path()
+            ..addOval(Rect.fromCenter(
+                center: Offset.zero, width: size * 2.6, height: size * 1.6))
+            ..moveTo(-size * 1.1, -size * 0.45)
+            ..quadraticBezierTo(-size * 2.8, 0, -size * 1.1, size * 0.45)
+            ..close(),
+          paint);
+      canvas.restore();
+    }
+
+    // And the mist: specks too small to have a shape.
+    var mist = (40 + wild * 160).round();
+    var points = Float32List(mist * 2);
+    for (var i = 0; i < mist; i++) {
+      var a = hash(seed, i, 16) * math.pi * 2;
+      var d = r * (1.1 + math.pow(hash(seed, i, 17), 0.7) * 3.2);
+      points[i * 2] = c.dx + math.cos(a) * d;
+      points[i * 2 + 1] = c.dy + math.sin(a) * d;
+    }
+    canvas.drawRawPoints(
+        ui.PointMode.points,
+        points,
+        Paint()
+          ..color = paint.color
+          ..strokeWidth = math.max(1.0, r * 0.03)
+          ..strokeCap = StrokeCap.round);
+  }
+}
+
+/// _watercolour is washes of paint on paper: each a few thin layers that
+/// do not quite line up, darker at the edges where the pigment gathered as
+/// it dried.
+void _watercolour(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
+  var unit = _unit(rect, spec);
+  var short = math.min(rect.width, rect.height);
+  var washes = (2 + spec.density * 9).round();
+  var noise = ValueNoise(spec.seed + 3);
+  for (var k = 0; k < washes; k++) {
+    var seed = spec.seed * 17 + k * 613;
+    var c = Offset(rect.left + hash(seed, 1, 0) * rect.width,
+        rect.top + hash(seed, 2, 0) * rect.height);
+    var r = short * (0.12 + hash(seed, 3, 0) * 0.2) * (unit / (short * 0.05));
+    // Each wash one paint or the other, with a little of the second run
+    // into it -- as colours bleed on wet paper. Mixed half and half they
+    // are mud.
+    var pick = hash(seed, 4, 0);
+    var colour = pick < 0.55
+        ? Color.lerp(spec.foreground, spec.accent, pick * 0.25)!
+        : Color.lerp(spec.accent, spec.foreground, (1 - pick) * 0.25)!;
+    for (var layer = 0; layer < 4; layer++) {
+      const around = 56;
+      var pts = [
+        for (var i = 0; i < around; i++)
+          (() {
+            var a = i / around * math.pi * 2;
+            var n = noise.fbm(math.cos(a) * 1.8 + k * 7 + layer * 0.9,
+                math.sin(a) * 1.8 + layer * 1.7,
+                octaves: 5);
+            var fine = (hash(seed + layer, i, 9) - 0.5) * 0.06;
+            var reach = r * (0.3 + (n + fine) * 1.4 * (0.5 + spec.variation));
+            return c +
+                Offset(layer * r * 0.09, -layer * r * 0.06) +
+                Offset(math.cos(a), math.sin(a)) * reach;
+          })(),
+      ];
+      var path = _smoothClosed(pts);
+      var a = spec.intensity * 0.14;
+      var tint = colour;
+      canvas.drawPath(path, Paint()..color = _fade(tint, a));
+      // The edge, where the pigment collected as it dried.
+      canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(1.0, r * 0.018)
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 0.01)
+            ..color = _fade(tint, a * 2.2));
+      // And the grain of the pigment settling into the paper.
+      if (layer == 0) {
+        canvas.save();
+        canvas.clipPath(path);
+        var box = path.getBounds();
+        var specks =
+            (box.width * box.height / (r * r) * 260).round().clamp(50, 9000);
+        var dots = Float32List(specks * 2);
+        for (var i = 0; i < specks; i++) {
+          dots[i * 2] = box.left + hash(seed, i, 21) * box.width;
+          dots[i * 2 + 1] = box.top + hash(seed, i, 22) * box.height;
+        }
+        canvas.drawRawPoints(
+            ui.PointMode.points,
+            dots,
+            Paint()
+              ..strokeWidth = math.max(1.0, r * 0.008)
+              ..strokeCap = StrokeCap.round
+              ..color = _fade(tint, a * 1.2));
+        canvas.restore();
+      }
+    }
+  }
+}
