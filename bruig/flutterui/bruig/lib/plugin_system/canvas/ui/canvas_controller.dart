@@ -8,6 +8,7 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
@@ -1312,6 +1313,17 @@ class CanvasController extends ChangeNotifier {
     if (target is TeamElement && index != null) {
       if (index < 0 || index >= target.players.length) return;
       var spot = target.players[index];
+      // On a pitch, every point of the route is carried down onto the
+      // pitch's own metres, so a player or the ball sent along a curve
+      // follows the curve as it is drawn however the pitch is seen.
+      var ground = teamGround(_document, target, from);
+      if (ground != null) {
+        replaceElement(target.withPlayer(
+            index,
+            spot.copyWith(
+                track: _bakeOnPitch(path, ground, target, spot, from, to))));
+        return;
+      }
       var rest = target.centreOf(spot);
       replaceElement(target.withPlayer(
           index, spot.copyWith(track: _bake(path, rest, from, to))));
@@ -1324,6 +1336,27 @@ class CanvasController extends ChangeNotifier {
     // curve passing through his shoulder.
     replaceElement(
         target.withBase(track: _bake(path, target.center, from, to)));
+  }
+
+  /// _bakeOnPitch is [_bake] for a player standing on a pitch: the route's
+  /// points found on the field, and kept as a run in the units a run on a
+  /// pitch is kept in -- see playerPlace.
+  ElementTrack _bakeOnPitch(PathElement path, TeamGround ground,
+      TeamElement team, PlayerSpot spot, int from, int to) {
+    var rest = teamFieldPoint(team, spot, ground.place);
+    var ref = ground.place.reference;
+    var keys = <Keyframe>[];
+    for (var f = from; f <= to; f++) {
+      var at = path.positionAtFrame(f);
+      if (at == null) continue;
+      var field = ground.field(at);
+      if (field == null) continue;
+      keys.add(Keyframe(
+          frame: f,
+          dx: (field.dx - rest.dx) * ref,
+          dy: -(field.dy - rest.dy) * ref));
+    }
+    return ElementTrack(keys);
   }
 
   /// _bake turns a path into a track of poses relative to [rest].

@@ -44,6 +44,7 @@ import 'package:bruig/plugin_system/canvas/render/text_items.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -832,6 +833,13 @@ class CanvasStageState extends State<CanvasStage> {
   Rect? get _selectionBounds {
     var elements = _chosen;
     if (elements.isEmpty) return null;
+    // A team standing on a pitch has no box to show, move or size: the
+    // pitch places it, and its players are what is picked up.
+    if (elements.length == 1 &&
+        elements.first is TeamElement &&
+        (elements.first as TeamElement).linked) {
+      return null;
+    }
     // Where they are on this frame, not where they rest -- see
     // CanvasElement.boundsAt. Using the resting bounds left the blue rectangle
     // standing still while the element inside it animated away, which reads as
@@ -915,6 +923,9 @@ class CanvasStageState extends State<CanvasStage> {
   }
 
   bool _containsPoint(CanvasElement e, Offset point) {
+    // A team on a pitch is wherever the pitch puts its players, not in its
+    // own box -- and it is only the players that are it.
+    if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
     // A curve is caught by its stroke, not by its box.
     //
     // A bowed line or a path with its handles pulled out bulges *outside* its
@@ -1813,7 +1824,12 @@ class CanvasStageState extends State<CanvasStage> {
       }
       _mode = _DragMode.player;
       _playerIndex = index;
-      _playerGrab = doc - team.centreAt(team.players[index], controller.frame);
+      // Held by where they stand rather than by the middle of their token,
+      // which on a pitch seen at an angle is lifted off the ground.
+      _playerGrab = doc -
+          playerPlace(teamGround(document, team, controller.frame), team,
+                  team.players[index], controller.frame)
+              .ground;
       // Clicking a player is also how the timeline is pointed at them: a
       // player has no id and cannot be selected, so this is the only thing
       // that says whose keyframes the controls are about.
@@ -2094,7 +2110,8 @@ class CanvasStageState extends State<CanvasStage> {
     // squad list are wanted -- but the box itself does not move. Any drag that
     // was going to take hold of a player has already been dealt with above, so
     // reaching here means the pointer was on the pitch rather than on a dot.
-    if (element is TeamElement && element.frameLocked) {
+    // A team standing on a pitch is the same: the pitch places it.
+    if (element is TeamElement && element.frameFixed) {
       _mode = _DragMode.none;
       return;
     }
@@ -3755,16 +3772,23 @@ class CanvasStageState extends State<CanvasStage> {
     var rx = team.dotWidth / 2;
     var ry = team.dotHeight / 2;
     if (rx <= 0 || ry <= 0) return null;
+    var ground = teamGround(document, team, controller.frame);
 
     for (var i = team.players.length - 1; i >= 0; i--) {
       var spot = team.players[i];
       if (spot.locked || spot.hidden) continue;
       // Where they are on this frame, not where they rest: on frame 20 of a
-      // run, the dot the pointer is over is the one that has moved.
-      var d = doc - team.centreAt(spot, controller.frame);
+      // run, the dot the pointer is over is the one that has moved. And on a
+      // pitch, where the pitch has put them, at the size it has made them.
+      var at = playerPlace(ground, team, spot, controller.frame);
+      if (!at.shown) continue;
+      var d = doc - at.centre;
+      // The ball by its own size, which is smaller than a player's.
+      var own = spot.ball ? team.radiusOf(spot) : null;
+      var sx = (own ?? rx) * at.size, sy = (own ?? ry) * at.size;
       // Against the ellipse rather than a square, so the gaps between dots in
       // a tight back four stay gaps.
-      if ((d.dx * d.dx) / (rx * rx) + (d.dy * d.dy) / (ry * ry) <= 1) return i;
+      if ((d.dx * d.dx) / (sx * sx) + (d.dy * d.dy) / (sy * sy) <= 1) return i;
     }
     return null;
   }
@@ -3783,6 +3807,43 @@ class CanvasStageState extends State<CanvasStage> {
     }
     var spot = team.players[_playerIndex];
     var at = doc - _playerGrab;
+
+    // On a pitch, the pointer is carried back onto the field, and the player
+    // kept in its metres -- so wherever the pitch goes, they go with it.
+    var ground = teamGround(document, team, controller.frame);
+    if (ground != null) {
+      var field = ground.field(at);
+      if (field == null) return;
+      var animatingOnPitch = controller.document.isAnimated &&
+          (controller.autoKeyframe || (spot.track?.isEmpty == false));
+      if (animatingOnPitch) {
+        var rest = teamFieldPoint(team, spot, ground.place);
+        var ref = ground.place.reference;
+        var track =
+            (spot.track ?? ElementTrack.empty).seededFor(controller.frame);
+        var pose = track.at(controller.frame);
+        controller.replaceElement(
+          team.withPlayer(
+            _playerIndex,
+            spot.copyWith(
+              track: track.withKey(pose.copyWith(
+                frame: controller.frame,
+                dx: (field.dx - rest.dx) * ref,
+                dy: -(field.dy - rest.dy) * ref,
+              )),
+            ),
+          ),
+          transient: true,
+        );
+        return;
+      }
+      var (dx, dy) = spotFromField(team, field, ground.place);
+      controller.replaceElement(
+        team.withPlayer(_playerIndex, spot.copyWith(dx: dx, dy: dy)),
+        transient: true,
+      );
+      return;
+    }
 
     // A player animates like anything else: while the document is animated
     // and either auto-keyframe is on or this player already moves, the drag

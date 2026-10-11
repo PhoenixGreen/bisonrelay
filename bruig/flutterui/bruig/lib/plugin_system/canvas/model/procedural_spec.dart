@@ -516,6 +516,8 @@ class ProceduralSpec {
             params: {...spec.params, "dotKind": 1}),
         ProceduralStyle.symbolField => spec.copyWith(
             style: ProceduralStyle.rain, params: {...spec.params, "mode": 1}),
+        ProceduralStyle.pitch =>
+          spec.copyWith(params: pitchCameraParams(spec.params)),
         _ => spec,
       };
 

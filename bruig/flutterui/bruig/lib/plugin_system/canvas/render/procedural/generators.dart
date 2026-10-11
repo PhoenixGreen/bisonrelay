@@ -111,6 +111,12 @@ double pausedFrame(double frame, ProceduralSpec spec) {
   return frame - hold - ease;
 }
 
+/// latticeDetail is how many points per pixel the lit surfaces -- the metal
+/// and the materials -- are worked out at. One for the canvas and an export;
+/// less for a thumbnail, which is drawn as a big frame shrunk, and needs a
+/// tenth of the points to look the same at its own size.
+double latticeDetail = 1;
+
 /// paintProcedural draws [spec] into [rect].
 ///
 /// [time] is in seconds and is what animation advances. Passing zero is a
@@ -262,6 +268,8 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
     int round, CanvasImageSource? images) {
   var fx = spec.effects;
   var area = rect;
+  // The size as set, before any allowance for a turn. See the pitch below.
+  var givenScale = spec.scale;
   if (spec.rotation != 0) {
     // Grown until its own shorter side is the page's diagonal, which is the
     // least that covers every corner at every angle. Half the width plus
@@ -322,7 +330,13 @@ void _patternLayer(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t,
       case ProceduralStyle.flames:
         _flames(canvas, area, s, t);
       case ProceduralStyle.pitch:
-        paintPitch(canvas, area, s);
+        // Fitted to the page itself rather than to the area grown to cover
+        // its corners when the pattern is turned -- a pitch is one thing
+        // in the middle of the frame, not a pattern filling it, and fitted
+        // to the grown area it jumped bigger the moment it was turned at
+        // all. Its Size is a zoom, as it was set; the ground round it
+        // fills the grown area so the turned corners are not left bare.
+        paintPitch(canvas, rect, s.copyWith(scale: givenScale), cover: area);
       case ProceduralStyle.metal:
         // The original brushing is the first finish; the rest are built
         // like the surfaces. See metals.dart.
@@ -730,8 +744,8 @@ void _metal(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   // pixel and not one per two, because the lattice is a hard ceiling on how
   // fine the brushing can be -- nothing smaller than two cells across can be
   // represented at all, and brushing that cannot be fine is ripples.
-  var cols = rect.width.round().clamp(8, 448);
-  var rows = rect.height.round().clamp(8, 448);
+  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
+  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
 
   // Everything below works in units of the shorter side, so the same spec is

@@ -42,6 +42,10 @@ class StyleParam {
   /// listed for it: a cube's depth means nothing when the blocks are flat.
   final Map<String, List<int>> onlyWhen;
 
+  /// sets is, for a choice, other settings each answer puts in place when it
+  /// is chosen -- a preset for them, which they can then be changed from.
+  final Map<int, Map<String, double>> sets;
+
   const StyleParam(
     this.id,
     this.label, {
@@ -52,7 +56,8 @@ class StyleParam {
     this.group,
     this.onlyWhen = const {},
   })  : choices = const [],
-        toggle = false;
+        toggle = false,
+        sets = const {};
 
   const StyleParam.choice(
     this.id,
@@ -61,6 +66,7 @@ class StyleParam {
     int initial = 0,
     this.group,
     this.onlyWhen = const {},
+    this.sets = const {},
   })  : min = 0,
         max = 1000,
         initial = initial + 0.0,
@@ -78,6 +84,7 @@ class StyleParam {
         initial = initial ? 1.0 : 0.0,
         decimals = 0,
         choices = const [],
+        sets = const {},
         toggle = true;
 
   bool get isChoice => choices.isNotEmpty;

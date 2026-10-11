@@ -76,6 +76,76 @@ PitchMetrics pitchRect(Rect rect, PitchSport sport) {
   return PitchMetrics(Rect.fromPoints(a, b), field.length, field.width);
 }
 
+/// PitchPlacement is where a pitch puts a point on it, as it is drawn: with
+/// its camera, its zoom, its position and its turn.
+///
+/// What a team linked to the pitch stands on. The team keeps its players in
+/// the pitch's own metres and asks this where they are, so that moving,
+/// turning, zooming or tilting the pitch carries them with it -- in
+/// perspective, smaller towards the far touchline.
+class PitchPlacement {
+  final _View _view;
+  final _Field _field;
+  final Offset _pivot;
+  final double _turn;
+
+  /// visibleFrom is the length along the field from which it is shown, for
+  /// half a pitch; nought for the whole of it.
+  final double visibleFrom;
+
+  /// reference is how many pixels a metre is on this pitch drawn flat,
+  /// across and unzoomed -- what a team's dot sizes are measured against.
+  final double reference;
+
+  PitchPlacement._(this._view, this._field, this._pivot, this._turn,
+      this.visibleFrom, this.reference);
+
+  double get length => _field.length;
+  double get width => _field.width;
+  PitchSport get sport => _field.sport;
+
+  /// flat is whether the pitch is seen from straight above.
+  bool get flat => _view.flat;
+
+  /// page is where [x], [y] -- metres along and across the field -- and
+  /// [z] metres above it land on the page.
+  Offset page(double x, double y, [double z = 0]) =>
+      _turned(_view.project(x, y, z), _turn);
+
+  /// field is the point on the field under [page], or null where there is
+  /// no field under it.
+  Offset? field(Offset page) => _view.unproject(_turned(page, -_turn));
+
+  /// scaleAt is how many pixels a metre standing at [x], [y] takes up.
+  double scaleAt(double x, double y) => _view.pixelsPerMetreAt(x, y);
+
+  /// depthOf is how far [x], [y] is from the camera, for drawing nearer
+  /// things over further ones.
+  double depthOf(double x, double y) => _view.depthOf(x, y);
+
+  Offset _turned(Offset p, double by) {
+    if (by == 0) return p;
+    var c = math.cos(by), s = math.sin(by);
+    var d = p - _pivot;
+    return _pivot + Offset(d.dx * c - d.dy * s, d.dx * s + d.dy * c);
+  }
+}
+
+/// pitchPlacement is where [spec]'s pitch, drawn into [rect], puts things.
+PitchPlacement pitchPlacement(Rect rect, ProceduralSpec spec) {
+  var field = _Field.of(spec.sport);
+  var view = _View.fit(rect, spec, field);
+  var half = spec.choice("area") == 1;
+  return PitchPlacement._(
+    view,
+    field,
+    rect.center,
+    spec.rotation * math.pi / 180,
+    half ? _View._window(spec, field, true).left : -1e9,
+    pitchRect(rect, spec.sport).scale,
+  );
+}
+
 /// _Field is one sport's field of play, in metres: its size, the width of
 /// its lines, and what lies round it that belongs in the picture.
 class _Field {
@@ -152,13 +222,18 @@ class _View {
   final double azimuth;
   final double elevation;
 
+  /// side is the camera swung round to one side of the picture, in radians:
+  /// tilting the ground about the page's own upright.
+  final double side;
+
   /// distance is the camera's distance from the middle of the ground, for a
   /// view in perspective; nought for one without.
   final double distance;
   double scale = 1, ox = 0, oy = 0;
 
   _View(this.cx, this.cy, this.upright, this.azimuth, this.elevation,
-      this.distance);
+      this.distance,
+      [this.side = 0]);
 
   /// _rows is the plane's x and y on the ground, as rows of a matrix.
   (List<double>, List<double>) _rows() {
@@ -183,9 +258,13 @@ class _View {
     var sp = math.sin(elevation), cp = math.cos(elevation);
     var up = py * sp + z * cp;
     var depth = py * cp - z * sp;
-    if (distance <= 0) return (px, up, depth);
+    // Swung round to the side: across and depth turned about the upright.
+    var ch = math.cos(side), sh = math.sin(side);
+    var across = px * ch - depth * sh;
+    depth = px * sh + depth * ch;
+    if (distance <= 0) return (across, up, depth);
     var k = distance / math.max(distance * 0.05, distance + depth);
-    return (px * k, up * k, depth);
+    return (across * k, up * k, depth);
   }
 
   Offset project(double x, double y, [double z = 0]) {
@@ -200,13 +279,16 @@ class _View {
   Float64List ground() {
     var (pr, qr) = _rows();
     var sp = math.sin(elevation), cp = math.cos(elevation);
+    var ch = math.cos(side), sh = math.sin(side);
+    // On the ground: across, up and depth are each a row in x, y and 1.
+    var across = [for (var i = 0; i < 3; i++) pr[i] * ch - cp * qr[i] * sh];
+    var depth = [for (var i = 0; i < 3; i++) pr[i] * sh + cp * qr[i] * ch];
+    var up = [for (var i = 0; i < 3; i++) sp * qr[i]];
     var persp = distance > 0;
-    var w = persp
-        ? [cp * qr[0], cp * qr[1], distance + cp * qr[2]]
-        : [0.0, 0.0, 1.0];
+    var w = persp ? [depth[0], depth[1], distance + depth[2]] : [0.0, 0.0, 1.0];
     var f = persp ? distance : 1.0;
-    var hx = [for (var i = 0; i < 3; i++) ox * w[i] + scale * f * pr[i]];
-    var hy = [for (var i = 0; i < 3; i++) oy * w[i] - scale * f * sp * qr[i]];
+    var hx = [for (var i = 0; i < 3; i++) ox * w[i] + scale * f * across[i]];
+    var hy = [for (var i = 0; i < 3; i++) oy * w[i] - scale * f * up[i]];
     return Float64List.fromList([
       hx[0], hy[0], 0, w[0], //
       hx[1], hy[1], 0, w[1], //
@@ -218,42 +300,56 @@ class _View {
   /// pixelsPerMetre is how big a metre is in the middle of the picture.
   double get pixelsPerMetre => scale;
 
+  /// pixelsPerMetreAt is how big a metre standing upright at [x], [y] looks
+  /// -- smaller the further it is from the camera.
+  double pixelsPerMetreAt(double x, double y) {
+    if (distance <= 0) return scale;
+    var depth = camera(x, y, 0).$3;
+    return scale * distance / math.max(distance * 0.05, distance + depth);
+  }
+
+  /// unproject is the point on the ground under [page], or null where the
+  /// ground is not under it at all -- above the horizon.
+  Offset? unproject(Offset page) {
+    var m = ground();
+    // The homography's own three rows, out of the 4x4 it is handed in as.
+    var a = m[0], b = m[4], c = m[12];
+    var d = m[1], e = m[5], f = m[13];
+    var g = m[3], h = m[7], i = m[15];
+    var det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if (det.abs() < 1e-12) return null;
+    // The inverse, by cofactors, applied to (X, Y, 1).
+    var x = page.dx, y = page.dy;
+    var gx = (e * i - f * h) * x + (c * h - b * i) * y + (b * f - c * e);
+    var gy = (f * g - d * i) * x + (a * i - c * g) * y + (c * d - a * f);
+    var gw = (d * h - e * g) * x + (b * g - a * h) * y + (a * e - b * d);
+    if (gw.abs() < 1e-12) return null;
+    var wx = gx / gw, wy = gy / gw;
+    // Behind the camera is not on the ground in front of it.
+    if (distance > 0 && distance + camera(wx, wy, 0).$3 <= 0) return null;
+    return Offset(wx, wy);
+  }
+
   /// flat is whether the ground is seen from straight above.
-  bool get flat => elevation > math.pi / 2 - 0.01;
+  bool get flat => elevation > math.pi / 2 - 0.01 && side.abs() < 0.01;
 
   /// fit is the view [spec] asks for, fitted into [rect].
   static _View fit(Rect rect, ProceduralSpec spec, _Field field) {
     var half = spec.choice("area") == 1;
     var window = _window(spec, field, half);
-    var kind = spec.choice("view");
-    var tilt = spec.p("tilt");
-    var spin = spec.p("spin") * math.pi / 180;
+    var cam = pitchCamera(spec);
     var reach = math.max(window.width, window.height);
-    var view = switch (kind) {
-      PitchViewKind.isometric => _View(
-          window.center.dx,
-          window.center.dy,
-          spec.choice("runs") == 1,
-          math.pi / 4 + spin,
-          (24 + tilt * 30) * math.pi / 180,
-          0),
-      PitchViewKind.broadcast => _View(
-          window.center.dx,
-          window.center.dy,
-          spec.choice("runs") == 1,
-          spin,
-          (14 + tilt * 46) * math.pi / 180,
-          reach * 1.25),
-      PitchViewKind.endOn => _View(
-          window.center.dx,
-          window.center.dy,
-          spec.choice("runs") == 1,
-          -math.pi / 2 + spin,
-          (14 + tilt * 46) * math.pi / 180,
-          reach * 1.25),
-      _ => _View(window.center.dx, window.center.dy, spec.choice("runs") == 1,
-          0, math.pi / 2, 0),
-    };
+    var view = _View(
+      window.center.dx,
+      window.center.dy,
+      spec.choice("runs") == 1,
+      cam.turn * math.pi / 180,
+      (90 - cam.tilt) * math.pi / 180,
+      // Perspective as how close the camera is: none at nought, which is a
+      // drawing rather than a photograph, and a wide lens at one.
+      cam.perspective <= 0 ? 0 : reach * (1 + (1 - cam.perspective) * 6),
+      cam.side * math.pi / 180,
+    );
 
     // Fitted to the corners of what has to be seen, and to the tops of the
     // stands where there are any.
@@ -291,6 +387,14 @@ class _View {
         math.max(0.0, math.min(available.width / bw, available.height / bh));
     view.ox = available.center.dx - view.scale * (minX + maxX) / 2;
     view.oy = available.center.dy + view.scale * (minY + maxY) / 2;
+
+    // Then zoomed about the middle of the frame, and moved: the Size and
+    // the two position settings.
+    var c = available.center;
+    var zoom = (spec.scale / 0.05).clamp(0.05, 20.0);
+    view.scale *= zoom;
+    view.ox = c.dx + (view.ox - c.dx) * zoom + cam.x * rect.width / 2;
+    view.oy = c.dy + (view.oy - c.dy) * zoom - cam.y * rect.height / 2;
     return view;
   }
 
@@ -307,6 +411,32 @@ class _View {
     }
     return box;
   }
+}
+
+/// PitchCamera is where a pitch is seen from, in the settings' own terms:
+/// degrees of tilt up and down and to the side, degrees of turn on the
+/// ground, how strong the perspective is, and where the picture is moved to.
+typedef PitchCamera = ({
+  double tilt,
+  double side,
+  double turn,
+  double perspective,
+  double x,
+  double y,
+});
+
+/// pitchCamera is [spec]'s camera. See pitchCameraParams.
+PitchCamera pitchCamera(ProceduralSpec spec) {
+  var p = pitchCameraParams(spec.params);
+  double get(String id) => p[id] ?? 0;
+  return (
+    tilt: get("tiltV").clamp(0.0, 80.0),
+    side: get("tiltH").clamp(-60.0, 60.0),
+    turn: get("turn"),
+    perspective: get("perspective").clamp(0.0, 1.0),
+    x: get("panX").clamp(-1.0, 1.0),
+    y: get("panY").clamp(-1.0, 1.0),
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -404,21 +534,23 @@ class _Pen {
 }
 
 /// paintPitch draws the surface, its markings and what stands on it.
-void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
+void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
+    {Rect? cover}) {
   var field = _Field.of(spec.sport);
+  var all = cover ?? rect;
   var view = _View.fit(rect, spec, field);
   if (view.scale <= 0) return;
   var surround = spec.choice("surround");
   var painted = spec.on("painted");
 
   // What is round it all.
-  canvas.drawRect(rect, Paint()..color = _darken(spec.background, 0.45));
+  canvas.drawRect(all, Paint()..color = _darken(spec.background, 0.45));
   if (!view.flat) {
     // A sky of sorts, where the ground stops short of the top of the frame.
     canvas.drawRect(
-        rect,
+        all,
         Paint()
-          ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, [
+          ..shader = ui.Gradient.linear(all.topCenter, all.bottomCenter, [
             _darken(spec.background, 0.7),
             _darken(spec.background, 0.45),
           ]));
@@ -430,7 +562,7 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var minimum = 0.9 / view.pixelsPerMetre;
 
   canvas.save();
-  canvas.clipRect(rect);
+  canvas.clipRect(all);
   canvas.save();
   canvas.transform(view.ground());
 

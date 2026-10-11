@@ -130,7 +130,8 @@ List<Widget> elementSettings(
             ),
           ]),
         ],
-      TeamElement e => teamSettings(e, write, begin, commit),
+      TeamElement e =>
+        teamSettings(context, controller, e, write, begin, commit),
       PathElement e =>
         pathSettings(context, controller, e, write, begin, commit),
       _ => const <Widget>[],

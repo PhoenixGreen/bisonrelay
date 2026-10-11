@@ -1,4 +1,8 @@
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -12,8 +16,13 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 /// behind an expander because eleven rows of four fields is more than every
 /// other element's settings put together, and somebody opening a team is
 /// usually there for the formation or the kit.
-List<Widget> teamSettings(TeamElement e, SettingsWrite write,
-    VoidCallback begin, VoidCallback commit) {
+List<Widget> teamSettings(
+    BuildContext context,
+    CanvasController controller,
+    TeamElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
   /// now is a change made in one go -- a dropdown, a colour, a switch -- which
   /// is its own undo step.
   void now(TeamElement next) {
@@ -30,15 +39,20 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
         hideCaption: true,
         rule: false,
         children: [
+          // The pitch the team stands on. Linked, it goes wherever the pitch
+          // goes -- moved, turned, zoomed or tilted -- and its players are
+          // kept in the pitch's own metres. See team_painter.dart.
+          _pitchDropdown(controller, e, now),
           CanvasDropdown<TeamSport>(
+            key: const ValueKey("teamSport"),
             label: "Sport",
             value: e.sport,
-            width: 104,
+            width: 138,
             options: [for (var s in TeamSport.values) (s, s.label)],
-            // Changing the sport re-lays the squad out, since a formation belongs
-            // to one game and the squad size changes with it.
-            onChanged: (v) =>
-                now(e.copyWith(sport: v).withFormation(v.formations.first)),
+            // Changing the sport re-lays the squad out and numbers it afresh,
+            // since a formation belongs to one game and the squad size changes
+            // with it.
+            onChanged: (v) => now(e.withSport(v)),
           ),
           CanvasDropdown<TeamFormation>(
             label: "Formation",
@@ -66,31 +80,101 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
             // faces the home side rather than both running at the same goal.
             onChanged: (v) => now(e.withFormation(e.formation, mirror: v)),
           ),
-          CanvasIconButton(
-            icon: e.frameLocked ? Icons.lock : Icons.lock_open,
-            tooltip: e.frameLocked
-                ? "The team's box is pinned — players still move"
-                : "Pin the team's box so only players move",
-            active: e.frameLocked,
-            onPressed: () => now(e.copyWith(frameLocked: !e.frameLocked)),
-          ),
+          if (!e.linked)
+            CanvasIconButton(
+              icon: e.frameLocked ? Icons.lock : Icons.lock_open,
+              tooltip: e.frameLocked
+                  ? "The team's box is pinned — players still move"
+                  : "Pin the team's box so only players move",
+              active: e.frameLocked,
+              onPressed: () => now(e.copyWith(frameLocked: !e.frameLocked)),
+            ),
           CanvasIconButton(
             icon: Icons.refresh,
-            tooltip: "Put everybody back in formation",
+            tooltip: "Reset formation",
             onPressed: () => now(e.withFormation(e.formation)),
           ),
+          // The ball: one more thing on the pitch that moves the way a player
+          // does -- dragged, keyframed, or sent along a path.
+          CanvasToggle(
+            key: const ValueKey("teamBall"),
+            label: "Ball",
+            value: e.ball != null,
+            onChanged: (v) => now(e.withBall(v)),
+          ),
+          if (e.formation.roles.isNotEmpty)
+            CanvasIconButton(
+              key: const ValueKey("teamNameByPosition"),
+              icon: Icons.badge_outlined,
+              tooltip: "Name by position",
+              onPressed: () => now(e.namedByPosition()),
+            ),
         ]),
-    _squadList(e, write, begin, commit, now),
-    CanvasControlGroup(label: "Colours", rule: false, children: [
-      CanvasColorButton(
-        label: "Keeper",
-        color: e.keeperColor,
-        onChanged: (c) => now(e.copyWith(keeperColor: c)),
+    _squadList(context, controller, e, write, begin, commit, now),
+    // What the players look like: a dot, a shirt or a portrait, the kit's
+    // pattern, faces, and the finishing.
+    CanvasControlGroup(label: "Design", rule: false, children: [
+      CanvasDropdown<TokenStyle>(
+        key: const ValueKey("teamToken"),
+        label: "Players as",
+        value: e.tokenStyle,
+        width: 104,
+        options: [for (var t in TokenStyle.values) (t, t.label)],
+        onChanged: (v) => now(e.copyWith(tokenStyle: v)),
       ),
+      CanvasDropdown<KitPattern>(
+        key: const ValueKey("teamKit"),
+        label: "Kit",
+        value: e.kitPattern,
+        width: 104,
+        options: [for (var k in KitPattern.values) (k, k.label)],
+        onChanged: (v) => now(e.copyWith(kitPattern: v)),
+      ),
+      CanvasDropdown<NameStyle>(
+        key: const ValueKey("teamNameStyle"),
+        label: "Names",
+        value: e.nameStyle,
+        width: 90,
+        options: [for (var n in NameStyle.values) (n, n.label)],
+        onChanged: (v) => now(e.copyWith(nameStyle: v)),
+      ),
+      if (e.tokenStyle == TokenStyle.portrait)
+        CanvasToggle(
+          key: const ValueKey("teamFaces"),
+          label: "Faces",
+          value: e.faces,
+          onChanged: (v) => now(e.copyWith(faces: v)),
+        ),
+      CanvasToggle(
+        key: const ValueKey("teamShadow"),
+        label: "Shadow",
+        value: e.shadow,
+        onChanged: (v) => now(e.copyWith(shadow: v)),
+      ),
+      CanvasToggle(
+        key: const ValueKey("teamRuns"),
+        label: "Runs",
+        value: e.showRuns,
+        onChanged: (v) => now(e.copyWith(showRuns: v)),
+      ),
+    ]),
+    CanvasControlGroup(label: "Colours", rule: false, children: [
+      if (e.sport.hasKeeper)
+        CanvasColorButton(
+          label: "Keeper",
+          color: e.keeperColor,
+          onChanged: (c) => now(e.copyWith(keeperColor: c)),
+        ),
       CanvasColorButton(
         label: "Players",
         color: e.playerColor,
         onChanged: (c) => now(e.copyWith(playerColor: c)),
+      ),
+      CanvasColorButton(
+        key: const ValueKey("teamSecond"),
+        label: "Second",
+        color: e.secondaryColor,
+        onChanged: (c) => now(e.copyWith(secondaryColor: c)),
       ),
       CanvasColorButton(
         label: "Outline",
@@ -169,19 +253,20 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
         },
         onCommit: commit,
       ),
-      CanvasNumberField(
-        label: "Angle",
-        value: e.rotation,
-        min: -180,
-        max: 180,
-        width: 56,
-        suffix: "°",
-        onChanged: (v) {
-          begin();
-          write(e.withBase(rotation: v));
-        },
-        onCommit: commit,
-      ),
+      if (!e.linked)
+        CanvasNumberField(
+          label: "Angle",
+          value: e.rotation,
+          min: -180,
+          max: 180,
+          width: 56,
+          suffix: "°",
+          onChanged: (v) {
+            begin();
+            write(e.withBase(rotation: v));
+          },
+          onCommit: commit,
+        ),
     ]),
     // One set of type for the number and the name. They were two identical
     // panels, and the two drifted -- a team's names ended up in a different
@@ -257,15 +342,24 @@ List<Widget> teamSettings(TeamElement e, SettingsWrite write,
 /// The coordinates are shown and edited in canvas units rather than as the
 /// fractions they are stored as, because "where is he" is a question about the
 /// pitch, not about the element's box.
-Widget _squadList(TeamElement e, SettingsWrite write, VoidCallback begin,
-        VoidCallback commit, void Function(TeamElement) now) =>
+Widget _squadList(
+        BuildContext context,
+        CanvasController controller,
+        TeamElement e,
+        SettingsWrite write,
+        VoidCallback begin,
+        VoidCallback commit,
+        void Function(TeamElement) now) =>
     CanvasExpander(
       label: "Players",
-      trailing: "${e.players.length}",
+      trailing: e.ball == null
+          ? "${e.players.length}"
+          : "${e.players.length - 1} + ball",
       children: [
         for (var i = 0; i < e.players.length; i++)
           _PlayerRow(
             key: ValueKey("player-$i-${e.id}"),
+            controller: controller,
             team: e,
             index: i,
             write: write,
@@ -282,6 +376,7 @@ Widget _squadList(TeamElement e, SettingsWrite write, VoidCallback begin,
 /// across the rebuild that every keystroke causes; as plain builders, typing
 /// in one player's name rebuilt all eleven and moved the caret.
 class _PlayerRow extends StatelessWidget {
+  final CanvasController controller;
   final TeamElement team;
   final int index;
   final SettingsWrite write;
@@ -290,6 +385,7 @@ class _PlayerRow extends StatelessWidget {
   final void Function(TeamElement) now;
 
   const _PlayerRow({
+    required this.controller,
     required this.team,
     required this.index,
     required this.write,
@@ -303,6 +399,12 @@ class _PlayerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     var spot = team.players[index];
     var centre = team.centreOf(spot);
+    // On a pitch, where they stand is said in its metres -- along the
+    // field from the left end and across it from the bottom touchline --
+    // which is a position that means the same whatever the pitch is doing.
+    var ground = teamGround(controller.document, team, controller.frame);
+    var field =
+        ground == null ? null : teamFieldPoint(team, spot, ground.place);
 
     void set(PlayerSpot next) {
       begin();
@@ -311,6 +413,12 @@ class _PlayerRow extends StatelessWidget {
 
     /// moveTo writes a canvas coordinate back as the fraction it is stored as.
     void moveTo({double? x, double? y}) {
+      if (ground != null && field != null) {
+        var (dx, dy) = spotFromField(
+            team, Offset(x ?? field.dx, y ?? field.dy), ground.place);
+        set(spot.copyWith(dx: dx, dy: dy));
+        return;
+      }
       var w = team.width == 0 ? 1 : team.width;
       var h = team.height == 0 ? 1 : team.height;
       set(spot.copyWith(
@@ -324,14 +432,15 @@ class _PlayerRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
       child: CanvasWrap(children: [
-        CanvasTextField(
-          key: ValueKey("num-$index-${team.id}"),
-          label: index == 0 ? "GK" : "No.",
-          value: spot.number,
-          width: 42,
-          onChanged: (v) => set(spot.copyWith(number: v)),
-          onCommit: commit,
-        ),
+        if (!spot.ball)
+          CanvasTextField(
+            key: ValueKey("num-$index-${team.id}"),
+            label: index == 0 && team.sport.hasKeeper ? "GK" : "No.",
+            value: spot.number,
+            width: 42,
+            onChanged: (v) => set(spot.copyWith(number: v)),
+            onCommit: commit,
+          ),
         CanvasTextField(
           key: ValueKey("name-$index-${team.id}"),
           label: "Name",
@@ -342,8 +451,9 @@ class _PlayerRow extends StatelessWidget {
         ),
         CanvasNumberField(
           key: ValueKey("x-$index-${team.id}"),
-          label: "X",
-          value: centre.dx,
+          label: field == null ? "X" : "Along",
+          decimals: field == null ? 0 : 1,
+          value: field?.dx ?? centre.dx,
           min: -100000,
           max: 100000,
           width: 54,
@@ -352,13 +462,63 @@ class _PlayerRow extends StatelessWidget {
         ),
         CanvasNumberField(
           key: ValueKey("y-$index-${team.id}"),
-          label: "Y",
-          value: centre.dy,
+          label: field == null ? "Y" : "Across",
+          decimals: field == null ? 0 : 1,
+          value: field?.dy ?? centre.dy,
           min: -100000,
           max: 100000,
           width: 54,
           onChanged: (v) => moveTo(y: v),
           onCommit: commit,
+        ),
+        // A photo for the portrait, from a file or from the pictures the
+        // canvas already has -- and taken off again. Not for the ball.
+        if (!spot.ball) ...[
+          CanvasIconButton(
+            key: ValueKey("photo-$index-${team.id}"),
+            icon: spot.photo.isEmpty
+                ? Icons.add_a_photo_outlined
+                : Icons.account_circle,
+            tooltip: spot.photo.isEmpty ? "Add photo" : "Change photo",
+            active: spot.photo.isNotEmpty,
+            onPressed: () async {
+              var id = await pickCanvasImage(context);
+              if (id == null) return;
+              now(team.withPlayer(index, spot.copyWith(photo: id)));
+            },
+          ),
+          CanvasIconButton(
+            icon: Icons.photo_library_outlined,
+            tooltip: "Photo from library",
+            onPressed: () async {
+              var id = await showRecentPictures(context);
+              if (id == null) return;
+              now(team.withPlayer(index, spot.copyWith(photo: id)));
+            },
+          ),
+          if (spot.photo.isNotEmpty)
+            CanvasIconButton(
+              icon: Icons.no_photography_outlined,
+              tooltip: "Remove photo",
+              onPressed: () =>
+                  now(team.withPlayer(index, spot.copyWith(photo: ""))),
+            ),
+          CanvasIconButton(
+            key: ValueKey("captain-$index-${team.id}"),
+            icon: Icons.copyright,
+            tooltip: "Captain",
+            active: spot.captain,
+            onPressed: () => now(
+                team.withPlayer(index, spot.copyWith(captain: !spot.captain))),
+          ),
+        ],
+        CanvasIconButton(
+          key: ValueKey("highlight-$index-${team.id}"),
+          icon: Icons.highlight,
+          tooltip: "Highlight",
+          active: spot.highlight,
+          onPressed: () => now(team.withPlayer(
+              index, spot.copyWith(highlight: !spot.highlight))),
         ),
         CanvasIconButton(
           icon: spot.locked ? Icons.lock : Icons.lock_open,
@@ -374,19 +534,22 @@ class _PlayerRow extends StatelessWidget {
           onPressed: () =>
               now(team.withPlayer(index, spot.copyWith(hidden: !spot.hidden))),
         ),
-        CanvasIconButton(
-          icon: Icons.arrow_upward,
-          tooltip: "Bring forward",
-          onPressed: index >= team.players.length - 1
-              ? null
-              : () => now(team.movePlayer(index, index + 1)),
-        ),
-        CanvasIconButton(
-          icon: Icons.arrow_downward,
-          tooltip: "Send to back",
-          onPressed:
-              index <= 0 ? null : () => now(team.movePlayer(index, index - 1)),
-        ),
+        if (!spot.ball)
+          CanvasIconButton(
+            icon: Icons.arrow_upward,
+            tooltip: "Bring forward",
+            onPressed: index >= team.players.length - 1
+                ? null
+                : () => now(team.movePlayer(index, index + 1)),
+          ),
+        if (!spot.ball)
+          CanvasIconButton(
+            icon: Icons.arrow_downward,
+            tooltip: "Send to back",
+            onPressed: index <= 0
+                ? null
+                : () => now(team.movePlayer(index, index - 1)),
+          ),
       ]),
     );
   }
@@ -398,3 +561,32 @@ class _PlayerRow extends StatelessWidget {
 /// every player of every team, because "which player runs this" is the
 /// question this feature exists to answer and making it a two-step choice --
 /// pick a team, then pick a row -- would be two dropdowns for one decision.
+
+/// _pitchDropdown is which pitch the team stands on: none, the canvas's
+/// background where it is a pitch, or a pitch background element.
+Widget _pitchDropdown(CanvasController controller, TeamElement e,
+    void Function(TeamElement) now) {
+  var choices = pitchChoices(controller.document);
+  var known = e.link.isEmpty || choices.any((c) => c.link == e.link);
+  return CanvasDropdown<String>(
+    key: const ValueKey("teamPitch"),
+    label: "Pitch",
+    value: known ? e.link : "?",
+    width: 150,
+    options: [
+      ("", "Not linked"),
+      if (!known) ("?", "Missing pitch"),
+      for (var c in choices) (c.link, c.label),
+    ],
+    onChanged: (link) {
+      if (link == "?") return;
+      if (link.isEmpty) {
+        now(e.copyWith(link: ""));
+        return;
+      }
+      var c = choices.firstWhere((c) => c.link == link);
+      now(e.linkedTo(link,
+          pitch: c.sport, reference: c.reference, area: c.area));
+    },
+  );
+}

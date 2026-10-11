@@ -50,8 +50,18 @@ class _ThumbPainter extends CustomPainter {
     canvas.scale(k);
     // A moment into the movement, for the styles that start from nothing:
     // rain that has not started falling is an empty rectangle.
-    paintProcedural(canvas, Rect.fromLTWH(0, 0, across, size.height / k), spec,
-        time: 1.5, frameRate: 30);
+    // As many lattice points as the thumbnail has pixels, not as many as
+    // the frame it is drawn as: a lit surface is most of a second of work
+    // at full size, and a panel of looks draws a dozen of them.
+    var detail = latticeDetail;
+    latticeDetail = (k * 1.5).clamp(0.15, 1.0);
+    try {
+      paintProcedural(
+          canvas, Rect.fromLTWH(0, 0, across, size.height / k), spec,
+          time: 1.5, frameRate: 30);
+    } finally {
+      latticeDetail = detail;
+    }
     canvas.restore();
   }
 

@@ -58,8 +58,8 @@ void _surface(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   if (short <= 0) return;
   // A point a pixel, capped, as the metal's lattice is: the lattice is a
   // ceiling on how fine anything can be.
-  var cols = rect.width.round().clamp(8, 448);
-  var rows = rect.height.round().clamp(8, 448);
+  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
+  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
   var size = math.max(0.08, spec.scale / 0.05);
   var ceiling = math.min(cols, rows) / 2.2;
@@ -393,7 +393,12 @@ void _shadeLattice(
     var diffuse = 0.45 + 0.55 * (nx * lx + ny * ly + nz * lz) / 0.70;
     var g = gloss[at];
     var hDot = (nx * hx + ny * hy + nz * hz).clamp(0.0, 1.0);
-    var spec_ = g <= 0 ? 0.0 : curveFor(g)[(hDot * steps).round()];
+    // Rounded to one of 64 glosses before its curve is looked up. Gloss that
+    // varies across a surface -- dulled by rust, say -- otherwise built a
+    // table for every point of it, and a rusty sheet took a second and a
+    // half to draw.
+    var spec_ =
+        g <= 0 ? 0.0 : curveFor((g * 64).round() / 64)[(hDot * steps).round()];
     var m = metal == null ? 0.0 : metal[at];
     var env = 0.0;
     if (m > 0) {

@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_palettes.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
 import 'package:flutter/painting.dart';
 
 // background_looks.dart is the designed starting points for every style.
@@ -99,7 +100,7 @@ BackgroundLook _look(
     vignette: vignette,
     effects: effects,
     light: light,
-    params: params,
+    params: style == ProceduralStyle.pitch ? pitchCameraParams(params) : params,
     rings: rings,
     metal: metal,
     sport: sport,

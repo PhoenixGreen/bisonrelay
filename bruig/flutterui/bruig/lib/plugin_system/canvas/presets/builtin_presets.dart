@@ -303,7 +303,12 @@ CanvasDocument footballCanvas() {
         ),
         namePosition: namePosition,
         nameGap: diameter * 0.18,
-      ).withFormation(TeamFormation.f442, mirror: mirrored);
+      )
+          .withFormation(TeamFormation.f442, mirror: mirrored)
+          // Standing on the pitch, so they go wherever it is turned, zoomed
+          // or tilted to.
+          .linkedTo(teamLinkBackground,
+              pitch: PitchSport.football, reference: metrics.scale, area: rect);
 
   /// named puts the position abbreviations on a freshly laid-out side.
   TeamElement named(TeamElement side) => side.copyWith(players: [

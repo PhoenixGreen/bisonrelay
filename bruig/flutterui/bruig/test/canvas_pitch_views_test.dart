@@ -4,7 +4,11 @@ import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_pitch_views_test.dart is the rebuilt sports pitches -- every sport,
@@ -112,6 +116,97 @@ void main() {
         var back = ProceduralSpec.fromJson(_pitch.copyWith(sport: s).toJson());
         expect(back.sport, s);
       }
+    });
+  });
+
+  group("the camera", () {
+    double distance(List<int> a, List<int> b) {
+      var sum = 0;
+      for (var i = 0; i < a.length; i++) {
+        for (var sh in [24, 16, 8]) {
+          sum += (((a[i] >> sh) & 0xFF) - ((b[i] >> sh) & 0xFF)).abs();
+        }
+      }
+      return sum / (a.length * 3);
+    }
+
+    testWidgets("turning the pitch a little does not change its size",
+        (tester) async {
+      late List<int> still, turned, zoomed;
+      await tester.runAsync(() async {
+        still = await _pixels(_pitch);
+        turned = await _pixels(_pitch.copyWith(rotation: 0.5));
+        zoomed = await _pixels(_pitch.copyWith(scale: 0.06));
+      });
+      // Half a degree moves a few pixels at the edges; a jump in size moves
+      // all of them -- as a zoom of a fifth does.
+      expect(distance(still, turned), lessThan(distance(still, zoomed) / 3));
+    });
+
+    testWidgets("size zooms, and the position settings move it",
+        (tester) async {
+      late List<int> base, zoom, moved, side;
+      await tester.runAsync(() async {
+        base = await _pixels(_pitch);
+        zoom = await _pixels(_pitch.copyWith(scale: 0.1));
+        moved = await _pixels(_pitch.copyWith(params: {"panX": 0.4}));
+        side = await _pixels(
+            _pitch.copyWith(params: {"tiltH": 30, "perspective": 0.8}));
+      });
+      expect(zoom, isNot(base));
+      expect(moved, isNot(base));
+      expect(side, isNot(base));
+    });
+
+    testWidgets("choosing a view puts the camera settings in place",
+        (tester) async {
+      var current = _pitch;
+      tester.view.physicalSize = const Size(400, 2600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        home: ChangeNotifierProvider(
+          create: (_) => ThemeNotifier(doLoad: false),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: CanvasControlScope(
+                maxWidth: 300,
+                child: SizedBox(
+                  width: 300,
+                  child: StatefulBuilder(
+                    builder: (context, setState) => ProceduralSettings(
+                      spec: current,
+                      onChanged: (s) => setState(() => current = s),
+                      onBegin: () {},
+                      onCommit: () {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("param-view")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Broadcast").last);
+      await tester.pumpAndSettle();
+      expect(current.p("tiltV"), 58);
+      expect(current.p("perspective"), 0.85);
+      // And the zoom is with the camera, not among the amounts.
+      expect(find.byKey(const ValueKey("pitchZoom")), findsOneWidget);
+      expect(find.text("Size"), findsNothing);
+    });
+
+    test("a pitch saved with the old tilt and turn keeps its camera", () {
+      var old = ProceduralSpec.fromJson({
+        ..._pitch.toJson(),
+        "params": {"view": 2, "tilt": 0.5, "spin": 10},
+      });
+      expect(old.params["tiltV"], closeTo(90 - (14 + 0.5 * 46), 1e-9));
+      expect(old.params["turn"], 10);
+      expect(old.params.containsKey("tilt"), isFalse);
     });
   });
 

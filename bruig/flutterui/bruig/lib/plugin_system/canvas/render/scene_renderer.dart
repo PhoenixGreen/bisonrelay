@@ -35,6 +35,7 @@ import 'package:bruig/plugin_system/canvas/render/image_look.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/element_effects.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/text_animator.dart';
 import 'package:bruig/plugin_system/canvas/render/text_wrap.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
@@ -561,6 +562,22 @@ void paintElement(
 
   canvas.save();
 
+  // A team standing on a pitch has no place of its own: where it is, how it
+  // is turned and how big it is are all the pitch's to decide -- see
+  // team_painter.dart -- so nothing of its own box is applied. Its fade
+  // still is.
+  if (element is TeamElement && element.linked) {
+    if (alpha < 0.999) {
+      canvas.saveLayer(null,
+          Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
+    }
+    paintTeam(canvas, bounds, element, frame,
+        document: document, images: images);
+    if (alpha < 0.999) canvas.restore();
+    canvas.restore();
+    return;
+  }
+
   // The pose's shift is applied in document space, then the rotation and the
   // scale about the element's own centre. In that order, so that an element
   // moved by a keyframe rotates about where it now is rather than swinging
@@ -721,7 +738,7 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintPath(canvas, bounds, e, editing));
       case TeamElement e:
-        _paintTeam(canvas, bounds, e, frame);
+        paintTeam(canvas, bounds, e, frame, document: document, images: images);
       default:
         break;
     }
@@ -1901,119 +1918,6 @@ void _paintBackgroundElement(ui.Canvas canvas, Rect bounds, BackgroundElement e,
   paintProcedural(canvas, bounds, e.spec,
       time: time, frameRate: frameRate, images: images);
   if (e.cornerRadius > 0) canvas.restore();
-}
-
-/// _paintTeam draws every player in a team.
-///
-/// The players are laid out as fractions of the element's box, so this is
-/// where "the team" becomes "eleven dots": the box is the region they occupy,
-/// and moving, resizing or rotating it moves all of them together without any
-/// player having been touched.
-///
-/// Drawn in list order, which is what Bring forward and Send to back move a
-/// player through -- a striker overlapping a centre back needs one of them to
-/// be on top, and which one is a choice.
-void _paintTeam(ui.Canvas canvas, Rect bounds, TeamElement e, int frame) {
-  var r = e.dotRadius;
-  if (r <= 0) return;
-
-  for (var i = 0; i < e.players.length; i++) {
-    var spot = e.players[i];
-    if (spot.hidden) continue;
-
-    var c = Offset(bounds.left + spot.dx * bounds.width,
-        bounds.top + spot.dy * bounds.height);
-
-    // Each player carries their own keyframes, so a run is one player moving
-    // while the rest of the team holds its shape. The offsets are in design
-    // units on top of where the player lines up, which is why they survive the
-    // team being moved or resized afterwards.
-    var track = spot.track;
-    if (track != null && !track.isEmpty) {
-      var pose = track.at(frame);
-      c = c.translate(pose.dx, pose.dy);
-    }
-
-    // The first player is the goalkeeper, and is the only one in a different
-    // shirt. Everything else about them is the same, ring included.
-    var fill = i == 0 ? e.keeperColor : e.playerColor;
-
-    canvas.drawOval(
-        Rect.fromCenter(center: c, width: e.dotWidth, height: e.dotHeight),
-        Paint()..color = fill);
-
-    if (e.ringWidth > 0 && e.outlineColor.a > 0) {
-      canvas.drawOval(
-          Rect.fromCenter(
-              center: c,
-              width: e.dotWidth - e.ringWidth,
-              height: e.dotHeight - e.ringWidth),
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = e.ringWidth
-            ..color = e.outlineColor);
-    }
-
-    _paintPlayerLabels(canvas, e, spot, c, r);
-  }
-}
-
-/// _paintPlayerLabels draws one player's number and name.
-///
-/// Both use the team's single [TeamElement.labelSpec] and rotate together --
-/// they are one piece of lettering that happens to be in two places, and
-/// having had two specs meant a team's names could end up in a different face
-/// from its numbers without anybody having chosen that.
-void _paintPlayerLabels(
-    ui.Canvas canvas, TeamElement e, PlayerSpot spot, Offset c, double r) {
-  var rotate = e.labelRotation * math.pi / 180;
-
-  if (e.showNumbers && spot.number.isNotEmpty) {
-    canvas.save();
-    canvas.translate(c.dx, c.dy);
-    if (rotate != 0) canvas.rotate(rotate);
-    // Centred on the ink rather than on the line box -- see
-    // paintCentredGlyphs. A digit centred by its box sits high in the circle,
-    // because the box reserves room for a descender the digit does not have.
-    paintCentredGlyphs(canvas, spot.number, e.labelSpec, Offset.zero);
-    canvas.restore();
-  }
-
-  if (!e.showNames ||
-      spot.name.isEmpty ||
-      e.namePosition == LabelPosition.none) {
-    return;
-  }
-
-  var spec = e.labelSpec;
-  var painter = layoutText(spec.textCase.apply(spot.name), spec,
-      maxWidth: math.max(40, r * 8));
-  // Placed from the dot's edge rather than from the element's bounds, so a
-  // name stays the same distance from its player whatever the dot's size --
-  // which is what makes changing the size of every dot on a pitch not also
-  // require moving every name.
-  var gapX = e.dotWidth / 2 + e.nameGap;
-  var gapY = e.dotHeight / 2 + e.nameGap;
-  var half = Offset(painter.width / 2, painter.height / 2);
-
-  var at = switch (e.namePosition) {
-    LabelPosition.above => c.translate(0, -gapY - half.dy),
-    LabelPosition.below => c.translate(0, gapY + half.dy),
-    LabelPosition.left => c.translate(-gapX - half.dx, 0),
-    LabelPosition.right => c.translate(gapX + half.dx, 0),
-    LabelPosition.none => c,
-  };
-
-  canvas.save();
-  canvas.translate(at.dx, at.dy);
-  if (rotate != 0) canvas.rotate(rotate);
-  if (spec.outlineWidth > 0) {
-    layoutText(spec.textCase.apply(spot.name), spec,
-            maxWidth: math.max(40, r * 8), outline: true)
-        .paint(canvas, -half);
-  }
-  painter.paint(canvas, -half);
-  canvas.restore();
 }
 
 /// _paintPath draws a bezier curve.

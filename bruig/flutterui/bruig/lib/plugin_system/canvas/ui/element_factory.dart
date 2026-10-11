@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -238,7 +239,7 @@ CanvasElement newElement(
       // size of every other element would put eleven players inside a
       // 200-pixel square, on top of each other.
       var dot = size.height * 0.16;
-      return TeamElement(
+      var team = TeamElement(
         base.copyWith(name: "Team"),
         dotWidth: dot,
         dotHeight: dot,
@@ -251,5 +252,13 @@ CanvasElement newElement(
         ),
         nameGap: dot * 0.2,
       ).withFormation(TeamFormation.f442);
+      // Standing on the pitch straight away where there is one -- the
+      // first, which is the canvas's own background where that is one. A
+      // team dropped onto a pitch is a team for that pitch.
+      var pitches = pitchChoices(document);
+      if (pitches.isEmpty) return team;
+      var p = pitches.first;
+      return team.linkedTo(p.link,
+          pitch: p.sport, reference: p.reference, area: p.area);
   }
 }

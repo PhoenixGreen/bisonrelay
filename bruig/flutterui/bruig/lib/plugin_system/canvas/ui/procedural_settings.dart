@@ -688,7 +688,8 @@ class ProceduralSettings extends StatelessWidget {
           // its own words instead, as a width and three amounts of jitter.
           // Offered here as well, they were two controls that did nothing at
           // all on that style.
-          if (spec.style != ProceduralStyle.rings)
+          if (spec.style != ProceduralStyle.rings &&
+              spec.style != ProceduralStyle.pitch)
             CanvasNumberField(
               label: "Size",
               width: 62,
@@ -1562,6 +1563,24 @@ class ProceduralSettings extends StatelessWidget {
     for (var p in params) {
       if (!shows(p)) continue;
       (groups[p.group ?? spec.style.label] ??= []).add(_paramControl(p));
+      // A pitch's Size is how far in the camera is, so it is with the
+      // camera, as a zoom: one fits the frame.
+      if (spec.style == ProceduralStyle.pitch && p.id == "view") {
+        groups["Camera"]!.add(CanvasNumberField(
+          key: const ValueKey("pitchZoom"),
+          label: "Zoom",
+          value: spec.scale / 0.05,
+          min: 0.1,
+          max: 5,
+          decimals: 2,
+          width: 62,
+          onChanged: (v) {
+            onBegin();
+            _set(spec.copyWith(scale: v * 0.05));
+          },
+          onCommit: onCommit,
+        ));
+      }
     }
     return [
       for (var MapEntry(key: label, value: children) in groups.entries)
@@ -1578,7 +1597,14 @@ class ProceduralSettings extends StatelessWidget {
         value: spec.choice(p.id),
         width: 110,
         options: [for (var (i, c) in p.choices.indexed) (i, c)],
-        onChanged: (v) => _setNow(spec.withParam(p.id, v.toDouble())),
+        onChanged: (v) {
+          // And whatever this answer puts in place with it.
+          var next = spec.withParam(p.id, v.toDouble());
+          for (var MapEntry(:key, :value) in (p.sets[v] ?? const {}).entries) {
+            next = next.withParam(key, value);
+          }
+          _setNow(next);
+        },
       );
     }
     if (p.toggle) {

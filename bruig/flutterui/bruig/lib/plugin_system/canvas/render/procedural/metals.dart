@@ -24,8 +24,8 @@ void _metalFinish(ui.Canvas canvas, Rect rect, ProceduralSpec spec) {
   var m = spec.metal;
   var short = math.min(rect.width, rect.height);
   if (short <= 0) return;
-  var cols = rect.width.round().clamp(8, 448);
-  var rows = rect.height.round().clamp(8, 448);
+  var cols = (rect.width * latticeDetail).round().clamp(8, 448);
+  var rows = (rect.height * latticeDetail).round().clamp(8, 448);
   var stepX = rect.width / cols, stepY = rect.height / rows;
   var size = math.max(0.08, spec.scale / 0.05);
   var ceiling = math.min(cols, rows) / 2.2;

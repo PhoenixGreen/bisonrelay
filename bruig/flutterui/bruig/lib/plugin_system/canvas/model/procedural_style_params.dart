@@ -386,19 +386,31 @@ abstract final class PitchSurface {
   static const ice = 7;
 }
 
-const _angled = {
-  "view": [1, 2, 3]
-};
-
 const List<StyleParam> pitchParams = [
   StyleParam.choice("area", "Show", ["Whole", "Half"]),
   StyleParam.choice("runs", "Runs", ["Across", "Up the page"]),
-  StyleParam.choice(
-      "view", "View", ["Flat", "Isometric", "Broadcast", "End on"]),
-  StyleParam("tilt", "Tilt", initial: 0.5, onlyWhen: _angled),
-  StyleParam("spin", "Turn",
-      min: -180, max: 180, initial: 0, decimals: 0, onlyWhen: _angled),
   StyleParam.choice("surround", "Surround", ["Plain", "Stadium", "Track"]),
+  // A starting point for the camera, which the settings beside it then
+  // move: choosing one puts all of them in place.
+  StyleParam.choice(
+      "view", "View", ["Flat", "Isometric", "Broadcast", "End on"],
+      group: "Camera",
+      sets: {
+        0: {"tiltV": 0, "tiltH": 0, "turn": 0, "perspective": 0},
+        1: {"tiltV": 55, "tiltH": 0, "turn": 45, "perspective": 0},
+        2: {"tiltV": 58, "tiltH": 0, "turn": 0, "perspective": 0.85},
+        3: {"tiltV": 58, "tiltH": 0, "turn": -90, "perspective": 0.85},
+      }),
+  StyleParam("perspective", "Perspective", initial: 0, group: "Camera"),
+  StyleParam("tiltV", "Tilt up/down",
+      min: 0, max: 80, initial: 0, decimals: 0, group: "Camera"),
+  StyleParam("tiltH", "Tilt left/right",
+      min: -60, max: 60, initial: 0, decimals: 0, group: "Camera"),
+  StyleParam("turn", "Turn",
+      min: -180, max: 180, initial: 0, decimals: 0, group: "Camera"),
+  StyleParam("panX", "Left/right",
+      min: -1, max: 1, initial: 0, group: "Camera"),
+  StyleParam("panY", "Up/down", min: -1, max: 1, initial: 0, group: "Camera"),
   StyleParam.choice(
       "surface",
       "Surface",
@@ -434,3 +446,28 @@ const List<StyleParam> metalParams = [
     "Riveted panels",
   ]),
 ];
+
+/// pitchCameraParams is [params] with the pitch's camera settings filled in
+/// from its View where they have not been set.
+///
+/// A pitch saved before the camera had settings of its own said only which
+/// view it was and, as fractions, how far it was tilted and turned -- read
+/// here as they were meant, so it looks as it did and the settings show
+/// where its camera is.
+Map<String, double> pitchCameraParams(Map<String, double> params) {
+  if (params.containsKey("tiltV")) return params;
+  var view = (params["view"] ?? 0).round().clamp(0, 3);
+  if (view == 0) return params;
+  var preset = pitchParams.firstWhere((p) => p.id == "view").sets[view]!;
+  var out = {...params, ...preset};
+  if (params.containsKey("tilt") || params.containsKey("spin")) {
+    var tilt = params["tilt"] ?? 0.5, spin = params["spin"] ?? 0;
+    var iso = view == 1;
+    out["tiltV"] = iso ? 90 - (24 + tilt * 30) : 90 - (14 + tilt * 46);
+    out["turn"] = preset["turn"]! + spin;
+    out["perspective"] = iso ? 0 : 0.96;
+  }
+  out.remove("tilt");
+  out.remove("spin");
+  return out;
+}
