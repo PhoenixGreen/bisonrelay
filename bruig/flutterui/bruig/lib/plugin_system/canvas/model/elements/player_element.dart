@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -922,6 +923,15 @@ class PlayerSpot {
   /// drawn over the players and the keeper is still the first of them.
   final bool ball;
 
+  /// role is where the player plays -- GK, CB, Fly-half -- put there by the
+  /// formation and kept through any change after it. Shown in place of the
+  /// name where the team shows positions. See TeamElement.namesByPosition.
+  final String role;
+
+  /// crop is the part of the team's photo that is this player, or null for
+  /// where the team photo puts them to begin with. See TeamElement.teamPhoto.
+  final PhotoCrop? crop;
+
   const PlayerSpot({
     this.number = "",
     this.name = "",
@@ -934,6 +944,8 @@ class PlayerSpot {
     this.captain = false,
     this.highlight = false,
     this.ball = false,
+    this.role = "",
+    this.crop,
   });
 
   PlayerSpot copyWith({
@@ -949,6 +961,9 @@ class PlayerSpot {
     bool? captain,
     bool? highlight,
     bool? ball,
+    String? role,
+    PhotoCrop? crop,
+    bool clearCrop = false,
   }) =>
       PlayerSpot(
         number: number ?? this.number,
@@ -962,6 +977,8 @@ class PlayerSpot {
         captain: captain ?? this.captain,
         highlight: highlight ?? this.highlight,
         ball: ball ?? this.ball,
+        role: role ?? this.role,
+        crop: clearCrop ? null : (crop ?? this.crop),
       );
 
   Map<String, dynamic> toJson() => {
@@ -976,6 +993,8 @@ class PlayerSpot {
         if (captain) "captain": true,
         if (highlight) "highlight": true,
         if (ball) "ball": true,
+        if (role.isNotEmpty) "role": role,
+        if (crop != null) "crop": crop!.toJson(),
       };
 
   factory PlayerSpot.fromJson(Map<String, dynamic> json) {
@@ -993,8 +1012,181 @@ class PlayerSpot {
       captain: jsonBool(json["captain"], false),
       highlight: jsonBool(json["highlight"], false),
       ball: jsonBool(json["ball"], false),
+      role: jsonString(json["role"], ""),
+      crop: json["crop"] is Map<String, dynamic>
+          ? PhotoCrop.fromJson(json["crop"] as Map<String, dynamic>)
+          : null,
     );
   }
+}
+
+/// PhotoCrop is a circle on a picture: its middle as fractions of the
+/// picture's width and height, its radius as a fraction of its width, and
+/// how far it is turned, in degrees -- the part of a team photo that is one
+/// player's face.
+///
+/// The radius is null until this player's circle has been sized on its own:
+/// until then it is the team's default -- see TeamElement.photoCropSize --
+/// so changing the default changes every circle nobody has sized.
+class PhotoCrop {
+  final double x, y, turn;
+  final double? radius;
+  const PhotoCrop({this.x = 0.5, this.y = 0.5, this.radius, this.turn = 0});
+
+  /// size is the radius, or a tenth of the picture's width where there is
+  /// none -- which a crop from TeamElement.cropOf always has.
+  double get size => radius ?? 0.1;
+
+  PhotoCrop copyWith(
+          {double? x,
+          double? y,
+          double? radius,
+          bool clearRadius = false,
+          double? turn}) =>
+      PhotoCrop(
+          x: x ?? this.x,
+          y: y ?? this.y,
+          radius: clearRadius ? null : (radius ?? this.radius),
+          turn: turn ?? this.turn);
+
+  /// grid is where [count] faces are guessed to be on a picture [aspect]
+  /// times as wide as it is high, before anybody has moved them: a squad
+  /// photo's rows, left to right and top to bottom.
+  static PhotoCrop grid(int index, int count, double aspect) {
+    var n = math.max(1, count);
+    var cols = math.max(1, (math.sqrt(n * aspect)).round());
+    var rows = (n / cols).ceil();
+    var c = index % cols, r = index ~/ cols;
+    var cw = 1 / cols, rh = 1 / rows;
+    return PhotoCrop(
+      x: (c + 0.5) * cw,
+      y: (r + 0.4) * rh,
+      radius: math.min(cw, rh * aspect) * 0.3,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        "x": x,
+        "y": y,
+        if (radius != null) "r": radius,
+        if (turn != 0) "t": turn
+      };
+
+  factory PhotoCrop.fromJson(Map<String, dynamic> json) => PhotoCrop(
+        x: jsonDouble(json["x"], 0.5),
+        y: jsonDouble(json["y"], 0.5),
+        radius: json["r"] is num ? (json["r"] as num).toDouble() : null,
+        turn: jsonDouble(json["t"], 0),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhotoCrop &&
+      other.x == x &&
+      other.y == y &&
+      other.radius == radius &&
+      other.turn == turn;
+
+  @override
+  int get hashCode => Object.hash(x, y, radius, turn);
+}
+
+/// BallStyle is how a team's ball is drawn: as the sport's own, or one of a
+/// few designs in the ball's own colours.
+enum BallStyle {
+  auto("Sport's own"),
+  classic("Classic panels"),
+  modern("Modern panels"),
+  plain("Plain"),
+  twoTone("Two-tone"),
+  striped("Striped"),
+  ring("Ring");
+
+  final String label;
+  const BallStyle(this.label);
+
+  static BallStyle fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => BallStyle.auto);
+}
+
+/// BallLook is a team's ball's design: its style and colours, how big it is
+/// against the sport's own size, and what is drawn with it.
+class BallLook {
+  final BallStyle style;
+  final Color color;
+  final Color second;
+  final double size;
+  final bool shadow;
+  final bool outline;
+
+  /// trail draws where the ball has just been, fading, while it moves.
+  final bool trail;
+
+  const BallLook({
+    this.style = BallStyle.auto,
+    this.color = const Color(0xFFF7F7F7),
+    this.second = const Color(0xFF161616),
+    this.size = 1,
+    this.shadow = true,
+    this.outline = true,
+    this.trail = false,
+  });
+
+  BallLook copyWith({
+    BallStyle? style,
+    Color? color,
+    Color? second,
+    double? size,
+    bool? shadow,
+    bool? outline,
+    bool? trail,
+  }) =>
+      BallLook(
+        style: style ?? this.style,
+        color: color ?? this.color,
+        second: second ?? this.second,
+        size: size ?? this.size,
+        shadow: shadow ?? this.shadow,
+        outline: outline ?? this.outline,
+        trail: trail ?? this.trail,
+      );
+
+  bool get isDefault => this == const BallLook();
+
+  Map<String, dynamic> toJson() => {
+        if (style != BallStyle.auto) "style": style.name,
+        "color": colorToJson(color),
+        "second": colorToJson(second),
+        if (size != 1) "size": size,
+        if (!shadow) "shadow": false,
+        if (!outline) "outline": false,
+        if (trail) "trail": true,
+      };
+
+  factory BallLook.fromJson(Map<String, dynamic> json) => BallLook(
+        style: BallStyle.fromName(json["style"] as String?),
+        color: colorFromJson(json["color"], const Color(0xFFF7F7F7)),
+        second: colorFromJson(json["second"], const Color(0xFF161616)),
+        size: jsonDouble(json["size"], 1),
+        shadow: jsonBool(json["shadow"], true),
+        outline: jsonBool(json["outline"], true),
+        trail: jsonBool(json["trail"], false),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is BallLook &&
+      other.style == style &&
+      other.color == color &&
+      other.second == second &&
+      other.size == size &&
+      other.shadow == shadow &&
+      other.outline == outline &&
+      other.trail == trail;
+
+  @override
+  int get hashCode =>
+      Object.hash(style, color, second, size, shadow, outline, trail);
 }
 
 /// LabelPosition is where a player's name sits relative to the dot.
@@ -1162,6 +1354,23 @@ class TeamElement extends CanvasElement {
   /// to an arrow.
   final bool showRuns;
 
+  /// namesByPosition shows each player's position rather than their name,
+  /// without losing the name: turned off again, the names are back.
+  final bool namesByPosition;
+
+  /// ballLook is the design of the team's ball.
+  final BallLook ballLook;
+
+  /// teamPhoto is one picture of the whole squad, by asset: a player in a
+  /// portrait with no photo of their own shows their part of it -- the circle
+  /// their PlayerSpot.crop marks on it.
+  final String teamPhoto;
+
+  /// photoCropSize is the radius every player's circle on the team photo
+  /// starts at, as a fraction of its width -- null for a guess from the
+  /// photo's rows. A circle sized on its own keeps its own size.
+  final double? photoCropSize;
+
   const TeamElement(
     super.base, {
     this.sport = TeamSport.football,
@@ -1191,7 +1400,40 @@ class TeamElement extends CanvasElement {
     this.shadow = false,
     this.nameStyle = NameStyle.plain,
     this.showRuns = false,
+    this.namesByPosition = false,
+    this.ballLook = const BallLook(),
+    this.teamPhoto = "",
+    this.photoCropSize,
   });
+
+  /// cropOf is the part of the team photo that is player [i], on a photo
+  /// [aspect] times as wide as it is high: their own crop where it has been
+  /// set, and their place in a squad photo's rows where it has not.
+  ///
+  /// Always with a radius: the player's own, else the team's default, else
+  /// the guess.
+  PhotoCrop cropOf(int i, double aspect) {
+    var people = players.where((p) => !p.ball).length;
+    var guess = PhotoCrop.grid(i, people, aspect);
+    var own = players[i].crop ?? PhotoCrop(x: guess.x, y: guess.y);
+    return own.copyWith(radius: own.radius ?? photoCropSize ?? guess.radius);
+  }
+
+  /// photoCropGuess is the size the circles are guessed at on a photo
+  /// [aspect] times as wide as it is high.
+  double photoCropGuess(double aspect) =>
+      PhotoCrop.grid(0, players.where((p) => !p.ball).length, aspect).size;
+
+  /// labelOf is what [spot] is called on the pitch: their position where the
+  /// team shows positions and they have one, their name otherwise.
+  String labelOf(PlayerSpot spot) {
+    if (!namesByPosition || spot.ball) return spot.name;
+    if (spot.role.isNotEmpty) return spot.role;
+    // A squad laid out before positions were kept: read off the formation.
+    var i = players.indexOf(spot);
+    var roles = formation.roles;
+    return i >= 0 && i < roles.length ? roles[i] : spot.name;
+  }
 
   /// linked is whether the team stands on a pitch.
   bool get linked => link.isNotEmpty;
@@ -1205,7 +1447,7 @@ class TeamElement extends CanvasElement {
 
   /// radiusOf is how big [spot]'s token is: the ball smaller than a player.
   double radiusOf(PlayerSpot spot) =>
-      spot.ball ? dotRadius * sport.ballSize : dotRadius;
+      spot.ball ? dotRadius * sport.ballSize * ballLook.size : dotRadius;
 
   /// dotRadius is half the smaller side, so a team whose dots have been pulled
   /// out of square still draws circles rather than eggs.
@@ -1259,7 +1501,11 @@ class TeamElement extends CanvasElement {
           (i < people.length && !fresh
                   ? people[i]
                   : PlayerSpot(number: _defaultNumber(next, i)))
-              .copyWith(dx: spots[i].$1, dy: spots[i].$2, locked: false),
+              .copyWith(
+                  dx: spots[i].$1,
+                  dy: spots[i].$2,
+                  locked: false,
+                  role: i < next.roles.length ? next.roles[i] : ""),
         ...players.where((p) => p.ball),
       ],
     );
@@ -1394,7 +1640,11 @@ class TeamElement extends CanvasElement {
       faces: faces,
       shadow: shadow,
       nameStyle: nameStyle,
-      showRuns: showRuns);
+      showRuns: showRuns,
+      namesByPosition: namesByPosition,
+      ballLook: ballLook,
+      teamPhoto: teamPhoto,
+      photoCropSize: photoCropSize);
 
   TeamElement copyWith({
     TeamSport? sport,
@@ -1424,6 +1674,11 @@ class TeamElement extends CanvasElement {
     bool? shadow,
     NameStyle? nameStyle,
     bool? showRuns,
+    bool? namesByPosition,
+    BallLook? ballLook,
+    String? teamPhoto,
+    double? photoCropSize,
+    bool autoCropSize = false,
   }) =>
       TeamElement(base,
           sport: sport ?? this.sport,
@@ -1452,7 +1707,12 @@ class TeamElement extends CanvasElement {
           faces: faces ?? this.faces,
           shadow: shadow ?? this.shadow,
           nameStyle: nameStyle ?? this.nameStyle,
-          showRuns: showRuns ?? this.showRuns);
+          showRuns: showRuns ?? this.showRuns,
+          namesByPosition: namesByPosition ?? this.namesByPosition,
+          ballLook: ballLook ?? this.ballLook,
+          teamPhoto: teamPhoto ?? this.teamPhoto,
+          photoCropSize:
+              autoCropSize ? null : (photoCropSize ?? this.photoCropSize));
 
   @override
   Map<String, dynamic> props() => {
@@ -1483,6 +1743,10 @@ class TeamElement extends CanvasElement {
         if (shadow) "shadow": true,
         if (nameStyle != NameStyle.plain) "nameStyle": nameStyle.name,
         if (showRuns) "runs": true,
+        if (namesByPosition) "positions": true,
+        if (!ballLook.isDefault) "ballLook": ballLook.toJson(),
+        if (teamPhoto.isNotEmpty) "teamPhoto": teamPhoto,
+        if (photoCropSize != null) "cropSize": photoCropSize,
       };
 
   factory TeamElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -1520,6 +1784,14 @@ class TeamElement extends CanvasElement {
         faces: jsonBool(json["faces"], true),
         shadow: jsonBool(json["shadow"], false),
         nameStyle: NameStyle.fromName(json["nameStyle"] as String?),
-        showRuns: jsonBool(json["runs"], false));
+        showRuns: jsonBool(json["runs"], false),
+        namesByPosition: jsonBool(json["positions"], false),
+        ballLook: json["ballLook"] is Map<String, dynamic>
+            ? BallLook.fromJson(json["ballLook"] as Map<String, dynamic>)
+            : const BallLook(),
+        teamPhoto: jsonString(json["teamPhoto"], ""),
+        photoCropSize: json["cropSize"] is num
+            ? (json["cropSize"] as num).toDouble()
+            : null);
   }
 }

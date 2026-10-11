@@ -6,6 +6,8 @@ import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:flutter/material.dart';
 
 // presets_section.dart is the row of saved designs at the top of an element's
@@ -27,15 +29,45 @@ import 'package:flutter/material.dart';
 Widget presetsSection(
   BuildContext context,
   CanvasController controller,
-  CanvasElement element,
-) =>
-    _PresetsSection(controller: controller, element: element);
+  CanvasElement element, {
+  void Function(CanvasElement made)? onUse,
+}) =>
+    _PresetsSection(controller: controller, element: element, onUse: onUse);
+
+/// backgroundPresetsSection is the presets row for the canvas's own
+/// background: the same designs a background element saves and offers, since
+/// a background is a background wherever it is drawn. Saving keeps the
+/// pattern; using one puts its pattern on the canvas, leaving the picture,
+/// the video and the sound laid over it alone.
+Widget backgroundPresetsSection(
+        BuildContext context, CanvasController controller, ProceduralSpec spec,
+        {required void Function(ProceduralSpec) onUse}) =>
+    _PresetsSection(
+      controller: controller,
+      element: BackgroundElement(
+          ElementBase(id: "canvasBackground", name: "Background"),
+          spec: spec),
+      onUse: (made) {
+        if (made is BackgroundElement) onUse(made.spec);
+      },
+      // Nothing to lose but a pattern, which undo gives back.
+      confirmUse: false,
+    );
 
 class _PresetsSection extends StatefulWidget {
   final CanvasController controller;
   final CanvasElement element;
 
-  const _PresetsSection({required this.controller, required this.element});
+  /// onUse is what using a preset does, for an element that is not in the
+  /// document -- the canvas's background. Null replaces the element.
+  final void Function(CanvasElement made)? onUse;
+  final bool confirmUse;
+
+  const _PresetsSection(
+      {required this.controller,
+      required this.element,
+      this.onUse,
+      this.confirmUse = true});
 
   @override
   State<_PresetsSection> createState() => _PresetsSectionState();
@@ -94,7 +126,11 @@ class _PresetsSectionState extends State<_PresetsSection> {
 
   /// _use puts a preset's design on the element being edited.
   Future<void> _use(ElementPreset preset) async {
-    if (_touched && !await _confirm(preset)) return;
+    if (widget.confirmUse && _touched && !await _confirm(preset)) return;
+    if (widget.onUse case var use?) {
+      use(preset.build());
+      return;
+    }
 
     // Sized to this page. A design saved on a banner and used on a square
     // canvas arrives at the banner's scale otherwise -- see presetScale --

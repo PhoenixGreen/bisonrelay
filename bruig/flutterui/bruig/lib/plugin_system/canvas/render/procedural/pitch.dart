@@ -358,18 +358,11 @@ class _View {
         for (var y in [window.top, window.bottom]) (x, y, 0),
     ];
     if (spec.choice("surround") == 1) {
-      // The tops of the stands -- but not the near one, which is left out
-      // where the camera is in it, and would otherwise be fitted round as
-      // empty space at the foot of the picture.
-      var outer = _standOuter(window);
-      var middle = view.depthOf(window.center.dx, window.center.dy);
-      for (var x in [outer.left, outer.center.dx, outer.right]) {
-        for (var y in [outer.top, outer.center.dy, outer.bottom]) {
-          if (x == outer.center.dx && y == outer.center.dy) continue;
-          if (!view.flat && view.depthOf(x, y) < middle - 1) continue;
-          points.add((x, y, _standHeight(window)));
-        }
-      }
+      // Round exactly what is drawn of the stands -- the near one is left
+      // out where the camera is in it, and the corners of an open ground --
+      // so none of it is cut off at the frame and none of the frame is left
+      // empty for it.
+      points.addAll(_stadiumExtent(view, window, spec));
     }
     var minX = double.infinity, maxX = -double.infinity;
     var minY = double.infinity, maxY = -double.infinity;
@@ -403,8 +396,9 @@ class _View {
     var plain = spec.choice("surround") == 0 &&
         spec.choice("view") == PitchViewKind.flat;
     var box = plain && field.fitsField ? field.field : field.apron;
-    if (spec.choice("surround") == 2)
-      box = box.expandToInclude(_trackOuter(field));
+    if (spec.choice("surround") == 2) {
+      box = box.expandToInclude(_trackOuter(field, spec));
+    }
     if (half) {
       box = Rect.fromLTRB(
           field.length / 2 - field.line * 4, box.top, box.right, box.bottom);
@@ -434,8 +428,8 @@ PitchCamera pitchCamera(ProceduralSpec spec) {
     side: get("tiltH").clamp(-60.0, 60.0),
     turn: get("turn"),
     perspective: get("perspective").clamp(0.0, 1.0),
-    x: get("panX").clamp(-1.0, 1.0),
-    y: get("panY").clamp(-1.0, 1.0),
+    x: get("panX").clamp(-3.0, 3.0),
+    y: get("panY").clamp(-3.0, 3.0),
   );
 }
 
@@ -579,10 +573,24 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
     canvas.drawRect(_View._window(spec, field, false).inflate(5),
         Paint()..color = _darken(spec.background, 0.55));
   }
-  if (surround == 2) _track(canvas, field, spec);
-  _surface(canvas, field, spec, ground, painted);
+  if (surround == 2) {
+    // The track goes down first, and the field fills the infield inside
+    // its kerb -- not a rectangle of grass laid over the bends.
+    _track(canvas, field, spec);
+    canvas.save();
+    canvas.clipRRect(_oval(field, _trackInner - 0.2));
+    canvas.drawRRect(_oval(field, _trackInner),
+        Paint()..color = _darken(spec.background, 0.08));
+  }
+  _surface(canvas, field, spec, ground, painted,
+      infield: surround == 2 ? _oval(field, _trackInner).outerRect : null);
 
   var pen = _Pen(canvas, lineColour, field.line * weight, minimum);
+  if (surround == 2) {
+    _trackDetails(pen, field, spec);
+    canvas.restore();
+    _trackOutside(pen, field, spec);
+  }
   switch (spec.sport) {
     case PitchSport.football:
       _football(pen, field, spec);
@@ -611,15 +619,19 @@ void paintPitch(ui.Canvas canvas, Rect rect, ProceduralSpec spec,
 
   // What stands up off the ground, furthest first.
   var items = <(double, void Function())>[];
-  if (surround == 1) _stadium(canvas, view, field, spec, ground, items);
+  var far = <(double, void Function())>[];
+  var near = <(double, void Function())>[];
+  if (surround == 1) {
+    _stadium(canvas, view, field, spec, ground, items, far: far, near: near);
+  }
   if (spec.on("goals")) {
     _goals(canvas, view, field, spec, items,
         from: half ? _View._window(spec, field, true).left : -1e9);
   }
-  items.sort((a, b) => b.$1.compareTo(a.$1));
-  for (var (_, draw) in items) {
-    draw();
-  }
+  // Furthest first, the stands softened by how far they are from the pitch
+  // -- a little behind it, more and more in front of it, where they fade as
+  // well -- and never over the pitch itself.
+  _drawStadium(canvas, view, field, spec, all, items, far, near);
   canvas.restore();
 
   if (spec.on("floodlights")) _floodlights(canvas, rect, view, field, spec);
@@ -641,7 +653,8 @@ int _autoSurface(PitchSport sport) => switch (sport) {
 /// shade -- or in the accent, where the run-off is painted -- and over the
 /// field of play in the background colour, finished as the surface asks.
 void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
-    bool painted) {
+    bool painted,
+    {Rect? infield}) {
   var kind = spec.choice("surface");
   if (kind == PitchSurface.auto) kind = _autoSurface(field.sport);
   var bg = spec.background;
@@ -660,13 +673,15 @@ void _surface(ui.Canvas canvas, _Field field, ProceduralSpec spec, Rect ground,
                 field.sport == PitchSport.futsal)
         ? spec.accent
         : _darken(bg, kind == PitchSurface.wood ? 0.18 : 0.08);
-    canvas.drawRect(field.apron, Paint()..color = runoff);
+    canvas.drawRect(infield ?? field.apron, Paint()..color = runoff);
   }
   canvas.drawPath(shape, Paint()..color = bg);
 
   canvas.save();
-  canvas.clipPath(ice ? shape : (Path()..addRect(_surfaceArea(field, kind))));
   var area = _surfaceArea(field, kind);
+  // Round a track, grass runs right out to the kerb.
+  if (infield != null && area == field.apron) area = infield;
+  canvas.clipPath(ice ? shape : (Path()..addRect(area)));
   switch (kind) {
     case PitchSurface.stripes:
     case PitchSurface.checks:
@@ -1276,39 +1291,185 @@ void _gridiron(_Pen pen, _Field f, ProceduralSpec spec, bool painted) {
 
 /// _standDepth is how far the stands run back from the boards, and
 /// _standHeight how high they rise: in proportion to what they are round, so
-/// an arena round a court is not a football stadium round a postage stamp.
-double _standDepth(Rect window) =>
-    (math.max(window.width, window.height) * 0.24).clamp(7.0, 26.0);
-double _standHeight(Rect window) => _standDepth(window) * 0.62;
+/// an arena round a court is not a football stadium round a postage stamp --
+/// and as big again as the stadium's Size asks.
+double _standDepth(Rect window, [ProceduralSpec? spec]) =>
+    (math.max(window.width, window.height) * 0.24).clamp(7.0, 26.0) *
+    (spec?.p("standSize") ?? 1);
+double _standHeight(Rect window, [ProceduralSpec? spec]) =>
+    _standDepth(window, spec) * 0.62;
 
-Rect _standOuter(Rect window) => window.inflate(5 + _standDepth(window));
+/// _tiers is how many tiers the stands are built in, and _tierGap the
+/// walkway between one and the next.
+int _tiers(ProceduralSpec? spec) => (spec?.p("tiers") ?? 1).round().clamp(1, 3);
+const double _tierGap = 1.4;
 
-/// _trackOuter is the outside of a 400 m running track round the field.
-Rect _trackOuter(_Field f) {
+/// _standReach is how far out from the window the back of the stands is.
+double _standReach(Rect window, [ProceduralSpec? spec]) =>
+    5 + _standDepth(window, spec) + _tierGap * (_tiers(spec) - 1);
+
+/// _standTop is how high the top of the stands is, roof and all.
+double _standTop(Rect window, [ProceduralSpec? spec]) =>
+    1.5 +
+    _standHeight(window, spec) +
+    1.8 * (_tiers(spec) - 1) +
+    ((spec?.choice("roof") ?? 0) > 0 ? 3.5 : 2.5);
+
+/// _trackInner and _trackLane are the inside of a 400 m track's first lane
+/// and the width of a lane; _trackStraight its two straights.
+const double _trackInner = 36.5, _trackLane = 1.22, _trackStraight = 84.39;
+
+int _lanes(ProceduralSpec spec) => spec.p("lanes").round().clamp(4, 10);
+
+/// _trackOuter is everything a track brings round the field: the lanes, the
+/// verge outside them and the long-jump runway along the back straight.
+Rect _trackOuter(_Field f, [ProceduralSpec? spec]) {
   var c = f.field.center;
+  var outer = _trackInner + (spec == null ? 8 : _lanes(spec)) * _trackLane;
   return Rect.fromCenter(
-      center: c, width: 84.39 + 2 * 46.26, height: 2 * 46.26);
+      center: c,
+      width: _trackStraight + 2 * (outer + 2.5),
+      height: 2 * (outer + 9));
 }
 
-/// _track is a standard 400 m track round the field: two straights of
-/// 84.39 m, bends of 36.5 m radius, eight lanes of 1.22 m.
+/// _oval is the track's shape [r] metres out from its middle: two straights
+/// and two bends.
+RRect _oval(_Field f, double r) => RRect.fromRectAndRadius(
+    Rect.fromCenter(
+        center: f.field.center, width: _trackStraight + 2 * r, height: 2 * r),
+    Radius.circular(r));
+
+const _trackColours = [
+  Color(0xFFB4513A), // the classic red
+  Color(0xFF2F5FA8), // blue
+  Color(0xFF3E7D4A), // green
+  Color(0xFF6E6E70), // grey
+  Color(0xFF6A3F8E), // purple
+];
+
+/// _track is the running track's ground: the verge round it, the lanes and
+/// the kerb. Laid before the field, which then fills the infield inside the
+/// kerb; the field events go on after it -- see _trackDetails.
 void _track(ui.Canvas canvas, _Field f, ProceduralSpec spec) {
-  var c = f.field.center;
-  RRect oval(double r) => RRect.fromRectAndRadius(
-      Rect.fromCenter(center: c, width: 84.39 + 2 * r, height: 2 * r),
-      Radius.circular(r));
-  canvas.drawRRect(oval(36.5 + 8 * 1.22 + 1),
-      Paint()..color = _darken(spec.background, 0.3));
+  var lanes = _lanes(spec);
+  var outer = _trackInner + lanes * _trackLane;
+  var colour = _trackColours[spec.choice("trackColour").clamp(0, 4)];
+  // The verge, and the track itself.
   canvas.drawRRect(
-      oval(36.5 + 8 * 1.22), Paint()..color = const Color(0xFFB4513A));
-  canvas.drawRRect(oval(36.5), Paint()..color = _darken(spec.background, 0.12));
-  var lane = Paint()
+      _oval(f, outer + 2.5), Paint()..color = _darken(spec.background, 0.22));
+  canvas.drawRRect(_oval(f, outer), Paint()..color = colour);
+  // The rubber's grain, faintly.
+  canvas.save();
+  canvas.clipRRect(_oval(f, outer));
+  _speckle(canvas, _oval(f, outer).outerRect, spec,
+      Paint()..color = _lighten(colour, 0.15).withValues(alpha: 0.6), 0.25);
+  canvas.restore();
+  var line = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 0.05
-    ..color = const Color(0xE6FFFFFF);
-  for (var i = 0; i <= 8; i++) {
-    canvas.drawRRect(oval(36.5 + i * 1.22), lane);
+    ..color = const Color(0xEEFFFFFF);
+  for (var i = 1; i <= lanes; i++) {
+    canvas.drawRRect(_oval(f, _trackInner + i * _trackLane), line);
   }
+  // The kerb: a raised rim along the inside of the first lane.
+  canvas.drawRRect(
+      _oval(f, _trackInner - 0.1),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.2
+        ..color = const Color(0xFFE8E8E8));
+}
+
+/// _trackDetails is what is painted on a track and in its infield: the
+/// finish line and the lane numbers, the staggered starts round the first
+/// bend, and the field events in the two ends of the infield.
+void _trackDetails(_Pen pen, _Field f, ProceduralSpec spec) {
+  var lanes = _lanes(spec);
+  var outer = _trackInner + lanes * _trackLane;
+  var colour = _trackColours[spec.choice("trackColour").clamp(0, 4)];
+  var c = f.field.center;
+  var canvas = pen.canvas;
+  var white = pen.withColour(const Color(0xF2FFFFFF), 0.05);
+  var home = c.dy - _trackInner; // the home straight runs along the bottom
+  var finishX = c.dx + _trackStraight / 2 - 2;
+
+  if (spec.on("markings")) {
+    // The finish line, and the lane numbers before it.
+    white.thick(0.05).line(finishX, home, finishX, c.dy - outer);
+    for (var i = 0; i < lanes; i++) {
+      var y = home - (i + 0.5) * _trackLane;
+      white.text("${i + 1}", finishX - 2.2, y, 0.8, -math.pi / 2,
+          const Color(0xF2FFFFFF));
+    }
+    // The staggered starts for a full lap, round the first bend: each lane
+    // starts further on by the extra its bend is longer.
+    var bend = Offset(c.dx + _trackStraight / 2, c.dy);
+    for (var i = 1; i < lanes; i++) {
+      var r = _trackInner + (i + 0.3) * _trackLane;
+      var stagger = 2 * math.pi * i * _trackLane;
+      var a = -math.pi / 2 + stagger / r / 2;
+      var p0 = bend +
+          Offset(math.cos(a), math.sin(a)) * (_trackInner + i * _trackLane);
+      var p1 = bend +
+          Offset(math.cos(a), math.sin(a)) *
+              (_trackInner + (i + 1) * _trackLane);
+      canvas.drawLine(p0, p1, white.stroke);
+    }
+  }
+
+  if (!spec.on("fieldEvents")) return;
+  var surface = Paint()..color = colour;
+  // The high jump: a fan of track surface in one end of the infield.
+  var hj = Offset(f.field.left - 16, c.dy);
+  canvas.drawArc(Rect.fromCircle(center: hj, radius: 14), -math.pi / 2, math.pi,
+      true, surface);
+  canvas.drawRect(
+      Rect.fromCenter(center: hj + const Offset(-1.2, 0), width: 3, height: 5),
+      Paint()..color = const Color(0xFF2F5FA8));
+  // The throws in the other: the shot circle and the discus cage, with the
+  // lines of their sectors running into the infield.
+  var shot = Offset(f.field.right + 22, c.dy - 7);
+  var disc = Offset(f.field.right + 22, c.dy + 7);
+  for (var (at, r) in [(shot, 1.0675), (disc, 1.25)]) {
+    canvas.drawCircle(at, r + 0.6, Paint()..color = const Color(0xFFB9B9B9));
+    canvas.drawCircle(at, r, Paint()..color = const Color(0xFF8E8E8E));
+    canvas.drawCircle(at, r, white.stroke);
+    for (var s in [-1.0, 1.0]) {
+      var a = math.pi + s * 0.3048; // the sector's 34.92 degrees
+      canvas.drawLine(at + Offset(math.cos(a), math.sin(a)) * r,
+          at + Offset(math.cos(a), math.sin(a)) * 16, white.stroke);
+    }
+  }
+  canvas.drawArc(
+      Rect.fromCircle(center: disc, radius: 3.2),
+      0.6,
+      math.pi * 2 - 1.2,
+      false,
+      pen.withColour(const Color(0xFF2B2B2B), 0.12).stroke);
+}
+
+/// _trackOutside is the long jump, outside the back straight: a runway on a
+/// strip of verge, its board and its sand pit.
+void _trackOutside(_Pen pen, _Field f, ProceduralSpec spec) {
+  if (!spec.on("fieldEvents")) return;
+  var outer = _trackInner + _lanes(spec) * _trackLane;
+  var colour = _trackColours[spec.choice("trackColour").clamp(0, 4)];
+  var c = f.field.center;
+  var canvas = pen.canvas;
+  var white = pen.withColour(const Color(0xF2FFFFFF), 0.05);
+  var surface = Paint()..color = colour;
+  var y = c.dy + outer + 4.5;
+  canvas.drawRRect(
+      RRect.fromRectAndRadius(
+          Rect.fromLTRB(c.dx - 33, c.dy + outer, c.dx + 23, y + 3),
+          const Radius.circular(2)),
+      Paint()..color = _darken(spec.background, 0.22));
+  canvas.drawRect(
+      Rect.fromLTWH(c.dx - 30, y - _trackLane / 2, 40, _trackLane), surface);
+  canvas.drawRect(Rect.fromLTWH(c.dx + 10.5, y - 1.4, 9, 2.8),
+      Paint()..color = const Color(0xFFE3CF9A));
+  canvas.drawLine(Offset(c.dx + 9.5, y - _trackLane / 2),
+      Offset(c.dx + 9.5, y + _trackLane / 2), white.stroke);
 }
 
 /// _ring is points round a rounded rectangle [d] metres outside [window].
@@ -1346,110 +1507,486 @@ List<Offset> _ring(Rect window, double d, double corner) {
   return pts;
 }
 
+/// _standOpen is whether the stand between [a] and [b] is in a corner of a
+/// ground whose corners are open, and so not built at all.
+bool _standOpen(Rect window, ProceduralSpec spec, Offset a, Offset b) {
+  var mid = (a + b) / 2;
+  return spec.choice("corners") == 1 &&
+      (mid.dx < window.left || mid.dx > window.right) &&
+      (mid.dy < window.top || mid.dy > window.bottom);
+}
+
+/// _standFacing is whether the stand between [a] and [b] faces the camera:
+/// its seats look towards it over the pitch. One that faces away is the
+/// near stand, between the camera and the pitch.
+bool _standFacing(_View view, Rect window, Offset a, Offset b) {
+  if (view.flat) return true;
+  var mid = (a + b) / 2;
+  var out = mid - window.center;
+  var d0 = view.depthOf(mid.dx, mid.dy);
+  var d1 = view.depthOf(mid.dx + out.dx * 0.01, mid.dy + out.dy * 0.01);
+  return d1 >= d0;
+}
+
+/// _facingAmount is how squarely the stand between [a] and [b] faces the
+/// camera: one for a stand straight across the pitch from it, falling to
+/// nought where the stands turn into the near one.
+double _facingAmount(_View view, Rect window, Offset a, Offset b) {
+  if (view.flat) return 1;
+  var mid = (a + b) / 2;
+  var out = mid - window.center;
+  var len = out.distance;
+  if (len < 1e-6) return 1;
+  var d0 = view.depthOf(mid.dx, mid.dy);
+  var d1 = view.depthOf(mid.dx + out.dx / len, mid.dy + out.dy / len);
+  var most = math.max(math.cos(view.elevation).abs(), 0.05);
+  return ((d1 - d0) / most).clamp(0.0, 1.0);
+}
+
+/// _standShown is whether the stand between [a] and [b] is one the picture
+/// is fitted round: built, and facing the camera. The near stand is drawn
+/// too where it is asked for -- see _stadium -- but in front of the picture,
+/// soft, and running out of the frame as the stand nearest a camera does.
+bool _standShown(
+        _View view, Rect window, ProceduralSpec spec, Offset a, Offset b) =>
+    !_standOpen(window, spec, a, b) && _standFacing(view, window, a, b);
+
+/// _inFront is whether [x], [y], [z] is far enough in front of the camera
+/// to be drawn: a near stand can stand round the camera itself, and what is
+/// behind it projects to nonsense.
+bool _inFront(_View view, double x, double y, double z) =>
+    view.distance <= 0 ||
+    view.distance + view.depthOf(x, y, z) > view.distance * 0.15;
+
+/// _stadiumExtent is every point the stands reach, for fitting the picture
+/// round exactly what is drawn of them.
+Iterable<(double, double, double)> _stadiumExtent(
+    _View view, Rect window, ProceduralSpec spec) sync* {
+  var back = _ring(window, _standReach(window, spec), 6);
+  var top = _standTop(window, spec);
+  for (var i = 0; i < back.length; i++) {
+    var a = back[i], b = back[(i + 1) % back.length];
+    if (!_standShown(view, window, spec, a, b)) continue;
+    yield (a.dx, a.dy, top);
+    yield (a.dx, a.dy, 0);
+  }
+  if (spec.on("pylons")) {
+    for (var p in _pylonFeet(view, window, spec)) {
+      yield (p.dx, p.dy, _pylonHeight(window, spec) + 3);
+      yield (p.dx, p.dy, 0);
+    }
+  }
+}
+
+/// _pylonFeet is where the floodlight pylons stand: at the corners, and
+/// only the far ones where the camera looks across the ground -- a near one
+/// would stand in front of everything.
+List<Offset> _pylonFeet(_View view, Rect window, ProceduralSpec spec) {
+  var box = window.inflate(_standReach(window, spec) + 2);
+  var middle = view.depthOf(window.center.dx, window.center.dy);
+  return [
+    for (var p in [box.topLeft, box.topRight, box.bottomLeft, box.bottomRight])
+      if (view.flat || view.depthOf(p.dx, p.dy) >= middle) p,
+  ];
+}
+
+double _pylonHeight(Rect window, ProceduralSpec spec) =>
+    _standTop(window, spec) * 1.25 + 4;
+
 /// _stadium is the boards round the pitch and the stands rising behind
-/// them -- the near stand left out where the camera is in it.
+/// them, in tiers, under a roof, full of people -- the near stand left out
+/// where the camera is in it.
 void _stadium(ui.Canvas canvas, _View view, _Field f, ProceduralSpec spec,
-    Rect ground, List<(double, void Function())> items) {
+    Rect ground, List<(double, void Function())> items,
+    {required List<(double, void Function())> far,
+    required List<(double, void Function())> near}) {
+  var window0 = _View._window(spec, f, false);
+  var reach0 = _standReach(window0, spec);
+  var top0 = _standTop(window0, spec);
+  var showNear = spec.p("nearStands") > 0;
+
+  /// into is the list the stand between [a] and [b] is drawn from: the far
+  /// stands, the near ones, or none -- an open corner, or a piece of the
+  /// near stand the camera is standing in.
+  List<(double, void Function())>? into(Offset a, Offset b) {
+    if (_standOpen(window0, spec, a, b)) return null;
+    if (_standFacing(view, window0, a, b)) return far;
+    if (!showNear) return null;
+    var out = (a + b) / 2 - window0.center;
+    var dir = out / math.max(out.distance, 1e-6);
+    for (var p in [a, b]) {
+      var back = p + dir * reach0;
+      if (!_inFront(view, p.dx, p.dy, 0) ||
+          !_inFront(view, back.dx, back.dy, top0)) {
+        return null;
+      }
+    }
+    return near;
+  }
+
   var window = _View._window(spec, f, false);
-  var centre = window.center;
   var seat = spec.accent;
   var concrete = _darken(spec.background, 0.62);
-
-  bool facesCamera(Offset a, Offset b) {
-    if (view.flat) return false;
-    // A stand whose seats face away from the camera is the near one: what
-    // the camera would see is its back, from inside it.
-    var mid = (a + b) / 2;
-    var out = mid - centre;
-    var d0 = view.depthOf(mid.dx, mid.dy);
-    var d1 = view.depthOf(mid.dx + out.dx * 0.01, mid.dy + out.dy * 0.01);
-    return d1 < d0;
-  }
+  var tiers = _tiers(spec);
+  var depth = _standDepth(window, spec), height = _standHeight(window, spec);
 
   void quad(List<Offset> pts, Color colour) {
     canvas.drawPath(Path()..addPolygon(pts, true), Paint()..color = colour);
   }
 
   // The advertising boards, a metre high, two metres outside the apron.
-  var boards = _ring(window, 2, 2);
-  for (var i = 0; i < boards.length; i++) {
-    var a = boards[i], b = boards[(i + 1) % boards.length];
-    if ((b - a).distance < 0.01) continue;
-    var panel = i.isEven ? seat : _lighten(seat, 0.25);
-    var d = view.depthOf((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
-    items.add((
-      d,
-      () {
-        quad([
-          view.project(a.dx, a.dy),
-          view.project(b.dx, b.dy),
-          view.project(b.dx, b.dy, 0.9),
-          view.project(a.dx, a.dy, 0.9),
-        ], panel);
+  var boardKind = spec.choice("boards");
+  if (boardKind != 2) {
+    var boards = _ring(window, 2, 2);
+    for (var i = 0; i < boards.length; i++) {
+      var a = boards[i], b = boards[(i + 1) % boards.length];
+      if ((b - a).distance < 0.01) continue;
+      Color panel;
+      if (boardKind == 1) {
+        // LED boards: bright, and running through colours along the ground.
+        panel = HSVColor.fromAHSV(
+                1, ((i * 23 + spec.seed * 37) % 360).toDouble(), 0.75, 1)
+            .toColor();
+      } else {
+        panel = i.isEven ? seat : _lighten(seat, 0.25);
       }
-    ));
-  }
-
-  // The stands: rows of seats rising away from the pitch.
-  const rows = 22;
-  var rings = [
-    for (var r = 0; r <= rows; r++)
-      _ring(window, 5 + r * _standDepth(window) / rows, 6),
-  ];
-  for (var r = 0; r < rows; r++) {
-    var z0 = 1.5 + r * _standHeight(window) / rows,
-        z1 = z0 + _standHeight(window) / rows;
-    var inner = rings[r], outer = rings[r + 1];
-    for (var i = 0; i < inner.length; i++) {
-      var j = (i + 1) % inner.length;
-      if (facesCamera(inner[i], inner[j])) continue;
-      var aisle = i % 9 == 0;
-      var tone = aisle
-          ? _lighten(concrete, 0.25)
-          : (r.isEven ? _darken(seat, 0.25) : _darken(seat, 0.4));
-      // A little of the crowd in it: no two blocks of seats quite alike.
-      var crowd = (hash(spec.seed, i, r) - 0.5) * 0.16 * (0.4 + spec.variation);
-      tone = crowd > 0 ? _lighten(tone, crowd) : _darken(tone, -crowd);
-      var d = view.depthOf((inner[i].dx + outer[j].dx) / 2,
-          (inner[i].dy + outer[j].dy) / 2, (z0 + z1) / 2);
+      var d = view.depthOf((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
       items.add((
         d,
         () {
-          // The riser, then the tread on top of it.
-          quad([
-            view.project(inner[i].dx, inner[i].dy, z0),
-            view.project(inner[j].dx, inner[j].dy, z0),
-            view.project(inner[j].dx, inner[j].dy, z1),
-            view.project(inner[i].dx, inner[i].dy, z1),
-          ], _darken(tone, 0.3));
-          quad([
-            view.project(inner[i].dx, inner[i].dy, z1),
-            view.project(inner[j].dx, inner[j].dy, z1),
-            view.project(outer[j].dx, outer[j].dy, z1),
-            view.project(outer[i].dx, outer[i].dy, z1),
-          ], tone);
+          var face = [
+            view.project(a.dx, a.dy),
+            view.project(b.dx, b.dy),
+            view.project(b.dx, b.dy, 0.9),
+            view.project(a.dx, a.dy, 0.9),
+          ];
+          quad(face, panel);
+          if (boardKind == 1) {
+            canvas.drawPath(
+                Path()..addPolygon(face, true),
+                Paint()
+                  ..color = panel.withValues(alpha: 0.5)
+                  ..maskFilter = MaskFilter.blur(
+                      BlurStyle.normal, view.pixelsPerMetre * 0.6));
+          }
         }
       ));
     }
   }
-  // The roof's edge along the top of the stands.
-  var top = rings.last;
-  for (var i = 0; i < top.length; i++) {
-    var j = (i + 1) % top.length;
-    if (facesCamera(top[i], top[j])) continue;
-    var z = 1.5 + _standHeight(window);
-    var d = view.depthOf(top[i].dx, top[i].dy, z) - 0.5;
-    items.add((
-      d,
+
+  // The stands: a tier of rows of seats, rising away from the pitch, then a
+  // walkway, then the next tier set further back and higher.
+  var crowd = spec.p("crowd");
+  const people = [
+    Color(0xFFF2F2F2),
+    Color(0xFF1C2333),
+    Color(0xFFE0B48A),
+    Color(0xFFD03A2E),
+    Color(0xFFF2C230),
+    Color(0xFF7A4B2E),
+  ];
+  var perTier = (22 / tiers).ceil();
+  double? topRing;
+  for (var t = 0; t < tiers; t++) {
+    var d0 = 5 + t * (depth / tiers + _tierGap);
+    var z0 = 1.5 + t * (height / tiers + 1.8);
+    var rings = [
+      for (var r = 0; r <= perTier; r++)
+        _ring(window, d0 + r * depth / tiers / perTier, 6),
+    ];
+    for (var r = 0; r < perTier; r++) {
+      var za = z0 + r * height / tiers / perTier,
+          zb = za + height / tiers / perTier;
+      var inner = rings[r], outer = rings[r + 1];
+      for (var i = 0; i < inner.length; i++) {
+        var j = (i + 1) % inner.length;
+        var list = into(inner[i], inner[j]);
+        if (list == null) continue;
+        var aisle = i % 9 == 0;
+        var tone = aisle
+            ? _lighten(concrete, 0.25)
+            : (r.isEven ? _darken(seat, 0.25) : _darken(seat, 0.4));
+        var shade = (hash(spec.seed, i, r + t * 40) - 0.5) *
+            0.16 *
+            (0.4 + spec.variation);
+        tone = shade > 0 ? _lighten(tone, shade) : _darken(tone, -shade);
+        var d = view.depthOf((inner[i].dx + outer[j].dx) / 2,
+            (inner[i].dy + outer[j].dy) / 2, (za + zb) / 2);
+        var seed = i * 131 + r * 17 + t * 7919;
+        list.add((
+          d,
+          () {
+            quad([
+              view.project(inner[i].dx, inner[i].dy, za),
+              view.project(inner[j].dx, inner[j].dy, za),
+              view.project(inner[j].dx, inner[j].dy, zb),
+              view.project(inner[i].dx, inner[i].dy, zb),
+            ], _darken(tone, 0.3));
+            quad([
+              view.project(inner[i].dx, inner[i].dy, zb),
+              view.project(inner[j].dx, inner[j].dy, zb),
+              view.project(outer[j].dx, outer[j].dy, zb),
+              view.project(outer[i].dx, outer[i].dy, zb),
+            ], tone);
+            // The crowd: a head here and there, as full as the ground is.
+            if (crowd <= 0 || aisle) return;
+            var many = (crowd * 9).round();
+            var dot = Paint()..strokeCap = StrokeCap.round;
+            var size = view.pixelsPerMetre * 0.55;
+            for (var k = 0; k < many; k++) {
+              var u = hash(spec.seed + 3, seed, k),
+                  v = hash(spec.seed + 5, seed, k);
+              if (hash(spec.seed + 7, seed, k) > crowd) continue;
+              var a = Offset.lerp(inner[i], inner[j], u)!;
+              var b = Offset.lerp(outer[i], outer[j], u)!;
+              var p = Offset.lerp(a, b, v * 0.6)!;
+              dot
+                ..color = people[
+                    (hash(spec.seed + 9, seed, k) * people.length).floor() %
+                        people.length]
+                ..strokeWidth = math.max(1.0, size);
+              canvas.drawPoints(ui.PointMode.points,
+                  [view.project(p.dx, p.dy, zb + 0.5)], dot);
+            }
+          }
+        ));
+      }
+    }
+    // The fascia between this tier and the one above it.
+    var top = z0 + height / tiers;
+    topRing = top;
+    if (t < tiers - 1) {
+      var edge = _ring(window, d0 + depth / tiers, 6);
+      for (var i = 0; i < edge.length; i++) {
+        var j = (i + 1) % edge.length;
+        var list = into(edge[i], edge[j]);
+        if (list == null) continue;
+        var d = view.depthOf(edge[i].dx, edge[i].dy, top + 0.9);
+        list.add((
+          d,
+          () => quad([
+                view.project(edge[i].dx, edge[i].dy, top),
+                view.project(edge[j].dx, edge[j].dy, top),
+                view.project(edge[j].dx, edge[j].dy, top + 1.8),
+                view.project(edge[i].dx, edge[i].dy, top + 1.8),
+              ], i.isEven ? seat : _darken(seat, 0.2))
+        ));
+      }
+    }
+  }
+
+  // The back wall along the top, and a roof over the rows where there is
+  // one: a canopy over the back of the stand, or the whole of it -- pitched
+  // down towards the pitch, ribbed, with a fascia along its leading edge.
+  var reach = _standReach(window, spec);
+  var back = _ring(window, reach, 6);
+  var z = topRing ?? 1.5 + height;
+  var roof = spec.choice("roof");
+  var front = roof == 0
+      ? null
+      : _ring(window, reach - depth * (roof == 1 ? 0.45 : 0.95), 6);
+  var rz = z + 3.5; // the roof's back edge
+  var lip = rz - 1.2; // and its leading edge, lower
+  var wallTop = roof == 0 ? z + 2.5 : rz;
+  for (var i = 0; i < back.length; i++) {
+    var j = (i + 1) % back.length;
+    // Not over the near stand: its roof and its back wall are above and
+    // behind the camera, and from there would be a sheet across the pitch.
+    var list = into(back[i], back[j]);
+    if (list == null || identical(list, near)) continue;
+    list.add((
+      view.depthOf(back[i].dx, back[i].dy, z) - 0.5,
+      () => quad([
+            view.project(back[i].dx, back[i].dy, z),
+            view.project(back[j].dx, back[j].dy, z),
+            view.project(back[j].dx, back[j].dy, wallTop),
+            view.project(back[i].dx, back[i].dy, wallTop),
+          ], _darken(concrete, 0.3))
+    ));
+    if (front == null) continue;
+    var fadeOf = _facingAmount(view, window, back[i], back[j]);
+    list.add((
+      view.depthOf(front[i].dx, front[i].dy, rz) - 1,
       () {
+        Offset mid(int k, double t) => Offset.lerp(back[k], front[k], t)!;
+        Offset at(int k, double t) {
+          var m = mid(k, t);
+          return view.project(m.dx, m.dy, rz + (lip - rz) * t);
+        }
+
+        // The sheet, darker at the back where it meets the wall and lit
+        // towards its leading edge -- and fading out where the stand turns
+        // towards the camera, rather than stopping dead.
+        var fade = (fadeOf / 0.35).clamp(0.0, 1.0);
+        fade = fade * fade * (3 - 2 * fade);
+        if (fade <= 0.01) return;
+        quad([at(i, 0), at(j, 0), at(j, 0.5), at(i, 0.5)],
+            const Color(0xFFAEB4BD).withValues(alpha: fade));
+        quad([at(i, 0.5), at(j, 0.5), at(j, 1), at(i, 1)],
+            const Color(0xFFD3D8DF).withValues(alpha: fade));
+        // A rib along every other panel joint.
+        if (i.isEven) {
+          canvas.drawLine(
+              at(i, 0),
+              at(i, 1),
+              Paint()
+                ..strokeWidth = math.max(0.8, view.pixelsPerMetre * 0.18)
+                ..color =
+                    const Color(0x55394049).withValues(alpha: 0.33 * fade));
+        }
+        // The fascia: a deep band hanging from the leading edge.
+        var f0 = front[i], f1 = front[j];
         quad([
-          view.project(top[i].dx, top[i].dy, z),
-          view.project(top[j].dx, top[j].dy, z),
-          view.project(top[j].dx, top[j].dy, z + 2.5),
-          view.project(top[i].dx, top[i].dy, z + 2.5),
-        ], _darken(concrete, 0.3));
+          view.project(f0.dx, f0.dy, lip),
+          view.project(f1.dx, f1.dy, lip),
+          view.project(f1.dx, f1.dy, lip - 1.4),
+          view.project(f0.dx, f0.dy, lip - 1.4),
+        ], const Color(0xFFE9ECF0).withValues(alpha: fade));
+        canvas.drawLine(
+            view.project(f0.dx, f0.dy, lip - 1.4),
+            view.project(f1.dx, f1.dy, lip - 1.4),
+            Paint()
+              ..strokeWidth = math.max(0.8, view.pixelsPerMetre * 0.12)
+              ..color = const Color(0x66000000).withValues(alpha: 0.4 * fade));
       }
     ));
+  }
+
+  // Floodlight pylons at the four corners.
+  if (spec.on("pylons")) {
+    var tall = _pylonHeight(window, spec);
+    for (var foot in _pylonFeet(view, window, spec)) {
+      far.add((
+        view.depthOf(foot.dx, foot.dy, tall / 2) - 2,
+        () {
+          var pole = Paint()
+            ..strokeWidth = math.max(1.5, view.pixelsPerMetre * 0.9)
+            ..color = const Color(0xFF9EA4AC);
+          canvas.drawLine(view.project(foot.dx, foot.dy),
+              view.project(foot.dx, foot.dy, tall), pole);
+          var head = view.project(foot.dx, foot.dy, tall + 1.5);
+          var w = view.pixelsPerMetre * 4.5;
+          canvas.drawCircle(
+              head,
+              w * 1.4,
+              Paint()
+                ..shader = ui.Gradient.radial(head, w * 1.4, [
+                  const Color(0xAAFFF6D8),
+                  const Color(0x00FFF6D8),
+                ]));
+          canvas.drawRect(
+              Rect.fromCenter(center: head, width: w, height: w * 0.55),
+              Paint()..color = const Color(0xFFFFF8E2));
+          canvas.drawRect(
+              Rect.fromCenter(center: head, width: w, height: w * 0.55),
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = math.max(1.0, w * 0.06)
+                ..color = const Color(0xFF5A5F66));
+        }
+      ));
+    }
+  }
+}
+
+/// _drawStadium draws what stands up off the ground, furthest first: the
+/// pitch's own goals and boards sharp, and the stadium ([far] and [near])
+/// through a depth of field -- each piece blurred, and the nearer ones faded,
+/// by how far it is from the pitch, so the focus falls off gradually rather
+/// than at the line where one stand becomes the next. The stadium is clipped
+/// out of the pitch's outline: it never lies over the pitch.
+void _drawStadium(
+    ui.Canvas canvas,
+    _View view,
+    _Field field,
+    ProceduralSpec spec,
+    Rect frame,
+    List<(double, void Function())> items,
+    List<(double, void Function())> far,
+    List<(double, void Function())> near) {
+  var all = <(double, void Function(), bool)>[
+    for (var (d, f) in items) (d, f, false),
+    for (var (d, f) in far) (d, f, true),
+    for (var (d, f) in near) (d, f, true),
+  ]..sort((a, b) => b.$1.compareTo(a.$1));
+  if (all.isEmpty) return;
+
+  var window = _View._window(spec, field, false);
+  var depths = [
+    for (var p in [
+      window.topLeft,
+      window.topRight,
+      window.bottomLeft,
+      window.bottomRight
+    ])
+      view.depthOf(p.dx, p.dy),
+  ];
+  var nearest = depths.reduce(math.min), furthest = depths.reduce(math.max);
+  var span = math.max(furthest - nearest, 1.0);
+  var dof = spec.p("depthOfField");
+  var fade = spec.p("nearStands");
+  var ppm = view.pixelsPerMetre;
+  const steps = 10;
+
+  /// look is how a stadium piece [d] deep is drawn: its blur in pixels and
+  /// its opacity, in steps so that pieces alike are drawn together.
+  (double, double) look(double d) {
+    if (d > furthest) {
+      var u = ((d - furthest) / (span * 0.6)).clamp(0.0, 1.0);
+      u = (u * steps).round() / steps;
+      return (dof * ppm * 0.35 * u, 1);
+    }
+    if (d < nearest + span * 0.15) {
+      var n = ((nearest + span * 0.15 - d) / (span * 0.45)).clamp(0.0, 1.0);
+      n = (n * steps).round() / steps;
+      var eased = n * n * (3 - 2 * n);
+      return (
+        ppm * (0.1 + dof * 0.9) * eased,
+        1 + (fade - 1) * eased,
+      );
+    }
+    return (0, 1);
+  }
+
+  // The pitch's outline, out to the boards, as the camera sees it.
+  var outline = Path()
+    ..addPolygon([
+      for (var p in _ring(window, 2, 2)) view.project(p.dx, p.dy),
+    ], true);
+  var outside = Path.combine(
+      PathOperation.difference, Path()..addRect(frame.inflate(4)), outline);
+
+  var i = 0;
+  while (i < all.length) {
+    var graded = all[i].$3;
+    var (blur, opacity) = graded ? look(all[i].$1) : (0.0, 1.0);
+    var j = i;
+    while (j < all.length &&
+        all[j].$3 == graded &&
+        (!graded || look(all[j].$1) == (blur, opacity))) {
+      j++;
+    }
+    if (opacity > 0.01) {
+      canvas.save();
+      if (graded) canvas.clipPath(outside);
+      var layered = blur > 0.3 || opacity < 1;
+      if (layered) {
+        var paint = Paint()
+          ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0));
+        if (blur > 0.3) {
+          var sigma = blur.clamp(0.0, 24.0);
+          paint.imageFilter = ui.ImageFilter.blur(
+              sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.decal);
+        }
+        canvas.saveLayer(null, paint);
+      }
+      for (var k = i; k < j; k++) {
+        all[k].$2();
+      }
+      if (layered) canvas.restore();
+      canvas.restore();
+    }
+    i = j;
   }
 }
 

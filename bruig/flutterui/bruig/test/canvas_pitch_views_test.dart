@@ -1,13 +1,20 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/procedural_light.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/procedural_style_params.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -38,6 +45,38 @@ const _pitch = ProceduralSpec(
   accent: Color(0xFF1D3F87),
   vignette: 0,
 );
+
+Future<void> _pumpSettings(WidgetTester tester, ProceduralSpec Function() get,
+    void Function(ProceduralSpec) set) async {
+  tester.view.physicalSize = const Size(400, 3200);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(const SizedBox());
+  await tester.pumpWidget(MaterialApp(
+    home: ChangeNotifierProvider(
+      create: (_) => ThemeNotifier(doLoad: false),
+      child: Scaffold(
+        body: SingleChildScrollView(
+          child: CanvasControlScope(
+            maxWidth: 300,
+            child: SizedBox(
+              width: 300,
+              child: StatefulBuilder(
+                builder: (context, setState) => ProceduralSettings(
+                  spec: get(),
+                  onChanged: (s) => setState(() => set(s)),
+                  onBegin: () {},
+                  onCommit: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   group("pitches", () {
@@ -197,6 +236,271 @@ void main() {
       // And the zoom is with the camera, not among the amounts.
       expect(find.byKey(const ValueKey("pitchZoom")), findsOneWidget);
       expect(find.text("Size"), findsNothing);
+    });
+
+    testWidgets("the orbit pad moves the camera in one gesture",
+        (tester) async {
+      var current = _pitch;
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      var pad = find.byKey(const ValueKey("pitchOrbitPad"));
+      expect(pad, findsOneWidget);
+      // The numbers are behind Fine tune, not in the way.
+      expect(find.byKey(const ValueKey("param-tiltV")), findsNothing);
+
+      // Drag right and up: turned, and tilted back.
+      await tester.drag(pad, const Offset(50, -40));
+      await tester.pumpAndSettle();
+      expect(current.p("turn"), greaterThan(20));
+      expect(current.p("tiltV"), greaterThan(10));
+
+      // Shift-drag: to the side, and the lens.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.drag(pad, const Offset(40, -40));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(current.p("tiltH"), greaterThan(5));
+      expect(current.p("perspective"), greaterThan(0.1));
+
+      // Scroll zooms.
+      var before = current.scale;
+      await tester.sendEventToBinding(PointerScrollEvent(
+          position: tester.getCenter(pad), scrollDelta: const Offset(0, -200)));
+      await tester.pumpAndSettle();
+      expect(current.scale, greaterThan(before));
+
+      // Double-click is flat again, at the same zoom.
+      var zoomed = current.scale;
+      await tester.tap(pad);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(pad);
+      await tester.pumpAndSettle();
+      expect(current.p("tiltV"), 0);
+      expect(current.p("turn"), 0);
+      expect(current.p("tiltH"), 0);
+      expect(current.p("perspective"), 0);
+      expect(current.scale, zoomed);
+    });
+
+    testWidgets("the stadium and track settings show with their surround",
+        (tester) async {
+      var current = _pitch;
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      expect(find.byKey(const ValueKey("param-tiers")), findsNothing);
+      expect(find.byKey(const ValueKey("param-lanes")), findsNothing);
+      current = current.withParam("surround", 1);
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      expect(find.byKey(const ValueKey("param-tiers")), findsOneWidget);
+      expect(find.byKey(const ValueKey("param-roof")), findsOneWidget);
+      expect(find.byKey(const ValueKey("param-lanes")), findsNothing);
+      current = current.withParam("surround", 2);
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      expect(find.byKey(const ValueKey("param-lanes")), findsOneWidget);
+      expect(find.byKey(const ValueKey("param-tiers")), findsNothing);
+    });
+
+    testWidgets("stadium and track options each change the picture",
+        (tester) async {
+      var stadium = _pitch.withParam("surround", 1).withParam("tiltV", 50);
+      var track = _pitch.withParam("surround", 2);
+      late List<int> s0, t0;
+      var changed = <String, List<int>>{};
+      await tester.runAsync(() async {
+        s0 = await _pixels(stadium);
+        t0 = await _pixels(track);
+        for (var (id, v) in [
+          ("tiers", 3.0),
+          ("roof", 2.0),
+          ("boards", 1.0),
+          ("standSize", 1.6)
+        ]) {
+          changed[id] = await _pixels(stadium.withParam(id, v));
+        }
+        for (var (id, v) in [
+          ("lanes", 4.0),
+          ("trackColour", 1.0),
+          ("fieldEvents", 0.0)
+        ]) {
+          changed[id] = await _pixels(track.withParam(id, v));
+        }
+      });
+      for (var id in ["tiers", "roof", "boards", "standSize"]) {
+        expect(changed[id], isNot(s0), reason: id);
+      }
+      for (var id in ["lanes", "trackColour", "fieldEvents"]) {
+        expect(changed[id], isNot(t0), reason: id);
+      }
+    });
+
+    testWidgets("a track's corners are track, not grass", (tester) async {
+      // Seen flat, the apron's corner -- 4 m beyond the corner flag -- is
+      // outside the kerb, so it is the track's colour and not the pitch's.
+      late List<int> px;
+      await tester.runAsync(() async {
+        px = await _pixels(_pitch.withParam("surround", 2));
+      });
+      // The track's red, somewhere round the bend near the top right of
+      // where the field's corner is.
+      int red(int argb) => (argb >> 24) & 0xFF;
+      int green(int argb) => (argb >> 16) & 0xFF;
+      var reddish = 0;
+      for (var y = 0; y < _h; y++) {
+        for (var x = 0; x < _w; x++) {
+          var c = px[y * _w + x];
+          if (red(c) > green(c) + 40) reddish++;
+        }
+      }
+      expect(reddish, greaterThan(_w * _h ~/ 20));
+    });
+
+    testWidgets("each view offers five shots, and the first is where it starts",
+        (tester) async {
+      var current = _pitch;
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      await tester.tap(find.byKey(const ValueKey("param-view")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Broadcast").last);
+      await tester.pumpAndSettle();
+      expect(pitchShotOf(2, current.params, current.scale), 0);
+
+      var shot = find.byKey(const ValueKey("pitchShot"));
+      await tester.ensureVisible(shot);
+      await tester.tap(shot);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Left box").last);
+      await tester.pumpAndSettle();
+      var left = pitchShots[2]![3].$2;
+      expect(current.p("panX"), left["panX"]);
+      expect(current.scale / 0.05, closeTo(left["zoom"]!, 1e-9));
+
+      // Moved off it with the pad, it is Custom.
+      await tester.drag(
+          find.byKey(const ValueKey("pitchOrbitPad")), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(pitchShotOf(2, current.params, current.scale), -1);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("pitchShot")),
+              matching: find.text("Custom")),
+          findsOneWidget);
+
+      // Every shot of every view is a different camera.
+      for (var shots in pitchShots.values) {
+        expect(shots, hasLength(5));
+        var seen = <String>{};
+        for (var (_, v) in shots) {
+          expect(seen.add(v.toString()), isTrue);
+        }
+      }
+    });
+
+    testWidgets("a camera is saved as a view, and put back", (tester) async {
+      var root = Directory.systemTemp.createTempSync("pitch-views");
+      CanvasStorage.rootOverride = root.path;
+      SavedPresetStore.pitchViews.forget();
+      addTearDown(() {
+        CanvasStorage.rootOverride = null;
+        SavedPresetStore.pitchViews.forget();
+        root.deleteSync(recursive: true);
+      });
+      Future<void> idle() async {
+        for (var i = 0; i < 24; i++) {
+          await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 4)));
+          await tester.pump();
+        }
+        await tester.pumpAndSettle();
+      }
+
+      var current = withPitchCamera(_pitch, pitchShots[3]![3].$2);
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      await idle();
+      var name = find.byKey(const ValueKey("pitchViewName"));
+      await tester.ensureVisible(name);
+      await tester.enterText(
+          find.descendant(of: name, matching: find.byType(EditableText)),
+          "My corner");
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("pitchSaveView")));
+      await idle();
+      expect(SavedPresetStore.pitchViews.presets.map((p) => p.name),
+          ["My corner"]);
+
+      // Somewhere else, then back by the saved view.
+      var saved = pitchCameraOf(current);
+      current = withPitchCamera(current, pitchShots[0]![0].$2);
+      await _pumpSettings(tester, () => current, (s) => current = s);
+      await idle();
+      var pick = find.byKey(const ValueKey("pitchSavedView"));
+      await tester.ensureVisible(pick);
+      await tester.tap(pick);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("My corner").last);
+      await tester.pumpAndSettle();
+      expect(pitchCameraOf(current), saved);
+
+      // And deleted.
+      await tester.tap(find.byKey(const ValueKey("pitchDeleteView")));
+      await idle();
+      expect(SavedPresetStore.pitchViews.presets, isEmpty);
+    });
+
+    testWidgets("the stadium never lies over the pitch", (tester) async {
+      // However near the stand and however soft, every pixel of the pitch
+      // is the pitch's: the same with the near stand at full strength as
+      // with none at all.
+      for (var camera in [
+        for (var view in pitchShots.keys)
+          for (var (_, shot) in pitchShots[view]!) shot,
+      ]) {
+        var stand = withPitchCamera(_pitch.withParam("surround", 1), camera);
+        late List<int> none, full;
+        await tester.runAsync(() async {
+          none = await _pixels(stand.withParam("nearStands", 0));
+          full = await _pixels(
+              stand.withParam("nearStands", 1).withParam("depthOfField", 1));
+        });
+        var place = pitchPlacement(_page, stand);
+        var checked = 0;
+        for (var x = 2.0; x <= 103; x += 4) {
+          for (var y = 2.0; y <= 66; y += 4) {
+            var at = place.page(x, y);
+            var px = at.dx.floor(), py = at.dy.floor();
+            if (px < 0 || py < 0 || px >= _w || py >= _h) continue;
+            checked++;
+            expect(full[py * _w + px], none[py * _w + px],
+                reason: "\$camera at \$x, \$y m");
+          }
+        }
+        expect(checked, greaterThan(50));
+      }
+    });
+
+    testWidgets("the near stand is drawn, soft, rather than cut away",
+        (tester) async {
+      var stand = _pitch
+          .withParam("surround", 1)
+          .withParam("tiltV", 50)
+          .withParam("perspective", 0.85);
+      late List<int> shown, hidden, sharp, soft;
+      await tester.runAsync(() async {
+        shown = await _pixels(stand);
+        hidden = await _pixels(stand.withParam("nearStands", 0));
+        sharp = await _pixels(stand.withParam("depthOfField", 0));
+        soft = await _pixels(stand.withParam("depthOfField", 1));
+      });
+      expect(shown, isNot(hidden));
+      expect(sharp, isNot(soft));
+      // The near stand is at the bottom of the frame: that is where the
+      // two differ.
+      var bottom = 0, top = 0;
+      for (var y = 0; y < _h; y++) {
+        for (var x = 0; x < _w; x++) {
+          if (shown[y * _w + x] != hidden[y * _w + x]) {
+            y > _h * 0.6 ? bottom++ : (y < _h * 0.3 ? top++ : null);
+          }
+        }
+      }
+      expect(bottom, greaterThan(top));
     });
 
     test("a pitch saved with the old tilt and turn keeps its camera", () {

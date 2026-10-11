@@ -755,6 +755,8 @@ void main() {
       // Its settings are what the panel now shows.
       expect(find.byTooltip("Try the next variation"), findsOneWidget);
       var seed = controller.document.background.spec.seed;
+      await tester.ensureVisible(find.byTooltip("Try the next variation"));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip("Try the next variation"));
       await tester.pumpAndSettle();
       expect(controller.document.background.spec.seed, isNot(seed));
@@ -916,10 +918,7 @@ void main() {
       expect(find.byKey(ValueKey("name-0-$id")), findsNothing);
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
+      await _openPlayers(tester);
 
       // The goalkeeper is the first row, and is labelled as such.
       expect(find.text("GK"), findsOneWidget);
@@ -944,10 +943,14 @@ void main() {
 
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
+      // Opened only if shut: an expander opened earlier in this file is
+      // remembered open.
+      if (find.byKey(ValueKey("x-0-$id")).evaluate().isEmpty) {
+        await tester.ensureVisible(find.text("PLAYERS"));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("PLAYERS"));
+        await tester.pumpAndSettle();
+      }
 
       await tester.enterText(find.byKey(ValueKey("x-0-$id")), "260");
       await tester.pump();
@@ -961,10 +964,7 @@ void main() {
       var controller = await panel(tester);
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
+      await _openPlayers(tester);
 
       /// press taps a control inside one player's row.
       ///
@@ -2201,10 +2201,12 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
-      await tester.ensureVisible(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("PLAYERS"));
-      await tester.pumpAndSettle();
+      if (find.byTooltip("Lock in place").evaluate().isEmpty) {
+        await tester.ensureVisible(find.text("PLAYERS"));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text("PLAYERS"));
+        await tester.pumpAndSettle();
+      }
 
       expect(find.byTooltip("Lock in place"), findsWidgets,
           reason: "a player is not a layer and has nowhere else to be locked");
@@ -8138,4 +8140,17 @@ void main() {
           reason: "never shorter than the keyframe strip");
     });
   });
+}
+
+/// _openPlayers opens a team's squad list, if it is shut: an expander opened
+/// earlier in the file is remembered open, and tapping it again shuts it.
+Future<void> _openPlayers(WidgetTester tester) async {
+  var rows = find.byWidgetPredicate((w) =>
+      w.key is ValueKey &&
+      "${(w.key as ValueKey).value}".startsWith("player-0-"));
+  if (rows.evaluate().isNotEmpty) return;
+  await tester.ensureVisible(find.text("PLAYERS"));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text("PLAYERS"));
+  await tester.pumpAndSettle();
 }

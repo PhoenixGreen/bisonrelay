@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/background_media_settings
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -77,6 +78,14 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var settings = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // The designs saved from here or from a background element, to start
+        // from or to keep this one.
+        backgroundPresetsSection(context, controller, showing.spec,
+            onUse: (spec) {
+          controller.beginInteraction();
+          controller.setBackground(showing.copyWith(spec: spec));
+          controller.endInteraction();
+        }),
         pattern,
         const SizedBox(height: canvasGroupGap),
         ...backgroundMediaSettings(context, controller),

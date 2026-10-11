@@ -409,8 +409,8 @@ const List<StyleParam> pitchParams = [
   StyleParam("turn", "Turn",
       min: -180, max: 180, initial: 0, decimals: 0, group: "Camera"),
   StyleParam("panX", "Left/right",
-      min: -1, max: 1, initial: 0, group: "Camera"),
-  StyleParam("panY", "Up/down", min: -1, max: 1, initial: 0, group: "Camera"),
+      min: -3, max: 3, initial: 0, group: "Camera"),
+  StyleParam("panY", "Up/down", min: -3, max: 3, initial: 0, group: "Camera"),
   StyleParam.choice(
       "surface",
       "Surface",
@@ -432,7 +432,123 @@ const List<StyleParam> pitchParams = [
   StyleParam.toggle("goals", "Goals", initial: true, group: "Surface"),
   StyleParam.toggle("numbers", "Numbers", initial: true, group: "Surface"),
   StyleParam.toggle("floodlights", "Floodlights", group: "Surface"),
+  // The stadium round it.
+  StyleParam("standSize", "Stand size",
+      min: 0.5,
+      max: 2,
+      initial: 1,
+      decimals: 2,
+      group: "Stadium",
+      onlyWhen: _stadium),
+  StyleParam("tiers", "Tiers",
+      min: 1,
+      max: 3,
+      initial: 1,
+      decimals: 0,
+      group: "Stadium",
+      onlyWhen: _stadium),
+  StyleParam.choice("roof", "Roof", ["None", "Canopy", "Full"],
+      group: "Stadium", onlyWhen: _stadium),
+  StyleParam.choice("corners", "Corners", ["Bowl", "Open"],
+      group: "Stadium", onlyWhen: _stadium),
+  StyleParam.choice("boards", "Boards", ["Seat colour", "LED", "None"],
+      group: "Stadium", onlyWhen: _stadium),
+  StyleParam("crowd", "Crowd",
+      initial: 0.6, group: "Stadium", onlyWhen: _stadium),
+  StyleParam.toggle("pylons", "Pylons", group: "Stadium", onlyWhen: _stadium),
+  // The stand between the camera and the pitch: drawn in front of it, soft
+  // and faded, rather than left out -- and how much the picture is focused
+  // on the pitch, softening the stands away from it.
+  StyleParam("nearStands", "Near stand",
+      initial: 0.45, group: "Stadium", onlyWhen: _stadium),
+  StyleParam("depthOfField", "Depth of field",
+      initial: 0.35, group: "Stadium", onlyWhen: _stadium),
+  // The running track round it.
+  StyleParam("lanes", "Lanes",
+      min: 4,
+      max: 10,
+      initial: 8,
+      decimals: 0,
+      group: "Track",
+      onlyWhen: _track),
+  StyleParam.choice(
+      "trackColour", "Colour", ["Red", "Blue", "Green", "Grey", "Purple"],
+      group: "Track", onlyWhen: _track),
+  StyleParam.toggle("markings", "Markings",
+      initial: true, group: "Track", onlyWhen: _track),
+  StyleParam.toggle("fieldEvents", "Field events",
+      initial: true, group: "Track", onlyWhen: _track),
 ];
+
+/// PitchShot is one of the camera positions a View offers: its name, and
+/// the camera settings it puts in place -- "zoom" among them, which is the
+/// spec's Size.
+typedef PitchShot = (String, Map<String, double>);
+
+Map<String, double> _shot(double tiltV, double turn, double perspective,
+        {double side = 0, double x = 0, double y = 0, double zoom = 1}) =>
+    {
+      "tiltV": tiltV,
+      "tiltH": side,
+      "turn": turn,
+      "perspective": perspective,
+      "panX": x,
+      "panY": y,
+      "zoom": zoom,
+    };
+
+/// pitchShots is, for each View, the five shots it offers: where a camera
+/// usually is for that kind of picture. The first is the View's own.
+final Map<int, List<PitchShot>> pitchShots = {
+  0: [
+    ("Whole pitch", _shot(0, 0, 0)),
+    ("Left half", _shot(0, 0, 0, x: 0.75, zoom: 1.8)),
+    ("Right half", _shot(0, 0, 0, x: -0.75, zoom: 1.8)),
+    ("Centre circle", _shot(0, 0, 0, zoom: 2.6)),
+    ("Up the page", _shot(0, 90, 0)),
+  ],
+  1: [
+    ("Classic", _shot(55, 45, 0)),
+    ("High", _shot(40, 35, 0)),
+    ("Low", _shot(68, 50, 0)),
+    ("Other corner", _shot(55, -45, 0)),
+    ("Close", _shot(55, 45, 0, zoom: 1.7)),
+  ],
+  2: [
+    ("Main camera", _shot(58, 0, 0.85)),
+    ("High gantry", _shot(42, 0, 0.7)),
+    ("Low touchline", _shot(70, 0, 0.95, zoom: 1.15)),
+    ("Left box", _shot(55, 0, 0.9, x: 0.8, zoom: 1.7)),
+    ("Right box", _shot(55, 0, 0.9, x: -0.8, zoom: 1.7)),
+  ],
+  3: [
+    ("Behind the goal", _shot(58, -90, 0.85)),
+    ("High behind", _shot(42, -90, 0.7)),
+    ("Low behind", _shot(70, -90, 0.95, zoom: 1.1)),
+    ("Corner flag", _shot(45, -135, 0.85)),
+    ("Other end", _shot(58, 90, 0.85)),
+  ],
+};
+
+/// pitchShotOf is which of [view]'s shots [params] and [scale] are, or -1.
+int pitchShotOf(int view, Map<String, double> params, double scale) {
+  var shots = pitchShots[view] ?? const [];
+  for (var (i, (_, values)) in shots.indexed) {
+    var same = values.entries.every((v) {
+      var now = v.key == "zoom" ? scale / 0.05 : (params[v.key] ?? 0);
+      return (now - v.value).abs() < 0.01;
+    });
+    if (same) return i;
+  }
+  return -1;
+}
+
+const _stadium = {
+  "surround": [1]
+};
+const _track = {
+  "surround": [2]
+};
 
 const List<StyleParam> metalParams = [
   StyleParam.choice("finish", "Finish", [

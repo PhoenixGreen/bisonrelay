@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
@@ -11,7 +16,9 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +38,7 @@ List<TeamElement> _teams(CanvasDocument d) => [
     ];
 
 void main() {
+  _photoEditorTests();
   group("a team on a pitch", () {
     test("the football preset's teams stand on its pitch", () {
       var doc = footballCanvas();
@@ -255,6 +263,114 @@ void main() {
       expect(back.players[3].captain, isTrue);
       expect(back.players[3].highlight, isTrue);
     });
+
+    test("keeps its team photo, each crop and the ball's design", () {
+      var team = _teams(footballCanvas())
+          .first
+          .copyWith(
+              teamPhoto: "squad",
+              ballLook: const BallLook(
+                  style: BallStyle.striped,
+                  color: Color(0xFF112233),
+                  second: Color(0xFF445566),
+                  size: 1.8,
+                  shadow: false,
+                  outline: false,
+                  trail: true))
+          .withBall(true);
+      team = team.withPlayer(
+          2,
+          team.players[2].copyWith(
+              crop: const PhotoCrop(x: 0.3, y: 0.2, radius: 0.05, turn: 12)));
+      var back = TeamElement.fromJson(team.props(), team.base);
+      expect(back.teamPhoto, "squad");
+      expect(back.players[2].crop,
+          const PhotoCrop(x: 0.3, y: 0.2, radius: 0.05, turn: 12));
+      expect(back.players[3].crop, isNull);
+      expect(back.ballLook, team.ballLook);
+      // And a team saved before any of it reads back as it was.
+      var plain = _teams(footballCanvas()).first;
+      expect(plain.props().containsKey("ballLook"), isFalse);
+      expect(TeamElement.fromJson(plain.props(), plain.base).ballLook,
+          const BallLook());
+    });
+
+    test("every player starts on their own part of the team photo", () {
+      var team = _teams(footballCanvas()).first.withBall(true);
+      var crops = {
+        for (var i = 0; i < team.players.length; i++)
+          if (!team.players[i].ball) team.cropOf(i, 1.5),
+      };
+      expect(crops, hasLength(11));
+      for (var c in crops) {
+        expect(c.x, inInclusiveRange(0, 1));
+        expect(c.y, inInclusiveRange(0, 1));
+        expect(c.radius, greaterThan(0));
+      }
+      // The ball counts the ball's own size against the sport's.
+      var big = team.copyWith(ballLook: const BallLook(size: 2));
+      expect(big.radiusOf(big.ball!),
+          closeTo(team.radiusOf(team.ball!) * 2, 1e-9));
+    });
+
+    testWidgets("the type's shadow reaches the names, not just the numbers",
+        (tester) async {
+      late List<int> plain, shadowed;
+      await tester.runAsync(() async {
+        var src = _Images(await _squadPhoto());
+        var team = _teams(footballCanvas())
+            .first
+            .copyWith(link: "", showNumbers: false)
+            .withBase(x: 0, y: 0, width: 200, height: 120) as TeamElement;
+        plain = await _teamPixels(team, src);
+        shadowed = await _teamPixels(
+            team.copyWith(
+                labelSpec: team.labelSpec.copyWith(
+                    shadowBlur: 3,
+                    shadowDistance: 3,
+                    shadowColor: const Color(0xFF000000))),
+            src);
+      });
+      // Numbers are off, so whatever changed is the names.
+      expect(shadowed, isNot(plain));
+    });
+
+    testWidgets("portraits are cut from the team photo, crop by crop",
+        (tester) async {
+      late List<int> none, photo, moved;
+      late List<List<int>> balls;
+      await tester.runAsync(() async {
+        var image = await _squadPhoto();
+        var src = _Images(image);
+        var team = (_teams(footballCanvas())
+                .first
+                .copyWith(link: "", tokenStyle: TokenStyle.portrait)
+                .withBase(x: 0, y: 0, width: 200, height: 120) as TeamElement)
+            .withBall(true);
+        none = await _teamPixels(team, src);
+        var withPhoto = team.copyWith(teamPhoto: "squad");
+        photo = await _teamPixels(withPhoto, src);
+        moved = await _teamPixels(
+            withPhoto.withPlayer(
+                0,
+                withPhoto.players[0]
+                    .copyWith(crop: const PhotoCrop(x: 0.9, y: 0.9))),
+            src);
+        balls = [
+          for (var s in BallStyle.values)
+            await _teamPixels(
+                team.copyWith(ballLook: BallLook(style: s, size: 3)), src),
+        ];
+      });
+      expect(photo, isNot(none));
+      expect(moved, isNot(photo));
+      for (var i = 0; i < balls.length; i++) {
+        for (var j = i + 1; j < balls.length; j++) {
+          expect(balls[i], isNot(balls[j]),
+              reason: "${BallStyle.values[i]} and ${BallStyle.values[j]}");
+        }
+      }
+    });
   });
 
   group("the panel", () {
@@ -340,6 +456,53 @@ void main() {
       expect(teamIn(controller, id).players[2].captain, isTrue);
     });
 
+    testWidgets("designs the ball", (tester) async {
+      var doc = footballCanvas();
+      var id = _teams(doc).first.id;
+      var controller = await panel(tester, doc, id);
+      expect(find.byKey(const ValueKey("teamBallStyle")), findsNothing);
+      var toggle = find.byKey(const ValueKey("teamBall"));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      await choose(tester, "teamBallStyle", "Striped");
+      expect(teamIn(controller, id).ballLook.style, BallStyle.striped);
+      expect(find.byKey(const ValueKey("teamBallSecond")), findsOneWidget);
+      var trail = find.byKey(const ValueKey("teamBallTrail"));
+      await tester.ensureVisible(trail);
+      await tester.tap(trail);
+      await tester.pumpAndSettle();
+      expect(teamIn(controller, id).ballLook.trail, isTrue);
+      var shadow = find.byKey(const ValueKey("teamBallShadow"));
+      await tester.tap(shadow);
+      await tester.pumpAndSettle();
+      expect(teamIn(controller, id).ballLook.shadow, isFalse);
+    });
+
+    testWidgets("names by position is a switch, both ways", (tester) async {
+      var doc = footballCanvas();
+      var named = _teams(doc).first;
+      named = named.withPlayer(1, named.players[1].copyWith(name: "Smith"));
+      doc = doc.copyWith(elements: [
+        for (var e in doc.elements) e.id == named.id ? named : e,
+      ]);
+      var id = named.id;
+      var controller = await panel(tester, doc, id);
+      var button = find.byKey(const ValueKey("teamNameByPosition"));
+      var name = teamIn(controller, id).players[1].name;
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      var on = teamIn(controller, id);
+      expect(on.namesByPosition, isTrue);
+      expect(on.labelOf(on.players[1]), isNot(name));
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      var off = teamIn(controller, id);
+      expect(off.namesByPosition, isFalse);
+      expect(off.labelOf(off.players[1]), name);
+    });
+
     testWidgets("adds and takes away the ball", (tester) async {
       var doc = footballCanvas();
       var id = _teams(doc).first.id;
@@ -355,4 +518,206 @@ void main() {
       expect(teamIn(controller, id).ball, isNull);
     });
   });
+}
+
+void _photoEditorTests() {
+  testWidgets("the team photo zooms in, focuses a face, and drags about",
+      (tester) async {
+    late ui.Image photo;
+    await tester.runAsync(() async => photo = await _squadPhoto());
+    var team = _teams(footballCanvas())
+        .first
+        .copyWith(teamPhoto: "squad", tokenStyle: TokenStyle.portrait);
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: ChangeNotifierProvider(
+        create: (_) => ThemeNotifier(doLoad: false),
+        child: Scaffold(
+          body: SizedBox(
+            width: 300,
+            child: StatefulBuilder(
+              builder: (context, setState) => TeamPhotoEditor(
+                team: team,
+                images: _Images(photo),
+                begin: () {},
+                write: (t) => setState(() => team = t),
+                commit: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    var editor = find.byKey(const ValueKey("teamPhotoEditor"));
+    var box = tester.getRect(editor);
+    double zoomShown() => double.parse(tester
+        .widget<EditableText>(find.descendant(
+            of: find.byKey(const ValueKey("teamPhotoZoom")),
+            matching: find.byType(EditableText)))
+        .controller
+        .text);
+    expect(zoomShown(), 1);
+
+    // Scrolling in over the photo zooms it.
+    await tester.sendEventToBinding(PointerScrollEvent(
+        position: box.center, scrollDelta: const Offset(0, -300)));
+    await tester.pumpAndSettle();
+    expect(zoomShown(), greaterThan(1.5));
+
+    // The buttons: whole photo again, then focus on the chosen face.
+    await tester.tap(find.byKey(const ValueKey("teamPhotoFit")));
+    await tester.pumpAndSettle();
+    expect(zoomShown(), 1);
+    await tester.tap(find.byKey(const ValueKey("teamPhotoFocus")));
+    await tester.pumpAndSettle();
+    expect(zoomShown(), greaterThan(2));
+
+    // Focused, the chosen face is in the middle: dragging from the middle
+    // moves its circle -- and a short way, since the photo is magnified.
+    var before = team.cropOf(0, 1.5);
+    await tester.dragFrom(box.center, const Offset(40, 0));
+    await tester.pumpAndSettle();
+    var after = team.players[0].crop!;
+    expect(after.x, greaterThan(before.x));
+    expect((after.x - before.x) * 300, lessThan(25));
+
+    // Dragging the photo off the circle pans it, and leaves every crop be.
+    var crops = [for (var p in team.players) p.crop];
+    await tester.dragFrom(
+        box.topLeft + const Offset(10, 10), const Offset(30, 30));
+    await tester.pumpAndSettle();
+    expect([for (var p in team.players) p.crop], crops);
+  });
+
+  testWidgets("the team photo editor moves, sizes and turns a circle",
+      (tester) async {
+    late ui.Image photo;
+    await tester.runAsync(() async => photo = await _squadPhoto());
+    var team = _teams(footballCanvas())
+        .first
+        .copyWith(teamPhoto: "squad", tokenStyle: TokenStyle.portrait);
+    var commits = 0;
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: ChangeNotifierProvider(
+        create: (_) => ThemeNotifier(doLoad: false),
+        child: Scaffold(
+          body: SizedBox(
+            width: 300,
+            child: StatefulBuilder(
+              builder: (context, setState) => TeamPhotoEditor(
+                team: team,
+                images: _Images(photo),
+                begin: () {},
+                write: (t) => setState(() => team = t),
+                commit: () => commits++,
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    var editor = find.byKey(const ValueKey("teamPhotoEditor"));
+    // The photo is 300 by 200, shown in the middle of the editor with room
+    // round it for the handles.
+    var box = tester.getRect(editor);
+    var scale = (300 - 2 * teamPhotoMargin) / 300;
+    var origin = box.center - const Offset(150, 100) * scale;
+    Offset onScreen(PhotoCrop c) =>
+        origin + Offset(c.x * 300, c.y * 200) * scale;
+
+    // Dragged from inside: moved, by as far as the drag went.
+    var start = team.cropOf(0, 1.5);
+    await tester.dragFrom(onScreen(start), const Offset(30, 20));
+    await tester.pumpAndSettle();
+    var moved = team.players[0].crop!;
+    expect(onScreen(moved).dx, closeTo(onScreen(start).dx + 30, 1));
+    expect(onScreen(moved).dy, closeTo(onScreen(start).dy + 20, 1));
+    expect(commits, 1);
+
+    // The handle above it turns it.
+    // Moving a circle does not fix its size: it still follows the team's.
+    expect(moved.radius, isNull);
+    var c = onScreen(moved);
+    var r = team.cropOf(0, 1.5).size * 300 * scale;
+    await tester.dragFrom(c + Offset(0, -r - 16), const Offset(40, 0));
+    await tester.pumpAndSettle();
+    var turned = team.players[0].crop!;
+    expect(turned.turn, greaterThan(10));
+
+    // The square on its edge sizes it -- turned with the circle.
+    var t = turned.turn * math.pi / 180;
+    await tester.dragFrom(
+        c + Offset(math.cos(t), math.sin(t)) * r, const Offset(25, 25));
+    await tester.pumpAndSettle();
+    expect(team.players[0].crop!.radius, greaterThan(team.cropOf(5, 1.5).size));
+
+    // Pressing on another circle and dragging moves that player's -- and
+    // makes them the chosen one.
+    var at = onScreen(team.cropOf(10, 1.5));
+    await tester.dragFrom(at, const Offset(-30, 0));
+    await tester.pumpAndSettle();
+    expect(team.players[10].crop, isNotNull);
+
+    // The default size moves every circle nobody has sized, and not the
+    // one that has been.
+    var own = team.players[0].crop!.radius!;
+    await tester.enterText(
+        find.byKey(const ValueKey("teamPhotoDefaultSize")), "4");
+    await tester.pumpAndSettle();
+    expect(team.photoCropSize, closeTo(0.04, 1e-9));
+    expect(team.cropOf(3, 1.5).size, closeTo(0.04, 1e-9));
+    expect(team.cropOf(0, 1.5).size, own);
+    // And the button beside it puts that one back to it too.
+    await tester.tap(find.byKey(const ValueKey("teamPhotoSizesReset")));
+    await tester.pumpAndSettle();
+    expect(team.cropOf(0, 1.5).size, closeTo(0.04, 1e-9));
+    expect(team.players[0].crop, isNotNull, reason: "kept where it was");
+
+    // Reset puts the chosen one back where it started.
+    await tester.tap(find.byKey(const ValueKey("teamPhotoReset")));
+    await tester.pumpAndSettle();
+    expect(team.players[10].crop, isNull);
+    expect(team.players[0].crop, isNotNull);
+  });
+}
+
+class _Images extends CanvasImageSource {
+  final ui.Image image;
+  _Images(this.image);
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) => image;
+}
+
+/// _squadPhoto is a stand-in for a squad photo: three rows of four faces,
+/// each a different colour.
+Future<ui.Image> _squadPhoto() async {
+  var rec = ui.PictureRecorder();
+  var c = ui.Canvas(rec);
+  c.drawRect(const Rect.fromLTWH(0, 0, 300, 200),
+      Paint()..color = const Color(0xFF203050));
+  for (var i = 0; i < 12; i++) {
+    c.drawCircle(Offset((i % 4 + 0.5) * 75, (i ~/ 4 + 0.4) * 66.7), 14,
+        Paint()..color = HSVColor.fromAHSV(1, i * 30.0, 0.6, 0.9).toColor());
+  }
+  return rec.endRecording().toImage(300, 200);
+}
+
+Future<List<int>> _teamPixels(TeamElement team, CanvasImageSource src) async {
+  var rec = ui.PictureRecorder();
+  paintTeam(ui.Canvas(rec), const Rect.fromLTWH(0, 0, 200, 120), team, 0,
+      images: src);
+  var image = await rec.endRecording().toImage(200, 120);
+  var bytes = (await image.toByteData())!;
+  var out = [
+    for (var i = 0; i < bytes.lengthInBytes; i += 4) bytes.getUint32(i),
+  ];
+  image.dispose();
+  return out;
 }

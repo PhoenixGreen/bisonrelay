@@ -509,9 +509,25 @@ void _paintPortrait(ui.Canvas canvas, TeamElement e, int i, PlayerSpot spot,
   var photo = spot.photo.isEmpty
       ? null
       : images?.resolve(spot.photo, const BackgroundRemoval());
+  var squad = photo != null || e.teamPhoto.isEmpty
+      ? null
+      : images?.resolve(e.teamPhoto, const BackgroundRemoval());
   canvas.save();
   canvas.clipPath(circle);
-  if (photo != null) {
+  if (squad != null) {
+    // Their part of the team photo: the circle their crop marks on it,
+    // turned as it is turned, filling the token.
+    var iw = squad.width.toDouble(), ih = squad.height.toDouble();
+    var crop = e.cropOf(i, iw / ih);
+    var radius = math.max(crop.size * iw, 1.0);
+    canvas.save();
+    canvas.scale(r / radius);
+    canvas.rotate(-crop.turn * math.pi / 180);
+    canvas.translate(-crop.x * iw, -crop.y * ih);
+    canvas.drawImage(
+        squad, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
+    canvas.restore();
+  } else if (photo != null) {
     // Cropped to fill the circle, the face in the upper part of it.
     var iw = photo.width.toDouble(), ih = photo.height.toDouble();
     var s = math.max(2 * r / iw, 2 * r / ih);
@@ -772,14 +788,13 @@ void _paintLabels(
     canvas.restore();
   }
 
-  if (!e.showNames ||
-      spot.name.isEmpty ||
-      e.namePosition == LabelPosition.none) {
+  var name = e.labelOf(spot);
+  if (!e.showNames || name.isEmpty || e.namePosition == LabelPosition.none) {
     return;
   }
 
   var spec = e.labelSpec;
-  var text = spec.textCase.apply(spot.name);
+  var text = spec.textCase.apply(name);
   var painter = layoutText(text, spec, maxWidth: math.max(40, r * 8));
   var plate = e.nameStyle == NameStyle.plate;
   var pad = plate ? Offset(r * 0.35, r * 0.12) : Offset.zero;
@@ -810,6 +825,9 @@ void _paintLabels(
         _ring(e, math.max(1, r * 0.05)));
   }
   var inner = Offset(painter.width / 2, painter.height / 2);
+  // The type's shadow and glow, under the letters -- as the number has them.
+  softFor(text, spec, maxWidth: math.max(40, r * 8), fillWidth: false)
+      ?.paint(canvas, -inner);
   if (spec.outlineWidth > 0 && !plate) {
     layoutText(text, spec, maxWidth: math.max(40, r * 8), outline: true)
         .paint(canvas, -inner);
@@ -826,17 +844,20 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   if (r <= 0) return;
   // On the ground under it: a shadow, which is most of what says where a
   // ball is when it is lifted off a pitch seen at an angle.
+  var look = e.ballLook;
   var lifted = g != null && !g.place.flat;
-  canvas.drawOval(
-      Rect.fromCenter(
-          center: lifted
-              ? at.ground
-              : at.centre + Offset(r * k * 0.18, r * k * 0.28),
-          width: r * k * 2,
-          height: r * k * (lifted ? 0.7 : 1.6)),
-      Paint()
-        ..color = const Color(0x66000000)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * k * 0.25));
+  if (look.trail) _paintBallTrail(canvas, e, spot, at, g, frame, r);
+  if (look.shadow)
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: lifted
+                ? at.ground
+                : at.centre + Offset(r * k * 0.18, r * k * 0.28),
+            width: r * k * 2,
+            height: r * k * (lifted ? 0.7 : 1.6)),
+        Paint()
+          ..color = const Color(0x66000000)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * k * 0.25));
 
   // Rolled as far as it has travelled.
   var spin = 0.0;
@@ -870,7 +891,7 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   var rim = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = r * 0.07
-    ..color = const Color(0xCC1A1A1A);
+    ..color = look.outline ? const Color(0xCC1A1A1A) : const Color(0x00000000);
   // A little light on it, from the top left like everything else.
   Paint lit(Color c) => Paint()
     ..shader = ui.Gradient.radial(Offset(-r * 0.35, -r * 0.4), r * 1.5, [
@@ -883,6 +904,11 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
       1
     ]);
 
+  if (look.style != BallStyle.auto) {
+    _paintDesignedBall(canvas, look, r, spin, lit, rim);
+    canvas.restore();
+    return;
+  }
   switch (e.sport) {
     case TeamSport.basketball:
       canvas.drawCircle(Offset.zero, r, lit(const Color(0xFFE2702A)));
@@ -1039,4 +1065,117 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
       canvas.drawCircle(Offset.zero, r, rim);
   }
   canvas.restore();
+}
+
+/// _paintBallTrail is where the ball has just been: fading, shrinking
+/// copies of it along its path, behind it.
+void _paintBallTrail(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
+    PlayerPlace at, TeamGround? g, int frame, double r) {
+  var track = spot.track;
+  if (track == null || track.keys.length < 2) return;
+  const steps = 8;
+  for (var k = steps; k >= 1; k--) {
+    var then = playerPlace(g, e, spot, frame - k * 2);
+    if ((then.centre - at.centre).distance < r * at.size * 0.3) continue;
+    var fade = 1 - k / (steps + 1);
+    canvas.drawCircle(
+        then.centre,
+        r * then.size * (0.45 + 0.5 * fade),
+        Paint()
+          ..color = e.ballLook.color.withValues(alpha: 0.35 * fade)
+          ..maskFilter =
+              MaskFilter.blur(BlurStyle.normal, r * then.size * 0.2));
+  }
+}
+
+/// _paintDesignedBall is a ball in one of BallStyle's designs, in the ball's
+/// own two colours, at the origin.
+void _paintDesignedBall(ui.Canvas canvas, BallLook look, double r, double spin,
+    Paint Function(Color) lit, Paint rim) {
+  var ball = Rect.fromCircle(center: Offset.zero, radius: r);
+  var main = look.color, second = look.second;
+  canvas.drawCircle(Offset.zero, r, lit(main));
+  canvas.save();
+  canvas.clipPath(Path()..addOval(ball));
+  canvas.rotate(spin);
+  var ink = Paint()..color = second;
+  switch (look.style) {
+    case BallStyle.classic:
+      // The 1970 ball: a black pentagon in the middle and the edges of the
+      // five round it.
+      Path pentagon(Offset c, double size, double turn) => Path()
+        ..addPolygon([
+          for (var j = 0; j < 5; j++)
+            c +
+                Offset(math.cos(turn + j * math.pi * 2 / 5),
+                        math.sin(turn + j * math.pi * 2 / 5)) *
+                    size,
+        ], true);
+      canvas.drawPath(pentagon(Offset.zero, r * 0.36, -math.pi / 2), ink);
+      for (var j = 0; j < 5; j++) {
+        var t = -math.pi / 2 + math.pi / 5 + j * math.pi * 2 / 5;
+        canvas.drawPath(
+            pentagon(Offset(math.cos(t), math.sin(t)) * r * 1.02, r * 0.36, t),
+            ink);
+      }
+    case BallStyle.modern:
+      // A modern match ball: a few long curved panels sweeping round it,
+      // edged in the second colour.
+      var edge = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.07
+        ..strokeCap = StrokeCap.round
+        ..color = second;
+      for (var j = 0; j < 3; j++) {
+        canvas.save();
+        canvas.rotate(j * math.pi * 2 / 3);
+        var panel = Path()
+          ..moveTo(0, 0)
+          ..cubicTo(r * 0.5, -r * 0.2, r * 0.6, -r * 0.8, r * 0.15, -r * 1.1)
+          ..cubicTo(-r * 0.2, -r * 0.7, -r * 0.1, -r * 0.3, 0, 0);
+        canvas.drawPath(panel, Paint()..color = second.withValues(alpha: 0.85));
+        canvas.drawPath(panel, edge);
+        canvas.restore();
+      }
+      canvas.drawCircle(Offset.zero, r * 0.12, ink);
+    case BallStyle.twoTone:
+      canvas.drawRect(Rect.fromLTRB(-r, 0, r, r), ink);
+      canvas.drawLine(
+          Offset(-r, 0),
+          Offset(r, 0),
+          Paint()
+            ..strokeWidth = r * 0.06
+            ..color = Color.lerp(main, second, 0.5)!);
+    case BallStyle.striped:
+      for (var y = -r; y < r; y += r * 0.5) {
+        canvas.drawRect(Rect.fromLTWH(-r, y, 2 * r, r * 0.22), ink);
+      }
+    case BallStyle.ring:
+      canvas.drawCircle(
+          Offset.zero,
+          r * 0.62,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = r * 0.22
+            ..color = second);
+    case BallStyle.plain:
+    case BallStyle.auto:
+      break;
+  }
+  canvas.restore();
+  // The light again over the design, so the panels sit on a sphere.
+  canvas.drawCircle(
+      Offset.zero,
+      r,
+      Paint()
+        ..shader = ui.Gradient.radial(Offset(-r * 0.35, -r * 0.4), r * 1.5, [
+          const Color(0x55FFFFFF),
+          const Color(0x00FFFFFF),
+          const Color(0x55000000),
+        ], [
+          0,
+          0.5,
+          1
+        ]));
+  canvas.drawCircle(Offset.zero, r, rim);
 }

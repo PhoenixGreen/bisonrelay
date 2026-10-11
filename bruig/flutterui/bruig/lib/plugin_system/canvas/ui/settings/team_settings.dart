@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
 
 // team settings.dart is a team's settings.
 
@@ -102,15 +103,19 @@ List<Widget> teamSettings(
             value: e.ball != null,
             onChanged: (v) => now(e.withBall(v)),
           ),
-          if (e.formation.roles.isNotEmpty)
-            CanvasIconButton(
-              key: const ValueKey("teamNameByPosition"),
-              icon: Icons.badge_outlined,
-              tooltip: "Name by position",
-              onPressed: () => now(e.namedByPosition()),
-            ),
+          // Positions rather than names, as a switch: the names are kept, and
+          // turning it off brings them back.
+          CanvasIconButton(
+            key: const ValueKey("teamNameByPosition"),
+            icon: Icons.badge_outlined,
+            tooltip: e.namesByPosition ? "Show names" : "Show positions",
+            active: e.namesByPosition,
+            onPressed: () =>
+                now(e.copyWith(namesByPosition: !e.namesByPosition)),
+          ),
         ]),
     _squadList(context, controller, e, write, begin, commit, now),
+    if (e.ball != null) _ballGroup(e, now, begin, write, commit),
     // What the players look like: a dot, a shirt or a portrait, the kit's
     // pattern, faces, and the finishing.
     CanvasControlGroup(label: "Design", rule: false, children: [
@@ -336,12 +341,6 @@ List<Widget> teamSettings(
 /// The coordinates are shown and edited in canvas units rather than as the
 /// fractions they are stored as, because "where is he" is a question about the
 /// pitch, not about the element's box.
-
-/// _squadList is the team sheet: one row per player, goalkeeper first.
-///
-/// The coordinates are shown and edited in canvas units rather than as the
-/// fractions they are stored as, because "where is he" is a question about the
-/// pitch, not about the element's box.
 Widget _squadList(
         BuildContext context,
         CanvasController controller,
@@ -350,25 +349,150 @@ Widget _squadList(
         VoidCallback begin,
         VoidCallback commit,
         void Function(TeamElement) now) =>
-    CanvasExpander(
-      label: "Players",
-      trailing: e.ball == null
-          ? "${e.players.length}"
-          : "${e.players.length - 1} + ball",
-      children: [
-        for (var i = 0; i < e.players.length; i++)
-          _PlayerRow(
-            key: ValueKey("player-$i-${e.id}"),
-            controller: controller,
-            team: e,
-            index: i,
-            write: write,
-            begin: begin,
-            commit: commit,
-            now: now,
-          ),
-      ],
-    );
+    // Boxed, like every other element's sections: shut, it is a heading in a
+    // box rather than a line of text running into the settings under it.
+    boxed(
+        context,
+        CanvasExpander(
+          label: "Players",
+          remember: "team.players",
+          trailing: e.ball == null
+              ? "${e.players.length}"
+              : "${e.players.length - 1} + ball",
+          children: [
+            _teamPhotoRow(context, e, now),
+            if (e.teamPhoto.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TeamPhotoEditor(
+                  key: ValueKey("teamPhoto-${e.id}"),
+                  team: e,
+                  begin: begin,
+                  write: write,
+                  commit: commit,
+                ),
+              ),
+            for (var i = 0; i < e.players.length; i++)
+              _PlayerRow(
+                key: ValueKey("player-$i-${e.id}"),
+                controller: controller,
+                team: e,
+                index: i,
+                write: write,
+                begin: begin,
+                commit: commit,
+                now: now,
+              ),
+          ],
+        ));
+
+/// _teamPhotoRow is the squad's one photo: added, swapped or taken off.
+/// Adding one shows the team as portraits, which is the only token a face
+/// is drawn in.
+Widget _teamPhotoRow(
+    BuildContext context, TeamElement e, void Function(TeamElement) now) {
+  TeamElement withPhoto(String id) => e.copyWith(
+      teamPhoto: id,
+      tokenStyle: id.isEmpty ? e.tokenStyle : TokenStyle.portrait);
+  return CanvasWrap(children: [
+    CanvasIconButton(
+      key: const ValueKey("teamPhotoAdd"),
+      icon: e.teamPhoto.isEmpty ? Icons.groups_outlined : Icons.groups,
+      tooltip: e.teamPhoto.isEmpty ? "Team photo" : "Change team photo",
+      active: e.teamPhoto.isNotEmpty,
+      onPressed: () async {
+        var id = await pickCanvasImage(context);
+        if (id == null) return;
+        now(withPhoto(id));
+      },
+    ),
+    CanvasIconButton(
+      key: const ValueKey("teamPhotoLibrary"),
+      icon: Icons.photo_library_outlined,
+      tooltip: "Team photo from library",
+      onPressed: () async {
+        var id = await showRecentPictures(context);
+        if (id == null) return;
+        now(withPhoto(id));
+      },
+    ),
+    if (e.teamPhoto.isNotEmpty)
+      CanvasIconButton(
+        key: const ValueKey("teamPhotoRemove"),
+        icon: Icons.no_photography_outlined,
+        tooltip: "Remove team photo",
+        onPressed: () => now(withPhoto("")),
+      ),
+    const CanvasHint("One photo of the whole squad. Each player without a "
+        "photo of their own shows the circle marked for them on it: tap a "
+        "circle to choose it, drag it to move, the square to size it and the "
+        "round handle to turn it."),
+  ]);
+}
+
+/// _ballGroup is the ball's design, where the team has one.
+Widget _ballGroup(TeamElement e, void Function(TeamElement) now,
+    VoidCallback begin, SettingsWrite write, VoidCallback commit) {
+  var look = e.ballLook;
+  void set(BallLook next) => now(e.copyWith(ballLook: next));
+  var designed = look.style != BallStyle.auto;
+  return CanvasControlGroup(label: "Ball", rule: false, children: [
+    CanvasDropdown<BallStyle>(
+      key: const ValueKey("teamBallStyle"),
+      label: "Style",
+      value: look.style,
+      width: 124,
+      options: [for (var s in BallStyle.values) (s, s.label)],
+      onChanged: (v) => set(look.copyWith(style: v)),
+    ),
+    if (designed || look.trail)
+      CanvasColorButton(
+        key: const ValueKey("teamBallColour"),
+        label: "Main",
+        color: look.color,
+        onChanged: (c) => set(look.copyWith(color: c)),
+      ),
+    if (designed && look.style != BallStyle.plain)
+      CanvasColorButton(
+        key: const ValueKey("teamBallSecond"),
+        label: "Second",
+        color: look.second,
+        onChanged: (c) => set(look.copyWith(second: c)),
+      ),
+    CanvasNumberField(
+      key: const ValueKey("teamBallSize"),
+      label: "Size",
+      value: look.size,
+      min: 0.3,
+      max: 4,
+      decimals: 2,
+      width: 54,
+      onChanged: (v) {
+        begin();
+        write(e.copyWith(ballLook: look.copyWith(size: v)));
+      },
+      onCommit: commit,
+    ),
+    CanvasToggle(
+      key: const ValueKey("teamBallShadow"),
+      label: "Shadow",
+      value: look.shadow,
+      onChanged: (v) => set(look.copyWith(shadow: v)),
+    ),
+    CanvasToggle(
+      key: const ValueKey("teamBallOutline"),
+      label: "Outline",
+      value: look.outline,
+      onChanged: (v) => set(look.copyWith(outline: v)),
+    ),
+    CanvasToggle(
+      key: const ValueKey("teamBallTrail"),
+      label: "Trail",
+      value: look.trail,
+      onChanged: (v) => set(look.copyWith(trail: v)),
+    ),
+  ]);
+}
 
 /// _PlayerRow is one line of the team sheet.
 ///

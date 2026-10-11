@@ -13,6 +13,9 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/pitch_orbit_pad.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/pitch_views.dart';
+import 'package:bruig/plugin_system/canvas/render/procedural/pitch.dart';
 
 // procedural_settings.dart is the controls for a generated background.
 //
@@ -1560,8 +1563,16 @@ class ProceduralSettings extends StatelessWidget {
         p.onlyWhen.entries.every((w) => w.value.contains(spec.choice(w.key)));
 
     var groups = <String, List<Widget>>{};
+    var fineTune = <Widget>[];
+    var pitch = spec.style == ProceduralStyle.pitch;
     for (var p in params) {
       if (!shows(p)) continue;
+      // A pitch's camera is moved with the orbit pad; its numbers are there
+      // for getting one exactly right, behind it.
+      if (pitch && _fineTune.contains(p.id)) {
+        fineTune.add(_paramControl(p));
+        continue;
+      }
       (groups[p.group ?? spec.style.label] ??= []).add(_paramControl(p));
       // A pitch's Size is how far in the camera is, so it is with the
       // camera, as a zoom: one fits the frame.
@@ -1580,12 +1591,53 @@ class ProceduralSettings extends StatelessWidget {
           },
           onCommit: onCommit,
         ));
+        groups["Camera"]!.add(pitchShotDropdown(spec, _setNow));
+        groups["Camera"]!.add(_orbitPad());
+        groups["Camera"]!.add(PitchSavedViews(spec: spec, onChanged: _setNow));
       }
+    }
+    if (fineTune.isNotEmpty) {
+      groups["Camera"]!.add(CanvasExpander(
+        label: "Fine tune",
+        remember: "pitch.fineTune",
+        children: [CanvasWrap(children: fineTune)],
+      ));
     }
     return [
       for (var MapEntry(key: label, value: children) in groups.entries)
         CanvasControlGroup(label: label, children: children),
     ];
+  }
+
+  static const _fineTune = {
+    "perspective",
+    "tiltV",
+    "tiltH",
+    "turn",
+    "panX",
+    "panY"
+  };
+
+  /// _orbitPad is the pitch's camera as one control. See PitchOrbitPad.
+  Widget _orbitPad() {
+    var cam = pitchCamera(spec);
+    return PitchOrbitPad(
+      value: (
+        tilt: cam.tilt,
+        side: cam.side,
+        turn: cam.turn,
+        perspective: cam.perspective,
+        zoom: spec.scale / 0.05,
+      ),
+      onBegin: onBegin,
+      onCommit: onCommit,
+      onChanged: (v) => _set(spec
+          .withParam("tiltV", v.tilt)
+          .withParam("tiltH", v.side)
+          .withParam("turn", v.turn)
+          .withParam("perspective", v.perspective)
+          .copyWith(scale: v.zoom * 0.05)),
+    );
   }
 
   Widget _paramControl(StyleParam p) {
@@ -1602,6 +1654,11 @@ class ProceduralSettings extends StatelessWidget {
           var next = spec.withParam(p.id, v.toDouble());
           for (var MapEntry(:key, :value) in (p.sets[v] ?? const {}).entries) {
             next = next.withParam(key, value);
+          }
+          // A pitch's View starts on its first shot, framing and all.
+          if (spec.style == ProceduralStyle.pitch && p.id == "view") {
+            var first = pitchShots[v]?.firstOrNull;
+            if (first != null) next = withPitchCamera(next, first.$2);
           }
           _setNow(next);
         },

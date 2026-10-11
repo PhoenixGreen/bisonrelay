@@ -24,7 +24,10 @@ enum SavedPresetKind {
   canvas("canvases"),
 
   /// brush is a pencil brush somebody made -- see VectorBrush.
-  brush("brushes");
+  brush("brushes"),
+
+  /// pitchView is a sports pitch's camera somebody liked.
+  pitchView("pitch-views");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -104,7 +107,7 @@ class SavedPreset {
   List<CanvasScene> buildScenes({Size? on}) => switch (kind) {
         SavedPresetKind.scene => [if (buildScene(on: on) case var s?) s],
         SavedPresetKind.canvas => _canvasScenes(on),
-        SavedPresetKind.brush => const [],
+        SavedPresetKind.brush || SavedPresetKind.pitchView => const [],
       };
 
   /// _canvasScenes is a saved canvas's scenes, sized to the page they are
