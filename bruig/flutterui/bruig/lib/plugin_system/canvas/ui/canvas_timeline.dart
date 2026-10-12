@@ -1229,8 +1229,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         width: 68,
                         onChanged: (v) {
                           controller.beginInteraction();
-                          controller.apply(document.copyWith(frames: v.round()),
-                              transient: true);
+                          controller.setSceneLength(v.round(), transient: true);
                         },
                         onCommit: controller.endInteraction,
                       ),
@@ -1638,6 +1637,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                           loop: _loopBar,
                           selected: _selectedKeys,
                           actions: document.actions,
+                          cues: [
+                            for (var c in document.cues)
+                              (
+                                c.frame -
+                                    (document.editingMaster
+                                        ? 0
+                                        : document.startOfScene(document.at)),
+                                c.name
+                              ),
+                          ],
                           colors: theme.colors,
                           xFor: (f) => _xFor(f, constraints.maxWidth),
                         ),
@@ -1960,6 +1969,10 @@ class _TimelinePainter extends CustomPainter {
   /// with a ring so it is obvious which one Delete will take.
   final Set<int> selected;
   final List<TimelineAction> actions;
+
+  /// cues are the run's cues, each at its frame in this painter's frames,
+  /// with its name -- see canvas_cues.dart.
+  final List<(int, String)> cues;
   final ColorScheme colors;
   final double Function(int) xFor;
 
@@ -1982,6 +1995,7 @@ class _TimelinePainter extends CustomPainter {
     required this.keyframes,
     required this.selected,
     required this.actions,
+    this.cues = const [],
     required this.colors,
     required this.xFor,
   });
@@ -2074,6 +2088,7 @@ class _TimelinePainter extends CustomPainter {
       selectedColor: colors.primary,
     );
     _paintMarkers(canvas);
+    _paintCues(canvas);
 
     // The playhead last, over everything, because it is the one mark that has
     // to be findable at a glance in a timeline covered in others.
@@ -2131,6 +2146,44 @@ class _TimelinePainter extends CustomPainter {
         )..layout(maxWidth: 140);
         text.paint(canvas, Offset(x + _flagWidth + 3, 1));
       }
+    }
+  }
+
+  /// _paintCues draws each cue as a pennant hanging from the bottom of the
+  /// ruler, the way a marker's flies from the top: the two are different
+  /// things -- a marker is something the scene does, a cue a moment of the
+  /// whole run that things are timed against -- and are told apart by end
+  /// and by colour.
+  void _paintCues(Canvas canvas) {
+    var ink = Paint()..color = colors.primary;
+    var staff = Paint()
+      ..color = colors.primary.withValues(alpha: 0.7)
+      ..strokeWidth = 1.5;
+    const bottom = _rulerHeight - 1;
+    for (var (frame, name) in cues) {
+      var x = xFor(frame);
+      canvas.drawLine(Offset(x, 1), Offset(x, bottom), staff);
+      canvas.drawPath(
+        Path()
+          ..moveTo(x, bottom)
+          ..lineTo(x + _flagWidth, bottom - 5.5)
+          ..lineTo(x, bottom - 11)
+          ..close(),
+        ink,
+      );
+      if (name.isEmpty) continue;
+      var text = TextPainter(
+        text: TextSpan(
+            text: name,
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: colors.primary)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: "…",
+      )..layout(maxWidth: 120);
+      text.paint(canvas, Offset(x + _flagWidth + 3, bottom - 12));
     }
   }
 
@@ -2264,6 +2317,7 @@ class _TimelinePainter extends CustomPainter {
       !_sameBands(old.bands, bands) ||
       !setEquals(old.selected, selected) ||
       old.actions != actions ||
+      !listEquals(old.cues, cues) ||
       old.loop != loop;
 }
 

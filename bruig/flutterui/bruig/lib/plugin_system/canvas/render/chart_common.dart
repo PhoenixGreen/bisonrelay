@@ -55,6 +55,7 @@ SliceProgress sliceProgress(
 /// out separately would be a legend that quietly stopped matching the chart
 /// the first time either changed.
 Color sliceColour(ChartElement e, int i) {
+  if (i >= 0 && i < e.sliceColors.length) return e.sliceColors[i];
   var series = e.data.series;
   if (e.type != ChartType.radialBar && series.length > 1 && i < series.length) {
     return series[i].color;

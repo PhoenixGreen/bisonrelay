@@ -211,13 +211,34 @@ void paintCanvasDocument(
   /// previewing is one element drawn at a frame of its own, while it alone
   /// is being previewed. See CanvasController.previewing.
   ({String id, int frame})? previewing,
+
+  /// camera is the scene's framing on this frame -- a zoom and the point of
+  /// the page at the middle of the picture -- or null for the page as it is.
+  /// It moves the scene's backdrop and its own elements, and not the
+  /// master's: a frame or a watermark on the shared canvas stays where it is
+  /// while the shot moves under it. See SceneCamera.
+  (double, Offset)? camera,
 }) {
   var rect = doc.size.rect;
   var time = frame / (doc.frameRate <= 0 ? 1 : doc.frameRate);
+  void framed(void Function() paint) {
+    if (camera == null) {
+      paint();
+      return;
+    }
+    var (zoom, focus) = camera;
+    canvas.save();
+    canvas.clipRect(rect);
+    canvas.translate(rect.center.dx, rect.center.dy);
+    canvas.scale(zoom);
+    canvas.translate(-focus.dx, -focus.dy);
+    paint();
+    canvas.restore();
+  }
 
   if (part != CanvasPaintPart.contents) {
-    _paintDocumentBackground(canvas, rect, doc, time, images, backgrounds,
-        doc.frameRate.toDouble(), backdrop, videoShow);
+    framed(() => _paintDocumentBackground(canvas, rect, doc, time, images,
+        backgrounds, doc.frameRate.toDouble(), backdrop, videoShow));
   }
   if (part == CanvasPaintPart.backdrop) return;
 
@@ -230,6 +251,26 @@ void paintCanvasDocument(
   // Not while the master is the canvas being edited, or it would be drawn
   // twice: once as itself and once as the thing behind itself.
   var master = doc.masterScene;
+  void scene(List<CanvasElement> elements) => _paintScene(
+      canvas, doc, elements, frame,
+      images: images,
+      editing: editing,
+      hoveredButton: hoveredButton,
+      skipElement: skipElement,
+      skipTextItem: skipTextItem,
+      counterValue: counterValue,
+      counterPressed: counterPressed,
+      counterRunning: counterRunning,
+      audioState: audioState,
+      videoShow: videoShow,
+      previewing: previewing);
+  // With a camera, the master is drawn as it is and the scene through the
+  // camera, as two runs rather than one list stacked together.
+  if (camera != null) {
+    if (master != null && !doc.editingMaster) scene(master.elements);
+    framed(() => scene(doc.elements));
+    return;
+  }
   // The master under the page, and its page numbers over it -- see
   // stackedWithMaster.
   _paintScene(
@@ -618,14 +659,21 @@ void paintElement(
     }
   }
 
-  var layered = alpha < 0.999;
+  // A video laid on as light or shade is composited through the same layer
+  // its fade is: the blend has to be on the outermost layer, the one that
+  // meets what is under the element, or it blends against nothing.
+  var blend = element is VideoElement ? element.blend.mode : BlendMode.srcOver;
+  var layered = alpha < 0.999 || blend != BlendMode.srcOver;
   if (layered) {
     // Grown before saving the layer, because a shadow, an outline or a glow
     // reaches outside the element's own bounds and a layer clipped to them
     // would cut it off -- visible as a shadow that vanishes the moment an
     // element is faded.
-    canvas.saveLayer(bounds.inflate(math.max(bounds.width, bounds.height)),
-        Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
+    canvas.saveLayer(
+        bounds.inflate(math.max(bounds.width, bounds.height)),
+        Paint()
+          ..color = const Color(0xFFFFFFFF).withValues(alpha: alpha)
+          ..blendMode = blend);
   }
 
   var time = frame / (frameRate <= 0 ? 1 : frameRate);

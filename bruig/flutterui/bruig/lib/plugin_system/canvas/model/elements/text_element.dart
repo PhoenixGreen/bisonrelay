@@ -350,6 +350,11 @@ class TextElement extends CanvasElement {
   /// wrap flows the words around whatever overlaps the box. See TextWrap.
   final TextWrap wrap;
 
+  /// style is the name of the document's text style this text is set in,
+  /// or empty for its own -- see CanvasDocument.textStyles. Changing the
+  /// style restyles every text that names it.
+  final String style;
+
   /// curve attaches the text to a line, or is null for a paragraph in its own
   /// box. See [TextOnCurve].
   final TextOnCurve? curve;
@@ -371,6 +376,7 @@ class TextElement extends CanvasElement {
     this.document = const TextDocumentRef(),
     this.documentParts = const [],
     this.wrap = const TextWrap(),
+    this.style = "",
     this.curve,
   });
 
@@ -460,6 +466,7 @@ class TextElement extends CanvasElement {
       document: document,
       documentParts: documentParts,
       wrap: wrap,
+      style: style,
       curve: curve);
 
   TextElement copyWith({
@@ -481,6 +488,7 @@ class TextElement extends CanvasElement {
     TextDocumentRef? document,
     List<TextPart>? documentParts,
     TextWrap? wrap,
+    String? style,
     TextOnCurve? curve,
     bool clearCurve = false,
   }) =>
@@ -500,6 +508,7 @@ class TextElement extends CanvasElement {
           document: document ?? this.document,
           documentParts: documentParts ?? this.documentParts,
           wrap: wrap ?? this.wrap,
+          style: style ?? this.style,
           curve: clearCurve ? null : (curve ?? this.curve));
 
   @override
@@ -522,6 +531,7 @@ class TextElement extends CanvasElement {
         if (underline != null) "underline": underline!.toJson(),
         if (flowTo.isNotEmpty) "flowTo": flowTo,
         if (wrap.toJson().isNotEmpty) "wrap": wrap.toJson(),
+        if (style.isNotEmpty) "style": style,
         if (document.on) "document": document.toJson(),
         if (documentParts.isNotEmpty)
           "documentParts": [for (var p in documentParts) p.toJson()],
@@ -569,6 +579,7 @@ class TextElement extends CanvasElement {
                 if (p is Map<String, dynamic>) TextPart.fromJson(p),
           ],
           flowTo: jsonString(json["flowTo"], ""),
+          style: jsonString(json["style"], ""),
           wrap:
               json["wrap"]
                       is Map<String, dynamic>

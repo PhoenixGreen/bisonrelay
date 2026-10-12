@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/sound_tools.dart';
 import 'package:flutter/material.dart';
 
 // audio_settings.dart is an Audio element's settings.
@@ -351,6 +352,9 @@ List<Widget> audioSettings(
           context,
           elementAnimationSection(controller, e, e.animation,
               (a) => write(e.copyWith(animation: a)), begin, commit)),
+    // What can be done to a sound on the timeline as a whole.
+    if (background && clip.timed)
+      CanvasSoundTools(controller: controller, e: e),
   ];
 }
 

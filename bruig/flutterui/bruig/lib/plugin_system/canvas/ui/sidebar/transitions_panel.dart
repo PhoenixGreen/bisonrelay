@@ -1,6 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/camera_section.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/cues_section.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/transition_sound.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
 
@@ -347,6 +350,12 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     onChanged: (v) => write(value.copyWith(softness: v)),
                   ),
               ]),
+            if (value.on)
+              CanvasTransitionSound(
+                value: value,
+                onChanged: write,
+                onEvery: (t) => controller.soundEveryTransition(t),
+              ),
             // Where this transition came from. Not on the shared canvas,
             // where the transition being edited *is* the one every scene
             // comes from.
@@ -365,6 +374,26 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     "changes it here. On, it keeps its own whatever the "
                     "master says."),
               ]),
+            // How the run keeps time: with this on, a longer transition is
+            // taken out of the scene before it rather than pushing everything
+            // after it later against the master's voice-over. Under the
+            // transition rather than over it -- the transition is what this
+            // panel is for.
+            CanvasControlGroup(
+              label: "Timing",
+              hideCaption: true,
+              rule: false,
+              children: [
+                CanvasToggle(
+                  key: const ValueKey("keepTiming"),
+                  label: "Keep start times",
+                  value: document.keepTiming,
+                  onChanged: (v) => controller.keepTiming = v,
+                ),
+              ],
+            ),
+            CanvasCuesSection(controller: controller),
+            if (!master) CanvasCameraSection(controller: controller),
           ],
         ),
       ),

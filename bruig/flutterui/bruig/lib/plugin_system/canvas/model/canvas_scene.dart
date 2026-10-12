@@ -1,4 +1,5 @@
-import 'dart:ui' show Color;
+import 'dart:math' as math;
+import 'dart:ui' show Color, Offset, Rect;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -360,6 +361,21 @@ class SceneTransition {
   /// as a rectangle being dragged.
   final double softness;
 
+  /// sound is what is heard as the transition plays -- a whoosh, a glitch --
+  /// by the Audio store's id, or empty for silence. Heard where the
+  /// transition is, wherever that is: a scene made longer takes its
+  /// transition's sound with it, which a clip laid on the master by hand
+  /// would not. See CanvasDocument.transitionSounds.
+  final String sound;
+  final String soundName;
+
+  /// soundLength is the file's length in seconds, soundVolume how loud it
+  /// plays, and soundLead how many frames before the transition it starts --
+  /// a whoosh is loudest a little after it begins.
+  final double soundLength;
+  final double soundVolume;
+  final int soundLead;
+
   const SceneTransition({
     this.kind = SceneTransitionKind.cut,
     this.frames = 12,
@@ -373,6 +389,11 @@ class SceneTransition {
     this.angle = 0,
     this.radius = 0.5,
     this.softness = 0,
+    this.sound = "",
+    this.soundName = "",
+    this.soundLength = 0,
+    this.soundVolume = 0.5,
+    this.soundLead = 6,
   });
 
   /// cut is the default: nothing between one scene and the next.
@@ -474,6 +495,11 @@ class SceneTransition {
     double? angle,
     double? radius,
     double? softness,
+    String? sound,
+    String? soundName,
+    double? soundLength,
+    double? soundVolume,
+    int? soundLead,
   }) =>
       SceneTransition(
         kind: kind ?? this.kind,
@@ -488,6 +514,11 @@ class SceneTransition {
         angle: angle ?? this.angle,
         radius: radius ?? this.radius,
         softness: softness ?? this.softness,
+        sound: sound ?? this.sound,
+        soundName: soundName ?? this.soundName,
+        soundLength: soundLength ?? this.soundLength,
+        soundVolume: soundVolume ?? this.soundVolume,
+        soundLead: soundLead ?? this.soundLead,
       );
 
   Map<String, dynamic> toJson() => {
@@ -503,6 +534,13 @@ class SceneTransition {
         if (angle != 0) "angle": angle,
         if (radius != 0.5) "radius": radius,
         if (softness != 0) "softness": softness,
+        if (sound.isNotEmpty) ...{
+          "sound": sound,
+          if (soundName.isNotEmpty) "soundName": soundName,
+          "soundLength": soundLength,
+          if (soundVolume != 0.5) "soundVolume": soundVolume,
+          if (soundLead != 6) "soundLead": soundLead,
+        },
       };
 
   factory SceneTransition.fromJson(Map<String, dynamic> json) =>
@@ -519,6 +557,11 @@ class SceneTransition {
         angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),
         radius: jsonDouble(json["radius"], 0.5).clamp(0.05, 1.0),
         softness: jsonDouble(json["softness"], 0).clamp(0.0, 1.0),
+        sound: jsonString(json["sound"], ""),
+        soundName: jsonString(json["soundName"], ""),
+        soundLength: jsonDouble(json["soundLength"], 0).clamp(0.0, 3600.0),
+        soundVolume: jsonDouble(json["soundVolume"], 0.5).clamp(0.0, 2.0),
+        soundLead: jsonInt(json["soundLead"], 6).clamp(-240, 240),
       );
 }
 
@@ -549,6 +592,94 @@ enum SceneTransitionEase {
       case SceneTransitionEase.slow:
         return t * t;
     }
+  }
+}
+
+/// SceneCamera is a slow move over a whole scene: from one framing to
+/// another across its length -- a push in, a pull out, a drift across.
+///
+/// A framing is a zoom, never less than one so the page is always filled,
+/// and the point of the page it is centred on, as fractions of the page.
+/// What a still design needs to feel shot rather than placed, without a
+/// keyframe on every element of it.
+class SceneCamera {
+  final double fromZoom;
+  final double fromX;
+  final double fromY;
+  final double toZoom;
+  final double toX;
+  final double toY;
+  final SceneTransitionEase ease;
+
+  const SceneCamera({
+    this.fromZoom = 1,
+    this.fromX = 0.5,
+    this.fromY = 0.5,
+    this.toZoom = 1.12,
+    this.toX = 0.5,
+    this.toY = 0.5,
+    this.ease = SceneTransitionEase.smooth,
+  });
+
+  /// at is the framing [t] of the way through the scene: a zoom, and the
+  /// point of [page] at the middle of the picture -- held far enough in from
+  /// the edges that the picture never runs off the page.
+  (double, Offset) at(double t, Rect page) {
+    var e = ease.apply(t.clamp(0.0, 1.0));
+    var zoom = math.max(1.0, fromZoom + (toZoom - fromZoom) * e);
+    var x = (fromX + (toX - fromX) * e) * page.width;
+    var y = (fromY + (toY - fromY) * e) * page.height;
+    var hx = page.width / 2 / zoom, hy = page.height / 2 / zoom;
+    return (
+      zoom,
+      Offset(page.left + x.clamp(hx, page.width - hx),
+          page.top + y.clamp(hy, page.height - hy)),
+    );
+  }
+
+  SceneCamera copyWith({
+    double? fromZoom,
+    double? fromX,
+    double? fromY,
+    double? toZoom,
+    double? toX,
+    double? toY,
+    SceneTransitionEase? ease,
+  }) =>
+      SceneCamera(
+        fromZoom: fromZoom ?? this.fromZoom,
+        fromX: fromX ?? this.fromX,
+        fromY: fromY ?? this.fromY,
+        toZoom: toZoom ?? this.toZoom,
+        toX: toX ?? this.toX,
+        toY: toY ?? this.toY,
+        ease: ease ?? this.ease,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "from": [fromZoom, fromX, fromY],
+        "to": [toZoom, toX, toY],
+        if (ease != SceneTransitionEase.smooth) "ease": ease.name,
+      };
+
+  static SceneCamera? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    List<double> three(Object? v, List<double> or) => v is List &&
+            v.length == 3 &&
+            v.every((x) => x is num)
+        ? [for (var x in v) (x as num).toDouble()]
+        : or;
+    var from = three(json["from"], const [1, 0.5, 0.5]);
+    var to = three(json["to"], const [1.12, 0.5, 0.5]);
+    return SceneCamera(
+      fromZoom: from[0].clamp(1.0, 8.0),
+      fromX: from[1].clamp(0.0, 1.0),
+      fromY: from[2].clamp(0.0, 1.0),
+      toZoom: to[0].clamp(1.0, 8.0),
+      toX: to[1].clamp(0.0, 1.0),
+      toY: to[2].clamp(0.0, 1.0),
+      ease: SceneTransitionEase.fromName(json["ease"] as String?),
+    );
   }
 }
 
@@ -614,6 +745,11 @@ class CanvasScene {
   /// is what the panel marks as custom.
   final SceneTransition? transition;
 
+  /// camera is this scene's slow move, or null to hold still -- see
+  /// SceneCamera. Seen in playback through the run and in the export; the
+  /// editor shows the page still, so a press lands where it looks.
+  final SceneCamera? camera;
+
   const CanvasScene({
     required this.id,
     this.name = "",
@@ -625,6 +761,7 @@ class CanvasScene {
     this.backgroundOff = false,
     this.transition,
     this.cover = PageCover.none,
+    this.camera,
   });
 
   /// says is what the panel calls this canvas: its name, or what it is and
@@ -660,6 +797,8 @@ class CanvasScene {
     SceneTransition? transition,
     bool clearTransition = false,
     PageCover? cover,
+    SceneCamera? camera,
+    bool clearCamera = false,
   }) =>
       CanvasScene(
         id: id ?? this.id,
@@ -672,6 +811,7 @@ class CanvasScene {
         backgroundOff: backgroundOff ?? this.backgroundOff,
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
+        camera: clearCamera ? null : (camera ?? this.camera),
       );
 
   Map<String, dynamic> toJson() => {
@@ -685,6 +825,7 @@ class CanvasScene {
         if (backgroundOff) "backgroundOff": true,
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
+        if (camera != null) "camera": camera!.toJson(),
       };
 
   factory CanvasScene.fromJson(Map<String, dynamic> json) {
@@ -717,6 +858,7 @@ class CanvasScene {
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,
       cover: PageCover.fromName(json["cover"] as String?),
+      camera: SceneCamera.fromJson(json["camera"]),
     );
   }
 }

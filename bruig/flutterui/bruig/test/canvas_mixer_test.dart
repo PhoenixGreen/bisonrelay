@@ -289,6 +289,18 @@ void main() {
       expect(engine.channels["a"]!.right, 1);
     });
 
+    test("sounds on one channel share that channel's strip", () async {
+      runtime.setMix(const {"ch": ChannelMix(balance: -1)},
+          routes: const {"a": "ch", "b": "ch", "video:v": "ch", "v": "ch"},
+          master: const MasterMix());
+      await runtime.play(sound("a"));
+      await runtime.play(sound("b"));
+      await runtime.play(sound("video:v"));
+      expect(engine.onChannel.values, everyElement("ch"));
+      expect(engine.channels.keys, ["ch"],
+          reason: "one strip -- one bus -- for the channel, not one a sound");
+    });
+
     test("a video's sound goes through its video's strip", () async {
       runtime.setMix(const {"v": ChannelMix()}, master: const MasterMix());
       await runtime.play(sound("video:v"));
@@ -415,6 +427,36 @@ void main() {
       expect(brought.integrated, closeTo(-16, 1));
       expect(brought.truePeak, lessThanOrEqualTo(-0.9),
           reason: "and the limiter held the ceiling");
+    });
+  });
+
+  group("the controller", () {
+    testWidgets("gives each timeline channel one strip, not one per clip",
+        (tester) async {
+      var engine = FakeEngine({song: 10});
+      AudioElement clip(String id, String channel, int at) => AudioElement(
+          ElementBase(id: id, visible: false),
+          clip: MediaClip(
+              timed: true,
+              at: at,
+              channel: channel,
+              playlist: const [MediaSource(assetId: song, length: 10)]));
+      var c = CanvasController(
+          CanvasDocument(frames: 100, frameRate: 25, elements: [
+            clip("a", "fx", 0),
+            clip("b", "fx", 10),
+            clip("c", "fx", 20),
+            clip("d", "voice", 0),
+          ]),
+          audioEngine: engine);
+      c.play();
+      await tester.pump(const Duration(milliseconds: 100));
+      c.stop();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(c.audio.strips, {"fx", "voice"});
+      expect(c.audio.routes,
+          {"a": "fx", "b": "fx", "c": "fx", "d": "voice"});
+      c.dispose();
     });
   });
 

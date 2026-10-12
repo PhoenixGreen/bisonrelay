@@ -143,6 +143,8 @@ void paintSequenceFrame(
   }
 
   void drawScene(int index, int frame) {
+    var camera = scenes[index].camera;
+    var length = math.max(1, scenes[index].frames - 1);
     // Each scene with its own backdrop -- see CanvasDocument.backgroundOf.
     // Drawn from the document's own, every scene in the run wore whichever
     // one was edited last.
@@ -155,7 +157,8 @@ void paintSequenceFrame(
         images: images,
         backgrounds: backgrounds,
         audioState: audioState,
-        videoShow: videoShow);
+        videoShow: videoShow,
+        camera: camera?.at(frame / length, doc.size.rect));
   }
 
   if (!place.changing) {

@@ -49,7 +49,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.image => Size(short * 0.5, short * 0.5),
     ElementKind.vector => Size(short * 0.4, short * 0.4),
     ElementKind.shape => Size(short * 0.28, short * 0.28),
-    ElementKind.line => Size(wide * 0.3, short * 0.001 + 4),
+    // Level: a line runs corner to corner of its box, so any depth here is a
+    // slope. See LineElement.withEnds.
+    ElementKind.line => Size(wide * 0.3, lineSliver),
     ElementKind.chart => Size(wide * 0.6, short * 0.6),
     ElementKind.table => Size(wide * 0.55, short * 0.4),
     ElementKind.button => Size(short * 0.32, short * 0.11),

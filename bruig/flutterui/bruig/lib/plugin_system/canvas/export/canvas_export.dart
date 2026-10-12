@@ -159,6 +159,9 @@ Future<ui.Image> renderFrame(
     } else {
       paintCanvasDocument(canvas, document,
           frame: frame,
+          // A document of one scene moves its camera too -- see SceneCamera.
+          camera: document.scene.camera?.at(
+              frame / math.max(1, document.frames - 1), document.size.rect),
           images: images,
           backdrop: backdrop?.image,
           videoShow: videoShow);

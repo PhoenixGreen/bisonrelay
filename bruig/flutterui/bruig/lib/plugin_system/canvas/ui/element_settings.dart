@@ -89,6 +89,69 @@ List<Widget> elementSettings(
     // canvas, is exactly as worth keeping as a table -- and the Presets
     // sidebar lists what has been saved whatever kind it is.
     presetsSection(context, controller, element),
+    // Tied to a cue, its timing follows the cue -- see canvas_cues.dart.
+    // Only once there are cues to tie it to.
+    if (controller.cues.isNotEmpty)
+      CanvasControlGroup(
+          key: const ValueKey("elementCue"),
+          label: "Cue",
+          hideCaption: true,
+          rule: false,
+          children: [
+            CanvasDropdown<String>(
+              label: "Arrives on cue",
+              value: controller.cues.any((c) => c.id == element.base.cue)
+                  ? element.base.cue
+                  : "",
+              width: 150,
+              options: [
+                ("", "None"),
+                for (var c in controller.cues) (c.id, c.name),
+              ],
+              onChanged: (v) =>
+                  controller.cueTo(element.id, v.isEmpty ? null : v),
+            ),
+          ]),
+    // Linked copies: one design in several places. See
+    // CanvasController.pushToLinked.
+    () {
+      var copies = controller.linkedTo(element).length - 1;
+      return CanvasControlGroup(
+          key: const ValueKey("elementLinks"),
+          label: "Linked copies",
+          hideCaption: true,
+          rule: false,
+          children: [
+            CanvasIconButton(
+              key: const ValueKey("linkedCopy"),
+              icon: Icons.add_link,
+              tooltip: "Make a linked copy -- its design follows this one's "
+                  "when pushed, wherever it is put",
+              onPressed: () => controller.linkedCopy(element.id),
+            ),
+            if (element.base.link.isNotEmpty) ...[
+              CanvasIconButton(
+                key: const ValueKey("pushToLinked"),
+                icon: Icons.published_with_changes,
+                tooltip: copies == 1
+                    ? "Give the linked copy this design"
+                    : "Give the $copies linked copies this design",
+                onPressed: copies == 0
+                    ? null
+                    : () => controller.pushToLinked(element.id),
+              ),
+              CanvasIconButton(
+                key: const ValueKey("unlink"),
+                icon: Icons.link_off,
+                tooltip: "Unlink this one",
+                onPressed: () => controller.unlink(element.id),
+              ),
+              CanvasHint(copies == 1
+                  ? "Linked to one other copy."
+                  : "Linked to $copies other copies."),
+            ],
+          ]);
+    }(),
     ...switch (element) {
       TextElement e =>
         textSettings(context, controller, e, write, begin, commit),

@@ -32,7 +32,63 @@ List<Widget> textSettings(
     commit();
   }
 
+  var styles = controller.textStyles;
+  var styled = styles.any((t) => t.name == e.style);
   return [
+    // The document's named styles: set this text in one, make its type one,
+    // or change the one it is in -- which changes every text set in it.
+    CanvasControlGroup(
+      key: const ValueKey("textStyle"),
+      label: "Style",
+      hideCaption: true,
+      rule: false,
+      children: [
+        if (styles.isNotEmpty)
+          CanvasDropdown<String>(
+            key: const ValueKey("textStylePick"),
+            label: "Style",
+            value: styled ? e.style : "",
+            width: 120,
+            options: [
+              ("", "Its own"),
+              for (var t in styles) (t.name, t.name),
+            ],
+            onChanged: (v) => controller.useTextStyle(e.id, v),
+          ),
+        CanvasIconButton(
+          key: const ValueKey("textStyleSave"),
+          icon: Icons.bookmark_add_outlined,
+          tooltip: "Make this text's type a style",
+          onPressed: () => controller.saveTextStyle(e),
+        ),
+        if (styled) ...[
+          CanvasIconButton(
+            key: const ValueKey("textStyleUpdate"),
+            icon: Icons.sync,
+            tooltip: "Change the style to this text's type -- every text in "
+                "\"${e.style}\" changes with it",
+            onPressed: () => controller.updateTextStyle(e.style, e.textSpec),
+          ),
+          CanvasTextField(
+            key: const ValueKey("textStyleName"),
+            label: "Name",
+            value: e.style,
+            width: 96,
+            onChanged: (v) {
+              controller.beginInteraction();
+              controller.renameTextStyle(e.style, v, transient: true);
+            },
+            onCommit: controller.endInteraction,
+          ),
+          CanvasIconButton(
+            key: const ValueKey("textStyleRemove"),
+            icon: Icons.bookmark_remove_outlined,
+            tooltip: "Forget the style; its texts keep their type",
+            onPressed: () => controller.removeTextStyle(e.style),
+          ),
+        ],
+      ],
+    ),
     // No section round the type settings. They were behind a heading that was
     // open every time anybody looked, which is a chevron and a word standing
     // between the panel and the first thing it is for.

@@ -7,7 +7,11 @@ import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_pages.dart';
@@ -2738,7 +2742,195 @@ class CanvasController extends ChangeNotifier {
       next =
           next.withScene(entry.key, list[entry.key].copyWith(frames: frames));
     }
+    if (_document.keepTiming) {
+      var all = _document.allScenes;
+      next = next.keepingStarts(_document, fixed: {
+        for (var i in lengths.keys)
+          if (i >= 0 && i < all.length) all[i].id,
+      });
+    }
     apply(next, transient: transient);
+  }
+
+  /// setSceneLength sets the length of the scene being edited -- the
+  /// timeline's Length field. With keepTiming on, the frames it gains or
+  /// gives up come out of the scene after it, so nothing later moves.
+  void setSceneLength(int frames, {bool transient = false}) {
+    var next = _document.copyWith(frames: frames);
+    if (_document.keepTiming && !_document.editingMaster) {
+      next = next.keepingStarts(_document, fixed: {_document.scene.id});
+    }
+    apply(next, transient: transient);
+  }
+
+  // ------------------------------------------------------------------------
+  // Cues -- see canvas_cues.dart.
+
+  /// cues are the run's named moments, in order.
+  List<TimelineCue> get cues => _document.cues;
+
+  /// runFrame is the playhead as a frame of the whole run.
+  int get runFrame => _document.editingMaster
+      ? _frame
+      : _document.startOfScene(_document.at) + _frame;
+
+  /// addCue puts a cue at [frame] of the run, the playhead's by default.
+  TimelineCue addCue({String name = "", int? frame}) {
+    var cue = TimelineCue(
+        id: newCueId(),
+        name: name.isEmpty ? "Cue ${cues.length + 1}" : name,
+        frame: math.max(0, frame ?? runFrame));
+    apply(_document.copyWith(cues: _sortedCues([...cues, cue])));
+    return cue;
+  }
+
+  void renameCue(String id, String name) => apply(_document.copyWith(cues: [
+        for (var c in cues) c.id == id ? c.copyWith(name: name) : c,
+      ]));
+
+  /// moveCue puts cue [id] at [frame] of the run, and every element tied to
+  /// it moves by as much -- its keyframes, wherever in the run it is.
+  void moveCue(String id, int frame, {bool transient = false}) {
+    var cue = cues.where((c) => c.id == id).firstOrNull;
+    if (cue == null) return;
+    frame = math.max(0, frame);
+    var by = frame - cue.frame;
+    if (by == 0) return;
+    var next = _document.copyWith(cues: _sortedCues([
+      for (var c in cues) c.id == id ? c.copyWith(frame: frame) : c,
+    ]));
+    next = _everyElement(next, (e, start) {
+      if (e.base.cue != id) return e;
+      var track = e.base.track;
+      if (track == null || track.isEmpty) return e;
+      return e.withBase(track: _shifted(track, by));
+    });
+    apply(next, transient: transient);
+  }
+
+  /// removeCue takes cue [id] away, and lets go of everything tied to it.
+  void removeCue(String id) {
+    var next = _document.copyWith(cues: [
+      for (var c in cues)
+        if (c.id != id) c,
+    ]);
+    apply(_everyElement(
+        next, (e, _) => e.base.cue == id ? e.withBase(cue: "") : e));
+  }
+
+  /// cueTo ties element [id] to cue [cueId], or lets it go with null.
+  ///
+  /// Tying moves the element's keyframes so that the first of them lands on
+  /// the cue: an arrival laid down anywhere then starts on the line it was
+  /// meant for, and stays with it from then on.
+  void cueTo(String id, String? cueId) {
+    var cue = cueId == null
+        ? null
+        : cues.where((c) => c.id == cueId).firstOrNull;
+    apply(_everyElement(_document, (e, start) {
+      if (e.id != id) return e;
+      if (cue == null) return e.withBase(cue: "");
+      var track = e.base.track;
+      if (track == null || track.isEmpty) return e.withBase(cue: cue.id);
+      var by = cue.frame - start - track.keys.first.frame;
+      return e.withBase(cue: cue.id, track: _shifted(track, by));
+    }));
+  }
+
+  /// findCues puts a cue wherever the voice on [clip] starts a line after a
+  /// pause, and says how many it found. Cues it found before on the same
+  /// clip are replaced; cues added by hand are left alone.
+  Future<int> findCues(AudioElement clip) async {
+    var source = clip.clip.playlist.firstOrNull;
+    if (source == null) return 0;
+    var peaks = await _waveformOf(source.assetId);
+    if (peaks == null) return 0;
+    var rate = math.max(1, _document.frameRate);
+    var length = source.length > 0 ? source.length : 0.0;
+    if (length <= 0) return 0;
+    // Where the clip's own time starts in the run: on the master its frame
+    // is the run's; on a scene, it is counted from that scene's start.
+    var offset = 0;
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((e) => e.id == clip.id)) {
+        offset = _document.startOfScene(i);
+      }
+    }
+    var from = source.start, to = source.end > 0 ? source.end : length;
+    var tag = "voice:${clip.id}";
+    var found = [
+      for (var t in speechStarts(peaks, length))
+        if (t >= from && t < to)
+          TimelineCue(
+              id: "$tag:${newCueId()}",
+              name: "",
+              frame: offset + clip.clip.at + ((t - from) * rate).round()),
+    ];
+    var kept = [
+      for (var c in cues)
+        if (!c.id.startsWith("$tag:")) c,
+    ];
+    var named = [
+      for (var (i, c) in found.indexed) c.copyWith(name: "Line ${i + 1}"),
+    ];
+    apply(_document.copyWith(cues: _sortedCues([...kept, ...named])));
+    return found.length;
+  }
+
+  List<TimelineCue> _sortedCues(List<TimelineCue> list) =>
+      [...list]..sort((a, b) => a.frame.compareTo(b.frame));
+
+  /// _shifted is [track] moved [by] frames, never before the first frame.
+  ElementTrack _shifted(ElementTrack track, int by) {
+    var first = track.keys.first.frame;
+    by = math.max(by, -first);
+    return ElementTrack([
+      for (var k in track.keys) k.copyWith(frame: k.frame + by),
+    ]);
+  }
+
+  /// _everyElement is [doc] with [f] applied to every element of every
+  /// scene and of the master. [f] is told the frame of the run its element's
+  /// own frames count from.
+  CanvasDocument _everyElement(CanvasDocument doc,
+      CanvasElement Function(CanvasElement e, int start) f) {
+    var scenes = [
+      for (var (i, scene) in doc.allScenes.indexed)
+        scene.copyWith(elements: [
+          for (var e in scene.elements) f(e, doc.startOfScene(i)),
+        ]),
+    ];
+    var next = doc.scenes.isEmpty
+        ? doc.copyWith(
+            onMaster: false,
+            elements: scenes.single.elements,
+          ).copyWith(onMaster: doc.onMaster)
+        : doc.withScenes(scenes, at: doc.at);
+    if (doc.master case var master?) {
+      next = next.copyWith(
+          master: master.copyWith(elements: [
+        for (var e in master.elements) f(e, 0),
+      ]));
+    }
+    return next;
+  }
+
+  /// _waveformOf is [assetId]'s shape, waited for.
+  Future<Float32List?> _waveformOf(String assetId) async {
+    for (var i = 0; i < 600; i++) {
+      var peaks = waveformOf(assetId);
+      if (peaks != null || _waveforms.containsKey(assetId)) return peaks;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    return null;
+  }
+
+  /// keepTiming is whether scenes keep their start times as lengths and
+  /// transitions change -- see CanvasDocument.keepTiming.
+  bool get keepTiming => _document.keepTiming;
+  set keepTiming(bool on) {
+    if (on == _document.keepTiming) return;
+    apply(_document.copyWith(keepTiming: on));
   }
 
   /// sceneAt is which one is being edited, and onMaster whether the shared
@@ -3121,12 +3313,51 @@ class CanvasController extends ChangeNotifier {
   void setSceneTransition(int index, SceneTransition? transition) {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
-    apply(_document.withScene(
+    apply(_timed(_document.withScene(
         index,
         transition == null
             ? list[index].copyWith(clearTransition: true)
-            : list[index].copyWith(transition: transition)));
+            : list[index].copyWith(transition: transition))));
   }
+
+  /// setSceneCamera gives scene [index] a slow move, or holds it still with
+  /// null. See SceneCamera.
+  void setSceneCamera(int index, SceneCamera? camera) {
+    var list = _document.allScenes;
+    if (index < 0 || index >= list.length) return;
+    apply(_document.withScene(
+        index,
+        camera == null
+            ? list[index].copyWith(clearCamera: true)
+            : list[index].copyWith(camera: camera)));
+  }
+
+  /// soundEveryTransition puts [like]'s sound -- its file, volume and lead
+  /// -- on the default transition and on every scene's own, as one change.
+  void soundEveryTransition(SceneTransition like) {
+    SceneTransition sounded(SceneTransition t) => t.copyWith(
+        sound: like.sound,
+        soundName: like.soundName,
+        soundLength: like.soundLength,
+        soundVolume: like.soundVolume,
+        soundLead: like.soundLead);
+    var master =
+        _document.master ?? CanvasScene(id: newSceneId(), name: "Master");
+    var next = _document.copyWith(
+        master: master.copyWith(transition: sounded(_document.defaultTransition)));
+    var list = next.allScenes;
+    for (var (i, scene) in list.indexed) {
+      if (scene.transition case var t?) {
+        next = next.withScene(i, scene.copyWith(transition: sounded(t)));
+      }
+    }
+    apply(next);
+  }
+
+  /// _timed is [next] with every scene back at its start, where the document
+  /// keeps its timing -- see CanvasDocument.keepingStarts.
+  CanvasDocument _timed(CanvasDocument next) =>
+      _document.keepTiming ? next.keepingStarts(_document) : next;
 
   /// setDefaultTransition changes what every scene without one of its own
   /// uses. It lives on the master canvas, which is where the things shared by
@@ -3134,7 +3365,8 @@ class CanvasController extends ChangeNotifier {
   void setDefaultTransition(SceneTransition transition) {
     var master =
         _document.master ?? CanvasScene(id: newSceneId(), name: "Master");
-    apply(_document.copyWith(master: master.copyWith(transition: transition)));
+    apply(_timed(
+        _document.copyWith(master: master.copyWith(transition: transition))));
   }
 
   /// _afterSceneChange puts the editor back on solid ground: a selection
@@ -3996,6 +4228,10 @@ class CanvasController extends ChangeNotifier {
     for (var e in _document.drawnBackground.media) {
       if (timed(e)) yield (e, fromMaster ? run : _frame);
     }
+    // The transitions' own sounds, on the run's timeline like the master's.
+    for (var e in _document.transitionSounds) {
+      yield (e, run);
+    }
   }
 
   /// timedLanes is the media on the timeline that is on screen, for the
@@ -4022,8 +4258,10 @@ class CanvasController extends ChangeNotifier {
         TimedLane(
           e,
           offset: at - _frame,
-          editable:
-              allChannels || here.contains(e.id) || backdrop.contains(e.id),
+          // A transition's sound belongs to its transition, and is changed
+          // there.
+          editable: !e.id.startsWith(transitionSoundPrefix) &&
+              (allChannels || here.contains(e.id) || backdrop.contains(e.id)),
           scene: sceneOf(e),
         ),
     ];
@@ -4133,17 +4371,10 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// channelLevels is how loud [channel] is now: the loudest of its sounds,
-  /// each of which plays through a strip of its own set to the channel's.
-  (double, double) channelLevels(TimelineChannel channel) {
-    var l = 0.0, r = 0.0;
-    for (var lane in channel.lanes) {
-      var (a, b) = levels(lane.element.id);
-      if (a > l) l = a;
-      if (b > r) r = b;
-    }
-    return (l, r);
-  }
+  /// channelLevels is how loud [channel] is now: what comes out of its
+  /// strip, which every sound on it plays through.
+  (double, double) channelLevels(TimelineChannel channel) =>
+      levels(channel.key);
 
   /// _setClips writes several clips at once, as one change: every sound on a
   /// channel when its strip is changed, say. Media on the backdrop has a lane
@@ -4167,6 +4398,356 @@ class CanvasController extends ChangeNotifier {
       }
     }
     apply(next, transient: transient);
+  }
+
+  // ------------------------------------------------------------------------
+  // The document's palette -- see canvas_palette.dart.
+
+  List<PaletteSwatch> get palette => _document.palette;
+
+  /// paletteFromCanvas makes the palette the [count] colours the canvas is
+  /// most drawn in, most used first.
+  void paletteFromCanvas({int count = 6}) {
+    var used = coloursUsed(_document.toJson()).take(count).toList();
+    apply(_document.copyWith(palette: [
+      for (var (i, c) in used.indexed) PaletteSwatch("Colour ${i + 1}", c),
+    ]));
+  }
+
+  /// setSwatch makes swatch [i] [colour], and everything on the document
+  /// drawn in its old colour -- in any scene, the master, the backgrounds and
+  /// the transitions -- the new one.
+  void setSwatch(int i, Color colour, {bool transient = false}) {
+    if (i < 0 || i >= palette.length) return;
+    var was = palette[i].color;
+    var json = recoloured(_document.toJson(), was, colour);
+    var next = CanvasDocument.fromJson(json);
+    // The swatch itself, opacity and all, whatever the remap made of it.
+    next = next.copyWith(palette: [
+      for (var (j, p) in next.palette.indexed)
+        j == i ? p.copyWith(color: colour) : p,
+    ]);
+    apply(next, transient: transient);
+  }
+
+  void addSwatch(Color colour) => apply(_document.copyWith(palette: [
+        ...palette,
+        PaletteSwatch("Colour ${palette.length + 1}", colour),
+      ]));
+
+  void removeSwatch(int i) => apply(_document.copyWith(palette: [
+        for (var (j, p) in palette.indexed)
+          if (j != i) p,
+      ]));
+
+  void renameSwatch(int i, String name, {bool transient = false}) => apply(
+      _document.copyWith(palette: [
+        for (var (j, p) in palette.indexed) j == i ? p.copyWith(name: name) : p,
+      ]),
+      transient: transient);
+
+  /// paletteToBackgrounds draws every generated background -- the
+  /// document's, each scene's and the master's -- in the palette's first
+  /// three colours: the ground, the pattern, and the highlight. What a look
+  /// chosen from the list needs to stop being its own colours and become the
+  /// video's.
+  void paletteToBackgrounds() {
+    if (palette.length < 3) return;
+    CanvasBackground painted(CanvasBackground b) => b.copyWith(
+        spec: b.spec.copyWith(
+            background: palette[0].color,
+            foreground: palette[1].color,
+            accent: palette[2].color));
+    var next = _document.copyWith(background: painted(_document.background));
+    var scenes = [
+      for (var s in next.allScenes)
+        s.background == null ? s : s.copyWith(background: painted(s.background!)),
+    ];
+    next = next.scenes.isEmpty ? next : next.withScenes(scenes, at: next.at);
+    if (next.master case var m? when m.background != null) {
+      next = next.copyWith(master: m.copyWith(background: painted(m.background!)));
+    }
+    apply(next);
+  }
+
+  // ------------------------------------------------------------------------
+  // Reuse: text styles, linked copies, staggered arrivals.
+
+  /// textStyles are the document's named text styles.
+  List<NamedTextStyle> get textStyles => _document.textStyles;
+
+  /// saveTextStyle makes [e]'s type a named style -- the next "Style N" if
+  /// no name is given -- and sets [e] in it.
+  String saveTextStyle(TextElement e, {String name = ""}) {
+    var taken = {for (var t in textStyles) t.name};
+    if (name.isEmpty || taken.contains(name)) {
+      for (var n = textStyles.length + 1;; n++) {
+        if (!taken.contains("Style $n")) {
+          name = "Style $n";
+          break;
+        }
+      }
+    }
+    var next = _document.copyWith(
+        textStyles: [...textStyles, NamedTextStyle(name, e.textSpec)]);
+    apply(_replacedAnywhere(next, e.copyWith(style: name)) ?? next);
+    return name;
+  }
+
+  /// useTextStyle sets text [id] in style [name], or lets it keep its own
+  /// type with an empty name.
+  void useTextStyle(String id, String name) {
+    var style = textStyles.where((t) => t.name == name).firstOrNull;
+    apply(_everyElement(_document, (e, _) {
+      if (e.id != id || e is! TextElement) return e;
+      return style == null
+          ? e.copyWith(style: "")
+          : e.copyWith(style: name, textSpec: style.spec);
+    }));
+  }
+
+  /// updateTextStyle makes style [name] [spec], and restyles every text set
+  /// in it, in every scene and on the master, as one change.
+  void updateTextStyle(String name, TextSpec spec) {
+    var next = _document.copyWith(textStyles: [
+      for (var t in textStyles) t.name == name ? NamedTextStyle(name, spec) : t,
+    ]);
+    apply(_everyElement(next, (e, _) {
+      if (e is! TextElement || e.style != name) return e;
+      return e.copyWith(textSpec: spec);
+    }));
+  }
+
+  /// renameTextStyle renames a style, and every text set in it with it.
+  void renameTextStyle(String from, String to, {bool transient = false}) {
+    if (to.isEmpty || textStyles.any((t) => t.name == to)) return;
+    var next = _document.copyWith(textStyles: [
+      for (var t in textStyles) t.name == from ? NamedTextStyle(to, t.spec) : t,
+    ]);
+    apply(
+        _everyElement(next, (e, _) {
+          if (e is! TextElement || e.style != from) return e;
+          return e.copyWith(style: to);
+        }),
+        transient: transient);
+  }
+
+  /// removeTextStyle forgets style [name]; the texts set in it keep their
+  /// type as their own.
+  void removeTextStyle(String name) {
+    var next = _document.copyWith(textStyles: [
+      for (var t in textStyles)
+        if (t.name != name) t,
+    ]);
+    apply(_everyElement(next, (e, _) {
+      if (e is! TextElement || e.style != name) return e;
+      return e.copyWith(style: "");
+    }));
+  }
+
+  /// linkedTo is every element linked to [e], [e] included, wherever it is.
+  List<CanvasElement> linkedTo(CanvasElement e) {
+    if (e.base.link.isEmpty) return [e];
+    var found = <CanvasElement>[];
+    _everyElement(_document, (x, _) {
+      if (x.base.link == e.base.link) found.add(x);
+      return x;
+    });
+    return found;
+  }
+
+  /// linkedCopy puts a linked copy of element [id] beside it, on the same
+  /// canvas, and selects it. Copied to another scene it stays linked.
+  void linkedCopy(String id) {
+    var e = _document.elementById(id);
+    if (e == null) return;
+    var link = e.base.link.isEmpty ? newElementId() : e.base.link;
+    var linked = e.withBase(link: link);
+    var copy = linked
+        .withId(newElementId())
+        .withBase(x: e.base.x + 24, y: e.base.y + 24, link: link);
+    var next = _document.withElement(linked);
+    var list = next.elements;
+    var at = list.indexWhere((x) => x.id == id);
+    apply(next.copyWith(elements: [
+      ...list.take(at + 1),
+      copy,
+      ...list.skip(at + 1),
+    ]));
+    selectOnly(copy.id);
+  }
+
+  /// pushToLinked gives every element linked to [id] its design -- all of
+  /// it but where each copy is, how big, when it moves, and what it is
+  /// tied to. Says how many it changed.
+  int pushToLinked(String id) {
+    var source = _document.elementById(id);
+    if (source == null || source.base.link.isEmpty) return 0;
+    var changed = 0;
+    var next = _everyElement(_document, (e, _) {
+      if (e.id == id ||
+          e.base.link != source.base.link ||
+          e.kind != source.kind) {
+        return e;
+      }
+      changed++;
+      return source.rebase(e.base);
+    });
+    apply(next);
+    return changed;
+  }
+
+  /// unlink lets element [id] go its own way.
+  void unlink(String id) {
+    var e = _document.elementById(id);
+    if (e == null) return;
+    apply(_document.withElement(e.withBase(link: "")));
+  }
+
+  /// staggerArrivals has the elements [ids] come in one after another, [gap]
+  /// frames apart, in order across the canvas -- left to right, or top to
+  /// bottom where [downwards]. The first keeps its timing; each later one's
+  /// keyframes move so its arrival starts [gap] after the one before's.
+  void staggerArrivals(List<String> ids, int gap, {bool downwards = false}) {
+    var picked = [
+      for (var id in ids)
+        if (_document.elementById(id) case var e?
+            when e.base.track?.isEmpty == false)
+          e,
+    ];
+    if (picked.length < 2) return;
+    picked.sort((a, b) => downwards
+        ? a.base.y.compareTo(b.base.y)
+        : a.base.x.compareTo(b.base.x));
+    int arrivalOf(CanvasElement e) {
+      var keys = e.base.track!.keys;
+      return (keys.where((k) => k.values.containsKey(KeyframeChannel.reveal))
+                  .firstOrNull ??
+              keys.first)
+          .frame;
+    }
+
+    var first = arrivalOf(picked.first);
+    var next = _document;
+    for (var (i, e) in picked.indexed) {
+      var by = first + i * gap - arrivalOf(e);
+      if (by == 0) continue;
+      next = next.withElement(e.withBase(track: _shifted(e.base.track!, by)));
+    }
+    apply(next);
+  }
+
+  // ------------------------------------------------------------------------
+  // Sound tools -- see audio_tools.dart.
+
+  /// _runStartOf is the frame of the run element [id]'s own frames count
+  /// from: its scene's start, or nought on the master.
+  int _runStartOf(String id) {
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((e) => e.id == id)) {
+        return _document.hasScenes ? _document.startOfScene(i) : 0;
+      }
+    }
+    return 0;
+  }
+
+  /// duckUnder sinks every sound on [music] by [depthDb] wherever anything
+  /// on the channel [voice] is speaking, as one change. The dips are written
+  /// into each clip's envelope, so they play and export alike and can be
+  /// cleared with clearDucking. Says how many lines it ducked under.
+  Future<int> duckUnder(TimelineChannel music, String voice,
+      {double depthDb = -12}) async {
+    var rate = math.max(1, _document.frameRate).toDouble();
+    var speech = <(double, double)>[];
+    for (var channel in timelineChannels) {
+      if (channel.key != voice) continue;
+      for (var lane in channel.lanes) {
+        var source = lane.clip.playlist.firstOrNull;
+        if (source == null || source.length <= 0) continue;
+        var peaks = await _waveformOf(source.assetId);
+        if (peaks == null) continue;
+        var begins = (_runStartOf(lane.element.id) + lane.clip.at) / rate;
+        for (var (from, to) in speechSpans(peaks, source.length)) {
+          if (to <= source.start) continue;
+          var end = source.end > 0 ? source.end : source.length;
+          if (from >= end) continue;
+          speech.add((begins + math.max(from, source.start) - source.start,
+              begins + math.min(to, end) - source.start));
+        }
+      }
+    }
+    var gain = math.pow(10, depthDb / 20).toDouble();
+    _setClips([
+      for (var lane in music.lanes)
+        if (lane.editable)
+          () {
+            var begins = (_runStartOf(lane.element.id) + lane.clip.at) / rate;
+            return (
+              lane.element,
+              lane.clip.copyWith(
+                  envelope: duckEnvelope(
+                      [for (var (a, b) in speech) (a - begins, b - begins)],
+                      gain: gain)),
+            );
+          }(),
+    ]);
+    return speech.length;
+  }
+
+  /// clearDucking puts every sound on [channel] back at an even level.
+  void clearDucking(TimelineChannel channel) => _setClips([
+        for (var lane in channel.lanes)
+          if (lane.editable) (lane.element, lane.clip.copyWith(envelope: [])),
+      ]);
+
+  /// fitToEnd makes the sound [e] end exactly on frame [end] of its own
+  /// timeline: cut short and faded where it is too long, laid in overlapping
+  /// copies -- its own ending last -- where it is too short. One change.
+  void fitToEnd(AudioElement e, int end) {
+    var source = e.clip.playlist.firstOrNull;
+    if (source == null || source.length <= 0) return;
+    var rate = math.max(1, _document.frameRate);
+    var pieces = fitTrack(
+        at: e.clip.at, length: source.length, end: end, rate: rate);
+    if (pieces.isEmpty) return;
+    CanvasElement piece(FitPiece p, String id) => e
+        .copyWith(
+            clip: e.clip.copyWith(
+          at: p.at,
+          fadeIn: p.fadeIn > 0 ? p.fadeIn : e.clip.fadeIn,
+          fadeOut: p.fadeOut,
+          playlist: [
+            MediaSource(
+                assetId: source.assetId,
+                name: source.name,
+                start: p.start,
+                end: p.end >= source.length ? 0 : p.end,
+                length: source.length)
+          ],
+        ))
+        .withId(id);
+    var made = [
+      piece(pieces.first, e.id),
+      for (var p in pieces.skip(1)) piece(p, newElementId()),
+    ];
+    List<CanvasElement> into(List<CanvasElement> list) => [
+          for (var x in list)
+            if (x.id == e.id) ...made else x,
+        ];
+    var master = _document.master;
+    if (master != null && master.elements.any((x) => x.id == e.id)) {
+      apply(_document.copyWith(
+          master: master.copyWith(elements: into(master.elements))));
+      return;
+    }
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (!scene.elements.any((x) => x.id == e.id)) continue;
+      apply(_document.scenes.isEmpty
+          ? _document.copyWith(elements: into(scene.elements))
+          : _document.withScene(
+              i, scene.copyWith(elements: into(scene.elements))));
+      return;
+    }
   }
 
   /// newChannelName is "Channel" and the next number not already taken. A
@@ -4386,6 +4967,11 @@ class CanvasController extends ChangeNotifier {
   /// waveformOf.
   static final Map<String, Float32List?> _waveforms = {};
   static final Set<String> _readingWaveform = {};
+
+  /// seedWaveform gives [assetId] a shape without reading it, for tests.
+  @visibleForTesting
+  static void seedWaveform(String assetId, Float32List peaks) =>
+      _waveforms[assetId] = peaks;
 
   /// waveformOf is [assetId]'s shape, as peaks from nought to one across the
   /// whole file, or null until it has been read -- it is read on first asking,
@@ -4634,7 +5220,7 @@ class CanvasController extends ChangeNotifier {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
-  /// levels is how loud a strip -- by its element's id, or the master with
+  /// levels is how loud a strip -- by its channel's key, or the master with
   /// none -- is coming out now, for the meters.
   (double, double) levels([String? channel]) =>
       _audio?.levels(channel) ?? (0, 0);
@@ -4644,13 +5230,18 @@ class CanvasController extends ChangeNotifier {
   void _applyMix() {
     var lanes = timedLanes;
     if (lanes.isEmpty && _audio == null) return;
-    audio.setMix({
-      for (var lane in lanes) lane.element.id: lane.clip.mix
-    },
-        // Soloed by channel, heard by sound: every sound on a soloed channel.
+    // One strip per channel, every sound on it routed through it. The strip
+    // is the channel's first sound's mix, which setChannelMix copies onto
+    // every sound on the channel.
+    var strips = <String, ChannelMix>{};
+    for (var lane in lanes) {
+      strips.putIfAbsent(lane.channelKey, () => lane.clip.mix);
+    }
+    audio.setMix(strips,
+        routes: {for (var lane in lanes) lane.element.id: lane.channelKey},
         solo: {
-          for (var lane in lanes)
-            if (_solo.contains(lane.channelKey)) lane.element.id,
+          for (var key in _solo)
+            if (strips.containsKey(key)) key,
         },
         master: _document.masterMix);
   }

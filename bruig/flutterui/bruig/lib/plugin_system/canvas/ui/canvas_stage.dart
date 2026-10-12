@@ -4207,9 +4207,51 @@ class CanvasStageState extends State<CanvasStage> {
     controller.apply(next, transient: true);
   }
 
+  /// _applyLineEnd drags one end of a single straight line, if that is what
+  /// [handle] is on, and says whether it was.
+  ///
+  /// A line is its two ends, not a box: dragged through the box like
+  /// anything else, it was held at least eight pixels deep and so could never
+  /// be drawn level. Here the end goes where the pointer does, and swings
+  /// onto the nearest level, upright or diagonal when it comes within a few
+  /// degrees of one -- always, with Shift held. Alt lets it go anywhere.
+  bool _applyLineEnd(StageHandle handle, Offset delta) {
+    if (_startVisual.length != 1 || _rotationOfSelection != 0) return false;
+    // The line as it was when the drag began: every frame of the drag is
+    // worked from it, since a frame that crosses one end past the other has
+    // already swapped the ends and their arrows.
+    var line = _startElements[_startVisual.keys.first];
+    if (line is! LineElement || line.curvature != 0 || line.locked) {
+      return false;
+    }
+    var was = line.bounds;
+    var start = line.flipped ? was.bottomLeft : was.topLeft;
+    var end = line.flipped ? was.topRight : was.bottomRight;
+    // Which end the handle is on: the corner of the visual box nearest it.
+    var box = _startVisual.values.first;
+    var corner = switch (handle) {
+      StageHandle.topLeft => box.topLeft,
+      StageHandle.topRight => box.topRight,
+      StageHandle.bottomLeft => box.bottomLeft,
+      StageHandle.bottomRight => box.bottomRight,
+      _ => null,
+    };
+    if (corner == null) return false;
+    var movesStart = (corner - start).distance < (corner - end).distance;
+    var fixed = movesStart ? end : start;
+    var moving = (movesStart ? start : end) + delta;
+    if (!HardwareKeyboard.instance.isAltPressed) {
+      moving = snapLineAngle(fixed, moving, always: _shiftHeld);
+    }
+    var next = movesStart ? line.withEnds(moving, fixed) : line.withEnds(fixed, moving);
+    controller.apply(document.withElement(next), transient: true);
+    return true;
+  }
+
   void _applyResize(Offset delta) {
     var handle = _handle;
     if (handle == null) return;
+    if (_applyLineEnd(handle, delta)) return;
 
     // The edge being dragged lands on the same lines a move lands on.
     //
@@ -4979,6 +5021,15 @@ class CanvasStageState extends State<CanvasStage> {
                         audioRevision: controller.audioRevision,
                         selection: {for (var e in _chosen) e.id},
                         showHelpers: controller.showHelpers,
+                        // The scene's slow move, while it plays -- see
+                        // SceneCamera. Still while editing, so a press lands
+                        // where the page looks to be.
+                        camera: controller.playing && !document.editingMaster
+                            ? document.scene.camera?.at(
+                                controller.frame /
+                                    math.max(1, document.frames - 1),
+                                document.size.rect)
+                            : null,
                         selectedPath: _selectedPath(),
                         editingVector: switch (controller.editingVector) {
                           var v? => (

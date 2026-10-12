@@ -174,6 +174,22 @@ List<Widget> vectorSettings(
           options: [for (var f in VectorFit.values) (f, f.label)],
           onChanged: (v) => now(e.copyWith(fit: v)),
         ),
+        // One colour over the whole drawing, which keeps it a reference to
+        // its file -- see VectorElement.tint.
+        CanvasColorButton(
+          key: const ValueKey("vectorTint"),
+          label: "Tint",
+          labelWidth: 26,
+          color: e.tint ?? const Color(0x00000000),
+          onChanged: (c) => now(e.copyWith(tint: c)),
+        ),
+        if (e.tint != null)
+          CanvasIconButton(
+            key: const ValueKey("vectorTintOff"),
+            icon: Icons.format_color_reset_outlined,
+            tooltip: "Back to the drawing's own colours",
+            onPressed: () => now(e.copyWith(clearTint: true)),
+          ),
         CanvasIconButton(
           key: const ValueKey("vectorEdit"),
           icon: Icons.edit_outlined,

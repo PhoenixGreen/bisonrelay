@@ -284,6 +284,11 @@ class StagePainter extends CustomPainter {
   /// exactly where it was.
   final bool showHelpers;
 
+  /// camera is the scene's camera on this frame while it plays, or null --
+  /// see SceneCamera. Never while editing: a press has to land where the
+  /// page looks to be.
+  final (double, Offset)? camera;
+
   /// The picture store is handed to CustomPainter as something to repaint on,
   /// which is the only way a picture that arrives late reaches the screen.
   ///
@@ -304,6 +309,7 @@ class StagePainter extends CustomPainter {
     this.facingShown = false,
     required this.showHandles,
     required this.showHelpers,
+    this.camera,
     this.flowGrips,
     this.flowLines = const [],
     this.showAllBounds = false,
@@ -485,7 +491,8 @@ class StagePainter extends CustomPainter {
       _paintContents(canvas, document, frame);
       canvas.restore();
     } else {
-      _paintContents(canvas, document, frame, part: CanvasPaintPart.all);
+      _paintContents(canvas, document, frame,
+          part: CanvasPaintPart.all, camera: camera);
     }
 
     // Which of the two leaves is being edited, said with a line round it
@@ -627,10 +634,12 @@ class StagePainter extends CustomPainter {
   /// _paintContents is the page being edited, everything on it as the editor
   /// shows it -- over its own backdrop, or with [part] all, with it.
   void _paintContents(Canvas canvas, CanvasDocument document, int frame,
-      {CanvasPaintPart part = CanvasPaintPart.contents}) {
+      {CanvasPaintPart part = CanvasPaintPart.contents,
+      (double, Offset)? camera}) {
     paintCanvasDocument(canvas, document,
         frame: frame,
         part: part,
+        camera: camera,
         images: images,
         hoveredButton: hoveredButton,
         // The whole element only while its own paragraph is being typed

@@ -469,6 +469,16 @@ class _ColourPanelState extends State<ColourPanel> {
                       : () => _now(() => active.setColour(controller.sampled,
                           transient: true)),
                 ),
+                // The document's palette, a press each from the colour being
+                // chosen -- see canvas_palette.dart.
+                for (var (i, swatch) in controller.palette.indexed)
+                  _Dot(
+                    key: ValueKey("paletteDot$i"),
+                    color: swatch.color,
+                    tip: swatch.name,
+                    onTap: () => _now(() =>
+                        active.setColour(swatch.color, transient: true)),
+                  ),
               ]),
             ],
           );
@@ -687,7 +697,12 @@ class _NonePainter extends CustomPainter {
 class _Dot extends StatelessWidget {
   final Color? color;
   final VoidCallback? onTap;
-  const _Dot({required this.color, required this.onTap, super.key});
+  final String tip;
+  const _Dot(
+      {required this.color,
+      required this.onTap,
+      this.tip = "Use again",
+      super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -695,7 +710,7 @@ class _Dot extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 5),
       child: Tooltip(
-        message: "Use again",
+        message: tip,
         child: GestureDetector(
           onTap: onTap,
           child: Container(

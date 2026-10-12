@@ -7,6 +7,8 @@ import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/palette_section.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/stagger_section.dart';
 import 'package:flutter/material.dart';
 
 // element_settings_pane.dart is the settings of whatever is selected, and the
@@ -35,8 +37,7 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
   var selected = controller.selected;
 
   if (controller.selection.length > 1) {
-    return Txt.S("${controller.selection.length} elements selected. "
-        "Choose one to change its settings.");
+    return CanvasStaggerSection(controller: controller);
   }
 
   if (selected == null) {
@@ -78,6 +79,11 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var settings = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // The document's own colours, which the background is the natural
+        // place for: this is what shows when nothing is selected, which is
+        // when the whole canvas is what is being looked at.
+        CanvasPaletteSection(controller: controller),
+        const SizedBox(height: canvasGroupGap),
         // The designs saved from here or from a background element, to start
         // from or to keep this one.
         backgroundPresetsSection(context, controller, showing.spec,

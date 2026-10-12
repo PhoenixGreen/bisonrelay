@@ -90,6 +90,25 @@ List<Widget> videoSettings(
       write(e.withPicture(edited as ImageElement));
 
   return [
+    // How the picture is laid on the canvas: normally, or as light -- a
+    // flare or a glitch shot on black, screened or added so only its bright
+    // parts show. Not for a backdrop, which has nothing under it to blend with.
+    if (!background)
+      CanvasControlGroup(
+          key: const ValueKey("videoBlendGroup"),
+          label: "Blend",
+          hideCaption: true,
+          rule: false,
+          children: [
+            CanvasDropdown<LayerBlend>(
+              key: const ValueKey("videoBlend"),
+              label: "Laid on as",
+              value: e.blend,
+              width: 110,
+              options: [for (var b in LayerBlend.values) (b, b.label)],
+              onChanged: (v) => now(e.copyWith(blend: v)),
+            ),
+          ]),
     CanvasControlGroup(
       label: "Video",
       hideCaption: true,

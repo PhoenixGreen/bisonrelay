@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:flutter/foundation.dart';
@@ -187,12 +188,35 @@ class SoLoudAudioEngine implements AudioEngine {
 
   static const _eqBands = soloudBands;
 
+  /// _soundRoom is how many voices are kept free for the sounds themselves,
+  /// over and above one for every bus.
+  static const _soundRoom = 32;
+
+  /// _roomForBuses raises SoLoud's active voice limit so that [buses] buses
+  /// and [_soundRoom] sounds all fit inside it.
+  ///
+  /// A bus is a voice that is always playing, and SoLoud only hands mixing
+  /// buffers to as many voices as the limit allows (sixteen to begin with).
+  /// With more buses than that, one of them is mixed with no buffer at all
+  /// and the audio thread writes through a null pointer -- the whole app
+  /// goes down the moment play is pressed. A bus is made per timed sound, so
+  /// a narrated video with a couple of dozen effects is well past sixteen.
+  /// Raised in steps rather than one at a time: every change reallocates
+  /// SoLoud's buffers.
+  void _roomForBuses(int buses) {
+    var want = buses + _soundRoom;
+    if (want <= _soloud.getMaxActiveVoiceCount()) return;
+    // SoLoud refuses 1024 or more.
+    _soloud.setMaxActiveVoiceCount(math.min(1000, (want + 31) ~/ 32 * 32));
+  }
+
   @override
   void setChannel(String key, ChannelSound sound) {
     if (!_soloud.isInitialized) return;
     try {
       var bus = _buses[key];
       if (bus == null) {
+        _roomForBuses(_buses.length + 1);
         bus = Bus(name: key);
         bus.playOnEngine();
         _buses[key] = bus;

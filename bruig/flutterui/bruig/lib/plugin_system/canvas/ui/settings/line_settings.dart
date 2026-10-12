@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -82,6 +84,52 @@ List<Widget> lineSettings(
           ),
           valueDot(controller, e, KeyframeChannel.bow, "the line's curve",
               e.curvature),
+          // A line is its two ends, so it is sized and turned by its length
+          // and angle rather than by a box -- see LineElement.withEnds.
+          CanvasNumberField(
+            key: const ValueKey("lineLength"),
+            label: "Length",
+            value: e.length,
+            min: 1,
+            max: 20000,
+            decimals: 0,
+            width: 58,
+            onChanged: (v) {
+              begin();
+              var r = e.angle * math.pi / 180;
+              write(e.withEnds(
+                  e.start, e.start + Offset(math.cos(r), math.sin(r)) * v));
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("lineAngle"),
+            label: "Angle",
+            value: e.angle,
+            min: -180,
+            max: 180,
+            decimals: 1,
+            width: 54,
+            onChanged: (v) {
+              begin();
+              var r = v * math.pi / 180;
+              write(e.withEnds(e.start,
+                  e.start + Offset(math.cos(r), math.sin(r)) * e.length));
+            },
+            onCommit: commit,
+          ),
+          CanvasIconButton(
+            key: const ValueKey("lineLevel"),
+            icon: Icons.horizontal_rule,
+            tooltip: "Make the line level",
+            onPressed: () => now(e.level),
+          ),
+          CanvasIconButton(
+            key: const ValueKey("linePlumb"),
+            icon: Icons.height,
+            tooltip: "Make the line upright",
+            onPressed: () => now(e.plumb),
+          ),
         ],
         more: [
           ...strokeEndControls(

@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -28,6 +30,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_rings.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
+import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
 // canvas_document.dart is a whole canvas: its shape, its background, what is
 // on it, and how long it runs for.
@@ -49,6 +52,10 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 /// unknown future version is read as best it can be, since every field reader
 /// already falls back when a field is missing or the wrong type.
 const int canvasFormatVersion = 1;
+
+/// transitionSoundPrefix starts the id of every sound a transition carries
+/// -- see CanvasDocument.transitionSounds.
+const String transitionSoundPrefix = "transition-sound:";
 
 /// defaultRateFor is how fast a document of this shape and this kind runs.
 ///
@@ -304,6 +311,30 @@ class CanvasDocument {
   /// keys rather than of CanvasRatio so a custom shape can be one of them.
   final List<String> targets;
 
+  /// keepTiming holds every scene where it starts in the run while scene
+  /// lengths and transitions are changed: what a scene gains or loses is
+  /// taken from, or given to, its neighbour rather than pushing everything
+  /// after it along.
+  ///
+  /// For a video cut to a voice-over on the master. A transition after
+  /// scene three made two frames longer moved every later scene two frames
+  /// earlier against the voice -- and the voice was the one thing that could
+  /// not move. See CanvasDocument.keepingStarts.
+  final bool keepTiming;
+
+  /// cues are the named moments of the whole run, in order -- see
+  /// canvas_cues.dart.
+  final List<TimelineCue> cues;
+
+  /// textStyles are the document's named text styles, in the order they
+  /// were made: a heading, a label, a caption. A text set in one names it --
+  /// see TextElement.style -- and changing the style changes every text that
+  /// does, in every scene.
+  final List<NamedTextStyle> textStyles;
+
+  /// palette is the document's own colours -- see canvas_palette.dart.
+  final List<PaletteSwatch> palette;
+
   /// onMaster is whether the master canvas is the one being edited.
   ///
   /// A document-level fact rather than a flag in the editor, and that is what
@@ -362,6 +393,10 @@ class CanvasDocument {
     this.masterOn = false,
     this.onMaster = false,
     this.targets = const [],
+    this.keepTiming = false,
+    this.cues = const [],
+    this.textStyles = const [],
+    this.palette = const [],
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -444,6 +479,75 @@ class CanvasDocument {
       reached += _stepOf(i);
     }
     return reached;
+  }
+
+  /// keepingStarts is this document with scene lengths adjusted so that
+  /// every scene [before] also had starts where it started there.
+  ///
+  /// Worked front to back, each start put right by changing the scene
+  /// before it -- which is what absorbs a transition made longer or shorter.
+  /// A scene in [fixed] has just been given its length by hand and is left
+  /// alone: the scene after it moves, and the one after that is put back by
+  /// shortening or lengthening the scene between, so the change is taken from
+  /// its neighbour. A scene that cannot give enough -- it would fall below one
+  /// frame -- gives what it can.
+  CanvasDocument keepingStarts(CanvasDocument before,
+      {Set<String> fixed = const {}}) {
+    var was = <String, int>{
+      for (var (i, s) in before.allScenes.indexed) s.id: before.startOfScene(i),
+    };
+    var next = this;
+    for (var i = 1; i < next.allScenes.length; i++) {
+      var list = next.allScenes;
+      var want = was[list[i].id];
+      var prev = list[i - 1];
+      if (want == null || fixed.contains(prev.id)) continue;
+      var off = want - next.startOfScene(i);
+      if (off == 0) continue;
+      var frames = (prev.frames + off).clamp(1, maxFrameCount).toInt();
+      next = next.withScene(i - 1, prev.copyWith(frames: frames));
+    }
+    return next;
+  }
+
+  /// transitionSounds are the sounds the transitions carry, each as a timed
+  /// sound on the run's own timeline -- where the transition starts, less
+  /// its lead. Made from the transitions every time they are asked for
+  /// rather than kept, so a sound is always where its transition is.
+  ///
+  /// Read by the editor's playback and by the export alongside the master's
+  /// own sounds; never saved, and not editable as clips -- they belong to
+  /// their transitions.
+  List<AudioElement> get transitionSounds {
+    var list = allScenes;
+    if (list.length < 2) return const [];
+    return [
+      for (var i = 0; i < list.length - 1; i++)
+        if (transitionAfter(i) case var t when t.on && t.sound.isNotEmpty)
+          () {
+            var (_, held, frames) = sceneStep(i);
+            var starts = startOfScene(i + 1) - (frames - held);
+            return AudioElement(
+              ElementBase(
+                  id: "$transitionSoundPrefix$i",
+                  name: t.soundName.isEmpty ? "Transition" : t.soundName,
+                  visible: false),
+              clip: MediaClip(
+                timed: true,
+                at: math.max(0, starts - t.soundLead),
+                volume: t.soundVolume,
+                channel: "transitions",
+                channelName: "Transitions",
+                playlist: [
+                  MediaSource(
+                      assetId: t.sound,
+                      name: t.soundName,
+                      length: t.soundLength)
+                ],
+              ),
+            );
+          }(),
+    ];
   }
 
   /// sceneStep is how a scene fits into the run: how far the sequence moves
@@ -873,6 +977,10 @@ class CanvasDocument {
     bool? masterOn,
     bool? onMaster,
     List<String>? targets,
+    bool? keepTiming,
+    List<TimelineCue>? cues,
+    List<NamedTextStyle>? textStyles,
+    List<PaletteSwatch>? palette,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
@@ -935,6 +1043,10 @@ class CanvasDocument {
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
       targets: targets ?? this.targets,
+      keepTiming: keepTiming ?? this.keepTiming,
+      cues: cues ?? this.cues,
+      textStyles: textStyles ?? this.textStyles,
+      palette: palette ?? this.palette,
     );
   }
 
@@ -963,6 +1075,10 @@ class CanvasDocument {
       masterOn: masterOn,
       onMaster: onMaster,
       targets: targets,
+      keepTiming: keepTiming,
+      cues: cues,
+      textStyles: textStyles,
+      palette: palette,
     );
   }
 
@@ -1192,6 +1308,11 @@ class CanvasDocument {
         "actions": actions.map((a) => a.toJson()).toList(),
       "elements": elements.map((e) => e.toJson()).toList(),
       if (targets.isNotEmpty) "targets": targets,
+      if (keepTiming) "keepTiming": true,
+      if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
+      if (textStyles.isNotEmpty)
+        "textStyles": [for (var t in textStyles) t.toJson()],
+      if (palette.isNotEmpty) "palette": [for (var p in palette) p.toJson()],
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
       if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
@@ -1310,6 +1431,22 @@ class CanvasDocument {
           for (var t in json["targets"] as List)
             if (t is String) t,
       ],
+      keepTiming: jsonBool(json["keepTiming"], false),
+      cues: [
+        if (json["cues"] is List)
+          for (var c in json["cues"] as List)
+            if (TimelineCue.fromJson(c) case var cue?) cue,
+      ]..sort((a, b) => a.frame.compareTo(b.frame)),
+      textStyles: [
+        if (json["textStyles"] is List)
+          for (var t in json["textStyles"] as List)
+            if (NamedTextStyle.fromJson(t) case var style?) style,
+      ],
+      palette: [
+        if (json["palette"] is List)
+          for (var p in json["palette"] as List)
+            if (PaletteSwatch.fromJson(p) case var swatch?) swatch,
+      ],
     );
   }
 
@@ -1395,5 +1532,23 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VideoElement.fromJson(json, base);
     case ElementKind.vector:
       return VectorElement.fromJson(json, base);
+  }
+}
+
+/// NamedTextStyle is one of the document's text styles: a name, and the type
+/// it stands for. See CanvasDocument.textStyles.
+class NamedTextStyle {
+  final String name;
+  final TextSpec spec;
+  const NamedTextStyle(this.name, this.spec);
+
+  Map<String, dynamic> toJson() => {"name": name, "spec": spec.toJson()};
+
+  static NamedTextStyle? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var name = jsonString(json["name"], "");
+    if (name.isEmpty || json["spec"] is! Map<String, dynamic>) return null;
+    return NamedTextStyle(
+        name, TextSpec.fromJson(json["spec"] as Map<String, dynamic>));
   }
 }

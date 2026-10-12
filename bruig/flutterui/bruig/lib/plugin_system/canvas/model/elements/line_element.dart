@@ -1,4 +1,5 @@
 import 'package:bruig/components/paint_spec.dart';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -44,6 +45,27 @@ enum LineStrokeCap {
         (c) => c.name == name,
         orElse: () => LineStrokeCap.flat,
       );
+}
+
+/// lineSliver is the depth of a level line's box, or the width of an
+/// upright one's -- see LineElement.withEnds.
+const double lineSliver = 0.01;
+
+/// snapLineAngle is [moving] swung about [fixed] onto the nearest multiple of
+/// 45 degrees, when it is within [within] degrees of it or [always] is set.
+/// What makes a line dragged roughly flat come out exactly flat.
+Offset snapLineAngle(Offset fixed, Offset moving,
+    {bool always = false, double within = 4}) {
+  var d = moving - fixed;
+  if (d.distance == 0) return moving;
+  var angle = math.atan2(d.dy, d.dx) * 180 / math.pi;
+  var nearest = (angle / 45).round() * 45.0;
+  if (!always && (angle - nearest).abs() > within) return moving;
+  var r = nearest * math.pi / 180;
+  // Exactly level or upright, not a cosine's worth of rounding away from it.
+  var c = (nearest % 180 == 90) ? 0.0 : math.cos(r);
+  var sn = (nearest % 180 == 0) ? 0.0 : math.sin(r);
+  return fixed + Offset(c, sn) * d.distance;
 }
 
 /// LineEnd is what is drawn at one end of a line.
@@ -170,6 +192,52 @@ class LineElement extends CanvasElement {
   /// start and end are the endpoints in the document's own coordinates.
   Offset get start => flipped ? bounds.bottomLeft : bounds.topLeft;
   Offset get end => flipped ? bounds.topRight : bounds.bottomRight;
+
+  /// length and angle are the line between its two ends, the angle in
+  /// degrees clockwise from pointing right.
+  double get length => (end - start).distance;
+  double get angle {
+    var d = end - start;
+    return math.atan2(d.dy, d.dx) * 180 / math.pi;
+  }
+
+  /// withEnds is this line drawn from [a] to [b].
+  ///
+  /// A line runs corner to corner of its box, so a level one is a box with no
+  /// height -- and nothing with no height is drawn at all. It gets
+  /// [lineSliver] instead: too little to see as a slope, enough to be drawn.
+  /// Before this, every level line was a box at least a few pixels tall and
+  /// so ran gently downhill.
+  ///
+  /// The box always runs left to right, so a line drawn right to left has
+  /// its ends' decorations swapped to keep the arrow where it was.
+  LineElement withEnds(Offset a, Offset b) {
+    var backwards = b.dx < a.dx || (b.dx == a.dx && b.dy < a.dy);
+    var from = backwards ? b : a, to = backwards ? a : b;
+    var w = math.max((to.dx - from.dx).abs(), lineSliver);
+    var h = math.max((to.dy - from.dy).abs(), lineSliver);
+    var up = to.dy < from.dy;
+    var swapped = backwards
+        ? copyWith(startEnd: endEnd, endEnd: startEnd)
+        : this;
+    return swapped.copyWith(flipped: up).withBase(
+        x: from.dx,
+        y: up ? to.dy : from.dy,
+        width: w,
+        height: h) as LineElement;
+  }
+
+  /// level and plumb are this line turned flat or upright about its start,
+  /// keeping its length and the side it points to.
+  LineElement get level {
+    var d = end - start;
+    return withEnds(start, start + Offset(d.dx < 0 ? -length : length, 0));
+  }
+
+  LineElement get plumb {
+    var d = end - start;
+    return withEnds(start, start + Offset(0, d.dy < 0 ? -length : length));
+  }
 
   @override
   CanvasElement rebase(ElementBase base) => LineElement(base,

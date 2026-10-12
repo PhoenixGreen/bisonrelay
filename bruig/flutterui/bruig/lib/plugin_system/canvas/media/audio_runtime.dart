@@ -199,6 +199,15 @@ class AudioRuntime extends ChangeNotifier {
   /// mix again, which happens on every frame the playhead moves, costs a
   /// comparison rather than two dozen calls into the engine.
   final Map<String, ChannelSound> _channels = {};
+
+  /// _routes is the channel each sound plays through -- see setMix.
+  final Map<String, String> _routes = {};
+
+  /// strips and routes are the mix as last set, for tests.
+  @visibleForTesting
+  Set<String> get strips => _channels.keys.toSet();
+  @visibleForTesting
+  Map<String, String> get routes => Map.unmodifiable(_routes);
   final Map<String, String> _channelSignature = {};
   MasterSound? _master;
   String _masterSignature = "";
@@ -210,8 +219,20 @@ class AudioRuntime extends ChangeNotifier {
   /// Solo is worked in here, as a level of nought for every channel that is
   /// not soloed while any is. It is the reader's, for listening, not the
   /// document's: an export plays every channel that is not muted.
+  ///
+  /// [channels] is keyed by mixer channel, and [routes] says which channel
+  /// each sound plays through, by the sound's element id. One strip per
+  /// channel rather than one per sound: every strip is a bus, and a bus is a
+  /// voice that is always playing, so a strip per sound cost a voice for
+  /// every clip on the timeline whether it was sounding or not. A sound with
+  /// no route plays through the strip of its own id, if there is one.
   void setMix(Map<String, ChannelMix> channels,
-      {Set<String> solo = const {}, required MasterMix master}) {
+      {Map<String, String> routes = const {},
+      Set<String> solo = const {},
+      required MasterMix master}) {
+    _routes
+      ..clear()
+      ..addAll(routes);
     var soloing = solo.any(channels.containsKey);
     for (var entry in channels.entries) {
       var mix = entry.value;
@@ -251,7 +272,8 @@ class AudioRuntime extends ChangeNotifier {
   /// _channelFor is the mixer channel a sound plays through, or null for
   /// none: the element's own, or for a video's sound, its video's.
   String? _channelFor(String soundId) {
-    var key = soundId.startsWith("video:") ? soundId.substring(6) : soundId;
+    var id = soundId.startsWith("video:") ? soundId.substring(6) : soundId;
+    var key = _routes[id] ?? id;
     return _channels.containsKey(key) ? key : null;
   }
 

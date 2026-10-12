@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/chart_data_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_row_names.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
 import 'package:flutter/material.dart';
@@ -668,6 +669,27 @@ List<Widget> chartSettings(
           ],
         ],
       ),
+    // A pie's slices are one series' values, so their colours are the
+    // categories' rather than the series' -- a button each, in the order the
+    // slices are drawn.
+    if (e.type.isCircular && e.data.categories.isNotEmpty)
+      CanvasControlGroup(
+          label: "Slices",
+          key: const ValueKey("chartSliceColours"),
+          children: [
+            for (var (i, name) in e.data.categories.indexed)
+              CanvasColorButton(
+                key: ValueKey("chartSlice$i"),
+                label: name.isEmpty ? "${i + 1}" : name,
+                color: sliceColour(e, i),
+                onChanged: (c) => now(e.copyWith(sliceColors: [
+                  for (var j = 0;
+                      j < e.data.categories.length;
+                      j++)
+                    j == i ? c : sliceColour(e, j),
+                ])),
+              ),
+          ]),
     // How a number is written, wherever this chart writes one. Its own line
     // under the grid's and not behind its button: a pie rules nothing and
     // still writes numbers on its slices.

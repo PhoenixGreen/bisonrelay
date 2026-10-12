@@ -205,6 +205,16 @@ class MediaClip {
   final String channel;
   final String channelName;
 
+  /// envelope is the clip's volume over time: points of (seconds from the
+  /// clip's start on the timeline, gain from nought to one), joined by
+  /// straight lines and held flat past either end. Empty is one all along.
+  ///
+  /// On top of the fades rather than instead of them, and written by the
+  /// tools rather than drawn by hand: ducking music under a voice is a dip
+  /// at every line, worked out once from the voice's own shape -- see
+  /// duckEnvelope -- so playing it and exporting it are the same sound.
+  final List<GainPoint> envelope;
+
   const MediaClip({
     this.playlist = const [],
     this.volume = 0.8,
@@ -219,6 +229,7 @@ class MediaClip {
     this.mix = const ChannelMix(),
     this.channel = "",
     this.channelName = "",
+    this.envelope = const [],
   });
 
   bool get isEmpty => playlist.every((s) => s.assetId.isEmpty);
@@ -256,6 +267,7 @@ class MediaClip {
   ClipMoment? momentAt(double seconds) {
     var total = runLength;
     if (seconds < 0 || total <= 0) return null;
+    var shaped = envelopeAt(envelope, seconds);
     if (seconds >= total) {
       if (loop == MediaLoop.none) return null;
       seconds %= total;
@@ -269,7 +281,8 @@ class MediaClip {
         var gain = 1.0;
         if (fadeIn > 0) gain = math.min(gain, into / fadeIn);
         if (fadeOut > 0) gain = math.min(gain, (span - into) / fadeOut);
-        return ClipMoment(i, source.start + into, gain.clamp(0.0, 1.0));
+        return ClipMoment(
+            i, source.start + into, (gain * shaped).clamp(0.0, 1.0));
       }
       from += span;
     }
@@ -290,6 +303,7 @@ class MediaClip {
     ChannelMix? mix,
     String? channel,
     String? channelName,
+    List<GainPoint>? envelope,
   }) =>
       MediaClip(
         playlist: playlist ?? this.playlist,
@@ -305,6 +319,7 @@ class MediaClip {
         mix: mix ?? this.mix,
         channel: channel ?? this.channel,
         channelName: channelName ?? this.channelName,
+        envelope: envelope ?? this.envelope,
       );
 
   Map<String, dynamic> toJson() => {
@@ -322,6 +337,10 @@ class MediaClip {
         if (!mix.isDefault) "mix": mix.toJson(),
         if (channel.isNotEmpty) "channel": channel,
         if (channelName.isNotEmpty) "channelName": channelName,
+        if (envelope.isNotEmpty)
+          "envelope": [
+            for (var p in envelope) [p.time, p.gain]
+          ],
       };
 
   factory MediaClip.fromJson(Map<String, dynamic> json) {
@@ -347,8 +366,49 @@ class MediaClip {
       channel: json["channel"] is String ? json["channel"] as String : "",
       channelName:
           json["channelName"] is String ? json["channelName"] as String : "",
+      envelope: [
+        if (json["envelope"] is List)
+          for (var p in json["envelope"] as List)
+            if (p is List && p.length == 2 && p[0] is num && p[1] is num)
+              GainPoint((p[0] as num).toDouble(),
+                  (p[1] as num).toDouble().clamp(0.0, 1.0)),
+      ],
     );
   }
+}
+
+/// GainPoint is one point of a clip's volume envelope -- see
+/// MediaClip.envelope.
+class GainPoint {
+  final double time;
+  final double gain;
+  const GainPoint(this.time, this.gain);
+
+  @override
+  bool operator ==(Object other) =>
+      other is GainPoint && other.time == time && other.gain == gain;
+
+  @override
+  int get hashCode => Object.hash(time, gain);
+
+  @override
+  String toString() => "GainPoint($time, $gain)";
+}
+
+/// envelopeAt is [points]' gain at [seconds]: straight lines between them,
+/// flat past either end, and one where there are none.
+double envelopeAt(List<GainPoint> points, double seconds) {
+  if (points.isEmpty) return 1;
+  if (seconds <= points.first.time) return points.first.gain;
+  if (seconds >= points.last.time) return points.last.gain;
+  for (var i = 0; i < points.length - 1; i++) {
+    var a = points[i], b = points[i + 1];
+    if (seconds > b.time) continue;
+    var span = b.time - a.time;
+    if (span <= 0) return b.gain;
+    return a.gain + (b.gain - a.gain) * (seconds - a.time) / span;
+  }
+  return points.last.gain;
 }
 
 /// ClipMoment is where a clip on the timeline is at one instant.

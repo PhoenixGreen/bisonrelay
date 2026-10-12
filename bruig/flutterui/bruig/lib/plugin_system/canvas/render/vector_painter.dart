@@ -276,6 +276,24 @@ void _strokeDrawn(ui.Canvas canvas, VectorDrawn d, Paint paint,
 void paintVector(
     ui.Canvas canvas, Rect box, VectorElement e, CanvasImageSource? images) {
   if (box.width <= 0 || box.height <= 0) return;
+  // Tinted, the drawing goes into a layer of its own and the tint is laid on
+  // it with srcIn: the colour, wherever the drawing put anything, at the
+  // opacity it put it there. See VectorElement.tint.
+  var tint = e.tint;
+  if (tint != null) {
+    canvas.saveLayer(null, Paint());
+    _paintVector(canvas, box, e, images);
+    canvas.drawPaint(Paint()
+      ..color = tint
+      ..blendMode = BlendMode.srcIn);
+    canvas.restore();
+    return;
+  }
+  _paintVector(canvas, box, e, images);
+}
+
+void _paintVector(
+    ui.Canvas canvas, Rect box, VectorElement e, CanvasImageSource? images) {
   var shapes = e.shapes;
   if (shapes == null) {
     // As the file draws itself, which is the only way to be exact about a

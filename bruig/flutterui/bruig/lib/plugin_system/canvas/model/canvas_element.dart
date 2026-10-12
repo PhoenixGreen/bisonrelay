@@ -204,6 +204,18 @@ class ElementBase {
   /// so that a headline fixed on the square is fixed on the banner too.
   final Map<String, ElementLayout> layouts;
 
+  /// cue is the TimelineCue this element's timing is tied to, by id, or
+  /// empty for none. Moving the cue moves every keyframe of the element with
+  /// it -- see CanvasController.moveCue.
+  final String cue;
+
+  /// link groups linked copies: elements made from one another that share
+  /// their design, by a shared id, or empty for none. Pushing one copy's
+  /// design to the rest keeps each where it is and when it is -- see
+  /// CanvasController.pushToLinked. What a symbol is, without a second kind
+  /// of element to learn.
+  final String link;
+
   const ElementBase({
     required this.id,
     this.name = "",
@@ -225,6 +237,8 @@ class ElementBase {
     this.ownText = false,
     this.ownDesign = false,
     this.shared,
+    this.cue = "",
+    this.link = "",
   });
 
   ElementBase copyWith({
@@ -250,6 +264,8 @@ class ElementBase {
     bool? ownDesign,
     Map<String, dynamic>? shared,
     bool clearShared = false,
+    String? cue,
+    String? link,
   }) =>
       ElementBase(
         id: id ?? this.id,
@@ -272,6 +288,8 @@ class ElementBase {
         ownText: ownText ?? this.ownText,
         ownDesign: ownDesign ?? this.ownDesign,
         shared: clearShared ? null : (shared ?? this.shared),
+        cue: cue ?? this.cue,
+        link: link ?? this.link,
       );
 
   factory ElementBase.fromJson(Map<String, dynamic> json, String defaultName) {
@@ -300,6 +318,8 @@ class ElementBase {
       shared: json["shared"] is Map<String, dynamic>
           ? json["shared"] as Map<String, dynamic>
           : null,
+      cue: _s(json["cue"], ""),
+      link: _s(json["link"], ""),
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -336,6 +356,8 @@ class ElementBase {
         if (ownText) "ownText": true,
         if (ownDesign) "ownDesign": true,
         if (shared != null) "shared": shared,
+        if (cue.isNotEmpty) "cue": cue,
+        if (link.isNotEmpty) "link": link,
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),
@@ -745,6 +767,8 @@ abstract class CanvasElement {
     bool? ownDesign,
     Map<String, dynamic>? shared,
     bool clearShared = false,
+    String? cue,
+    String? link,
   }) =>
       rebase(base.copyWith(
         name: name,
@@ -768,6 +792,8 @@ abstract class CanvasElement {
         ownDesign: ownDesign,
         shared: shared,
         clearShared: clearShared,
+        cue: cue,
+        link: link,
       ));
 
   /// withId returns a copy under a new id, for duplicating an element.

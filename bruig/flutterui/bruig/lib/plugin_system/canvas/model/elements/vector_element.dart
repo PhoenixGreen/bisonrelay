@@ -740,6 +740,17 @@ class VectorElement extends CanvasElement {
   final Color handleColor;
   final double handleSize;
 
+  /// tint is one colour laid over the whole drawing, or null to draw it in
+  /// its own colours.
+  ///
+  /// For the commonest change a drawing gets -- an icon in the brand's
+  /// colour rather than black -- without taking it apart: the drawing stays
+  /// a reference to its file, a few bytes in the document. Recoloured shape
+  /// by shape instead, every copy of an icon carried its whole outline, and
+  /// a video with a few dozen icons in it was the best part of a megabyte.
+  /// Only the colour is taken: what was transparent stays transparent.
+  final Color? tint;
+
   final ElementAnimation animation;
 
   const VectorElement(
@@ -750,6 +761,7 @@ class VectorElement extends CanvasElement {
     this.fit = VectorFit.contain,
     this.handleColor = defaultHandleColor,
     this.handleSize = 8,
+    this.tint,
     this.animation = const ElementAnimation(),
   });
 
@@ -792,6 +804,7 @@ class VectorElement extends CanvasElement {
       fit: fit,
       handleColor: handleColor,
       handleSize: handleSize,
+      tint: tint,
       animation: animation);
 
   VectorElement copyWith({
@@ -802,6 +815,8 @@ class VectorElement extends CanvasElement {
     VectorFit? fit,
     Color? handleColor,
     double? handleSize,
+    Color? tint,
+    bool clearTint = false,
     ElementAnimation? animation,
   }) =>
       VectorElement(base,
@@ -811,6 +826,7 @@ class VectorElement extends CanvasElement {
           fit: fit ?? this.fit,
           handleColor: handleColor ?? this.handleColor,
           handleSize: handleSize ?? this.handleSize,
+          tint: clearTint ? null : tint ?? this.tint,
           animation: animation ?? this.animation);
 
   /// withShape is this drawing with shape [index] replaced.
@@ -841,6 +857,7 @@ class VectorElement extends CanvasElement {
         if (handleColor != defaultHandleColor)
           "handle": colorToJson(handleColor),
         if (handleSize != 8) "handleSize": handleSize,
+        if (tint != null) "tint": colorToJson(tint!),
         if (animation.any) "anim": animation.toJson(),
       };
 
@@ -866,6 +883,7 @@ class VectorElement extends CanvasElement {
         fit: VectorFit.fromName(json["fit"] as String?),
         handleColor: colorFromJson(json["handle"], defaultHandleColor),
         handleSize: jsonDouble(json["handleSize"], 8),
+        tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }

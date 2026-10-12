@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/double_click.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/preset_row.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/storyboard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bruig/storage_manager.dart';
@@ -171,6 +172,9 @@ class _CanvasScenesPanelState extends State<CanvasScenesPanel> {
           if (CanvasController.hasCopiedScene)
             _rowButton(theme, Icons.content_paste_go,
                 "Paste the copied ${document.kind.one}", controller.pasteScene),
+          // The whole run as pictures -- see storyboard.dart.
+          _rowButton(theme, Icons.view_module_outlined, "Storyboard",
+              () => showStoryboard(context, controller)),
           _rowButton(
             theme,
             _previews ? Icons.view_list_outlined : Icons.grid_view_outlined,

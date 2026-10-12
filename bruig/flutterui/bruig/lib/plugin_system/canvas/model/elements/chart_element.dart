@@ -330,6 +330,16 @@ class ChartElement extends CanvasElement {
   final Color riseColor;
   final Color fallColor;
 
+  /// sliceColors are a pie's, a donut's or a radial bar's colours, one per
+  /// category in order. Empty, or shorter than the categories, and the rest
+  /// come from the series (where there are several) or the palette.
+  ///
+  /// The colours of one series' values, which is what a pie is: there was no
+  /// other way to say the slice for proof of work is amber than to invent a
+  /// second and a third series of noughts for the slices to borrow theirs
+  /// from. See sliceColour.
+  final List<Color> sliceColors;
+
   /// titleSpec, labelSpec and valueSpec are the three sizes of type on a
   /// chart. Separate so a chart shrunk to fit a corner can keep a readable
   /// title while its tick labels get out of the way.
@@ -475,6 +485,7 @@ class ChartElement extends CanvasElement {
     this.gridColor = const Color(0x33FFFFFF),
     this.axisColor = const Color(0x99FFFFFF),
     this.riseColor = const Color(0xFF2FD3A0),
+    this.sliceColors = const [],
     this.fallColor = const Color(0xFFE85D75),
     this.axisSteps = 0,
     this.logScale = false,
@@ -633,6 +644,7 @@ class ChartElement extends CanvasElement {
     Color? gridColor,
     Color? axisColor,
     Color? riseColor,
+    List<Color>? sliceColors,
     Color? fallColor,
     int? axisSteps,
     bool? logScale,
@@ -690,6 +702,7 @@ class ChartElement extends CanvasElement {
           gridColor: gridColor,
           axisColor: axisColor,
           riseColor: riseColor,
+          sliceColors: sliceColors,
           fallColor: fallColor,
           axisSteps: axisSteps,
           logScale: logScale,
@@ -751,6 +764,7 @@ class ChartElement extends CanvasElement {
     Color? gridColor,
     Color? axisColor,
     Color? riseColor,
+    List<Color>? sliceColors,
     Color? fallColor,
     int? axisSteps,
     bool? logScale,
@@ -808,6 +822,7 @@ class ChartElement extends CanvasElement {
           gridColor: gridColor ?? this.gridColor,
           axisColor: axisColor ?? this.axisColor,
           riseColor: riseColor ?? this.riseColor,
+          sliceColors: sliceColors ?? this.sliceColors,
           fallColor: fallColor ?? this.fallColor,
           axisSteps: axisSteps ?? this.axisSteps,
           logScale: logScale ?? this.logScale,
@@ -883,6 +898,8 @@ class ChartElement extends CanvasElement {
         if (axisSpec != null) "axisSpec": axisSpec!.toJson(),
         if (axisGap != 0) "axisGap": axisGap,
         "riseColor": colorToJson(riseColor),
+        if (sliceColors.isNotEmpty)
+          "sliceColors": [for (var c in sliceColors) colorToJson(c)],
         "fallColor": colorToJson(fallColor),
         "titleSpec": titleSpec.toJson(),
         "labelSpec": labelSpec.toJson(),
@@ -970,6 +987,12 @@ class ChartElement extends CanvasElement {
           : null,
       axisGap: jsonDouble(json["axisGap"], 0),
       riseColor: colorFromJson(json["riseColor"], const Color(0xFF2FD3A0)),
+      sliceColors: json["sliceColors"] is List
+          ? [
+              for (var c in json["sliceColors"] as List)
+                if (c is num) colorFromJson(c),
+            ]
+          : const [],
       fallColor: colorFromJson(json["fallColor"], const Color(0xFFE85D75)),
       axisColor: colorFromJson(json["axisColor"], const Color(0x99FFFFFF)),
       titleSpec: jsonSpec(json["titleSpec"], TextSpec.fromJson,

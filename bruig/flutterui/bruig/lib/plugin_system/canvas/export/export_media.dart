@@ -46,6 +46,10 @@ class ExportSound {
   /// mix is the channel strip this stretch plays through.
   final ChannelMix mix;
 
+  /// envelope is the clip's volume envelope, in seconds from the start of
+  /// this stretch -- see MediaClip.envelope.
+  final List<GainPoint> envelope;
+
   const ExportSound({
     required this.path,
     required this.at,
@@ -55,7 +59,35 @@ class ExportSound {
     this.fadeOut = 0,
     this.volume = 1,
     this.mix = const ChannelMix(),
+    this.envelope = const [],
   });
+}
+
+/// envelopeExpression is [points] as an ffmpeg volume expression in t, the
+/// seconds into the stretch: flat before the first point and after the
+/// last, straight lines between.
+///
+/// A sum of pieces, each switched on for its own stretch of time, rather
+/// than ifs inside ifs: a voice-over ducked at every line is a couple of
+/// hundred points, and an expression nested that deep is one the parser may
+/// refuse.
+String envelopeExpression(List<GainPoint> points) {
+  String n(double v) => v.toStringAsFixed(4);
+  if (points.isEmpty) return "1";
+  var first = points.first, last = points.last;
+  var parts = <String>[
+    "${n(first.gain)}*lt(t,${n(first.time)})",
+    "${n(last.gain)}*gte(t,${n(last.time)})",
+  ];
+  for (var i = 0; i < points.length - 1; i++) {
+    var a = points[i], b = points[i + 1];
+    var span = b.time - a.time;
+    if (span <= 0) continue;
+    var slope = (b.gain - a.gain) / span;
+    parts.add("gte(t,${n(a.time)})*lt(t,${n(b.time)})"
+        "*(${n(a.gain)}+${n(slope)}*(t-${n(a.time)}))");
+  }
+  return parts.join("+");
 }
 
 /// _Placed is one piece of timed media as it sits in the run.
@@ -143,6 +175,11 @@ class ExportMedia {
       for (var e in [...master.elements, ...?master.sharedBackground?.media]) {
         if (_timed(e)) placed.add(_Placed(e, 0, run));
       }
+    }
+    // What the transitions carry, where each transition is -- see
+    // CanvasDocument.transitionSounds.
+    for (var e in document.transitionSounds) {
+      placed.add(_Placed(e, 0, run));
     }
     if (placed.isEmpty) return null;
     return ExportMedia._(
@@ -272,6 +309,9 @@ class ExportMedia {
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
                 mix: clip.mix,
+                envelope: [
+                  for (var g in clip.envelope) GainPoint(g.time - t, g.gain),
+                ],
               ));
             }
           }
@@ -313,6 +353,9 @@ class ExportMedia {
       if (s.fadeOut > 0)
         "afade=t=out:st=${n(math.max(0, s.length - s.fadeOut))}:d=${n(s.fadeOut)}",
       if (s.volume != 1) "volume=${n(s.volume)}",
+      // Quoted, so the commas inside it are the expression's own.
+      if (s.envelope.isNotEmpty)
+        "volume='${envelopeExpression(s.envelope)}':eval=frame",
       // The strip it plays through: EQ, compressor, fader and balance. Per
       // stretch rather than per channel, which is the same thing -- one
       // channel's stretches never overlap -- and keeps the graph one chain

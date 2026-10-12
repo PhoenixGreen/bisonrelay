@@ -176,6 +176,11 @@ class VideoElement extends CanvasElement {
 
   final ElementAnimation animation;
 
+  /// blend is how the video is laid on what is under it: normally, or as
+  /// light (screen, add) that only brightens -- which is what a glitch, a
+  /// light leak or a lens flare shot on black is for -- or as shade.
+  final LayerBlend blend;
+
   const VideoElement(
     super.base, {
     this.clip = const MediaClip(volume: 1),
@@ -190,6 +195,7 @@ class VideoElement extends CanvasElement {
     ],
     this.accent = const Color(0xFF3D7EFF),
     this.animation = const ElementAnimation(),
+    this.blend = LayerBlend.normal,
   });
 
   @override
@@ -229,7 +235,8 @@ class VideoElement extends CanvasElement {
       look: look,
       controls: controls,
       accent: accent,
-      animation: animation);
+      animation: animation,
+      blend: blend);
 
   VideoElement copyWith({
     MediaClip? clip,
@@ -240,6 +247,7 @@ class VideoElement extends CanvasElement {
     List<VideoControl>? controls,
     Color? accent,
     ElementAnimation? animation,
+    LayerBlend? blend,
   }) =>
       VideoElement(base,
           clip: clip ?? this.clip,
@@ -249,7 +257,8 @@ class VideoElement extends CanvasElement {
           look: look ?? this.look,
           controls: controls ?? this.controls,
           accent: accent ?? this.accent,
-          animation: animation ?? this.animation);
+          animation: animation ?? this.animation,
+          blend: blend ?? this.blend);
 
   @override
   Map<String, dynamic> props() => {
@@ -261,6 +270,7 @@ class VideoElement extends CanvasElement {
         "controls": [for (var c in controls) c.name],
         "accent": colorToJson(accent),
         if (animation.any) "anim": animation.toJson(),
+        if (blend != LayerBlend.normal) "blend": blend.name,
       };
 
   factory VideoElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -291,6 +301,27 @@ class VideoElement extends CanvasElement {
               ],
         accent: colorFromJson(json["accent"], const Color(0xFF3D7EFF)),
         animation: jsonSpec(
-            json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
+            json["anim"], ElementAnimation.fromJson, const ElementAnimation()),
+        blend: LayerBlend.fromName(json["blend"] as String?));
   }
+}
+
+/// LayerBlend is how an element's pixels are laid on what is already there.
+enum LayerBlend {
+  normal("Normal", BlendMode.srcOver),
+  screen("Screen", BlendMode.screen),
+  add("Add", BlendMode.plus),
+  lighten("Lighten", BlendMode.lighten),
+  multiply("Multiply", BlendMode.multiply),
+  darken("Darken", BlendMode.darken),
+  overlay("Overlay", BlendMode.overlay),
+  softLight("Soft light", BlendMode.softLight),
+  difference("Difference", BlendMode.difference);
+
+  final String label;
+  final BlendMode mode;
+  const LayerBlend(this.label, this.mode);
+
+  static LayerBlend fromName(String? name) =>
+      values.firstWhere((b) => b.name == name, orElse: () => normal);
 }
