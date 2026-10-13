@@ -5,7 +5,6 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
-import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
@@ -195,10 +194,18 @@ class CanvasTimeline extends StatefulWidget {
   static void _noop() {}
 
   @override
-  State<CanvasTimeline> createState() => _CanvasTimelineState();
+  State<CanvasTimeline> createState() => CanvasTimelineState();
 }
 
-class _CanvasTimelineState extends State<CanvasTimeline> {
+class CanvasTimelineState extends State<CanvasTimeline> {
+  /// shownView and playheadFrame are what the strip is showing and where
+  /// the playhead is on it, in the same frames -- for tests, since the
+  /// strip is painted rather than laid out.
+  @visibleForTesting
+  TimelineView get shownView => _viewNow;
+  @visibleForTesting
+  int get playheadFrame => _origin + controller.frame;
+
   CanvasController get controller => widget.controller;
 
   /// _dragBand is the pair of frames being dragged as one, or null.
@@ -317,12 +324,32 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// _scrubTo puts the playhead under [x]. Where the timeline runs along
   /// every scene, a point over another scene goes to that scene, at the frame
   /// of it the ruler says -- the ruler is the run's, so it has to.
+  /// _marquee is the stretch being dragged out over the keyframes to select
+  /// them, as two x positions, or null; _pressedMarquee is whether the press
+  /// was on empty strip below the ruler, where a drag selects rather than
+  /// scrubs.
+  (double, double)? _marquee;
+  bool _pressedMarquee = false;
+
+  /// _narrowTo is a mark pressed while it was one of several picked: a click
+  /// on it picks it alone, a drag from it moves them all. Which it was is
+  /// only known when the pointer comes up.
+  int? _narrowTo;
+  List<int>? _narrowBand;
+
+  /// _pressX is where the pointer went down on the strip. A drag is only
+  /// recognised some way past it, so a drag that starts a box or moves a
+  /// selection measures from here, not from where it was recognised.
+  double _pressX = 0;
+
+  /// _lastHead is where the playhead was on the last build, in the frames
+  /// laid out -- see build, which follows it when it moves.
+  int? _lastHead;
+
   void _scrubTo(double x, double width) {
     var document = controller.document;
     if (_runs && !document.editingMaster) {
-      var place = placeInSequence(document, _viewNow.frameAt(x, width, _total));
-      if (place.scene != document.at) controller.goToScene(place.scene);
-      controller.frame = place.frame;
+      controller.goToRunFrame(_viewNow.frameAt(x, width, _total));
       return;
     }
     controller.frame = _frameAt(x, width);
@@ -362,6 +389,12 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// keyframes, while it shows.
   double get _sceneGap => _showScenes ? sceneStripHeight : 0;
 
+  /// _keysShown is whether the keyframe row is under the ruler, and
+  /// _keysRoom the strip's height with it or without: the ruler alone, its
+  /// playhead, markers and cues, when it is hidden.
+  bool get _keysShown => controller.keyframesShown;
+  double get _keysRoom => _keysShown ? _stripHeight : _rulerHeight + 2;
+
   /// _ranRun is whether the last build ran along the whole run, so a view
   /// zoomed in one way of counting is not kept for the other.
   bool _ranRun = false;
@@ -400,7 +433,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var local = event.localPosition;
     var stripTop = _stripPadTop + _transportHeight + _stripGap;
     var overStrip =
-        local.dy >= stripTop && local.dy <= stripTop + _stripHeight + _sceneGap;
+        local.dy >= stripTop && local.dy <= stripTop + _keysRoom + _sceneGap;
     // Not over the play bar: it scrolls sideways itself, to reach what is
     // along it, and that is not the frames being scrolled.
     if (local.dy < stripTop) return;
@@ -857,10 +890,18 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     }
     var frames = _total;
     var view = _view?.fitted(frames) ?? TimelineView.whole(frames);
-    if (_view != null && controller.playing) {
-      view = view.following(_origin + controller.frame, frames);
+    // Kept up with the playhead whenever it moves -- played, stepped, or
+    // taken to another scene -- so it is never somewhere off the strip. Not
+    // when it has stayed put: a view scrolled away from a still playhead is
+    // somebody looking at another stretch on purpose.
+    var head = _origin + controller.frame;
+    var moved = head != _lastHead &&
+        (head < view.first || head > view.first + view.span);
+    if (_view != null && (controller.playing || moved)) {
+      view = view.following(head, frames);
       _view = view;
     }
+    _lastHead = head;
     _viewNow = view;
 
     return Focus(
@@ -939,18 +980,24 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     var whole = _viewNow.isWhole(frames);
     // Big enough to hit: they were fifteen-pixel icons with a pixel round
     // them, which is a target to aim at rather than a button to press.
-    Widget zoom(String key, IconData icon, VoidCallback? onTap) => InkResponse(
+    // The show-and-hide pair are a little narrower than the zoom buttons,
+    // so all six fit the column as it starts.
+    Widget zoom(String key, IconData icon, VoidCallback? onTap,
+            {bool active = false, double width = 24}) =>
+        InkResponse(
           key: ValueKey(key),
           radius: 14,
           onTap: onTap,
           child: SizedBox(
-            width: 24,
+            width: width,
             height: 24,
             child: Icon(icon,
                 size: 19,
                 color: onTap == null
                     ? colors.onSurfaceVariant.withValues(alpha: 0.35)
-                    : colors.onSurfaceVariant),
+                    : active
+                        ? colors.primary
+                        : colors.onSurfaceVariant),
           ),
         );
     // Narrowed, the labels go and the icons stay.
@@ -976,6 +1023,51 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 (controller.headerWidth < 60 && controller.headerWidth >= 34))
               zoom("timelineZoomFit", Icons.fit_screen_outlined,
                   whole ? null : () => _setView(TimelineView.whole(frames))),
+            // Every channel a size taller, round to the least again.
+            if (controller.headerWidth >= 124)
+              Tooltip(
+                message: "Channel height: "
+                    "${const ["small", "medium", "large"][controller.laneSize]}"
+                    " -- click for the next",
+                child: zoom(
+                    "timelineLaneHeight",
+                    const [
+                      Icons.density_small,
+                      Icons.density_medium,
+                      Icons.density_large
+                    ][controller.laneSize],
+                    controller.nextLaneSize),
+              ),
+            // The keyframe row and the scene strip, each shown or hidden for
+            // room. The scenes' only while every scene plays: that is when
+            // the strip is there to hide.
+            if (controller.headerWidth >= 130)
+              Tooltip(
+                message:
+                    _keysShown ? "Hide the keyframes" : "Show the keyframes",
+                child: zoom(
+                    "keyframesShown",
+                    _keysShown ? Icons.diamond : Icons.diamond_outlined,
+                    () => controller.keyframesShown = !_keysShown,
+                    active: _keysShown,
+                    width: 20),
+              ),
+            if (controller.headerWidth >= 150)
+              Tooltip(
+                message: !_runs
+                    ? "The scenes are shown while Play runs every scene"
+                    : controller.scenesShown
+                        ? "Hide the scenes"
+                        : "Show the scenes",
+                child: zoom(
+                    "scenesShown",
+                    Icons.view_week_outlined,
+                    _runs
+                        ? () => controller.scenesShown = !controller.scenesShown
+                        : null,
+                    active: controller.scenesShown,
+                    width: 20),
+              ),
             if (controller.headerWidth >= 60)
               zoom(
                   "timelineZoomIn",
@@ -984,7 +1076,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       ? null
                       : () => _zoomBy(2)),
             const Spacer(),
-            if (!whole && controller.headerWidth >= 170)
+            if (!whole && controller.headerWidth >= 186)
               Text(
                   "${(frames / _viewNow.span).toStringAsFixed(frames / _viewNow.span < 10 ? 1 : 0)}×",
                   style: muted),
@@ -1009,49 +1101,51 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
               ),
             ),
           ),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: _markRow - 8 + _sceneGap,
-          height: 16,
-          child: Row(children: [
-            // A drawing's shapes: none, the one picked, or all of them, on
-            // lanes of their own under these keyframes.
-            if (vectorLanesFor(controller) != null)
-              InkResponse(
-                key: const ValueKey("vectorLanesToggle"),
-                radius: 12,
-                onTap: () =>
-                    controller.vectorLanes = controller.vectorLanes.next,
-                child: Tooltip(
-                  message: controller.vectorLanes.next.label,
-                  child: Icon(
-                      switch (controller.vectorLanes) {
-                        VectorLanes.none => Icons.chevron_right,
-                        VectorLanes.picked => Icons.expand_more,
-                        VectorLanes.all => Icons.unfold_more,
-                      },
-                      size: 14,
-                      color: controller.vectorLanes == VectorLanes.none
-                          ? colors.onSurfaceVariant
-                          : colors.primary),
+        if (_keysShown)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: _markRow - 8 + _sceneGap,
+            height: 16,
+            child: Row(children: [
+              // A drawing's shapes: none, the one picked, or all of them, on
+              // lanes of their own under these keyframes.
+              if (vectorLanesFor(controller) != null)
+                InkResponse(
+                  key: const ValueKey("vectorLanesToggle"),
+                  radius: 12,
+                  onTap: () =>
+                      controller.vectorLanes = controller.vectorLanes.next,
+                  child: Tooltip(
+                    message: controller.vectorLanes.next.label,
+                    child: Icon(
+                        switch (controller.vectorLanes) {
+                          VectorLanes.none => Icons.chevron_right,
+                          VectorLanes.picked => Icons.expand_more,
+                          VectorLanes.all => Icons.unfold_more,
+                        },
+                        size: 14,
+                        color: controller.vectorLanes == VectorLanes.none
+                            ? colors.onSurfaceVariant
+                            : colors.primary),
+                  ),
+                )
+              else
+                Icon(Icons.diamond_outlined,
+                    size: 11, color: colors.onSurfaceVariant),
+              if (named) ...[
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(target ?? "Keyframes",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: muted.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colors.onSurface)),
                 ),
-              )
-            else
-              Icon(Icons.diamond_outlined,
-                  size: 11, color: colors.onSurfaceVariant),
-            if (named) ...[
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(target ?? "Keyframes",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: muted.copyWith(
-                        fontWeight: FontWeight.w600, color: colors.onSurface)),
-              ),
-            ],
-          ]),
-        ),
+              ],
+            ]),
+          ),
       ]),
     );
   }
@@ -1063,7 +1157,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// runs every scene, so what is playing, and how long each scene is, can
   /// be seen -- and changed -- as it plays. The timeline grows by the strip
   /// rather than taking it from the channels. See CanvasSceneStrip.
-  bool get _showScenes => _runs && !_collapsed;
+  bool get _showScenes => _runs && !_collapsed && controller.scenesShown;
 
   Widget _body(
       BuildContext context,
@@ -1117,6 +1211,14 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                               1
                           ? controller.togglePlay
                           : null,
+                    ),
+                    // The end of the scene; pressed there while every scene
+                    // plays, the start of the next. See forward.
+                    CanvasIconButton(
+                      key: const ValueKey("toLastFrame"),
+                      icon: Icons.skip_next,
+                      tooltip: "",
+                      onPressed: controller.forward,
                     ),
                     // Which of the two Play means. Only where there is more than
                     // one canvas: on a single scene the two are the same thing.
@@ -1405,7 +1507,8 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
               ),
               // Pinned at the far end, outside the part that scrolls, so they
               // are always in the same place: what a press on a sound does,
-              // whether the trackpad moves the timeline, and the mixer.
+              // whether the trackpad moves the timeline, the effects and the
+              // mixer.
               CanvasIconButton(
                 key: const ValueKey("toolSelect"),
                 icon: Icons.near_me_outlined,
@@ -1434,6 +1537,41 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                 active: _trackpadScrolls,
                 onPressed: () => _setTrackpadScrolls(!_trackpadScrolls),
               ),
+              // The selected channel's effects, and the mixer: both open the
+              // panel under the canvas, the first on that channel's chain.
+              Builder(builder: (context) {
+                var key = controller.effectsChannel;
+                var shown = controller.effectsOpen;
+                var name = key == mixerMasterKey
+                    ? "the master"
+                    : controller.timelineChannels
+                            .where((c) => c.key == key)
+                            .firstOrNull
+                            ?.name ??
+                        "the channel";
+                return CanvasIconButton(
+                  key: const ValueKey("effectsToggle"),
+                  icon: Icons.settings_input_component_outlined,
+                  tooltip: shown
+                      ? "Hide the effects"
+                      : "Effects of $name: its EQ, compressor and the rest, "
+                          "in a chain",
+                  active: shown,
+                  onPressed: () => shown
+                      ? controller.effectsOpen = false
+                      : controller.openEffects(key),
+                );
+              }),
+              CanvasIconButton(
+                key: const ValueKey("mixerToggle"),
+                icon: Icons.equalizer,
+                tooltip: controller.mixerOpen
+                    ? "Close the mixer"
+                    : "Mixer: level, panning and effects for each channel, "
+                        "and the master",
+                active: controller.mixerOpen,
+                onPressed: () => controller.mixerOpen = !controller.mixerOpen,
+              ),
             ]),
           ),
         ),
@@ -1443,7 +1581,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
             // Less the border along the timeline's top, which comes out of the
             // same height: the height the strip always had, when it filled
             // what was left.
-            height: _stripHeight - 1 + _sceneGap,
+            height: _keysRoom - 1 + _sceneGap,
             // A firm line under the keyframes: the channels scroll up under
             // it, and without one they seemed to vanish into the strip.
             child: Container(
@@ -1474,13 +1612,33 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                             : _bandAt(
                                 details.localPosition, constraints.maxWidth);
                         setState(() {
-                          if (mark != null) {
+                          _narrowTo = null;
+                          _narrowBand = null;
+                          if (mark != null &&
+                              !_shiftHeld &&
+                              _selectedKeys.length > 1 &&
+                              _selectedKeys.contains(mark)) {
+                            // Pressed on one of several picked: the press may
+                            // be the start of dragging them all, so they stay
+                            // picked. A click -- released without a drag --
+                            // picks this one alone; see onTapUp.
+                            _narrowTo = mark;
+                          } else if (mark != null) {
                             // Shift adds to the selection; an ordinary click starts
                             // a new one.
                             if (!_shiftHeld) _selectedKeys.clear();
                             if (!_selectedKeys.add(mark) && _shiftHeld) {
                               _selectedKeys.remove(mark);
                             }
+                          } else if (band != null &&
+                              !_shiftHeld &&
+                              _selectedKeys.length > band.length &&
+                              band.every(_selectedKeys.contains)) {
+                            // The bar of a pair that is part of a bigger
+                            // selection: kept, so dragging it drags them all.
+                            // Pressing it used to pick the pair alone, which
+                            // is why only one pair ever moved.
+                            _narrowBand = band;
                           } else if (band != null) {
                             // Both ends. The bar is what says the two belong
                             // together, so picking it up picks up the pair.
@@ -1497,6 +1655,18 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         // enclosing scope, so a request made before that is undone
                         // by it -- and without focus the strip never sees Delete,
                         // copy or paste.
+                        if (_narrowTo case var only?) {
+                          setState(() => _selectedKeys
+                            ..clear()
+                            ..add(only));
+                          _narrowTo = null;
+                        }
+                        if (_narrowBand case var pair?) {
+                          setState(() => _selectedKeys
+                            ..clear()
+                            ..addAll(pair));
+                          _narrowBand = null;
+                        }
                         if (_selectedKeys.isNotEmpty) {
                           FocusScope.of(context).requestFocus(_focus);
                         }
@@ -1524,6 +1694,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                       // there finds nothing, and every attempt to retime one scrubbed
                       // instead.
                       onHorizontalDragDown: (details) {
+                        _pressX = details.localPosition.dx;
                         // An end of the loop's bar, under the keyframes.
                         _pressedLoop = _loopEndAt(
                             details.localPosition, constraints.maxWidth);
@@ -1543,6 +1714,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                             ? null
                             : _bandAt(
                                 details.localPosition, constraints.maxWidth);
+                        // Empty strip under the ruler: a drag there draws a
+                        // box over the keyframes and selects what it covers.
+                        // On the ruler, a drag still scrubs.
+                        _pressedMarquee = _pressedLoop == null &&
+                            _pressedFlag == null &&
+                            _pressedFrame == null &&
+                            _pressedBand == null &&
+                            _targetTrack != null &&
+                            _keysShown &&
+                            details.localPosition.dy > _rulerHeight + _sceneGap;
                       },
                       onHorizontalDragStart: (details) {
                         controller.pause();
@@ -1555,8 +1736,33 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         if (_dragFlag != null) controller.beginInteraction();
                         _dragKey = _pressedFrame;
                         _dragBand = _pressedBand;
-                        _bandAnchor = _frameAt(
-                            details.localPosition.dx, constraints.maxWidth);
+                        _bandAnchor = _frameAt(_pressX, constraints.maxWidth);
+                        // A mark that is one of several selected takes the
+                        // rest with it: the selection moves as one, keeping
+                        // its spacing.
+                        var grabbed = _pressedFrame != null
+                            ? {_pressedFrame!}
+                            : (_pressedBand?.toSet() ?? const <int>{});
+                        if (_selectedKeys.length > 1 &&
+                            grabbed.isNotEmpty &&
+                            _selectedKeys.containsAll(grabbed)) {
+                          _dragKey = null;
+                          _dragBand = (_selectedKeys.toList()..sort());
+                        }
+                        _narrowTo = null;
+                        _narrowBand = null;
+                        // A keyframe, or several, moved by a drag is one
+                        // change however many frames it passes through.
+                        if (_dragKey != null || _dragBand != null) {
+                          controller.beginInteraction();
+                        }
+                        if (_pressedMarquee) {
+                          var x = _pressX;
+                          setState(() {
+                            _marquee = (x, x);
+                            if (!_shiftHeld) _selectedKeys.clear();
+                          });
+                        }
                       },
                       onHorizontalDragUpdate: (details) {
                         var at = _frameAt(
@@ -1573,6 +1779,11 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                           _shiftBand(at);
                           return;
                         }
+                        if (_marquee case (var from, _)) {
+                          _selectWithin(from, details.localPosition.dx,
+                              constraints.maxWidth);
+                          return;
+                        }
                         if (_dragKey == null) {
                           _scrubTo(
                               details.localPosition.dx, constraints.maxWidth);
@@ -1582,6 +1793,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         _dragKey = at;
                       },
                       onHorizontalDragEnd: (_) {
+                        if (_dragKey != null || _dragBand != null) {
+                          controller.endInteraction();
+                        }
+                        if (_marquee != null) {
+                          setState(() => _marquee = null);
+                          if (_selectedKeys.isNotEmpty) {
+                            FocusScope.of(context).requestFocus(_focus);
+                          }
+                        }
+                        _pressedMarquee = false;
                         if (_dragLoop != null) controller.endInteraction();
                         _dragLoop = null;
                         _pressedLoop = null;
@@ -1594,6 +1815,16 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                         _pressedBand = null;
                       },
                       onHorizontalDragCancel: () {
+                        if (_dragKey != null || _dragBand != null) {
+                          controller.endInteraction();
+                        }
+                        if (_marquee != null) {
+                          setState(() => _marquee = null);
+                          if (_selectedKeys.isNotEmpty) {
+                            FocusScope.of(context).requestFocus(_focus);
+                          }
+                        }
+                        _pressedMarquee = false;
                         if (_dragLoop != null) controller.endInteraction();
                         _dragLoop = null;
                         _pressedLoop = null;
@@ -1617,7 +1848,10 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                           frames: _total - _origin,
                           scene: _runs ? _total - _origin : document.frames,
                           marks: _markRow + _sceneGap,
-                          sceneStarts: _runs && !document.editingMaster
+                          // The joins go with the scene strip they sit over.
+                          sceneStarts: _runs &&
+                                  controller.scenesShown &&
+                                  !document.editingMaster
                               ? [
                                   for (var i = 0;
                                       i < document.allScenes.length;
@@ -1632,20 +1866,24 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
                           // keyframes the diamond button adds and removes, or the
                           // strip shows one player's run while the button edits
                           // another's.
-                          keyframes: _targetTrack?.keys ?? const [],
-                          bands: _bands,
-                          loop: _loopBar,
+                          keyframes: _keysShown
+                              ? _targetTrack?.keys ?? const []
+                              : const [],
+                          bands: _keysShown ? _bands : const [],
+                          loop: _keysShown ? _loopBar : null,
                           selected: _selectedKeys,
                           actions: document.actions,
+                          marquee: _marquee,
                           cues: [
-                            for (var c in document.cues)
-                              (
-                                c.frame -
-                                    (document.editingMaster
-                                        ? 0
-                                        : document.startOfScene(document.at)),
-                                c.name
-                              ),
+                            if (controller.cuesShown)
+                              for (var c in document.cues)
+                                (
+                                  c.frame -
+                                      (document.editingMaster
+                                          ? 0
+                                          : document.startOfScene(document.at)),
+                                  c.name
+                                ),
                           ],
                           colors: theme.colors,
                           xFor: (f) => _xFor(f, constraints.maxWidth),
@@ -1783,7 +2021,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// playhead is grabbed.
   int? _keyframeAt(Offset local, double width) {
     var keys = _targetTrack?.keys ?? const <Keyframe>[];
-    if (keys.isEmpty) return null;
+    if (keys.isEmpty || !_keysShown) return null;
     if ((local.dy - _markRow - _sceneGap).abs() > _markGrabHeight) return null;
 
     int? best;
@@ -1814,7 +2052,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// its start, true its end -- or null for neither.
   bool? _loopEndAt(Offset local, double width) {
     var bar = _loopBar;
-    if (bar == null) return null;
+    if (bar == null || !_keysShown) return null;
     if ((local.dy - _markRow - _sceneGap - _loopBelow).abs() > 6) return null;
     var (start, end, _, _) = bar;
     if ((local.dx - _xFor(end + 1, width)).abs() <= 7) return true;
@@ -1854,6 +2092,7 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
   /// between the two marks rather than on them, because dragging one end to
   /// change the length has to stay possible.
   List<int>? _bandAt(Offset local, double width) {
+    if (!_keysShown) return null;
     if ((local.dy - _markRow - _sceneGap).abs() > _markGrabHeight) return null;
     for (var band in _bands) {
       if (!band.real) continue;
@@ -1888,6 +2127,28 @@ class _CanvasTimelineState extends State<CanvasTimeline> {
     setState(() {
       _dragBand = [for (var f in band) f + delta];
       _bandAnchor += delta;
+      // What was selected and moved is still selected, where it went.
+      if (band.every(_selectedKeys.contains)) {
+        _selectedKeys
+          ..removeAll(band)
+          ..addAll(_dragBand!);
+      }
+    });
+  }
+
+  /// _selectWithin selects every keyframe between two x positions -- the
+  /// box dragged out over the strip.
+  void _selectWithin(double from, double to, double width) {
+    var track = _targetTrack;
+    if (track == null) return;
+    var a = _frameAt(math.min(from, to), width);
+    var b = _frameAt(math.max(from, to), width);
+    setState(() {
+      _marquee = (from, to);
+      if (!_shiftHeld) _selectedKeys.clear();
+      for (var k in track.keys) {
+        if (k.frame >= a && k.frame <= b) _selectedKeys.add(k.frame);
+      }
     });
   }
 
@@ -1981,8 +2242,13 @@ class _TimelinePainter extends CustomPainter {
   /// bar under the keyframes, ticked where each go round starts.
   final (int, int, int, int)? loop;
 
+  /// marquee is the box being dragged out to select keyframes, as two x
+  /// positions, or null.
+  final (double, double)? marquee;
+
   const _TimelinePainter({
     this.loop,
+    this.marquee,
     required this.view,
     required this.frames,
     required this.scene,
@@ -2089,6 +2355,17 @@ class _TimelinePainter extends CustomPainter {
     );
     _paintMarkers(canvas);
     _paintCues(canvas);
+    if (marquee case (var a, var b)) {
+      var box = Rect.fromLTRB(
+          math.min(a, b), _rulerHeight + 1, math.max(a, b), size.height - 1);
+      canvas.drawRect(
+          box, Paint()..color = colors.primary.withValues(alpha: 0.12));
+      canvas.drawRect(
+          box,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..color = colors.primary.withValues(alpha: 0.6));
+    }
 
     // The playhead last, over everything, because it is the one mark that has
     // to be findable at a glance in a timeline covered in others.
@@ -2318,6 +2595,7 @@ class _TimelinePainter extends CustomPainter {
       !setEquals(old.selected, selected) ||
       old.actions != actions ||
       !listEquals(old.cues, cues) ||
+      old.marquee != marquee ||
       old.loop != loop;
 }
 

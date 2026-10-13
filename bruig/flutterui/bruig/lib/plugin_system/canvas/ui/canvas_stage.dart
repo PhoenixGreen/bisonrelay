@@ -1615,6 +1615,13 @@ class CanvasStageState extends State<CanvasStage> {
     // the editor, which took the button with it before its tap had finished.
     if (_editingText != null || _editingCell != null) return;
     _focus.requestFocus();
+    // Looking through the camera, the page is drawn moved and a press would
+    // land somewhere other than it looks. The press puts the page back, and
+    // does nothing else -- see CanvasController.cameraView.
+    if (controller.cameraView) {
+      controller.cameraView = false;
+      return;
+    }
     var stage = event.localPosition;
     _pressedAt = stage;
     _travelled = false;
@@ -5024,7 +5031,9 @@ class CanvasStageState extends State<CanvasStage> {
                         // The scene's slow move, while it plays -- see
                         // SceneCamera. Still while editing, so a press lands
                         // where the page looks to be.
-                        camera: controller.playing && !document.editingMaster
+                        camera: (controller.playing ||
+                                    controller.cameraView) &&
+                                !document.editingMaster
                             ? document.scene.camera?.at(
                                 controller.frame /
                                     math.max(1, document.frames - 1),

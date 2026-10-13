@@ -81,6 +81,13 @@ class CanvasCameraSection extends StatelessWidget {
               controller.setSceneCamera(index, m.camera(strength)),
         ),
         if (camera != null)
+          CanvasToggle(
+            key: const ValueKey("cameraView"),
+            label: "Look through it",
+            value: controller.cameraView,
+            onChanged: (v) => controller.cameraView = v,
+          ),
+        if (camera != null)
           CanvasNumberField(
             key: const ValueKey("cameraStrength"),
             label: "Closer by",
@@ -93,8 +100,8 @@ class CanvasCameraSection extends StatelessWidget {
                 controller.setSceneCamera(index, move.camera(v / 100)),
           ),
         const CanvasHint(
-            "Seen as the scenes play and in the export. The page stays still "
-            "while it is being edited."),
+            "Look through it to see the move as you step and scrub. A click "
+            "on the canvas puts the page back still, to edit."),
       ],
     );
   }

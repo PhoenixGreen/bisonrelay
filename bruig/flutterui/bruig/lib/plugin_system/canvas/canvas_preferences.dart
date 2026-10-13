@@ -28,6 +28,9 @@ class CanvasPreferences extends ChangeNotifier {
   static const _filesFolderKey = "canvasFilesFolder";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
+  static const _keyframesShownKey = "canvasKeyframesShown";
+  static const _scenesShownKey = "canvasScenesShown";
+  static const _cuesShownKey = "canvasCuesShown";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -136,6 +139,33 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
   }
 
+  /// keyframesShown, scenesShown and cuesShown are which of the timeline's
+  /// rows were showing -- the keyframes, the scenes, the cues on the ruler --
+  /// kept between visits, like the timeline itself. All shown to begin with.
+  bool get keyframesShown => _keyframesShown;
+  bool _keyframesShown = true;
+  set keyframesShown(bool value) {
+    if (_keyframesShown == value) return;
+    _keyframesShown = value;
+    StorageManager.saveBool(_keyframesShownKey, value);
+  }
+
+  bool get scenesShown => _scenesShown;
+  bool _scenesShown = true;
+  set scenesShown(bool value) {
+    if (_scenesShown == value) return;
+    _scenesShown = value;
+    StorageManager.saveBool(_scenesShownKey, value);
+  }
+
+  bool get cuesShown => _cuesShown;
+  bool _cuesShown = true;
+  set cuesShown(bool value) {
+    if (_cuesShown == value) return;
+    _cuesShown = value;
+    StorageManager.saveBool(_cuesShownKey, value);
+  }
+
   /// publish is how the publish sheet was last set when something was
   /// published with it -- what, as what, where, and every setting for each --
   /// so that the next one opens as the last was left rather than on Image
@@ -163,6 +193,11 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
+    _keyframesShown =
+        await StorageManager.readBool(_keyframesShownKey, defaultVal: true);
+    _scenesShown =
+        await StorageManager.readBool(_scenesShownKey, defaultVal: true);
+    _cuesShown = await StorageManager.readBool(_cuesShownKey, defaultVal: true);
     _timelineHeight =
         double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??
             0;

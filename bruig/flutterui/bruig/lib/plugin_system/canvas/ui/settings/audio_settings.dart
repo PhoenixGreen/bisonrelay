@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sound_tools.dart';
 import 'package:flutter/material.dart';
 
@@ -352,6 +353,13 @@ List<Widget> audioSettings(
           context,
           elementAnimationSection(controller, e, e.animation,
               (a) => write(e.copyWith(animation: a)), begin, commit)),
+    // The sound's channel in the mix, beside the master: its level, its
+    // effects -- opening here, in place -- and what it ducks.
+    if (background && clip.timed)
+      CanvasMixer.section(
+          key: ValueKey("mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
+          controller: controller,
+          channel: clip.channel.isEmpty ? e.id : clip.channel),
     // What can be done to a sound on the timeline as a whole.
     if (background && clip.timed)
       CanvasSoundTools(controller: controller, e: e),

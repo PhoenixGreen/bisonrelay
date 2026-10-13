@@ -88,6 +88,20 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
             onPressed: _finding ? null : () => _find(picked),
           ),
         ],
+        // At the end of the line: whether the cues are marked on the
+        // timeline's ruler.
+        const CanvasFill(child: SizedBox(width: 0)),
+        CanvasIconButton(
+          key: const ValueKey("cuesShown"),
+          icon: controller.cuesShown
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          tooltip: controller.cuesShown
+              ? "Hide the cues on the timeline"
+              : "Show the cues on the timeline",
+          active: controller.cuesShown,
+          onPressed: () => controller.cuesShown = !controller.cuesShown,
+        ),
         if (_said.isNotEmpty) CanvasHint(_said),
         if (controller.cues.isEmpty)
           const CanvasHint(

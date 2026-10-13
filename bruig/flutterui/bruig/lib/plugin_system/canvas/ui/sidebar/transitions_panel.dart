@@ -374,24 +374,6 @@ class CanvasTransitionsPanel extends StatelessWidget {
                     "changes it here. On, it keeps its own whatever the "
                     "master says."),
               ]),
-            // How the run keeps time: with this on, a longer transition is
-            // taken out of the scene before it rather than pushing everything
-            // after it later against the master's voice-over. Under the
-            // transition rather than over it -- the transition is what this
-            // panel is for.
-            CanvasControlGroup(
-              label: "Timing",
-              hideCaption: true,
-              rule: false,
-              children: [
-                CanvasToggle(
-                  key: const ValueKey("keepTiming"),
-                  label: "Keep start times",
-                  value: document.keepTiming,
-                  onChanged: (v) => controller.keepTiming = v,
-                ),
-              ],
-            ),
             CanvasCuesSection(controller: controller),
             if (!master) CanvasCameraSection(controller: controller),
           ],

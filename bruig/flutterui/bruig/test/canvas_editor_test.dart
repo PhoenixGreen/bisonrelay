@@ -109,13 +109,11 @@ void main() {
           onShowSidebar: showSidebar,
         );
 
-    // The mixer is opened from the band, beside the timeline's button and
-    // apart from it: the mixer can be open with the timeline shut.
-    testWidgets("the mixer's button is on the band, left of the timeline's",
-        (tester) async {
+    // The mixer is opened from the timeline's header now, beside the
+    // effects button -- see canvas_timeline_view_test.
+    testWidgets("the mixer's button is not on the band", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
-      var opened = 0;
       await pump(
           tester,
           CanvasSettingsBar(
@@ -127,15 +125,8 @@ void main() {
             onToggleGuides: () {},
             timelineOpen: false,
             onToggleTimeline: () {},
-            mixerOpen: false,
-            onToggleMixer: () => opened++,
           ));
-      var mixer = find.byKey(const ValueKey("mixerToggle"));
-      expect(mixer, findsOneWidget);
-      expect(tester.getCenter(mixer).dx,
-          lessThan(tester.getCenter(find.byTooltip("Show the timeline")).dx));
-      await tester.tap(mixer);
-      expect(opened, 1);
+      expect(find.byKey(const ValueKey("mixerToggle")), findsNothing);
     });
 
     testWidgets("is one line, open or closed", (tester) async {
@@ -1411,6 +1402,36 @@ void main() {
       var later = CanvasPreferences();
       addTearDown(later.dispose);
       expect(later.timeline, isFalse, reason: "until it has read the disk");
+    });
+
+    test("the timeline's rows are all shown, then as they were left",
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      var prefs = CanvasPreferences();
+      addTearDown(prefs.dispose);
+      expect([prefs.keyframesShown, prefs.scenesShown, prefs.cuesShown],
+          [true, true, true]);
+      prefs.keyframesShown = false;
+      prefs.scenesShown = false;
+      var back = CanvasPreferences();
+      addTearDown(back.dispose);
+      await back.load();
+      expect([back.keyframesShown, back.scenesShown, back.cuesShown],
+          [false, false, true]);
+
+      // Handed to the page's controller as it opens, without a word to
+      // anyone listening: that runs while the page is being built.
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      var told = 0;
+      c.addListener(() => told++);
+      c.restoreShown(
+          keyframes: back.keyframesShown,
+          scenes: back.scenesShown,
+          cues: back.cuesShown);
+      expect([c.keyframesShown, c.scenesShown, c.cuesShown],
+          [false, false, true]);
+      expect(told, 0);
     });
   });
 

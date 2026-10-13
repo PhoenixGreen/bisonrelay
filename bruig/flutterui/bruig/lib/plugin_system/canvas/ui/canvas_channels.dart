@@ -42,6 +42,11 @@ import 'package:flutter/services.dart';
 /// while its strip keeps everything on one line.
 const double channelsLaneHeight = 32;
 
+/// laneSizeHeights are the heights the timeline's channel-height button
+/// steps every channel through: the least, the height at which a strip
+/// spreads over two lines (its name and lock, then S and M), and twice that.
+const laneSizeHeights = [channelsLaneHeight, _tall, _tall * 2];
+
 /// _laneMin and _laneMax bound a lane dragged taller or shorter.
 const double _laneMin = 26;
 const double _laneMax = 180;
@@ -130,7 +135,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   double _gripFrom = 0, _gripHeight = channelsLaneHeight;
 
   double _heightOf(String channel) =>
-      controller.laneHeights[channel] ?? channelsLaneHeight;
+      controller.laneHeights[channel] ?? laneSizeHeights[controller.laneSize];
 
   /// _span is where [lane]'s clip is on the scene's frames: from, to, and the
   /// frame each file begins on.
@@ -1441,7 +1446,7 @@ class _ChannelHeader extends StatelessWidget {
                 code,
                 const SizedBox(width: 8),
                 Expanded(
-                    child: _ChannelName(
+                    child: ChannelNameEditor(
                         name: channel.name, theme: theme, onRename: onRename)),
                 if (width >= 150) reading,
               ]),
@@ -1539,19 +1544,34 @@ class _ChannelHeader extends StatelessWidget {
   }
 }
 
-/// _ChannelName is a channel's whole name, double-clicked to rename it.
-class _ChannelName extends StatefulWidget {
+/// ChannelNameEditor is a channel's whole name, double-clicked to rename it:
+/// on its strip beside the timeline, and in the mixer.
+class ChannelNameEditor extends StatefulWidget {
   final String name;
   final ThemeNotifier theme;
   final ValueChanged<String> onRename;
-  const _ChannelName(
-      {required this.name, required this.theme, required this.onRename});
+  final double fontSize;
+  final FontWeight weight;
+
+  /// textKey and fieldKey are the name's and, while it is typed, the
+  /// field's.
+  final Key textKey;
+  final Key fieldKey;
+  const ChannelNameEditor(
+      {required this.name,
+      required this.theme,
+      required this.onRename,
+      this.fontSize = 11,
+      this.weight = FontWeight.w500,
+      this.textKey = const ValueKey("channelName"),
+      this.fieldKey = const ValueKey("channelNameField"),
+      super.key});
 
   @override
-  State<_ChannelName> createState() => _ChannelNameState();
+  State<ChannelNameEditor> createState() => ChannelNameEditorState();
 }
 
-class _ChannelNameState extends State<_ChannelName> {
+class ChannelNameEditorState extends State<ChannelNameEditor> {
   bool _typing = false;
   final TextEditingController _text = TextEditingController();
 
@@ -1571,13 +1591,13 @@ class _ChannelNameState extends State<_ChannelName> {
   @override
   Widget build(BuildContext context) {
     var style = TextStyle(
-        fontSize: 11,
+        fontSize: widget.fontSize,
         height: 1.2,
-        fontWeight: FontWeight.w500,
+        fontWeight: widget.weight,
         color: widget.theme.colors.onSurface);
     if (_typing) {
       return TextField(
-        key: const ValueKey("channelNameField"),
+        key: widget.fieldKey,
         controller: _text,
         autofocus: true,
         style: style,
@@ -1597,7 +1617,7 @@ class _ChannelNameState extends State<_ChannelName> {
             TextSelection(baseOffset: 0, extentOffset: _text.text.length);
       }),
       child: Text(widget.name,
-          key: const ValueKey("channelName"),
+          key: widget.textKey,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: style),

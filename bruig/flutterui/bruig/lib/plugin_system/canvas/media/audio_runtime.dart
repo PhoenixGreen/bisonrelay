@@ -243,9 +243,10 @@ class AudioRuntime extends ChangeNotifier {
         right: r,
         eq: mix.eq.flat ? null : eqBandGains(mix.eq),
         comp: mix.comp.on ? mix.comp : null,
+        compFirst: mix.compFirst,
       );
       var signature =
-          "$l|$r|${mix.eq.flat ? "" : mix.eq.toJson()}|${mix.comp.on ? mix.comp.toJson() : ""}";
+          "$l|$r|${mix.eq.flat ? "" : mix.eq.toJson()}|${mix.comp.on ? mix.comp.toJson() : ""}|${mix.compFirst}";
       _channels[entry.key] = sound;
       if (_channelSignature[entry.key] == signature) continue;
       _channelSignature[entry.key] = signature;
@@ -256,6 +257,7 @@ class AudioRuntime extends ChangeNotifier {
       eq: master.eq.flat ? null : eqBandGains(master.eq),
       comp: master.comp.on ? master.comp : null,
       ceilingDb: master.limiter ? master.ceilingDb : null,
+      compFirst: master.compFirst,
     );
     var signature = master.toJson().toString();
     _master = sound;
@@ -268,6 +270,11 @@ class AudioRuntime extends ChangeNotifier {
   /// levels is how loud [channel] -- or the master -- is right now.
   (double, double) levels([String? channel]) =>
       _started ? engine.levels(channel) : (0, 0);
+
+  /// spectrum is what [channel], or the master, is playing now -- see
+  /// AudioEngine.spectrum.
+  Float32List? spectrum([String? channel]) =>
+      _started ? engine.spectrum(channel) : null;
 
   /// _channelFor is the mixer channel a sound plays through, or null for
   /// none: the element's own, or for a video's sound, its video's.

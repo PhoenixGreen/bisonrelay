@@ -7,8 +7,9 @@ import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
-import 'package:bruig/plugin_system/canvas/ui/sidebar/palette_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stagger_section.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:flutter/material.dart';
 
 // element_settings_pane.dart is the settings of whatever is selected, and the
@@ -38,6 +39,29 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
 
   if (controller.selection.length > 1) {
     return CanvasStaggerSection(controller: controller);
+  }
+
+  // A clip picked on the timeline from another canvas -- the master's
+  // music seen from a scene -- has its settings here too, written back
+  // wherever it lives. Without this, the master's sounds could only be
+  // changed with the master open.
+  if (selected == null && controller.pickedClip is AudioElement) {
+    var clip = controller.pickedClip as AudioElement;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: audioSettings(
+        context,
+        controller,
+        clip,
+        (next) {
+          controller.beginInteraction();
+          controller.replaceAnywhere(next, transient: true);
+        },
+        controller.beginInteraction,
+        controller.endInteraction,
+        background: true,
+      ),
+    );
   }
 
   if (selected == null) {
@@ -79,11 +103,6 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var settings = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // The document's own colours, which the background is the natural
-        // place for: this is what shows when nothing is selected, which is
-        // when the whole canvas is what is being looked at.
-        CanvasPaletteSection(controller: controller),
-        const SizedBox(height: canvasGroupGap),
         // The designs saved from here or from a background element, to start
         // from or to keep this one.
         backgroundPresetsSection(context, controller, showing.spec,
@@ -139,6 +158,11 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
 String elementSettingsTitle(CanvasController controller) {
   if (controller.selection.length > 1) return "Element settings";
   var selected = controller.selected;
+  // A sound picked on the timeline from another canvas is what is shown --
+  // see elementSettingsBody.
+  if (selected == null && controller.pickedClip is AudioElement) {
+    return "Audio settings";
+  }
   if (selected == null) return "Background settings";
   return "${selected.kind.label} settings";
 }

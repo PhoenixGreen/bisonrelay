@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
-import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
@@ -311,17 +310,6 @@ class CanvasDocument {
   /// keys rather than of CanvasRatio so a custom shape can be one of them.
   final List<String> targets;
 
-  /// keepTiming holds every scene where it starts in the run while scene
-  /// lengths and transitions are changed: what a scene gains or loses is
-  /// taken from, or given to, its neighbour rather than pushing everything
-  /// after it along.
-  ///
-  /// For a video cut to a voice-over on the master. A transition after
-  /// scene three made two frames longer moved every later scene two frames
-  /// earlier against the voice -- and the voice was the one thing that could
-  /// not move. See CanvasDocument.keepingStarts.
-  final bool keepTiming;
-
   /// cues are the named moments of the whole run, in order -- see
   /// canvas_cues.dart.
   final List<TimelineCue> cues;
@@ -331,9 +319,6 @@ class CanvasDocument {
   /// see TextElement.style -- and changing the style changes every text that
   /// does, in every scene.
   final List<NamedTextStyle> textStyles;
-
-  /// palette is the document's own colours -- see canvas_palette.dart.
-  final List<PaletteSwatch> palette;
 
   /// onMaster is whether the master canvas is the one being edited.
   ///
@@ -393,10 +378,8 @@ class CanvasDocument {
     this.masterOn = false,
     this.onMaster = false,
     this.targets = const [],
-    this.keepTiming = false,
     this.cues = const [],
     this.textStyles = const [],
-    this.palette = const [],
   })  : _elements = elements,
         _frames = frames,
         _actions = actions;
@@ -977,10 +960,8 @@ class CanvasDocument {
     bool? masterOn,
     bool? onMaster,
     List<String>? targets,
-    bool? keepTiming,
     List<TimelineCue>? cues,
     List<NamedTextStyle>? textStyles,
-    List<PaletteSwatch>? palette,
   }) {
     var list = scenes ?? this.scenes;
     var index = (sceneAt ?? this.sceneAt)
@@ -1043,10 +1024,8 @@ class CanvasDocument {
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
       targets: targets ?? this.targets,
-      keepTiming: keepTiming ?? this.keepTiming,
       cues: cues ?? this.cues,
       textStyles: textStyles ?? this.textStyles,
-      palette: palette ?? this.palette,
     );
   }
 
@@ -1075,10 +1054,8 @@ class CanvasDocument {
       masterOn: masterOn,
       onMaster: onMaster,
       targets: targets,
-      keepTiming: keepTiming,
       cues: cues,
       textStyles: textStyles,
-      palette: palette,
     );
   }
 
@@ -1308,11 +1285,10 @@ class CanvasDocument {
         "actions": actions.map((a) => a.toJson()).toList(),
       "elements": elements.map((e) => e.toJson()).toList(),
       if (targets.isNotEmpty) "targets": targets,
-      if (keepTiming) "keepTiming": true,
       if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
       if (textStyles.isNotEmpty)
         "textStyles": [for (var t in textStyles) t.toJson()],
-      if (palette.isNotEmpty) "palette": [for (var p in palette) p.toJson()],
+
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
       if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
@@ -1431,7 +1407,6 @@ class CanvasDocument {
           for (var t in json["targets"] as List)
             if (t is String) t,
       ],
-      keepTiming: jsonBool(json["keepTiming"], false),
       cues: [
         if (json["cues"] is List)
           for (var c in json["cues"] as List)
@@ -1442,11 +1417,7 @@ class CanvasDocument {
           for (var t in json["textStyles"] as List)
             if (NamedTextStyle.fromJson(t) case var style?) style,
       ],
-      palette: [
-        if (json["palette"] is List)
-          for (var p in json["palette"] as List)
-            if (PaletteSwatch.fromJson(p) case var swatch?) swatch,
-      ],
+
     );
   }
 

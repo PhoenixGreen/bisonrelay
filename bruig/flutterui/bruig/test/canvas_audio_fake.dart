@@ -71,6 +71,10 @@ class FakeEngine implements AudioEngine {
   (double, double) levels([String? channel]) => (0.5, 0.5);
 
   @override
+  Float32List? spectrum([String? channel]) =>
+      Float32List.fromList([for (var i = 0; i < 256; i++) 1 / (1 + i)]);
+
+  @override
   AudioVoice? play(AudioTrack track,
       {required double volume, double at = 0, String? channel}) {
     var v = FakeVoice(track as FakeTrack, at, volume);

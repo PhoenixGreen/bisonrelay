@@ -299,6 +299,13 @@ class AppColorPicker extends StatefulWidget {
   /// colour being chosen belongs to.
   final Widget? leading;
 
+  /// onReplaceEverywhere, where it is given, lets a saved colour be replaced
+  /// with the colour being shown wherever the saved one is used -- what that
+  /// means is the caller's: on a canvas, every element, background and
+  /// transition drawn in it. Null hides the button, as everywhere outside a
+  /// canvas.
+  final void Function(Color from, Color to)? onReplaceEverywhere;
+
   const AppColorPicker({
     required this.color,
     required this.onChanged,
@@ -308,6 +315,7 @@ class AppColorPicker extends StatefulWidget {
     this.width = 320,
     this.compact = false,
     this.leading,
+    this.onReplaceEverywhere,
     super.key,
   });
 
@@ -967,6 +975,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
         const SizedBox(height: 14),
         _SavedRow(
           current: _current,
+          onReplace: widget.onReplaceEverywhere,
           onPick: (c) => setState(() {
             _tookFromOutside(c);
             _say();
@@ -1052,6 +1061,7 @@ class _AppColorPickerState extends State<AppColorPicker> {
           const SizedBox(height: 6),
           _SavedRow(
             current: _current,
+            onReplace: widget.onReplaceEverywhere,
             onPick: (c) => setState(() {
               _tookFromOutside(c);
               _say();
@@ -2348,11 +2358,37 @@ double greyOf(Color color) =>
 
 /// _SavedRow is the two rows of kept colours, and the pair of buttons that
 /// put one there and take it away again.
-class _SavedRow extends StatelessWidget {
+class _SavedRow extends StatefulWidget {
   final Color current;
   final ValueChanged<Color> onPick;
+  final void Function(Color from, Color to)? onReplace;
 
-  const _SavedRow({required this.current, required this.onPick});
+  const _SavedRow(
+      {required this.current, required this.onPick, this.onReplace});
+
+  @override
+  State<_SavedRow> createState() => _SavedRowState();
+}
+
+class _SavedRowState extends State<_SavedRow> {
+  /// _replacing is whether the next saved colour pressed is replaced, rather
+  /// than picked -- see AppColorPicker.onReplaceEverywhere.
+  bool _replacing = false;
+
+  Color get current => widget.current;
+  ValueChanged<Color> get onPick => widget.onPick;
+
+  void _pressed(Color c) {
+    var replace = widget.onReplace;
+    if (!_replacing || replace == null) {
+      onPick(c);
+      return;
+    }
+    setState(() => _replacing = false);
+    if (c.toARGB32() == current.toARGB32()) return;
+    replace(c, current);
+    SavedColors.instance.replace(c, current);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2388,6 +2424,22 @@ class _SavedRow extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              // Replace: the next saved colour pressed is replaced by the one
+              // being shown, wherever it is used.
+              if (widget.onReplace != null && saved.colors.isNotEmpty)
+                IconButton(
+                  key: const ValueKey("replaceColor"),
+                  icon: const Icon(Icons.find_replace, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  isSelected: _replacing,
+                  color: _replacing ? theme.primary : null,
+                  tooltip: _replacing
+                      ? "Now press the saved colour to replace with this one "
+                          "everywhere it is used"
+                      : "Replace a saved colour with this one everywhere it "
+                          "is used",
+                  onPressed: () => setState(() => _replacing = !_replacing),
+                ),
               // Add keeps what the picker is showing; remove takes away the
               // saved colour it is showing. One of the two is always the
               // wrong thing to press, so the wrong one is always the one
@@ -2432,7 +2484,7 @@ class _SavedRow extends StatelessWidget {
                       _Swatch(
                         color: c,
                         chosen: c.toARGB32() == current.toARGB32(),
-                        onTap: () => onPick(c),
+                        onTap: () => _pressed(c),
                       ),
                   ],
                 ),

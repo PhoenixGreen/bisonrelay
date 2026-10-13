@@ -51,6 +51,9 @@ class SavedColors extends ChangeNotifier {
     for (var part in saved.split(",")) {
       var value = int.tryParse(part.trim(), radix: 16);
       if (value == null) continue;
+      // A colour kept before the saved ones were read is already here; read
+      // again, it was there twice.
+      if (has(Color(value))) continue;
       _colors.add(Color(value));
       if (isFull) break;
     }
@@ -67,6 +70,19 @@ class SavedColors extends ChangeNotifier {
 
   /// remove drops it. Nothing happens if it was never saved, which is what
   /// pressing remove on a colour that came off the wheel should do.
+  /// replace puts [to] where [from] was, keeping its place in the rows.
+  Future<void> replace(Color from, Color to) async {
+    var i = _colors.indexWhere((c) => _same(c, from));
+    if (i < 0) return;
+    if (has(to)) {
+      _colors.removeAt(i);
+    } else {
+      _colors[i] = to;
+    }
+    notifyListeners();
+    await _write();
+  }
+
   Future<void> remove(Color color) async {
     var before = _colors.length;
     _colors.removeWhere((c) => _same(c, color));

@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:flutter/material.dart';
 
 // scene_strip.dart is the row of scenes between the ruler and the keyframes
@@ -104,6 +105,44 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
     setState(() {});
   }
 
+  /// _sizing is the transition after scene [index] being dragged longer or
+  /// shorter: its length when the drag began, and frames per pixel.
+  ({int index, SceneTransition was, double perPixel})? _sizing;
+  double _sized = 0;
+
+  void _startSizing(int index, double width) {
+    _sizing = (
+      index: index,
+      was: controller.document.transitionAfter(index),
+      perPixel: widget.view.framesPer(1, width),
+    );
+    _sized = 0;
+    controller.pause();
+    controller.beginInteraction();
+  }
+
+  void _size(double dx) {
+    var held = _sizing;
+    if (held == null) return;
+    _sized += dx;
+    var scenes = controller.scenes;
+    // Never longer than either scene it joins has to give.
+    var most = math.min(scenes[held.index].frames, scenes[held.index + 1].frames);
+    var frames = (held.was.frames + (_sized * held.perPixel).round())
+        .clamp(1, math.max(1, most))
+        .toInt();
+    controller.setSceneTransition(
+        held.index, held.was.copyWith(frames: frames, overlap: frames),
+        transient: true);
+  }
+
+  void _endSizing() {
+    if (_sizing == null) return;
+    _sizing = null;
+    controller.endInteraction();
+    setState(() {});
+  }
+
   void _open(int index) {
     if (controller.previewAt != null) controller.stopPreview();
     controller.goToScene(index);
@@ -153,6 +192,26 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
                   ? (playhead - left).clamp(0.0, math.max(0.0, right - left))
                   : null,
               colors),
+        ));
+      }
+      // The transitions, over the joins: a bar along the bottom of the strip
+      // for the frames each one takes, its right end a grip that makes it
+      // longer or shorter. Scene starts stay where they are -- what the
+      // transition gains is taken from the scene before it -- so nothing
+      // later in the run moves. See CanvasController.setSceneTransition.
+      for (var i = 0; i + 1 < scenes.length; i++) {
+        var t = document.transitionAfter(i);
+        if (!t.on) continue;
+        var (_, held, frames) = document.sceneStep(i);
+        var from = x(ends[i] - (frames - held));
+        var to = x(ends[i] + held);
+        if (to < 0 || from > width) continue;
+        children.add(Positioned(
+          left: from,
+          width: math.max(4.0, to - from),
+          bottom: 1,
+          height: sceneBoxHeight * 0.42,
+          child: _transition(i, t, width, colors),
         ));
       }
       // The grips after the boxes, so a box drawn up against its neighbour
@@ -255,6 +314,67 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
         ]),
       ),
     );
+  }
+
+  /// _transition is the bar of the transition after scene [index]: its name
+  /// where there is room, and at its right end a grip that sizes it.
+  Widget _transition(
+      int index, SceneTransition t, double width, ColorScheme colors) {
+    var held = _sizing?.index == index;
+    // Only the grip takes the pointer: a press anywhere else on the bar is a
+    // press on the scene under it, which opens that scene.
+    return Stack(key: ValueKey("sceneTransition$index"), children: [
+      Positioned.fill(
+        child: IgnorePointer(
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.secondary.withValues(alpha: held ? 0.55 : 0.35),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 4, right: 8),
+            child: LayoutBuilder(
+              builder: (context, box) => box.maxWidth < 24
+                  ? const SizedBox.shrink()
+                  : Text(t.kind.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                          fontSize: 9,
+                          height: 1.1,
+                          color: colors.onSecondaryContainer)),
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.resizeColumn,
+          child: GestureDetector(
+            key: ValueKey("sceneTransitionGrip$index"),
+            behavior: HitTestBehavior.opaque,
+            supportedDevices: timelinePointers,
+            dragStartBehavior: DragStartBehavior.down,
+            onHorizontalDragStart: (_) =>
+                setState(() => _startSizing(index, width)),
+            onHorizontalDragUpdate: (d) => _size(d.delta.dx),
+            onHorizontalDragEnd: (_) => _endSizing(),
+            onHorizontalDragCancel: _endSizing,
+            child: Container(
+              decoration: BoxDecoration(
+                color: held ? colors.primary : colors.secondary,
+                borderRadius:
+                    const BorderRadius.horizontal(right: Radius.circular(3)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]);
   }
 
   /// _grip is the gap after scene [index]: dragged, it moves the join with

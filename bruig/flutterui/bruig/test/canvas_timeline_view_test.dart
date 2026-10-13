@@ -2,6 +2,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
@@ -89,9 +90,11 @@ void main() {
 
   group("on the timeline", () {
     Future<CanvasController> show(WidgetTester tester,
-        {List<CanvasElement> elements = const []}) async {
+        {List<CanvasElement> elements = const [],
+        CanvasDocument? document}) async {
       var c = CanvasController(
-          CanvasDocument(frames: 100, frameRate: 10, elements: elements),
+          document ??
+              CanvasDocument(frames: 100, frameRate: 10, elements: elements),
           audioEngine: FakeEngine(const {song: 10}));
       addTearDown(c.dispose);
       tester.view.physicalSize = const Size(1200, 700);
@@ -130,6 +133,186 @@ void main() {
       await tester.pump();
       return c.frame;
     }
+
+    testWidgets("the effects and the mixer are opened from the header",
+        (tester) async {
+      var c = await show(tester,
+          elements: [channel("a", "Music"), channel("b", "Voice")]);
+      var scrubbing = find.byKey(const ValueKey("trackpadScrolls"));
+      var effects = find.byKey(const ValueKey("effectsToggle"));
+      var mixer = find.byKey(const ValueKey("mixerToggle"));
+      // Scrubbing, then the effects, then the mixer.
+      expect(tester.getCenter(effects).dx,
+          greaterThan(tester.getCenter(scrubbing).dx));
+      expect(tester.getCenter(mixer).dx,
+          greaterThan(tester.getCenter(effects).dx));
+
+      await tester.tap(mixer);
+      await tester.pump();
+      expect(c.mixerOpen, isTrue);
+      expect(c.effectsOpen, isFalse, reason: "two panels, two buttons");
+      await tester.tap(mixer);
+      await tester.pump();
+      expect(c.mixerOpen, isFalse);
+
+      // The selected channel's chain, in the effects panel, the mixer left
+      // as it was.
+      c.selectedChannel = "b";
+      await tester.pump();
+      await tester.tap(effects);
+      await tester.pump();
+      expect(c.effectsOpen, isTrue);
+      expect(c.effectsOf, "b");
+      expect(c.mixerOpen, isFalse);
+      await tester.tap(effects);
+      await tester.pump();
+      expect(c.effectsOpen, isFalse, reason: "hidden again");
+
+      // With nothing picked, the master's.
+      c.selectedChannel = null;
+      await tester.pump();
+      await tester.tap(effects);
+      await tester.pump();
+      expect(c.effectsOf, mixerMasterKey);
+    });
+
+    testWidgets("a channel picked on the timeline is the effects' channel",
+        (tester) async {
+      var c = await show(tester,
+          elements: [channel("a", "Music"), channel("b", "Voice")]);
+      c.openEffects("a");
+      await tester.pump();
+      var strip = tester.getRect(find.byKey(const ValueKey("channelStrip-b")));
+      await tester.tapAt(strip.centerLeft + const Offset(4, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(c.selectedChannel, "b");
+      expect(c.effectsOf, "b");
+      // Several picked is no one channel: the panel stays where it was.
+      c.selectChannels({"a", "b"});
+      expect(c.effectsOf, "b");
+    });
+
+    testWidgets("the cues can be hidden from the ruler", (tester) async {
+      var c = await show(tester);
+      c.addCue(name: "line", frame: 20);
+      await tester.pump();
+      List cuesDrawn() => [
+            for (var w
+                in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
+              if (w.painter.runtimeType.toString() == "_TimelinePainter")
+                ...(w.painter as dynamic).cues as List,
+          ];
+      expect(cuesDrawn(), isNotEmpty);
+      c.cuesShown = false;
+      await tester.pump();
+      expect(cuesDrawn(), isEmpty);
+    });
+
+    testWidgets("the keyframe row is hidden, left of zoom in, for room",
+        (tester) async {
+      var c = await show(tester, elements: [channel("a", "Music")]);
+      var button = find.byKey(const ValueKey("keyframesShown"));
+      expect(
+          tester.getCenter(button).dx,
+          lessThan(tester
+              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
+              .dx));
+      expect(
+          tester.getCenter(button).dx,
+          greaterThan(tester
+              .getCenter(find.byKey(const ValueKey("timelineLaneHeight")))
+              .dx));
+      var strip =
+          tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height;
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-a"))).top;
+      await tester.tap(button);
+      await tester.pump();
+      expect(c.keyframesShown, isFalse);
+      expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
+          lessThan(strip - 20));
+      expect(tester.getRect(find.byKey(const ValueKey("lane-a"))).top,
+          lessThan(lane - 20),
+          reason: "the channels have the room");
+      await tester.tap(button);
+      await tester.pump();
+      expect(tester.getSize(find.byKey(const ValueKey("keyframeStrip"))).height,
+          strip);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the scene strip is hidden beside it", (tester) async {
+      var c = await show(tester,
+          document: const CanvasDocument(frameRate: 10, scenes: [
+            CanvasScene(id: "a", frames: 50),
+            CanvasScene(id: "b", frames: 50),
+          ]));
+      c.playAll = true;
+      await tester.pump();
+      var button = find.byKey(const ValueKey("scenesShown"));
+      expect(
+          tester.getCenter(button).dx,
+          lessThan(tester
+              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
+              .dx));
+      expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
+      List joins() => [
+            for (var w
+                in tester.widgetList<CustomPaint>(find.byType(CustomPaint)))
+              if (w.painter.runtimeType.toString() == "_TimelinePainter")
+                ...(w.painter as dynamic).sceneStarts as List,
+          ];
+      expect(joins(), hasLength(2), reason: "a join on the ruler per scene");
+      await tester.tap(button);
+      await tester.pump();
+      expect(c.scenesShown, isFalse);
+      expect(find.byKey(const ValueKey("sceneStripLabel")), findsNothing);
+      expect(joins(), hasLength(1), reason: "the joins go with the strip");
+      await tester.tap(button);
+      await tester.pump();
+      expect(find.byKey(const ValueKey("sceneStripLabel")), findsOneWidget);
+      // One scene at a time, there is no strip, and nothing to hide.
+      c.playAll = false;
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pump();
+      expect(c.scenesShown, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("one button steps every channel small, medium and large",
+        (tester) async {
+      var c = await show(tester,
+          elements: [channel("a", "Music"), channel("b", "Voice")]);
+      double height(String key) =>
+          tester.getSize(find.byKey(ValueKey("lane-$key"))).height;
+      var button = find.byKey(const ValueKey("timelineLaneHeight"));
+      // Left of zoom in, among the zoom buttons.
+      expect(
+          tester.getCenter(button).dx,
+          lessThan(tester
+              .getCenter(find.byKey(const ValueKey("timelineZoomIn")))
+              .dx));
+      expect(height("a"), laneSizeHeights[0]);
+      c.setLaneHeight("b", 90);
+      await tester.tap(button);
+      await tester.pump();
+      expect(
+          [height("a"), height("b")], [laneSizeHeights[1], laneSizeHeights[1]],
+          reason: "all of them, a dragged one too");
+      // Medium is two lines: the name, then S and M.
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("channelStrip-a")),
+              matching: find.text("Music")),
+          findsOne);
+      await tester.tap(button);
+      await tester.pump();
+      expect(height("a"), laneSizeHeights[1] * 2);
+      await tester.tap(button);
+      await tester.pump();
+      expect(height("a"), laneSizeHeights[0], reason: "and round again");
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets("the strip and the lanes start at the same place",
         (tester) async {

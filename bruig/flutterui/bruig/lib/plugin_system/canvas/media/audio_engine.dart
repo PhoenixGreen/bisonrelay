@@ -33,7 +33,15 @@ class ChannelSound {
   final List<double>? eq;
   final Dynamics? comp;
 
-  const ChannelSound({this.left = 1, this.right = 1, this.eq, this.comp});
+  /// compFirst is the order: the compressor before the EQ, or after it.
+  final bool compFirst;
+
+  const ChannelSound(
+      {this.left = 1,
+      this.right = 1,
+      this.eq,
+      this.comp,
+      this.compFirst = false});
 }
 
 /// MasterSound is the master strip as the engine applies it.
@@ -45,7 +53,28 @@ class MasterSound {
   /// ceilingDb is the limiter's, or null for no limiter.
   final double? ceilingDb;
 
-  const MasterSound({this.volume = 1, this.eq, this.comp, this.ceilingDb});
+  /// compFirst is the order of the EQ and the glue. The limiter is last.
+  final bool compFirst;
+
+  const MasterSound(
+      {this.volume = 1,
+      this.eq,
+      this.comp,
+      this.ceilingDb,
+      this.compFirst = false});
+}
+
+/// reorderSteps is how to go from the filters running, [have], to [want],
+/// both in order, when a filter switched on always lands last: switch off
+/// everything from the first one out of place, then switch on the rest of
+/// [want] in order.
+(List<String>, List<String>) reorderSteps(
+    List<String> have, List<String> want) {
+  var keep = 0;
+  while (keep < have.length && keep < want.length && have[keep] == want[keep]) {
+    keep++;
+  }
+  return (have.sublist(keep), want.sublist(keep));
 }
 
 abstract class AudioEngine {
@@ -75,6 +104,11 @@ abstract class AudioEngine {
   /// coming out right now, left and right, nought to one. For the meters;
   /// asking for it is what turns the measuring on.
   (double, double) levels([String? channel]);
+
+  /// spectrum is what [channel] -- or the master -- is playing now, as 256
+  /// magnitudes from the lowest frequency to half the rate, or null where
+  /// none can be had. For the EQ to draw what it is shaping.
+  Float32List? spectrum([String? channel]);
 
   /// volume moves [voice] to [to], over [fade] seconds.
   void volume(AudioVoice voice, double to, {double fade = 0});
@@ -124,6 +158,23 @@ class _SoLoudVoice extends AudioVoice {
 /// while the master, which has a binding, moved. The library is opened the
 /// way the package opens it, which hands back the one already loaded. Null
 /// where it cannot be found, and the meters simply stay still.
+/// _busSpectrum reads a bus's FFT -- looked up by hand for the same reason
+/// as _busMetering: the native function is exported and the package has no
+/// Dart call for it.
+final ffi.Pointer<ffi.Float> Function(int busId)? _busSpectrum = () {
+  try {
+    var lib = Platform.isLinux || Platform.isAndroid
+        ? ffi.DynamicLibrary.open("libflutter_soloud_plugin.so")
+        : Platform.isWindows
+            ? ffi.DynamicLibrary.open("flutter_soloud_plugin.dll")
+            : ffi.DynamicLibrary.process();
+    return lib.lookupFunction<ffi.Pointer<ffi.Float> Function(ffi.UnsignedInt),
+        ffi.Pointer<ffi.Float> Function(int)>("busCalcFFT");
+  } catch (_) {
+    return null;
+  }
+}();
+
 final void Function(int busId, bool enable)? _busMetering = () {
   try {
     var lib = Platform.isLinux || Platform.isAndroid
@@ -226,9 +277,24 @@ class SoLoudAudioEngine implements AudioEngine {
         _soloud.setVolume(handle, 1);
         _soloud.setPanAbsolute(handle, sound.left, sound.right);
       }
-      _eq(bus.filters.parametricEqFilter.isActive, sound.eq,
-          activate: bus.filters.parametricEqFilter.activate,
-          deactivate: bus.filters.parametricEqFilter.deactivate,
+      var f = bus.filters;
+      var fresh = _arrange(key, [
+        if (sound.compFirst && sound.comp != null) "comp",
+        if (sound.eq != null) "eq",
+        if (!sound.compFirst && sound.comp != null) "comp",
+      ], {
+        "eq": (
+          on: () => f.parametricEqFilter.isActive,
+          activate: f.parametricEqFilter.activate,
+          deactivate: f.parametricEqFilter.deactivate,
+        ),
+        "comp": (
+          on: () => f.compressorFilter.isActive,
+          activate: f.compressorFilter.activate,
+          deactivate: f.compressorFilter.deactivate,
+        ),
+      });
+      _eq(fresh.contains("eq"), sound.eq,
           bands: (n) => bus!.filters.parametricEqFilter.numBands().value = n,
           band: (i, g) =>
               bus!.filters.parametricEqFilter.bandGain(i).value = g);
@@ -239,8 +305,9 @@ class SoLoudAudioEngine implements AudioEngine {
         comp.ratio().value = c.ratio;
         comp.attackTime().value = c.attackMs;
         comp.releaseTime().value = c.releaseMs;
-        comp.makeupGain().value = c.makeupDb;
-        comp.kneeWidth().value = Dynamics.kneeDb;
+        comp.makeupGain().value = c.totalMakeupDb;
+        comp.kneeWidth().value = c.kneeDb;
+        comp.wet().value = c.mix;
       } else if (comp.isActive) {
         comp.deactivate();
       }
@@ -255,9 +322,31 @@ class SoLoudAudioEngine implements AudioEngine {
     try {
       _soloud.setGlobalVolume(sound.volume);
       var filters = _soloud.filters;
-      _eq(filters.parametricEqFilter.isActive, sound.eq,
+      var fresh = _arrange(_masterKey, [
+        if (sound.compFirst && sound.comp != null) "comp",
+        if (sound.eq != null) "eq",
+        if (!sound.compFirst && sound.comp != null) "comp",
+        // Last, whatever else is switched on after it: nothing may take a
+        // peak back over the ceiling.
+        if (sound.ceilingDb != null) "limiter",
+      ], {
+        "eq": (
+          on: () => filters.parametricEqFilter.isActive,
           activate: filters.parametricEqFilter.activate,
           deactivate: filters.parametricEqFilter.deactivate,
+        ),
+        "comp": (
+          on: () => filters.compressorFilter.isActive,
+          activate: filters.compressorFilter.activate,
+          deactivate: filters.compressorFilter.deactivate,
+        ),
+        "limiter": (
+          on: () => filters.limiterFilter.isActive,
+          activate: filters.limiterFilter.activate,
+          deactivate: filters.limiterFilter.deactivate,
+        ),
+      });
+      _eq(fresh.contains("eq"), sound.eq,
           bands: (n) => filters.parametricEqFilter.numBands.value = n,
           band: (i, g) => filters.parametricEqFilter.bandGain(i).value = g);
       var comp = filters.compressorFilter;
@@ -267,8 +356,9 @@ class SoLoudAudioEngine implements AudioEngine {
         comp.ratio.value = c.ratio;
         comp.attackTime.value = c.attackMs;
         comp.releaseTime.value = c.releaseMs;
-        comp.makeupGain.value = c.makeupDb;
-        comp.kneeWidth.value = Dynamics.kneeDb;
+        comp.makeupGain.value = c.totalMakeupDb;
+        comp.kneeWidth.value = c.kneeDb;
+        comp.wet.value = c.mix;
       } else if (comp.isActive) {
         comp.deactivate();
       }
@@ -289,19 +379,53 @@ class SoLoudAudioEngine implements AudioEngine {
     }
   }
 
-  void _eq(bool active, List<double>? gains,
-      {required void Function() activate,
-      required void Function() deactivate,
-      required void Function(double) bands,
+  /// _order is the effects switched on, by strip, in the order they were:
+  /// the order SoLoud runs them in.
+  final Map<String, List<String>> _order = {};
+  static const _masterKey = "\u0000master";
+
+  /// _arrange switches [filters] on and off so that those running are
+  /// [want], in that order. SoLoud runs a strip's filters in the order they
+  /// were switched on, so one switched on later lands after the rest --
+  /// after the limiter, even. Anything out of place is switched off and on
+  /// again behind those already right. Returns those switched on here,
+  /// which need setting up afresh.
+  Set<String> _arrange(
+      String key,
+      List<String> want,
+      Map<
+              String,
+              ({
+                bool Function() on,
+                void Function() activate,
+                void Function() deactivate
+              })>
+          filters) {
+    var have = [
+      for (var n in _order[key] ?? const <String>[])
+        if (filters[n]!.on()) n,
+      for (var e in filters.entries)
+        if (e.value.on() && !(_order[key] ?? const []).contains(e.key)) e.key,
+    ];
+    var (off, on) = reorderSteps(have, want);
+    for (var n in off) {
+      filters[n]!.deactivate();
+    }
+    for (var n in on) {
+      filters[n]!.activate();
+    }
+    _order[key] = want;
+    return on.toSet();
+  }
+
+  /// _eq sets the band EQ to [gains]. [fresh] is whether _arrange has just
+  /// switched it on, and its bands need counting out first.
+  void _eq(bool fresh, List<double>? gains,
+      {required void Function(double) bands,
       required void Function(int, double) band}) {
-    if (gains == null) {
-      if (active) deactivate();
-      return;
-    }
-    if (!active) {
-      activate();
-      bands(_eqBands.toDouble());
-    }
+    // Switched off, if it is not wanted, by _arrange.
+    if (gains == null) return;
+    if (fresh) bands(_eqBands.toDouble());
     for (var (i, g) in gains.indexed) {
       if (i < _eqBands) band(i, g);
     }
@@ -327,6 +451,35 @@ class SoLoudAudioEngine implements AudioEngine {
       return out;
     } catch (exception) {
       debugPrint("Unable to read the shape of $path: $exception");
+      return null;
+    }
+  }
+
+  /// _masterData reads the whole mix's spectrum -- see spectrum.
+  AudioData? _masterData;
+
+  @override
+  Float32List? spectrum([String? channel]) {
+    if (!_soloud.isInitialized) return null;
+    // Gathered only while levels are being read -- see levels.
+    levels(channel);
+    try {
+      if (channel == null) {
+        // The whole mix: the package's own reader, which keeps the FFT and
+        // the wave side by side.
+        var data = _masterData ??= AudioData(GetSamplesKind.linear);
+        data.updateSamples();
+        var all = data.getAudioData();
+        if (all.length < 256) return null;
+        return Float32List.fromList(all.sublist(0, 256));
+      }
+      var bus = _buses[channel];
+      var read = _busSpectrum;
+      if (bus == null || read == null) return null;
+      var data = read(bus.busId);
+      if (data == ffi.nullptr) return null;
+      return Float32List.fromList(data.asTypedList(256));
+    } catch (_) {
       return null;
     }
   }

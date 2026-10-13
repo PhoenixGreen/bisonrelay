@@ -2179,13 +2179,19 @@ class CanvasToggle extends StatelessWidget {
             // saying what the fill already says, on a panel whose switches come
             // five to a line -- and the difference between five of them fitting
             // a narrow sidebar and four of them fitting was exactly that.
+            // A label longer than the room -- one carrying a channel's name
+            // -- is shortened, not run off the edge.
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: value
-                          ? theme.colors.onSecondaryContainer
-                          : theme.colors.onSurfaceVariant)),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: value
+                            ? theme.colors.onSecondaryContainer
+                            : theme.colors.onSurfaceVariant)),
+              ),
             ]),
           ),
         ),

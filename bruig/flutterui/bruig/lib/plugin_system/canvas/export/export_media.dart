@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -276,6 +277,7 @@ class ExportMedia {
   Future<List<ExportSound>> sounds() async {
     var out = <ExportSound>[];
     var total = document.playFrames / _rate;
+    var ducks = await _duckEnvelopes();
     for (var p in _placed) {
       var clip = p.clip;
       if (clip.muted || clip.volume <= 0 || clip.mix.mute) continue;
@@ -309,9 +311,15 @@ class ExportMedia {
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
                 mix: clip.mix,
-                envelope: [
-                  for (var g in clip.envelope) GainPoint(g.time - t, g.gain),
-                ],
+                envelope: multiplyEnvelopes(
+                  [for (var g in clip.envelope) GainPoint(g.time - t, g.gain)],
+                  // The run's ducking, from where this stretch starts.
+                  [
+                    for (var g in ducks[_channelOf(p.element, clip)] ??
+                        const <GainPoint>[])
+                      GainPoint(g.time - (begins + t), g.gain),
+                  ],
+                ),
               ));
             }
           }
@@ -321,6 +329,31 @@ class ExportMedia {
       }
     }
     return out;
+  }
+
+  /// _channelOf is the channel a sound is on: its own, untagged.
+  static String _channelOf(CanvasElement e, MediaClip clip) =>
+      clip.channel.isNotEmpty ? clip.channel : e.id;
+
+  /// _duckEnvelopes is the run's ducking -- see duckEnvelopes -- with the
+  /// shapes of the channels that duck read from their files by ffmpeg, as the
+  /// editor reads them to play.
+  Future<Map<String, List<GainPoint>>> _duckEnvelopes() async {
+    var wanted = {
+      for (var s in timedSounds(document))
+        if (s.clip.mix.duck.on)
+          for (var source in s.clip.playlist) source.assetId,
+    };
+    if (wanted.isEmpty) return const {};
+    var ffmpeg = await ffmpegPath();
+    if (ffmpeg == null) return const {};
+    var peaks = <String, Float32List>{};
+    for (var id in wanted) {
+      var file = await locate(MediaKind.audio, id);
+      if (file == null) continue;
+      if (await filePeaks(ffmpeg, file) case var p?) peaks[id] = p;
+    }
+    return duckEnvelopes(document, (id) => peaks[id]);
   }
 
   void dispose() {

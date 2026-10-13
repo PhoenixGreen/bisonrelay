@@ -178,6 +178,11 @@ class _PublishSheetState extends State<_PublishSheet> {
   bool _everyShape = false;
 
   bool _dither = true;
+
+  /// _toTarget brings a video's sound to the master's loudness target -- a
+  /// publish setting rather than the mixer's, since it is about the file
+  /// being made. Starts from what the document said before it moved here.
+  late bool _toTarget = widget.document.masterMix.normalise;
   int _colors = 256;
   bool _loop = true;
 
@@ -210,15 +215,23 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// long it runs for and what is on it at a given moment -- handed a shorter
   /// one they all do the right thing, and none of them learns a new argument.
   CanvasDocument get _document {
-    if (!widget.document.hasScenes) return widget.document;
+    var mix = widget.document.masterMix;
+    var document = mix.normalise == _toTarget
+        ? widget.document
+        : widget.document.copyWith(masterMix: mix.copyWith(normalise: _toTarget));
+    return _chosen(document);
+  }
+
+  CanvasDocument _chosen(CanvasDocument document) {
+    if (!document.hasScenes) return document;
     // A still is one canvas, whichever one is chosen. Everything else follows
     // the three-way choice.
-    if (_onePicture) return widget.document.scenesFrom(_first, _first);
+    if (_onePicture) return document.scenesFrom(_first, _first);
     return switch (_scenes) {
-      PublishScenes.all => widget.document,
-      PublishScenes.one => widget.document.scenesFrom(_first, _first),
+      PublishScenes.all => document,
+      PublishScenes.one => document.scenesFrom(_first, _first),
       PublishScenes.range =>
-        widget.document.scenesFrom(_first, math.max(_first, _last)),
+        document.scenesFrom(_first, math.max(_first, _last)),
     };
   }
 
@@ -318,6 +331,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         "loop": _loop,
         "videoFormat": _videoFormat.name,
         "videoQuality": _videoQuality.name,
+        "toTarget": _toTarget,
       };
 
   /// _restore sets the sheet as it was last published with. Anything no
@@ -347,6 +361,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     _loop = flag("loop", _loop);
     _videoFormat = pick(VideoFormat.values, "videoFormat", _videoFormat);
     _videoQuality = pick(VideoQuality.values, "videoQuality", _videoQuality);
+    _toTarget = flag("toTarget", _toTarget);
   }
 
   /// _loadRecord reads what this canvas published before, if anything.
@@ -1123,11 +1138,25 @@ class _PublishSheetState extends State<_PublishSheet> {
                   [for (var q in VideoQuality.values) (q, q.label)],
                   (v) => setState(() => _videoQuality = v)),
             ),
-            // The second half is deliberately empty. A dropdown stretched to
-            // the width of the dialog looks like it holds more than three
-            // words, and the two rows line up as one grid this way.
             const SizedBox(width: 12),
-            const Expanded(child: SizedBox()),
+            // The sound brought to the loudness the master aims at -- see
+            // the mixer's Loudness slot, where it is set and measured.
+            Expanded(
+              child: CheckboxListTile(
+                key: const ValueKey("publishToTarget"),
+                value: _toTarget,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(
+                    "Sound to ${widget.document.masterMix.target.round()} LUFS",
+                    style: const TextStyle(fontSize: 12)),
+                subtitle: Text("The mixer's loudness target",
+                    style: TextStyle(
+                        fontSize: 10, color: theme.colors.onSurfaceVariant)),
+                onChanged: (v) => setState(() => _toTarget = v ?? false),
+              ),
+            ),
           ]),
           _note(
               theme,

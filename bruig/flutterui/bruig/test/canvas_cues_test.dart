@@ -120,8 +120,7 @@ void main() {
               at: 72,
               playlist: [MediaSource(assetId: "vo.mp3", length: 10)]));
       var doc = _two().copyWith(
-          masterOn: true,
-          master: CanvasScene(id: "m", elements: [voice]));
+          masterOn: true, master: CanvasScene(id: "m", elements: [voice]));
       var c = CanvasController(doc);
       addTearDown(c.dispose);
       var hand = c.addCue(name: "by hand", frame: 5);
@@ -155,6 +154,19 @@ void main() {
                   width: 280, child: CanvasTransitionsPanel(controller: c)))),
     ));
     await tester.pumpAndSettle();
+    // The cues are shown on the ruler, or not, from the end of this line.
+    var shown = find.byKey(const ValueKey("cuesShown"));
+    expect(tester.getCenter(shown).dy,
+        tester.getCenter(find.byKey(const ValueKey("cueAdd"))).dy);
+    expect(tester.getCenter(shown).dx,
+        greaterThan(tester.getCenter(find.byKey(const ValueKey("cueAdd"))).dx));
+    await tester.tap(shown);
+    await tester.pumpAndSettle();
+    expect(c.cuesShown, isFalse);
+    expect(find.byTooltip("Show the cues on the timeline"), findsOneWidget);
+    await tester.tap(shown);
+    await tester.pumpAndSettle();
+    expect(c.cuesShown, isTrue);
     await tester.tap(find.byKey(const ValueKey("cueAdd")));
     await tester.pumpAndSettle();
     expect(c.cues, hasLength(1));
@@ -188,8 +200,8 @@ void main() {
         ChangeNotifierProvider<CanvasPreferences>(
             create: (c) => CanvasPreferences()),
       ],
-      child: MaterialApp(
-          home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child:
+          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
     ));
     await tester.pumpAndSettle();
     var dropdown = find.descendant(

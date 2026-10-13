@@ -2,36 +2,13 @@ import 'dart:ui' show Color;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
-// canvas_palette.dart is a document's own colours: a few named swatches that
-// everything on it -- shapes, words, charts, tables, backgrounds,
-// transitions -- is drawn in, so that changing one swatch recolours the
-// whole video at once.
+// canvas_palette.dart is one colour changed everywhere a document uses it:
+// shapes, words, charts, tables, backgrounds, transitions -- the saved
+// colours' Replace everywhere. See CanvasController.replaceColour.
 //
 // The colours stay where they always were, on each element as a plain
-// colour, and the palette changes them where they are: a swatch changed is
-// every use of its old colour, anywhere in the document, made the new one.
-// That keeps every painter, every export and every document ever saved
-// exactly as it was, at the cost of the palette being a promise about which
-// colours are the same rather than a reference each element holds -- which
-// is also what makes "take the palette from this canvas" possible at all.
-
-/// PaletteSwatch is one of a document's colours, with a name.
-class PaletteSwatch {
-  final String name;
-  final Color color;
-  const PaletteSwatch(this.name, this.color);
-
-  PaletteSwatch copyWith({String? name, Color? color}) =>
-      PaletteSwatch(name ?? this.name, color ?? this.color);
-
-  Map<String, dynamic> toJson() => {"name": name, "color": colorToJson(color)};
-
-  static PaletteSwatch? fromJson(Object? json) {
-    if (json is! Map<String, dynamic> || json["color"] is! num) return null;
-    return PaletteSwatch(
-        jsonString(json["name"], ""), colorFromJson(json["color"]));
-  }
-}
+// colour, and are changed where they are. That keeps every painter, every
+// export and every document ever saved exactly as it was.
 
 /// _notColours are keys whose numbers are never colours, however much they
 /// look like one: frames, lengths, counts, a chart's numbers, a counter's.

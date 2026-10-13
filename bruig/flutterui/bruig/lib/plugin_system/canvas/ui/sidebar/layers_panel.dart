@@ -282,7 +282,7 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
       // over the other sections and stayed put when the list scrolled.
       type: MaterialType.transparency,
       child: InkWell(
-        onTap: () => controller.selectOnly(element.id),
+        onTap: () => pickLayer(controller, element.id),
         borderRadius: BorderRadius.circular(6),
         child: Container(
           margin: const EdgeInsets.only(bottom: 2),
@@ -433,7 +433,15 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
           _startRename();
           return;
         }
-        controller.selectOnly(element.id);
+        // On the press only a plain click: it is what a drag picks up. A
+        // click with Cmd, Ctrl or Shift is the row's tap to deal with, or
+        // the layer is toggled twice and ends where it started.
+        var keys = HardwareKeyboard.instance;
+        if (!keys.isMetaPressed &&
+            !keys.isControlPressed &&
+            !keys.isShiftPressed) {
+          pickLayer(controller, element.id);
+        }
       },
       child: Text(element.name, overflow: TextOverflow.ellipsis, style: style),
     );
@@ -538,4 +546,31 @@ const Key layerRenameFieldKey = Key("canvasLayerRename");
 /// _CancelRenameIntent is Escape, leaving the name as it was.
 class _CancelRenameIntent extends Intent {
   const _CancelRenameIntent();
+}
+
+/// _layerAnchor is the layer last clicked on its own, where a Shift-click
+/// runs a range from.
+String? _layerAnchor;
+
+/// pickLayer is a click on layer [id]: on its own, one layer; with Cmd or
+/// Ctrl, that layer added or taken away; with Shift, every layer from the
+/// one last clicked to this one.
+void pickLayer(CanvasController controller, String id) {
+  var keys = HardwareKeyboard.instance;
+  if (keys.isMetaPressed || keys.isControlPressed) {
+    controller.toggleSelected(id);
+    _layerAnchor = id;
+    return;
+  }
+  var anchor = _layerAnchor;
+  var list = controller.document.elements;
+  var from = anchor == null ? -1 : list.indexWhere((e) => e.id == anchor);
+  var to = list.indexWhere((e) => e.id == id);
+  if (keys.isShiftPressed && from >= 0 && to >= 0) {
+    var lo = from < to ? from : to, hi = from < to ? to : from;
+    controller.selectMany({for (var i = lo; i <= hi; i++) list[i].id});
+    return;
+  }
+  controller.selectOnly(id);
+  _layerAnchor = id;
 }

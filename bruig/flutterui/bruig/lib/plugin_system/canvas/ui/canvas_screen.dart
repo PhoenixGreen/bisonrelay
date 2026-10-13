@@ -147,11 +147,22 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// has been dragged open to for the channels. Kept in the preferences.
   double _timelineHeight = timelineHeight;
 
-  /// _mixerOpen and _mixerHeight are the mixer's -- see CanvasMixer. The
-  /// height is the session's: a mixer somebody made tall stays tall while
-  /// they work.
-  bool _mixerOpen = false;
+  /// _mixerHeight is the mixer's -- see CanvasMixer; whether it is open is
+  /// the controller's mixerOpen, set from the timeline. The height is the
+  /// session's: a mixer somebody made tall stays tall while they work.
   double _mixerHeight = mixerDefaultHeight;
+
+  /// _effectsHeight is the effects panel's, which sits over the mixer.
+  double _effectsHeight = effectsDefaultHeight;
+
+  /// _keepShown saves which timeline rows are showing whenever one is shown
+  /// or hidden: the preferences skip a value that has not changed.
+  void _keepShown() {
+    var prefs = Provider.of<CanvasPreferences>(context, listen: false);
+    prefs.keyframesShown = _controller.keyframesShown;
+    prefs.scenesShown = _controller.scenesShown;
+    prefs.cuesShown = _controller.cuesShown;
+  }
 
   @override
   void initState() {
@@ -190,9 +201,14 @@ class _CanvasScreenState extends State<CanvasScreen> {
     for (var fit in CanvasFit.values) {
       if (fit.name == prefs.fit) _controller.restoreFit(fit);
     }
+    _controller.restoreShown(
+        keyframes: prefs.keyframesShown,
+        scenes: prefs.scenesShown,
+        cues: prefs.cuesShown);
     if (!_controller.opened) _reopenLast(prefs);
     _controller.markOpened();
     _controller.addListener(_onSelectionChanged);
+    _controller.addListener(_keepShown);
     // A text element can take its words from the Writing library, and the
     // library is edited somewhere else entirely -- so while this page is open
     // the documents behind those elements are read every few seconds. A
@@ -254,6 +270,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
   void dispose() {
     _documents?.stop();
     _controller.removeListener(_onSelectionChanged);
+    _controller.removeListener(_keepShown);
     // The canvas's sounds stop when the canvas is left. The session goes on
     // -- see below -- but music from a page nobody is looking at, carrying on
     // under a chat, is a sound with no off switch on screen.
@@ -539,10 +556,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
               _guidesOpen = !_guidesOpen;
               if (_guidesOpen) _canvasSettingsOpen = false;
             }),
-            // The mixer, open or shut whether or not the timeline is: it
-            // floats over the canvas, and is as useful with the timeline away.
-            mixerOpen: _mixerOpen,
-            onToggleMixer: () => setState(() => _mixerOpen = !_mixerOpen),
             timelineOpen: _timelineOpen,
             onToggleTimeline: () => setState(() {
               _timelineOpen = !_timelineOpen;
@@ -631,7 +644,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
               // playhead is half of what it is for.
               // The mixer at the bottom, the channels over it, so the strips
               // and the clips they belong to are both in view.
-              if (_mixerOpen)
+              if (_controller.mixerOpen)
                 Positioned(
                   bottom: _keyframesOpen && !_controller.playing
                       ? keyframeBarHeight
@@ -646,8 +659,28 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           mixerMinHeight,
                           math.max(mixerMinHeight,
                               MediaQuery.sizeOf(context).height * 0.7))),
-                      onClose: () => setState(() => _mixerOpen = false),
+                      onClose: () => _controller.mixerOpen = false,
                     ),
+                  ),
+                ),
+              // The effects of one strip, a panel of its own over the mixer
+              // -- or at the bottom, with the mixer shut.
+              if (_controller.effectsOpen)
+                Positioned(
+                  bottom: (_keyframesOpen && !_controller.playing
+                          ? keyframeBarHeight
+                          : 0) +
+                      (_controller.mixerOpen ? _mixerHeight : 0),
+                  left: 0,
+                  right: 0,
+                  child: CanvasMixer.effects(
+                    controller: _controller,
+                    height: _effectsHeight,
+                    onResize: (h) => setState(() => _effectsHeight = h.clamp(
+                        effectsMinHeight,
+                        math.max(effectsMinHeight,
+                            MediaQuery.sizeOf(context).height * 0.6))),
+                    onClose: () => _controller.effectsOpen = false,
                   ),
                 ),
             ]),

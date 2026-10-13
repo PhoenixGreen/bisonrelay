@@ -262,3 +262,40 @@ class _FfmpegReader implements FrameReader {
   int even(double v) => math.max(2, (v / 2).round() * 2);
   return (even(width), even(height));
 }
+
+/// filePeaks is [path]'s loudness in [count] even steps across the file,
+/// nought to one -- the same shape the editor reads for a waveform -- or
+/// null where ffmpeg cannot read it.
+Future<Float32List?> filePeaks(String ffmpeg, String path,
+    {int count = 2400}) async {
+  try {
+    var run = await Process.run(ffmpeg,
+        ["-v", "error", "-i", path, "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
+        stdoutEncoding: null);
+    if (run.exitCode != 0) return null;
+    var bytes = Uint8List.fromList(run.stdout as List<int>);
+    var samples = bytes.buffer.asFloat32List(0, bytes.length ~/ 4);
+    if (samples.isEmpty) return null;
+    var out = Float32List(count);
+    var per = samples.length / count;
+    var most = 0.0;
+    for (var i = 0; i < count; i++) {
+      var peak = 0.0;
+      var end = math.min(samples.length, ((i + 1) * per).floor());
+      for (var j = (i * per).floor(); j < end; j++) {
+        var v = samples[j].abs();
+        if (v > peak) peak = v;
+      }
+      out[i] = peak;
+      if (peak > most) most = peak;
+    }
+    if (most > 0) {
+      for (var i = 0; i < count; i++) {
+        out[i] /= most;
+      }
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}

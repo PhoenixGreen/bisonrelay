@@ -56,8 +56,6 @@ import 'package:flutter/material.dart';
 /// one, and zero is already the entry naming the rate that *is* set.
 const int _typeARate = -1;
 
-void _nothing() {}
-
 class CanvasSettingsBar extends StatefulWidget {
   final CanvasController controller;
 
@@ -87,12 +85,6 @@ class CanvasSettingsBar extends StatefulWidget {
   final bool timelineOpen;
   final VoidCallback onToggleTimeline;
 
-  /// mixerOpen and onToggleMixer show and hide the mixer, which floats over
-  /// the canvas -- beside the timeline's button and apart from it, so the
-  /// mixer can be open with the timeline shut.
-  final bool mixerOpen;
-  final VoidCallback onToggleMixer;
-
   /// onShowSidebar brings a hidden sidebar back, and is null while it is
   /// showing. See CanvasSidebarRestoreButton -- a hidden sidebar with no way
   /// back is a trap, so the control has to be somewhere predictable, and this
@@ -107,8 +99,6 @@ class CanvasSettingsBar extends StatefulWidget {
     required this.onToggleGuides,
     required this.timelineOpen,
     required this.onToggleTimeline,
-    this.mixerOpen = false,
-    this.onToggleMixer = _nothing,
     required this.onToggleCanvasSettings,
     this.onShowSidebar,
     super.key,
@@ -396,16 +386,8 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               onPressed: widget.onToggleGuides),
           _divider(theme),
           // The timeline, beside the canvas settings: both open a line across
-          // the window rather than changing anything on the canvas.
-          _barButton(theme,
-              key: const ValueKey("mixerToggle"),
-              icon: Icons.equalizer,
-              tooltip: widget.mixerOpen
-                  ? "Close the mixer"
-                  : "Mixer: level, panning, EQ and dynamics for each sound, "
-                      "and the master",
-              active: widget.mixerOpen,
-              onPressed: widget.onToggleMixer),
+          // the window rather than changing anything on the canvas. The mixer's
+          // button is on the timeline, beside the effects'.
           _barButton(theme,
               icon: Icons.view_timeline_outlined,
               tooltip: widget.timelineOpen

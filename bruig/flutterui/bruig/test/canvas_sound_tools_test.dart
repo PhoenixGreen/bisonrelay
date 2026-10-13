@@ -19,11 +19,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 // canvas_sound_tools_test.dart is the timeline's sound tools: a volume
-// envelope on a clip, ducking music under a voice, fitting a track to the
-// length of a film, and the sound a transition carries.
+// envelope on a clip, ducking music under a voice, and the sound a
+// transition carries.
 
 AudioElement _clip(String id, String asset, double length,
-        {int at = 0, String channel = "", List<GainPoint> envelope = const []}) =>
+        {int at = 0,
+        String channel = "",
+        List<GainPoint> envelope = const []}) =>
     AudioElement(ElementBase(id: id, visible: false),
         clip: MediaClip(
             timed: true,
@@ -36,7 +38,12 @@ AudioElement _clip(String id, String asset, double length,
 
 void main() {
   group("the envelope", () {
-    const dip = [GainPoint(1, 1), GainPoint(2, 0.2), GainPoint(3, 0.2), GainPoint(4, 1)];
+    const dip = [
+      GainPoint(1, 1),
+      GainPoint(2, 0.2),
+      GainPoint(3, 0.2),
+      GainPoint(4, 1)
+    ];
 
     test("joins its points with straight lines, flat past the ends", () {
       expect(envelopeAt(const [], 5), 1);
@@ -88,7 +95,8 @@ void main() {
             .firstMatch("${stats.stderr}")!;
         levels.add(double.parse(m.group(1)!));
       }
-      expect(levels[0] - levels[2], closeTo(-20 * math.log(0.2) / math.ln10, 1.5),
+      expect(
+          levels[0] - levels[2], closeTo(-20 * math.log(0.2) / math.ln10, 1.5),
           reason: "the dip is 0.2 -- about 14 dB down: $levels");
       expect((levels[0] - levels[4]).abs(), lessThan(1),
           reason: "and back up after: $levels");
@@ -99,9 +107,8 @@ void main() {
     test("each stretch of speech is found, with breaths bridged", () {
       var peaks = Float32List(100); // ten seconds
       for (var i = 0; i < 100; i++) {
-        peaks[i] = (i >= 10 && i < 30 && i != 20) || (i >= 60 && i < 70)
-            ? 0.7
-            : 0.0;
+        peaks[i] =
+            (i >= 10 && i < 30 && i != 20) || (i >= 60 && i < 70) ? 0.7 : 0.0;
       }
       var spans = speechSpans(peaks, 10);
       expect(spans, hasLength(2), reason: "the gap at 2s is a breath");
@@ -115,74 +122,6 @@ void main() {
       expect(env, hasLength(8), reason: "two dips, four points each");
       expect(envelopeAt(env, 2.15), 0.25, reason: "no bob between lines");
       expect(envelopeAt(env, 5), 1);
-    });
-
-    test("the music channel is ducked wherever the voice channel speaks",
-        () async {
-      var peaks = Float32List(100);
-      for (var i = 40; i < 60; i++) {
-        peaks[i] = 0.9;
-      }
-      CanvasController.seedWaveform("voice.mp3", peaks);
-      var doc = CanvasDocument(frameRate: 10, frames: 200, elements: [
-        _clip("v", "voice.mp3", 10, at: 20, channel: "voice"), // from 2s
-        _clip("m", "music.mp3", 20, channel: "music"),
-      ]);
-      var c = CanvasController(doc);
-      addTearDown(c.dispose);
-      var music = c.timelineChannels.firstWhere((x) => x.key == "music");
-      expect(await c.duckUnder(music, "voice", depthDb: -12), 1);
-      var m = c.document.elements.firstWhere((e) => e.id == "m") as AudioElement;
-      // The voice speaks 4s to 6s into itself, 6s to 8s into the run.
-      expect(m.clip.momentAt(7)!.gain, closeTo(0.251, 0.001));
-      expect(m.clip.momentAt(3)!.gain, 1);
-      c.clearDucking(c.timelineChannels.firstWhere((x) => x.key == "music"));
-      var cleared =
-          c.document.elements.firstWhere((e) => e.id == "m") as AudioElement;
-      expect(cleared.clip.envelope, isEmpty);
-    });
-  });
-
-  group("fitting a track", () {
-    test("too long, it is cut and faded on the end", () {
-      var p = fitTrack(at: 0, length: 60, end: 240, rate: 24);
-      expect(p, hasLength(1));
-      expect(p.single.end, 10);
-      expect(p.single.fadeOut, greaterThan(0));
-    });
-
-    test("too short, its ending is laid on the end over copies", () {
-      for (var length in [100.0, 40.0, 13.0]) {
-        var p = fitTrack(at: 24, length: length, end: 24 * 194, rate: 24);
-        var last = p.last;
-        expect(last.at + (last.end - last.start) * 24, closeTo(24 * 194, 1),
-            reason: "the last copy plays whole and ends on the end");
-        expect(p.first.at, 24, reason: "and the first starts where it did");
-        for (var i = 0; i < p.length - 1; i++) {
-          var a = p[i], b = p[i + 1];
-          var aEnds = a.at + (a.end - a.start) * 24;
-          expect(aEnds, greaterThan(b.at),
-              reason: "each overlaps the next, for its crossfade ($length)");
-        }
-      }
-    });
-
-    test("the controller lays the copies on the clip's own canvas", () {
-      var master = CanvasScene(id: "m", elements: [_clip("song", "s.mp3", 100)]);
-      var doc = CanvasDocument(
-          frameRate: 10,
-          masterOn: true,
-          master: master,
-          scenes: const [CanvasScene(id: "a", frames: 1500)]);
-      var c = CanvasController(doc);
-      addTearDown(c.dispose);
-      c.fitToEnd(c.document.master!.elements.single as AudioElement, 1500);
-      var songs = c.document.master!.elements.cast<AudioElement>();
-      expect(songs.length, greaterThan(1));
-      var last = songs.last;
-      expect(last.clip.at + last.clip.runLength * 10, closeTo(1500, 1));
-      c.undo();
-      expect(c.document.master!.elements, hasLength(1), reason: "one change");
     });
   });
 
@@ -236,17 +175,20 @@ void main() {
         CanvasScene(id: "c", frames: 100),
       ]));
       addTearDown(c.dispose);
-      c.setDefaultTransition(const SceneTransition(kind: SceneTransitionKind.fade));
+      c.setDefaultTransition(
+          const SceneTransition(kind: SceneTransitionKind.fade));
       c.soundEveryTransition(whoosh);
       expect(c.document.transitionSounds, hasLength(2),
           reason: "the default's scene and the one with its own");
     });
   });
 
-  testWidgets("a timeline sound's settings have the tools, and they work",
+  testWidgets("a sound with a volume shape can be put back to an even level",
       (tester) async {
     var doc = CanvasDocument(frameRate: 10, frames: 600, elements: [
-      _clip("song", "s.mp3", 100, channel: "music"),
+      _clip("song", "s.mp3", 100,
+          channel: "music",
+          envelope: const [GainPoint(1, 1), GainPoint(2, 0.3)]),
       _clip("vo", "v.mp3", 30, channel: "voice"),
     ]);
     var c = CanvasController(doc);
@@ -263,17 +205,19 @@ void main() {
         ChangeNotifierProvider<CanvasPreferences>(
             create: (c) => CanvasPreferences()),
       ],
-      child: MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child:
+          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
     ));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey("soundTools")), findsOneWidget);
-    expect(find.byKey(const ValueKey("soundDuckUnder")), findsOneWidget,
-        reason: "there is another channel to duck under");
-    await tester.ensureVisible(find.byKey(const ValueKey("soundFit")));
-    await tester.tap(find.byKey(const ValueKey("soundFit")));
-    await tester.pumpAndSettle();
-    var song = c.document.elements.firstWhere((e) => e.id == "song") as AudioElement;
-    expect(song.clip.runLength, closeTo(60, 0.01),
-        reason: "cut to the canvas's 600 frames at 10 a second");
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey("soundFit")), findsNothing,
+        reason: "fitting is the timeline's cut and fade");
+    await tester.ensureVisible(find.byKey(const ValueKey("soundEven")));
+    await tester.tap(find.byKey(const ValueKey("soundEven")));
+    await tester.pump(const Duration(milliseconds: 100));
+    var song =
+        c.document.elements.firstWhere((e) => e.id == "song") as AudioElement;
+    expect(song.clip.envelope, isEmpty);
+    expect(find.byKey(const ValueKey("soundTools")), findsNothing,
+        reason: "with nothing to clear, there are no tools");
   });
 }

@@ -253,6 +253,9 @@ class FetchedRows {
   const FetchedRows(this.fields, this.rows, this.raw);
 }
 
+/// mixerMasterKey is the master strip where a channel's key is wanted.
+const mixerMasterKey = "\u0000master";
+
 class CanvasController extends ChangeNotifier {
   CanvasController(CanvasDocument document,
       {AudioEngine? audioEngine, FrameSource? frameSource})
@@ -2606,6 +2609,28 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// pickedClip is the one clip picked on the timeline from another canvas
+  /// -- the master's music, seen from a scene -- when it is the only thing
+  /// picked, so its settings can be shown and changed from here.
+  CanvasElement? get pickedClip {
+    if (_selection.isNotEmpty || _offCanvas.length != 1) return null;
+    var id = _offCanvas.single;
+    CanvasElement? found;
+    _everyElement(_document, (e, _) {
+      if (e.id == id) found = e;
+      return e;
+    });
+    return found;
+  }
+
+  /// replaceAnywhere changes element [next] wherever it is -- this canvas,
+  /// the master or another scene.
+  void replaceAnywhere(CanvasElement next, {bool transient = false}) {
+    var doc = _replacedAnywhere(_document, next);
+    if (doc == null) return;
+    apply(doc, transient: transient);
+  }
+
   /// pickClips picks [ids] on the timeline, wherever each one is: a box
   /// dragged across the lanes.
   void pickClips(Set<String> ids) {
@@ -2742,26 +2767,13 @@ class CanvasController extends ChangeNotifier {
       next =
           next.withScene(entry.key, list[entry.key].copyWith(frames: frames));
     }
-    if (_document.keepTiming) {
-      var all = _document.allScenes;
-      next = next.keepingStarts(_document, fixed: {
-        for (var i in lengths.keys)
-          if (i >= 0 && i < all.length) all[i].id,
-      });
-    }
     apply(next, transient: transient);
   }
 
   /// setSceneLength sets the length of the scene being edited -- the
-  /// timeline's Length field. With keepTiming on, the frames it gains or
-  /// gives up come out of the scene after it, so nothing later moves.
-  void setSceneLength(int frames, {bool transient = false}) {
-    var next = _document.copyWith(frames: frames);
-    if (_document.keepTiming && !_document.editingMaster) {
-      next = next.keepingStarts(_document, fixed: {_document.scene.id});
-    }
-    apply(next, transient: transient);
-  }
+  /// timeline's Length field.
+  void setSceneLength(int frames, {bool transient = false}) =>
+      apply(_document.copyWith(frames: frames), transient: transient);
 
   // ------------------------------------------------------------------------
   // Cues -- see canvas_cues.dart.
@@ -2796,7 +2808,8 @@ class CanvasController extends ChangeNotifier {
     frame = math.max(0, frame);
     var by = frame - cue.frame;
     if (by == 0) return;
-    var next = _document.copyWith(cues: _sortedCues([
+    var next = _document.copyWith(
+        cues: _sortedCues([
       for (var c in cues) c.id == id ? c.copyWith(frame: frame) : c,
     ]));
     next = _everyElement(next, (e, start) {
@@ -2824,9 +2837,8 @@ class CanvasController extends ChangeNotifier {
   /// the cue: an arrival laid down anywhere then starts on the line it was
   /// meant for, and stays with it from then on.
   void cueTo(String id, String? cueId) {
-    var cue = cueId == null
-        ? null
-        : cues.where((c) => c.id == cueId).firstOrNull;
+    var cue =
+        cueId == null ? null : cues.where((c) => c.id == cueId).firstOrNull;
     apply(_everyElement(_document, (e, start) {
       if (e.id != id) return e;
       if (cue == null) return e.withBase(cue: "");
@@ -2901,10 +2913,12 @@ class CanvasController extends ChangeNotifier {
         ]),
     ];
     var next = doc.scenes.isEmpty
-        ? doc.copyWith(
-            onMaster: false,
-            elements: scenes.single.elements,
-          ).copyWith(onMaster: doc.onMaster)
+        ? doc
+            .copyWith(
+              onMaster: false,
+              elements: scenes.single.elements,
+            )
+            .copyWith(onMaster: doc.onMaster)
         : doc.withScenes(scenes, at: doc.at);
     if (doc.master case var master?) {
       next = next.copyWith(
@@ -2923,14 +2937,6 @@ class CanvasController extends ChangeNotifier {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     return null;
-  }
-
-  /// keepTiming is whether scenes keep their start times as lengths and
-  /// transitions change -- see CanvasDocument.keepTiming.
-  bool get keepTiming => _document.keepTiming;
-  set keepTiming(bool on) {
-    if (on == _document.keepTiming) return;
-    apply(_document.copyWith(keepTiming: on));
   }
 
   /// sceneAt is which one is being edited, and onMaster whether the shared
@@ -3310,14 +3316,30 @@ class CanvasController extends ChangeNotifier {
 
   /// setSceneTransition gives a scene its own way of giving way to the next,
   /// or takes it back to the document's default.
-  void setSceneTransition(int index, SceneTransition? transition) {
+  void setSceneTransition(int index, SceneTransition? transition,
+      {bool transient = false}) {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
-    apply(_timed(_document.withScene(
-        index,
-        transition == null
-            ? list[index].copyWith(clearTransition: true)
-            : list[index].copyWith(transition: transition))));
+    apply(
+        _timed(_document.withScene(
+            index,
+            transition == null
+                ? list[index].copyWith(clearTransition: true)
+                : list[index].copyWith(transition: transition))),
+        transient: transient);
+  }
+
+  /// cameraView is whether the canvas shows the scene through its camera
+  /// while paused -- stepped and scrubbed, as well as played -- so a camera
+  /// can be set up by looking. On while a camera is being set, off at the
+  /// next press on the canvas, since the page is drawn moved and a press
+  /// would land somewhere other than it looks.
+  bool get cameraView => _cameraView;
+  bool _cameraView = false;
+  set cameraView(bool on) {
+    if (on == _cameraView) return;
+    _cameraView = on;
+    notifyListeners();
   }
 
   /// setSceneCamera gives scene [index] a slow move, or holds it still with
@@ -3325,6 +3347,7 @@ class CanvasController extends ChangeNotifier {
   void setSceneCamera(int index, SceneCamera? camera) {
     var list = _document.allScenes;
     if (index < 0 || index >= list.length) return;
+    _cameraView = camera != null;
     apply(_document.withScene(
         index,
         camera == null
@@ -3344,7 +3367,8 @@ class CanvasController extends ChangeNotifier {
     var master =
         _document.master ?? CanvasScene(id: newSceneId(), name: "Master");
     var next = _document.copyWith(
-        master: master.copyWith(transition: sounded(_document.defaultTransition)));
+        master:
+            master.copyWith(transition: sounded(_document.defaultTransition)));
     var list = next.allScenes;
     for (var (i, scene) in list.indexed) {
       if (scene.transition case var t?) {
@@ -3354,10 +3378,11 @@ class CanvasController extends ChangeNotifier {
     apply(next);
   }
 
-  /// _timed is [next] with every scene back at its start, where the document
-  /// keeps its timing -- see CanvasDocument.keepingStarts.
-  CanvasDocument _timed(CanvasDocument next) =>
-      _document.keepTiming ? next.keepingStarts(_document) : next;
+  /// _timed is [next] with every scene back at its start: a transition made
+  /// longer or shorter is taken from, or given to, the scene before it, so
+  /// nothing later in the run moves against the master's voice-over. See
+  /// CanvasDocument.keepingStarts.
+  CanvasDocument _timed(CanvasDocument next) => next.keepingStarts(_document);
 
   /// setDefaultTransition changes what every scene without one of its own
   /// uses. It lives on the master canvas, which is where the things shared by
@@ -3454,6 +3479,12 @@ class CanvasController extends ChangeNotifier {
 
   set frame(int value) {
     var next = value.clamp(0, math.max(0, _document.frames - 1)).toInt();
+    // A playhead put somewhere by hand is no longer showing a transition it
+    // was stepped into -- see goToRunFrame.
+    if (_playAll && _previewFrom == null && !playing && _previewAt != null) {
+      _previewAt = null;
+      notifyListeners();
+    }
     if (next == _frame) return;
     _frame = next;
     _syncTimeline();
@@ -3475,19 +3506,29 @@ class CanvasController extends ChangeNotifier {
       frame = _frame + by;
       return;
     }
-    var scenes = document.allScenes;
-    var at = document.at;
-    var f = _frame + by;
-    while (f < 0 && at > 0) {
-      at--;
-      f += scenes[at].frames;
+    goToRunFrame(document.startOfScene(document.at) + _frame + by);
+  }
+
+  /// goToRunFrame puts the playhead on frame [run] of the whole run, on
+  /// whichever scene that is -- and where it is inside a transition, the
+  /// canvas shows the transition, as playing does.
+  ///
+  /// Counted in the run's own frames because scenes overlap where a
+  /// transition joins them. Counted scene by scene, as stepping was, the
+  /// last frame of one scene was followed by the first of the next -- which
+  /// in the run is a transition's length *earlier*, and the playhead jumped
+  /// back every time it crossed a join.
+  void goToRunFrame(int run) {
+    var document = _document;
+    run = run.clamp(0, math.max(0, document.playFrames - 1)).toInt();
+    var place = placeInSequence(document, run);
+    if (place.scene != document.at) goToScene(place.scene);
+    frame = place.frame;
+    var showing = place.changing ? run : null;
+    if (showing != _previewAt) {
+      _previewAt = showing;
+      notifyListeners();
     }
-    while (f >= scenes[at].frames && at < scenes.length - 1) {
-      f -= scenes[at].frames;
-      at++;
-    }
-    if (at != document.at) goToScene(at);
-    frame = f;
   }
 
   /// rewind is the back-to-the-start button: the first frame of the scene,
@@ -3500,6 +3541,23 @@ class CanvasController extends ChangeNotifier {
       goToScene(_document.at - 1);
       frame = 0;
     }
+  }
+
+  /// forward is rewind's mirror, the button after Play: the next scene's
+  /// first frame while Play runs every scene, and the last frame of the scene
+  /// otherwise.
+  void forward() {
+    pause();
+    // While every scene plays, straight to the next scene's start. The end
+    // of this one is inside its transition -- the next scene has already
+    // begun there -- so stopping on it first and going on from it was a
+    // step forward and then a step back.
+    if (_runsScenes && _document.at < _document.allScenes.length - 1) {
+      goToScene(_document.at + 1);
+      frame = 0;
+      return;
+    }
+    frame = math.max(0, _document.frames - 1);
   }
 
   /// _runsScenes is whether the transport works across the scenes: Play all
@@ -4401,72 +4459,15 @@ class CanvasController extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------------------
-  // The document's palette -- see canvas_palette.dart.
+  // Replacing a colour everywhere -- see canvas_palette.dart.
 
-  List<PaletteSwatch> get palette => _document.palette;
-
-  /// paletteFromCanvas makes the palette the [count] colours the canvas is
-  /// most drawn in, most used first.
-  void paletteFromCanvas({int count = 6}) {
-    var used = coloursUsed(_document.toJson()).take(count).toList();
-    apply(_document.copyWith(palette: [
-      for (var (i, c) in used.indexed) PaletteSwatch("Colour ${i + 1}", c),
-    ]));
-  }
-
-  /// setSwatch makes swatch [i] [colour], and everything on the document
-  /// drawn in its old colour -- in any scene, the master, the backgrounds and
-  /// the transitions -- the new one.
-  void setSwatch(int i, Color colour, {bool transient = false}) {
-    if (i < 0 || i >= palette.length) return;
-    var was = palette[i].color;
-    var json = recoloured(_document.toJson(), was, colour);
-    var next = CanvasDocument.fromJson(json);
-    // The swatch itself, opacity and all, whatever the remap made of it.
-    next = next.copyWith(palette: [
-      for (var (j, p) in next.palette.indexed)
-        j == i ? p.copyWith(color: colour) : p,
-    ]);
-    apply(next, transient: transient);
-  }
-
-  void addSwatch(Color colour) => apply(_document.copyWith(palette: [
-        ...palette,
-        PaletteSwatch("Colour ${palette.length + 1}", colour),
-      ]));
-
-  void removeSwatch(int i) => apply(_document.copyWith(palette: [
-        for (var (j, p) in palette.indexed)
-          if (j != i) p,
-      ]));
-
-  void renameSwatch(int i, String name, {bool transient = false}) => apply(
-      _document.copyWith(palette: [
-        for (var (j, p) in palette.indexed) j == i ? p.copyWith(name: name) : p,
-      ]),
-      transient: transient);
-
-  /// paletteToBackgrounds draws every generated background -- the
-  /// document's, each scene's and the master's -- in the palette's first
-  /// three colours: the ground, the pattern, and the highlight. What a look
-  /// chosen from the list needs to stop being its own colours and become the
-  /// video's.
-  void paletteToBackgrounds() {
-    if (palette.length < 3) return;
-    CanvasBackground painted(CanvasBackground b) => b.copyWith(
-        spec: b.spec.copyWith(
-            background: palette[0].color,
-            foreground: palette[1].color,
-            accent: palette[2].color));
-    var next = _document.copyWith(background: painted(_document.background));
-    var scenes = [
-      for (var s in next.allScenes)
-        s.background == null ? s : s.copyWith(background: painted(s.background!)),
-    ];
-    next = next.scenes.isEmpty ? next : next.withScenes(scenes, at: next.at);
-    if (next.master case var m? when m.background != null) {
-      next = next.copyWith(master: m.copyWith(background: painted(m.background!)));
-    }
+  /// replaceColour makes every use of [from] on the document -- in any
+  /// scene, the master, the backgrounds, charts, text and transitions -- [to],
+  /// as one change. Opacity is kept: a half-strength shade of [from] becomes
+  /// a half-strength shade of [to].
+  void replaceColour(Color from, Color to) {
+    var next =
+        CanvasDocument.fromJson(recoloured(_document.toJson(), from, to));
     apply(next);
   }
 
@@ -4621,7 +4622,8 @@ class CanvasController extends ChangeNotifier {
         : a.base.x.compareTo(b.base.x));
     int arrivalOf(CanvasElement e) {
       var keys = e.base.track!.keys;
-      return (keys.where((k) => k.values.containsKey(KeyframeChannel.reveal))
+      return (keys
+                  .where((k) => k.values.containsKey(KeyframeChannel.reveal))
                   .firstOrNull ??
               keys.first)
           .frame;
@@ -4649,105 +4651,6 @@ class CanvasController extends ChangeNotifier {
       }
     }
     return 0;
-  }
-
-  /// duckUnder sinks every sound on [music] by [depthDb] wherever anything
-  /// on the channel [voice] is speaking, as one change. The dips are written
-  /// into each clip's envelope, so they play and export alike and can be
-  /// cleared with clearDucking. Says how many lines it ducked under.
-  Future<int> duckUnder(TimelineChannel music, String voice,
-      {double depthDb = -12}) async {
-    var rate = math.max(1, _document.frameRate).toDouble();
-    var speech = <(double, double)>[];
-    for (var channel in timelineChannels) {
-      if (channel.key != voice) continue;
-      for (var lane in channel.lanes) {
-        var source = lane.clip.playlist.firstOrNull;
-        if (source == null || source.length <= 0) continue;
-        var peaks = await _waveformOf(source.assetId);
-        if (peaks == null) continue;
-        var begins = (_runStartOf(lane.element.id) + lane.clip.at) / rate;
-        for (var (from, to) in speechSpans(peaks, source.length)) {
-          if (to <= source.start) continue;
-          var end = source.end > 0 ? source.end : source.length;
-          if (from >= end) continue;
-          speech.add((begins + math.max(from, source.start) - source.start,
-              begins + math.min(to, end) - source.start));
-        }
-      }
-    }
-    var gain = math.pow(10, depthDb / 20).toDouble();
-    _setClips([
-      for (var lane in music.lanes)
-        if (lane.editable)
-          () {
-            var begins = (_runStartOf(lane.element.id) + lane.clip.at) / rate;
-            return (
-              lane.element,
-              lane.clip.copyWith(
-                  envelope: duckEnvelope(
-                      [for (var (a, b) in speech) (a - begins, b - begins)],
-                      gain: gain)),
-            );
-          }(),
-    ]);
-    return speech.length;
-  }
-
-  /// clearDucking puts every sound on [channel] back at an even level.
-  void clearDucking(TimelineChannel channel) => _setClips([
-        for (var lane in channel.lanes)
-          if (lane.editable) (lane.element, lane.clip.copyWith(envelope: [])),
-      ]);
-
-  /// fitToEnd makes the sound [e] end exactly on frame [end] of its own
-  /// timeline: cut short and faded where it is too long, laid in overlapping
-  /// copies -- its own ending last -- where it is too short. One change.
-  void fitToEnd(AudioElement e, int end) {
-    var source = e.clip.playlist.firstOrNull;
-    if (source == null || source.length <= 0) return;
-    var rate = math.max(1, _document.frameRate);
-    var pieces = fitTrack(
-        at: e.clip.at, length: source.length, end: end, rate: rate);
-    if (pieces.isEmpty) return;
-    CanvasElement piece(FitPiece p, String id) => e
-        .copyWith(
-            clip: e.clip.copyWith(
-          at: p.at,
-          fadeIn: p.fadeIn > 0 ? p.fadeIn : e.clip.fadeIn,
-          fadeOut: p.fadeOut,
-          playlist: [
-            MediaSource(
-                assetId: source.assetId,
-                name: source.name,
-                start: p.start,
-                end: p.end >= source.length ? 0 : p.end,
-                length: source.length)
-          ],
-        ))
-        .withId(id);
-    var made = [
-      piece(pieces.first, e.id),
-      for (var p in pieces.skip(1)) piece(p, newElementId()),
-    ];
-    List<CanvasElement> into(List<CanvasElement> list) => [
-          for (var x in list)
-            if (x.id == e.id) ...made else x,
-        ];
-    var master = _document.master;
-    if (master != null && master.elements.any((x) => x.id == e.id)) {
-      apply(_document.copyWith(
-          master: master.copyWith(elements: into(master.elements))));
-      return;
-    }
-    for (var (i, scene) in _document.allScenes.indexed) {
-      if (!scene.elements.any((x) => x.id == e.id)) continue;
-      apply(_document.scenes.isEmpty
-          ? _document.copyWith(elements: into(scene.elements))
-          : _document.withScene(
-              i, scene.copyWith(elements: into(scene.elements))));
-      return;
-    }
   }
 
   /// newChannelName is "Channel" and the next number not already taken. A
@@ -4864,6 +4767,9 @@ class CanvasController extends ChangeNotifier {
   void selectChannels(Set<String> keys) {
     if (setEquals(keys, _selectedChannels)) return;
     _selectedChannels = {...keys};
+    // One channel picked -- on the timeline or in the mixer -- is the one
+    // the effects panel shows.
+    if (keys.length == 1) _effectsOf = keys.first;
     notifyListeners();
   }
 
@@ -4949,6 +4855,146 @@ class CanvasController extends ChangeNotifier {
   /// setLaneHeight changes one channel's height.
   void setLaneHeight(String channel, double height) {
     laneHeights[channel] = height;
+    notifyListeners();
+  }
+
+  /// mixerOpen is whether the mixer is shown, under the canvas. The
+  /// reader's, for this session.
+  bool get mixerOpen => _mixerOpen;
+  bool _mixerOpen = false;
+  set mixerOpen(bool open) {
+    if (open == _mixerOpen) return;
+    _mixerOpen = open;
+    notifyListeners();
+  }
+
+  /// effectsChannel is the strip the timeline's effects button opens: the
+  /// channel picked -- in the mixer or on the timeline -- or the master
+  /// when that is what is picked, or else the channel of the sound picked,
+  /// or else the master.
+  String get effectsChannel {
+    var channels = timelineChannels;
+    if (selectedChannel case var k?) {
+      if (k == mixerMasterKey || channels.any((c) => c.key == k)) return k;
+    }
+    var picked = clipSelection;
+    for (var lane in timedLanes) {
+      if (picked.contains(lane.element.id)) return lane.channelKey;
+    }
+    return mixerMasterKey;
+  }
+
+  /// effectsOpen is whether the effects panel is shown: the chain of
+  /// effectsOf, in a panel of its own over the mixer.
+  bool get effectsOpen => _effectsOpen;
+  bool _effectsOpen = false;
+  set effectsOpen(bool open) {
+    if (open == _effectsOpen) return;
+    _effectsOpen = open;
+    notifyListeners();
+  }
+
+  /// effectsFocus is the device the effects panel was last asked to show --
+  /// "eq", "comp", "duck" ... -- and effectsFocusCount how many times it has
+  /// been asked, so asking for the same one again scrolls to it again.
+  String? get effectsFocus => _effectsFocus;
+  String? _effectsFocus;
+  int get effectsFocusCount => _effectsFocusCount;
+  int _effectsFocusCount = 0;
+
+  /// openEffects shows [key]'s chain in the effects panel, unfolded on and
+  /// scrolled to [device] where one is given.
+  void openEffects(String key, {String? device}) {
+    if (device != null) {
+      foldedDevices.remove(device);
+      _effectsFocus = device;
+      _effectsFocusCount++;
+    }
+    _effectsOf = key;
+    _effectsOpen = true;
+    notifyListeners();
+  }
+
+  /// pickStrip picks the channel [key] -- or the master, mixerMasterKey --
+  /// from the mixer: picked on the timeline too, and its chain the one the
+  /// effects panel shows.
+  void pickStrip(String key) {
+    if (selectedChannel == key && _effectsOf == key) return;
+    _effectsOf = key;
+    selectedChannel = key;
+    notifyListeners();
+  }
+
+  /// effectsOf is the strip whose chain of effects the effects panel shows,
+  /// by key or mixerMasterKey, or null for none chosen yet.
+  String? get effectsOf => _effectsOf;
+  String? _effectsOf;
+  set effectsOf(String? key) {
+    if (key == _effectsOf) return;
+    _effectsOf = key;
+    notifyListeners();
+  }
+
+  /// keyframesShown and scenesShown are whether the timeline shows its row
+  /// of keyframes and, while every scene plays, its strip of scenes: hidden
+  /// for room, the ruler and the channels stay.
+  bool get keyframesShown => _keyframesShown;
+  bool _keyframesShown = true;
+  set keyframesShown(bool shown) {
+    if (shown == _keyframesShown) return;
+    _keyframesShown = shown;
+    notifyListeners();
+  }
+
+  bool get scenesShown => _scenesShown;
+  bool _scenesShown = true;
+  set scenesShown(bool shown) {
+    if (shown == _scenesShown) return;
+    _scenesShown = shown;
+    notifyListeners();
+  }
+
+  /// restoreShown puts back which timeline rows were showing, as the
+  /// preferences kept them -- without notifying, as restoreFit, because it
+  /// runs while the page is being built.
+  void restoreShown(
+      {required bool keyframes, required bool scenes, required bool cues}) {
+    _keyframesShown = keyframes;
+    _scenesShown = scenes;
+    _cuesShown = cues;
+  }
+
+  /// cuesShown is whether the cues are marked on the timeline's ruler.
+  bool get cuesShown => _cuesShown;
+  bool _cuesShown = true;
+  set cuesShown(bool shown) {
+    if (shown == _cuesShown) return;
+    _cuesShown = shown;
+    notifyListeners();
+  }
+
+  /// foldedDevices is which of the mixer's devices are folded down to their
+  /// switch and a meter, by the device's id ("eq", "comp", "meter" ...).
+  /// The reader's, for this session, and the same on every strip.
+  final Set<String> foldedDevices = {};
+
+  void foldDevice(String id, bool folded) {
+    if (folded ? !foldedDevices.add(id) : !foldedDevices.remove(id)) return;
+    notifyListeners();
+  }
+
+  /// laneSize is the height every channel is, unless one has been dragged:
+  /// see laneSizeHeights.
+  int get laneSize => _laneSize;
+  int _laneSize = 0;
+
+  /// nextLaneSize steps every channel to the next of laneSizeHeights, round
+  /// to the first after the last -- putting back any dragged one, as the
+  /// button means all of them.
+  void nextLaneSize() {
+    // Three: small, medium and large.
+    _laneSize = (_laneSize + 1) % 3;
+    laneHeights.clear();
     notifyListeners();
   }
 
@@ -5109,8 +5155,25 @@ class CanvasController extends ChangeNotifier {
   void _syncTimeline() {
     _applyMix();
     var going = playing;
+    var ducks = _duckEnvelopes();
+    var rate = math.max(1, _document.frameRate);
     for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {
       var moment = at == null ? null : _momentOf(e, at);
+      // Turned down while a channel that ducks the others is speaking -- see
+      // Ducking.
+      if (moment != null && ducks.isNotEmpty) {
+        var clip = switch (e) {
+          AudioElement a => a.clip,
+          VideoElement v => v.clip,
+          _ => null,
+        };
+        var key = clip == null || clip.channel.isEmpty ? e.id : clip.channel;
+        if (ducks[key] case var env?) {
+          var run = (_runStartOf(e.id) + at!) / rate;
+          moment = ClipMoment(
+              moment.index, moment.time, moment.gain * envelopeAt(env, run));
+        }
+      }
       switch (e) {
         case VideoElement v:
           video.cue(v, moment, playing: going);
@@ -5119,6 +5182,27 @@ class CanvasController extends ChangeNotifier {
       }
     }
   }
+
+  /// _duckEnvelopes is how far each channel is ducked over the run -- see
+  /// duckEnvelopes -- worked out again only when the document has changed or
+  /// a recording's shape has been read since.
+  Map<String, List<GainPoint>> _duckEnvelopes() {
+    if (identical(_duckFor, _document) && _duckWaves == _waveforms.length) {
+      return _ducks;
+    }
+    _duckFor = _document;
+    _duckWaves = _waveforms.length;
+    _ducks = duckEnvelopes(_document, waveformOf);
+    return _ducks;
+  }
+
+  CanvasDocument? _duckFor;
+  int _duckWaves = -1;
+  Map<String, List<GainPoint>> _ducks = const {};
+
+  /// duckEnvelopeOf is how far channel [key] is ducked over the run, for the
+  /// timeline to draw, or null where nothing ducks it.
+  List<GainPoint>? duckEnvelopeOf(String key) => _duckEnvelopes()[key];
 
   /// _joinedCuts is the timeline's sounds as they are played: a sound cut in
   /// two, its halves still end to end on one channel, is played as the one
@@ -5210,11 +5294,17 @@ class CanvasController extends ChangeNotifier {
 
   /// setChannelMix changes one strip, as the Channels strip changes a clip --
   /// see setTimedClip.
+  ///
+  /// [anywhere] writes a clip's channel from wherever it is seen: a master
+  /// clip picked from a scene is not editable on that scene's timeline, but
+  /// its settings, opened on purpose, are its own.
   void setChannelMix(TimelineChannel channel, ChannelMix mix,
-          {bool transient = false}) =>
+          {bool transient = false, bool anywhere = false}) =>
       _setClips([
         for (var lane in channel.lanes)
-          if (lane.editable) (lane.element, lane.clip.copyWith(mix: mix)),
+          if (lane.editable ||
+              (anywhere && !lane.element.id.startsWith(transitionSoundPrefix)))
+            (lane.element, lane.clip.copyWith(mix: mix)),
       ], transient: transient);
 
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
@@ -5224,6 +5314,10 @@ class CanvasController extends ChangeNotifier {
   /// none -- is coming out now, for the meters.
   (double, double) levels([String? channel]) =>
       _audio?.levels(channel) ?? (0, 0);
+
+  /// spectrum is what a strip -- by its channel's key, or the master with
+  /// none -- is playing now, for the EQ to draw. See AudioEngine.spectrum.
+  Float32List? spectrum([String? channel]) => _audio?.spectrum(channel);
 
   /// _applyMix hands the runtime the mixer as it stands. Cheap when nothing
   /// has changed: the runtime compares before it calls the engine.

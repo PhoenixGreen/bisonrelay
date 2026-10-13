@@ -1,3 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
+import 'package:bruig/plugin_system/canvas/render/chart_common.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -169,6 +173,86 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                     stroke: s.stroke ?? g.to,
                     strokeWidth: s.strokeWidth > 0 ? null : 1,
                     strokeFade: g))),
+      ];
+    // A drawing still as its file draws it: one colour over the whole of
+    // it -- see VectorElement.tint. None is the file's own colours.
+    case VectorElement v:
+      return [
+        slot("tint", "Tint", false, v.tint, null,
+            (c) => c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
+            (_) => v),
+      ];
+    // A chart's colours are its series' -- or, on a pie, its slices'. As
+    // many as there are, up to a row of swatches' worth.
+    case ChartElement c when c.type.isCircular:
+      var slices = c.data.categories.length.clamp(0, 8);
+      return [
+        for (var i = 0; i < slices; i++)
+          slot(
+              "slice$i",
+              c.data.categories[i].isEmpty ? "${i + 1}" : c.data.categories[i],
+              false,
+              sliceColour(c, i),
+              null,
+              (x) => c.copyWith(sliceColors: [
+                    for (var j = 0; j < c.data.categories.length; j++)
+                      j == i ? (x ?? sliceColour(c, j)) : sliceColour(c, j),
+                  ]),
+              (_) => c,
+              canBeNone: false),
+      ];
+    case ChartElement c:
+      var series = c.data.series;
+      return [
+        for (var (i, one) in series.take(8).indexed)
+          slot(
+              "series$i",
+              one.name.isEmpty ? "Series ${i + 1}" : one.name,
+              false,
+              one.color,
+              null,
+              (x) => c.copyWith(
+                  data: c.data.copyWith(series: [
+                for (var (j, s) in series.indexed)
+                  j == i ? s.copyWith(color: x ?? s.color) : s,
+              ])),
+              (_) => c,
+              canBeNone: false),
+      ];
+    // A counter: its number, the words either side of it, and its box.
+    case CounterElement n:
+      return [
+        slot("number", "Number", false, n.numberSpec.color, null,
+            (x) => n.copyWith(
+                numberSpec: n.numberSpec.copyWith(color: x ?? n.numberSpec.color)),
+            (_) => n,
+            canBeNone: false),
+        slot("words", "Words", false, n.affixSpec.color, null,
+            (x) => n.copyWith(
+                affixSpec: n.affixSpec.copyWith(color: x ?? n.affixSpec.color)),
+            (_) => n,
+            canBeNone: false),
+        slot("box", "Box", false, n.box.fill.a == 0 ? null : n.box.fill, null,
+            (x) => n.copyWith(
+                box: n.box.copyWith(fill: x ?? const Color(0x00000000))),
+            (_) => n),
+      ];
+    // A table: its heading row's fill, and the words in it and below it.
+    case TableElement t:
+      return [
+        slot("header", "Heading", false, t.headerFill, null,
+            (x) => t.copyWith(headerFill: x ?? const Color(0x00000000)),
+            (_) => t),
+        slot("headerText", "Heading words", false, t.headerSpec.color, null,
+            (x) => t.copyWith(
+                headerSpec: t.headerSpec.copyWith(color: x ?? t.headerSpec.color)),
+            (_) => t,
+            canBeNone: false),
+        slot("cellText", "Words", false, t.cellSpec.color, null,
+            (x) => t.copyWith(
+                cellSpec: t.cellSpec.copyWith(color: x ?? t.cellSpec.color)),
+            (_) => t,
+            canBeNone: false),
       ];
     case ShapeElement s:
       return [
@@ -469,16 +553,6 @@ class _ColourPanelState extends State<ColourPanel> {
                       : () => _now(() => active.setColour(controller.sampled,
                           transient: true)),
                 ),
-                // The document's palette, a press each from the colour being
-                // chosen -- see canvas_palette.dart.
-                for (var (i, swatch) in controller.palette.indexed)
-                  _Dot(
-                    key: ValueKey("paletteDot$i"),
-                    color: swatch.color,
-                    tip: swatch.name,
-                    onTap: () => _now(() =>
-                        active.setColour(swatch.color, transient: true)),
-                  ),
               ]),
             ],
           );
@@ -502,6 +576,12 @@ class _ColourPanelState extends State<ColourPanel> {
                           _write(() => active.setColour(c, transient: true)),
                       onGradientChanged: (g) =>
                           _write(() => active.setGradient(g, transient: true)),
+                      // A saved colour replaced by this one, everywhere on
+                      // the canvas it is used -- see replaceColour.
+                      onReplaceEverywhere: (from, to) {
+                        _done();
+                        controller.replaceColour(from, to);
+                      },
                     ),
                   ),
                 ),
@@ -697,12 +777,7 @@ class _NonePainter extends CustomPainter {
 class _Dot extends StatelessWidget {
   final Color? color;
   final VoidCallback? onTap;
-  final String tip;
-  const _Dot(
-      {required this.color,
-      required this.onTap,
-      this.tip = "Use again",
-      super.key});
+  const _Dot({required this.color, required this.onTap, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -710,7 +785,7 @@ class _Dot extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 5),
       child: Tooltip(
-        message: tip,
+        message: "Use again",
         child: GestureDetector(
           onTap: onTap,
           child: Container(
