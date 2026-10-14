@@ -64,6 +64,17 @@ class MasterSound {
       this.compFirst = false});
 }
 
+/// busLevels splits a strip's level on each side into what SoLoud takes:
+/// a volume, which may be over one -- a fader above nought -- and a pan for
+/// each side, which may not. The louder side is the volume, and each side a
+/// share of it. Passing the levels as the pan, as was done, threw for any
+/// fader above nought, and the throw lost the strip's EQ and compressor too.
+(double, double, double) busLevels(double left, double right) {
+  var loud = math.max(left, right);
+  if (loud <= 0) return (0, 1, 1);
+  return (loud, left / loud, right / loud);
+}
+
 /// reorderSteps is how to go from the filters running, [have], to [want],
 /// both in order, when a filter switched on always lands last: switch off
 /// everything from the first one out of place, then switch on the rest of
@@ -274,8 +285,9 @@ class SoLoudAudioEngine implements AudioEngine {
       }
       var handle = bus.soundHandle;
       if (handle != null) {
-        _soloud.setVolume(handle, 1);
-        _soloud.setPanAbsolute(handle, sound.left, sound.right);
+        var (volume, left, right) = busLevels(sound.left, sound.right);
+        _soloud.setVolume(handle, volume);
+        _soloud.setPanAbsolute(handle, left, right);
       }
       var f = bus.filters;
       var fresh = _arrange(key, [

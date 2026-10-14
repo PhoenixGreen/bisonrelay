@@ -227,6 +227,21 @@ void main() {
     });
   });
 
+  test("a strip above nought is its volume, its pan held to one", () {
+    // Reported: a fader above nought threw in SoLoud's pan, which takes
+    // nothing over one -- and the throw lost the strip's EQ and compressor.
+    var (gl, gr) = const ChannelMix(gainDb: 6, balance: 0.5).gains;
+    var (volume, left, right) = busLevels(gl, gr);
+    expect(volume, greaterThan(1));
+    for (var side in [left, right]) {
+      expect(side, inInclusiveRange(-1, 1));
+    }
+    expect(volume * left, closeTo(gl, 1e-9));
+    expect(volume * right, closeTo(gr, 1e-9));
+    expect(busLevels(0, 0), (0.0, 1.0, 1.0), reason: "muted: silent, centred");
+    expect(busLevels(1, 1), (1.0, 1.0, 1.0));
+  });
+
   group("the order of the EQ and the compressor", () {
     test("is the strip's, in the export", () {
       const eq = Eq(on: true, mid: EqBand(1000, gainDb: 3));
