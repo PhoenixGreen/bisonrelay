@@ -29,6 +29,14 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/ui/quick_fill.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
+import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
@@ -114,6 +122,23 @@ enum _DragMode {
   /// moves neither the element nor the picture's pixels -- only which part of
   /// them the frame is showing. See ImageFraming.
   imageFrame,
+
+  /// imageLayerMove, imageLayerSize and imageLayerTurn are a picture layer
+  /// being moved, resized by one of its handles, or turned by its knob, in a
+  /// picture whose layers are being edited. See image_layers.dart.
+  imageLayerMove,
+  imageLayerSize,
+  imageLayerTurn,
+
+  /// imageMask is a mark being made on a picture's mask: a brush stroke, a
+  /// lasso being drawn round something, or a gradient being dragged out.
+  imageMask,
+
+  /// imageQuick is a quick-select stroke being drawn.
+  imageQuick,
+
+  /// imageBrush is a paint or retouching stroke being drawn.
+  imageBrush,
 
   /// flow is a link being pulled out of a text box's overflow grip and
   /// dropped on another box, which is how a chain of boxes is made. Its own
@@ -313,12 +338,43 @@ class CanvasStageState extends State<CanvasStage> {
 
   /// _framing is the picture being repositioned inside its frame, if one is.
   ///
-  /// A mode rather than a tool, entered by double-clicking a picture that is
-  /// already selected -- the same second click that opens a text element for
-  /// typing and a table's cell for editing. Dragging inside a picture has to
-  /// go on moving the picture *element*, which is what it does nine times out
-  /// of ten; asking for the other thing is a second click.
-  String? _framing;
+  /// It is the picture whose layers are open with the base picture picked
+  /// and the move tool in hand: a picture layer is moved by moving its box,
+  /// and the base picture, which always fills the frame, by moving it about
+  /// inside it. Opened by double-clicking a picture that is already selected
+  /// -- the same second click that opens a text element for typing and a
+  /// table's cell for editing. Dragging inside a picture has to go on moving
+  /// the picture *element*, which is what it does nine times out of ten;
+  /// asking for the other thing is a second click.
+  String? get _framing {
+    var e = controller.editingImage;
+    if (e == null ||
+        !e.hasImage ||
+        controller.imageLayer != baseLayerId ||
+        controller.imageTool != ImageTool.move) {
+      return null;
+    }
+    return e.id;
+  }
+
+  /// _layerStart is the picture layer being dragged as it was when the drag
+  /// started, and _layerHandle the handle held -- see boxHandles.
+  ImageLayer? _layerStart;
+  int _layerHandle = -1;
+
+  /// _maskOn is the picture a mark is being made on, while one is.
+  LayerPicture? _maskOn;
+
+  /// _strokeAt turns a point on the canvas into one of the stroke being
+  /// drawn -- a fraction of the frame for paint, of the picture for
+  /// retouching -- while one is.
+  Offset Function(Offset)? _strokeAt;
+
+  /// _quickTrail is a quick-select stroke being drawn, in fractions of the
+  /// picture, and _quickSubtract whether it takes away; the stroke is cut
+  /// when it is let go.
+  List<Offset> _quickTrail = const [];
+  bool _quickSubtract = false;
 
   /// _guideIndex is which guide is being dragged, while one is.
   int _guideIndex = -1;
@@ -502,7 +558,13 @@ class CanvasStageState extends State<CanvasStage> {
     // The green screen's shader, read once for the whole app. Until it has
     // landed a keyed video is drawn unkeyed, and this repaints when it does.
     VideoKey.ready.addListener(_onChanged);
+    AdjustShader.ready.addListener(_onChanged);
+    TextureShader.ready.addListener(_onChanged);
+    SharpenShader.ready.addListener(_onChanged);
     unawaited(VideoKey.load());
+    unawaited(AdjustShader.load());
+    unawaited(TextureShader.load());
+    unawaited(SharpenShader.load());
   }
 
   @override
@@ -527,6 +589,9 @@ class CanvasStageState extends State<CanvasStage> {
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
     VideoKey.ready.removeListener(_onChanged);
+    AdjustShader.ready.removeListener(_onChanged);
+    TextureShader.ready.removeListener(_onChanged);
+    SharpenShader.ready.removeListener(_onChanged);
     _focus.dispose();
     super.dispose();
   }
@@ -536,11 +601,8 @@ class CanvasStageState extends State<CanvasStage> {
     // layers list, from a keyboard shortcut, by undoing back past the picture
     // -- has to leave the mode, or the ghost of a picture nobody is looking at
     // any more stays on the canvas over whatever is selected now.
-    if (_framing != null &&
-        (controller.selection.length != 1 ||
-            controller.selection.first != _framing)) {
-      _framing = null;
-    }
+    // Reframing follows the selection by way of the controller, which closes
+    // a picture's layers when it stops being the one thing selected.
     if (mounted) setState(() {});
   }
 
@@ -1673,18 +1735,12 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // While a picture is being reframed, a press inside it drags the picture
-    // rather than the element. A press anywhere else is how the reframing is
+    // While a picture's layers are open, a press on it works on them rather
+    // than on the element. A press anywhere else is how the editing is
     // finished -- the same way clicking off a text editor closes it.
-    if (_framing != null) {
-      var framed = document.elementById(_framing!);
-      if (framed is ImageElement && _containsPoint(framed, doc)) {
-        _framingStart = framed.framing;
-        _mode = _DragMode.imageFrame;
-        controller.beginInteraction();
-        return;
-      }
-      setState(() => _framing = null);
+    if (controller.editingImage case var picture?) {
+      if (_pressLayers(picture, doc)) return;
+      controller.editImage(null);
     }
 
     // A guide, before anything on the canvas. It is drawn over the design and
@@ -2040,23 +2096,18 @@ class CanvasStageState extends State<CanvasStage> {
       return;
     }
 
-    // A second click on a picture that is already selected reframes it:
-    // dragging then moves the picture inside its box instead of moving the
-    // box. Only for a picture that fills its box -- see ImageFraming -- and
-    // one that does not is switched to, because "fit inside" shows the whole
-    // picture and there would be nothing to move.
+    // A second click on a picture that is already selected opens its layers,
+    // with the layer under the click picked. With the base picture picked,
+    // dragging moves the picture inside its box instead of moving the box --
+    // see _framing.
     if (element is ImageElement &&
-        element.hasImage &&
         !_shiftHeld &&
         !element.locked &&
         controller.selection.length == 1 &&
         controller.selection.first == element.id &&
         _pressedAt != Offset.zero &&
         DateTime.now().difference(_lastClickAt) < _doubleClickWindow) {
-      if (element.fit != ImageFit.cover) {
-        controller.replaceElement(element.copyWith(fit: ImageFit.cover));
-      }
-      setState(() => _framing = element.id);
+      controller.editImage(element.id, layer: layerAt(element, doc).id);
       _mode = _DragMode.none;
       return;
     }
@@ -3442,6 +3493,418 @@ class CanvasStageState extends State<CanvasStage> {
     });
   }
 
+  /// _layerReach is how near, in document units, a press has to be to a
+  /// layer's handle to take hold of it.
+  double get _layerReach => (handleSize / 2 + handleHitSlop) / _scale;
+
+  /// _layerKnob is where the knob that turns [space]'s layer is: above the
+  /// middle of its top, out along the way it faces.
+  Offset _layerKnob(LayerSpace space) {
+    var corners = space.corners;
+    var top = (corners[0] + corners[1]) / 2;
+    var middle = (corners[0] + corners[2]) / 2;
+    var up = top - middle;
+    var length = up.distance;
+    var away = length == 0 ? const Offset(0, -1) : up / length;
+    return top + away * (shapeTurnReach / _scale);
+  }
+
+  /// _layerBoxes is what the painter draws over a picture whose layers are
+  /// open. See StageLayers.
+  StageLayers? _layerBoxes() {
+    var e = controller.editingImage;
+    if (e == null) return null;
+    var picked = controller.pickedLayer;
+    // With a brush in hand, its ring -- and, cloning, where it copies from.
+    if (controller.imageTool.paints && picked != null) {
+      var tool = controller.imageTool;
+      var hover = _toDocument(_hoverAt);
+      if (!tool.retouches) {
+        var inner = e.box.inner(e.bounds);
+        return StageLayers(
+            ring: (
+              hover,
+              controller.paintSize * math.min(inner.width, inner.height)
+            ));
+      }
+      var on = _maskPicture(e);
+      if (on == null) return const StageLayers();
+      Offset? marker;
+      if (tool == ImageTool.clone && controller.cloneFrom != null) {
+        var offset = controller.cloneOffset;
+        marker = offset == null
+            ? on.fromPicture(controller.cloneFrom!)
+            : on.fromPicture(on.toPicture(hover) + offset);
+      }
+      return StageLayers(
+          ring: (
+            hover,
+            controller.paintSize * on.shortSide * on.canvasPerPixel
+          ),
+          marker: marker);
+    }
+    // With a mask tool in hand the boxes are in the way: the picture, its
+    // mask as it is being shown, and the brush's ring.
+    if (controller.imageTool.masks && picked != null) {
+      var on = _maskPicture(e);
+      if (controller.maskBusy == null && _mode != _DragMode.imageQuick) {
+        _quickTrail = const [];
+      }
+      var brushes = controller.imageTool == ImageTool.brush ||
+          controller.imageTool == ImageTool.quick ||
+          controller.imageTool == ImageTool.refine;
+      return StageLayers(
+        masking: (
+          element: e,
+          layer: picked.id,
+          view: controller.maskView,
+        ),
+        trail: on == null || _quickTrail.isEmpty
+            ? null
+            : (
+                [for (var f in _quickTrail) on.fromPicture(f)],
+                controller.maskBrushSize * on.shortSide * on.canvasPerPixel,
+                _quickSubtract,
+              ),
+        ring: brushes && on != null
+            ? (
+                _toDocument(_hoverAt),
+                controller.maskBrushSize * on.shortSide * on.canvasPerPixel
+              )
+            : null,
+      );
+    }
+    var others = [
+      for (var l in e.stack)
+        if (l.kind == LayerKind.picture && l.visible && l.id != picked?.id)
+          LayerSpace(e, l).corners
+    ];
+    if (picked == null || picked.kind != LayerKind.picture) {
+      var inner = e.box.inner(e.bounds);
+      var space = LayerSpace(e, ImageLayer.base);
+      return StageLayers(
+          others: others,
+          picked: [inner.topLeft, inner.topRight, inner.bottomRight,
+                  inner.bottomLeft]
+              .map(space.fromFrame)
+              .toList());
+    }
+    var space = LayerSpace(e, picked);
+    return StageLayers(
+      others: others,
+      picked: space.corners,
+      handles: [for (var h in boxHandles(space.rect)) space.fromLayer(h)],
+      knob: _layerKnob(space),
+    );
+  }
+
+  /// _pressLayers is a press at [doc] on [e] while its layers are open: the
+  /// picked layer's knob or handles, then whichever picture layer is on top
+  /// under the press, then the base picture. False when the press missed the
+  /// picture altogether, which closes it.
+  bool _pressLayers(ImageElement e, Offset doc) {
+    if (controller.imageTool.masks) return _pressMask(e, doc);
+    if (controller.imageTool.paints) return _pressBrush(e, doc);
+    var picked = controller.pickedLayer;
+    if (picked != null &&
+        picked.kind == LayerKind.picture &&
+        picked.visible) {
+      var space = LayerSpace(e, picked);
+      if ((doc - _layerKnob(space)).distance <= _layerReach) {
+        return _holdLayer(picked, _DragMode.imageLayerTurn, -1);
+      }
+      for (var (i, h) in boxHandles(space.rect).indexed) {
+        if ((doc - space.fromLayer(h)).distance <= _layerReach) {
+          return _holdLayer(picked, _DragMode.imageLayerSize, i);
+        }
+      }
+    }
+    var under = layerAt(e, doc);
+    if (!under.isBase) {
+      controller.pickImageLayer(under.id);
+      return _holdLayer(under, _DragMode.imageLayerMove, -1);
+    }
+    if (!_containsPoint(e, doc)) return false;
+    controller.pickImageLayer(baseLayerId);
+    // The base picture always fills its frame, so moving it is moving it
+    // about inside the frame -- which only a picture filling the frame has
+    // room to do. See ImageFraming.
+    if (e.hasImage && e.fit == ImageFit.cover) {
+      _framingStart = e.framing;
+      _mode = _DragMode.imageFrame;
+      controller.beginInteraction();
+    } else {
+      _mode = _DragMode.none;
+    }
+    return true;
+  }
+
+  /// _maskPicture is where the picked layer of [e] draws its picture, once
+  /// the picture has loaded.
+  LayerPicture? _maskPicture(ImageElement e) {
+    var picked = controller.pickedLayer;
+    if (picked != null && picked.framed) return LayerPicture.frame(e, picked);
+    var look = lookOf(e, controller.imageLayer);
+    if (look == null || !look.hasImage) return null;
+    var image = controller.images.original(look.assetId);
+    if (image == null) return null;
+    return LayerPicture.of(e, controller.imageLayer,
+        Size(image.width.toDouble(), image.height.toDouble()));
+  }
+
+  /// _pressMask is a press with a mask tool in hand: a click for a subject,
+  /// or the start of a mark. Anywhere on the picture, or near enough to it
+  /// that a stroke can start off its edge; further off, it misses.
+  bool _pressMask(ImageElement e, Offset doc) {
+    var on = _maskPicture(e);
+    if (on == null) return _containsPoint(e, doc);
+    var f = on.toPicture(doc);
+    bool within(double v) => v >= 0 && v <= 1;
+    var inside = within(f.dx) && within(f.dy);
+    if (!inside && !_containsPoint(e, doc)) return false;
+    var alt = HardwareKeyboard.instance.isAltPressed;
+    var hide = controller.maskHide != alt;
+    // The tools that look at a picture's pixels have none to look at on an
+    // adjustment, a texture, a colour or paint.
+    if ((controller.pickedLayer?.framed ?? false) &&
+        (controller.imageTool == ImageTool.subject ||
+            controller.imageTool == ImageTool.quick ||
+            controller.imageTool == ImageTool.refine)) {
+      _mode = _DragMode.none;
+      controller.noteForBrush("${controller.imageTool.label} looks for a "
+          "subject in a picture. On this layer, mask with the brush, the "
+          "lasso or a gradient.");
+      return true;
+    }
+    MaskMark mark;
+    switch (controller.imageTool) {
+      case ImageTool.subject:
+        _mode = _DragMode.none;
+        if (inside) {
+          unawaited(controller.findSubject(
+              at: f,
+              how: _shiftHeld
+                  ? MaskCombine.add
+                  : alt
+                      ? MaskCombine.subtract
+                      : MaskCombine.replace));
+        }
+        return true;
+      case ImageTool.quick || ImageTool.refine:
+        _maskOn = on;
+        _quickTrail = [f];
+        _quickSubtract = alt;
+        _mode = _DragMode.imageQuick;
+        setState(() {});
+        return true;
+      case ImageTool.brush:
+        var pressure = _penSample(doc).pressure;
+        mark = MaskMark(
+            kind: MaskMarkKind.brush,
+            points: [f],
+            pressure: pressure == null ? const [] : [pressure],
+            radius: controller.maskBrushSize,
+            hardness: controller.maskHardness,
+            strength: controller.maskStrength,
+            hide: hide);
+      case ImageTool.lasso:
+        mark = MaskMark(kind: MaskMarkKind.lasso, points: [f], hide: hide);
+      case ImageTool.fade:
+        mark = MaskMark(
+            kind: MaskMarkKind.fade,
+            points: [f, f],
+            radial: controller.maskRadial,
+            strength: controller.maskStrength,
+            hide: hide);
+      default:
+        return false;
+    }
+    _maskOn = on;
+    _mode = _DragMode.imageMask;
+    controller.beginInteraction();
+    controller.changeMask((m) => m.withMark(mark).copyWith(on: true),
+        transient: true);
+    return true;
+  }
+
+  /// _dragMask carries the mark being made to [doc].
+  void _dragMask(Offset doc) {
+    var on = _maskOn;
+    if (on == null) return;
+    var f = on.toPicture(doc);
+    var pressure = _penSample(doc).pressure;
+    controller.changeMask((m) {
+      if (m.marks.isEmpty) return m;
+      var last = m.marks.last;
+      if (last.kind == MaskMarkKind.fade) {
+        return m.withLastMark(last.copyWith(points: [last.points.first, f]));
+      }
+      // Not every pixel of the drag: a point every half a picture pixel or
+      // so is all a stroke can show, and a stroke is kept in the document.
+      var was = last.points.last;
+      var gap = Offset((f.dx - was.dx) * on.size.width,
+          (f.dy - was.dy) * on.size.height);
+      if (gap.distance < 0.75) return m;
+      return m.withLastMark(last.copyWith(
+          points: [...last.points, f],
+          pressure: last.pressure.isEmpty || pressure == null
+              ? last.pressure
+              : [...last.pressure, pressure]));
+    }, transient: true);
+  }
+
+  /// _frameFraction is [doc] as a fraction of [e]'s frame, across and down.
+  Offset _frameFraction(ImageElement e, Offset doc) {
+    var space = LayerSpace(e, ImageLayer.base);
+    var p = space.toFrame(doc) - space.inner.topLeft;
+    return Offset(p.dx / math.max(1e-9, space.inner.width),
+        p.dy / math.max(1e-9, space.inner.height));
+  }
+
+  /// _pressBrush is a press with a paint or retouching brush in hand: the
+  /// start of a stroke -- or, with the clone tool and Option, the choosing
+  /// of where to copy from.
+  bool _pressBrush(ImageElement e, Offset doc) {
+    var tool = controller.imageTool;
+    var alt = HardwareKeyboard.instance.isAltPressed;
+    var pressure = _penSample(doc).pressure;
+    if (!tool.retouches) {
+      if (!_containsPoint(e, doc)) return false;
+      controller.beginInteraction();
+      // Paint goes on a paint layer: one is made over the layer picked,
+      // where that is not one already -- in the same step as the stroke.
+      if (controller.pickedLayer?.kind != LayerKind.paint) {
+        controller.addImageLayer(ImageLayer.painting());
+      }
+      var f = _frameFraction(controller.editingImage!, doc);
+      var mark = StrokeMark(
+          kind: tool == ImageTool.erase || alt
+              ? StrokeKind.erase
+              : StrokeKind.paint,
+          points: [f],
+          pressure: pressure == null ? const [] : [pressure],
+          radius: controller.paintSize,
+          hardness: controller.paintHardness,
+          strength: controller.paintStrength,
+          colour: controller.paintColour);
+      controller.changePaint((s) => [...s, mark], transient: true);
+      _strokeAt = (doc) => _frameFraction(controller.editingImage!, doc);
+      _mode = _DragMode.imageBrush;
+      return true;
+    }
+    var on = _maskPicture(e);
+    if (on == null) return _containsPoint(e, doc);
+    var f = on.toPicture(doc);
+    bool within(double v) => v >= 0 && v <= 1;
+    if (!(within(f.dx) && within(f.dy)) && !_containsPoint(e, doc)) {
+      return false;
+    }
+    var source = Offset.zero;
+    if (tool == ImageTool.clone) {
+      _mode = _DragMode.none;
+      if (alt) {
+        controller.cloneFrom = f;
+        return true;
+      }
+      var from = controller.cloneFrom;
+      if (from == null) {
+        controller.noteForBrush(
+            "Option-click first, on what to copy from -- then paint where it "
+            "is to go.");
+        return true;
+      }
+      source = controller.cloneOffset ??= from - f;
+    }
+    var mark = StrokeMark(
+        kind: switch (tool) {
+          ImageTool.clone => StrokeKind.clone,
+          ImageTool.heal => StrokeKind.heal,
+          ImageTool.dodge =>
+            controller.burning != alt ? StrokeKind.burn : StrokeKind.dodge,
+          ImageTool.sharpen => StrokeKind.sharpen,
+          ImageTool.smudge => StrokeKind.smudge,
+          _ => StrokeKind.blur,
+        },
+        points: [f],
+        pressure: pressure == null ? const [] : [pressure],
+        radius: controller.paintSize,
+        hardness: controller.paintHardness,
+        strength: controller.paintStrength,
+        source: source);
+    controller.beginInteraction();
+    controller.changeRetouch((s) => [...s, mark], transient: true);
+    _strokeAt = on.toPicture;
+    _mode = _DragMode.imageBrush;
+    return true;
+  }
+
+  /// _dragBrush carries the stroke being drawn to [doc].
+  void _dragBrush(Offset doc) {
+    var at = _strokeAt;
+    if (at == null) return;
+    var f = at(doc);
+    var pressure = _penSample(doc).pressure;
+    List<StrokeMark> grown(List<StrokeMark> strokes) {
+      if (strokes.isEmpty) return strokes;
+      var last = strokes.last;
+      if ((f - last.points.last).distance < 0.0005) return strokes;
+      return [
+        ...strokes.sublist(0, strokes.length - 1),
+        last.copyWith(
+            points: [...last.points, f],
+            pressure: last.pressure.isEmpty || pressure == null
+                ? last.pressure
+                : [...last.pressure, pressure]),
+      ];
+    }
+
+    if (controller.imageTool.retouches) {
+      controller.changeRetouch(grown, transient: true);
+    } else {
+      controller.changePaint(grown, transient: true);
+    }
+  }
+
+  bool _holdLayer(ImageLayer layer, _DragMode mode, int handle) {
+    _layerStart = layer;
+    _layerHandle = handle;
+    _mode = mode;
+    controller.beginInteraction();
+    return true;
+  }
+
+  /// _dragLayer carries the picture layer held to where the pointer is.
+  void _dragLayer(Offset doc) {
+    var e = controller.editingImage, was = _layerStart;
+    if (e == null || was == null) return;
+    var start = e.withLayer(was.id, (_) => was);
+    var space = LayerSpace(start, was);
+    ImageLayer next;
+    switch (_mode) {
+      case _DragMode.imageLayerMove:
+        // The travel in the frame's own unturned space, so a turned picture
+        // still moves the way the pointer does.
+        var travel = space.toFrame(doc) - space.toFrame(_dragStart);
+        var rect = space.rect.shift(travel);
+        next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
+      case _DragMode.imageLayerSize:
+        // The corners keep the picture's proportions, as every editor's do
+        // now; Shift lets them go.
+        var even = _layerHandle < 4 && !_shiftHeld;
+        var rect = space.resized(doc, _layerHandle,
+            (r, h, p) => boxResized(r, h, p, even: even, least: 4));
+        next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
+      case _DragMode.imageLayerTurn:
+        var turn = space.turnTo(doc);
+        if (_shiftHeld) turn = (turn / 15).round() * 15.0;
+        turn = ((turn + 180) % 360) - 180;
+        next = was.placed(was.place, turn: turn);
+      default:
+        return;
+    }
+    controller.changeImage(e.withLayer(was.id, (_) => next), transient: true);
+  }
+
   /// _framedPicture is the element being reframed and the picture in it,
   /// when both are there to be had.
   (ImageElement, ui.Image)? _framedPicture() {
@@ -4130,6 +4593,18 @@ class CanvasStageState extends State<CanvasStage> {
         _applyCounterPart(doc);
       case _DragMode.imageFrame:
         _applyFraming(doc);
+      case _DragMode.imageLayerMove ||
+            _DragMode.imageLayerSize ||
+            _DragMode.imageLayerTurn:
+        _dragLayer(doc);
+      case _DragMode.imageMask:
+        _dragMask(doc);
+      case _DragMode.imageBrush:
+        _dragBrush(doc);
+      case _DragMode.imageQuick:
+        if (_maskOn case var on?) {
+          setState(() => _quickTrail = [..._quickTrail, on.toPicture(doc)]);
+        }
       case _DragMode.guide:
         _applyGuide(doc);
       default:
@@ -4681,12 +5156,26 @@ class CanvasStageState extends State<CanvasStage> {
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
+        _mode == _DragMode.imageLayerMove ||
+        _mode == _DragMode.imageLayerSize ||
+        _mode == _DragMode.imageLayerTurn ||
+        _mode == _DragMode.imageMask ||
+        _mode == _DragMode.imageBrush ||
         _mode == _DragMode.vectorPoint ||
         _mode == _DragMode.guide) {
       controller.endInteraction();
     }
+    if (_mode == _DragMode.imageQuick && _quickTrail.isNotEmpty) {
+      unawaited(controller.imageTool == ImageTool.refine
+          ? controller.refineEdge(_quickTrail)
+          : controller.quickSelect(_quickTrail, subtract: _quickSubtract));
+      // Left on the canvas until the cut lands, so the stroke does not
+      // vanish for the moment it takes.
+    }
     _mode = _DragMode.none;
     _handle = null;
+    _maskOn = null;
+    _strokeAt = null;
     // The lines only mean anything while something is being dragged onto
     // them.
     if (_snappedTo != null) setState(() => _snappedTo = null);
@@ -4708,6 +5197,14 @@ class CanvasStageState extends State<CanvasStage> {
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
+    // The brush's ring follows the pointer.
+    if (controller.editingImage != null &&
+        (controller.imageTool == ImageTool.brush ||
+            controller.imageTool == ImageTool.quick ||
+            controller.imageTool == ImageTool.refine ||
+            controller.imageTool.paints)) {
+      setState(() {});
+    }
     var doc = _toDocument(stage);
     var element = _hitElement(doc);
     var id = element is ButtonElement ? element.id : null;
@@ -4874,6 +5371,12 @@ class CanvasStageState extends State<CanvasStage> {
             : controller.stepFrame(-10);
       case LogicalKeyboardKey.arrowDown:
         nudging ? controller.nudgeSelected(0, step) : controller.stepFrame(10);
+      // A picture's layers open with a layer picked: the layer goes, not the
+      // picture.
+      case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace
+          when controller.editingImage != null &&
+              controller.imageLayer != baseLayerId:
+        controller.removeImageLayer(controller.imageLayer);
       case LogicalKeyboardKey.delete:
       case LogicalKeyboardKey.backspace:
         controller.deleteSelected();
@@ -4883,6 +5386,54 @@ class CanvasStageState extends State<CanvasStage> {
         controller.finishPenShape();
       // The drawing's tools, while it is edited: V picks points, P the pen,
       // S scales, I tints. A tool's key again goes back to picking.
+      case LogicalKeyboardKey.keyV when controller.editingImage != null:
+        controller.imageTool = ImageTool.move;
+      // A picture's mask tools, while its layers are open.
+      case LogicalKeyboardKey.keyW when controller.editingImage != null:
+        controller.imageTool = ImageTool.subject;
+      case LogicalKeyboardKey.keyB when controller.editingImage != null:
+        controller.imageTool = ImageTool.brush;
+      case LogicalKeyboardKey.keyQ when controller.editingImage != null:
+        controller.imageTool = ImageTool.quick;
+      case LogicalKeyboardKey.keyR when controller.editingImage != null:
+        controller.imageTool = ImageTool.refine;
+      case LogicalKeyboardKey.keyP when controller.editingImage != null:
+        controller.imageTool = ImageTool.paint;
+      case LogicalKeyboardKey.keyE when controller.editingImage != null:
+        controller.imageTool = ImageTool.erase;
+      case LogicalKeyboardKey.keyS when controller.editingImage != null:
+        controller.imageTool = ImageTool.clone;
+      case LogicalKeyboardKey.keyJ when controller.editingImage != null:
+        controller.imageTool = ImageTool.heal;
+      case LogicalKeyboardKey.keyO when controller.editingImage != null:
+        controller.imageTool = ImageTool.dodge;
+      case LogicalKeyboardKey.keyU when controller.editingImage != null:
+        controller.imageTool = ImageTool.soften;
+      case LogicalKeyboardKey.keyY when controller.editingImage != null:
+        controller.imageTool = ImageTool.sharpen;
+      case LogicalKeyboardKey.keyM when controller.editingImage != null:
+        controller.imageTool = ImageTool.smudge;
+      case LogicalKeyboardKey.keyL when controller.editingImage != null:
+        controller.imageTool = ImageTool.lasso;
+      case LogicalKeyboardKey.keyG when controller.editingImage != null:
+        controller.imageTool = ImageTool.fade;
+      // X turns the mask tools over, as it swaps the colours everywhere.
+      case LogicalKeyboardKey.keyX when controller.editingImage != null:
+        controller.maskHide = !controller.maskHide;
+      // The brackets size the brush, as in every painting program.
+      case LogicalKeyboardKey.bracketLeft when controller.editingImage != null:
+        if (controller.imageTool.paints) {
+          controller.paintSize = controller.paintSize / 1.2;
+        } else {
+          controller.maskBrushSize = controller.maskBrushSize / 1.2;
+        }
+      case LogicalKeyboardKey.bracketRight
+          when controller.editingImage != null:
+        if (controller.imageTool.paints) {
+          controller.paintSize = controller.paintSize * 1.2;
+        } else {
+          controller.maskBrushSize = controller.maskBrushSize * 1.2;
+        }
       case LogicalKeyboardKey.keyV when controller.editingVector != null:
         controller.vectorTool = VectorTool.select;
       case LogicalKeyboardKey.keyG when controller.editingVector != null:
@@ -4933,8 +5484,17 @@ class CanvasStageState extends State<CanvasStage> {
       case LogicalKeyboardKey.escape:
         // One thing at a time: the first Escape leaves the picture's frame,
         // and only then does the next one drop the selection.
-        if (_framing != null) {
-          setState(() => _framing = null);
+        // A clone's point is let go before the picture is.
+        if (controller.editingImage != null &&
+            controller.imageTool == ImageTool.clone &&
+            controller.cloneFrom != null) {
+          controller.cloneFrom = null;
+        } else if (controller.editingImage != null &&
+            controller.imageTool != ImageTool.move) {
+          // Then the tool is put down, and only then the picture.
+          controller.imageTool = ImageTool.move;
+        } else if (controller.editingImage != null) {
+          controller.editImage(null);
         } else if (controller.vectorEditing != null) {
           // Out of a drawing a step at a time: the shape the pen is drawing,
           // then the pen, then the points picked, then the editing.
@@ -5040,6 +5600,7 @@ class CanvasStageState extends State<CanvasStage> {
                                 document.size.rect)
                             : null,
                         selectedPath: _selectedPath(),
+                        editingLayers: _layerBoxes(),
                         editingVector: switch (controller.editingVector) {
                           var v? => (
                               element: v,
@@ -5347,6 +5908,10 @@ class CanvasStageState extends State<CanvasStage> {
 
   MouseCursor _cursor() {
     if (controller.retouch.on && _selectedPicture() != null) {
+      return SystemMouseCursors.precise;
+    }
+    if (controller.editingImage != null &&
+        (controller.imageTool.masks || controller.imageTool.paints)) {
       return SystemMouseCursors.precise;
     }
     if (_mode == _DragMode.pan) return SystemMouseCursors.grabbing;

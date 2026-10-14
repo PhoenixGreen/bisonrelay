@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
-import 'dart:ui' show Color, Offset, Rect;
+import 'dart:io' show File;
+import 'dart:typed_data' show Uint8List;
+import 'dart:ui' as ui;
+import 'dart:ui' show Color, Offset, Rect, Size;
 
 import 'package:bruig/components/paint_spec.dart';
 
@@ -34,6 +37,13 @@ import 'package:bruig/plugin_system/canvas/model/vector_text.dart';
 import 'package:bruig/plugin_system/canvas/model/font_files.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_masking.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_items.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
@@ -415,6 +425,19 @@ class CanvasController extends ChangeNotifier {
             _document.elementById(editing) is! VectorElement)) {
       _vectorEditing = null;
       _resetVectorEditing();
+    }
+    // And a picture's layers, by the same rule.
+    var picture = _imageEditing;
+    if (picture != null &&
+        (_backgroundSelected ||
+            _selection.length != 1 ||
+            _selection.first != picture ||
+            _document.elementById(picture) is! ImageElement)) {
+      _imageEditing = null;
+      _imageLayer = baseLayerId;
+    }
+    if (_imageEditing != null && editingImage?.layerById(_imageLayer) == null) {
+      _imageLayer = baseLayerId;
     }
     if (!_viewOnly) _revision++;
     super.notifyListeners();
@@ -903,6 +926,7 @@ class CanvasController extends ChangeNotifier {
   /// gesture. The gesture's own first document was already remembered by
   /// [beginInteraction], so nothing is lost.
   void apply(CanvasDocument next, {bool transient = false}) {
+    _endPreview();
     if (identical(next, _document)) return;
 
     if (!transient && _interaction == null) {
@@ -934,6 +958,7 @@ class CanvasController extends ChangeNotifier {
   /// beginInteraction starts a gesture: everything until [endInteraction] is
   /// one undo step.
   void beginInteraction() {
+    _endPreview();
     _interaction ??= _document;
   }
 
@@ -950,6 +975,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void undo() {
+    _endPreview();
     if (_undo.isEmpty) return;
     _redo.add(_document);
     _document = _undo.removeLast();
@@ -960,6 +986,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void redo() {
+    _endPreview();
     if (_redo.isEmpty) return;
     _undo.add(_document);
     _document = _redo.removeLast();
@@ -967,6 +994,38 @@ class CanvasController extends ChangeNotifier {
     _selection = _selection.where((id) => _document.indexOf(id) >= 0).toSet();
     if (_frame >= _document.frames) _frame = _document.frames - 1;
     notifyListeners();
+  }
+
+  /// _beforePreview is the document as it really is while a setting is being
+  /// tried on the canvas -- see tryElement -- and null otherwise.
+  CanvasDocument? _beforePreview;
+
+  /// trying is whether the canvas is showing a setting being tried.
+  bool get trying => _beforePreview != null;
+
+  /// tryElement shows [element] on the canvas in place of the one it
+  /// replaces, without it being an edit: not in the undo history, not saved,
+  /// and gone with a null -- or with the next real edit, which starts from the
+  /// document as it really is. For a list being looked through, each option
+  /// seen on the canvas before one is chosen.
+  void tryElement(CanvasElement? element) {
+    if (element == null) {
+      if (_endPreview()) notifyListeners();
+      return;
+    }
+    _beforePreview ??= _document;
+    _document = _beforePreview!.withElement(element);
+    notifyListeners();
+  }
+
+  /// _endPreview puts the document back as it really is, and says whether
+  /// there was a preview to end.
+  bool _endPreview() {
+    var before = _beforePreview;
+    if (before == null) return false;
+    _beforePreview = null;
+    _document = before;
+    return true;
   }
 
   /// replaceElement is the commonest edit there is: one element changed.
@@ -1524,6 +1583,430 @@ class CanvasController extends ChangeNotifier {
   // Selection
   // ------------------------------------------------------------------------
 
+  // ---- picture layers ----------------------------------------------------
+
+  /// imageEditing is the picture whose layers are open for editing, by id,
+  /// or null; imageLayer is the layer of it picked, which the tools and the
+  /// settings work on. The base layer is picked when nothing else is.
+  String? get imageEditing => _imageEditing;
+  String? _imageEditing;
+  String get imageLayer => _imageLayer;
+  String _imageLayer = baseLayerId;
+
+  ImageTool get imageTool => _imageTool;
+  ImageTool _imageTool = ImageTool.move;
+  set imageTool(ImageTool tool) {
+    if (_imageTool == tool) return;
+    _imageTool = tool;
+    // The old removal brushes and the mask tools both paint on a press;
+    // only one of them can have it.
+    if (tool.masks) _retouch = RetouchBrush.off;
+    notifyListeners();
+  }
+
+  /// editingImage is the picture being edited, where there is one.
+  ImageElement? get editingImage {
+    var id = _imageEditing;
+    var e = id == null ? null : _document.elementById(id);
+    return e is ImageElement ? e : null;
+  }
+
+  /// pickedLayer is the layer of the picture being edited that is picked.
+  ImageLayer? get pickedLayer => editingImage?.layerById(_imageLayer);
+
+  /// editImage opens the picture [id]'s layers, picking [layer]; null closes
+  /// them. Edited is selected, as a drawing is -- see notifyListeners.
+  void editImage(String? id, {String? layer}) {
+    if (_imageEditing == id && layer == null) return;
+    _imageEditing = id;
+    _imageLayer = layer ?? baseLayerId;
+    if (id != null) {
+      _selection = {id};
+      _backgroundSelected = false;
+      // A brush left in hand from before belongs to the base picture.
+      if (_imageLayer != baseLayerId) _retouch = RetouchBrush.off;
+    }
+    notifyListeners();
+  }
+
+  /// pickImageLayer picks the layer [id] of the picture being edited.
+  void pickImageLayer(String id) {
+    if (_imageLayer == id) return;
+    _imageLayer = id;
+    // The removal brushes paint on the base picture, and only there.
+    if (id != baseLayerId) _retouch = RetouchBrush.off;
+    notifyListeners();
+  }
+
+  /// changeImage replaces the picture being edited, as one step unless
+  /// [transient].
+  void changeImage(ImageElement next, {bool transient = false}) =>
+      replaceElement(next, transient: transient);
+
+  /// addImageLayer puts [layer] in just above the one picked, and picks it.
+  void addImageLayer(ImageLayer layer) {
+    var e = editingImage;
+    if (e == null) return;
+    replaceElement(withLayerAdded(e, layer, above: _imageLayer));
+    _imageLayer = layer.id;
+    _retouch = RetouchBrush.off;
+    notifyListeners();
+  }
+
+  /// removeImageLayer takes out the layer [id], picking the one under it.
+  void removeImageLayer(String id) {
+    var e = editingImage;
+    if (e == null || id == baseLayerId) return;
+    var at = e.stack.indexWhere((l) => l.id == id);
+    if (at < 0) return;
+    var next = withoutLayer(e, id);
+    _imageLayer = next.stack[(at - 1).clamp(0, next.stack.length - 1)].id;
+    replaceElement(next);
+  }
+
+  /// duplicateImageLayer copies the layer [id] and picks the copy.
+  void duplicateImageLayer(String id) {
+    var e = editingImage;
+    if (e == null) return;
+    var copied = withLayerCopied(e, id);
+    if (copied == null) return;
+    _imageLayer = copied.$2;
+    replaceElement(copied.$1);
+  }
+
+  // ---- picture masks -----------------------------------------------------
+
+  /// maskHide is whether the mask tools take the picture away (true) or put
+  /// it back. X turns it over; Option held turns it over for one stroke.
+  bool get maskHide => _maskHide;
+  bool _maskHide = true;
+  set maskHide(bool v) {
+    if (_maskHide == v) return;
+    _maskHide = v;
+    notifyListeners();
+  }
+
+  /// maskBrushSize is the mask brush's radius, as a fraction of the
+  /// picture's shorter side; maskHardness and maskStrength as a MaskMark's.
+  double get maskBrushSize => _maskBrushSize;
+  double _maskBrushSize = 0.03;
+  set maskBrushSize(double v) {
+    _maskBrushSize = v.clamp(0.001, 0.5);
+    notifyListeners();
+  }
+
+  double get maskHardness => _maskHardness;
+  double _maskHardness = 0.6;
+  set maskHardness(double v) {
+    _maskHardness = v.clamp(0.0, 1.0);
+    notifyListeners();
+  }
+
+  double get maskStrength => _maskStrength;
+  double _maskStrength = 1;
+  set maskStrength(double v) {
+    _maskStrength = v.clamp(0.01, 1.0);
+    notifyListeners();
+  }
+
+  /// maskRadial makes the gradient tool's fades spread from a middle.
+  bool get maskRadial => _maskRadial;
+  bool _maskRadial = false;
+  set maskRadial(bool v) {
+    _maskRadial = v;
+    notifyListeners();
+  }
+
+  /// maskView is how the mask is shown while a mask tool is in hand.
+  MaskView get maskView => _maskView;
+  MaskView _maskView = MaskView.result;
+  set maskView(MaskView v) {
+    _maskView = v;
+    notifyListeners();
+  }
+
+  /// maskBusy says what is being worked out, while finding a subject takes
+  /// its moment; maskNote what the last attempt had to say, where it found
+  /// nothing or failed.
+  String? get maskBusy => _maskBusy;
+  String? _maskBusy;
+  String? get maskNote => _maskNote;
+  String? _maskNote;
+
+  /// changeMask changes the picked layer's mask by [edit], as one step
+  /// unless [transient].
+  void changeMask(ImageMask Function(ImageMask) edit, {bool transient = false}) {
+    var e = editingImage;
+    var picked = pickedLayer;
+    // A frame-masked layer keeps its mask on itself.
+    if (e != null && picked != null && picked.framed) {
+      replaceElement(
+          e.withLayer(picked.id, (l) => l.copyWith(mask: edit(l.mask))),
+          transient: transient);
+      return;
+    }
+    var look = e == null ? null : lookOf(e, _imageLayer);
+    if (e == null || look == null) return;
+    replaceElement(withLook(e, _imageLayer, look.copyWith(mask: edit(look.mask))),
+        transient: transient);
+  }
+
+  /// findSubject finds the picked layer's subject -- every subject, or the
+  /// one at [at], a fraction of its picture -- and puts it in the mask as
+  /// [how] says.
+  Future<void> findSubject(
+      {Offset? at, MaskCombine how = MaskCombine.replace}) async {
+    var e = editingImage;
+    var layerId = _imageLayer;
+    var look = e == null ? null : lookOf(e, layerId);
+    if (e == null || look == null || !look.hasImage || _maskBusy != null) {
+      return;
+    }
+    _maskBusy = "Finding the subject…";
+    _maskNote = null;
+    notifyListeners();
+    try {
+      // Without the operating system's own finder, a guess from colour and
+      // edge -- rougher, and saying so.
+      Uint8List? png;
+      if (await SubjectFinder.available()) {
+        png = await SubjectFinder.find(look.assetId, at: at);
+      } else {
+        var picture = images.original(look.assetId);
+        if (picture != null) png = await guessSubjectMask(picture, at: at);
+        _maskNote = "Found by colour and edge — finish it with Quick select "
+            "or the brush";
+      }
+      if (png == null) {
+        _maskNote = at == null
+            ? "No subject could be found in this picture"
+            : "No subject there — try a click on the person or thing itself";
+        return;
+      }
+      var bytes = png;
+      if (how != MaskCombine.replace) {
+        var size = await _pictureSizeOf(look.assetId);
+        var found = await decodeMask(png);
+        var current = look.mask.subject.isEmpty
+            ? null
+            : await _maskImageOf(look.mask.subject);
+        bytes = await combinedSubject(look.mask, current, found,
+                size ?? Size(found.width.toDouble(), found.height.toDouble()),
+                how) ??
+            png;
+      }
+      var id = await CanvasAssets.saveMask(bytes);
+      if (id == null) {
+        _maskNote = "The subject could not be kept";
+        return;
+      }
+      // Whatever has happened to the picture meanwhile, the mask goes on the
+      // picture as it is now.
+      var now = _document.elementById(e.id);
+      var nowLook = now is ImageElement ? lookOf(now, layerId) : null;
+      if (now is! ImageElement || nowLook == null) return;
+      var mask = nowLook.mask.copyWith(
+          subject: id,
+          // A subject found afresh starts the mask afresh: marks made for
+          // the last one would land on the wrong thing.
+          marks: how == MaskCombine.replace ? const [] : null,
+          on: true);
+      replaceElement(withLook(now, layerId, nowLook.copyWith(mask: mask)));
+    } catch (message) {
+      _maskNote = "$message";
+    } finally {
+      _maskBusy = null;
+      notifyListeners();
+    }
+  }
+
+  /// quickSelect grows a quick-select stroke along [stroke] -- fractions
+  /// of the picked layer's picture -- out to the edges near it and keeps
+  /// what it finds, or, with [subtract], takes it away. The mask's marks are
+  /// worked into its new subject.
+  Future<void> quickSelect(List<Offset> stroke, {bool subtract = false}) async {
+    var e = editingImage;
+    var layerId = _imageLayer;
+    var look = e == null ? null : lookOf(e, layerId);
+    var picture = look == null ? null : images.original(look.assetId);
+    if (e == null || look == null || picture == null || _maskBusy != null) {
+      return;
+    }
+    _maskBusy = "Selecting…";
+    _maskNote = null;
+    notifyListeners();
+    try {
+      var subject = look.mask.subject.isEmpty
+          ? null
+          : await _maskImageOf(look.mask.subject);
+      var png = await quickSelectMask(
+          picture, look.mask, subject, stroke, _maskBrushSize,
+          subtract: subtract);
+      var id = png == null ? null : await CanvasAssets.saveMask(png);
+      if (id == null) {
+        _maskNote = "Nothing could be selected there";
+        return;
+      }
+      var now = _document.elementById(e.id);
+      var nowLook = now is ImageElement ? lookOf(now, layerId) : null;
+      if (now is! ImageElement || nowLook == null) return;
+      replaceElement(withLook(
+          now,
+          layerId,
+          nowLook.copyWith(
+              mask: nowLook.mask.copyWith(
+                  subject: id, marks: const [], invert: false, on: true))));
+    } catch (message) {
+      _maskNote = "$message";
+    } finally {
+      _maskBusy = null;
+      notifyListeners();
+    }
+  }
+
+  /// refineEdge refines the picked layer's mask along [stroke], fractions of
+  /// its picture: the edge under it given the alpha its colours say it has.
+  Future<void> refineEdge(List<Offset> stroke) async {
+    var e = editingImage;
+    var layerId = _imageLayer;
+    var look = e == null ? null : lookOf(e, layerId);
+    var picture = look == null ? null : images.original(look.assetId);
+    if (e == null || look == null || picture == null || _maskBusy != null) {
+      return;
+    }
+    if (look.mask.empty) {
+      _maskNote = "There is no edge to refine yet: find the subject first";
+      notifyListeners();
+      return;
+    }
+    _maskBusy = "Refining the edge…";
+    _maskNote = null;
+    notifyListeners();
+    try {
+      var subject = look.mask.subject.isEmpty
+          ? null
+          : await _maskImageOf(look.mask.subject);
+      var png = await refineEdgeMask(
+          picture, look.mask, subject, stroke, _maskBrushSize);
+      var id = png == null ? null : await CanvasAssets.saveMask(png);
+      if (id == null) return;
+      var now = _document.elementById(e.id);
+      var nowLook = now is ImageElement ? lookOf(now, layerId) : null;
+      if (now is! ImageElement || nowLook == null) return;
+      replaceElement(withLook(
+          now,
+          layerId,
+          nowLook.copyWith(
+              mask: nowLook.mask.copyWith(
+                  subject: id, marks: const [], invert: false, on: true))));
+    } catch (message) {
+      _maskNote = "$message";
+    } finally {
+      _maskBusy = null;
+      notifyListeners();
+    }
+  }
+
+  /// _maskImageOf is the stored mask [id], decoded.
+  Future<ui.Image?> _maskImageOf(String id) async {
+    var held = images.resolve(id, const BackgroundRemoval());
+    if (held != null) return held;
+    var path = await CanvasAssets.pathOf(id);
+    if (path == null) return null;
+    return decodeMask(await File(path).readAsBytes());
+  }
+
+  /// _pictureSizeOf is the picture [id]'s size in pixels.
+  Future<Size?> _pictureSizeOf(String id) async {
+    var held = images.original(id);
+    if (held != null) {
+      return Size(held.width.toDouble(), held.height.toDouble());
+    }
+    return pictureSize(id);
+  }
+
+  // ---- brushwork ----------------------------------------------------------
+
+  /// paintColour, paintSize (a fraction of the frame's or the picture's
+  /// shorter side), paintHardness and paintStrength are the paint and
+  /// retouching brushes' settings, shared between them.
+  Color get paintColour => _paintColour;
+  Color _paintColour = const Color(0xFFF2B33D);
+  set paintColour(Color c) {
+    _paintColour = c;
+    notifyListeners();
+  }
+
+  double get paintSize => _paintSize;
+  double _paintSize = 0.02;
+  set paintSize(double v) {
+    _paintSize = v.clamp(0.001, 0.5);
+    notifyListeners();
+  }
+
+  double get paintHardness => _paintHardness;
+  double _paintHardness = 0.6;
+  set paintHardness(double v) {
+    _paintHardness = v.clamp(0.0, 1.0);
+    notifyListeners();
+  }
+
+  double get paintStrength => _paintStrength;
+  double _paintStrength = 1;
+  set paintStrength(double v) {
+    _paintStrength = v.clamp(0.01, 1.0);
+    notifyListeners();
+  }
+
+  /// burning makes the dodge tool burn, as Option held does for a stroke.
+  bool get burning => _burning;
+  bool _burning = false;
+  set burning(bool v) {
+    _burning = v;
+    notifyListeners();
+  }
+
+  /// cloneFrom is where the clone tool copies from, a fraction of the
+  /// picked picture, chosen with Option-click; cloneOffset how far that is
+  /// from where the first stroke after it started -- kept for the strokes
+  /// after, so they go on copying from the same place relative to them.
+  Offset? get cloneFrom => _cloneFrom;
+  Offset? _cloneFrom;
+  Offset? cloneOffset;
+  set cloneFrom(Offset? at) {
+    _cloneFrom = at;
+    cloneOffset = null;
+    _maskNote = null;
+    notifyListeners();
+  }
+
+  /// noteForBrush says something about the brush in its settings row.
+  void noteForBrush(String? note) {
+    _maskNote = note;
+    notifyListeners();
+  }
+
+  /// changePaint changes the picked paint layer's strokes.
+  void changePaint(List<StrokeMark> Function(List<StrokeMark>) edit,
+      {bool transient = false}) {
+    var e = editingImage, layer = pickedLayer;
+    if (e == null || layer == null || layer.kind != LayerKind.paint) return;
+    replaceElement(
+        e.withLayer(layer.id, (l) => l.copyWith(strokes: edit(l.strokes))),
+        transient: transient);
+  }
+
+  /// changeRetouch changes the retouching done to the picked picture.
+  void changeRetouch(List<StrokeMark> Function(List<StrokeMark>) edit,
+      {bool transient = false}) {
+    var e = editingImage;
+    var look = e == null ? null : lookOf(e, _imageLayer);
+    if (e == null || look == null) return;
+    replaceElement(
+        withLook(e, _imageLayer, look.copyWith(retouch: edit(look.retouch))),
+        transient: transient);
+  }
+
   // ---- vector editing ----------------------------------------------------
 
   /// vectorEditing is the Vector element being edited point by point, by id,
@@ -1856,6 +2339,21 @@ class CanvasController extends ChangeNotifier {
     var next = withSpanFitted(edit(withTimingBaked(e)));
     var document = _document;
     if (vectorArrivalSpan(next) case (var at, var span)
+        when at + span > document.frames - 1) {
+      document = document.copyWith(frames: at + span + 1);
+    }
+    apply(document.withElement(next), transient: transient);
+  }
+
+  /// retimeLayers changes when a picture's layers come in, as [edit] says
+  /// -- worked in the timeline's frames, with the arrival fitted round them
+  /// all again after, and the scene lengthened where it has to be. See
+  /// withLayerTimingBaked.
+  void retimeLayers(ImageElement e, ImageElement Function(ImageElement) edit,
+      {bool transient = false}) {
+    var next = withLayerSpanFitted(edit(withLayerTimingBaked(e)));
+    var document = _document;
+    if (imageArrivalSpan(next) case (var at, var span)
         when at + span > document.frames - 1) {
       document = document.copyWith(frames: at + span + 1);
     }
@@ -6268,10 +6766,12 @@ class CanvasController extends ChangeNotifier {
   /// mirror lines with it -- but a document closed mid-edit must not come
   /// back with a box that cuts through the drawing. See _fitEditedVector.
   CanvasDocument get _toSave {
+    // Never a look that is only being tried. See tryElement.
+    var document = _beforePreview ?? _document;
     var e = editingVector;
-    if (e == null) return _document;
+    if (e == null) return document;
     var fitted = boxedToDrawing(e);
-    return identical(fitted, e) ? _document : _document.withElement(fitted);
+    return identical(fitted, e) ? document : document.withElement(fitted);
   }
 
   /// save writes back to where this document came from, or nowhere when it has

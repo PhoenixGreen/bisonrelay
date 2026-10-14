@@ -12,6 +12,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
+import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:flutter/foundation.dart';
 
@@ -138,6 +141,11 @@ Future<ui.Image> renderFrame(
   /// -- see ExportMedia. Null shows every video as its poster.
   VideoShow Function(VideoElement)? videoShow,
 }) async {
+  // Adjustment layers need their shader before anything is drawn: drawn
+  // without it, they would come out of an export unadjusted.
+  await AdjustShader.load();
+  await TextureShader.load();
+  await SharpenShader.load();
   // The caller's own multiplier is what maxExportScale bounds; the design's
   // scale is not a request for a bigger file but the arithmetic that makes
   // the file the size it is already declared to be, and clamping it would

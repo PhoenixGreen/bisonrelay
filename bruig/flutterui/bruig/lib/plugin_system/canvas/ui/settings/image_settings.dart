@@ -1,4 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/image_sections.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -11,6 +13,10 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // image settings.dart is a picture's settings.
 
+/// imageSettings is a picture's settings: its layers, and the picked layer's
+/// settings in sections -- see image_sections.dart. A backdrop's picture is
+/// one picture, with no layers, no box and no arrival, and keeps the plain
+/// run of groups it always had.
 List<Widget> imageSettings(
     BuildContext context,
     CanvasController controller,
@@ -19,25 +25,26 @@ List<Widget> imageSettings(
     VoidCallback begin,
     VoidCallback commit,
     {bool background = false}) {
-  void now(ImageElement next) {
-    begin();
-    write(next);
-    commit();
+  if (background) {
+    return _pictureSettings(context, controller, e, write, begin, commit);
   }
+  return imagePanel(context, controller, e, write, begin, commit);
+}
 
-  // Putting a picture in also gives the box the picture's proportions. A
-  // photograph dropped into whatever rectangle happened to be there is either
-  // cropped by the fit or squashed by it, and the first thing anybody did was
-  // drag the handles until it looked right -- which is arithmetic the picture
-  // itself already knows the answer to. It only ever shrinks the box: growing
-  // one could push it off the canvas, and the reader asked for a picture, not
-  // for the layout to move.
-  Future<void> use(String id) async {
-    var next = e.copyWith(assetId: id);
-    var size = await pictureSize(id);
-    if (size != null) next = fitToPicture(next, size);
-    now(next);
-  }
+List<Widget> _pictureSettings(
+    BuildContext context,
+    CanvasController controller,
+    ImageElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit,
+    {Rect? layerFrame,
+    ValueChanged<ImageElement?>? tryLook}) {
+  // A picture layer rather than the element's own picture: the frame it is
+  // placed in, which putting a new picture in it needs, and no removal
+  // brushes -- they paint on the base picture, and only there, until they are
+  // rebuilt for every layer.
+  var layer = layerFrame != null;
 
   return [
     // No caption: the panel header says "Picture settings" already, and a
@@ -49,48 +56,8 @@ List<Widget> imageSettings(
         // question, and the rule between them read as two.
         rule: false,
         children: [
-          // The one control this element did not have, and without which it does
-          // nothing at all: somewhere to put a picture in it.
-          CanvasIconButton(
-            icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
-            tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
-            onPressed: () async {
-              var id = await pickCanvasImage(context, vectors: false);
-              if (id != null) await use(id);
-            },
-          ),
-          // The other half of a shared picture store: the bytes have always been
-          // shared between canvases, but nothing ever showed what was in there, so
-          // the only way to put the same badge on a second canvas was to go and
-          // find the file again.
-          CanvasIconButton(
-            icon: Icons.photo_library_outlined,
-            tooltip: "Use a picture you have already added",
-            onPressed: () async {
-              var id = await showRecentPictures(context);
-              if (id != null) await use(id);
-            },
-          ),
-          // The size controls are offered on the way in, but only above half a
-          // megabyte -- so anybody who wanted them for a smaller picture, or who
-          // took a size on the way in and thought better of it, had nowhere to
-          // go. This is that door, and it is the app's own width, quality and
-          // format controls, the same ones an embedded picture goes through.
-          if (e.hasImage)
-            CanvasIconButton(
-              icon: Icons.compress,
-              tooltip: "Change this picture's size and quality",
-              onPressed: () async {
-                var id = await compressCanvasPicture(context, e.assetId);
-                if (id != null) await use(id);
-              },
-            ),
-          if (e.hasImage)
-            CanvasIconButton(
-              icon: Icons.hide_image_outlined,
-              tooltip: "Take the picture out",
-              onPressed: () => now(e.copyWith(assetId: "")),
-            ),
+          ...pictureSourceButtons(context, e, write, begin, commit,
+              layerFrame: layerFrame),
           CanvasDropdown<ImageFit>(
             label: "Fit",
             value: e.fit,
@@ -129,352 +96,400 @@ List<Widget> imageSettings(
             onCommit: commit,
           ),
         ]),
-    CanvasControlGroup(label: "Remove background", rule: false, children: [
-      // The brush comes before the method, and outside the check for whether
-      // anything is being removed yet.
-      //
-      // It used to be inside it, which made it unreachable on exactly the
-      // picture it is for: a fresh image has no method chosen and no strokes,
-      // so nothing was being removed, so the brushes were hidden -- and the
-      // only way to reach the tool that needs no method was to choose a
-      // method first.
-      //
-      // It is first because it is the tool. Every automatic method has
-      // photographs it cannot do, and on those this is not a refinement.
-      CanvasIconButton(
-        icon: Icons.auto_fix_high,
-        tooltip: controller.retouch == RetouchBrush.erase
-            ? "Stop rubbing out"
-            : "Rub the background out by hand",
-        active: controller.retouch == RetouchBrush.erase,
-        onPressed: () => controller.retouch =
-            controller.retouch == RetouchBrush.erase
-                ? RetouchBrush.off
-                : RetouchBrush.erase,
-      ),
-      // The tool for the job the brush is bad at: a large, awkward,
-      // many-coloured area. Draw a rough line around what is being kept, let
-      // go, and everything the picture's own edge can reach without crossing
-      // that line goes -- whatever colour any of it is.
-      CanvasIconButton(
-        icon: Icons.content_cut,
-        tooltip: controller.retouch == RetouchBrush.cutAround
-            ? "Stop cutting around"
-            : "Cut around — draw a line around what you are keeping",
-        active: controller.retouch == RetouchBrush.cutAround,
-        onPressed: () => controller.retouch =
-            controller.retouch == RetouchBrush.cutAround
-                ? RetouchBrush.off
-                : RetouchBrush.cutAround,
-      ),
-      CanvasIconButton(
-        icon: Icons.healing,
-        tooltip: controller.retouch == RetouchBrush.restore
-            ? "Stop putting back"
-            : "Put back what was taken by mistake",
-        active: controller.retouch == RetouchBrush.restore,
-        onPressed: () => controller.retouch =
-            controller.retouch == RetouchBrush.restore
-                ? RetouchBrush.off
-                : RetouchBrush.restore,
-      ),
-      // A drawn stroke waits here until it is applied, so the settings above
-      // can be adjusted against it and the result watched on the canvas.
-      if (controller.hasPendingStroke) ...[
-        Padding(
-          padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
-          child: SizedBox(
-            height: controlHeight,
-            child: Center(
-              child: Txt.S(controller.pendingTeaches
-                  ? "Mark drawn — adjust the brush, then keep it"
-                  : "Stroke drawn — adjust the brush, then apply it"),
+    pictureRemovalGroup(controller, e, write, begin, commit, layer: layer),
+    ...pictureLookGroups(e, write, begin, commit,
+        shown: e.hasImage, tryLook: tryLook),
+  ];
+}
+
+/// pictureRemovalGroup keys out a flat colour or paper -- what a logo or a
+/// scan needs. A photograph's subject is the mask's: see the mask tools.
+/// [layer] is a picture layer's, which has the methods and none of the old
+/// brushes, which paint on the base picture only.
+Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {required bool layer}) {
+  return CanvasControlGroup(
+      label: "For logos and scans",
+      rule: false,
+      children: [
+        // The brush comes before the method, and outside the check for whether
+        // anything is being removed yet.
+        //
+        // It used to be inside it, which made it unreachable on exactly the
+        // picture it is for: a fresh image has no method chosen and no strokes,
+        // so nothing was being removed, so the brushes were hidden -- and the
+        // only way to reach the tool that needs no method was to choose a
+        // method first.
+        //
+        // It is first because it is the tool. Every automatic method has
+        // photographs it cannot do, and on those this is not a refinement.
+        if (!layer) ...[
+          // The old brushes -- rub out, cut around, put back -- are the mask
+          // tools now, on every layer: see image_layer_settings.dart. What is
+          // left here is what keeps a picture painted with them before working:
+          // its strokes, to undo or clear, and the marking brushes of the method
+          // that learns from marks.
+          // A drawn stroke waits here until it is applied, so the settings above
+          // can be adjusted against it and the result watched on the canvas.
+          if (controller.hasPendingStroke) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+              child: SizedBox(
+                height: controlHeight,
+                child: Center(
+                  child: Txt.S(controller.pendingTeaches
+                      ? "Mark drawn — adjust the brush, then keep it"
+                      : "Stroke drawn — adjust the brush, then apply it"),
+                ),
+              ),
             ),
-          ),
-        ),
-        CanvasIconButton(
-          icon: Icons.check,
-          tooltip: "Apply this stroke",
-          active: true,
-          onPressed: controller.applyStroke,
-        ),
-        CanvasIconButton(
-          icon: Icons.close,
-          tooltip: "Throw this stroke away",
-          onPressed: controller.discardStroke,
-        ),
-      ],
-      if (controller.retouch.on) ...[
-        CanvasNumberField(
-          label: "Brush",
-          min: 0.005,
-          max: 0.6,
-          decimals: 3,
-          width: 62,
-          value: controller.brushSize,
-          onChanged: (v) => controller.brushSize = v,
-        ),
-        // Only for the brushes that mark the picture. A hint is a sample
-        // and is taken exactly where it was drawn.
-        if (!controller.retouch.teaches) ...[
-          CanvasNumberField(
-            label: "Hardness",
-            min: 0.05,
-            max: 1,
-            decimals: 2,
-            width: 62,
-            value: controller.brushHardness,
-            onChanged: (v) => controller.brushHardness = v,
-          ),
-          // Not for putting back: clinging finds the edge of a background,
-          // and what is being put back is the subject, which is every colour
-          // there is.
-          // Neither for putting back nor for cutting around. Clinging finds
-          // the edge of a background by colour; what is being put back is the
-          // subject, and a boundary does not care what colour anything is.
-          if (!controller.retouch.keeps && !controller.retouch.fills)
+            CanvasIconButton(
+              icon: Icons.check,
+              tooltip: "Apply this stroke",
+              active: true,
+              onPressed: controller.applyStroke,
+            ),
+            CanvasIconButton(
+              icon: Icons.close,
+              tooltip: "Throw this stroke away",
+              onPressed: controller.discardStroke,
+            ),
+          ],
+          if (controller.retouch.on) ...[
             CanvasNumberField(
-              label: "Cling",
-              min: 0,
+              label: "Brush",
+              min: 0.005,
               max: 0.6,
               decimals: 3,
               width: 62,
-              value: controller.brushSnap,
-              onChanged: (v) => controller.brushSnap = v,
+              value: controller.brushSize,
+              onChanged: (v) => controller.brushSize = v,
             ),
-          // Which side of the boundary goes. Read when the stroke is
-          // applied rather than when it was drawn, so it can be turned over
-          // with a stroke still held and the preview redraws.
-          if (controller.retouch.fills)
+            // Only for the brushes that mark the picture. A hint is a sample
+            // and is taken exactly where it was drawn.
+            if (!controller.retouch.teaches) ...[
+              CanvasNumberField(
+                label: "Hardness",
+                min: 0.05,
+                max: 1,
+                decimals: 2,
+                width: 62,
+                value: controller.brushHardness,
+                onChanged: (v) => controller.brushHardness = v,
+              ),
+              // Not for putting back: clinging finds the edge of a background,
+              // and what is being put back is the subject, which is every colour
+              // there is.
+              // Neither for putting back nor for cutting around. Clinging finds
+              // the edge of a background by colour; what is being put back is the
+              // subject, and a boundary does not care what colour anything is.
+              if (!controller.retouch.keeps && !controller.retouch.fills)
+                CanvasNumberField(
+                  label: "Cling",
+                  min: 0,
+                  max: 0.6,
+                  decimals: 3,
+                  width: 62,
+                  value: controller.brushSnap,
+                  onChanged: (v) => controller.brushSnap = v,
+                ),
+              // Which side of the boundary goes. Read when the stroke is
+              // applied rather than when it was drawn, so it can be turned over
+              // with a stroke still held and the preview redraws.
+              if (controller.retouch.fills)
+                CanvasIconButton(
+                  icon: controller.cutInside
+                      ? Icons.flip_to_back
+                      : Icons.flip_to_front,
+                  tooltip: controller.cutInside
+                      ? "Taking what is inside the line — press to take what is "
+                          "outside"
+                      : "Taking what is outside the line — press to take what is "
+                          "inside",
+                  active: controller.cutInside,
+                  onPressed: () => controller.cutInside = !controller.cutInside,
+                ),
+              // The magnet. Cling wants a number nobody can read off a
+              // photograph, so this reads it off the picture instead -- see
+              // CanvasController.magnetiseCling.
+              if (!controller.retouch.keeps &&
+                  !controller.retouch.fills &&
+                  controller.hasPendingStroke)
+                CanvasIconButton(
+                  icon: Icons.my_location,
+                  tooltip: "Find the edge this stroke crossed and cling to it",
+                  onPressed: () async {
+                    var found = await controller.magnetiseCling();
+                    if (!found) {
+                      // Nothing to say it wrongly: a stroke drawn entirely on the
+                      // background has no edge in it, and pretending otherwise
+                      // would cut the background in half.
+                      controller.brushSnap = 0;
+                    }
+                  },
+                ),
+            ],
+          ],
+          if (e.removal.strokes.isNotEmpty) ...[
             CanvasIconButton(
-              icon: controller.cutInside
-                  ? Icons.flip_to_back
-                  : Icons.flip_to_front,
-              tooltip: controller.cutInside
-                  ? "Taking what is inside the line — press to take what is "
-                      "outside"
-                  : "Taking what is outside the line — press to take what is "
-                      "inside",
-              active: controller.cutInside,
-              onPressed: () => controller.cutInside = !controller.cutInside,
-            ),
-          // The magnet. Cling wants a number nobody can read off a
-          // photograph, so this reads it off the picture instead -- see
-          // CanvasController.magnetiseCling.
-          if (!controller.retouch.keeps &&
-              !controller.retouch.fills &&
-              controller.hasPendingStroke)
-            CanvasIconButton(
-              icon: Icons.my_location,
-              tooltip: "Find the edge this stroke crossed and cling to it",
-              onPressed: () async {
-                var found = await controller.magnetiseCling();
-                if (!found) {
-                  // Nothing to say it wrongly: a stroke drawn entirely on the
-                  // background has no edge in it, and pretending otherwise
-                  // would cut the background in half.
-                  controller.brushSnap = 0;
-                }
-              },
-            ),
-        ],
-      ],
-      if (e.removal.strokes.isNotEmpty) ...[
-        CanvasIconButton(
-          icon: Icons.undo,
-          tooltip: "Undo the last brush stroke",
-          onPressed: () {
-            begin();
-            write(e.copyWith(
-                removal: e.removal.copyWith(
-                    strokes: e.removal.strokes
-                        .sublist(0, e.removal.strokes.length - 1))));
-            commit();
-          },
-        ),
-        CanvasIconButton(
-          icon: Icons.layers_clear_outlined,
-          tooltip: "Clear every brush stroke",
-          onPressed: () {
-            begin();
-            write(e.copyWith(removal: e.removal.copyWith(strokes: const [])));
-            commit();
-          },
-        ),
-      ],
-      CanvasDropdown<RemovalMode>(
-        label: "Method",
-        value: e.removal.mode,
-        width: 140,
-        options: [for (var m in RemovalMode.values) (m, m.label)],
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(removal: e.removal.copyWith(mode: v)));
-          commit();
-        },
-      ),
-      if (e.removal.mode == RemovalMode.chromaKey)
-        CanvasColorButton(
-          label: "Key",
-          color: e.removal.keyColor,
-          allowAlpha: false,
-          onChanged: (c) {
-            begin();
-            write(e.copyWith(removal: e.removal.copyWith(keyColor: c)));
-            commit();
-          },
-        ),
-      if (e.removal.mode == RemovalMode.luminance)
-        CanvasNumberField(
-          label: "Threshold",
-          min: 0,
-          max: 1,
-          decimals: 2,
-          width: 62,
-          value: e.removal.threshold,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(removal: e.removal.copyWith(threshold: v)));
-          },
-          onCommit: commit,
-        ),
-      // A method's own settings, and only while one is chosen. They were
-      // shown whenever anything was being removed -- which includes a
-      // picture the brush alone has been used on -- so somebody working by
-      // hand was offered a tolerance and a softness that nothing reads.
-      if (e.removal.mode != RemovalMode.none) ...[
-        // Edge first, because on a photograph it is the control that does
-        // the work: it says how sharply the picture has to change for the
-        // flood to treat it as the end of the background. Tolerance is the
-        // runaway guard behind it.
-        if (e.removal.mode == RemovalMode.cornerFlood)
-          CanvasNumberField(
-            label: "Edge",
-            min: 0.005,
-            max: 0.5,
-            decimals: 3,
-            width: 62,
-            value: e.removal.edge,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(removal: e.removal.copyWith(edge: v)));
-            },
-            onCommit: commit,
-          ),
-        // Every method but the brightness one, which cuts at a threshold
-        // and has no use for it.
-        if (e.removal.mode != RemovalMode.luminance)
-          CanvasNumberField(
-            label: e.removal.mode == RemovalMode.cornerFlood
-                ? "Spread"
-                : "Tolerance",
-            min: 0,
-            decimals: 2,
-            width: 62,
-            value: e.removal.tolerance,
-            max: 1,
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(removal: e.removal.copyWith(tolerance: v)));
-            },
-            onCommit: commit,
-          ),
-        CanvasNumberField(
-          label: "Softness",
-          min: 0,
-          decimals: 2,
-          width: 62,
-          value: e.removal.softness,
-          max: 0.3,
-          onChanged: (v) {
-            begin();
-            write(e.copyWith(removal: e.removal.copyWith(softness: v)));
-          },
-          onCommit: commit,
-        ),
-        // Marking, when the method is the one that learns from it. These
-        // two are the whole interface to it: mark some background, mark
-        // some subject, and the numbers below are a fine adjustment rather
-        // than the way in.
-        if (e.removal.mode == RemovalMode.learn) ...[
-          CanvasIconButton(
-            icon: Icons.format_paint_outlined,
-            tooltip: controller.retouch == RetouchBrush.markBackground
-                ? "Stop marking background"
-                : "Mark some background — draw over a few parts that should "
-                    "go",
-            active: controller.retouch == RetouchBrush.markBackground,
-            onPressed: () => controller.retouch =
-                controller.retouch == RetouchBrush.markBackground
-                    ? RetouchBrush.off
-                    : RetouchBrush.markBackground,
-          ),
-          CanvasIconButton(
-            icon: Icons.person_outline,
-            tooltip: controller.retouch == RetouchBrush.markSubject
-                ? "Stop marking the subject"
-                : "Mark the subject — draw over a few parts that should "
-                    "stay",
-            active: controller.retouch == RetouchBrush.markSubject,
-            onPressed: () => controller.retouch =
-                controller.retouch == RetouchBrush.markSubject
-                    ? RetouchBrush.off
-                    : RetouchBrush.markSubject,
-          ),
-          if (e.removal.hints.isNotEmpty)
-            CanvasIconButton(
-              icon: Icons.layers_clear_outlined,
-              tooltip: "Forget the marks and start again",
+              icon: Icons.undo,
+              tooltip: "Undo the last brush stroke",
               onPressed: () {
                 begin();
-                write(e.copyWith(removal: e.removal.copyWith(hints: const [])));
+                write(e.copyWith(
+                    removal: e.removal.copyWith(
+                        strokes: e.removal.strokes
+                            .sublist(0, e.removal.strokes.length - 1))));
                 commit();
               },
             ),
-          Padding(
-            padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
-            child: SizedBox(
-              height: controlHeight,
-              child: Center(
-                child: Txt.S(e.removal.backgroundHints.isEmpty ||
-                        e.removal.subjectHints.isEmpty
-                    ? "Mark both, then it can compare them"
-                    : "${e.removal.hints.length} marks"),
-              ),
+            CanvasIconButton(
+              icon: Icons.layers_clear_outlined,
+              tooltip: "Clear every brush stroke",
+              onPressed: () {
+                begin();
+                write(
+                    e.copyWith(removal: e.removal.copyWith(strokes: const [])));
+                commit();
+              },
             ),
-          ),
+          ],
         ],
-        CanvasToggle(
-          label: "Invert",
-          value: e.removal.invert,
+        CanvasDropdown<RemovalMode>(
+          label: "Method",
+          value: e.removal.mode,
+          width: 140,
+          options: [
+            for (var m in RemovalMode.values)
+              // Learning from marks is what Select subject does now, better;
+              // kept for the pictures that already use it.
+              if (m != RemovalMode.learn || e.removal.mode == m) (m, m.label)
+          ],
           onChanged: (v) {
             begin();
-            write(e.copyWith(removal: e.removal.copyWith(invert: v)));
+            write(e.copyWith(removal: e.removal.copyWith(mode: v)));
             commit();
           },
         ),
-      ],
-    ]),
-    ...pictureLookGroups(e, write, begin, commit, shown: e.hasImage),
-    // "Border", not "Frame". Frame is now the shape the picture is cut to,
-    // and one word for the outline round a rectangle and for the rectangle
-    // being a circle is a word doing two jobs. The background is the colour
-    // behind the picture -- what shows through where the picture does not
-    // reach, which is wherever there is padding or the fit is not a cover.
-    if (!background)
-      boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-          remember: "image",
-          label: "Background and Border",
-          fillLabel: "Background",
-          rule: false,
-          onPadding: (box) => write(grownForPadding(e, box))),
-    // How it arrives, in a section of its own like a headline's. A
-    // backdrop does not arrive; it is there.
-    if (!background)
-      boxed(
-          context,
-          elementAnimationSection(controller, e, e.animation,
-              (a) => write(e.copyWith(animation: a)), begin, commit)),
+        if (e.removal.mode == RemovalMode.chromaKey)
+          CanvasColorButton(
+            label: "Key",
+            color: e.removal.keyColor,
+            allowAlpha: false,
+            onChanged: (c) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(keyColor: c)));
+              commit();
+            },
+          ),
+        if (e.removal.mode == RemovalMode.luminance)
+          CanvasNumberField(
+            label: "Threshold",
+            min: 0,
+            max: 1,
+            decimals: 2,
+            width: 62,
+            value: e.removal.threshold,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(threshold: v)));
+            },
+            onCommit: commit,
+          ),
+        // A method's own settings, and only while one is chosen. They were
+        // shown whenever anything was being removed -- which includes a
+        // picture the brush alone has been used on -- so somebody working by
+        // hand was offered a tolerance and a softness that nothing reads.
+        if (e.removal.mode != RemovalMode.none) ...[
+          // Edge first, because on a photograph it is the control that does
+          // the work: it says how sharply the picture has to change for the
+          // flood to treat it as the end of the background. Tolerance is the
+          // runaway guard behind it.
+          if (e.removal.mode == RemovalMode.cornerFlood)
+            CanvasNumberField(
+              label: "Edge",
+              min: 0.005,
+              max: 0.5,
+              decimals: 3,
+              width: 62,
+              value: e.removal.edge,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(removal: e.removal.copyWith(edge: v)));
+              },
+              onCommit: commit,
+            ),
+          // Every method but the brightness one, which cuts at a threshold
+          // and has no use for it.
+          if (e.removal.mode != RemovalMode.luminance)
+            CanvasNumberField(
+              label: e.removal.mode == RemovalMode.cornerFlood
+                  ? "Spread"
+                  : "Tolerance",
+              min: 0,
+              decimals: 2,
+              width: 62,
+              value: e.removal.tolerance,
+              max: 1,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(removal: e.removal.copyWith(tolerance: v)));
+              },
+              onCommit: commit,
+            ),
+          CanvasNumberField(
+            label: "Softness",
+            min: 0,
+            decimals: 2,
+            width: 62,
+            value: e.removal.softness,
+            max: 0.3,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(softness: v)));
+            },
+            onCommit: commit,
+          ),
+          // Marking, when the method is the one that learns from it. These
+          // two are the whole interface to it: mark some background, mark
+          // some subject, and the numbers below are a fine adjustment rather
+          // than the way in.
+          if (e.removal.mode == RemovalMode.learn) ...[
+            CanvasIconButton(
+              icon: Icons.format_paint_outlined,
+              tooltip: controller.retouch == RetouchBrush.markBackground
+                  ? "Stop marking background"
+                  : "Mark some background — draw over a few parts that should "
+                      "go",
+              active: controller.retouch == RetouchBrush.markBackground,
+              onPressed: () => controller.retouch =
+                  controller.retouch == RetouchBrush.markBackground
+                      ? RetouchBrush.off
+                      : RetouchBrush.markBackground,
+            ),
+            CanvasIconButton(
+              icon: Icons.person_outline,
+              tooltip: controller.retouch == RetouchBrush.markSubject
+                  ? "Stop marking the subject"
+                  : "Mark the subject — draw over a few parts that should "
+                      "stay",
+              active: controller.retouch == RetouchBrush.markSubject,
+              onPressed: () => controller.retouch =
+                  controller.retouch == RetouchBrush.markSubject
+                      ? RetouchBrush.off
+                      : RetouchBrush.markSubject,
+            ),
+            if (e.removal.hints.isNotEmpty)
+              CanvasIconButton(
+                icon: Icons.layers_clear_outlined,
+                tooltip: "Forget the marks and start again",
+                onPressed: () {
+                  begin();
+                  write(
+                      e.copyWith(removal: e.removal.copyWith(hints: const [])));
+                  commit();
+                },
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: controlLabelHeight, right: 6),
+              child: SizedBox(
+                height: controlHeight,
+                child: Center(
+                  child: Txt.S(e.removal.backgroundHints.isEmpty ||
+                          e.removal.subjectHints.isEmpty
+                      ? "Mark both, then it can compare them"
+                      : "${e.removal.hints.length} marks"),
+                ),
+              ),
+            ),
+          ],
+          CanvasToggle(
+            label: "Invert",
+            value: e.removal.invert,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(removal: e.removal.copyWith(invert: v)));
+              commit();
+            },
+          ),
+        ],
+      ]);
+}
+
+/// pictureSourceButtons put a picture in, take it out, or change its size --
+/// from a file, or from the pictures already added. Putting one in a picture
+/// layer, [layerFrame] is the frame it is placed in.
+List<Widget> pictureSourceButtons(BuildContext context, ImageElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit,
+    {Rect? layerFrame}) {
+  void now(ImageElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  // Putting a picture in also gives the box the picture's proportions. A
+  // photograph dropped into whatever rectangle happened to be there is either
+  // cropped by the fit or squashed by it, and the first thing anybody did was
+  // drag the handles until it looked right -- which is arithmetic the picture
+  // itself already knows the answer to. It only ever shrinks the box: growing
+  // one could push it off the canvas, and the reader asked for a picture, not
+  // for the layout to move.
+  Future<void> use(String id) async {
+    var next = e.copyWith(assetId: id);
+    var size = await pictureSize(id);
+    if (size != null) {
+      next = layerFrame != null
+          ? withPictureProportions(next, layerFrame, size)
+          : fitToPicture(next, size);
+    }
+    now(next);
+  }
+
+  return [
+    // The one control this element did not have, and without which it does
+    // nothing at all: somewhere to put a picture in it.
+    CanvasIconButton(
+      icon: e.hasImage ? Icons.image_outlined : Icons.add_photo_alternate,
+      tooltip: e.hasImage ? "Replace this picture" : "Add a picture",
+      onPressed: () async {
+        var id = await pickCanvasImage(context, vectors: false);
+        if (id != null) await use(id);
+      },
+    ),
+    // The other half of a shared picture store: the bytes have always been
+    // shared between canvases, but nothing ever showed what was in there, so
+    // the only way to put the same badge on a second canvas was to go and
+    // find the file again.
+    CanvasIconButton(
+      icon: Icons.photo_library_outlined,
+      tooltip: "Use a picture you have already added",
+      onPressed: () async {
+        var id = await showRecentPictures(context);
+        if (id != null) await use(id);
+      },
+    ),
+    // The size controls are offered on the way in, but only above half a
+    // megabyte -- so anybody who wanted them for a smaller picture, or who
+    // took a size on the way in and thought better of it, had nowhere to
+    // go. This is that door, and it is the app's own width, quality and
+    // format controls, the same ones an embedded picture goes through.
+    if (e.hasImage)
+      CanvasIconButton(
+        icon: Icons.compress,
+        tooltip: "Change this picture's size and quality",
+        onPressed: () async {
+          var id = await compressCanvasPicture(context, e.assetId);
+          if (id != null) await use(id);
+        },
+      ),
+    if (e.hasImage)
+      CanvasIconButton(
+        icon: Icons.hide_image_outlined,
+        tooltip: "Take the picture out",
+        onPressed: () => now(e.copyWith(assetId: "")),
+      ),
   ];
 }
 
@@ -524,7 +539,14 @@ ImageElement grownForPadding(ImageElement e, BoxSpec box) {
 /// picture has no framing to set.
 List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     VoidCallback begin, VoidCallback commit,
-    {required bool shown}) {
+    {required bool shown,
+    ValueChanged<ImageElement?>? tryLook,
+    bool shape = true,
+    bool framing = true,
+    bool crop = true,
+    bool filter = true,
+    bool overlay = true,
+    bool outline = true}) {
   void now(ImageElement next) {
     begin();
     write(next);
@@ -532,8 +554,8 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
   }
 
   return [
-    if (shown)
-      CanvasControlGroup(label: "Frame", rule: false, children: [
+    if (shown && shape)
+      CanvasControlGroup(label: "Shape", rule: false, children: [
         CanvasDropdown<String>(
           label: "Cut to",
           value: e.frame?.name ?? "",
@@ -556,13 +578,13 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     // offered for a picture that fills its frame, and a reader who set them
     // once and cannot find them again is looking for controls that would do
     // nothing where they are.
-    if (shown && e.fit != ImageFit.cover)
+    if (shown && framing && e.fit != ImageFit.cover)
       const CanvasHint(
           "Framing — moving the picture about inside its box and zooming it "
           "— is for a picture that fills its frame. Set Fit to Cover to "
           "reach it: contained shows the whole picture and stretched pulls "
           "it to the box, and neither leaves anything to move."),
-    if (shown && e.fit == ImageFit.cover)
+    if (shown && framing && e.fit == ImageFit.cover)
       CanvasControlGroup(label: "Framing", rule: false, children: [
         CanvasHint("Double-click the picture to drag it about inside its box, "
             "and scroll to zoom."),
@@ -591,7 +613,7 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           onPressed: () => now(e.copyWith(framing: const ImageFraming())),
         ),
       ]),
-    if (shown)
+    if (shown && crop)
       CanvasControlGroup(label: "Crop", rule: false, children: [
         for (var (label, value, apply)
             in <(String, double, ImageCrop Function(double))>[
@@ -622,35 +644,46 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           onPressed: () => now(e.croppedTo(const ImageCrop())),
         ),
       ]),
-    if (shown)
-      CanvasControlGroup(label: "Look", rule: false, children: [
-        CanvasDropdown<ImageFilterPreset>(
-          label: "Filter",
-          value: e.filter,
-          width: 116,
-          options: [for (var f in ImageFilterPreset.values) (f, f.label)],
-          onChanged: (v) => now(e.copyWith(filter: v)),
-        ),
-        CanvasDropdown<OverlayBlend>(
-          label: "Overlay",
-          value: e.blend,
-          width: 116,
-          options: [for (var b in OverlayBlend.values) (b, b.label)],
-          onChanged: (v) => now(e.copyWith(blend: v)),
-        ),
-        if (e.blend != OverlayBlend.none)
-          CanvasColorButton(
-            key: const ValueKey("imageOverlayColour"),
-            label: "Colour",
-            color: e.overlay,
-            onChanged: (c) => now(e.copyWith(overlay: c)),
-          ),
-      ]),
+    if (shown && (filter || overlay))
+      CanvasControlGroup(
+          label: filter ? "Look" : "Overlay",
+          rule: false,
+          children: [
+            if (filter)
+              CanvasDropdown<ImageFilterPreset>(
+                label: "Filter",
+                value: e.filter,
+                width: 116,
+                options: [for (var f in ImageFilterPreset.values) (f, f.label)],
+                onChanged: (v) => now(e.copyWith(filter: v)),
+                onPreview: tryLook == null
+                    ? null
+                    : (v) => tryLook(v == null ? null : e.copyWith(filter: v)),
+              ),
+            if (overlay)
+              CanvasDropdown<OverlayBlend>(
+                label: "Overlay",
+                value: e.blend,
+                width: 116,
+                options: [for (var b in OverlayBlend.values) (b, b.label)],
+                onChanged: (v) => now(e.copyWith(blend: v)),
+                onPreview: tryLook == null
+                    ? null
+                    : (v) => tryLook(v == null ? null : e.copyWith(blend: v)),
+              ),
+            if (overlay && e.blend != OverlayBlend.none)
+              CanvasColorButton(
+                key: const ValueKey("imageOverlayColour"),
+                label: "Colour",
+                color: e.overlay,
+                onChanged: (c) => now(e.copyWith(overlay: c)),
+              ),
+          ]),
     // Not part of "Remove background", though that is what it is for. It
     // traces the alpha channel and does not care how the alpha got there, so
     // it works just as well on a picture that arrived with one -- and burying
     // it in the removal group would say otherwise.
-    if (shown)
+    if (shown && outline)
       CanvasControlGroup(label: "Outline", rule: false, children: [
         CanvasNumberField(
           label: "Width",

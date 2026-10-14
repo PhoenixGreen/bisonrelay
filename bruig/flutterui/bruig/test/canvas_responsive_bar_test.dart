@@ -16,6 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'canvas_panel_helpers.dart';
+
 // canvas_responsive_bar_test.dart is the settings band's half of designing
 // one canvas for several shapes: which shapes are marked, and the way out of
 // one.
@@ -169,10 +171,7 @@ void main() {
 
     var type = find.byKey(const ValueKey("elementTypeScale"));
     expect(type, findsOneWidget);
-    await tester.ensureVisible(type);
-    await tester.pumpAndSettle();
-    await tester.enterText(type, "0.5");
-    await tester.pump();
+    await typeNumber(tester, "elementTypeScale", "0.5");
 
     var words = controller.document.elements.single as TextElement;
     expect(words.base.typeScale, 0.5);

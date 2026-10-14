@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -56,18 +57,20 @@ void main() {
 
   group("a row of controls", () {
     testWidgets("fills the width it is given", (tester) async {
-      // The four that say where the element is and how big it is are one line,
-      // and between them they reach the right-hand margin.
+      // Where the element is, then how big: two to a line, so each number
+      // has room for an arrow either side, and between them they reach the
+      // right-hand margin.
       await panel(tester, width: 420);
-      var row = ["elementX", "elementY", "elementW", "elementH"];
-      var boxes = [for (var key in row) at(tester, key)];
-
-      for (var i = 1; i < boxes.length; i++) {
-        expect(boxes[i].top, closeTo(boxes[0].top, 0.5),
-            reason: "${row[i]} wrapped onto a line of its own");
-      }
-      expect(boxes.last.right, greaterThan(420 - 60),
-          reason: "the line stops well short of the margin: ${boxes.last}");
+      var x = at(tester, "elementX"), y = at(tester, "elementY");
+      var w = at(tester, "elementW"), h = at(tester, "elementH");
+      expect(y.top, closeTo(x.top, 0.5), reason: "Y beside X");
+      expect(h.top, closeTo(w.top, 0.5), reason: "H beside W");
+      expect(w.top, greaterThan(x.bottom), reason: "size under place");
+      expect(w.left, closeTo(x.left, 0.5));
+      // Short of the margin by the lock's width: the lines share their
+      // columns, and W and H have the lock beside them.
+      expect(y.right, greaterThan(420 - 70),
+          reason: "the line stops well short of the margin: $y");
     });
 
     testWidgets("and gives the same width to each of them", (tester) async {
@@ -103,7 +106,7 @@ void main() {
       var narrow = at(tester, "elementX").width;
 
       expect(narrow, lessThan(wide));
-      expect(narrow, greaterThanOrEqualTo(67),
+      expect(narrow, greaterThanOrEqualTo(104),
           reason: "never below the width it asked for");
     });
   });
@@ -123,12 +126,14 @@ void main() {
         var slot = find.byKey(ValueKey(key));
         await tester.ensureVisible(slot);
         await tester.pumpAndSettle();
-        // The border is painted by the decoration, not by the box around it.
-        var drawn = tester.getRect(
-            find.descendant(of: slot, matching: find.byType(CustomPaint)));
-        expect(drawn.height, closeTo(controlHeight, 0.5), reason: key);
-        expect(drawn.bottom, closeTo(tester.getRect(slot).bottom, 0.5),
+        // The stepper's box is what is drawn: from its arrow's top to foot.
+        var drawn = tester.getRect(find.byKey(ValueKey("$key-less")));
+        expect(drawn.height, closeTo(stepperHeight - 2, 1), reason: key);
+        expect(drawn.bottom, closeTo(tester.getRect(slot).bottom - 1, 1),
             reason: "$key is drawn short of the foot of its row");
+        expect(tester.getRect(slot).height,
+            closeTo(controlWithLabelHeight, 0.5),
+            reason: "$key stands as tall as any other captioned control");
       }
     });
 
@@ -138,8 +143,7 @@ void main() {
       await tester.ensureVisible(field);
       await tester.pumpAndSettle();
 
-      var drawn = tester.getRect(
-          find.descendant(of: field, matching: find.byType(CustomPaint)));
+      var drawn = tester.getRect(find.byKey(const ValueKey("elementH-less")));
       var lock = tester.getRect(find.byIcon(Icons.link_off).first);
       expect(drawn.height, greaterThanOrEqualTo(lock.height - 0.5));
       expect(drawn.center.dy, closeTo(lock.center.dy, 1.5));
@@ -424,12 +428,12 @@ void main() {
 
     testWidgets("and a line of a group is the row gap from the next",
         (tester) async {
-      // X Y W H, then Angle and Opacity under them: two lines of one group,
-      // which is a closer thing than two groups.
+      // X Y, W H, then Angle and Opacity: three lines of one group, which
+      // is a closer thing than two groups.
       await panel(tester, width: 420);
       var x = tester.getRect(find.byKey(const ValueKey("elementX")));
-      var angle = tester.getRect(find.byKey(const ValueKey("elementAngle")));
-      expect(angle.top - x.bottom, closeTo(canvasRowGap, 0.5));
+      var w = tester.getRect(find.byKey(const ValueKey("elementW")));
+      expect(w.top - x.bottom, closeTo(canvasRowGap, 0.5));
     });
   });
 

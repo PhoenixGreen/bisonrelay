@@ -510,7 +510,11 @@ class CanvasLibrary {
 
     var pictures = 0;
     for (var id in await CanvasAssets.stored()) {
-      if (extras.contains(id) || path.extension(id) == ".svg") continue;
+      if (extras.contains(id) ||
+          path.extension(id) == ".svg" ||
+          isMaskId(id)) {
+        continue;
+      }
       var name = names[id];
       out.add(LibraryAsset(
         id: id,

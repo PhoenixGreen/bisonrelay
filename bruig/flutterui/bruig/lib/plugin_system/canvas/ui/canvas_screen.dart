@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
@@ -626,6 +627,15 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     ),
                   ),
                 ),
+              ),
+              // The tool in hand on a picture, and what to do with it, over
+              // the top of the canvas where the eye is -- see
+              // image_tool_hint.dart.
+              Positioned(
+                top: 10,
+                left: 16,
+                right: 16,
+                child: Center(child: ImageToolHint(controller: _controller)),
               ),
               // The pose bar still sits over the design rather than pushing
               // it: it is opened while watching an animation, where a shift

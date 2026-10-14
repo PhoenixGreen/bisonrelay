@@ -50,7 +50,7 @@ class _RecentPicturesDialogState extends State<_RecentPicturesDialog> {
         // offered with them, not here.
         : CanvasAssets.stored().then((ids) => [
               for (var id in ids)
-                if (!id.endsWith(".svg")) id
+                if (!id.endsWith(".svg") && !isMaskId(id)) id
             ]);
     read.then((ids) {
       if (mounted) setState(() => _ids = ids);

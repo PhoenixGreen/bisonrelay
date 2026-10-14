@@ -2,6 +2,9 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 
@@ -626,6 +629,21 @@ class ImageElement extends CanvasElement {
   /// animation is how the picture arrives and leaves. See ElementAnimation.
   final ElementAnimation animation;
 
+  /// layers are what the picture is composited from, back to front. See
+  /// image_layers.dart: the fields above are the base layer, and an element
+  /// with no layers is the base layer alone -- which is every picture there
+  /// was before there were layers, and every one that is still just a
+  /// picture.
+  final List<ImageLayer> layers;
+
+  /// mask is what of the picture is shown. See image_mask.dart. Applied after
+  /// [removal], which keys out flat colours for logos and scans.
+  final ImageMask mask;
+
+  /// retouch is the cloning, healing, dodging, burning and blurring done to
+  /// the picture, in order -- under its mask. See image_strokes.dart.
+  final List<StrokeMark> retouch;
+
   const ImageElement(
     super.base, {
     this.assetId = "",
@@ -643,6 +661,9 @@ class ImageElement extends CanvasElement {
     this.overlay = const Color(0x00000000),
     this.blend = OverlayBlend.none,
     this.animation = const ElementAnimation(),
+    this.layers = const [],
+    this.mask = const ImageMask(),
+    this.retouch = const [],
   });
 
   @override
@@ -653,7 +674,47 @@ class ImageElement extends CanvasElement {
         if (assetId.isNotEmpty) assetId,
         // And whatever its frame is painted with. See BoxSpec.assetIds.
         ...box.assetIds,
+        // And every picture layered over it.
+        for (var layer in layers) ...?layer.look?.assetIds,
+        // And the subject its mask was found to have, which is a picture in
+        // the store like any other.
+        if (mask.subject.isNotEmpty) mask.subject,
       };
+
+  /// stack is every layer, back to front, the base layer among them.
+  ///
+  /// Always has exactly one base layer, wherever it was put: a stack read
+  /// from a file that lost it (or never had one) gets it back at the bottom,
+  /// because the base layer is the element's own picture and cannot be
+  /// deleted out from under it.
+  List<ImageLayer> get stack {
+    if (layers.isEmpty) return const [ImageLayer.base];
+    var bases = layers.where((l) => l.isBase).length;
+    if (bases == 1) return layers;
+    var others = [for (var l in layers) if (!l.isBase) l];
+    var base = layers.firstWhere((l) => l.isBase,
+        orElse: () => ImageLayer.base);
+    return [base, ...others];
+  }
+
+  /// layered is whether there is more to draw than the base picture, drawn
+  /// as it always was.
+  bool get layered => layers.any((l) => !l.plain);
+
+  /// layerById is the layer [id], or null.
+  ImageLayer? layerById(String id) {
+    for (var l in stack) {
+      if (l.id == id) return l;
+    }
+    return null;
+  }
+
+  /// withLayers is this element with [next] as its stack.
+  ImageElement withLayers(List<ImageLayer> next) => copyWith(layers: next);
+
+  /// withLayer is this element with the layer [id] changed by [edit].
+  ImageElement withLayer(String id, ImageLayer Function(ImageLayer) edit) =>
+      withLayers([for (var l in stack) l.id == id ? edit(l) : l]);
 
   /// croppedTo is this element with [next] as its crop and its own box
   /// trimmed to match, so the picture that is left stays exactly where it was
@@ -715,7 +776,10 @@ class ImageElement extends CanvasElement {
       outline: outline,
       overlay: overlay,
       blend: blend,
-      animation: animation);
+      animation: animation,
+      layers: layers,
+      mask: mask,
+      retouch: retouch);
 
   ImageElement copyWith({
     String? assetId,
@@ -734,6 +798,9 @@ class ImageElement extends CanvasElement {
     Color? overlay,
     OverlayBlend? blend,
     ElementAnimation? animation,
+    List<ImageLayer>? layers,
+    ImageMask? mask,
+    List<StrokeMark>? retouch,
   }) =>
       ImageElement(base,
           assetId: assetId ?? this.assetId,
@@ -750,7 +817,10 @@ class ImageElement extends CanvasElement {
           outline: outline ?? this.outline,
           overlay: overlay ?? this.overlay,
           blend: blend ?? this.blend,
-          animation: animation ?? this.animation);
+          animation: animation ?? this.animation,
+          layers: layers ?? this.layers,
+          mask: mask ?? this.mask,
+          retouch: retouch ?? this.retouch);
 
   @override
   Map<String, dynamic> props() => {
@@ -769,6 +839,11 @@ class ImageElement extends CanvasElement {
         if (blend != OverlayBlend.none) "overlay": colorToJson(overlay),
         if (blend != OverlayBlend.none) "blend": blend.name,
         if (animation.any) "anim": animation.toJson(),
+        // Only where there is more than the base picture: a picture with no
+        // layers is written exactly as one was before layers existed.
+        if (layered) "layers": [for (var l in stack) l.toJson()],
+        if (!mask.empty) "mask": mask.toJson(),
+        if (retouch.isNotEmpty) "retouch": [for (var s in retouch) s.toJson()],
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -802,7 +877,15 @@ class ImageElement extends CanvasElement {
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
           blend: OverlayBlend.fromName(json["blend"] as String?),
           animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()));
+              const ElementAnimation()),
+          layers: [
+            if (json["layers"] case List raw)
+              for (var l in raw)
+                if (l is Map<String, dynamic>)
+                  if (ImageLayer.fromJson(l) case var layer?) layer,
+          ],
+          mask: jsonSpec(json["mask"], ImageMask.fromJson, const ImageMask()),
+          retouch: strokesFromJson(json["retouch"]));
 }
 
 /// fitToPicture gives an element the proportions of the picture in it.

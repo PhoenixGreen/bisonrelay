@@ -159,16 +159,15 @@ void main() {
       expect(find.byKey(const ValueKey("textStyleUpdate")), findsOneWidget);
     });
 
-    testWidgets("an element can be copied linked, and pushed", (tester) async {
+    testWidgets("there is no linked-copy row: designs are kept as presets",
+        (tester) async {
       var c = CanvasController(
           const CanvasDocument().addElement(_shape("s", 100, 5)));
       addTearDown(c.dispose);
       c.selectOnly("s");
       await _panel(tester, c);
-      await tester.tap(find.byKey(const ValueKey("linkedCopy")));
-      await tester.pumpAndSettle();
-      expect(c.document.elements, hasLength(2));
-      expect(find.byKey(const ValueKey("pushToLinked")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementLinks")), findsNothing);
+      expect(find.byKey(const ValueKey("linkedCopy")), findsNothing);
     });
 
     testWidgets("several selected can be staggered", (tester) async {

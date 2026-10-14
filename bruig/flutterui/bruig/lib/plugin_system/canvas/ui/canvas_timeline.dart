@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_timeline.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:flutter/foundation.dart';
@@ -1110,14 +1111,18 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             child: Row(children: [
               // A drawing's shapes: none, the one picked, or all of them, on
               // lanes of their own under these keyframes.
-              if (vectorLanesFor(controller) != null)
+              // And a picture's layers, coming in one after another.
+              if (vectorLanesFor(controller) != null ||
+                  imageLanesFor(controller) != null)
                 InkResponse(
                   key: const ValueKey("vectorLanesToggle"),
                   radius: 12,
                   onTap: () =>
                       controller.vectorLanes = controller.vectorLanes.next,
                   child: Tooltip(
-                    message: controller.vectorLanes.next.label,
+                    message: imageLanesFor(controller) != null
+                        ? imageLanesLabel(controller.vectorLanes.next)
+                        : controller.vectorLanes.next.label,
                     child: Icon(
                         switch (controller.vectorLanes) {
                           VectorLanes.none => Icons.chevron_right,
@@ -1917,8 +1922,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               child: CanvasChannels(
                   controller: controller,
                   view: _sceneView,
-                  leading: VectorShapeLanes(
-                      controller: controller, view: _sceneView))),
+                  leading: Column(mainAxisSize: MainAxisSize.min, children: [
+                    VectorShapeLanes(controller: controller, view: _sceneView),
+                    ImageLayerLanes(controller: controller, view: _sceneView),
+                  ]))),
         // Which stretch of the timeline is on screen, and a handle to move
         // it: under the frames, not the strip column.
         if (!_collapsed)

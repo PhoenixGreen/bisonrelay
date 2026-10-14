@@ -51,6 +51,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'canvas_panel_helpers.dart';
 
 // canvas_editor_test.dart builds the controls and uses them.
 //
@@ -2267,8 +2268,7 @@ void main() {
       controller.frame = 10;
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      await tester.enterText(find.byKey(const ValueKey("elementX")), "500");
-      await tester.pumpAndSettle();
+      await typeNumber(tester, "elementX", "500");
 
       var element = controller.document.elementById("s")!;
       expect(element.x, 100, reason: "the resting position is untouched");
@@ -2329,7 +2329,7 @@ void main() {
       expect(
           find.descendant(
               of: find.byKey(const ValueKey("elementAngle")),
-              matching: find.text("90")),
+              matching: find.text("90°")),
           findsOneWidget);
     });
   });
@@ -2865,6 +2865,7 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly(image.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
+      await openSection(tester, "image.picture.colour");
       return controller;
     }
 
@@ -2926,17 +2927,17 @@ void main() {
           reason: "and it says where they went");
     });
 
-    testWidgets("frame, crop and look appear only once there is a picture",
+    testWidgets("shape, crop and overlay appear only once there is a picture",
         (tester) async {
       await panel(tester, empty());
-      expect(find.text("FRAME"), findsNothing);
+      expect(find.text("SHAPE"), findsNothing);
       expect(find.text("CROP"), findsNothing);
-      expect(find.text("LOOK"), findsNothing);
+      expect(find.text("OVERLAY"), findsNothing);
 
       await panel(tester, filled());
-      expect(find.text("FRAME"), findsOneWidget);
+      expect(find.text("SHAPE"), findsOneWidget);
       expect(find.text("CROP"), findsOneWidget);
-      expect(find.text("LOOK"), findsOneWidget);
+      expect(find.text("OVERLAY"), findsOneWidget);
     });
 
     testWidgets("the overlay colour appears only once a blend is chosen",
@@ -2980,18 +2981,13 @@ void main() {
       expect(find.byType(Slider), findsNothing,
           reason: "no sliders left in an element's settings");
 
-      var opacity = find.ancestor(
-          of: find.text("Opacity"), matching: find.byType(CanvasNumberField));
-      expect(opacity, findsOneWidget);
-
-      await tester.enterText(
-          find.descendant(of: opacity, matching: find.byType(TextField)),
-          "0.4");
-      await tester.pump();
+      // A percentage on the panel, a fraction in the document.
+      await typeNumber(tester, "elementOpacity", "40");
       expect(controller.document.elements.single.opacity, closeTo(0.4, 0.001));
     });
 
-    testWidgets("dragging its caption scrubs in hundredths", (tester) async {
+    testWidgets("dragging the number scrubs a percent a pixel",
+        (tester) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -2999,10 +2995,12 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      await tester.drag(find.text("Opacity"), const Offset(-25, 0));
-      await tester.pumpAndSettle();
+      await tester.drag(
+          find.byKey(const ValueKey("elementOpacity-number")),
+          const Offset(-25, 0));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
 
-      // Two decimals, so twenty-five pixels is a quarter.
+      // A percent a pixel, so twenty-five pixels is a quarter.
       expect(controller.document.elements.single.opacity, closeTo(0.75, 0.02));
     });
   });
@@ -5300,6 +5298,12 @@ void main() {
   });
 
   group("the outline settings", () {
+    // The outline's own Feather: the mask's edge has one too.
+    Finder outlineFeather() => find.descendant(
+        of: find.byWidgetPredicate(
+            (w) => w is CanvasControlGroup && w.label == "Outline"),
+        matching: find.text("Feather"));
+
     Future<CanvasController> panel(WidgetTester tester,
         {ImageOutline outline = const ImageOutline(),
         String assetId = "abcdefghijklmnop"}) async {
@@ -5313,6 +5317,9 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("i");
       await pump(tester, CanvasDesignPanel(controller: controller));
+      if (assetId.isNotEmpty) {
+        await openSection(tester, "image.picture.effects");
+      }
       return controller;
     }
 
@@ -5325,7 +5332,7 @@ void main() {
 
       expect(find.text("Width"), findsOneWidget);
       expect(find.byKey(const ValueKey("imageOutlineColour")), findsNothing);
-      expect(find.text("Feather"), findsNothing);
+      expect(outlineFeather(), findsNothing);
     });
 
     testWidgets("with a width, it offers a colour, a style and a feather",
@@ -5333,7 +5340,7 @@ void main() {
       await panel(tester, outline: const ImageOutline(width: 4));
 
       expect(find.byKey(const ValueKey("imageOutlineColour")), findsOneWidget);
-      expect(find.text("Feather"), findsOneWidget);
+      expect(outlineFeather(), findsOneWidget);
       expect(find.byType(CanvasDropdown<OutlineStyle>), findsOneWidget);
     });
 
@@ -5374,6 +5381,13 @@ void main() {
   });
 
   group("the remove-background settings", () {
+    // Within the logos-and-scans group: the mask tools beside it have a
+    // Brush and an Invert of their own.
+    Finder text(String words) => find.descendant(
+        of: find.byWidgetPredicate((w) =>
+            w is CanvasControlGroup && w.label == "For logos and scans"),
+        matching: find.text(words));
+
     Future<CanvasController> panel(WidgetTester tester,
         {BackgroundRemoval removal = const BackgroundRemoval()}) async {
       var element = ImageElement(
@@ -5386,35 +5400,39 @@ void main() {
       addTearDown(controller.dispose);
       controller.selectOnly("i");
       await pump(tester, CanvasDesignPanel(controller: controller));
+      await openSection(tester, "image.picture.mask");
       return controller;
     }
 
-    testWidgets("the brushes are there on a picture nothing has been done to",
+    testWidgets("the removal brushes are the mask tools now, on any picture",
         (tester) async {
-      // They were inside "if anything is being removed", which made them
-      // unreachable on exactly the picture they are for: a fresh image has no
-      // method and no strokes, so nothing was being removed, so the brushes
-      // were hidden -- and the only way to reach the tool that needs no method
-      // was to choose a method first.
-      await panel(tester);
+      // The rub-out, cut-around and put-back brushes worked on the base
+      // picture alone and asked for numbers nobody could read off a
+      // photograph. The mask tools replace them, on every layer, a pick of a
+      // layer away.
+      var controller = await panel(tester);
+      expect(find.byTooltip("Rub the background out by hand"), findsNothing);
+      expect(find.byTooltip("Put back what was taken by mistake"), findsNothing);
 
-      expect(find.byTooltip("Rub the background out by hand"), findsOneWidget);
-      expect(
-          find.byTooltip("Put back what was taken by mistake"), findsOneWidget);
+      controller.editImage("i");
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("imageTool-brush")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageTool-subject")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageTool-lasso")), findsOneWidget);
     });
 
     testWidgets("turning a brush on offers its size, hardness and cling",
         (tester) async {
       var controller = await panel(tester);
-      expect(find.text("Brush"), findsNothing,
+      expect(text("Brush"), findsNothing,
           reason: "not until there is a brush in hand");
 
       controller.retouch = RetouchBrush.erase;
       await tester.pumpAndSettle();
 
-      expect(find.text("Brush"), findsOneWidget);
-      expect(find.text("Hardness"), findsOneWidget);
-      expect(find.text("Cling"), findsOneWidget);
+      expect(text("Brush"), findsOneWidget);
+      expect(text("Hardness"), findsOneWidget);
+      expect(text("Cling"), findsOneWidget);
     });
 
     testWidgets("the cut offers to take the other side of the line",
@@ -5452,9 +5470,9 @@ void main() {
       controller.retouch = RetouchBrush.markBackground;
       await tester.pumpAndSettle();
 
-      expect(find.text("Brush"), findsOneWidget);
-      expect(find.text("Hardness"), findsNothing);
-      expect(find.text("Cling"), findsNothing);
+      expect(text("Brush"), findsOneWidget);
+      expect(text("Hardness"), findsNothing);
+      expect(text("Cling"), findsNothing);
     });
 
     testWidgets("the marking brushes appear with the method that uses them",
@@ -5500,10 +5518,10 @@ void main() {
             RemovalStroke(points: [Offset(0.5, 0.5)], radius: 0.1, keep: false),
           ]));
 
-      expect(find.text("Softness"), findsNothing);
-      expect(find.text("Tolerance"), findsNothing);
-      expect(find.text("Spread"), findsNothing);
-      expect(find.text("Invert"), findsNothing);
+      expect(text("Softness"), findsNothing);
+      expect(text("Tolerance"), findsNothing);
+      expect(text("Spread"), findsNothing);
+      expect(text("Invert"), findsNothing);
       // The brush's own are still there.
       expect(find.byTooltip("Undo the last brush stroke"), findsOneWidget);
     });
@@ -5513,21 +5531,21 @@ void main() {
       // It cuts at a threshold and never reads one.
       await panel(tester,
           removal: const BackgroundRemoval(mode: RemovalMode.luminance));
-      expect(find.text("Threshold"), findsOneWidget);
-      expect(find.text("Tolerance"), findsNothing);
-      expect(find.text("Softness"), findsOneWidget);
+      expect(text("Threshold"), findsOneWidget);
+      expect(text("Tolerance"), findsNothing);
+      expect(text("Softness"), findsOneWidget);
     });
 
     testWidgets("a method's own settings stay behind the method",
         (tester) async {
       await panel(tester);
-      expect(find.text("Edge"), findsNothing);
-      expect(find.text("Spread"), findsNothing);
+      expect(text("Edge"), findsNothing);
+      expect(text("Spread"), findsNothing);
 
       await panel(tester,
           removal: const BackgroundRemoval(mode: RemovalMode.cornerFlood));
-      expect(find.text("Edge"), findsOneWidget);
-      expect(find.text("Spread"), findsOneWidget);
+      expect(text("Edge"), findsOneWidget);
+      expect(text("Spread"), findsOneWidget);
     });
   });
 
@@ -5623,8 +5641,7 @@ void main() {
     testWidgets("unlocked, the two numbers are free of each other",
         (tester) async {
       var controller = await panel(tester);
-      await tester.enterText(find.byKey(const ValueKey("elementW")), "400");
-      await tester.pumpAndSettle();
+      await typeNumber(tester, "elementW", "400");
 
       expect(baseIn(controller).width, 400);
       expect(baseIn(controller).height, 100, reason: "the height stayed");
@@ -5632,8 +5649,7 @@ void main() {
 
     testWidgets("locked, the height follows the width", (tester) async {
       var controller = await panel(tester, locked: true);
-      await tester.enterText(find.byKey(const ValueKey("elementW")), "400");
-      await tester.pumpAndSettle();
+      await typeNumber(tester, "elementW", "400");
 
       expect(baseIn(controller).width, 400);
       expect(baseIn(controller).height, 200,
@@ -5642,8 +5658,7 @@ void main() {
 
     testWidgets("and the width follows the height", (tester) async {
       var controller = await panel(tester, locked: true);
-      await tester.enterText(find.byKey(const ValueKey("elementH")), "50");
-      await tester.pumpAndSettle();
+      await typeNumber(tester, "elementH", "50");
 
       expect(baseIn(controller).height, 50);
       expect(baseIn(controller).width, 100);
@@ -5666,8 +5681,7 @@ void main() {
       // stopped the element being resized at all.
       var controller = await panel(tester, locked: true);
       var before = baseIn(controller).width;
-      await tester.enterText(find.byKey(const ValueKey("elementW")), "500");
-      await tester.pumpAndSettle();
+      await typeNumber(tester, "elementW", "500");
       expect(baseIn(controller).width, isNot(before));
     });
   });
@@ -5765,13 +5779,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-          tester
-              .widget<TextField>(find.descendant(
-                  of: find.byKey(const ValueKey("elementX")),
-                  matching: find.byType(TextField)))
-              .controller
-              ?.text,
-          "321");
+          find.descendant(
+              of: find.byKey(const ValueKey("elementX")),
+              matching: find.text("321")),
+          findsOneWidget);
     });
   });
 
@@ -6495,10 +6506,7 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       var caption = find.text("W").first;
-      var field = find.descendant(
-          of: find.ancestor(
-              of: caption, matching: find.byType(CanvasNumberField)),
-          matching: find.byType(TextField));
+      var field = find.byKey(const ValueKey("elementW-less"));
       expect(tester.getRect(caption).bottom,
           lessThanOrEqualTo(tester.getRect(field).top + 1),
           reason: "the caption should be above the box, not beside it");

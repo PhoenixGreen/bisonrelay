@@ -14,6 +14,13 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
+import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
+import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/loop_effects.dart';
@@ -697,8 +704,12 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintLine(canvas, _bowed(e, pose)));
       case ImageElement e:
-        arriving(canvas, bounds, e.animation, pose,
-            () => _paintImage(canvas, bounds, e, images));
+        if (_layerByLayer(e, pose) case var arrive?) {
+          _paintImage(canvas, bounds, e, images, arrive: arrive);
+        } else {
+          arriving(canvas, bounds, e.animation, pose,
+              () => _paintImage(canvas, bounds, e, images));
+        }
       case VectorElement e:
         if (_shapeByShape(e, pose)) {
           _paintVectorInTurn(canvas, bounds, e, pose, frame,
@@ -1547,11 +1558,65 @@ void _paintLineEnd(
   }
 }
 
+/// _LayerArrive draws one layer of a picture coming in a layer at a time:
+/// [draw] as [layer] is at this frame of its own arrival, about [box].
+typedef _LayerArrive = void Function(
+    ImageLayer layer, Rect box, void Function() draw);
+
+/// _layerByLayer is how [e]'s layers come in one after another, where they
+/// do -- its arrival animation played for each layer in its turn, about the
+/// layer's own box -- or null where the picture comes in as one, or is on
+/// its way out. See layerTimes.
+_LayerArrive? _layerByLayer(ImageElement e, Keyframe pose) {
+  if (!e.layered || !e.animation.on) return null;
+  if ((pose.values[KeyframeChannel.close] ?? 0) > 0) return null;
+  var stack = e.stack;
+  if (!layersSequenced(stack)) return null;
+  int? from, to;
+  for (var key in e.track?.keys ?? const <Keyframe>[]) {
+    if (!key.values.containsKey(KeyframeChannel.reveal)) continue;
+    from = from == null ? key.frame : math.min(from, key.frame);
+    to = to == null ? key.frame : math.max(to, key.frame);
+  }
+  if (from == null || to == null || to <= from) return null;
+  var span = to - from;
+  var times = layerTimes(stack, span);
+  var through = pose.values[KeyframeChannel.reveal] ?? 1;
+  var turns = {
+    for (var (i, l) in stack.indexed) l.id: times[i],
+  };
+  return (layer, box, draw) {
+    var (start, length) = turns[layer.id] ?? (0.0, span.toDouble());
+    var reveal = ((through * span - start) / length).clamp(0.0, 1.0);
+    // Nothing yet: not even a frame of it before its turn.
+    if (reveal <= 0 && e.animation.preset != ElementAnimationPreset.none) {
+      return;
+    }
+    paintArriving(
+        _arrivingCanvas!,
+        box,
+        e.animation,
+        pose.copyWith(values: {...pose.values, KeyframeChannel.reveal: reveal}),
+        draw);
+  };
+}
+
+/// _arrivingCanvas is the canvas a picture's layers are being drawn on
+/// while they arrive in turn -- set round the drawing, so the arrival above
+/// draws on whatever canvas the layer is going to.
+ui.Canvas? _arrivingCanvas;
+
 void _paintImage(
-    ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images) {
+    ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images,
+    {_LayerArrive? arrive}) {
   paintBox(canvas, bounds, e.box, images);
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
+
+  if (e.layered) {
+    _paintLayered(canvas, inner, e, images, arrive: arrive);
+    return;
+  }
 
   var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
   if (image == null) {
@@ -1578,8 +1643,46 @@ void _paintImage(
     // outside means.
     canvas.clipRect(inner.inflate(_outlineRoom(e)));
   }
+  _paintPicture(canvas, inner, e, image, images);
+  canvas.restore();
+}
 
+/// _paintPicture draws [image] into [inner] with everything [e] does to it --
+/// its fit, crop and framing, its colours, overlay and outline -- and nothing
+/// of the frame round it. The base picture and every picture layer are drawn
+/// by it.
+void _paintPicture(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
+    CanvasImageSource? images) {
   var overlaid = e.blend != OverlayBlend.none && e.overlay.a > 0;
+
+  // The mask, where there is one, over everything the picture draws -- its
+  // outline traces what the mask leaves, and an overlay tints only that. A
+  // subject still loading is drawn without: the picture whole for a moment
+  // rather than gone.
+  var size = Size(image.width.toDouble(), image.height.toDouble());
+  var maskSubject = e.mask.subject.isEmpty
+      ? null
+      : images?.resolve(e.mask.subject, const BackgroundRemoval());
+  var masking = e.mask.active && (e.mask.subject.isEmpty || maskSubject != null);
+  void masked(void Function() draw) {
+    if (!masking) {
+      draw();
+      return;
+    }
+    // The picture never reaches past its frame, so neither need the layer.
+    canvas.saveLayer(inner, Paint());
+    draw();
+    paintMaskLayer(
+        canvas,
+        e.mask,
+        size,
+        maskSubject,
+        placeImage(size, inner, e.fit, crop: e.crop, framing: e.framing));
+    canvas.restore();
+  }
+
+  void shape(Color colour) => masked(() => _drawImage(canvas, image, inner, e.fit,
+      crop: e.crop, framing: e.framing, silhouette: colour));
 
   // With an overlay, the picture goes into a layer of its own first.
   //
@@ -1592,12 +1695,18 @@ void _paintImage(
   if (e.outline.on &&
       (e.outline.style == OutlineStyle.outside ||
           e.outline.style == OutlineStyle.glow)) {
-    _paintOutline(canvas, image, inner, e, outward: true);
+    _paintOutline(canvas, shape, inner, e, outward: true);
   }
 
+  // The picture with the background's colour taken out of its edge, where
+  // its mask asks for that and it has been worked out -- see
+  // edge_cleaning.dart. Only its colours: its shape is the picture's.
+  var shown = masking ? cleanedFor(images, e, image) : image;
+  masked(() {
   if (overlaid) canvas.saveLayer(inner, Paint());
 
-  _drawImage(canvas, image, inner, e.fit,
+  _drawImage(canvas, shown, inner, e.fit,
+      retouch: e.retouch,
       tint: e.tint,
       saturation: e.saturation,
       brightness: e.brightness,
@@ -1621,6 +1730,7 @@ void _paintImage(
         crop: e.crop, framing: e.framing, maskOnly: true);
     canvas.restore();
   }
+  });
 
   // Over the picture, and after the overlay, because an inside band is meant
   // to be the outermost thing there is -- an overlay painted on top of it
@@ -1628,9 +1738,418 @@ void _paintImage(
   if (e.outline.on &&
       (e.outline.style == OutlineStyle.inside ||
           e.outline.style == OutlineStyle.centred)) {
-    _paintOutline(canvas, image, inner, e, outward: false);
+    _paintOutline(canvas, shape, inner, e, outward: false);
+  }
+}
+
+/// _paintLayered draws a picture made of layers into its frame [inner].
+///
+/// The frame's shape clips the whole composite, as it clips a single
+/// picture, and the composite is drawn in a layer of its own: a blend mode
+/// blends against what is under it, and what is under a layer of a picture
+/// is the layers below it -- not whatever else is on the canvas, which
+/// would change the picture every time something was moved behind it.
+void _paintLayered(
+    ui.Canvas canvas, Rect inner, ImageElement e, CanvasImageSource? images,
+    {_LayerArrive? arrive}) {
+  var stack = e.stack;
+  // Nothing in it at all is an empty picture, and says so. An adjustment
+  // alone has nothing to adjust.
+  var anything = stack.any((l) => switch (l.kind) {
+        LayerKind.base => e.hasImage,
+        LayerKind.picture => l.look?.hasImage ?? false,
+        LayerKind.fill || LayerKind.texture => true,
+        LayerKind.paint => l.strokes.isNotEmpty,
+        LayerKind.adjustment => false,
+      });
+  if (!anything) {
+    _imagePlaceholder(canvas, inner, e);
+    return;
+  }
+
+  canvas.save();
+  if (e.frame != null) {
+    canvas
+        .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
+  } else if (e.box.isRounded) {
+    canvas.clipRRect(e.box.insetRounded(inner));
+  } else {
+    canvas.clipRect(inner.inflate(_outlineRoom(e)));
+  }
+  var room = inner.inflate(_outlineRoom(e));
+  canvas.saveLayer(room, Paint());
+  var watched = _Watched(images);
+  _paintStack(canvas, inner, e, stack, watched, room, arrive);
+  canvas.restore();
+  canvas.restore();
+}
+
+Paint _over(ImageLayer layer) => Paint()
+  ..blendMode = layer.blend.flutter
+  ..color = Color.fromRGBO(0, 0, 0, layer.opacity);
+
+/// _record is whatever [draw] draws, as a picture.
+ui.Picture _record(void Function(ui.Canvas) draw) {
+  var recorder = ui.PictureRecorder();
+  draw(ui.Canvas(recorder));
+  return recorder.endRecording();
+}
+
+/// _paintStack draws [stack], back to front.
+///
+/// An adjustment layer changes everything under it, so the topmost one is
+/// found first and the stack is split there: what is under it is drawn --
+/// as itself, and again through the adjustment, blended over at the
+/// adjustment's own opacity and blend -- and what is over it after. The part
+/// under may hold adjustments of its own, and is drawn the same way.
+void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
+    List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive) {
+  var at = -1;
+  for (var i = stack.length - 1; i >= 0; i--) {
+    var l = stack[i];
+    // A clipped adjustment changes only the layer it is clipped to, and is
+    // drawn with it -- see _paintGroups.
+    if (l.kind == LayerKind.adjustment && l.visible && !(l.clip && i > 0)) {
+      at = i;
+      break;
+    }
+  }
+  if (at < 0) {
+    _paintGroups(canvas, inner, e, stack, images, room, arrive);
+    return;
+  }
+  var misses = images.misses;
+  var below = _record((c) =>
+      _paintStack(c, inner, e, stack.sublist(0, at), images, room, arrive));
+  // What is under it changes frame by frame while layers arrive, so the
+  // adjusted picture is not kept then.
+  var complete = images.misses == misses && arrive == null;
+  canvas.drawPicture(below);
+  var adjustment = stack[at];
+  canvas.saveLayer(room, _over(adjustment));
+  _arriving(canvas, arrive, adjustment, room, () {
+    paintAdjusted(canvas, room, adjustment.adjust, below,
+        // Kept only once everything under it has loaded: kept earlier, the
+        // picture that arrived late would never be adjusted.
+        owner: complete ? e : null,
+        key: "${adjustment.id}|$at");
+    _frameMasked(canvas, inner, adjustment);
+  });
+  canvas.restore();
+  below.dispose();
+  _paintGroups(canvas, inner, e, stack.sublist(at + 1), images, room, arrive);
+}
+
+/// _arriving draws [draw] for [layer] as its turn to arrive says, where the
+/// picture's layers arrive in turn -- or just draws it.
+void _arriving(ui.Canvas canvas, _LayerArrive? arrive, ImageLayer layer,
+    Rect box, void Function() draw) {
+  if (arrive == null) return draw();
+  var was = _arrivingCanvas;
+  _arrivingCanvas = canvas;
+  try {
+    arrive(layer, box, draw);
+  } finally {
+    _arrivingCanvas = was;
+  }
+}
+
+/// renderUnder is what is under the layer [layerId] of [e] -- every layer
+/// below it, drawn as they are drawn -- as a [w] x [h] picture of the frame:
+/// what an adjustment there is working on, for its histogram. Null where
+/// there is no such layer.
+Future<ui.Image?> renderUnder(ImageElement e, String layerId,
+    CanvasImageSource? images, int w, int h) async {
+  var stack = e.stack;
+  var at = stack.indexWhere((l) => l.id == layerId);
+  if (at < 0) return null;
+  var inner = e.box.inner(e.bounds);
+  if (inner.width <= 0 || inner.height <= 0) return null;
+  var picture = _record((c) {
+    c.scale(w / inner.width, h / inner.height);
+    c.translate(-inner.left, -inner.top);
+    c.clipRect(inner);
+    _paintStack(
+        c, inner, e, stack.sublist(0, at), _Watched(images), inner, null);
+  });
+  try {
+    return await picture.toImage(w, h);
+  } finally {
+    picture.dispose();
+  }
+}
+
+/// _paintFrameMaskView is paintMaskView for a frame-masked layer: its mask
+/// over the whole frame.
+void _paintFrameMaskView(ui.Canvas canvas, ImageElement e, ImageLayer layer,
+    {required bool overlay}) {
+  canvas.save();
+  var bounds = e.bounds;
+  if (e.rotation != 0) {
+    canvas.translate(bounds.center.dx, bounds.center.dy);
+    canvas.rotate(e.rotation * math.pi / 180);
+    canvas.translate(-bounds.center.dx, -bounds.center.dy);
+  }
+  var inner = e.box.inner(bounds);
+  var size = Size(inner.width, inner.height);
+  var placement = placeImage(size, inner, ImageFit.stretch);
+  canvas.saveLayer(inner, Paint());
+  if (overlay) {
+    canvas.drawRect(inner, Paint()..color = const Color(0x88FF2020));
+    if (!layer.mask.empty) {
+      paintMaskLayer(canvas, layer.mask, size, null, placement,
+          blend: BlendMode.dstOut);
+    } else {
+      canvas.drawRect(inner, Paint()..blendMode = BlendMode.clear);
+    }
+  } else {
+    canvas.drawRect(inner, Paint()..color = const Color(0xFF000000));
+    canvas.saveLayer(inner, Paint());
+    canvas.drawRect(inner, Paint()..color = const Color(0xFFFFFFFF));
+    if (!layer.mask.empty) {
+      paintMaskLayer(canvas, layer.mask, size, null, placement);
+    }
+    canvas.restore();
   }
   canvas.restore();
+  canvas.restore();
+}
+
+/// _frameMasked cuts what has just been drawn of [layer] in the current
+/// layer back to its frame mask -- see ImageLayer.mask -- where it has one.
+void _frameMasked(ui.Canvas canvas, Rect inner, ImageLayer layer) {
+  if (!layer.framed || !layer.mask.active) return;
+  var size = Size(inner.width, inner.height);
+  paintMaskLayer(canvas, layer.mask, size, null,
+      placeImage(size, inner, ImageFit.stretch));
+}
+
+/// _layerBox is where [layer] is in a frame drawn at [inner]: a picture
+/// layer's place, and the whole frame for the rest.
+Rect _layerBox(Rect inner, ImageLayer layer) =>
+    layer.kind == LayerKind.picture ? layerRect(inner, layer.place) : inner;
+
+/// _paintGroups draws [stack], which holds no adjustment over everything
+/// under it, a layer and the layers clipped to it at a time.
+void _paintGroups(ui.Canvas canvas, Rect inner, ImageElement e,
+    List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive) {
+  var i = 0;
+  while (i < stack.length) {
+    var layer = stack[i];
+    // The layers clipped to this one, which go wherever it goes.
+    var j = i + 1;
+    while (j < stack.length && stack[j].clip) {
+      j++;
+    }
+    var clipped = [
+      for (var c in stack.sublist(i + 1, j))
+        if (c.visible) c
+    ];
+    // A clipped layer at the very bottom has nothing to clip to, and is
+    // drawn as an ordinary one.
+    if (layer.visible) {
+      canvas.saveLayer(room, _over(layer));
+      _arriving(canvas, arrive, layer, _layerBox(inner, layer), () {
+        _paintDressed(canvas, inner, e, layer, images, room);
+        _frameMasked(canvas, inner, layer);
+      });
+      for (var c in clipped) {
+        canvas.saveLayer(room, _over(c));
+        if (c.kind == LayerKind.adjustment) {
+          // Clipped, an adjustment changes the one layer under it.
+          var misses = images.misses;
+          var base = _record((r) => _paintLayer(r, inner, e, layer, images));
+          _arriving(canvas, arrive, c, room, () {
+            paintAdjusted(canvas, room, c.adjust, base,
+                owner: images.misses == misses && arrive == null ? e : null,
+                key: "${c.id}|clip");
+            _frameMasked(canvas, inner, c);
+          });
+          base.dispose();
+        } else {
+          _arriving(canvas, arrive, c, _layerBox(inner, c), () {
+            _paintDressed(canvas, inner, e, c, images, room);
+            _frameMasked(canvas, inner, c);
+          });
+        }
+        // Cut back to the layer it is clipped to: its own shape, drawn again
+        // as a mask over the clipped layer before it is blended down.
+        canvas.saveLayer(room, Paint()..blendMode = BlendMode.dstIn);
+        _paintLayer(canvas, inner, e, layer, images);
+        _frameMasked(canvas, inner, layer);
+        canvas.restore();
+        canvas.restore();
+      }
+      canvas.restore();
+    }
+    i = j;
+  }
+}
+
+/// _paintDressed draws [layer] with its effects -- shadows, glows, blurs --
+/// or, with none switched on, as it is.
+void _paintDressed(ui.Canvas canvas, Rect inner, ImageElement e,
+    ImageLayer layer, _Watched images, Rect room) {
+  if (!layer.effects.any((f) => f.on)) {
+    _paintLayer(canvas, inner, e, layer, images);
+    return;
+  }
+  var misses = images.misses;
+  var content = _record((r) => _paintLayer(r, inner, e, layer, images));
+  paintWithEffects(canvas, room,
+      math.min(inner.width, inner.height) / 1000, layer.effects, content,
+      owner: images.misses == misses ? e : null, key: layer.id);
+  content.dispose();
+}
+
+/// _Watched is a picture source that counts what it could not hand over
+/// yet, so an adjustment drawn over a picture still loading is not kept.
+class _Watched extends CanvasImageSource implements CleansEdges {
+  final CanvasImageSource? source;
+  int misses = 0;
+  _Watched(this.source);
+
+  @override
+  ui.Image? resolve(String assetId, BackgroundRemoval removal) {
+    var image = source?.resolve(assetId, removal);
+    if (image == null) misses++;
+    return image;
+  }
+
+  @override
+  CanvasVector? resolveVector(String assetId) =>
+      source?.resolveVector(assetId);
+
+  @override
+  ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
+      source?.resolveOutline(assetId, removal);
+
+  @override
+  bool get loading => source?.loading ?? false;
+
+  @override
+  ui.Image? cleaned(ImageElement look, ui.Image picture) {
+    var s = source;
+    if (s is CleansEdges) {
+      var image = (s as CleansEdges).cleaned(look, picture);
+      if (image == null) misses++;
+      return image;
+    }
+    return null;
+  }
+}
+
+/// paintMaskView draws the mask of the layer [layerId] of [e] where the
+/// picture is, in document units, for seeing it while it is worked on: what
+/// it hides in translucent red over everything ([overlay]), or the mask alone
+/// in black and white. See MaskView.
+void paintMaskView(ui.Canvas canvas, ImageElement e, String layerId,
+    CanvasImageSource? images,
+    {required bool overlay}) {
+  var layer = e.layerById(layerId);
+  if (layer == null) return;
+  if (layer.framed) {
+    _paintFrameMaskView(canvas, e, layer, overlay: overlay);
+    return;
+  }
+  var look = switch (layer.kind) {
+    LayerKind.base => e,
+    LayerKind.picture => layer.look,
+    LayerKind.fill ||
+    LayerKind.adjustment ||
+    LayerKind.texture ||
+    LayerKind.paint =>
+      null,
+  };
+  if (look == null || !look.hasImage) return;
+  var image = images?.resolve(look.assetId, look.removal);
+  if (image == null) return;
+  var size = Size(image.width.toDouble(), image.height.toDouble());
+  var subject = look.mask.subject.isEmpty
+      ? null
+      : images?.resolve(look.mask.subject, const BackgroundRemoval());
+
+  canvas.save();
+  var bounds = e.bounds;
+  if (e.rotation != 0) {
+    canvas.translate(bounds.center.dx, bounds.center.dy);
+    canvas.rotate(e.rotation * math.pi / 180);
+    canvas.translate(-bounds.center.dx, -bounds.center.dy);
+  }
+  var inner = e.box.inner(bounds);
+  var rect = inner;
+  if (!layer.isBase) {
+    rect = layerRect(inner, layer.place);
+    canvas.translate(rect.center.dx, rect.center.dy);
+    if (layer.turn != 0) canvas.rotate(layer.turn * math.pi / 180);
+    if (layer.flipX || layer.flipY) {
+      canvas.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+    }
+    canvas.translate(-rect.center.dx, -rect.center.dy);
+  }
+  var placement =
+      placeImage(size, rect, look.fit, crop: look.crop, framing: look.framing);
+  var dst = placement.dst;
+  canvas.saveLayer(dst, Paint());
+  if (overlay) {
+    canvas.drawRect(dst, Paint()..color = const Color(0x88FF2020));
+    if (!look.mask.empty) {
+      paintMaskLayer(canvas, look.mask, size, subject, placement,
+          blend: BlendMode.dstOut);
+    } else {
+      canvas.drawRect(dst, Paint()..blendMode = BlendMode.clear);
+    }
+  } else {
+    canvas.drawRect(dst, Paint()..color = const Color(0xFF000000));
+    canvas.saveLayer(dst, Paint());
+    canvas.drawRect(dst, Paint()..color = const Color(0xFFFFFFFF));
+    if (!look.mask.empty) {
+      paintMaskLayer(canvas, look.mask, size, subject, placement);
+    }
+    canvas.restore();
+  }
+  canvas.restore();
+  canvas.restore();
+}
+
+/// _paintLayer draws one layer of [e] at full strength; its blend and
+/// opacity are the caller's.
+void _paintLayer(ui.Canvas canvas, Rect inner, ImageElement e,
+    ImageLayer layer, CanvasImageSource? images) {
+  switch (layer.kind) {
+    case LayerKind.base:
+      var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
+      if (image != null) _paintPicture(canvas, inner, e, image, images);
+    case LayerKind.fill:
+      canvas.drawRect(inner, layer.fill.into(Paint(), inner));
+    case LayerKind.adjustment:
+      // Drawn by what is under it -- see _paintStack.
+      break;
+    case LayerKind.texture:
+      paintTexture(canvas, inner, layer.texture);
+    case LayerKind.paint:
+      paintPaintLayer(canvas, inner, layer.strokes, "${e.id}|${layer.id}");
+    case LayerKind.picture:
+      var look = layer.look;
+      if (look == null || !look.hasImage) return;
+      var image = images?.resolve(look.assetId, look.removal);
+      if (image == null) return;
+      var rect = layerRect(inner, layer.place);
+      if (rect.width <= 0 || rect.height <= 0) return;
+      canvas.save();
+      canvas.translate(rect.center.dx, rect.center.dy);
+      if (layer.turn != 0) canvas.rotate(layer.turn * math.pi / 180);
+      if (layer.flipX || layer.flipY) {
+        canvas.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+      }
+      canvas.translate(-rect.center.dx, -rect.center.dy);
+      if (look.frame != null) {
+        canvas.clipPath(
+            shapePath(look.frame!, rect, bubble: const SpeechBubbleSpec()));
+      }
+      _paintPicture(canvas, rect, look, image, images);
+      canvas.restore();
+  }
 }
 
 /// _frameId is what the frame being drawn is called while the image painter
@@ -1750,7 +2269,8 @@ double _outlineRoom(ImageElement e) {
 /// is three lines' worth of edge for something asked to draw one. So the fade
 /// is a pass of its own and a solid band is laid over the inside of it, which
 /// leaves exactly one edge to look at: the outer one.
-void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner, ImageElement e,
+void _paintOutline(ui.Canvas canvas, void Function(Color) shape, Rect inner,
+    ImageElement e,
     {required bool outward}) {
   var outline = e.outline;
   // Centred splits the band between the two sides, which is what centred
@@ -1762,8 +2282,7 @@ void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner, ImageElement e,
   void silhouette(Color colour, ui.ImageFilter? filter) {
     canvas.saveLayer(
         inner, filter == null ? Paint() : (Paint()..imageFilter = filter));
-    _drawImage(canvas, image, inner, e.fit,
-        crop: e.crop, framing: e.framing, silhouette: colour);
+    shape(colour);
     canvas.restore();
   }
 
@@ -1849,8 +2368,7 @@ void _paintOutline(ui.Canvas canvas, ui.Image image, Rect inner, ImageElement e,
                     sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal),
                 inner: punch)
             : punch);
-  _drawImage(canvas, image, inner, e.fit,
-      crop: e.crop, framing: e.framing, silhouette: const Color(0xFF000000));
+  shape(const Color(0xFF000000));
   canvas.restore();
   canvas.restore();
 }
@@ -1887,6 +2405,10 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     ImageCrop crop = const ImageCrop(),
     ImageFraming framing = const ImageFraming(),
     ImageFilterPreset filter = ImageFilterPreset.none,
+
+    /// retouch is cloning, healing and the like done to the picture, drawn
+    /// over it in its own pixels -- see brush_painter.dart.
+    List<StrokeMark> retouch = const [],
 
     /// maskOnly draws the picture's *shape* rather than the picture: no
     /// colour, no filters, composited with dstIn so that whatever is already
@@ -1931,6 +2453,21 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
       presetMatrix(filter), colorMatrix(saturation, brightness));
   if (matrix != null) paint.colorFilter = ColorFilter.matrix(matrix);
   canvas.drawImageRect(image, src, dst, paint);
+
+  if (retouch.isNotEmpty) {
+    var m = pictureToPlacement(placement);
+    canvas.save();
+    canvas.clipRect(dst);
+    canvas.translate(m.dx, m.dy);
+    canvas.scale(m.sx, m.sy);
+    paintRetouch(
+        canvas,
+        image,
+        Size(image.width.toDouble(), image.height.toDouble()),
+        retouch,
+        paint.colorFilter);
+    canvas.restore();
+  }
 
   if (tint.a > 0) {
     canvas.drawRect(

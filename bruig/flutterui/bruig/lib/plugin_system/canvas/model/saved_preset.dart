@@ -27,7 +27,11 @@ enum SavedPresetKind {
   brush("brushes"),
 
   /// pitchView is a sports pitch's camera somebody liked.
-  pitchView("pitch-views");
+  pitchView("pitch-views"),
+
+  /// look is a picture's grade -- its adjustments, textures and colour
+  /// layers -- to put on another picture. See lookData.
+  look("looks");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -107,7 +111,10 @@ class SavedPreset {
   List<CanvasScene> buildScenes({Size? on}) => switch (kind) {
         SavedPresetKind.scene => [if (buildScene(on: on) case var s?) s],
         SavedPresetKind.canvas => _canvasScenes(on),
-        SavedPresetKind.brush || SavedPresetKind.pitchView => const [],
+        SavedPresetKind.brush ||
+        SavedPresetKind.pitchView ||
+        SavedPresetKind.look =>
+          const [],
       };
 
   /// _canvasScenes is a saved canvas's scenes, sized to the page they are

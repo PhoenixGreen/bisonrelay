@@ -683,9 +683,7 @@ List<Widget> chartSettings(
                 label: name.isEmpty ? "${i + 1}" : name,
                 color: sliceColour(e, i),
                 onChanged: (c) => now(e.copyWith(sliceColors: [
-                  for (var j = 0;
-                      j < e.data.categories.length;
-                      j++)
+                  for (var j = 0; j < e.data.categories.length; j++)
                     j == i ? c : sliceColour(e, j),
                 ])),
               ),

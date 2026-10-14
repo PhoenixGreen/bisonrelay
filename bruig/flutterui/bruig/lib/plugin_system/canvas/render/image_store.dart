@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -35,7 +36,20 @@ import 'package:flutter_svg/flutter_svg.dart';
 const int _maxEntries = 48;
 
 /// CanvasImageStore holds decoded pictures for a canvas being edited.
-class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
+class CanvasImageStore extends ChangeNotifier
+    implements CanvasImageSource, CleansEdges {
+  /// _edges makes and keeps pictures with their edges cleaned -- see
+  /// edge_cleaning.dart.
+  late final EdgeCleaner _edges = EdgeCleaner(
+      subjectOf: (id) => resolve(id, const BackgroundRemoval()),
+      onReady: () {
+        if (!_disposed) notifyListeners();
+      });
+
+  @override
+  ui.Image? cleaned(ImageElement look, ui.Image picture) =>
+      _edges.cleaned(look, picture);
+
   final Map<String, ui.Image> _images = {};
 
   /// _order is the keys in least-recently-used order, which is what makes the
@@ -87,7 +101,7 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   ui.Image? original(String assetId) => _images[assetId];
 
   @override
-  bool get loading => _pending.isNotEmpty;
+  bool get loading => _pending.isNotEmpty || _edges.busy;
 
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) {
@@ -272,6 +286,7 @@ class CanvasImageStore extends ChangeNotifier implements CanvasImageSource {
   @override
   void dispose() {
     _disposed = true;
+    _edges.dispose();
     for (var vector in _vectors.values) {
       vector.picture.dispose();
     }

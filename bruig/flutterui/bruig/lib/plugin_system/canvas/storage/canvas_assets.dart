@@ -52,6 +52,10 @@ final _idPattern = RegExp(r"^[a-zA-Z0-9]{16}(\.[a-z0-9]{1,5})?$");
 /// Generous, because a canvas is a design tool and somebody will legitimately
 /// drop a photograph in -- but bounded, because the whole library is read when
 /// the sidebar opens and one 200MB file would stall it.
+/// isMaskId is whether [id] is a subject mask rather than a picture. See
+/// CanvasAssets.saveMask.
+bool isMaskId(String id) => id.endsWith(".mask");
+
 const int maxAssetBytes = 32 * 1024 * 1024;
 
 /// CanvasAssets reads and writes the pictures.
@@ -232,6 +236,16 @@ class CanvasAssets {
   /// twenty small reads to answer twenty questions about existence is work for
   /// nothing, and the answer is a stat call.
   /// pathOf is where the picture [id] is on disk, or null where it is not.
+  /// saveMask keeps a picture's subject mask -- see ImageMask.subject -- in
+  /// the picture store, under its digest like any picture but with ".mask"
+  /// for its kind, so the lists of pictures to choose from leave it out. It
+  /// is a mask, not something anybody would put on a canvas.
+  static Future<String?> saveMask(List<int> bytes) async {
+    if (bytes.isEmpty) return null;
+    var id = "${sha256.convert(bytes).toString().substring(0, 16)}.mask";
+    return await saveAs(id, bytes) ? id : null;
+  }
+
   static Future<String?> pathOf(String id) async {
     var where = await _pathFor(id);
     if (where == null || !await File(where).exists()) return null;

@@ -10,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_snap.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
@@ -206,6 +208,10 @@ class StagePainter extends CustomPainter {
     Set<int>? combining,
   })? editingVector;
 
+  /// editingLayers is the layers of the picture being edited -- drawn in
+  /// place of a selection box. See StageLayers.
+  final StageLayers? editingLayers;
+
   /// chartLabels is the boxes of the selected chart's placed labels, in
   /// document units. Outlined so that a title somebody has taken control of
   /// looks like something that can be taken hold of -- placed and then not
@@ -319,6 +325,7 @@ class StagePainter extends CustomPainter {
     required this.snapped,
     required this.selectedPath,
     this.editingVector,
+    this.editingLayers,
     required this.chartLabels,
     required this.tableColumns,
     required this.editingText,
@@ -793,6 +800,10 @@ class StagePainter extends CustomPainter {
       _paintPathControls(canvas, path);
       return;
     }
+    if (editingLayers case var layers?) {
+      _paintLayerBoxes(canvas, layers);
+      return;
+    }
     if (editingVector case var editing?) {
       // Painting -- tint, or the pencil with its points hidden -- nothing is
       // picked or boxed: the drawing alone.
@@ -1057,6 +1068,115 @@ class StagePainter extends CustomPainter {
             ..color = colour);
     }
     for (var h in boxHandles(box)) {
+      var r = Rect.fromCenter(center: screen(h), width: 8, height: 8);
+      canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));
+      canvas.drawRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
+    }
+  }
+
+  /// _paintLayerBoxes draws the layers of a picture being edited: a faint
+  /// outline round each picture layer, so what can be picked can be seen, and
+  /// the picked one's box with its handles and its turning knob. The base
+  /// picture, picked, is the frame itself.
+  void _paintLayerBoxes(Canvas canvas, StageLayers layers) {
+    Offset screen(Offset p) => p * scale + origin;
+    if (layers.masking case var m? when m.view != MaskView.result) {
+      canvas.save();
+      canvas.translate(origin.dx, origin.dy);
+      canvas.scale(scale);
+      paintMaskView(canvas, m.element, m.layer, images,
+          overlay: m.view == MaskView.overlay);
+      canvas.restore();
+    }
+    if (layers.trail case (var points, var radius, var subtract)) {
+      var colour =
+          subtract ? const Color(0x66FF3030) : const Color(0x6630A0FF);
+      var paint = Paint()
+        ..color = colour
+        ..strokeWidth = radius * scale * 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
+      var at = [for (var p in points) screen(p)];
+      if (at.length == 1) {
+        canvas.drawCircle(
+            at.single, radius * scale, paint..style = PaintingStyle.fill);
+      } else {
+        canvas.drawPath(Path()..addPolygon(at, false), paint);
+      }
+    }
+    if (layers.marker case var m?) {
+      var at = screen(m);
+      for (var (width, colour) in const [
+        (3.0, Color(0xAA000000)),
+        (1.2, Color(0xFFFFFFFF)),
+      ]) {
+        var paint = Paint()
+          ..strokeWidth = width
+          ..color = colour;
+        canvas.drawLine(at - const Offset(8, 0), at + const Offset(8, 0), paint);
+        canvas.drawLine(at - const Offset(0, 8), at + const Offset(0, 8), paint);
+      }
+    }
+    if (layers.ring case (var centre, var radius)) {
+      var at = screen(centre);
+      var r = radius * scale;
+      for (var (width, colour) in const [
+        (3.0, Color(0xAA000000)),
+        (1.2, Color(0xFFFFFFFF)),
+      ]) {
+        canvas.drawCircle(
+            at,
+            r,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = width
+              ..color = colour);
+      }
+    }
+    Path outline(List<Offset> corners) =>
+        Path()..addPolygon(corners.map(screen).toList(), true);
+    const colour = defaultHandleColor;
+    for (var corners in layers.others) {
+      canvas.drawPath(
+          outline(corners),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = colour.withValues(alpha: 0.35));
+    }
+    var picked = layers.picked;
+    if (picked == null) return;
+    canvas.drawPath(
+        outline(picked),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = colour);
+    if (layers.knob case var knob?) {
+      var top = screen((picked[0] + picked[1]) / 2);
+      var at = screen(knob);
+      canvas.drawLine(
+          top,
+          at,
+          Paint()
+            ..strokeWidth = 1
+            ..color = colour);
+      canvas.drawCircle(at, 5, Paint()..color = const Color(0xFFFFFFFF));
+      canvas.drawCircle(
+          at,
+          5,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
+    }
+    for (var h in layers.handles) {
       var r = Rect.fromCenter(center: screen(h), width: 8, height: 8);
       canvas.drawRect(r, Paint()..color = const Color(0xFFFFFFFF));
       canvas.drawRect(
@@ -1554,6 +1674,7 @@ class StagePainter extends CustomPainter {
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       old.editingVector != editingVector ||
+      old.editingLayers != editingLayers ||
       old.editingText != editingText ||
       old.editingItem != editingItem ||
       !identical(old.preview, preview) ||
@@ -1566,4 +1687,38 @@ class StagePainter extends CustomPainter {
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||
       old.marquee != marquee;
+}
+
+/// StageLayers is what the stage draws over a picture whose layers are being
+/// edited, in document units: the corners of every picture layer not picked,
+/// and the picked one's corners, handles and turning knob. A picked base
+/// picture has its frame as its corners and no handles -- the frame is
+/// resized as the element.
+class StageLayers {
+  final List<List<Offset>> others;
+  final List<Offset>? picked;
+  final List<Offset> handles;
+  final Offset? knob;
+
+  /// masking is the layer whose mask a mask tool is working on, and how the
+  /// mask is to be shown; ring is the brush, centre and radius.
+  final ({ImageElement element, String layer, MaskView view})? masking;
+  final (Offset, double)? ring;
+
+  /// trail is a quick-select stroke being drawn: its points, its radius,
+  /// and whether it takes away.
+  final (List<Offset>, double, bool)? trail;
+
+  /// marker is where the clone tool copies from.
+  final Offset? marker;
+
+  const StageLayers(
+      {this.others = const [],
+      this.picked,
+      this.handles = const [],
+      this.knob,
+      this.masking,
+      this.ring,
+      this.trail,
+      this.marker});
 }

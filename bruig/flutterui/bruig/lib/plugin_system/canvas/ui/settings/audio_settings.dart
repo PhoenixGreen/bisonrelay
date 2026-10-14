@@ -357,7 +357,8 @@ List<Widget> audioSettings(
     // effects -- opening here, in place -- and what it ducks.
     if (background && clip.timed)
       CanvasMixer.section(
-          key: ValueKey("mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
+          key: ValueKey(
+              "mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
           controller: controller,
           channel: clip.channel.isEmpty ? e.id : clip.channel),
     // What can be done to a sound on the timeline as a whole.

@@ -1534,6 +1534,11 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   final double width;
   final ValueChanged<T> onChanged;
 
+  /// onPreview is told of each option the pointer passes over while the list
+  /// is open, and of null when it closes -- so a choice can be seen on the
+  /// canvas before it is made. Null for a list nothing is tried from.
+  final ValueChanged<T?>? onPreview;
+
   /// enabled is whether it answers at all.
   ///
   /// A control that is drawn and does nothing is worse than one that is not
@@ -1587,6 +1592,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     required this.value,
     required this.options,
     required this.onChanged,
+    this.onPreview,
     this.width = 130,
     this.tight = false,
     this.enabled = true,
@@ -1709,9 +1715,13 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
                   else
                     DropdownMenuItem<T>(
                       value: v,
-                      child: marked.contains(v)
-                          ? _markedOption(theme, v as T, text)
-                          : _named(v as T, text),
+                      child: _Previewed<T>(
+                        value: v as T,
+                        onPreview: onPreview,
+                        child: marked.contains(v)
+                            ? _markedOption(theme, v, text)
+                            : _named(v, text),
+                      ),
                     ),
               ],
               onChanged: enabled
@@ -1728,6 +1738,44 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// _Previewed is one option of an open list, telling [onPreview] when the
+/// pointer comes onto it -- and, as the list closes and takes its options
+/// with it, that nothing is being tried any more.
+class _Previewed<T> extends StatefulWidget {
+  final T value;
+  final ValueChanged<T?>? onPreview;
+  final Widget child;
+  const _Previewed(
+      {required this.value, required this.onPreview, required this.child});
+
+  @override
+  State<_Previewed<T>> createState() => _PreviewedState<T>();
+}
+
+class _PreviewedState<T> extends State<_Previewed<T>> {
+  @override
+  void dispose() {
+    var preview = widget.onPreview;
+    // After the frame: the list is being taken down, and whatever the
+    // preview changes rebuilds the panel the list was opened from. Every
+    // option says it, and saying it twice changes nothing.
+    if (preview != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => preview(null));
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var preview = widget.onPreview;
+    if (preview == null) return widget.child;
+    return MouseRegion(
+      onEnter: (_) => preview(widget.value),
+      child: widget.child,
     );
   }
 }
@@ -2564,6 +2612,10 @@ class CanvasExpander extends StatefulWidget {
   /// every time anybody looked.
   final String? remember;
 
+  /// flat draws the children and nothing else -- no heading, always open --
+  /// for a section that already sits inside a section of its own.
+  final bool flat;
+
   const CanvasExpander({
     required this.label,
     required this.children,
@@ -2571,6 +2623,7 @@ class CanvasExpander extends StatefulWidget {
     this.action,
     this.initiallyOpen = false,
     this.remember,
+    this.flat = false,
     super.key,
   });
 
@@ -2609,6 +2662,14 @@ void _keepSection(String? key, bool open) {
   StorageManager.saveData("canvasSection.$key", open);
 }
 
+/// rememberedSection, restoreSection and keepSection are the same memory for
+/// the panel sections in panel_kit.dart, which are a third shape of the same
+/// question.
+bool? rememberedSection(String key) => _rememberedSections[key];
+Future<void> restoreSection(String key, ValueChanged<bool> then) =>
+    _restoreSection(key, then);
+void keepSection(String? key, bool open) => _keepSection(key, open);
+
 class _CanvasExpanderState extends State<CanvasExpander> {
   late bool _open =
       _rememberedSections[widget.remember] ?? widget.initiallyOpen;
@@ -2632,6 +2693,13 @@ class _CanvasExpanderState extends State<CanvasExpander> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    if (widget.flat) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: widget.children,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

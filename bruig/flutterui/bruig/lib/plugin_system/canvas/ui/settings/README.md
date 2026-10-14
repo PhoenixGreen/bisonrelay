@@ -131,3 +131,27 @@ Model tests do not see a dead control or a row that wraps. `canvas_control_wrap_
 is the pattern: pump the real panel at a known width and measure. Check that a
 test bites by reverting the change it covers — a layout test that passes
 either way is worse than none, because it reads as cover.
+
+## Sectioned panels
+
+A picture's panel is the first built from `panel_kit.dart`, and the rest are
+meant to follow it:
+
+- `CanvasSections` over the panel: a search box, which shows only the
+  sections whose title or `keywords` hold the words typed, and a fold-all.
+- `CanvasSection` for each subject — an icon, a title, and a one-line
+  `summary` of how it is set, so the panel reads shut. `changes` puts a dot
+  on it and `onReset` a reset beside its chevron; `forceOpen` opens it when
+  a tool it holds is picked from the keyboard. Remember it per kind of thing
+  edited: `image.picture.mask`, not `mask`.
+- `CanvasStepper` for numbers: an arrow either side, the number dragged
+  sideways or double-clicked to type, and a ↺ once it is away from its
+  `defaultValue`.
+- `CanvasTiles` for a choice that can be shown — a filter, a blend, a
+  texture — tried on the canvas through `onPreview` while pointed at.
+- `CanvasToolTiles` for a section's tools, with the one in hand's settings
+  under them.
+
+The groups inside a section are the same `CanvasControlGroup`s as above.
+Tests open a section with `openSection` in `test/canvas_panel_helpers.dart`,
+which opens it only if it is shut.

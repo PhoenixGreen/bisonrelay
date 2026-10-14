@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/components/text.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 
 // settings_shared.dart is what every element's settings are made of: where it
@@ -185,16 +186,20 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           ),
         ),
       ),
-      CanvasNumberField(
+      CanvasStepper(
+        key: const ValueKey("elementOpacity"),
         label: "Opacity",
         min: 0,
-        max: 1,
-        decimals: 2,
-        width: 62,
-        value: e.opacityAt(frame),
+        max: 100,
+        step: 5,
+        dragStep: 1,
+        suffix: "%",
+        defaultValue: 100,
+        width: 104,
+        value: e.opacityAt(frame) * 100,
         onChanged: (v) {
           begin();
-          write(e.withBase(opacity: v));
+          write(e.withBase(opacity: v / 100));
         },
         onCommit: commit,
       ),
@@ -208,35 +213,52 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
       // caption said "Chart" directly under a heading saying "Chart".
       hideCaption: true,
       children: [
-        CanvasNumberField(
+        CanvasStepper(
           key: const ValueKey("elementX"),
           label: "X",
+          // Two to a line -- across beside down, wide beside high -- held so
+          // by the breaks, not by the width, which only has to leave the
+          // arrows room.
+          width: 104,
           value: box.left,
           onChanged: (v) => moveTo(x: v),
           onCommit: commit,
         ),
-        CanvasNumberField(
+        CanvasStepper(
           key: const ValueKey("elementY"),
           label: "Y",
+          // Two to a line -- across beside down, wide beside high -- held so
+          // by the breaks, not by the width, which only has to leave the
+          // arrows room.
+          width: 104,
           value: box.top,
           onChanged: (v) => moveTo(y: v),
           onCommit: commit,
         ),
+        const CanvasLineBreak(),
         // Width and height show what is on screen -- the resting size times the
         // pose's scale -- but always edit the resting size. A pose scales evenly,
         // so there is no keyframe that could hold a width without also holding a
         // height, and pretending otherwise would give two fields one number.
-        CanvasNumberField(
+        CanvasStepper(
           key: const ValueKey("elementW"),
           label: "W",
+          // Two to a line -- across beside down, wide beside high -- held so
+          // by the breaks, not by the width, which only has to leave the
+          // arrows room.
+          width: 104,
           value: box.width,
           min: 1,
           onChanged: (v) => resize(width: v),
           onCommit: commit,
         ),
-        CanvasNumberField(
+        CanvasStepper(
           key: const ValueKey("elementH"),
           label: "H",
+          // Two to a line -- across beside down, wide beside high -- held so
+          // by the breaks, not by the width, which only has to leave the
+          // arrows room.
+          width: 104,
           value: box.height,
           min: 1,
           onChanged: (v) => resize(height: v),
@@ -262,7 +284,7 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         // Two different questions, and left to the Wrap the line fell between W
         // and H or after Angle depending on how wide the sidebar happened to be.
         const CanvasLineBreak(),
-        CanvasNumberField(
+        CanvasStepper(
           key: const ValueKey("elementAngle"),
           label: "Angle",
           value: e.rotationAt(frame),
@@ -270,10 +292,13 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           max: 3600,
           // The same least width as X above it. The fields share out what is
           // left of the line evenly, so equal minimums put Angle in X's
-          // column and Opacity in Y's -- which is the only reason the second
-          // line of this group reads as a second line rather than as a
+          // column and Opacity in Y's -- which is the only reason the last
+          // line of this group reads as a line of it rather than as a
           // different group.
-          width: 62,
+          width: 104,
+          step: 15,
+          dragStep: 1,
+          defaultValue: 0,
           suffix: "°",
           onChanged: (v) {
             begin();
@@ -290,14 +315,19 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           },
           onCommit: commit,
         ),
-        CanvasNumberField(
+        CanvasStepper(
+          key: const ValueKey("elementOpacity"),
           label: "Opacity",
           min: 0,
-          max: 1,
-          decimals: 2,
-          width: 62,
-          value: e.opacityAt(frame),
-          onChanged: (v) {
+          max: 100,
+          step: 5,
+          dragStep: 1,
+          suffix: "%",
+          defaultValue: 100,
+          width: 104,
+          value: e.opacityAt(frame) * 100,
+          onChanged: (percent) {
+            var v = percent / 100;
             begin();
             if (!posing) {
               write(e.withBase(opacity: v));
@@ -380,14 +410,16 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           // the box -- so the field was a number that moved while the canvas
           // stayed still, which is what was reported.
           if (e.scalesInside) ...[
-            CanvasNumberField(
+            CanvasStepper(
               key: const ValueKey("elementTypeScale"),
               label: "Scale inside",
               value: e.base.typeScale,
               min: 0.05,
               max: 10,
               decimals: 2,
-              width: 84,
+              step: 0.05,
+              defaultValue: 1,
+              width: 104,
               onChanged: (v) {
                 if (v <= 0 || e.base.typeScale <= 0) return;
                 begin();
@@ -1409,6 +1441,7 @@ Widget elementAnimationSection(
   List<Widget> heading = const [],
   bool timing = true,
   bool preview = true,
+  bool flat = false,
 }) {
   void now(ElementAnimation next) {
     begin();
@@ -1438,6 +1471,7 @@ Widget elementAnimationSection(
   return CanvasExpander(
     label: "Animation",
     remember: "elementAnimation",
+    flat: flat,
     // Preview in the heading, where it works open or shut -- or, for a
     // drawing, in its playlist's.
     action:
