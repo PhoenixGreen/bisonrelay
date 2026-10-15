@@ -137,21 +137,25 @@ either way is worse than none, because it reads as cover.
 A picture's panel is the first built from `panel_kit.dart`, and the rest are
 meant to follow it:
 
-- `CanvasSections` over the panel: a search box, which shows only the
-  sections whose title or `keywords` hold the words typed, and a fold-all.
-- `CanvasSection` for each subject — an icon, a title, and a one-line
+- `CanvasSection` for each subject -- an icon, a title, and a one-line
   `summary` of how it is set, so the panel reads shut. `changes` puts a dot
   on it and `onReset` a reset beside its chevron; `forceOpen` opens it when
   a tool it holds is picked from the keyboard. Remember it per kind of thing
   edited: `image.picture.mask`, not `mask`.
-- `CanvasStepper` for numbers: an arrow either side, the number dragged
-  sideways or double-clicked to type, and a ↺ once it is away from its
-  `defaultValue`.
-- `CanvasTiles` for a choice that can be shown — a filter, a blend, a
-  texture — tried on the canvas through `onPreview` while pointed at.
-- `CanvasToolTiles` for a section's tools, with the one in hand's settings
-  under them.
+- Inside a section everything is in **cards** (`CanvasCards`): each
+  `CanvasControlGroup` is drawn as one, its name and a "?" over its
+  controls. Give the group a `help` -- the "?" holds it, and any
+  `CanvasHint` among its children joins it there rather than floating in
+  the row. The controls are a size up (`cardControlHeight`) and further
+  apart (`cardGap`), a `CanvasToggle` is a line with a switch at its end,
+  and every `CanvasNumberField` is drawn as a `CanvasStepper` -- an arrow
+  either side of a number dragged sideways or double-clicked to type. None
+  of this changes a panel that is not in sections.
+- `CanvasTiles` for a choice that can be shown -- a filter, a blend, a
+  texture -- tried on the canvas through `onPreview` while pointed at;
+  `CanvasToolTiles` for a section's tools, with the one in hand's settings
+  under them; `CanvasSegmented` for two to four short choices side by side;
+  `CanvasTextButton` for an action said in words.
 
-The groups inside a section are the same `CanvasControlGroup`s as above.
-Tests open a section with `openSection` in `test/canvas_panel_helpers.dart`,
-which opens it only if it is shut.
+Tests open a section with `openSection` and type into a stepper with
+`typeNumber` / `typeInto`, in `test/canvas_panel_helpers.dart`.

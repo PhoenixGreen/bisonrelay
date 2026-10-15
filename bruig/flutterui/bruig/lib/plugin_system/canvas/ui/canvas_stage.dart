@@ -357,6 +357,10 @@ class CanvasStageState extends State<CanvasStage> {
     return e.id;
   }
 
+  /// _layersMoved are the other picked picture layers a move carries with
+  /// the one held, as they were when it began.
+  List<ImageLayer> _layersMoved = const [];
+
   /// _layerStart is the picture layer being dragged as it was when the drag
   /// started, and _layerHandle the handle held -- see boxHandles.
   ImageLayer? _layerStart;
@@ -3521,11 +3525,10 @@ class CanvasStageState extends State<CanvasStage> {
       var hover = _toDocument(_hoverAt);
       if (!tool.retouches) {
         var inner = e.box.inner(e.bounds);
-        return StageLayers(
-            ring: (
-              hover,
-              controller.paintSize * math.min(inner.width, inner.height)
-            ));
+        return StageLayers(ring: (
+          hover,
+          controller.paintSize * math.min(inner.width, inner.height)
+        ));
       }
       var on = _maskPicture(e);
       if (on == null) return const StageLayers();
@@ -3536,12 +3539,10 @@ class CanvasStageState extends State<CanvasStage> {
             ? on.fromPicture(controller.cloneFrom!)
             : on.fromPicture(on.toPicture(hover) + offset);
       }
-      return StageLayers(
-          ring: (
-            hover,
-            controller.paintSize * on.shortSide * on.canvasPerPixel
-          ),
-          marker: marker);
+      return StageLayers(ring: (
+        hover,
+        controller.paintSize * on.shortSide * on.canvasPerPixel
+      ), marker: marker);
     }
     // With a mask tool in hand the boxes are in the way: the picture, its
     // mask as it is being shown, and the brush's ring.
@@ -3574,9 +3575,18 @@ class CanvasStageState extends State<CanvasStage> {
             : null,
       );
     }
+    var also = controller.imageLayers.skip(1).toSet();
     var others = [
       for (var l in e.stack)
-        if (l.kind == LayerKind.picture && l.visible && l.id != picked?.id)
+        if (l.kind == LayerKind.picture &&
+            l.visible &&
+            l.id != picked?.id &&
+            !also.contains(l.id))
+          LayerSpace(e, l).corners
+    ];
+    var chosen = [
+      for (var l in e.stack)
+        if (l.kind == LayerKind.picture && l.visible && also.contains(l.id))
           LayerSpace(e, l).corners
     ];
     if (picked == null || picked.kind != LayerKind.picture) {
@@ -3584,14 +3594,18 @@ class CanvasStageState extends State<CanvasStage> {
       var space = LayerSpace(e, ImageLayer.base);
       return StageLayers(
           others: others,
-          picked: [inner.topLeft, inner.topRight, inner.bottomRight,
-                  inner.bottomLeft]
-              .map(space.fromFrame)
-              .toList());
+          chosen: chosen,
+          picked: [
+            inner.topLeft,
+            inner.topRight,
+            inner.bottomRight,
+            inner.bottomLeft
+          ].map(space.fromFrame).toList());
     }
     var space = LayerSpace(e, picked);
     return StageLayers(
       others: others,
+      chosen: chosen,
       picked: space.corners,
       handles: [for (var h in boxHandles(space.rect)) space.fromLayer(h)],
       knob: _layerKnob(space),
@@ -3606,9 +3620,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (controller.imageTool.masks) return _pressMask(e, doc);
     if (controller.imageTool.paints) return _pressBrush(e, doc);
     var picked = controller.pickedLayer;
-    if (picked != null &&
-        picked.kind == LayerKind.picture &&
-        picked.visible) {
+    if (picked != null && picked.kind == LayerKind.picture && picked.visible) {
       var space = LayerSpace(e, picked);
       if ((doc - _layerKnob(space)).distance <= _layerReach) {
         return _holdLayer(picked, _DragMode.imageLayerTurn, -1);
@@ -3621,7 +3633,17 @@ class CanvasStageState extends State<CanvasStage> {
     }
     var under = layerAt(e, doc);
     if (!under.isBase) {
-      controller.pickImageLayer(under.id);
+      // Shift or Command picks it as well, or lets it go again; a press on
+      // one already picked keeps the others, so they move together.
+      if (_shiftHeld || HardwareKeyboard.instance.isMetaPressed) {
+        controller.pickImageLayer(under.id, add: true);
+        if (!controller.imageLayers.contains(under.id)) {
+          _mode = _DragMode.none;
+          return true;
+        }
+      } else if (!controller.imageLayers.contains(under.id)) {
+        controller.pickImageLayer(under.id);
+      }
       return _holdLayer(under, _DragMode.imageLayerMove, -1);
     }
     if (!_containsPoint(e, doc)) return false;
@@ -3742,8 +3764,8 @@ class CanvasStageState extends State<CanvasStage> {
       // Not every pixel of the drag: a point every half a picture pixel or
       // so is all a stroke can show, and a stroke is kept in the document.
       var was = last.points.last;
-      var gap = Offset((f.dx - was.dx) * on.size.width,
-          (f.dy - was.dy) * on.size.height);
+      var gap = Offset(
+          (f.dx - was.dx) * on.size.width, (f.dy - was.dy) * on.size.height);
       if (gap.distance < 0.75) return m;
       return m.withLastMark(last.copyWith(
           points: [...last.points, f],
@@ -3867,6 +3889,13 @@ class CanvasStageState extends State<CanvasStage> {
 
   bool _holdLayer(ImageLayer layer, _DragMode mode, int handle) {
     _layerStart = layer;
+    // A move carries every picked picture layer with the one held.
+    _layersMoved = mode == _DragMode.imageLayerMove
+        ? [
+            for (var l in controller.pickedLayers)
+              if (l.kind == LayerKind.picture && l.id != layer.id) l
+          ]
+        : const [];
     _layerHandle = handle;
     _mode = mode;
     controller.beginInteraction();
@@ -3879,6 +3908,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (e == null || was == null) return;
     var start = e.withLayer(was.id, (_) => was);
     var space = LayerSpace(start, was);
+    var carried = e;
     ImageLayer next;
     switch (_mode) {
       case _DragMode.imageLayerMove:
@@ -3887,6 +3917,14 @@ class CanvasStageState extends State<CanvasStage> {
         var travel = space.toFrame(doc) - space.toFrame(_dragStart);
         var rect = space.rect.shift(travel);
         next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
+        // And the others picked with it, the same distance.
+        for (var other in _layersMoved) {
+          var at = layerRect(space.inner, other.place).shift(travel);
+          carried = carried.withLayer(
+              other.id,
+              (_) =>
+                  other.placed(layerPlace(space.inner, at), turn: other.turn));
+        }
       case _DragMode.imageLayerSize:
         // The corners keep the picture's proportions, as every editor's do
         // now; Shift lets them go.
@@ -3902,7 +3940,8 @@ class CanvasStageState extends State<CanvasStage> {
       default:
         return;
     }
-    controller.changeImage(e.withLayer(was.id, (_) => next), transient: true);
+    controller.changeImage(carried.withLayer(was.id, (_) => next),
+        transient: true);
   }
 
   /// _framedPicture is the element being reframed and the picture in it,
@@ -4725,7 +4764,9 @@ class CanvasStageState extends State<CanvasStage> {
     if (!HardwareKeyboard.instance.isAltPressed) {
       moving = snapLineAngle(fixed, moving, always: _shiftHeld);
     }
-    var next = movesStart ? line.withEnds(moving, fixed) : line.withEnds(fixed, moving);
+    var next = movesStart
+        ? line.withEnds(moving, fixed)
+        : line.withEnds(fixed, moving);
     controller.apply(document.withElement(next), transient: true);
     return true;
   }
@@ -5427,8 +5468,7 @@ class CanvasStageState extends State<CanvasStage> {
         } else {
           controller.maskBrushSize = controller.maskBrushSize / 1.2;
         }
-      case LogicalKeyboardKey.bracketRight
-          when controller.editingImage != null:
+      case LogicalKeyboardKey.bracketRight when controller.editingImage != null:
         if (controller.imageTool.paints) {
           controller.paintSize = controller.paintSize * 1.2;
         } else {
@@ -5591,8 +5631,7 @@ class CanvasStageState extends State<CanvasStage> {
                         // The scene's slow move, while it plays -- see
                         // SceneCamera. Still while editing, so a press lands
                         // where the page looks to be.
-                        camera: (controller.playing ||
-                                    controller.cameraView) &&
+                        camera: (controller.playing || controller.cameraView) &&
                                 !document.editingMaster
                             ? document.scene.camera?.at(
                                 controller.frame /

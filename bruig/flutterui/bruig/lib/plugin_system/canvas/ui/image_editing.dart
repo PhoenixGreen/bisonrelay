@@ -1,3 +1,7 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 
@@ -82,17 +86,20 @@ enum ImageTool {
 /// MaskView is how a mask being worked on is shown on the canvas.
 enum MaskView {
   /// result is the picture as it will be.
-  result("As it will look"),
+  result("As it will look", "Picture"),
 
   /// overlay shows what is hidden in red over the whole picture, so what is
   /// about to be cut can be seen against what it is cut from.
-  overlay("Red over hidden"),
+  overlay("Red over hidden", "Red overlay"),
 
   /// grey is the mask alone: white kept, black hidden.
-  grey("Black and white");
+  grey("Black and white", "Black and white");
 
   final String label;
-  const MaskView(this.label);
+
+  /// short is its name side by side with the others.
+  final String short;
+  const MaskView(this.label, this.short);
 }
 
 /// withLayerAdded is [e] with [layer] put in just above the layer [above],
@@ -154,4 +161,91 @@ ImageElement withLayerMoved(ImageElement e, int from, int to) {
 List<ImageLayer> _clipFixed(List<ImageLayer> stack) {
   if (stack.isEmpty || !stack.first.clip) return stack;
   return [stack.first.copyWith(clip: false), ...stack.skip(1)];
+}
+
+/// _seen is where [layer] shows in a frame [inner]: its rectangle, or the
+/// box round it once it is turned, which is what an eye lines up.
+Rect _seen(ImageLayer layer, Rect inner) {
+  var r = layerRect(inner, layer.place);
+  if (layer.turn == 0) return r;
+  var a = layer.turn * math.pi / 180;
+  var c = math.cos(a).abs(), s = math.sin(a).abs();
+  return Rect.fromCenter(
+      center: r.center,
+      width: r.width * c + r.height * s,
+      height: r.width * s + r.height * c);
+}
+
+/// _shifted is [e] with the layer [id] moved by [by], in the frame's units.
+ImageElement _shifted(ImageElement e, Rect inner, String id, Offset by) =>
+    e.withLayer(
+        id,
+        (l) => l.placed(layerPlace(inner, layerRect(inner, l.place).shift(by)),
+            turn: l.turn));
+
+/// withLayersAligned lines the layers [ids] of [e] up on one edge or middle,
+/// against the box they make between them -- as CanvasController
+/// .alignSelected does elements, so the outermost stay put.
+ImageElement withLayersAligned(
+    ImageElement e, List<String> ids, CanvasAlign align) {
+  var inner = e.box.inner(e.bounds);
+  var layers = [
+    for (var id in ids)
+      if (e.layerById(id) case var l?) l
+  ];
+  if (layers.length < 2 || inner.isEmpty) return e;
+  var box =
+      layers.map((l) => _seen(l, inner)).reduce((a, b) => a.expandToInclude(b));
+  var next = e;
+  for (var l in layers) {
+    var at = _seen(l, inner);
+    var by = Offset(
+      switch (align) {
+        CanvasAlign.left => box.left - at.left,
+        CanvasAlign.centreX => box.center.dx - at.center.dx,
+        CanvasAlign.right => box.right - at.right,
+        _ => 0.0,
+      },
+      switch (align) {
+        CanvasAlign.top => box.top - at.top,
+        CanvasAlign.middleY => box.center.dy - at.center.dy,
+        CanvasAlign.bottom => box.bottom - at.bottom,
+        _ => 0.0,
+      },
+    );
+    if (by != Offset.zero) next = _shifted(next, inner, l.id, by);
+  }
+  return next;
+}
+
+/// withLayersSpread puts an even gap between the layers [ids] of [e], the
+/// two on the ends staying where they are -- even gaps, not even middles,
+/// as for elements.
+ImageElement withLayersSpread(ImageElement e, List<String> ids, bool across) {
+  var inner = e.box.inner(e.bounds);
+  var layers = [
+    for (var id in ids)
+      if (e.layerById(id) case var l?) l
+  ];
+  if (layers.length < 3 || inner.isEmpty) return e;
+  double start(Rect r) => across ? r.left : r.top;
+  double size(Rect r) => across ? r.width : r.height;
+  layers
+      .sort((a, b) => start(_seen(a, inner)).compareTo(start(_seen(b, inner))));
+  var first = _seen(layers.first, inner), last = _seen(layers.last, inner);
+  var span = (across ? last.right : last.bottom) - start(first);
+  var filled = layers.fold<double>(0, (sum, l) => sum + size(_seen(l, inner)));
+  var gap = (span - filled) / (layers.length - 1);
+  var next = e;
+  var at = start(first);
+  for (var l in layers) {
+    var r = _seen(l, inner);
+    var shift = at - start(r);
+    if (shift != 0) {
+      next = _shifted(
+          next, inner, l.id, across ? Offset(shift, 0) : Offset(0, shift));
+    }
+    at += size(r) + gap;
+  }
+  return next;
 }

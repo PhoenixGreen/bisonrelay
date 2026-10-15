@@ -94,7 +94,8 @@ class LayerEffect {
     return 0;
   }
 
-  LayerEffect copyWith({bool? on, Map<String, double>? values, Color? colour}) =>
+  LayerEffect copyWith(
+          {bool? on, Map<String, double>? values, Color? colour}) =>
       LayerEffect(
           kind: kind,
           on: on ?? this.on,
@@ -196,9 +197,8 @@ enum TextureKind {
         grain => const Color(0xFF808080),
       };
 
-  Color get startSecond => this == lightLeak
-      ? const Color(0xFFFFD25E)
-      : const Color(0xFFFFFFFF);
+  Color get startSecond =>
+      this == lightLeak ? const Color(0xFFFFD25E) : const Color(0xFFFFFFFF);
 
   bool get usesColour => this != grain;
   bool get usesSecond => this == lightLeak;

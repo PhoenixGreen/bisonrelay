@@ -67,10 +67,10 @@ Uint8List segment(SegmentJob job) {
   // thought; nothing else is the subject.
   for (var i = 0; i < n; i++) {
     var s = job.seeds[i];
-    labels[i] = s == Seed.subject ||
-            (s == Seed.unknown && (job.prior?[i] ?? 0) >= 128)
-        ? 255
-        : 0;
+    labels[i] =
+        s == Seed.subject || (s == Seed.unknown && (job.prior?[i] ?? 0) >= 128)
+            ? 255
+            : 0;
   }
   var prior = job.prior;
   for (var round = 0; round < math.max(1, job.rounds); round++) {
@@ -82,7 +82,8 @@ Uint8List segment(SegmentJob job) {
     bool first = round == 0;
     bool known(int i, bool subject) {
       var s = job.seeds[i];
-      if (s != Seed.unknown) return s == (subject ? Seed.subject : Seed.background);
+      if (s != Seed.unknown)
+        return s == (subject ? Seed.subject : Seed.background);
       if (first) {
         if (prior == null) return false;
         return subject ? prior[i] >= 192 : prior[i] < 64;

@@ -258,19 +258,19 @@ void paintCanvasDocument(
   // Not while the master is the canvas being edited, or it would be drawn
   // twice: once as itself and once as the thing behind itself.
   var master = doc.masterScene;
-  void scene(List<CanvasElement> elements) => _paintScene(
-      canvas, doc, elements, frame,
-      images: images,
-      editing: editing,
-      hoveredButton: hoveredButton,
-      skipElement: skipElement,
-      skipTextItem: skipTextItem,
-      counterValue: counterValue,
-      counterPressed: counterPressed,
-      counterRunning: counterRunning,
-      audioState: audioState,
-      videoShow: videoShow,
-      previewing: previewing);
+  void scene(List<CanvasElement> elements) =>
+      _paintScene(canvas, doc, elements, frame,
+          images: images,
+          editing: editing,
+          hoveredButton: hoveredButton,
+          skipElement: skipElement,
+          skipTextItem: skipTextItem,
+          counterValue: counterValue,
+          counterPressed: counterPressed,
+          counterRunning: counterRunning,
+          audioState: audioState,
+          videoShow: videoShow,
+          previewing: previewing);
   // With a camera, the master is drawn as it is and the scene through the
   // camera, as two runs rather than one list stacked together.
   if (camera != null) {
@@ -1663,7 +1663,8 @@ void _paintPicture(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
   var maskSubject = e.mask.subject.isEmpty
       ? null
       : images?.resolve(e.mask.subject, const BackgroundRemoval());
-  var masking = e.mask.active && (e.mask.subject.isEmpty || maskSubject != null);
+  var masking =
+      e.mask.active && (e.mask.subject.isEmpty || maskSubject != null);
   void masked(void Function() draw) {
     if (!masking) {
       draw();
@@ -1672,17 +1673,14 @@ void _paintPicture(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
     // The picture never reaches past its frame, so neither need the layer.
     canvas.saveLayer(inner, Paint());
     draw();
-    paintMaskLayer(
-        canvas,
-        e.mask,
-        size,
-        maskSubject,
+    paintMaskLayer(canvas, e.mask, size, maskSubject,
         placeImage(size, inner, e.fit, crop: e.crop, framing: e.framing));
     canvas.restore();
   }
 
-  void shape(Color colour) => masked(() => _drawImage(canvas, image, inner, e.fit,
-      crop: e.crop, framing: e.framing, silhouette: colour));
+  void shape(Color colour) =>
+      masked(() => _drawImage(canvas, image, inner, e.fit,
+          crop: e.crop, framing: e.framing, silhouette: colour));
 
   // With an overlay, the picture goes into a layer of its own first.
   //
@@ -1703,33 +1701,33 @@ void _paintPicture(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
   // edge_cleaning.dart. Only its colours: its shape is the picture's.
   var shown = masking ? cleanedFor(images, e, image) : image;
   masked(() {
-  if (overlaid) canvas.saveLayer(inner, Paint());
+    if (overlaid) canvas.saveLayer(inner, Paint());
 
-  _drawImage(canvas, shown, inner, e.fit,
-      retouch: e.retouch,
-      tint: e.tint,
-      saturation: e.saturation,
-      brightness: e.brightness,
-      crop: e.crop,
-      framing: e.framing,
-      filter: e.filter);
+    _drawImage(canvas, shown, inner, e.fit,
+        retouch: e.retouch,
+        tint: e.tint,
+        saturation: e.saturation,
+        brightness: e.brightness,
+        crop: e.crop,
+        framing: e.framing,
+        filter: e.filter);
 
-  if (overlaid) {
-    canvas.drawRect(
-        inner,
-        Paint()
-          ..color = e.overlay
-          ..blendMode = e.blend.flutter);
+    if (overlaid) {
+      canvas.drawRect(
+          inner,
+          Paint()
+            ..color = e.overlay
+            ..blendMode = e.blend.flutter);
 
-    // Then cut back to the picture's own shape. Every separable blend mode
-    // leaves its colour behind on transparent pixels -- multiply on nothing is
-    // the source -- so on a photograph with its background taken out the
-    // overlay filled the hole it had just been cut out of. Drawing the picture
-    // again as a mask keeps the overlay only where there is picture to tint.
-    _drawImage(canvas, image, inner, e.fit,
-        crop: e.crop, framing: e.framing, maskOnly: true);
-    canvas.restore();
-  }
+      // Then cut back to the picture's own shape. Every separable blend mode
+      // leaves its colour behind on transparent pixels -- multiply on nothing is
+      // the source -- so on a photograph with its background taken out the
+      // overlay filled the hole it had just been cut out of. Drawing the picture
+      // again as a mask keeps the overlay only where there is picture to tint.
+      _drawImage(canvas, image, inner, e.fit,
+          crop: e.crop, framing: e.framing, maskOnly: true);
+      canvas.restore();
+    }
   });
 
   // Over the picture, and after the overlay, because an inside band is meant
@@ -1996,8 +1994,8 @@ void _paintDressed(ui.Canvas canvas, Rect inner, ImageElement e,
   }
   var misses = images.misses;
   var content = _record((r) => _paintLayer(r, inner, e, layer, images));
-  paintWithEffects(canvas, room,
-      math.min(inner.width, inner.height) / 1000, layer.effects, content,
+  paintWithEffects(canvas, room, math.min(inner.width, inner.height) / 1000,
+      layer.effects, content,
       owner: images.misses == misses ? e : null, key: layer.id);
   content.dispose();
 }
@@ -2017,8 +2015,7 @@ class _Watched extends CanvasImageSource implements CleansEdges {
   }
 
   @override
-  CanvasVector? resolveVector(String assetId) =>
-      source?.resolveVector(assetId);
+  CanvasVector? resolveVector(String assetId) => source?.resolveVector(assetId);
 
   @override
   ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) =>
@@ -2043,8 +2040,8 @@ class _Watched extends CanvasImageSource implements CleansEdges {
 /// picture is, in document units, for seeing it while it is worked on: what
 /// it hides in translucent red over everything ([overlay]), or the mask alone
 /// in black and white. See MaskView.
-void paintMaskView(ui.Canvas canvas, ImageElement e, String layerId,
-    CanvasImageSource? images,
+void paintMaskView(
+    ui.Canvas canvas, ImageElement e, String layerId, CanvasImageSource? images,
     {required bool overlay}) {
   var layer = e.layerById(layerId);
   if (layer == null) return;
@@ -2114,8 +2111,8 @@ void paintMaskView(ui.Canvas canvas, ImageElement e, String layerId,
 
 /// _paintLayer draws one layer of [e] at full strength; its blend and
 /// opacity are the caller's.
-void _paintLayer(ui.Canvas canvas, Rect inner, ImageElement e,
-    ImageLayer layer, CanvasImageSource? images) {
+void _paintLayer(ui.Canvas canvas, Rect inner, ImageElement e, ImageLayer layer,
+    CanvasImageSource? images) {
   switch (layer.kind) {
     case LayerKind.base:
       var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
@@ -2269,8 +2266,8 @@ double _outlineRoom(ImageElement e) {
 /// is three lines' worth of edge for something asked to draw one. So the fade
 /// is a pass of its own and a solid band is laid over the inside of it, which
 /// leaves exactly one edge to look at: the outer one.
-void _paintOutline(ui.Canvas canvas, void Function(Color) shape, Rect inner,
-    ImageElement e,
+void _paintOutline(
+    ui.Canvas canvas, void Function(Color) shape, Rect inner, ImageElement e,
     {required bool outward}) {
   var outline = e.outline;
   // Centred splits the band between the two sides, which is what centred

@@ -1094,8 +1094,7 @@ class StagePainter extends CustomPainter {
       canvas.restore();
     }
     if (layers.trail case (var points, var radius, var subtract)) {
-      var colour =
-          subtract ? const Color(0x66FF3030) : const Color(0x6630A0FF);
+      var colour = subtract ? const Color(0x66FF3030) : const Color(0x6630A0FF);
       var paint = Paint()
         ..color = colour
         ..strokeWidth = radius * scale * 2
@@ -1119,8 +1118,10 @@ class StagePainter extends CustomPainter {
         var paint = Paint()
           ..strokeWidth = width
           ..color = colour;
-        canvas.drawLine(at - const Offset(8, 0), at + const Offset(8, 0), paint);
-        canvas.drawLine(at - const Offset(0, 8), at + const Offset(0, 8), paint);
+        canvas.drawLine(
+            at - const Offset(8, 0), at + const Offset(8, 0), paint);
+        canvas.drawLine(
+            at - const Offset(0, 8), at + const Offset(0, 8), paint);
       }
     }
     if (layers.ring case (var centre, var radius)) {
@@ -1149,6 +1150,14 @@ class StagePainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1
             ..color = colour.withValues(alpha: 0.35));
+    }
+    for (var corners in layers.chosen) {
+      canvas.drawPath(
+          outline(corners),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = colour);
     }
     var picked = layers.picked;
     if (picked == null) return;
@@ -1697,6 +1706,10 @@ class StagePainter extends CustomPainter {
 class StageLayers {
   final List<List<Offset>> others;
   final List<Offset>? picked;
+
+  /// chosen are the layers picked with [picked], outlined as it is but with
+  /// no handles: they move with it, and are lined up with it.
+  final List<List<Offset>> chosen;
   final List<Offset> handles;
   final Offset? knob;
 
@@ -1715,6 +1728,7 @@ class StageLayers {
   const StageLayers(
       {this.others = const [],
       this.picked,
+      this.chosen = const [],
       this.handles = const [],
       this.knob,
       this.masking,

@@ -363,7 +363,8 @@ void main() {
         ElementKind.button,
         ElementKind.shape,
         ElementKind.path,
-        ElementKind.image,
+        // Not a picture: its panel is sections of cards, and a card is its
+        // own edge -- see panel_kit.dart.
         ElementKind.counter,
         ElementKind.player,
       ]) {

@@ -74,8 +74,15 @@ void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
         ..color = Color.fromRGBO(0, 0, 0, s.strength)
         ..blendMode =
             s.kind == StrokeKind.erase ? BlendMode.dstOut : BlendMode.srcOver);
-  paintDabs(canvas, points, s.pressure, radius, s.hardness,
-      Paint()..color = s.kind == StrokeKind.erase ? const Color(0xFFFFFFFF) : s.colour);
+  paintDabs(
+      canvas,
+      points,
+      s.pressure,
+      radius,
+      s.hardness,
+      Paint()
+        ..color =
+            s.kind == StrokeKind.erase ? const Color(0xFFFFFFFF) : s.colour);
   canvas.restore();
 }
 
@@ -179,8 +186,7 @@ class SharpenShader {
 
   static Future<void> load() => _loading ??= () async {
         try {
-          _program =
-              await ui.FragmentProgram.fromAsset("shaders/sharpen.frag");
+          _program = await ui.FragmentProgram.fromAsset("shaders/sharpen.frag");
           ready.value = true;
         } catch (exception) {
           debugPrint("The sharpening shader did not load: $exception");

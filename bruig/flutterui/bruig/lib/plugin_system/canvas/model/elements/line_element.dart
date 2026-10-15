@@ -217,9 +217,8 @@ class LineElement extends CanvasElement {
     var w = math.max((to.dx - from.dx).abs(), lineSliver);
     var h = math.max((to.dy - from.dy).abs(), lineSliver);
     var up = to.dy < from.dy;
-    var swapped = backwards
-        ? copyWith(startEnd: endEnd, endEnd: startEnd)
-        : this;
+    var swapped =
+        backwards ? copyWith(startEnd: endEnd, endEnd: startEnd) : this;
     return swapped.copyWith(flipped: up).withBase(
         x: from.dx,
         y: up ? to.dy : from.dy,

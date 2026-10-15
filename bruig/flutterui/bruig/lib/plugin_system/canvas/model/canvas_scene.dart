@@ -664,11 +664,10 @@ class SceneCamera {
 
   static SceneCamera? fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return null;
-    List<double> three(Object? v, List<double> or) => v is List &&
-            v.length == 3 &&
-            v.every((x) => x is num)
-        ? [for (var x in v) (x as num).toDouble()]
-        : or;
+    List<double> three(Object? v, List<double> or) =>
+        v is List && v.length == 3 && v.every((x) => x is num)
+            ? [for (var x in v) (x as num).toDouble()]
+            : or;
     var from = three(json["from"], const [1, 0.5, 0.5]);
     var to = three(json["to"], const [1.12, 0.5, 0.5]);
     return SceneCamera(

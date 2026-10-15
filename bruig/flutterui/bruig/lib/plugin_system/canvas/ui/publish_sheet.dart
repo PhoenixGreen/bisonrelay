@@ -218,7 +218,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     var mix = widget.document.masterMix;
     var document = mix.normalise == _toTarget
         ? widget.document
-        : widget.document.copyWith(masterMix: mix.copyWith(normalise: _toTarget));
+        : widget.document
+            .copyWith(masterMix: mix.copyWith(normalise: _toTarget));
     return _chosen(document);
   }
 

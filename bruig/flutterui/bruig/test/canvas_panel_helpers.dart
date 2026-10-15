@@ -45,8 +45,16 @@ Future<void> addLayer(WidgetTester tester, String key) async {
 
 /// typeNumber types [text] into the stepper [key] -- "elementX", say -- the
 /// way a person does: a double-click on the number, the digits, Return.
-Future<void> typeNumber(WidgetTester tester, String key, String text) async {
-  var number = find.byKey(ValueKey("$key-number"));
+Future<void> typeNumber(WidgetTester tester, String key, String text) =>
+    typeInto(tester, find.byKey(ValueKey(key)), text);
+
+/// typeInto types [text] into the stepper found by [field] -- or the number
+/// field drawn as one -- for those with no key of their own.
+Future<void> typeInto(WidgetTester tester, Finder field, String text) async {
+  var number = find.descendant(
+      of: field,
+      matching: find.byWidgetPredicate(
+          (w) => w is GestureDetector && w.onDoubleTap != null));
   await tester.ensureVisible(number);
   await tester.pumpAndSettle();
   await tester.tap(number);
@@ -54,9 +62,7 @@ Future<void> typeNumber(WidgetTester tester, String key, String text) async {
   await tester.tap(number);
   await tester.pumpAndSettle();
   await tester.enterText(
-      find.descendant(
-          of: find.byKey(ValueKey(key)), matching: find.byType(EditableText)),
-      text);
+      find.descendant(of: field, matching: find.byType(EditableText)), text);
   await tester.testTextInput.receiveAction(TextInputAction.done);
   await tester.pumpAndSettle();
 }

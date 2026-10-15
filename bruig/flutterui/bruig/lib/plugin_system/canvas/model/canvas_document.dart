@@ -1417,7 +1417,6 @@ class CanvasDocument {
           for (var t in json["textStyles"] as List)
             if (NamedTextStyle.fromJson(t) case var style?) style,
       ],
-
     );
   }
 

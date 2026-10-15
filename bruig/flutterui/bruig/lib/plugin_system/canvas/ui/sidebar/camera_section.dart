@@ -27,12 +27,12 @@ enum CameraMove {
       still => null,
       pushIn => SceneCamera(fromZoom: 1, toZoom: z),
       pullOut => SceneCamera(fromZoom: z, toZoom: 1),
-      driftLeft => SceneCamera(
-          fromZoom: z, toZoom: z, fromX: 0.5 + d, toX: 0.5 - d),
-      driftRight => SceneCamera(
-          fromZoom: z, toZoom: z, fromX: 0.5 - d, toX: 0.5 + d),
-      driftUp => SceneCamera(
-          fromZoom: z, toZoom: z, fromY: 0.5 + d, toY: 0.5 - d),
+      driftLeft =>
+        SceneCamera(fromZoom: z, toZoom: z, fromX: 0.5 + d, toX: 0.5 - d),
+      driftRight =>
+        SceneCamera(fromZoom: z, toZoom: z, fromX: 0.5 - d, toX: 0.5 + d),
+      driftUp =>
+        SceneCamera(fromZoom: z, toZoom: z, fromY: 0.5 + d, toY: 0.5 - d),
     };
   }
 

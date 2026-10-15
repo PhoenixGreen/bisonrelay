@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -20,7 +21,6 @@ import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
-import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 
 // image_sections.dart is a picture's panel: its layers, then the picked
@@ -43,8 +43,8 @@ List<Widget> imagePanel(
   // effects are the picture's, layers open or not.
   var base = e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
   var picked = editing ? controller.pickedLayer ?? base : base;
-  var index = e.stack.indexWhere((l) => l.id == picked.id);
   var s = _Sections(context, controller, e, picked, write, begin, commit);
+  var together = editing && controller.alignableLayers.length >= 2;
   var sections = switch (picked.kind) {
     LayerKind.base || LayerKind.picture => [
         s.position(),
@@ -67,68 +67,11 @@ List<Widget> imagePanel(
   return [
     ImageLayersList(
         key: const ValueKey("imageLayers"), controller: controller, element: e),
-    _PickedHeader(
-        controller: controller, element: e, layer: picked, index: index),
     CanvasSections(
       key: const ValueKey("imageSections"),
-      what: "a ${layerKindLabel(picked).toLowerCase()} layer",
-      children: sections,
+      children: [if (together) s.arrange(), ...sections],
     ),
   ];
-}
-
-/// _PickedHeader says whose settings the sections are: the picked layer's
-/// picture, name and kind.
-class _PickedHeader extends StatelessWidget {
-  final CanvasController controller;
-  final ImageElement element;
-  final ImageLayer layer;
-  final int index;
-
-  const _PickedHeader(
-      {required this.controller,
-      required this.element,
-      required this.layer,
-      required this.index});
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Padding(
-      key: const ValueKey("imagePicked"),
-      padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-      child: Row(children: [
-        LayerThumbnail(
-            controller: controller,
-            element: element,
-            layer: layer,
-            width: 34,
-            height: 34),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(layerName(layer, index),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colors.onSurface)),
-              Text(
-                  controller.imageEditing == element.id
-                      ? "${layerKindLabel(layer)} layer"
-                      : "Pick a layer to work on it",
-                  style: TextStyle(
-                      fontSize: 10.5, color: theme.colors.onSurfaceVariant)),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
 }
 
 /// _Sections builds each section for the picked layer.
@@ -182,6 +125,63 @@ class _Sections {
     commit();
   }
 
+  // ---- Arrange: several picture layers picked ----------------------------
+
+  Widget arrange() {
+    var n = controller.alignableLayers.length;
+    return CanvasSection(
+      key: const ValueKey("imageSection-arrange"),
+      icon: Icons.align_horizontal_left,
+      title: "Arrange",
+      summary: "$n layers picked",
+      remember: "image.arrange",
+      initiallyOpen: true,
+      forceOpen: true,
+      children: [
+        CanvasControlGroup(
+          key: const ValueKey("imageArrangeAlign"),
+          label: "Line up",
+          help: "Lined up against the box the picked layers make between "
+              "them, so the outermost stay where they are. Shift- or "
+              "Command-click a layer, here or on the canvas, to pick it with "
+              "the others.",
+          rule: false,
+          children: [
+            for (var align in CanvasAlign.values)
+              CanvasTextButton(
+                key: ValueKey("layerAlign-${align.name}"),
+                icon: align.icon,
+                label: "",
+                tooltip: align.label,
+                onPressed: () => controller.alignSelected(align),
+              ),
+          ],
+        ),
+        CanvasControlGroup(
+          key: const ValueKey("imageArrangeSpread"),
+          label: "Spread out",
+          help: "Even gaps between three or more picked layers; the two on "
+              "the ends stay put.",
+          rule: false,
+          children: [
+            CanvasTextButton(
+              key: const ValueKey("layerSpreadAcross"),
+              icon: Icons.horizontal_distribute,
+              label: "Across",
+              onPressed: n < 3 ? null : () => controller.spreadSelected(true),
+            ),
+            CanvasTextButton(
+              key: const ValueKey("layerSpreadDown"),
+              icon: Icons.vertical_distribute,
+              label: "Down",
+              onPressed: n < 3 ? null : () => controller.spreadSelected(false),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   // ---- Position ---------------------------------------------------------
 
   Widget position() {
@@ -203,11 +203,6 @@ class _Sections {
       summary: summary,
       remember: _remember("position"),
       initiallyOpen: true,
-      keywords: const [
-        "x", "y", "width", "height", "angle", "turn", "opacity", "flip", //
-        "fit", "fill", "crop", "framing", "zoom", "shape", "cut to",
-        "replace", "picture",
-      ],
       children: [
         if (picked.isBase)
           positionGroup(controller, e, write, begin, commit)
@@ -215,6 +210,9 @@ class _Sections {
           layerPositionGroup(controller, e, picked, write, begin, commit),
           CanvasControlGroup(
             label: "Quick moves",
+            help: "One press each: flip it, fill the frame with it, fit it "
+                "inside, put it in the middle, or give it back the picture's "
+                "own proportions.",
             rule: false,
             children:
                 layerQuickMoves(controller, e, picked, write, begin, commit),
@@ -222,6 +220,11 @@ class _Sections {
         ],
         CanvasControlGroup(
           label: "Picture",
+          help: "Put a picture in or replace it -- from a file or from the "
+              "pictures already added -- change its size and quality, or "
+              "take it out. Fit is how it fills its frame; with Cover, "
+              "double-click the picture to move it about inside its frame "
+              "and scroll to zoom.",
           rule: false,
           children: [
             ...pictureSourceButtons(context, look, _writeLook, begin, commit,
@@ -242,6 +245,9 @@ class _Sections {
         ...pictureLookGroups(look, _writeLook, begin, commit,
             shown: look.hasImage,
             tryLook: _tryLook,
+            // Framing only where there is slack to frame with -- the note
+            // saying so is in the Picture card's "?".
+            framing: look.fit == ImageFit.cover,
             filter: false,
             overlay: false,
             outline: false),
@@ -300,15 +306,16 @@ class _Sections {
         put(const ImageMask());
         commit();
       },
-      keywords: [
-        for (var t in tools) t.label,
-        "subject", "remove background", "feather", "shift", "smooth", //
-        "contrast", "clean colour", "invert", "refine", "edge",
-        if (!framed) ...["logos", "scans", "colour key", "threshold"],
-      ],
       children: [
-        imageToolTiles(controller, e, picked, tools, settings),
-        ...maskGroupsFor(mask, put, begin, commit, framed: framed),
+        imageToolTiles(controller, e, picked, tools, settings,
+            help: framed
+                ? "Hide parts of this layer: brush it away, draw round it, or "
+                    "fade it across. Every mark can be taken back."
+                : "Hide the background, or anything else: let Select subject "
+                    "find the person, brush over what to keep, refine the "
+                    "hair, or mark by hand. Every mark can be taken back."),
+        ...maskGroupsFor(mask, put, begin, commit,
+            framed: framed, controller: controller),
         if (_picture)
           pictureRemovalGroup(controller, _look, _writeLook, begin, commit,
               layer: !picked.isBase),
@@ -340,9 +347,11 @@ class _Sections {
       // Strokes are work done, not a setting moved: no dot, and no reset
       // that would wipe them -- the Strokes group takes them back one at a
       // time, or clears them when that is what is meant.
-      keywords: [for (var t in retouchTools) t.label, "strokes", "brush"],
       children: [
-        imageToolTiles(controller, e, picked, retouchTools, settings),
+        imageToolTiles(controller, e, picked, retouchTools, settings,
+            help: "Brushwork on the picture itself: copy one part over "
+                "another, heal a spot, lighten or darken, soften, crisp or "
+                "smudge. Kept as strokes, so it stays sharp at any size."),
         strokesGroup("Retouching", look.retouch, set),
       ],
     );
@@ -386,14 +395,12 @@ class _Sections {
             (l) =>
                 l.copyWith(blend: LayerBlend.normal, opacity: 1, clip: false)));
       },
-      keywords: const [
-        "filter", "blend", "opacity", "overlay", "saturation", //
-        "brightness", "clip", "greyscale", "sepia", "noir", "warm", "cool",
-      ],
       children: [
         CanvasTiles<ImageFilterPreset>(
           key: const ValueKey("imageFilter"),
           label: "Filter",
+          help: "A ready-made look for the whole picture. Point at one to "
+              "try it on the canvas; click to keep it.",
           columns: 4,
           tiles: [
             for (var f in ImageFilterPreset.values)
@@ -412,40 +419,45 @@ class _Sections {
         ),
         layerBlendTiles(controller, e, picked, write, begin, commit),
         layerStrengthGroup(e, picked, write, begin, commit),
-        CanvasControlGroup(label: "Fine-tune", rule: false, children: [
-          CanvasStepper(
-            key: const ValueKey("imageSaturation"),
-            label: "Saturation",
-            decimals: 2,
-            step: 0.05,
-            dragStep: 0.01,
-            min: 0,
-            max: 3,
-            defaultValue: 1,
-            value: look.saturation,
-            onChanged: (v) {
-              begin();
-              _writeLook(look.copyWith(saturation: v));
-            },
-            onCommit: commit,
-          ),
-          CanvasStepper(
-            key: const ValueKey("imageBrightness"),
-            label: "Brightness",
-            decimals: 2,
-            step: 0.05,
-            dragStep: 0.01,
-            min: 0,
-            max: 3,
-            defaultValue: 1,
-            value: look.brightness,
-            onChanged: (v) {
-              begin();
-              _writeLook(look.copyWith(brightness: v));
-            },
-            onCommit: commit,
-          ),
-        ]),
+        CanvasControlGroup(
+            label: "Fine-tune",
+            help: "Small changes on top of the filter. 1 is as the picture "
+                "came.",
+            rule: false,
+            children: [
+              CanvasStepper(
+                key: const ValueKey("imageSaturation"),
+                label: "Saturation",
+                decimals: 2,
+                step: 0.05,
+                dragStep: 0.01,
+                min: 0,
+                max: 3,
+                defaultValue: 1,
+                value: look.saturation,
+                onChanged: (v) {
+                  begin();
+                  _writeLook(look.copyWith(saturation: v));
+                },
+                onCommit: commit,
+              ),
+              CanvasStepper(
+                key: const ValueKey("imageBrightness"),
+                label: "Brightness",
+                decimals: 2,
+                step: 0.05,
+                dragStep: 0.01,
+                min: 0,
+                max: 3,
+                defaultValue: 1,
+                value: look.brightness,
+                onChanged: (v) {
+                  begin();
+                  _writeLook(look.copyWith(brightness: v));
+                },
+                onCommit: commit,
+              ),
+            ]),
         ...pictureLookGroups(look, _writeLook, begin, commit,
             shown: look.hasImage,
             tryLook: _tryLook,
@@ -490,12 +502,10 @@ class _Sections {
         }
         _now(next);
       },
-      keywords: [
-        for (var k in EffectKind.values) k.label,
-        "shadow", "glow", "outline", //
-      ],
       children: [
         CanvasTiles<EffectKind>(
+          help:
+              "Each one switched on and off by itself; its settings show once it is on.",
           key: const ValueKey("imageEffects"),
           columns: 4,
           multiple: true,
@@ -556,12 +566,10 @@ class _Sections {
                   kind: adjust.kind,
                   colour: adjust.colour,
                   fade: adjust.fade)))),
-      keywords: [
-        for (var k in AdjustKind.values) k.label,
-        for (var p in adjust.kind.params) p.label,
-      ],
       children: [
         CanvasTiles<AdjustKind>(
+          help:
+              "What the adjustment does to every layer under it -- or, clipped, to the one under it. Point at one to try it.",
           key: const ValueKey("adjustKind"),
           columns: 4,
           previewHeight: 28,
@@ -604,12 +612,10 @@ class _Sections {
       changes: texture.values.isEmpty ? 0 : 1,
       onReset: () => _now(e.withLayer(picked.id,
           (l) => l.copyWith(texture: texture.copyWith(values: const {})))),
-      keywords: [
-        for (var k in TextureKind.values) k.label,
-        for (var p in texture.kind.params) p.label,
-      ],
       children: [
         CanvasTiles<TextureKind>(
+          help:
+              "Drawn over the whole frame by the canvas itself, at any size. Point at one to try it.",
           key: const ValueKey("textureKind"),
           columns: 4,
           tiles: [
@@ -650,9 +656,10 @@ class _Sections {
       // Strokes are work done, not a setting moved: no dot, and no reset
       // that would wipe them -- the Strokes group takes them back one at a
       // time, or clears them when that is what is meant.
-      keywords: const ["paint", "erase", "brush", "colour", "strokes"],
       children: [
-        imageToolTiles(controller, e, picked, paintTools, settings),
+        imageToolTiles(controller, e, picked, paintTools, settings,
+            help: "Paint on this layer, and rub it out again. A pen's "
+                "pressure sets the width of the line."),
         strokesGroup("Paint", picked.strokes, set),
       ],
     );
@@ -665,7 +672,6 @@ class _Sections {
         summary: picked.fill.fades ? "A fade" : "One colour",
         remember: _remember("own"),
         initiallyOpen: true,
-        keywords: const ["colour", "gradient", "fade"],
         children: fillLayerSettings(e, picked, write, begin, commit),
       );
 
@@ -687,7 +693,6 @@ class _Sections {
             picked.id,
             (l) =>
                 l.copyWith(blend: LayerBlend.normal, opacity: 1, clip: false))),
-        keywords: const ["blend", "opacity", "clip", "mode"],
         children: [
           layerBlendTiles(controller, e, picked, write, begin, commit),
           layerStrengthGroup(e, picked, write, begin, commit),
@@ -714,10 +719,6 @@ class _Sections {
       title: "Animation",
       summary: summary,
       remember: _remember("animation"),
-      keywords: const [
-        "arrive", "exit", "loop", "fade", "slide", "stagger", "cue", //
-        "timing", "together", "preview", "keyframe",
-      ],
       children: [
         elementAnimationSection(controller, e, a,
             (next) => write(e.copyWith(animation: next)), begin, commit,
@@ -727,6 +728,8 @@ class _Sections {
           CanvasControlGroup(
             key: const ValueKey("imageLayerTiming"),
             label: "This layer",
+            help: "When this layer comes in against the one under it. Its "
+                "lane on the timeline can be dragged as well.",
             rule: false,
             children: [
               CanvasDropdown<VectorCue>(
@@ -758,6 +761,8 @@ class _Sections {
         if (stack.length > 1)
           CanvasControlGroup(
             label: "Every layer",
+            help: "The timing of all the layers at once: one after another, "
+                "or all together.",
             rule: false,
             children: [
               CanvasIconButton(
@@ -789,10 +794,6 @@ class _Sections {
         scope: "Whole image",
         summary: "Background, border, saved designs and looks",
         remember: "image.frame",
-        keywords: const [
-          "background", "border", "padding", "corners", "radius", //
-          "preset", "design", "looks", "save",
-        ],
         children: [
           presetsSection(context, controller, e),
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,

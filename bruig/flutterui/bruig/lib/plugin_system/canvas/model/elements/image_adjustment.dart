@@ -89,9 +89,9 @@ enum AdjustKind {
   final List<AdjustParam> params;
   const AdjustKind(this.label, this.mode, this.params);
 
-  static AdjustKind fromName(String? name) => values.firstWhere(
-      (k) => k.name == name,
-      orElse: () => AdjustKind.hueSaturation);
+  static AdjustKind fromName(String? name) =>
+      values.firstWhere((k) => k.name == name,
+          orElse: () => AdjustKind.hueSaturation);
 
   /// usesColour is whether the kind is set by a colour as well as numbers:
   /// a photo filter's, the one colour kept, a black and white's tint.
@@ -179,8 +179,7 @@ class ImageAdjustment {
   /// held to the square.
   ImageAdjustment withCurve(CurveChannel channel, List<Offset> points) {
     var sorted = [
-      for (var p in points)
-        Offset(p.dx.clamp(0.0, 1.0), p.dy.clamp(0.0, 1.0))
+      for (var p in points) Offset(p.dx.clamp(0.0, 1.0), p.dy.clamp(0.0, 1.0))
     ]..sort((a, b) => a.dx.compareTo(b.dx));
     return copyWith(curves: {...curves, channel: sorted});
   }
@@ -211,9 +210,8 @@ class ImageAdjustment {
     var curves = <CurveChannel, List<Offset>>{};
     if (json["curves"] case Map raw) {
       for (var e in raw.entries) {
-        var channel = CurveChannel.values
-            .where((c) => c.name == e.key)
-            .firstOrNull;
+        var channel =
+            CurveChannel.values.where((c) => c.name == e.key).firstOrNull;
         if (channel == null || e.value is! List) continue;
         var flat = e.value as List;
         var points = <Offset>[];
@@ -257,9 +255,8 @@ double curveAt(List<Offset> points, double x) {
   tangents[0] = slopes[0];
   tangents[n - 1] = slopes[n - 2];
   for (var i = 1; i < n - 1; i++) {
-    tangents[i] = slopes[i - 1] * slopes[i] <= 0
-        ? 0
-        : (slopes[i - 1] + slopes[i]) / 2;
+    tangents[i] =
+        slopes[i - 1] * slopes[i] <= 0 ? 0 : (slopes[i - 1] + slopes[i]) / 2;
   }
   for (var i = 0; i < n - 1; i++) {
     if (slopes[i] == 0) {

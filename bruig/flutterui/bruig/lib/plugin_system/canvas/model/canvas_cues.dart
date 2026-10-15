@@ -21,8 +21,8 @@ class TimelineCue {
 
   const TimelineCue({required this.id, this.name = "", required this.frame});
 
-  TimelineCue copyWith({String? name, int? frame}) => TimelineCue(
-      id: id, name: name ?? this.name, frame: frame ?? this.frame);
+  TimelineCue copyWith({String? name, int? frame}) =>
+      TimelineCue(id: id, name: name ?? this.name, frame: frame ?? this.frame);
 
   Map<String, dynamic> toJson() => {
         "id": id,

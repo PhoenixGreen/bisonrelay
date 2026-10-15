@@ -240,48 +240,6 @@ void main() {
       expect(open("image.picture.retouch"), isTrue);
     });
 
-    testWidgets("fold-all shuts every section, and opens them again",
-        (tester) async {
-      await pumpPanel(tester);
-      await openSection(tester, "image.picture.colour");
-      await tapKey(tester, "settingsFoldAll");
-      for (var s in ["position", "colour"]) {
-        expect(open("image.picture.$s"), isFalse, reason: s);
-      }
-      await tapKey(tester, "settingsFoldAll");
-      for (var s in ["position", "mask", "colour", "animation"]) {
-        expect(open("image.picture.$s"), isTrue, reason: s);
-      }
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets("the search shows only the sections with that setting",
-        (tester) async {
-      await pumpPanel(tester);
-      await tapKey(tester, "settingsFoldAll");
-      if (open("image.picture.position")) {
-        await tapKey(tester, "settingsFoldAll");
-      }
-      await tester.enterText(
-          find.byKey(const ValueKey("settingsSearch")), "feather");
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("section-image.picture.mask")),
-          findsOneWidget);
-      expect(open("image.picture.mask"), isTrue, reason: "opened to show it");
-      expect(find.byKey(const ValueKey("maskFeather")), findsOneWidget);
-      expect(find.byKey(const ValueKey("section-image.picture.colour")),
-          findsNothing);
-
-      await tester.enterText(
-          find.byKey(const ValueKey("settingsSearch")), "zzz");
-      await tester.pumpAndSettle();
-      expect(find.textContaining("No setting called"), findsOneWidget);
-
-      await tapKey(tester, "settingsSearchClear");
-      expect(find.byKey(const ValueKey("section-image.picture.colour")),
-          findsOneWidget);
-    });
-
     testWidgets("a section changed has a dot and a reset", (tester) async {
       var c = await pumpPanel(tester);
       await openSection(tester, "image.picture.colour");

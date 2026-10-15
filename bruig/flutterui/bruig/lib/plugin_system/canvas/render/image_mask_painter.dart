@@ -68,8 +68,7 @@ void paintMaskMarks(
   if (subject != null) {
     canvas.drawImageRect(
         subject,
-        Offset.zero &
-            Size(subject.width.toDouble(), subject.height.toDouble()),
+        Offset.zero & Size(subject.width.toDouble(), subject.height.toDouble()),
         whole,
         Paint()
           ..filterQuality = FilterQuality.medium
@@ -124,13 +123,14 @@ void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
 
 /// _paintDabs lays a brush stroke down as dabs along its path, each as wide
 /// as the pen was pressed there.
-void _paintDabs(ui.Canvas canvas, MaskMark mark, Size size,
-    Offset Function(Offset) at) {
+void _paintDabs(
+    ui.Canvas canvas, MaskMark mark, Size size, Offset Function(Offset) at) {
   var full = mark.radius * math.min(size.width, size.height);
   if (full <= 0) return;
   var soft = (1 - mark.hardness).clamp(0.0, 1.0);
-  double pressureAt(int i) =>
-      mark.pressure.isEmpty ? 1 : mark.pressure[math.min(i, mark.pressure.length - 1)];
+  double pressureAt(int i) => mark.pressure.isEmpty
+      ? 1
+      : mark.pressure[math.min(i, mark.pressure.length - 1)];
 
   void dab(Offset c, double p) {
     // Lighter pressure is a thinner line, never less than a quarter of the
@@ -174,12 +174,14 @@ ui.ImageFilter? refineFilter(MaskRefine refine, double scale) {
     // Blurred and then pulled back to an edge: the jags are averaged away
     // and the edge stays where the average put it, as hard as it was.
     var s = refine.smooth * scale * 0.5;
-    steps.add(ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal));
+    steps.add(
+        ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal));
     steps.add(_alphaContrast(4));
   }
   if (refine.feather > 0) {
     var s = refine.feather * scale * 0.5;
-    steps.add(ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal));
+    steps.add(
+        ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal));
   }
   if (refine.contrast > 0) steps.add(_alphaContrast(1 + refine.contrast * 9));
   if (steps.isEmpty) return null;
@@ -204,7 +206,12 @@ Matrix4Like pictureToPlacement(ImagePlacement placement) {
   var src = placement.src, dst = placement.dst;
   var sx = src.width == 0 ? 1.0 : dst.width / src.width;
   var sy = src.height == 0 ? 1.0 : dst.height / src.height;
-  return (sx: sx, sy: sy, dx: dst.left - src.left * sx, dy: dst.top - src.top * sy);
+  return (
+    sx: sx,
+    sy: sy,
+    dx: dst.left - src.left * sx,
+    dy: dst.top - src.top * sy
+  );
 }
 
 typedef Matrix4Like = ({double sx, double sy, double dx, double dy});

@@ -31,7 +31,8 @@ List<int> storyboardFrames(CanvasDocument doc, int scene,
 }
 
 /// showStoryboard opens the storyboard over the editor.
-Future<void> showStoryboard(BuildContext context, CanvasController controller) =>
+Future<void> showStoryboard(
+        BuildContext context, CanvasController controller) =>
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -168,8 +169,8 @@ class _CanvasStoryboardState extends State<CanvasStoryboard> {
                                 child: AspectRatio(
                                   aspectRatio: aspect,
                                   child: Container(
-                                    color: theme.colorScheme
-                                        .surfaceContainerHighest,
+                                    color: theme
+                                        .colorScheme.surfaceContainerHighest,
                                     child: _shots[(i, f)] == null
                                         ? null
                                         : RawImage(

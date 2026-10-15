@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/storage_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -77,6 +78,44 @@ const double canvasGroupGap = 24;
 /// bandGroupHeight is how tall the line between two groups on the band is:
 /// the caption and one row of controls, which is the whole of the band.
 const double bandGroupHeight = 11 + 5 + controlHeight;
+
+/// CanvasCards marks the settings inside a sectioned panel's section (see
+/// panel_kit.dart), where each group is a card with its name and a "?" over
+/// it, and the controls are a size up and further apart: a panel of sections
+/// is read a section at a time, and has the room.
+class CanvasCards extends InheritedWidget {
+  const CanvasCards({required super.child, super.key});
+
+  static bool on(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasCards>() != null;
+
+  @override
+  bool updateShouldNotify(CanvasCards old) => false;
+}
+
+/// cardControlHeight, cardLabelHeight and cardLabelGap are controlHeight,
+/// controlLabelHeight and controlLabelGap inside a card; cardCaptioned is
+/// what a captioned control stands at there, all in.
+const double cardControlHeight = 38;
+const double cardLabelHeight = 15;
+const double cardLabelGap = 6;
+const double cardCaptioned = cardLabelHeight + cardLabelGap + cardControlHeight;
+
+/// cardGap is the room between two controls on a line in a card, and between
+/// two lines.
+const double cardGap = 12;
+
+/// heightIn is how tall a control stands where [context] is.
+double heightIn(BuildContext context) =>
+    CanvasCards.on(context) ? cardControlHeight : controlHeight;
+
+/// nudgeIn is how far down a control with no caption sits, to line up with
+/// the captioned ones beside it.
+double nudgeIn(BuildContext context) => CanvasControlScope.isInline(context)
+    ? 0
+    : CanvasCards.on(context)
+        ? cardCaptioned - cardControlHeight
+        : controlWithLabelHeight - controlHeight;
 
 /// controlWithLabelHeight is what a captioned control stands at, all in.
 ///
@@ -802,12 +841,66 @@ class CanvasControlGroup extends StatelessWidget {
     this.onRename,
     this.folded,
     this.onFold,
+    this.help,
     super.key,
   });
+
+  /// help is what the group is for, behind the "?" beside its name in a
+  /// card. The hints among its children join it there.
+  final String? help;
+
+  /// _card is the group as a card in a section: its name, and a "?" holding
+  /// what it is for, over its controls, on a ground of its own.
+  Widget _card(BuildContext context, ThemeNotifier theme) {
+    var hints = [
+      for (var c in children)
+        if (c is CanvasHint) c.message
+    ];
+    var rest = [
+      for (var c in children)
+        if (c is! CanvasHint) c
+    ];
+    var about =
+        [if (help != null && help!.isNotEmpty) help!, ...hints].join("\n\n");
+    var shut = folded == true;
+    var title = TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+        color: theme.colors.onSurface);
+    Widget name = onRename != null
+        ? _RenamableCaption(label: label, style: title, onRename: onRename!)
+        : Text(label, style: title);
+    if (folded != null) {
+      name = InkWell(
+        onTap: onFold,
+        borderRadius: BorderRadius.circular(4),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(shut ? Icons.chevron_right : Icons.expand_more,
+              size: 16, color: theme.colors.onSurfaceVariant),
+          const SizedBox(width: 2),
+          name,
+        ]),
+      );
+    }
+    return canvasCard(context,
+        title: hideCaption ? null : name,
+        help: about,
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!shut) CanvasWrap(runSpacing: cardGap, children: rest),
+            if (below != null && !shut) below!,
+          ],
+        ));
+  }
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
+      return _card(context, theme);
+    }
     var style = TextStyle(
       fontSize: 9,
       letterSpacing: 0.7,
@@ -938,6 +1031,266 @@ class CanvasControlGroup extends StatelessWidget {
   }
 }
 
+/// CanvasTextButton is a button that says what it does in words -- "Flip
+/// across", "Clear mask" -- for an action somebody has to read to find,
+/// rather than an icon they have to learn. It shares out the room on its
+/// line with the buttons beside it.
+class CanvasTextButton extends StatelessWidget implements CanvasGrowable {
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+
+  /// primary fills it with the accent: the one thing a card is for.
+  final bool primary;
+
+  @override
+  final bool grow;
+
+  /// least is wide enough for its words and icon, so a line of them wraps
+  /// before any is cut short.
+  @override
+  double get least =>
+      (label.isEmpty ? 0 : 26 + label.length * 7.2) +
+      (icon == null ? 0 : (label.isEmpty ? 40 : 22));
+
+  /// tooltip says what an icon alone does, on hover. Words need none.
+  final String tooltip;
+
+  const CanvasTextButton(
+      {required this.label,
+      required this.onPressed,
+      this.tooltip = "",
+      this.icon,
+      this.primary = false,
+      this.grow = true,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var card = CanvasCards.on(context);
+    var enabled = onPressed != null;
+    var ink = !enabled
+        ? theme.colors.onSurfaceVariant.withValues(alpha: 0.4)
+        : primary
+            ? theme.colors.onPrimary
+            : theme.colors.onSurface;
+    Widget button(Widget child) =>
+        tooltip.isEmpty ? child : Tooltip(message: tooltip, child: child);
+    return Padding(
+      padding: EdgeInsets.only(right: card ? cardGap : canvasControlGap),
+      child: canvasSized(
+        context,
+        min: least,
+        height: heightIn(context),
+        grow: grow,
+        child: button(Material(
+          color: primary && enabled ? theme.colors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(card ? 10 : 4),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(card ? 10 : 4),
+            onTap: onPressed,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: label.isEmpty ? 2 : 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(card ? 10 : 4),
+                border: Border.all(
+                    color: primary && enabled
+                        ? theme.colors.primary
+                        : theme.colors.outlineVariant),
+              ),
+              alignment: Alignment.center,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (icon != null) ...[
+                  Icon(icon, size: label.isEmpty ? 18 : 16, color: ink),
+                  if (label.isNotEmpty) const SizedBox(width: 6),
+                ],
+                if (label.isNotEmpty)
+                  Flexible(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: card ? 13 : 11,
+                            fontWeight:
+                                primary ? FontWeight.w600 : FontWeight.normal,
+                            color: ink)),
+                  ),
+              ]),
+            ),
+          ),
+        )),
+      ),
+    );
+  }
+}
+
+/// CanvasSegmented is a choice of a few, all in view, the one chosen lit: a
+/// line of its own, with an optional caption over it. For two to four
+/// options short enough to read side by side -- more than that is a
+/// dropdown's.
+class CanvasSegmented<T> extends StatelessWidget {
+  final String label;
+  final List<(T, String)> options;
+  final T value;
+  final ValueChanged<T> onChanged;
+
+  /// keyOf names each option, for the tests.
+  final String Function(T)? keyOf;
+
+  const CanvasSegmented(
+      {required this.options,
+      required this.value,
+      required this.onChanged,
+      this.label = "",
+      this.keyOf,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var card = CanvasCards.on(context);
+    var accent = theme.colors.primary;
+    var bar = Container(
+      height: card ? cardControlHeight + 4 : controlHeight + 2,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(card ? 10 : 5),
+        border: Border.all(color: theme.colors.outlineVariant),
+      ),
+      child: Row(children: [
+        for (var (option, words) in options)
+          Expanded(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: keyOf == null ? null : ValueKey(keyOf!(option)),
+                borderRadius: BorderRadius.circular(card ? 8 : 4),
+                onTap: () => onChanged(option),
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(card ? 8 : 4),
+                    color:
+                        option == value ? accent.withValues(alpha: 0.16) : null,
+                    border: option == value ? Border.all(color: accent) : null,
+                  ),
+                  child: Text(words,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: card ? 12.5 : 11,
+                          fontWeight: option == value
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: theme.colors.onSurface)),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    );
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: EdgeInsets.only(right: card ? 10 : canvasControlGap),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (label.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(
+                    bottom: card ? cardLabelGap : controlLabelGap),
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: card ? 11.5 : 9,
+                        color: theme.colors.onSurfaceVariant)),
+              ),
+            bar,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// canvasCard is a card in a section: a [title] with a "?" holding [help]
+/// beside it -- either may be missing -- over [body], on a ground of its own.
+/// Groups, tiles and tools all sit in one, so a section reads as a stack of
+/// cards each saying what it is.
+Widget canvasCard(BuildContext context,
+    {Widget? title, String help = "", required Widget body}) {
+  var theme = ThemeNotifier.of(context);
+  var heading = title != null || help.isNotEmpty;
+  return Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(10),
+      color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.45),
+      border:
+          Border.all(color: theme.colors.outlineVariant.withValues(alpha: 0.7)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (heading)
+          Padding(
+            padding: const EdgeInsets.only(right: 10, bottom: 12),
+            child: Row(children: [
+              Expanded(child: title ?? const SizedBox.shrink()),
+              if (help.isNotEmpty) CanvasHelp(help),
+            ]),
+          ),
+        body,
+      ],
+    ),
+  );
+}
+
+/// canvasCardTitle is a card's name, as text.
+Widget canvasCardTitle(BuildContext context, String text) => Text(text,
+    style: TextStyle(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+        color: ThemeNotifier.of(context).colors.onSurface));
+
+/// CanvasHelp is the round "?" beside a card's name: what the group is for,
+/// shown on hover or a press.
+class CanvasHelp extends StatelessWidget {
+  final String message;
+  const CanvasHelp(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      preferBelow: true,
+      waitDuration: const Duration(milliseconds: 300),
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: theme.colors.outlineVariant),
+        ),
+        child: Text("?",
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: theme.colors.onSurfaceVariant)),
+      ),
+    );
+  }
+}
+
 /// CanvasNumberField is a number with a label above it.
 ///
 /// Committed on every keystroke that parses, rather than on submit. A field
@@ -1063,10 +1416,44 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
     widget.onCommit?.call();
   }
 
+  /// _arrowStep is how far an arrow moves this number, where it is drawn as
+  /// a stepper: a fiftieth of a range that is a real range, rounded to the
+  /// field's own precision, or a whole unit -- or a tenth, for a precise
+  /// field -- where the range is only a guard rail.
+  double get _arrowStep {
+    var digit = math.pow(10, -widget.decimals).toDouble();
+    var span = widget.max - widget.min;
+    if (span > 0 && span < 10000) {
+      var raw = span / 50;
+      return math.max(digit, (raw / digit).roundToDouble() * digit);
+    }
+    return widget.decimals == 0 ? 1 : digit * 10;
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var step = widget.step ?? math.pow(10, -widget.decimals).toDouble();
+    // In a card every number is a stepper -- an arrow either side of a
+    // number dragged sideways -- whoever asked for a field.
+    if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
+      return CanvasStepper(
+        name: widget.key is ValueKey<String>
+            ? (widget.key as ValueKey<String>).value
+            : null,
+        label: widget.label,
+        value: widget.value,
+        min: widget.min,
+        max: widget.max,
+        decimals: widget.decimals,
+        step: _arrowStep,
+        dragStep: step,
+        suffix: widget.suffix,
+        grow: widget.grow,
+        onChanged: widget.onChanged,
+        onCommit: widget.onCommit,
+      );
+    }
     return _labelled(
       theme,
       widget.label,
@@ -1272,7 +1659,8 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
         canvasSized(
           context,
           min: CanvasControlScope.widthFor(context, widget.width),
-          height: widget.maxLines > 1 ? controlHeight * 2 : controlHeight,
+          height:
+              widget.maxLines > 1 ? heightIn(context) * 2 : heightIn(context),
           grow: widget.grow,
           child: TextField(
             controller: _text,
@@ -1643,7 +2031,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
       canvasSized(
         context,
         min: CanvasControlScope.widthFor(context, width),
-        height: controlHeight,
+        height: heightIn(context),
         grow: grow,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -2014,7 +2402,7 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
             onTap: _pick,
             child: Container(
               width: 30,
-              height: controlHeight,
+              height: heightIn(context),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: theme.colors.outlineVariant),
@@ -2027,7 +2415,7 @@ class _CanvasColorButtonState extends State<CanvasColorButton> {
                 borderRadius: BorderRadius.circular(3),
                 child: CustomPaint(
                   painter: _SwatchPainter(color, gradient),
-                  size: const Size(30, controlHeight),
+                  size: Size(30, heightIn(context)),
                 ),
               ),
             ),
@@ -2188,9 +2576,41 @@ class CanvasToggle extends StatelessWidget {
       required this.onChanged,
       super.key});
 
+  /// _row is the switch in a card: the words, and a switch at the far end
+  /// of a line of its own -- a setting read as a sentence that is on or off.
+  Widget _row(BuildContext context, ThemeNotifier theme) => SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => onChanged(!value),
+              child: SizedBox(
+                height: 36,
+                child: Row(children: [
+                  Expanded(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13, color: theme.colors.onSurface)),
+                  ),
+                  _Switch(on: value, theme: theme),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
+      return _row(context, theme);
+    }
     return Padding(
       // The nudge lines a control with no caption up with the ones that have
       // them. On the band the captions are beside their controls and there is
@@ -2200,11 +2620,7 @@ class CanvasToggle extends StatelessWidget {
       // The caption *and* the gap under it. The caption alone left this three
       // pixels high of where it should be, which is not much until it is a
       // button sitting beside two dropdowns.
-      padding: EdgeInsets.only(
-          right: canvasControlGap,
-          top: CanvasControlScope.isInline(context)
-              ? 0
-              : controlWithLabelHeight - controlHeight),
+      padding: EdgeInsets.only(right: canvasControlGap, top: nudgeIn(context)),
       child: Material(
         // Its own, so the highlight stays with the control inside a
         // scrolling list rather than on whatever Material is above it.
@@ -2248,6 +2664,35 @@ class CanvasToggle extends StatelessWidget {
   }
 }
 
+/// _Switch is a card's switch: a track that fills with the accent, and a
+/// knob that slides to the end it is on.
+class _Switch extends StatelessWidget {
+  final bool on;
+  final ThemeNotifier theme;
+  const _Switch({required this.on, required this.theme});
+
+  @override
+  Widget build(BuildContext context) => AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        width: 40,
+        height: 24,
+        padding: const EdgeInsets.all(3),
+        alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: on
+              ? theme.colors.primary
+              : theme.colors.outlineVariant.withValues(alpha: 0.9),
+        ),
+        child: Container(
+          width: 18,
+          height: 18,
+          decoration:
+              const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+        ),
+      );
+}
+
 /// CanvasReadout is a caption over something the panel can only tell you.
 ///
 /// For the answers that are not settings: which document a text element is
@@ -2269,7 +2714,7 @@ class CanvasReadout extends StatelessWidget {
       label,
       SizedBox(
         width: width,
-        height: controlHeight,
+        height: heightIn(context),
         child: Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -2323,10 +2768,8 @@ class CanvasIconButton extends StatelessWidget {
       // pixels high of where it should be, which is not much until it is a
       // button sitting beside two dropdowns.
       padding: EdgeInsets.only(
-          right: canvasControlGap,
-          top: tight || CanvasControlScope.isInline(context)
-              ? 0
-              : controlWithLabelHeight - controlHeight),
+          right: CanvasCards.on(context) ? 8 : canvasControlGap,
+          top: tight ? 0 : nudgeIn(context)),
       // No hover text where there is nothing to say: a button whose icon says
       // it all is quieter without a box of words appearing over it.
       child: _maybeTooltip(
@@ -2339,10 +2782,11 @@ class CanvasIconButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             onTap: onPressed,
             child: Container(
-              width: controlHeight,
-              height: controlHeight,
+              width: tight ? controlHeight : heightIn(context),
+              height: tight ? controlHeight : heightIn(context),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius:
+                    BorderRadius.circular(CanvasCards.on(context) ? 8 : 4),
                 color: active ? theme.colors.secondaryContainer : null,
                 border: Border.all(color: theme.colors.outlineVariant),
               ),
@@ -2541,6 +2985,30 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
       );
     }
 
+    // In a card: a larger caption, further from a larger control, and more
+    // room before the next.
+    if (CanvasCards.on(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(right: cardGap),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+                height: cardLabelHeight,
+                width: cap,
+                child: Text(label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.2,
+                        color: theme.colors.onSurfaceVariant))),
+            const SizedBox(height: cardLabelGap),
+            child,
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(right: canvasCaptionedGap),
       child: Column(
@@ -2849,11 +3317,7 @@ class CanvasKeyframeDot extends StatelessWidget {
       // them. On the band the captions are beside their controls and there is
       // nothing above to line up under, so the nudge is what pushed this out
       // of line with its neighbours.
-      padding: EdgeInsets.only(
-          right: canvasControlGap,
-          top: CanvasControlScope.isInline(context)
-              ? 0
-              : controlWithLabelHeight - controlHeight),
+      padding: EdgeInsets.only(right: canvasControlGap, top: nudgeIn(context)),
       child: Tooltip(
         message: tooltip,
         child: Material(
@@ -2865,7 +3329,7 @@ class CanvasKeyframeDot extends StatelessWidget {
             onTap: enabled ? onPressed : null,
             child: SizedBox(
               width: 18,
-              height: controlHeight,
+              height: heightIn(context),
               child: Icon(
                 on ? Icons.diamond : Icons.diamond_outlined,
                 size: 11,

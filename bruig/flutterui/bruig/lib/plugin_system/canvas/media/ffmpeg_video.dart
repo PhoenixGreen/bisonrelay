@@ -269,8 +269,21 @@ class _FfmpegReader implements FrameReader {
 Future<Float32List?> filePeaks(String ffmpeg, String path,
     {int count = 2400}) async {
   try {
-    var run = await Process.run(ffmpeg,
-        ["-v", "error", "-i", path, "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
+    var run = await Process.run(
+        ffmpeg,
+        [
+          "-v",
+          "error",
+          "-i",
+          path,
+          "-ac",
+          "1",
+          "-ar",
+          "8000",
+          "-f",
+          "f32le",
+          "-"
+        ],
         stdoutEncoding: null);
     if (run.exitCode != 0) return null;
     var bytes = Uint8List.fromList(run.stdout as List<int>);

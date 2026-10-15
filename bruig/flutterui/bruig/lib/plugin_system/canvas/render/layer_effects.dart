@@ -22,8 +22,7 @@ class TextureShader {
 
   static Future<void> load() => _loading ??= () async {
         try {
-          _program =
-              await ui.FragmentProgram.fromAsset("shaders/texture.frag");
+          _program = await ui.FragmentProgram.fromAsset("shaders/texture.frag");
           ready.value = true;
         } catch (exception) {
           debugPrint("The texture shader did not load: $exception");
@@ -137,11 +136,10 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
   for (var f in on.where((f) => f.kind.behind)) {
     var colour = f.colour.withValues(alpha: f.colour.a * f.value("opacity"));
     var spread = f.value("spread") * unit;
-    var sigma = (f.kind == EffectKind.dropShadow
-            ? f.value("blur")
-            : f.value("size")) *
-        unit /
-        2;
+    var sigma =
+        (f.kind == EffectKind.dropShadow ? f.value("blur") : f.value("size")) *
+            unit /
+            2;
     canvas.saveLayer(
         reach,
         Paint()
@@ -163,8 +161,9 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
 
   // The layer itself, blurred if it is, in a layer of its own so an inner
   // shadow lands on it and not on the shadow under it.
-  var blur = on.where((f) => f.kind == EffectKind.blur).fold<double>(
-      0, (s, f) => s + f.value("amount") * unit / 2);
+  var blur = on
+      .where((f) => f.kind == EffectKind.blur)
+      .fold<double>(0, (s, f) => s + f.value("amount") * unit / 2);
   canvas.saveLayer(
       reach,
       Paint()

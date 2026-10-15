@@ -110,7 +110,10 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit,
     {required bool layer}) {
   return CanvasControlGroup(
-      label: "For logos and scans",
+      label: "Logos and scans",
+      help: "Take out a flat colour or the paper behind a drawing: A colour "
+          "keys out one colour, Edges floods in from the sides, Brightness "
+          "cuts at a level. A photograph's subject is the Mask tools' work.",
       rule: false,
       children: [
         // The brush comes before the method, and outside the check for whether
@@ -256,16 +259,19 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             ),
           ],
         ],
-        CanvasDropdown<RemovalMode>(
-          label: "Method",
-          value: e.removal.mode,
-          width: 140,
+        CanvasSegmented<RemovalMode>(
+          key: const ValueKey("removalMethod"),
           options: [
-            for (var m in RemovalMode.values)
-              // Learning from marks is what Select subject does now, better;
-              // kept for the pictures that already use it.
-              if (m != RemovalMode.learn || e.removal.mode == m) (m, m.label)
+            (RemovalMode.none, "Off"),
+            (RemovalMode.chromaKey, "A colour"),
+            (RemovalMode.cornerFlood, "Edges"),
+            (RemovalMode.luminance, "Brightness"),
+            // Learning from marks is what Select subject does now, better;
+            // kept for the pictures that already use it.
+            if (e.removal.mode == RemovalMode.learn)
+              (RemovalMode.learn, "Marks"),
           ],
+          value: e.removal.mode,
           onChanged: (v) {
             begin();
             write(e.copyWith(removal: e.removal.copyWith(mode: v)));

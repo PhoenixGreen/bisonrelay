@@ -33,8 +33,8 @@ final Expando<String> _maskKeys = Expando("maskKey");
 /// depends on.
 String _keyOf(ImageElement look) {
   var mask = look.mask;
-  var key = _maskKeys[mask] ??=
-      jsonEncode(mask.toJson()).hashCode.toRadixString(36);
+  var key =
+      _maskKeys[mask] ??= jsonEncode(mask.toJson()).hashCode.toRadixString(36);
   return "${look.assetId}|${look.removal.cacheKey(look.assetId)}|$key";
 }
 

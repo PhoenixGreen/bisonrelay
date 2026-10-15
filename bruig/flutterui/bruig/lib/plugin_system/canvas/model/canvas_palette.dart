@@ -14,11 +14,44 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 /// look like one: frames, lengths, counts, a chart's numbers, a counter's.
 /// A colour is a large integer, and so is thirty million atoms.
 const _notColours = {
-  "frame", "frames", "at", "seed", "from", "to", "count", "values", "value",
-  "length", "start", "end", "width", "height", "w", "h", "x", "y", "rows",
-  "exportWidth", "loopFrames", "passFrames", "pauseAt", "pauseFor",
-  "series", "data", "estimated", "track", "keys", "vb", "nodes", "points",
-  "envelope", "textStyles", "cues", "decimals", "rate", "params",
+  "frame",
+  "frames",
+  "at",
+  "seed",
+  "from",
+  "to",
+  "count",
+  "values",
+  "value",
+  "length",
+  "start",
+  "end",
+  "width",
+  "height",
+  "w",
+  "h",
+  "x",
+  "y",
+  "rows",
+  "exportWidth",
+  "loopFrames",
+  "passFrames",
+  "pauseAt",
+  "pauseFor",
+  "series",
+  "data",
+  "estimated",
+  "track",
+  "keys",
+  "vb",
+  "nodes",
+  "points",
+  "envelope",
+  "textStyles",
+  "cues",
+  "decimals",
+  "rate",
+  "params",
 };
 
 /// _rgb is a colour's red, green and blue, without its opacity.
@@ -27,7 +60,8 @@ int _rgb(int argb) => argb & 0xFFFFFF;
 /// _looksLikeColour is whether [v] could be a colour at all: an integer with
 /// some opacity in it. A colour with none is invisible, and nothing is lost
 /// by leaving it alone.
-bool _looksLikeColour(Object? v) => v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
+bool _looksLikeColour(Object? v) =>
+    v is int && v >= 0x01000000 && v <= 0xFFFFFFFF;
 
 /// _walk visits every colour-shaped number in [json] that is not under a
 /// key that rules it out, handing it to [visit] and putting back whatever

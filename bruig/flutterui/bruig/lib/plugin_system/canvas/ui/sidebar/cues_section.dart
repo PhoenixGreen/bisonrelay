@@ -57,12 +57,11 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
 
   @override
   Widget build(BuildContext context) {
-    var rate = controller.document.frameRate <= 0
-        ? 1
-        : controller.document.frameRate;
+    var rate =
+        controller.document.frameRate <= 0 ? 1 : controller.document.frameRate;
     var voices = _voices;
-    var picked = voices.where((v) => v.id == _voice).firstOrNull ??
-        voices.firstOrNull;
+    var picked =
+        voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(
       key: const ValueKey("cues"),
       label: "Cues",

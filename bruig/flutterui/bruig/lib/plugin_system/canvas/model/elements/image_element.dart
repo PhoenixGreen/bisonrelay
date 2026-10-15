@@ -691,9 +691,12 @@ class ImageElement extends CanvasElement {
     if (layers.isEmpty) return const [ImageLayer.base];
     var bases = layers.where((l) => l.isBase).length;
     if (bases == 1) return layers;
-    var others = [for (var l in layers) if (!l.isBase) l];
-    var base = layers.firstWhere((l) => l.isBase,
-        orElse: () => ImageLayer.base);
+    var others = [
+      for (var l in layers)
+        if (!l.isBase) l
+    ];
+    var base =
+        layers.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
     return [base, ...others];
   }
 

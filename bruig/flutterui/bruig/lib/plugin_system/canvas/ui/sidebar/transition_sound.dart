@@ -85,7 +85,8 @@ class _CanvasTransitionSoundState extends State<CanvasTransitionSound> {
             max: 200,
             suffix: "%",
             width: 58,
-            onChanged: (v) => widget.onChanged(t.copyWith(soundVolume: v / 100)),
+            onChanged: (v) =>
+                widget.onChanged(t.copyWith(soundVolume: v / 100)),
           ),
           CanvasNumberField(
             key: const ValueKey("transitionSoundLead"),
@@ -94,7 +95,8 @@ class _CanvasTransitionSoundState extends State<CanvasTransitionSound> {
             min: -240,
             max: 240,
             width: 54,
-            onChanged: (v) => widget.onChanged(t.copyWith(soundLead: v.round())),
+            onChanged: (v) =>
+                widget.onChanged(t.copyWith(soundLead: v.round())),
           ),
           CanvasIconButton(
             key: const ValueKey("transitionSoundEvery"),

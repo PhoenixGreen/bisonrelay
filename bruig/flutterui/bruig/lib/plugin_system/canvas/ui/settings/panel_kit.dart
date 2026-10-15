@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // panel_kit.dart is the parts of the sectioned settings panel: a section that
-// folds, the search and fold-all bar over a run of them, a row of picture
-// tiles, and the stepper -- a number with an arrow either side.
+// folds, holding cards; a row of picture tiles; a section's tools; and the
+// stepper -- a number with an arrow either side.
 //
 // Built for the picture's panel first and meant for every element's after it,
 // so nothing here knows what a picture is. See image_settings.dart for the
@@ -59,8 +59,14 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   final ValueChanged<double> onChanged;
   final VoidCallback? onCommit;
 
+  /// name keys its arrows, number and reset -- "$name-less" -- for a
+  /// stepper drawn on behalf of a field that carries the key itself. Null is
+  /// the stepper's own key.
+  final String? name;
+
   const CanvasStepper({
     required this.label,
+    this.name,
     required this.value,
     required this.onChanged,
     this.min = -100000,
@@ -70,7 +76,7 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
     this.dragStep,
     this.suffix = "",
     this.defaultValue,
-    this.width = 104,
+    this.width = 128,
     this.grow = true,
     this.onCommit,
     super.key,
@@ -113,6 +119,15 @@ class _CanvasStepperState extends State<CanvasStepper> {
   String _format(double v) => widget.decimals == 0
       ? v.round().toString()
       : v.toStringAsFixed(widget.decimals);
+
+  /// _sub is the key of one of its parts, where it has a name to key them by.
+  Key? _sub(String part) {
+    var name = widget.name ??
+        (widget.key is ValueKey<String>
+            ? (widget.key as ValueKey<String>).value
+            : null);
+    return name == null ? null : ValueKey("$name-$part");
+  }
 
   double _clamp(double v) => v.clamp(widget.min, widget.max).toDouble();
 
@@ -190,9 +205,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
       button: true,
       label: "${by < 0 ? "Less" : "More"} ${widget.label}",
       child: GestureDetector(
-        key: widget.key is ValueKey<String>
-            ? ValueKey("${(widget.key as ValueKey<String>).value}-$key")
-            : null,
+        key: _sub(key),
         behavior: HitTestBehavior.opaque,
         onTapDown: can ? (_) => _press(by) : null,
         onTapUp: (_) => _release(),
@@ -200,9 +213,9 @@ class _CanvasStepperState extends State<CanvasStepper> {
         child: MouseRegion(
           cursor: can ? SystemMouseCursors.click : SystemMouseCursors.basic,
           child: SizedBox(
-            width: 22,
+            width: CanvasCards.on(context) ? 32 : 22,
             child: Icon(icon,
-                size: 16,
+                size: CanvasCards.on(context) ? 18 : 16,
                 color: theme.colors.onSurfaceVariant
                     .withValues(alpha: can ? 0.9 : 0.3)),
           ),
@@ -267,9 +280,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
           _dragging = false;
         },
         child: GestureDetector(
-          key: widget.key is ValueKey<String>
-              ? ValueKey("${(widget.key as ValueKey<String>).value}-number")
-              : null,
+          key: _sub("number"),
           onDoubleTap: _startTyping,
           child: Center(
             child: Text(
@@ -277,7 +288,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
-                  fontSize: 12.5,
+                  fontSize: CanvasCards.on(context) ? 14 : 12.5,
                   fontWeight: FontWeight.w600,
                   color: theme.colors.onSurface),
             ),
@@ -292,13 +303,14 @@ class _CanvasStepperState extends State<CanvasStepper> {
     var theme = ThemeNotifier.of(context);
     var changed = widget.changed;
     var accent = theme.colors.primary;
+    var card = CanvasCards.on(context);
     var caption = Row(mainAxisSize: MainAxisSize.min, children: [
       Flexible(
         child: Text(widget.label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 9.5,
+                fontSize: card ? 11.5 : 9.5,
                 height: 1.1,
                 fontWeight: changed ? FontWeight.w600 : FontWeight.normal,
                 color: changed ? accent : theme.colors.onSurfaceVariant)),
@@ -308,9 +320,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
           button: true,
           label: "Reset ${widget.label}",
           child: GestureDetector(
-            key: widget.key is ValueKey<String>
-                ? ValueKey("${(widget.key as ValueKey<String>).value}-reset")
-                : null,
+            key: _sub("reset"),
             onTap: () {
               widget.onChanged(widget.defaultValue!);
               widget.onCommit?.call();
@@ -319,7 +329,8 @@ class _CanvasStepperState extends State<CanvasStepper> {
               cursor: SystemMouseCursors.click,
               child: Padding(
                 padding: const EdgeInsets.only(left: 3),
-                child: Icon(Icons.restart_alt, size: 11, color: accent),
+                child: Icon(Icons.restart_alt,
+                    size: card ? 13 : 11, color: accent),
               ),
             ),
           ),
@@ -327,7 +338,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
     ]);
     var box = Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(card ? 10 : 7),
         color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
         border: Border.all(
             color: changed
@@ -344,6 +355,24 @@ class _CanvasStepperState extends State<CanvasStepper> {
         _arrow(theme, Icons.chevron_right, 1, "more"),
       ]),
     );
+    if (card) {
+      return Padding(
+        padding: const EdgeInsets.only(right: cardGap),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(height: cardLabelHeight, child: caption),
+            const SizedBox(height: cardLabelGap),
+            canvasSized(context,
+                min: CanvasControlScope.widthFor(context, widget.width),
+                height: cardControlHeight,
+                grow: widget.grow,
+                child: box),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(right: canvasCaptionedGap),
       child: Column(
@@ -402,7 +431,11 @@ class CanvasTiles<T> extends StatelessWidget {
   /// previewHeight is how tall the picture on each tile is.
   final double previewHeight;
 
+  /// help is what the choice does, behind the "?" of its card.
+  final String help;
+
   const CanvasTiles({
+    this.help = "",
     required this.tiles,
     required this.selected,
     required this.onPick,
@@ -418,7 +451,29 @@ class CanvasTiles<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    const gap = 6.0;
+    var card = CanvasCards.on(context);
+    var gap = card ? 8.0 : 6.0;
+    var grid = LayoutBuilder(builder: (context, box) {
+      var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
+      var each = (width - gap * (columns - 1)) / columns;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          for (var t in tiles)
+            SizedBox(
+                width: math.max(40, each), child: _tile(context, theme, t)),
+        ],
+      );
+    });
+    // In a section, a card of its own, named, with the "?" beside the name.
+    if (card) {
+      return canvasCard(context,
+          title: label == null ? null : canvasCardTitle(context, label!),
+          help: help,
+          body:
+              Padding(padding: const EdgeInsets.only(right: 10), child: grid));
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: canvasRowGap),
       child: Column(
@@ -530,191 +585,17 @@ class CanvasTiles<T> extends StatelessWidget {
   }
 }
 
-/// CanvasSectionsController is what a run of sections shares: the words
-/// typed into the search over them, and a fold-all.
-class CanvasSectionsController extends ChangeNotifier {
-  String _query = "";
-  String get query => _query;
-  set query(String v) {
-    if (v == _query) return;
-    _query = v;
-    notifyListeners();
-  }
-
-  /// fold is the last fold-all: every section to [foldOpen], counted by
-  /// [folds] so a section can tell a new one from one it has seen.
-  int folds = 0;
-  bool foldOpen = false;
-  void foldAll(bool open) {
-    foldOpen = open;
-    folds++;
-    notifyListeners();
-  }
-
-  /// opened is every section's open state as it reports it, for the fold-all
-  /// button's icon.
-  final Map<String, bool> opened = {};
-  bool get anyOpen => opened.values.any((o) => o);
-
-  void _report(String key, bool open) {
-    if (opened[key] == open) return;
-    opened[key] = open;
-    // After the frame: a section reports while it builds.
-    WidgetsBinding.instance.addPostFrameCallback((_) => notifyListeners());
-  }
-
-  void _forget(String key) => opened.remove(key);
-}
-
-class _SectionsScope extends InheritedNotifier<CanvasSectionsController> {
-  const _SectionsScope({required super.notifier, required super.child});
-
-  static CanvasSectionsController? of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_SectionsScope>()?.notifier;
-}
-
-/// CanvasSections is a run of [CanvasSection]s with a search box and a
-/// fold-all button over them.
-class CanvasSections extends StatefulWidget {
+/// CanvasSections is a run of [CanvasSection]s, down the panel.
+class CanvasSections extends StatelessWidget {
   final List<Widget> children;
-
-  /// what names the settings for the search box's hint -- "a picture layer".
-  final String what;
-
-  const CanvasSections({required this.children, this.what = "", super.key});
+  const CanvasSections({required this.children, super.key});
 
   @override
-  State<CanvasSections> createState() => _CanvasSectionsState();
-}
-
-/// _sectionQueries keeps the search across the panel being rebuilt -- which
-/// it is on every edit -- for this run of the app.
-final Map<String, String> _sectionQueries = {};
-
-class _CanvasSectionsState extends State<CanvasSections> {
-  late final CanvasSectionsController _sections = CanvasSectionsController()
-    ..query = _sectionQueries[_memoryKey] ?? "";
-  late final TextEditingController _search =
-      TextEditingController(text: _sections.query);
-
-  String get _memoryKey => widget.key is ValueKey<String>
-      ? (widget.key as ValueKey<String>).value
-      : "sections";
-
-  @override
-  void dispose() {
-    _sections.dispose();
-    _search.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return _SectionsScope(
-      notifier: _sections,
-      child: Column(
+  Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(children: [
-              Expanded(
-                child: SizedBox(
-                  height: 30,
-                  child: TextField(
-                    key: const ValueKey("settingsSearch"),
-                    controller: _search,
-                    style: const TextStyle(fontSize: 12),
-                    textAlignVertical: TextAlignVertical.center,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: "Find a setting",
-                      hintStyle: TextStyle(
-                          fontSize: 12,
-                          color: theme.colors.onSurfaceVariant
-                              .withValues(alpha: 0.7)),
-                      prefixIcon: Icon(Icons.search,
-                          size: 16, color: theme.colors.onSurfaceVariant),
-                      prefixIconConstraints:
-                          const BoxConstraints(minWidth: 30, minHeight: 28),
-                      suffixIcon: _search.text.isEmpty
-                          ? null
-                          : InkWell(
-                              key: const ValueKey("settingsSearchClear"),
-                              onTap: () {
-                                _search.clear();
-                                _sectionQueries[_memoryKey] = "";
-                                _sections.query = "";
-                                setState(() {});
-                              },
-                              child: Icon(Icons.close,
-                                  size: 14,
-                                  color: theme.colors.onSurfaceVariant),
-                            ),
-                      suffixIconConstraints:
-                          const BoxConstraints(minWidth: 28, minHeight: 28),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide:
-                              BorderSide(color: theme.colors.outlineVariant)),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide:
-                              BorderSide(color: theme.colors.outlineVariant)),
-                    ),
-                    onChanged: (v) {
-                      _sectionQueries[_memoryKey] = v;
-                      _sections.query = v;
-                      setState(() {});
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              ListenableBuilder(
-                listenable: _sections,
-                builder: (context, _) {
-                  var open = _sections.anyOpen;
-                  return CanvasIconButton(
-                    key: const ValueKey("settingsFoldAll"),
-                    tight: true,
-                    icon: open ? Icons.unfold_less : Icons.unfold_more,
-                    tooltip: open ? "Fold every section" : "Open every section",
-                    onPressed: () => _sections.foldAll(!open),
-                  );
-                },
-              ),
-            ]),
-          ),
-          ...widget.children,
-          ListenableBuilder(
-            listenable: _sections,
-            builder: (context, _) {
-              var q = _sections.query.trim();
-              var any = widget.children
-                  .whereType<CanvasSection>()
-                  .any((section) => section.matches(q));
-              if (q.isEmpty || any) {
-                return const SizedBox.shrink();
-              }
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Text(
-                  "No setting called “$q” on ${widget.what.isEmpty ? "this" : widget.what}.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 11.5, color: theme.colors.onSurfaceVariant),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+        children: children,
+      );
 }
 
 /// CanvasSection is one subject of an element's settings -- where it is, its
@@ -723,7 +604,8 @@ class _CanvasSectionsState extends State<CanvasSections> {
 /// Shut, it is its icon, its name and a line saying how it is set now, so
 /// the panel reads as a summary of the element before anything is opened.
 /// [changes] puts a dot on it, and once open a reset beside the chevron, for
-/// a section moved away from how it starts.
+/// a section moved away from how it starts. Open, what is inside is in
+/// cards -- see CanvasCards.
 class CanvasSection extends StatefulWidget {
   final IconData icon;
   final String title;
@@ -736,10 +618,6 @@ class CanvasSection extends StatefulWidget {
 
   final int changes;
   final VoidCallback? onReset;
-
-  /// keywords are the words the search finds this section by, besides its
-  /// title: the names of the settings in it.
-  final List<String> keywords;
 
   /// remember names where its open state is kept, as CanvasExpander's.
   final String remember;
@@ -759,18 +637,10 @@ class CanvasSection extends StatefulWidget {
     this.scope,
     this.changes = 0,
     this.onReset,
-    this.keywords = const [],
     this.initiallyOpen = false,
     this.forceOpen = false,
     super.key,
   });
-
-  /// matches is whether the search [query] finds this section.
-  bool matches(String query) {
-    var q = query.trim().toLowerCase();
-    if (q.isEmpty) return true;
-    return [title, ...keywords].any((w) => w.toLowerCase().contains(q));
-  }
 
   @override
   State<CanvasSection> createState() => _CanvasSectionState();
@@ -778,8 +648,6 @@ class CanvasSection extends StatefulWidget {
 
 class _CanvasSectionState extends State<CanvasSection> {
   late bool _open = rememberedSection(widget.remember) ?? widget.initiallyOpen;
-  int _folds = 0;
-  CanvasSectionsController? _sections;
 
   @override
   void initState() {
@@ -802,27 +670,6 @@ class _CanvasSectionState extends State<CanvasSection> {
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    var sections = _SectionsScope.of(context);
-    if (sections != _sections) {
-      _sections = sections;
-      _folds = sections?.folds ?? 0;
-    }
-    if (sections != null && sections.folds != _folds) {
-      _folds = sections.folds;
-      _open = sections.foldOpen;
-      keepSection(widget.remember, _open);
-    }
-  }
-
-  @override
-  void dispose() {
-    _sections?._forget(widget.remember);
-    super.dispose();
-  }
-
   void _toggle() {
     setState(() => _open = !_open);
     keepSection(widget.remember, _open);
@@ -831,22 +678,16 @@ class _CanvasSectionState extends State<CanvasSection> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var sections = _SectionsScope.of(context);
-    var query = sections?.query ?? "";
-    var searching = query.trim().isNotEmpty;
-    if (searching && !widget.matches(query)) return const SizedBox.shrink();
-    var open = searching || _open;
-    sections?._report(widget.remember, open);
-
+    var open = _open;
     var accent = theme.colors.primary;
     var muted = theme.colors.onSurfaceVariant;
     var changed = widget.changes > 0;
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         color: open
-            ? theme.colors.surfaceContainerHighest.withValues(alpha: 0.35)
+            ? theme.colors.surfaceContainerHighest.withValues(alpha: 0.25)
             : null,
         border: Border.all(
             color: open
@@ -863,24 +704,24 @@ class _CanvasSectionState extends State<CanvasSection> {
                 type: MaterialType.transparency,
                 child: InkWell(
                   key: ValueKey("section-${widget.remember}"),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   onTap: _toggle,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 7, 6, 7),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
                     child: Row(children: [
                       Container(
-                        width: 28,
-                        height: 28,
+                        width: 34,
+                        height: 34,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(7),
+                          borderRadius: BorderRadius.circular(9),
                           color: open
                               ? accent.withValues(alpha: 0.16)
                               : theme.colors.surfaceContainerHighest,
                         ),
                         child: Icon(widget.icon,
-                            size: 16, color: open ? accent : muted),
+                            size: 18, color: open ? accent : muted),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -892,50 +733,53 @@ class _CanvasSectionState extends State<CanvasSection> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                        fontSize: 12.5,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.w600,
                                         color: theme.colors.onSurface)),
                               ),
                               if (widget.scope != null) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 1),
+                                      horizontal: 6, vertical: 1),
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(6),
+                                    borderRadius: BorderRadius.circular(7),
                                     border: Border.all(
                                         color: theme.colors.outlineVariant),
                                   ),
                                   child: Text(widget.scope!,
-                                      style:
-                                          TextStyle(fontSize: 9, color: muted)),
+                                      style: TextStyle(
+                                          fontSize: 10, color: muted)),
                                 ),
                               ],
                             ]),
                             if (widget.summary.isNotEmpty)
-                              Text(widget.summary,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style:
-                                      TextStyle(fontSize: 10.5, color: muted)),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(widget.summary,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                        TextStyle(fontSize: 12, color: muted)),
+                              ),
                           ],
                         ),
                       ),
                       if (changed)
                         Container(
                           key: ValueKey("sectionChanged-${widget.remember}"),
-                          width: 7,
-                          height: 7,
-                          margin: const EdgeInsets.only(left: 6),
+                          width: 8,
+                          height: 8,
+                          margin: const EdgeInsets.only(left: 8),
                           decoration: BoxDecoration(
                               color: accent, shape: BoxShape.circle),
                         ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       AnimatedRotation(
                         turns: open ? 0.25 : 0,
                         duration: const Duration(milliseconds: 120),
                         child:
-                            Icon(Icons.chevron_right, size: 18, color: muted),
+                            Icon(Icons.chevron_right, size: 20, color: muted),
                       ),
                     ]),
                   ),
@@ -946,7 +790,7 @@ class _CanvasSectionState extends State<CanvasSection> {
             // the section.
             if (open && changed && widget.onReset != null)
               Padding(
-                padding: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.only(right: 8),
                 child: CanvasIconButton(
                   key: ValueKey("sectionReset-${widget.remember}"),
                   tight: true,
@@ -957,13 +801,15 @@ class _CanvasSectionState extends State<CanvasSection> {
               ),
           ]),
           if (open)
-            Padding(
-              key: ValueKey("sectionBody-${widget.remember}"),
-              padding: const EdgeInsets.fromLTRB(10, 2, 8, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: widget.children,
+            CanvasCards(
+              child: Padding(
+                key: ValueKey("sectionBody-${widget.remember}"),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: widget.children,
+                ),
               ),
             ),
         ],
@@ -985,7 +831,11 @@ class CanvasToolTiles<T> extends StatelessWidget {
   /// settings are the active tool's, under the tiles.
   final List<Widget> settings;
 
+  /// help is what the tools are for, behind the "?" of their card.
+  final String help;
+
   const CanvasToolTiles({
+    this.help = "",
     required this.tools,
     required this.active,
     required this.onPick,
@@ -999,17 +849,22 @@ class CanvasToolTiles<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var accent = theme.colors.primary;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          LayoutBuilder(builder: (context, box) {
-            const gap = 5.0;
+    var card = CanvasCards.on(context);
+    var held = [
+      for (var t in tools)
+        if (t.$1 == active) t
+    ].firstOrNull;
+    var body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(right: card ? 10 : 0),
+          child: LayoutBuilder(builder: (context, box) {
+            const gap = 6.0;
             var n = tools.length;
             var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
-            var each = math.max(40.0, (width - gap * (n - 1)) / n);
+            var each = math.max(44.0, (width - gap * (n - 1)) / n);
             return Wrap(spacing: gap, runSpacing: gap, children: [
               for (var (tool, icon, short) in tools)
                 SizedBox(
@@ -1020,12 +875,12 @@ class CanvasToolTiles<T> extends StatelessWidget {
                       type: MaterialType.transparency,
                       child: InkWell(
                         key: ValueKey(keyOf(tool)),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         onTap: () => onPick(tool == active ? null : tool),
                         child: Container(
-                          height: 46,
+                          height: card ? 56 : 46,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                             color: tool == active
                                 ? accent.withValues(alpha: 0.16)
                                 : null,
@@ -1039,16 +894,16 @@ class CanvasToolTiles<T> extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(icon,
-                                  size: 18,
+                                  size: card ? 20 : 18,
                                   color: tool == active
                                       ? accent
                                       : theme.colors.onSurfaceVariant),
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 4),
                               Text(short,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      fontSize: 9.5,
+                                      fontSize: card ? 10.5 : 9.5,
                                       color: theme.colors.onSurface)),
                             ],
                           ),
@@ -1059,20 +914,36 @@ class CanvasToolTiles<T> extends StatelessWidget {
                 ),
             ]);
           }),
-          if (active == null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text("Pick a tool to work on the canvas.",
-                  style: TextStyle(
-                      fontSize: 10.5, color: theme.colors.onSurfaceVariant)),
-            )
-          else if (settings.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: CanvasWrap(children: settings),
-            ),
+        ),
+        if (held == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text("Pick a tool to work on the canvas.",
+                style: TextStyle(
+                    fontSize: card ? 12 : 10.5,
+                    color: theme.colors.onSurfaceVariant)),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 14, bottom: 10),
+            child: Text(tooltipOf(held.$1),
+                style: TextStyle(
+                    fontSize: card ? 12.5 : 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colors.onSurface)),
+          ),
+          if (settings.isNotEmpty)
+            CanvasWrap(
+                runSpacing: card ? cardGap : canvasRowGap, children: settings),
         ],
-      ),
+      ],
     );
+    if (card) {
+      return canvasCard(context,
+          title: canvasCardTitle(context, "Tools"), help: help, body: body);
+    }
+    return Padding(
+        padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
+        child: body);
   }
 }

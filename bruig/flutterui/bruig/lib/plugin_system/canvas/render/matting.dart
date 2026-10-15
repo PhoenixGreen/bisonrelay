@@ -81,8 +81,8 @@ class RefineJob {
   final Uint8List band;
   final int width, height;
   final int radius;
-  const RefineJob(this.rgba, this.alpha, this.band, this.width, this.height,
-      this.radius);
+  const RefineJob(
+      this.rgba, this.alpha, this.band, this.width, this.height, this.radius);
 }
 
 /// refineAlpha is [job]'s mask with its alpha worked out afresh along its
@@ -103,6 +103,7 @@ Uint8List refineAlpha(RefineJob job) {
   var zone = math.max(2, job.radius ~/ 2);
   // How many kept pixels round each one, for whether it is near the edge.
   var kept = _Sums.of(job.rgba, w, h, (i) => job.alpha[i] > 127 ? 1.0 : 0.0);
+
   /// within is whether there is an edge within [reach] of a pixel.
   Uint8List within(int reach) {
     var near = Uint8List(n);
@@ -129,8 +130,12 @@ Uint8List refineAlpha(RefineJob job) {
   // footballer's crown reached his forehead, and half skin was still not
   // hair.
   var ring = within(zone + math.max(2, zone ~/ 3));
-  var fg = _Sums.of(job.rgba, w, h,
-      (i) => ring[i] == 1 && nearEdge[i] == 0 && job.alpha[i] > 230 ? 1.0 : 0.0);
+  var fg = _Sums.of(
+      job.rgba,
+      w,
+      h,
+      (i) =>
+          ring[i] == 1 && nearEdge[i] == 0 && job.alpha[i] > 230 ? 1.0 : 0.0);
   var bg = _Sums.of(job.rgba, w, h,
       (i) => ring[i] == 1 && nearEdge[i] == 0 && job.alpha[i] < 25 ? 1.0 : 0.0);
   for (var y = 0; y < h; y++) {
@@ -169,8 +174,8 @@ class DeconJob {
   final int width, height;
   final double amount;
   final int radius;
-  const DeconJob(this.rgba, this.alpha, this.width, this.height, this.amount,
-      this.radius);
+  const DeconJob(
+      this.rgba, this.alpha, this.width, this.height, this.amount, this.radius);
 }
 
 /// decontaminate is [job]'s picture with the background's colour taken out
@@ -180,8 +185,7 @@ class DeconJob {
 Uint8List decontaminate(DeconJob job) {
   var w = job.width, h = job.height, n = w * h;
   var out = Uint8List(n * 4);
-  var fg = _Sums.of(
-      job.rgba, w, h, (i) => job.alpha[i] > 235 ? 1.0 : 0.0);
+  var fg = _Sums.of(job.rgba, w, h, (i) => job.alpha[i] > 235 ? 1.0 : 0.0);
   for (var y = 0; y < h; y++) {
     for (var x = 0; x < w; x++) {
       var i = y * w + x;

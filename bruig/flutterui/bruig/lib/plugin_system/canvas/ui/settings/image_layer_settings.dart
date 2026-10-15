@@ -227,10 +227,20 @@ class _ImageLayersListState extends State<ImageLayersList> {
     }
   }
 
+  /// _picks are the layers picked, the first one's settings in the panel.
+  Set<String> get _picks => controller.imageEditing == widget.element.id
+      ? controller.imageLayers.toSet()
+      : const {};
+
+  /// _pick picks [id] -- with Shift or Command held, as well as the layers
+  /// picked already, to line them up or move them together.
   void _pick(String id) {
     var e = widget.element;
+    var keys = HardwareKeyboard.instance;
+    var add =
+        keys.isShiftPressed || keys.isMetaPressed || keys.isControlPressed;
     if (controller.imageEditing == e.id) {
-      controller.pickImageLayer(id);
+      controller.pickImageLayer(id, add: add);
     } else {
       controller.editImage(e.id, layer: id);
     }
@@ -359,72 +369,90 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var stack = e.stack;
     var n = stack.length;
     var accent = theme.colors.primary;
+    // Pressed and held, a layer lifts and is carried along the strip to its
+    // new place in the stack -- front first, as the strip reads. A press
+    // that lets go picks it, as before.
     return SizedBox(
-      height: 76,
-      child: ListView(
+      height: 84,
+      child: ReorderableListView(
         key: const ValueKey("imageLayersStrip"),
         scrollDirection: Axis.horizontal,
+        buildDefaultDragHandles: false,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        onReorder: (from, to) {
+          if (to > from) to -= 1;
+          controller.changeImage(withLayerMoved(e, n - 1 - from, n - 1 - to));
+        },
         children: [
           for (var row = 0; row < n; row++)
-            Builder(builder: (context) {
-              var layer = stack[n - 1 - row];
-              var on = layer.id == picked;
-              return Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Opacity(
-                  opacity: layer.visible ? 1 : 0.5,
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: InkWell(
-                      key: ValueKey("imageLayer-${layer.id}"),
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        _pick(layer.id);
-                        Focus.of(context).requestFocus();
-                      },
-                      child: Container(
-                        width: 62,
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: on ? accent.withValues(alpha: 0.14) : null,
-                          border: Border.all(
-                              color: on ? accent : theme.colors.outlineVariant,
-                              width: on ? 1.5 : 1),
-                        ),
-                        child: Column(children: [
-                          Stack(children: [
-                            LayerThumbnail(
-                                controller: controller,
-                                element: e,
-                                layer: layer,
-                                width: 54,
-                                height: 38),
-                            if (!layer.visible)
-                              Positioned(
-                                right: 2,
-                                top: 2,
-                                child: Icon(Icons.visibility_off,
-                                    size: 12, color: theme.colors.onSurface),
+            Builder(
+                key: ValueKey("imageLayerChip-${stack[n - 1 - row].id}"),
+                builder: (context) {
+                  var layer = stack[n - 1 - row];
+                  var on = _picks.contains(layer.id);
+                  return ReorderableDelayedDragStartListener(
+                      index: row,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Opacity(
+                          opacity: layer.visible ? 1 : 0.5,
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: InkWell(
+                              key: ValueKey("imageLayer-${layer.id}"),
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () {
+                                _pick(layer.id);
+                                Focus.of(context).requestFocus();
+                              },
+                              child: Container(
+                                width: 70,
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: on
+                                      ? accent.withValues(alpha: 0.14)
+                                      : null,
+                                  border: Border.all(
+                                      color: on
+                                          ? accent
+                                          : theme.colors.outlineVariant,
+                                      width: on ? 1.5 : 1),
+                                ),
+                                child: Column(children: [
+                                  Stack(children: [
+                                    LayerThumbnail(
+                                        controller: controller,
+                                        element: e,
+                                        layer: layer,
+                                        width: 60,
+                                        height: 42),
+                                    if (!layer.visible)
+                                      Positioned(
+                                        right: 2,
+                                        top: 2,
+                                        child: Icon(Icons.visibility_off,
+                                            size: 12,
+                                            color: theme.colors.onSurface),
+                                      ),
+                                  ]),
+                                  const SizedBox(height: 2),
+                                  Text(layerName(layer, n - 1 - row),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: on
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                          color: theme.colors.onSurface)),
+                                ]),
                               ),
-                          ]),
-                          const SizedBox(height: 2),
-                          Text(layerName(layer, n - 1 - row),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight:
-                                      on ? FontWeight.w600 : FontWeight.normal,
-                                  color: theme.colors.onSurface)),
-                        ]),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
+                            ),
+                          ),
+                        ),
+                      ));
+                }),
         ],
       ),
     );
@@ -459,7 +487,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
     var e = widget.element;
     var n = e.stack.length;
     var muted = theme.colors.onSurfaceVariant;
-    var on = layer.id == picked;
+    var on = _picks.contains(layer.id);
     void change(ImageElement next) => controller.changeImage(next);
 
     Widget tap(String key, IconData icon, VoidCallback? onTap,
@@ -563,7 +591,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
                 ],
               ),
             ),
-            if (on) ...[
+            if (layer.id == picked) ...[
               tap(
                   "imageLayerUp-${layer.id}",
                   Icons.arrow_upward,
@@ -711,7 +739,8 @@ const paintTools = [ImageTool.paint, ImageTool.erase];
 /// under them. Picking one opens [e]'s layers on [picked] if they are not
 /// open; picking the one in hand puts it down.
 Widget imageToolTiles(CanvasController controller, ImageElement e,
-    ImageLayer picked, List<ImageTool> tools, List<Widget> settings) {
+    ImageLayer picked, List<ImageTool> tools, List<Widget> settings,
+    {String help = ""}) {
   var editing = controller.imageEditing == e.id;
   var active = editing && tools.contains(controller.imageTool)
       ? controller.imageTool
@@ -727,6 +756,7 @@ Widget imageToolTiles(CanvasController controller, ImageElement e,
       controller.imageTool = t ?? ImageTool.move;
     },
     settings: active == null ? const [] : settings,
+    help: help,
   );
 }
 
@@ -779,6 +809,8 @@ Widget layerBlendTiles(
   return CanvasTiles<LayerBlend>(
     key: const ValueKey("imageLayerBlend"),
     label: "Blend mode",
+    help: "How this layer mixes with the layers under it. Point at one to "
+        "try it on the canvas; click to keep it.",
     columns: 4,
     previewHeight: 26,
     tiles: [
@@ -805,6 +837,8 @@ Widget layerStrengthGroup(ImageElement e, ImageLayer picked,
   return CanvasControlGroup(
     key: const ValueKey("imageLayerGroup"),
     label: "Strength",
+    help: "How much of the layer shows, and whether it shows only where the "
+        "layer under it does.",
     rule: false,
     children: [
       CanvasStepper(
@@ -880,36 +914,31 @@ List<Widget> layerQuickMoves(
   }
 
   return [
-    CanvasIconButton(
+    CanvasTextButton(
       key: const ValueKey("imageLayerFlipX"),
       icon: Icons.swap_horiz,
-      tooltip: "Flip across",
-      active: picked.flipX,
+      label: "Flip across",
       onPressed: () => now(picked.copyWith(flipX: !picked.flipX)),
     ),
-    CanvasIconButton(
+    CanvasTextButton(
       key: const ValueKey("imageLayerFlipY"),
       icon: Icons.swap_vert,
-      tooltip: "Flip down",
-      active: picked.flipY,
+      label: "Flip down",
       onPressed: () => now(picked.copyWith(flipY: !picked.flipY)),
     ),
-    CanvasIconButton(
+    CanvasTextButton(
       key: const ValueKey("imageLayerFill"),
-      icon: Icons.fit_screen,
-      tooltip: "Fill the frame",
+      label: "Fill frame",
       onPressed: () => now(picked.placed(fitted(cover: true), turn: 0)),
     ),
-    CanvasIconButton(
+    CanvasTextButton(
       key: const ValueKey("imageLayerFit"),
-      icon: Icons.aspect_ratio,
-      tooltip: "Fit inside the frame",
+      label: "Fit inside",
       onPressed: () => now(picked.placed(fitted(cover: false), turn: 0)),
     ),
-    CanvasIconButton(
+    CanvasTextButton(
       key: const ValueKey("imageLayerCentre"),
-      icon: Icons.filter_center_focus,
-      tooltip: "Centre in the frame",
+      label: "Centre",
       onPressed: () => now(picked.placed(
           Rect.fromCenter(
               center: const Offset(layerUnits / 2, layerUnits / 2),
@@ -918,10 +947,9 @@ List<Widget> layerQuickMoves(
           turn: picked.turn)),
     ),
     if (image != null)
-      CanvasIconButton(
+      CanvasTextButton(
         key: const ValueKey("imageLayerProportions"),
-        icon: Icons.photo_size_select_large,
-        tooltip: "Back to the picture's own proportions",
+        label: "Its own shape",
         onPressed: () => now(picked.copyWith(
             look: withPictureProportions(picked.look!, inner,
                 Size(image.width.toDouble(), image.height.toDouble())))),
@@ -991,6 +1019,9 @@ Widget layerPositionGroup(
   return CanvasControlGroup(
     key: const ValueKey("layerPosition"),
     label: "Place and size",
+    help: "Where the layer sits in the picture, in the canvas's own units. "
+        "Or drag it on the canvas: a corner resizes it, the round handle "
+        "turns it.",
     rule: false,
     children: [
       CanvasStepper(
@@ -1016,7 +1047,7 @@ Widget layerPositionGroup(
         key: const ValueKey("layerW"),
         // Two to a line, as an element's are -- see positionGroup.
         width: 104,
-        label: "W",
+        label: "Width",
         value: rect.width,
         min: 1,
         onChanged: (v) => resize(width: v),
@@ -1026,27 +1057,15 @@ Widget layerPositionGroup(
         key: const ValueKey("layerH"),
         // Two to a line, as an element's are -- see positionGroup.
         width: 104,
-        label: "H",
+        label: "Height",
         value: rect.height,
         min: 1,
         onChanged: (v) => resize(height: v),
         onCommit: commit,
       ),
-      CanvasIconButton(
-        key: const ValueKey("layerLockAspect"),
-        icon: look.base.lockAspect ? Icons.link : Icons.link_off,
-        tooltip: look.base.lockAspect
-            ? "Proportions are held — the width and the height move together"
-            : "Width and height are free of each other",
-        active: look.base.lockAspect,
-        onPressed: () {
-          live(layer.copyWith(
-              look: look.withBase(lockAspect: !look.base.lockAspect)
-                  as ImageElement));
-          commit();
-        },
-      ),
-      const CanvasLineBreak(),
+      // The angle on a line of its own, the whole width: a turn is read
+      // more finely than a position.
+      const CanvasBlockBreak(),
       CanvasStepper(
         key: const ValueKey("layerAngle"),
         // Two to a line, as an element's are -- see positionGroup.
@@ -1061,6 +1080,16 @@ Widget layerPositionGroup(
         defaultValue: 0,
         onChanged: (v) => live(layer.placed(layer.place, turn: v)),
         onCommit: commit,
+      ),
+      CanvasToggle(
+        key: const ValueKey("layerLockAspect"),
+        label: "Keep its proportions",
+        value: look.base.lockAspect,
+        onChanged: (v) {
+          live(layer.copyWith(
+              look: look.withBase(lockAspect: v) as ImageElement));
+          commit();
+        },
       ),
     ],
   );
@@ -1126,20 +1155,15 @@ List<Widget> maskToolSettings(
           "Brush over what to keep and it grows to the edges near it. "
               "Option-brush over what to take away."),
     ] else ...[
-      CanvasIconButton(
-        key: const ValueKey("maskHide"),
-        icon: Icons.remove_circle_outline,
-        tooltip: "Take away (X swaps; Option for one stroke)",
-        active: controller.maskHide,
-        onPressed: () => controller.maskHide = true,
+      CanvasSegmented<bool>(
+        key: const ValueKey("maskHideShow"),
+        options: const [(true, "Hide"), (false, "Show")],
+        value: controller.maskHide,
+        keyOf: (hide) => hide ? "maskHide" : "maskShow",
+        onChanged: (hide) => controller.maskHide = hide,
       ),
-      CanvasIconButton(
-        key: const ValueKey("maskShow"),
-        icon: Icons.add_circle_outline,
-        tooltip: "Put back (X swaps; Option for one stroke)",
-        active: !controller.maskHide,
-        onPressed: () => controller.maskHide = false,
-      ),
+      const CanvasHint("Hide takes the picture away where you mark it, Show "
+          "puts it back. X swaps them; Option swaps them for one stroke."),
     ],
     if (tool == ImageTool.brush) ...[
       percent("maskBrushSize", "Size", controller.maskBrushSize, 0.1, 50,
@@ -1151,28 +1175,16 @@ List<Widget> maskToolSettings(
           (v) => controller.maskStrength = v),
     ],
     if (tool == ImageTool.fade) ...[
-      CanvasIconButton(
+      CanvasSegmented<bool>(
         key: const ValueKey("maskRadial"),
-        icon: controller.maskRadial
-            ? Icons.radio_button_checked
-            : Icons.linear_scale,
-        tooltip: controller.maskRadial
-            ? "Fading away from a middle — press to fade across a line"
-            : "Fading across a line — press to fade away from a middle",
-        active: controller.maskRadial,
-        onPressed: () => controller.maskRadial = !controller.maskRadial,
+        label: "Fades",
+        options: const [(false, "Across a line"), (true, "From a middle")],
+        value: controller.maskRadial,
+        onChanged: (radial) => controller.maskRadial = radial,
       ),
       percent("maskFadeStrength", "Strength", controller.maskStrength, 1, 100,
           (v) => controller.maskStrength = v),
     ],
-    CanvasDropdown<MaskView>(
-      key: const ValueKey("maskView"),
-      label: "Show",
-      value: controller.maskView,
-      width: 132,
-      options: [for (var v in MaskView.values) (v, v.label)],
-      onChanged: (v) => controller.maskView = v,
-    ),
   ];
 }
 
@@ -1247,7 +1259,7 @@ List<Widget> maskGroups(CanvasController controller, ImageElement look,
 /// a picture's, or a frame-masked layer's.
 List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
     VoidCallback begin, VoidCallback commit,
-    {bool framed = false}) {
+    {bool framed = false, CanvasController? controller}) {
   void now(ImageMask next) {
     begin();
     put(next);
@@ -1281,86 +1293,79 @@ List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
     CanvasControlGroup(
       key: const ValueKey("maskGroup"),
       label: "Mask",
-      rule: false,
-      children: [
-        if (mask.empty)
-          CanvasHint(framed
+      help: mask.empty
+          ? framed
               ? "Showing everywhere. Paint, lasso or fade it away with the "
                   "mask tools to have it only where it is wanted."
               : "Nothing hidden yet. Use Select subject, the mask brush, the "
-                  "lasso or a gradient from the tools.")
-        else ...[
-          CanvasToggle(
-            key: const ValueKey("maskOn"),
-            label: "On",
-            value: mask.on,
-            onChanged: (v) => now(mask.copyWith(on: v)),
+                  "lasso or a gradient from the tools."
+          : "What the tools have marked. Switch it off to see the whole "
+              "layer again -- nothing is lost.",
+      rule: false,
+      children: [
+        CanvasToggle(
+          key: const ValueKey("maskOn"),
+          label: "Use the mask",
+          value: mask.on,
+          onChanged: (v) => now(mask.copyWith(on: v)),
+        ),
+        CanvasToggle(
+          key: const ValueKey("maskInvert"),
+          label: "Swap what shows",
+          value: mask.invert,
+          onChanged: (v) => now(mask.copyWith(invert: v)),
+        ),
+        if (controller != null)
+          CanvasSegmented<MaskView>(
+            key: const ValueKey("maskView"),
+            label: "Show the mask as",
+            options: [
+              for (var v in MaskView.values) (v, v.short),
+            ],
+            value: controller.maskView,
+            onChanged: (v) => controller.maskView = v,
           ),
-          CanvasToggle(
-            key: const ValueKey("maskInvert"),
-            label: "Invert",
-            value: mask.invert,
-            onChanged: (v) => now(mask.copyWith(invert: v)),
-          ),
-          CanvasIconButton(
-            key: const ValueKey("maskUndoMark"),
-            icon: Icons.undo,
-            tooltip: "Take back the last mark",
-            onPressed: mask.marks.isEmpty
-                ? null
-                : () => now(mask.copyWith(
-                    marks: mask.marks.sublist(0, mask.marks.length - 1))),
-          ),
-          CanvasIconButton(
-            key: const ValueKey("maskClearMarks"),
-            icon: Icons.layers_clear_outlined,
-            tooltip: "Clear the marks, keeping the subject",
-            onPressed: mask.marks.isEmpty
-                ? null
-                : () => now(mask.copyWith(marks: const [])),
-          ),
-          CanvasIconButton(
-            key: const ValueKey("maskClear"),
-            icon: Icons.delete_sweep_outlined,
-            tooltip: "Remove the mask — show the whole picture",
-            onPressed: () => now(const ImageMask()),
-          ),
-        ],
+        CanvasTextButton(
+          key: const ValueKey("maskUndoMark"),
+          icon: Icons.undo,
+          label: "Undo mark",
+          onPressed: mask.marks.isEmpty
+              ? null
+              : () => now(mask.copyWith(
+                  marks: mask.marks.sublist(0, mask.marks.length - 1))),
+        ),
+        CanvasTextButton(
+          key: const ValueKey("maskClear"),
+          label: "Clear mask",
+          onPressed: mask.empty ? null : () => now(const ImageMask()),
+        ),
       ],
     ),
     // Always there, mask or not, so its settings can be found before they
     // are needed -- hidden until there was a mask, nobody found Clean colour.
     CanvasControlGroup(
       key: const ValueKey("maskRefineGroup"),
-      label: "Refine edge",
+      label: "Edge",
+      help: "In the picture's own pixels: Feather softens the edge, Shift "
+          "moves it out or in, Smooth rounds off jags and Contrast hardens "
+          "it. Clean colour takes the old background's tint out of the edge "
+          "-- the green on hair cut from a pitch.",
       rule: false,
       children: [
-        refine("maskShift", "Shift", mask.refine.shift, -50, 50,
-            (v) => mask.refine.copyWith(shift: v)),
-        refine("maskSmooth", "Smooth", mask.refine.smooth, 0, 50,
-            (v) => mask.refine.copyWith(smooth: v)),
         refine("maskFeather", "Feather", mask.refine.feather, 0, 100,
             (v) => mask.refine.copyWith(feather: v)),
-        refine("maskContrast", "Contrast", mask.refine.contrast, 0, 100,
-            (v) => mask.refine.copyWith(contrast: v),
-            decimals: 0, factor: 100),
+        refine("maskShift", "Shift", mask.refine.shift, -50, 50,
+            (v) => mask.refine.copyWith(shift: v)),
         // Cleaning colours is a picture's: a layer with none has none.
         if (!framed)
           refine("maskDecontaminate", "Clean colour", mask.refine.decontaminate,
               0, 100, (v) => mask.refine.copyWith(decontaminate: v),
               decimals: 0, factor: 100),
-        CanvasIconButton(
-          key: const ValueKey("maskRefineReset"),
-          icon: Icons.restore,
-          tooltip: "Put the edge back as it was found",
-          onPressed: mask.refine.any
-              ? () => now(mask.copyWith(refine: const MaskRefine()))
-              : null,
-        ),
-        const CanvasHint("In the picture's own pixels: Shift moves the edge "
-            "out or in, Smooth rounds off jags, Feather softens and "
-            "Contrast hardens. Clean colour takes the old background's "
-            "tint out of the edge -- the green on hair cut from a pitch."),
+        refine("maskSmooth", "Smooth", mask.refine.smooth, 0, 50,
+            (v) => mask.refine.copyWith(smooth: v)),
+        refine("maskContrast", "Contrast", mask.refine.contrast, 0, 100,
+            (v) => mask.refine.copyWith(contrast: v),
+            decimals: 0, factor: 100),
       ],
     ),
   ];
@@ -1428,16 +1433,16 @@ List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
     percent("paintStrength", "Strength", controller.paintStrength, 1, 100,
         (v) => controller.paintStrength = v),
     if (tool == ImageTool.clone && controller.cloneFrom != null)
-      CanvasIconButton(
+      CanvasTextButton(
         key: const ValueKey("cloneClear"),
         icon: Icons.close,
-        tooltip: "Deselect the point being copied from (Escape)",
+        label: "Clear the point · Esc",
         onPressed: () => controller.cloneFrom = null,
       ),
     if (tool == ImageTool.dodge)
-      CanvasToggle(
+      CanvasSegmented<bool>(
         key: const ValueKey("paintBurn"),
-        label: "Burn",
+        options: const [(false, "Lighten"), (true, "Darken")],
         value: controller.burning,
         onChanged: (v) => controller.burning = v,
       ),
@@ -1454,18 +1459,17 @@ Widget strokesGroup(String label, List<StrokeMark> strokes,
     label: label,
     rule: false,
     children: [
-      CanvasIconButton(
+      CanvasTextButton(
         key: ValueKey("strokesUndo-$label"),
         icon: Icons.undo,
-        tooltip: "Take back the last stroke",
+        label: "Take back a stroke",
         onPressed: strokes.isEmpty
             ? null
             : () => set(strokes.sublist(0, strokes.length - 1)),
       ),
-      CanvasIconButton(
+      CanvasTextButton(
         key: ValueKey("strokesClear-$label"),
-        icon: Icons.layers_clear_outlined,
-        tooltip: "Clear every stroke",
+        label: "Clear all",
         onPressed: strokes.isEmpty ? null : () => set(const []),
       ),
       CanvasHint(strokes.isEmpty

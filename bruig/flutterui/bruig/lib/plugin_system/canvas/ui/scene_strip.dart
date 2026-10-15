@@ -127,7 +127,8 @@ class _CanvasSceneStripState extends State<CanvasSceneStrip> {
     _sized += dx;
     var scenes = controller.scenes;
     // Never longer than either scene it joins has to give.
-    var most = math.min(scenes[held.index].frames, scenes[held.index + 1].frames);
+    var most =
+        math.min(scenes[held.index].frames, scenes[held.index + 1].frames);
     var frames = (held.was.frames + (_sized * held.perPixel).round())
         .clamp(1, math.max(1, most))
         .toInt();

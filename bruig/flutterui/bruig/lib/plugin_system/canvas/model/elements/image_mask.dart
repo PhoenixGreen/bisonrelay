@@ -31,8 +31,8 @@ enum MaskMarkKind {
   /// a middle.
   fade;
 
-  static MaskMarkKind fromName(String? name) =>
-      values.firstWhere((k) => k.name == name, orElse: () => MaskMarkKind.brush);
+  static MaskMarkKind fromName(String? name) => values
+      .firstWhere((k) => k.name == name, orElse: () => MaskMarkKind.brush);
 }
 
 /// MaskMark is one mark made on a mask, in the order it was made.
@@ -114,7 +114,8 @@ class MaskMark {
     if (flat is List) {
       for (var i = 0; i + 1 < flat.length; i += 2) {
         var x = flat[i], y = flat[i + 1];
-        if (x is num && y is num) points.add(Offset(x.toDouble(), y.toDouble()));
+        if (x is num && y is num)
+          points.add(Offset(x.toDouble(), y.toDouble()));
       }
     }
     return MaskMark(
@@ -230,8 +231,7 @@ class ImageMask {
   });
 
   /// empty is whether there is a mask at all.
-  bool get empty =>
-      subject.isEmpty && marks.isEmpty && !invert && !refine.any;
+  bool get empty => subject.isEmpty && marks.isEmpty && !invert && !refine.any;
 
   /// active is whether it changes what is drawn.
   bool get active => on && !empty;
@@ -275,7 +275,8 @@ class ImageMask {
             for (var m in raw)
               if (m is Map<String, dynamic>) MaskMark.fromJson(m)
         ],
-        refine: jsonSpec(json["refine"], MaskRefine.fromJson, const MaskRefine()),
+        refine:
+            jsonSpec(json["refine"], MaskRefine.fromJson, const MaskRefine()),
         invert: jsonBool(json["invert"], false),
         on: !jsonBool(json["off"], false),
       );

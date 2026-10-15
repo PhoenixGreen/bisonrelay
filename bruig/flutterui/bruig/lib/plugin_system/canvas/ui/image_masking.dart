@@ -77,8 +77,8 @@ class LayerPicture {
   static LayerPicture frame(ImageElement e, ImageLayer layer) {
     var space = LayerSpace(e, ImageLayer.base);
     var size = Size(space.inner.width, space.inner.height);
-    return LayerPicture._(space, layer, size,
-        placeImage(size, space.inner, ImageFit.stretch),
+    return LayerPicture._(
+        space, layer, size, placeImage(size, space.inner, ImageFit.stretch),
         inFrame: true);
   }
 
@@ -99,9 +99,8 @@ class LayerPicture {
   /// -- not held to the picture, so a stroke that runs off its edge stays one
   /// stroke.
   Offset toPicture(Offset canvasPoint) {
-    var local = _inFrame
-        ? space.toFrame(canvasPoint)
-        : space.toLayer(canvasPoint);
+    var local =
+        _inFrame ? space.toFrame(canvasPoint) : space.toLayer(canvasPoint);
     if (!_inFrame) {
       var r = space.rect;
       if (layer.flipX) local = Offset(r.left + r.right - local.dx, local.dy);
@@ -118,8 +117,7 @@ class LayerPicture {
   Offset fromPicture(Offset f) {
     var src = placement.src, dst = placement.dst;
     var px = Offset(f.dx * size.width, f.dy * size.height);
-    var local = Offset(
-        dst.left + (px.dx - src.left) / src.width * dst.width,
+    var local = Offset(dst.left + (px.dx - src.left) / src.width * dst.width,
         dst.top + (px.dy - src.top) / src.height * dst.height);
     if (!_inFrame) {
       var r = space.rect;
@@ -259,14 +257,16 @@ Future<Uint8List?> combinedSubject(ImageMask mask, ui.Image? current,
       }
     }
     drawGreyAsAlpha(canvas, found, size,
-        blend: how == MaskCombine.subtract ? BlendMode.dstOut : BlendMode.srcOver);
+        blend:
+            how == MaskCombine.subtract ? BlendMode.dstOut : BlendMode.srcOver);
   });
 }
 
 /// flattenedMask is the whole of [mask] -- subject and marks, not inverted
 /// and not refined -- as a grey PNG for a picture of [size] pixels: what a
 /// tool that works on the mask's pixels starts from.
-Future<Uint8List?> flattenedMask(ImageMask mask, ui.Image? subject, Size size) =>
+Future<Uint8List?> flattenedMask(
+        ImageMask mask, ui.Image? subject, Size size) =>
     maskPng(size, (canvas) => paintMaskMarks(canvas, mask, size, subject));
 
 /// _pixelsOf renders [draw] into a [w] x [h] picture and reads it back as
@@ -319,13 +319,13 @@ Future<Uint8List?> _cutInto(SegmentJob job, Size size, Rect region,
     rgba[i * 4 + 3] = keep;
   }
   var done = Completer<ui.Image>();
-  ui.decodeImageFromPixels(rgba, job.width, job.height,
-      ui.PixelFormat.rgba8888, done.complete);
+  ui.decodeImageFromPixels(
+      rgba, job.width, job.height, ui.PixelFormat.rgba8888, done.complete);
   var found = await done.future;
   var out = _maskSizeFor(size);
   var sx = out.width / size.width, sy = out.height / size.height;
-  var into = Rect.fromLTRB(region.left * sx, region.top * sy,
-      region.right * sx, region.bottom * sy);
+  var into = Rect.fromLTRB(
+      region.left * sx, region.top * sy, region.right * sx, region.bottom * sy);
   try {
     return await maskPng(out, (canvas) {
       base(canvas, out);
@@ -340,8 +340,7 @@ Future<Uint8List?> _cutInto(SegmentJob job, Size size, Rect region,
                 sigmaX: soften, sigmaY: soften, tileMode: TileMode.decal));
       canvas.drawImageRect(
           found,
-          Rect.fromLTWH(
-              0, 0, job.width.toDouble(), job.height.toDouble()),
+          Rect.fromLTWH(0, 0, job.width.toDouble(), job.height.toDouble()),
           into,
           Paint()..filterQuality = FilterQuality.medium);
       canvas.restore();
@@ -389,8 +388,8 @@ Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
   var into = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
 
   var rgba = await _pixelsOf(w, h, (canvas) {
-    canvas.drawImageRect(picture, region, into,
-        Paint()..filterQuality = FilterQuality.medium);
+    canvas.drawImageRect(
+        picture, region, into, Paint()..filterQuality = FilterQuality.medium);
   });
   var picked = !mask.empty;
   var current = picked
@@ -409,7 +408,8 @@ Future<Uint8List?> quickSelectMask(ui.Image picture, ImageMask mask,
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     if (points.length == 1) {
-      canvas.drawCircle(points.first, reach * 0.6, paint..style = PaintingStyle.fill);
+      canvas.drawCircle(
+          points.first, reach * 0.6, paint..style = PaintingStyle.fill);
     } else {
       canvas.drawPath(Path()..addPolygon(points, false), paint);
     }
@@ -470,7 +470,9 @@ Future<Uint8List?> guessSubjectMask(ui.Image picture, {Offset? at}) async {
   var w = math.max(8, (size.width * k).round());
   var h = math.max(8, (size.height * k).round());
   var rgba = await _pixelsOf(w, h, (canvas) {
-    canvas.drawImageRect(picture, Offset.zero & size,
+    canvas.drawImageRect(
+        picture,
+        Offset.zero & size,
         Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
         Paint()..filterQuality = FilterQuality.medium);
   });
@@ -548,8 +550,8 @@ Future<Uint8List?> refineEdgeMask(ui.Image picture, ImageMask mask,
 
   var rgba = await _pixelsOf(w, h, (canvas) {
     inRegion(canvas);
-    canvas.drawImage(picture, Offset.zero,
-        Paint()..filterQuality = FilterQuality.medium);
+    canvas.drawImage(
+        picture, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
   }, straight: true);
   var current = await _pixelsOf(w, h, (canvas) {
     inRegion(canvas);
@@ -577,8 +579,10 @@ Future<Uint8List?> refineEdgeMask(ui.Image picture, ImageMask mask,
     alpha[i] = current[i * 4 + 3];
     band[i] = brushed[i * 4 + 3];
   }
-  var refined = await compute(refineAlpha,
-      RefineJob(rgba, alpha, band, w, h, math.max(3, (reach * k * 1.5).round())));
+  var refined = await compute(
+      refineAlpha,
+      RefineJob(
+          rgba, alpha, band, w, h, math.max(3, (reach * k * 1.5).round())));
   // What goes back in: the new alpha's share of each pixel, the brush's
   // share of it -- the rest is the mask as it was, at its own sharpness.
   var share = Uint8List(n);
@@ -590,8 +594,8 @@ Future<Uint8List?> refineEdgeMask(ui.Image picture, ImageMask mask,
   var shareImage = await _alphaImage(share, w, h);
   var out = _maskSizeFor(size);
   var sx = out.width / size.width, sy = out.height / size.height;
-  var into = Rect.fromLTRB(region.left * sx, region.top * sy,
-      region.right * sx, region.bottom * sy);
+  var into = Rect.fromLTRB(
+      region.left * sx, region.top * sy, region.right * sx, region.bottom * sy);
   var from = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
   try {
     return await maskPng(out, (canvas) {

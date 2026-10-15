@@ -209,7 +209,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
           tooltip: align.label,
           // Against the selection's own box, so one thing chosen is already
           // aligned with itself and there is nothing to do.
-          onPressed: controller.selection.length < 2
+          onPressed: controller.aligning < 2
               ? null
               : () => controller.alignSelected(align),
         ),
@@ -221,7 +221,7 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         key: const ValueKey("spreadAcross"),
         icon: Icons.horizontal_distribute,
         tooltip: "Even gaps across",
-        onPressed: controller.selection.length < 3
+        onPressed: controller.aligning < 3
             ? null
             : () => controller.spreadSelected(true),
       ),
@@ -229,13 +229,14 @@ List<Widget> canvasGuidesSettings(CanvasController controller) {
         key: const ValueKey("spreadDown"),
         icon: Icons.vertical_distribute,
         tooltip: "Even gaps down",
-        onPressed: controller.selection.length < 3
+        onPressed: controller.aligning < 3
             ? null
             : () => controller.spreadSelected(false),
       ),
-      CanvasHint(controller.selection.length < 2
-          ? "Choose two or more elements to line them up with each other. "
-              "Three or more to spread them evenly."
+      CanvasHint(controller.aligning < 2
+          ? "Choose two or more elements to line them up with each other -- "
+              "or, with a picture's layers open, two or more of its picture "
+              "layers (Shift-click). Three or more to spread them evenly."
           : "Lined up against the box the chosen elements make between them, "
               "so the outermost ones stay where they are."),
     ]),

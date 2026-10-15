@@ -178,8 +178,14 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
     // it -- see VectorElement.tint. None is the file's own colours.
     case VectorElement v:
       return [
-        slot("tint", "Tint", false, v.tint, null,
-            (c) => c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
+        slot(
+            "tint",
+            "Tint",
+            false,
+            v.tint,
+            null,
+            (c) =>
+                c == null ? v.copyWith(clearTint: true) : v.copyWith(tint: c),
             (_) => v),
       ];
     // A chart's colours are its series' -- or, on a pie, its slices'. As
@@ -212,27 +218,43 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
               one.color,
               null,
               (x) => c.copyWith(
-                  data: c.data.copyWith(series: [
-                for (var (j, s) in series.indexed)
-                  j == i ? s.copyWith(color: x ?? s.color) : s,
-              ])),
+                      data: c.data.copyWith(series: [
+                    for (var (j, s) in series.indexed)
+                      j == i ? s.copyWith(color: x ?? s.color) : s,
+                  ])),
               (_) => c,
               canBeNone: false),
       ];
     // A counter: its number, the words either side of it, and its box.
     case CounterElement n:
       return [
-        slot("number", "Number", false, n.numberSpec.color, null,
+        slot(
+            "number",
+            "Number",
+            false,
+            n.numberSpec.color,
+            null,
             (x) => n.copyWith(
-                numberSpec: n.numberSpec.copyWith(color: x ?? n.numberSpec.color)),
+                numberSpec:
+                    n.numberSpec.copyWith(color: x ?? n.numberSpec.color)),
             (_) => n,
             canBeNone: false),
-        slot("words", "Words", false, n.affixSpec.color, null,
+        slot(
+            "words",
+            "Words",
+            false,
+            n.affixSpec.color,
+            null,
             (x) => n.copyWith(
                 affixSpec: n.affixSpec.copyWith(color: x ?? n.affixSpec.color)),
             (_) => n,
             canBeNone: false),
-        slot("box", "Box", false, n.box.fill.a == 0 ? null : n.box.fill, null,
+        slot(
+            "box",
+            "Box",
+            false,
+            n.box.fill.a == 0 ? null : n.box.fill,
+            null,
             (x) => n.copyWith(
                 box: n.box.copyWith(fill: x ?? const Color(0x00000000))),
             (_) => n),
@@ -240,15 +262,31 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
     // A table: its heading row's fill, and the words in it and below it.
     case TableElement t:
       return [
-        slot("header", "Heading", false, t.headerFill, null,
+        slot(
+            "header",
+            "Heading",
+            false,
+            t.headerFill,
+            null,
             (x) => t.copyWith(headerFill: x ?? const Color(0x00000000)),
             (_) => t),
-        slot("headerText", "Heading words", false, t.headerSpec.color, null,
+        slot(
+            "headerText",
+            "Heading words",
+            false,
+            t.headerSpec.color,
+            null,
             (x) => t.copyWith(
-                headerSpec: t.headerSpec.copyWith(color: x ?? t.headerSpec.color)),
+                headerSpec:
+                    t.headerSpec.copyWith(color: x ?? t.headerSpec.color)),
             (_) => t,
             canBeNone: false),
-        slot("cellText", "Words", false, t.cellSpec.color, null,
+        slot(
+            "cellText",
+            "Words",
+            false,
+            t.cellSpec.color,
+            null,
             (x) => t.copyWith(
                 cellSpec: t.cellSpec.copyWith(color: x ?? t.cellSpec.color)),
             (_) => t,

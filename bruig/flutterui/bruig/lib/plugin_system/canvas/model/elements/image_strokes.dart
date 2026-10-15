@@ -118,7 +118,8 @@ class StrokeMark {
     if (flat is List) {
       for (var i = 0; i + 1 < flat.length; i += 2) {
         var x = flat[i], y = flat[i + 1];
-        if (x is num && y is num) points.add(Offset(x.toDouble(), y.toDouble()));
+        if (x is num && y is num)
+          points.add(Offset(x.toDouble(), y.toDouble()));
       }
     }
     var src = json["src"];

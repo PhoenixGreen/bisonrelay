@@ -74,8 +74,8 @@ ui.Image _lutOf(ImageAdjustment adjust) {
   }
 
   for (var i = 0; i < 256; i++) {
-    canvas.drawRect(Rect.fromLTWH(i.toDouble(), 0, 1, 1),
-        Paint()..color = at(i / 255));
+    canvas.drawRect(
+        Rect.fromLTWH(i.toDouble(), 0, 1, 1), Paint()..color = at(i / 255));
   }
   var image = recorder.endRecording().toImageSync(256, 1);
   _luts[adjust] = image;
@@ -151,8 +151,8 @@ final Expando<Map<String, ui.Image>> _kept = Expando("adjusted");
 /// covering [room] in [canvas]'s units -- through [adjust]. [owner] and [key]
 /// name the result so it can be kept; null [owner] keeps nothing, for a
 /// picture still waiting on something to load.
-void paintAdjusted(ui.Canvas canvas, Rect room, ImageAdjustment adjust,
-    ui.Picture below,
+void paintAdjusted(
+    ui.Canvas canvas, Rect room, ImageAdjustment adjust, ui.Picture below,
     {Object? owner, String key = ""}) {
   var program = AdjustShader._program;
   if (program == null || room.isEmpty) {

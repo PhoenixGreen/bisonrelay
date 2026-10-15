@@ -2869,6 +2869,10 @@ void main() {
       return controller;
     }
 
+    // The card a group is drawn as, found by its name.
+    Finder group(String label) => find.byWidgetPredicate(
+        (w) => w is CanvasControlGroup && w.label == label);
+
     ImageElement empty() =>
         const ImageElement(ElementBase(id: "i", width: 200, height: 200));
     ImageElement filled() =>
@@ -2903,11 +2907,7 @@ void main() {
       var zoom = find.ancestor(
           of: find.text("Zoom"), matching: find.byType(CanvasNumberField));
       expect(zoom, findsOneWidget, reason: "offered for a picture that fills");
-      await tester.ensureVisible(zoom);
-      await tester.pumpAndSettle();
-
-      await tester.enterText(zoom, "2");
-      await tester.pump();
+      await typeInto(tester, zoom, "2");
       expect((controller.document.elements.single as ImageElement).framing.zoom,
           2);
     });
@@ -2917,12 +2917,13 @@ void main() {
       // Contained or stretched there is no slack to spend and no window to
       // shrink, so the three numbers would be three dead controls.
       await panel(tester, filled().copyWith(fit: ImageFit.contain));
-      expect(find.text("FRAMING"), findsNothing);
-      // A hint is a question mark with a tooltip, so it is found by what it
-      // has to say.
+      expect(group("Framing"), findsNothing);
+      // What framing needs is behind the Picture card's "?".
       expect(
-          find.byWidgetPredicate(
-              (w) => w is CanvasHint && w.message.contains("fills its frame")),
+          find.byWidgetPredicate((w) =>
+              w is CanvasControlGroup &&
+              w.label == "Picture" &&
+              (w.help ?? "").contains("Cover")),
           findsOneWidget,
           reason: "and it says where they went");
     });
@@ -2930,14 +2931,14 @@ void main() {
     testWidgets("shape, crop and overlay appear only once there is a picture",
         (tester) async {
       await panel(tester, empty());
-      expect(find.text("SHAPE"), findsNothing);
-      expect(find.text("CROP"), findsNothing);
-      expect(find.text("OVERLAY"), findsNothing);
+      expect(group("Shape"), findsNothing);
+      expect(group("Crop"), findsNothing);
+      expect(group("Overlay"), findsNothing);
 
       await panel(tester, filled());
-      expect(find.text("SHAPE"), findsOneWidget);
-      expect(find.text("CROP"), findsOneWidget);
-      expect(find.text("OVERLAY"), findsOneWidget);
+      expect(group("Shape"), findsOneWidget);
+      expect(group("Crop"), findsOneWidget);
+      expect(group("Overlay"), findsOneWidget);
     });
 
     testWidgets("the overlay colour appears only once a blend is chosen",
@@ -5349,9 +5350,7 @@ void main() {
       var width = find.ancestor(
           of: find.text("Width"), matching: find.byType(CanvasNumberField));
 
-      await tester.enterText(
-          find.descendant(of: width, matching: find.byType(TextField)), "6");
-      await tester.pump();
+      await typeInto(tester, width, "6");
 
       var element = controller.document.elements.single as ImageElement;
       expect(element.outline.width, 6);
@@ -5385,7 +5384,7 @@ void main() {
     // Brush and an Invert of their own.
     Finder text(String words) => find.descendant(
         of: find.byWidgetPredicate((w) =>
-            w is CanvasControlGroup && w.label == "For logos and scans"),
+            w is CanvasControlGroup && w.label == "Logos and scans"),
         matching: find.text(words));
 
     Future<CanvasController> panel(WidgetTester tester,

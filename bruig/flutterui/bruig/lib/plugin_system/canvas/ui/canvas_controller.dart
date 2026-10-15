@@ -439,6 +439,10 @@ class CanvasController extends ChangeNotifier {
     if (_imageEditing != null && editingImage?.layerById(_imageLayer) == null) {
       _imageLayer = baseLayerId;
     }
+    if (_imageEditing != null) {
+      var e = editingImage!;
+      _alsoPicked.removeWhere((id) => e.layerById(id) == null);
+    }
     if (!_viewOnly) _revision++;
     super.notifyListeners();
   }
@@ -1190,6 +1194,15 @@ class CanvasController extends ChangeNotifier {
   /// its own box is itself, so it is already aligned with it. The buttons say
   /// so by being dead until there are two.
   void alignSelected(CanvasAlign align, {bool transient = false}) {
+    // With a picture's layers open, its picked layers -- against the box
+    // they make between them, as elements are.
+    if (editingImage case var e?) {
+      var ids = [for (var l in alignableLayers) l.id];
+      if (ids.length >= 2) {
+        replaceElement(withLayersAligned(e, ids, align), transient: transient);
+      }
+      return;
+    }
     var chosen = [
       for (var e in selectedElements)
         if (!e.locked) e
@@ -1234,6 +1247,13 @@ class CanvasController extends ChangeNotifier {
   /// by their centres leave visibly different amounts of white between them,
   /// which is the thing anybody doing this is actually looking at.
   void spreadSelected(bool across, {bool transient = false}) {
+    if (editingImage case var e?) {
+      var ids = [for (var l in alignableLayers) l.id];
+      if (ids.length >= 3) {
+        replaceElement(withLayersSpread(e, ids, across), transient: transient);
+      }
+      return;
+    }
     var chosen = [
       for (var e in selectedElements)
         if (!e.locked) e
@@ -1591,7 +1611,47 @@ class CanvasController extends ChangeNotifier {
   String? get imageEditing => _imageEditing;
   String? _imageEditing;
   String get imageLayer => _imageLayer;
-  String _imageLayer = baseLayerId;
+  String _imageLayerId = baseLayerId;
+  String get _imageLayer => _imageLayerId;
+
+  /// Picking one layer is the ordinary case, and every way of doing it --
+  /// a click, a new layer, a deletion -- lets go of any others picked with
+  /// it. See pickImageLayer for picking several.
+  set _imageLayer(String id) {
+    _imageLayerId = id;
+    _alsoPicked.clear();
+  }
+
+  /// _alsoPicked are the layers picked with [imageLayer], in the order they
+  /// were picked: what the align tools line up and a drag moves together.
+  /// The settings are the first one's.
+  final List<String> _alsoPicked = [];
+
+  /// imageLayers is every layer picked, the first one first.
+  List<String> get imageLayers => [_imageLayerId, ..._alsoPicked];
+
+  /// pickedLayers is those layers.
+  List<ImageLayer> get pickedLayers {
+    var e = editingImage;
+    if (e == null) return const [];
+    return [
+      for (var id in imageLayers)
+        if (e.layerById(id) case var l?) l
+    ];
+  }
+
+  /// alignableLayers are the picked layers that have a place of their own
+  /// in the frame to line up: picture layers, shown. An adjustment or a
+  /// texture covers the whole frame and has nowhere to move to.
+  List<ImageLayer> get alignableLayers => [
+        for (var l in pickedLayers)
+          if (l.kind == LayerKind.picture && l.visible) l
+      ];
+
+  /// aligning is how many things the align tools would line up: picked
+  /// picture layers while a picture is open, elements otherwise.
+  int get aligning =>
+      editingImage != null ? alignableLayers.length : selection.length;
 
   ImageTool get imageTool => _imageTool;
   ImageTool _imageTool = ImageTool.move;
@@ -1629,9 +1689,21 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// pickImageLayer picks the layer [id] of the picture being edited.
-  void pickImageLayer(String id) {
-    if (_imageLayer == id) return;
+  /// pickImageLayer picks the layer [id] of the picture being edited --
+  /// alone, or with [add] (Shift or Command held) as well as those picked
+  /// already, or let go of again if it was.
+  void pickImageLayer(String id, {bool add = false}) {
+    if (add) {
+      if (id == _imageLayerId) {
+        if (_alsoPicked.isEmpty) return;
+        _imageLayerId = _alsoPicked.removeAt(0);
+      } else if (!_alsoPicked.remove(id)) {
+        _alsoPicked.add(id);
+      }
+      notifyListeners();
+      return;
+    }
+    if (_imageLayer == id && _alsoPicked.isEmpty) return;
     _imageLayer = id;
     // The removal brushes paint on the base picture, and only there.
     if (id != baseLayerId) _retouch = RetouchBrush.off;
@@ -1735,7 +1807,8 @@ class CanvasController extends ChangeNotifier {
 
   /// changeMask changes the picked layer's mask by [edit], as one step
   /// unless [transient].
-  void changeMask(ImageMask Function(ImageMask) edit, {bool transient = false}) {
+  void changeMask(ImageMask Function(ImageMask) edit,
+      {bool transient = false}) {
     var e = editingImage;
     var picked = pickedLayer;
     // A frame-masked layer keeps its mask on itself.
@@ -1747,7 +1820,8 @@ class CanvasController extends ChangeNotifier {
     }
     var look = e == null ? null : lookOf(e, _imageLayer);
     if (e == null || look == null) return;
-    replaceElement(withLook(e, _imageLayer, look.copyWith(mask: edit(look.mask))),
+    replaceElement(
+        withLook(e, _imageLayer, look.copyWith(mask: edit(look.mask))),
         transient: transient);
   }
 
@@ -1790,7 +1864,10 @@ class CanvasController extends ChangeNotifier {
         var current = look.mask.subject.isEmpty
             ? null
             : await _maskImageOf(look.mask.subject);
-        bytes = await combinedSubject(look.mask, current, found,
+        bytes = await combinedSubject(
+                look.mask,
+                current,
+                found,
                 size ?? Size(found.width.toDouble(), found.height.toDouble()),
                 how) ??
             png;

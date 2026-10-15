@@ -7,7 +7,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart' show VectorCue;
+import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart'
+    show VectorCue;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 
 // image_layers.dart is a picture made of several: the layers an Image
@@ -353,8 +354,8 @@ class ImageLayer {
       flipX: jsonBool(json["fx"], false),
       flipY: jsonBool(json["fy"], false),
       fill: PaintSpec.fromJson(json["fill"], const Color(0xFF000000)),
-      adjust: jsonSpec(json["adjust"], ImageAdjustment.fromJson,
-          const ImageAdjustment()),
+      adjust: jsonSpec(
+          json["adjust"], ImageAdjustment.fromJson, const ImageAdjustment()),
       texture:
           jsonSpec(json["texture"], TextureSpec.fromJson, const TextureSpec()),
       effects: [
@@ -363,9 +364,7 @@ class ImageLayer {
             if (f is Map<String, dynamic>) LayerEffect.fromJson(f)
       ],
       strokes: strokesFromJson(json["strokes"]),
-      cue: VectorCue.values
-              .where((c) => c.name == json["cue"])
-              .firstOrNull ??
+      cue: VectorCue.values.where((c) => c.name == json["cue"]).firstOrNull ??
           VectorCue.together,
       cueGap: jsonDouble(json["gap"], 0).round(),
       cueLength: json["len"] is num ? (json["len"] as num).round() : null,
@@ -613,17 +612,15 @@ ImageElement withLayerSpanFitted(ImageElement e) {
   var last = track.keyAt(at + span);
   if (last == null) return e;
   return e.withBase(
-          track: track
-              .withoutFrame(at + span)
-              .withKey(last.copyWith(frame: at + whole)))
-      as ImageElement;
+      track: track
+          .withoutFrame(at + span)
+          .withKey(last.copyWith(frame: at + whole))) as ImageElement;
 }
 
 /// withLayerStartAt is [e] with layer [index] -- not the first -- starting
 /// [start] frames into the arrival, in the layers' own frames, said as the
 /// cue that puts it there. Never before the layer under it starts.
-ImageElement withLayerStartAt(
-    ImageElement e, int index, int start, int span) {
+ImageElement withLayerStartAt(ImageElement e, int index, int start, int span) {
   var stack = e.stack;
   if (index <= 0 || index >= stack.length) return e;
   var (before, took) = layerNaturalTimes(stack, span)[index - 1];
@@ -663,7 +660,8 @@ ImageElement withLayersStaggered(ImageElement e, int span) {
     for (var (i, l) in e.stack.indexed)
       i == 0
           ? l.copyWith(cue: VectorCue.together, cueGap: 0, clearCueLength: true)
-          : l.copyWith(cue: VectorCue.gap, cueGap: overlap, clearCueLength: true)
+          : l.copyWith(
+              cue: VectorCue.gap, cueGap: overlap, clearCueLength: true)
   ]);
 }
 
