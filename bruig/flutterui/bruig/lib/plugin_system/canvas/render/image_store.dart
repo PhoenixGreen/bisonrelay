@@ -26,14 +26,31 @@ import 'package:flutter_svg/flutter_svg.dart';
 // switching a removal mode on and off is instant after the first time and two
 // elements sharing both the picture and the settings share one decode.
 
-/// _maxEntries bounds the cache.
+/// _budget bounds the cache, in bytes of decoded pixels.
 ///
-/// Pictures are large -- a decoded 4000x3000 photograph is 48MB of RGBA -- so
-/// this is small on purpose and evicts the least recently asked for. A canvas
-/// with more distinct pictures than this on it at once is possible, and the
-/// cost is redecoding as they scroll through; the cost of not bounding it is
-/// the app running out of memory, which is worse.
-const int _maxEntries = 48;
+/// Pictures are large -- a decoded 4000x3000 photograph is 48MB of RGBA --
+/// and this was a count of them, forty-eight, which is two gigabytes of
+/// photographs held whether anything was looking at them or not: most of
+/// what an idle canvas was using. A budget in bytes evicts the least recently
+/// asked for once the pixels pass it -- but never one asked for in the last
+/// few seconds, which is on screen: a canvas showing more than the budget at
+/// once is drawn, at the cost of the memory, rather than reloading pictures
+/// on every frame.
+const int _budget = 640 << 20;
+
+/// _inUse is how recently a picture has to have been asked for to be kept
+/// over the budget.
+const Duration _inUse = Duration(seconds: 4);
+
+/// _longest is the most pixels a picture is decoded at along its longer
+/// side. A canvas is exported at a few thousand pixels at most; a fifty
+/// megapixel photograph decoded whole is two hundred megabytes for detail
+/// no export can show.
+const int _longest = 4096;
+
+/// _thumbSide is how big a [CanvasImageStore.thumbnail] is along its longer
+/// side: a tile's worth, at twice its size for a sharp screen.
+const int _thumbSide = 192;
 
 /// CanvasImageStore holds decoded pictures for a canvas being edited.
 class CanvasImageStore extends ChangeNotifier
@@ -53,8 +70,18 @@ class CanvasImageStore extends ChangeNotifier
   final Map<String, ui.Image> _images = {};
 
   /// _order is the keys in least-recently-used order, which is what makes the
-  /// bound above evict something sensible rather than something arbitrary.
+  /// bound above evict something sensible rather than something arbitrary,
+  /// with when each was last asked for.
   final List<String> _order = [];
+  final Map<String, DateTime> _asked = {};
+
+  /// _bytes is how many bytes of pixels [_images] holds.
+  int _bytes = 0;
+
+  /// bytes is that, for whoever is watching the memory.
+  int get bytes => _bytes;
+
+  int _sizeOf(ui.Image image) => image.width * image.height * 4;
 
   /// _pending stops the same picture being decoded four times when four
   /// elements ask for it in one frame.
@@ -84,6 +111,7 @@ class CanvasImageStore extends ChangeNotifier
   @visibleForTesting
   void putForTest(String assetId, ui.Image image) {
     _images[assetId] = image;
+    _bytes += _sizeOf(image);
   }
 
   /// notifyForTest is the store saying a picture arrived, which is the one
@@ -98,7 +126,44 @@ class CanvasImageStore extends ChangeNotifier
   /// removed -- the removal only rewrites the alpha. Asking [resolve] instead
   /// would hand back null until the treated copy had been built, so the first
   /// stroke of a session would land nowhere.
-  ui.Image? original(String assetId) => _images[assetId];
+  ui.Image? original(String assetId) {
+    var image = _images[assetId];
+    if (image != null) _touch(assetId);
+    return image;
+  }
+
+  /// _thumbs is a small copy of each picture held, made the first time a
+  /// tile asked for one and let go of with the picture.
+  final Map<ui.Image, ui.Image> _thumbs = Map.identity();
+
+  /// thumbnail is [image] -- one this store handed out -- small enough for a
+  /// tile.
+  ///
+  /// The filter tiles and the layer thumbnails drew the whole decoded picture,
+  /// four thousand pixels of it, into a box sixty across -- a dozen times
+  /// over, a colour filter on each -- and did it again for every frame of a
+  /// strip scrolling past. A picture not this store's is handed back as it
+  /// is: nothing here would know when to let a copy of it go.
+  ui.Image thumbnail(ui.Image image) {
+    if (math.max(image.width, image.height) <= _thumbSide) return image;
+    var kept = _thumbs[image];
+    if (kept != null) return kept;
+    if (!_images.values.any((i) => identical(i, image))) return image;
+    var scale = _thumbSide / math.max(image.width, image.height);
+    var w = math.max(1, (image.width * scale).round());
+    var h = math.max(1, (image.height * scale).round());
+    var recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawImageRect(
+      image,
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      ui.Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+      ui.Paint()..filterQuality = ui.FilterQuality.medium,
+    );
+    var picture = recorder.endRecording();
+    var thumb = picture.toImageSync(w, h);
+    picture.dispose();
+    return _thumbs[image] = thumb;
+  }
 
   @override
   bool get loading => _pending.isNotEmpty || _edges.busy;
@@ -214,6 +279,7 @@ class CanvasImageStore extends ChangeNotifier
   void _touch(String key) {
     _order.remove(key);
     _order.add(key);
+    _asked[key] = DateTime.now();
   }
 
   Future<void> _load(
@@ -247,7 +313,9 @@ class CanvasImageStore extends ChangeNotifier
         return;
       }
 
+      _drop(key);
       _images[key] = image;
+      _bytes += _sizeOf(image);
       _touch(key);
       _evict();
       notifyListeners();
@@ -260,10 +328,27 @@ class CanvasImageStore extends ChangeNotifier
   }
 
   void _evict() {
-    while (_order.length > _maxEntries) {
-      var key = _order.removeAt(0);
-      _images.remove(key)?.dispose();
+    var now = DateTime.now();
+    var i = 0;
+    while (_bytes > _budget && i < _order.length) {
+      var key = _order[i];
+      var asked = _asked[key];
+      if (asked != null && now.difference(asked) < _inUse) {
+        i++;
+        continue;
+      }
+      _order.removeAt(i);
+      _asked.remove(key);
+      _drop(key);
     }
+  }
+
+  void _drop(String key) {
+    var image = _images.remove(key);
+    if (image == null) return;
+    _bytes -= _sizeOf(image);
+    _thumbs.remove(image)?.dispose();
+    image.dispose();
   }
 
   /// forget drops one asset's entries, so that replacing a picture in place
@@ -272,7 +357,8 @@ class CanvasImageStore extends ChangeNotifier
     var keys = _images.keys.where((k) => k.startsWith(assetId)).toList();
     for (var key in keys) {
       _order.remove(key);
-      _images.remove(key)?.dispose();
+      _asked.remove(key);
+      _drop(key);
     }
     _failed.removeWhere((k) =>
         k.startsWith(assetId) ||
@@ -291,11 +377,17 @@ class CanvasImageStore extends ChangeNotifier
       vector.picture.dispose();
     }
     _vectors.clear();
+    for (var thumb in _thumbs.values) {
+      thumb.dispose();
+    }
+    _thumbs.clear();
     for (var image in _images.values) {
       image.dispose();
     }
     _images.clear();
     _order.clear();
+    _asked.clear();
+    _bytes = 0;
     super.dispose();
   }
 }
@@ -312,8 +404,21 @@ class CanvasImageStore extends ChangeNotifier
 Future<ui.Image?> _decode(Uint8List bytes) async {
   if (_looksLikeSvg(bytes)) return _rasterise(bytes);
   try {
-    var codec = await ui.instantiateImageCodec(bytes);
-    return (await codec.getNextFrame()).image;
+    // Measured before it is decoded, and decoded smaller where it is huge.
+    var buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    var descriptor = await ui.ImageDescriptor.encoded(buffer);
+    var w = descriptor.width, h = descriptor.height;
+    var longer = w > h ? w : h;
+    var codec = longer > _longest
+        ? await descriptor.instantiateCodec(
+            targetWidth: (w * _longest / longer).round(),
+            targetHeight: (h * _longest / longer).round())
+        : await descriptor.instantiateCodec();
+    var frame = await codec.getNextFrame();
+    codec.dispose();
+    descriptor.dispose();
+    buffer.dispose();
+    return frame.image;
   } catch (exception) {
     debugPrint("Unable to decode a canvas picture: $exception");
     // A sniff is a guess, and the cost of a wrong one used to be a picture

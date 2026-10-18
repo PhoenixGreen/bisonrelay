@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -50,6 +51,9 @@ Future<Color> _at(VectorElement e, int x, int y) async {
 }
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   test("the tint is saved, and nothing is written without one", () {
     var back = VectorElement.fromJson(
         _square(tint: _teal).toJson(), const ElementBase(id: "v"));
@@ -97,6 +101,8 @@ void main() {
     expect(tinted.tint, _teal);
     expect(tinted.shapes, isNull, reason: "not taken apart");
 
+    await tester.ensureVisible(find.byKey(const ValueKey("vectorTintOff")));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey("vectorTintOff")));
     await tester.pumpAndSettle();
     expect((controller.document.elements.single as VectorElement).tint, isNull);

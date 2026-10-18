@@ -374,14 +374,18 @@ String asRowKey(String cell) {
   var out = StringBuffer();
   for (var rune in cell.trim().toLowerCase().runes) {
     var c = String.fromCharCode(rune);
-    if (RegExp(r"[a-z0-9]").hasMatch(c)) {
+    if (_letterOrDigit.hasMatch(c)) {
       out.write(c);
     } else if (c == " " || c == "-" || c == "_" || c == ".") {
       if (out.isNotEmpty && !out.toString().endsWith("-")) out.write("-");
     }
   }
-  return out.toString().replaceAll(RegExp(r"-+\$"), "");
+  return out.toString().replaceAll(_trailingDashes, "");
 }
+
+/// Compiled once: asRowKey asks of every character of every cell.
+final RegExp _letterOrDigit = RegExp(r"[a-z0-9]");
+final RegExp _trailingDashes = RegExp(r"-+$");
 
 /// movedIndex is where the thing at [index] ends up when the column at
 /// [from] is moved to [to].

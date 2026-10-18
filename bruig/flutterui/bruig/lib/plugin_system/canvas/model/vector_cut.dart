@@ -97,8 +97,9 @@ VectorPath _run(List<_Bez> segs, {required bool closed, int part = 0}) {
     var before = i > 0 ? segs[i - 1] : (closed ? segs.last : null);
     nodes.add(_node(s.p0, before, s));
   }
-  if (!closed && segs.isNotEmpty)
+  if (!closed && segs.isNotEmpty) {
     nodes.add(_node(segs.last.p3, segs.last, null));
+  }
   return VectorPath(nodes, closed: closed, part: part);
 }
 

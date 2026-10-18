@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -32,14 +33,24 @@ class _Recorded {
   _Recorded(this.subject, this.size, this.picture);
 }
 
-final Expando<_Recorded> _recorded = Expando("maskPicture");
+/// _recorded is the masks last drawn, recorded, the most recently drawn
+/// last.
+///
+/// It was kept on each mask, for as long as the mask lived -- and the undo
+/// history keeps every mask there has been: a hundred strokes was a hundred
+/// recordings, of one stroke, of two, ... of a hundred, every one of them
+/// held. Only a mask being drawn needs its recording; a few are kept, for a
+/// canvas with a few masked pictures on it.
+final Map<ImageMask, _Recorded> _recorded = LinkedHashMap.identity();
+const int _recordedMost = 16;
 
 /// maskPicture is [mask] recorded for a picture of [size] pixels, with
 /// [subject] the decoded subject mask where it has one. Kept with the mask,
 /// which never changes: a new mark is a new mask.
 ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
-  var kept = _recorded[mask];
+  var kept = _recorded.remove(mask);
   if (kept != null && kept.size == size && identical(kept.subject, subject)) {
+    _recorded[mask] = kept;
     return kept.picture;
   }
   var recorder = ui.PictureRecorder();
@@ -57,6 +68,9 @@ ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
   }
   var picture = recorder.endRecording();
   _recorded[mask] = _Recorded(subject, size, picture);
+  while (_recorded.length > _recordedMost) {
+    _recorded.remove(_recorded.keys.first);
+  }
   return picture;
 }
 

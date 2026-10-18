@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -82,6 +83,22 @@ Future<List<int>> _pixel(
 const _box = ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100);
 
 void main() {
+  test("a flipped layer with an effect keeps both when it is saved", () {
+    var l = ImageLayer.picture(
+            "aaaaaaaaaaaaaaa1", const Rect.fromLTWH(0, 0, 500, 500))
+        .copyWith(
+            flipX: true,
+            effects: const [LayerEffect(kind: EffectKind.dropShadow)]);
+    var back = ImageLayer.fromJson(l.toJson())!;
+    expect(back.flipX, isTrue);
+    expect(back.effects.single.kind, EffectKind.dropShadow);
+    // And a flip saved the old way is still read.
+    var old = l.copyWith(effects: const []).toJson()
+      ..remove("flipX")
+      ..["fx"] = true;
+    expect(ImageLayer.fromJson(old)!.flipX, isTrue);
+  });
+
   group("saving", () {
     test("a picture with no layers is written as it always was", () {
       var e = const ImageElement(_box, assetId: "red");

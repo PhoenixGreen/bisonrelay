@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -41,6 +42,9 @@ VectorElement box(
         animation: ElementAnimation(loop: loop));
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   group("when a loop plays", () {
     test("from the arrival's end, or the start, to the scene's end", () {
       const loop = ElementLoop(preset: LoopPreset.float, cycle: 10);
@@ -499,10 +503,10 @@ void main() {
 
       // A way in, with nothing on the timeline to time it by: the drawing
       // is given one too, in the same step.
-      tester
-          .widget<CanvasDropdown<ElementAnimationFamily?>>(
-              find.byKey(const ValueKey("elementAnimationFamily")))
-          .onChanged(ElementAnimationFamily.fade);
+      var fade = find.byKey(const ValueKey("elementArrive-fade"));
+      await tester.ensureVisible(fade);
+      await tester.pumpAndSettle();
+      await tester.tap(fade);
       await tester.pumpAndSettle();
       expect(now().shapes![1].animation?.on, isTrue);
       expect(now().animation.on, isTrue);

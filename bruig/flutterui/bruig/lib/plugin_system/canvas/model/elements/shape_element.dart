@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
+import 'dart:math' as math;
 
 /// ShapeKind is which outline a shape element draws.
 ///
@@ -438,3 +439,9 @@ class ShapeElement extends CanvasElement {
           animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
               const ElementAnimation()));
 }
+
+/// strokeToSee is the width to give a shape that is being stroked for the
+/// first time: enough to see on a big shape, not enough to swallow a small
+/// one.
+double strokeToSee(ShapeElement e) =>
+    (math.min(e.width, e.height) * 0.015).clamp(1.0, 6.0);

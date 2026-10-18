@@ -63,10 +63,20 @@ class ProceduralCache extends ChangeNotifier {
   /// the drawing that comes back a moment later is a different picture of the
   /// same design. Left out of the key, the first answer was kept and the icon
   /// never appeared at all.
+  /// moves is whether [spec] changes from one frame to the next: animated,
+  /// and a style that can be, or with a layer that can. A metal sheet keeps
+  /// the switch from the style it was changed from, and was generated afresh
+  /// every frame for a movement it does not have.
+  static bool moves(ProceduralSpec spec) =>
+      spec.animated &&
+      (spec.style.canAnimate ||
+          spec.layers.any((l) => l.visible && l.spec.style.canAnimate) ||
+          spec.effects.grainMoves && spec.effects.grain > 0);
+
   static String keyFor(ProceduralSpec spec, ui.Size size, double time,
           [CanvasImageSource? images]) =>
       "${spec.toJson()}|${size.width.round()}x${size.height.round()}"
-      "|${spec.animated ? time.toStringAsFixed(3) : ""}"
+      "|${moves(spec) ? time.toStringAsFixed(3) : ""}"
       "|${_ready(spec, images)}";
 
   /// _ready is which of a design's pictures can be drawn right now.
@@ -109,11 +119,11 @@ class ProceduralCache extends ChangeNotifier {
   /// Only at the size asked for. A picture of the right design at the wrong
   /// shape is a stretched background, which is something anybody can see.
   ui.Image? imageFor(ProceduralSpec spec, ui.Size size, double time,
-      [CanvasImageSource? images]) {
+      [CanvasImageSource? images, bool make = true, bool standIn = true]) {
     // A background that moves is a different picture every frame, so caching
     // it would be a raster per frame plus the drawing -- worse than simply
     // drawing it.
-    if (spec.animated) return null;
+    if (moves(spec)) return null;
     if (size.width < 1 || size.height < 1) return null;
 
     var key = keyFor(spec, size, time, images);
@@ -124,12 +134,15 @@ class ProceduralCache extends ChangeNotifier {
       _images[key] = held;
       return held;
     }
-    if (!_making.contains(key)) _make(spec, size, time, key, images);
+    if (make && !_making.contains(key)) _make(spec, size, time, key, images);
 
     // A picture of another design at the right size, while this one is being
     // made. Only at the size asked for: a picture of the right design at the
     // wrong shape is a stretched background, which is something anybody can
     // see.
+    // Not for an element: two panels the same size would each show the
+    // other's pattern for a moment.
+    if (!standIn) return null;
     var wide = size.width.round().clamp(1, 8192);
     var high = size.height.round().clamp(1, 8192);
     for (var last in _images.values.toList().reversed) {
@@ -181,8 +194,20 @@ class ProceduralCache extends ChangeNotifier {
   /// the stand-in imageFor hands back, which is some other design's picture.
   /// Harmless under a drag; during playback it is a page's paper flashing
   /// the colour of the page before it.
+  /// latestFor is the most recent picture made of [spec] at any size, for
+  /// a gesture to stretch while it resizes one: a new one for every size
+  /// it passes through was a whole pattern generated every frame.
+  ui.Image? latestFor(ProceduralSpec spec) {
+    if (moves(spec)) return null;
+    var prefix = "${spec.toJson()}|";
+    for (var key in _images.keys.toList().reversed) {
+      if (key.startsWith(prefix)) return _images[key];
+    }
+    return null;
+  }
+
   void warm(ProceduralSpec spec, ui.Size size, [CanvasImageSource? images]) {
-    if (spec.animated || size.width < 1 || size.height < 1) return;
+    if (moves(spec) || size.width < 1 || size.height < 1) return;
     var key = keyFor(spec, size, 0, images);
     var held = _images.remove(key);
     if (held != null) {

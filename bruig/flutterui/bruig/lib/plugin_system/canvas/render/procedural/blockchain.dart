@@ -1019,8 +1019,9 @@ void _globe(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
     var f =
         _frac(t * (0.18 + hash(spec.seed, k, 6) * 0.2) + hash(spec.seed, k, 7));
     var (p, z) = pts[(f * segs).floor().clamp(0, segs)];
-    if (z > -0.1)
+    if (z > -0.1) {
       _pulse(canvas, p, math.max(1.2, radius * 0.012), _a(ac, bright));
+    }
   }
   for (var (lat, lon) in nodes) {
     var (p, z) = at(lat, lon);

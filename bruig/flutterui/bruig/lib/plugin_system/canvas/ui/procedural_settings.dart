@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/pitch_orbit_pad.dart';
@@ -67,7 +68,16 @@ class ProceduralSettings extends StatelessWidget {
   /// effects.
   final bool fill;
 
+  /// sections lays the settings out in the sections every element's panel
+  /// has -- the pattern, its colours, its movement, its effects and its
+  /// light -- each remembered open or shut under [rememberAs]. See
+  /// panel_kit.dart.
+  final bool sections;
+  final String rememberAs;
+
   const ProceduralSettings({
+    this.sections = false,
+    this.rememberAs = "background",
     required this.spec,
     required this.onChanged,
     required this.onBegin,
@@ -528,6 +538,75 @@ class ProceduralSettings extends StatelessWidget {
     onCommit();
   }
 
+  /// _sectionOf is which section [w], one of [_groups], belongs in.
+  static String _sectionOf(Widget w) {
+    if (w is Padding && w.child is CanvasExpander) w = w.child!;
+    var label = switch (w) {
+      CanvasControlGroup g => g.label,
+      CanvasExpander x => x.label,
+      _ => "",
+    };
+    return switch (label) {
+      "Colours" || "Amount" => "colour",
+      "Movement" => "movement",
+      "Effects" => "effects",
+      "Lights" => "lights",
+      _ => "pattern",
+    };
+  }
+
+  /// _sectioned is [groups] -- [_groups], or a layer's -- in sections. A
+  /// section that is one expander is that expander's contents: the section
+  /// is the fold now.
+  List<Widget> _sectioned(List<Widget> groups) {
+    var by = <String, List<Widget>>{};
+    for (var g in groups) {
+      (by[_sectionOf(g)] ??= []).add(g);
+    }
+    List<Widget> unfolded(List<Widget> ws) {
+      if (ws.length != 1) return ws;
+      var w = ws.single;
+      if (w is Padding && w.child is CanvasExpander) w = w.child!;
+      if (w is! CanvasExpander) return ws;
+      return [
+        if (w.action != null)
+          Align(alignment: Alignment.centerRight, child: w.action!),
+        ...w.children,
+      ];
+    }
+
+    var look = lookMatching(spec)?.name;
+    Widget part(String name, IconData icon, String title, String summary,
+            {bool open = false}) =>
+        CanvasSection(
+          key: ValueKey("backgroundSection-$name"),
+          icon: icon,
+          title: title,
+          summary: summary,
+          remember: "$rememberAs.$name",
+          initiallyOpen: open,
+          children: unfolded(by[name]!),
+        );
+    return [
+      if (by.containsKey("pattern"))
+        part("pattern", Icons.blur_on, "Pattern",
+            [spec.style.label, if (look != null) look].join(" · "),
+            open: true),
+      if (by.containsKey("colour"))
+        part("colour", Icons.palette_outlined, "Colour and amount",
+            "Density ${(spec.density * 100).round()}%"),
+      if (by.containsKey("movement"))
+        part("movement", Icons.animation, "Movement",
+            spec.animated || layer ? "Moves" : "Still"),
+      if (by.containsKey("effects"))
+        part("effects", Icons.auto_awesome_outlined, "Effects",
+            fx.any ? "On" : "None"),
+      if (by.containsKey("lights"))
+        part("lights", Icons.light_mode_outlined, "Lights",
+            light.on ? "Spotlight" : "None"),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (fill) {
@@ -543,6 +622,12 @@ class ProceduralSettings extends StatelessWidget {
     }
     if (!layer) return _Layered(owner: this);
     var groups = _groups(context);
+    if (sections) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: _sectioned(groups));
+    }
     // Down the column like every other element's settings. A Row of five
     // groups in a 280px sidebar is a thousand pixels of overflow, and it does
     // not shrink -- the groups are sized to their controls.
@@ -2005,6 +2090,7 @@ class _LayeredState extends State<_Layered> {
     List<Widget> body;
     if (at == 0) {
       body = owner._groups(context);
+      if (owner.sections) body = owner._sectioned(body);
     } else {
       var layer = layers[at - 1];
       body = [
@@ -2035,6 +2121,8 @@ class _LayeredState extends State<_Layered> {
         ProceduralSettings(
           key: ValueKey("layerSettings-$at"),
           layer: true,
+          sections: owner.sections,
+          rememberAs: "${owner.rememberAs}.layer",
           spec: layer.spec,
           onBegin: owner.onBegin,
           onCommit: owner.onCommit,
@@ -2043,6 +2131,41 @@ class _LayeredState extends State<_Layered> {
       ];
     }
 
+    if (owner.sections) {
+      // The layers as a section of their own, and the one picked's
+      // settings under them -- a layer's opacity and blend in a section
+      // of their own too, over its pattern's.
+      var picked = at == 0 ? null : layers[at - 1];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CanvasSection(
+            key: const ValueKey("backgroundSection-layers"),
+            icon: Icons.layers_outlined,
+            title: "Pattern layers",
+            summary: layers.isEmpty
+                ? "One pattern"
+                : "${layers.length + 1} patterns · editing "
+                    "${at == 0 ? "the background" : "layer $at"}",
+            remember: "${owner.rememberAs}.layers",
+            children: [list],
+          ),
+          if (picked != null)
+            CanvasSection(
+              key: const ValueKey("backgroundSection-layer"),
+              icon: Icons.tune,
+              title: "Layer $at",
+              summary: "${(picked.opacity * 100).round()}% · "
+                  "${picked.blend.label}",
+              remember: "${owner.rememberAs}.layer",
+              initiallyOpen: true,
+              children: [body.first],
+            ),
+          ...(picked == null ? body : body.skip(1)),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,

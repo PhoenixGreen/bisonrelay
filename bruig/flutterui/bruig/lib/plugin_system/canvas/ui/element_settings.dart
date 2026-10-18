@@ -26,8 +26,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/counter_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/line_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/path_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/shape_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/table_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
@@ -80,69 +80,82 @@ List<Widget> elementSettings(
     return imageSettings(context, controller, element, write, begin, commit);
   }
 
+  // Every other element in sections, as a picture is: where it is, its
+  // own subjects, how it arrives, and the designs saved of its kind -- see
+  // element_sections.dart.
   return [
-    positionGroup(controller, element, write, begin, commit),
-    // The designs somebody has saved, at the top of the three kinds of
-    // element that are worth saving: start from something, or start from
-    // nothing. Below the type and the colours it would be a thing to find
-    // after the work of setting them by hand had already been done.
-    //
-    // Not boxed. A rule round it made two rows -- a caption and a line with
-    // a list and a button on it -- look like a section that had been left
-    // open, which is the one thing it is not.
-    // Every kind of element, not the three it started with: a counter set
-    // up the way somebody wants counters, or a shape they use on every
-    // canvas, is exactly as worth keeping as a table -- and the Presets
-    // sidebar lists what has been saved whatever kind it is.
-    presetsSection(context, controller, element),
-    // Tied to a cue, its timing follows the cue -- see canvas_cues.dart.
-    // Only once there are cues to tie it to.
-    if (controller.cues.isNotEmpty) elementCueGroup(controller, element),
-    ...switch (element) {
-      TextElement e =>
-        textSettings(context, controller, e, write, begin, commit),
-      ShapeElement e =>
-        shapeSettings(context, controller, e, write, begin, commit),
-      LineElement e =>
-        lineSettings(context, controller, e, write, begin, commit),
-      VectorElement e =>
-        vectorSettings(context, controller, e, write, begin, commit),
-      ChartElement e =>
-        chartSettings(context, controller, e, write, begin, commit),
-      TableElement e =>
-        tableSettings(context, controller, e, write, begin, commit),
-      ButtonElement e =>
-        buttonSettings(context, controller, e, write, begin, commit),
-      CounterElement e =>
-        counterSettings(context, controller, e, write, begin, commit),
-      AudioElement e =>
-        audioSettings(context, controller, e, write, begin, commit),
-      VideoElement e =>
-        videoSettings(context, controller, e, write, begin, commit),
-      BackgroundElement e => [
-          ProceduralSettings(
-            spec: e.spec,
-            onChanged: (spec) => write(e.copyWith(spec: spec)),
-            onBegin: begin,
-            onCommit: commit,
-          ),
-          CanvasControlGroup(label: "Panel", children: [
-            CanvasNumberField(
-              label: "Radius",
-              value: e.cornerRadius,
-              min: 0,
-              max: 400,
-              onChanged: (v) => write(e.copyWith(cornerRadius: v)),
-              onCommit: commit,
-            ),
-          ]),
-        ],
-      TeamElement e =>
-        teamSettings(context, controller, e, write, begin, commit),
-      PathElement e =>
-        pathSettings(context, controller, e, write, begin, commit),
-      _ => const <Widget>[],
-    },
+    CanvasSections(
+      key: const ValueKey("elementSections"),
+      children: [
+        positionSection(controller, element, write, begin, commit,
+            // An element with no arrival of its own still waits on a cue.
+            extra: [
+              if (controller.cues.isNotEmpty &&
+                  (element is BackgroundElement || element is TeamElement))
+                elementCueCard(controller, element),
+            ]),
+        ...switch (element) {
+          TextElement e =>
+            textSettings(context, controller, e, write, begin, commit),
+          ShapeElement e =>
+            shapeSettings(context, controller, e, write, begin, commit),
+          LineElement e =>
+            lineSettings(context, controller, e, write, begin, commit),
+          VectorElement e =>
+            vectorSettings(context, controller, e, write, begin, commit),
+          ChartElement e =>
+            chartSettings(context, controller, e, write, begin, commit),
+          TableElement e =>
+            tableSettings(context, controller, e, write, begin, commit),
+          ButtonElement e =>
+            buttonSettings(context, controller, e, write, begin, commit),
+          CounterElement e =>
+            counterSettings(context, controller, e, write, begin, commit),
+          AudioElement e =>
+            audioSettings(context, controller, e, write, begin, commit),
+          VideoElement e =>
+            videoSettings(context, controller, e, write, begin, commit),
+          BackgroundElement e => [
+              ProceduralSettings(
+                sections: true,
+                rememberAs: "backgroundElement",
+                spec: e.spec,
+                onChanged: (spec) => write(e.copyWith(spec: spec)),
+                onBegin: begin,
+                onCommit: commit,
+              ),
+              section(e, "panel",
+                  icon: Icons.crop_square,
+                  title: "Panel",
+                  summary: e.cornerRadius > 0
+                      ? "Corners ${e.cornerRadius.round()}"
+                      : "Square corners",
+                  children: [
+                    CanvasControlGroup(
+                        label: "Corners",
+                        help: "How round the panel's corners are.",
+                        children: [
+                          CanvasNumberField(
+                            label: "Radius",
+                            value: e.cornerRadius,
+                            min: 0,
+                            max: 400,
+                            onChanged: (v) =>
+                                write(e.copyWith(cornerRadius: v)),
+                            onCommit: commit,
+                          ),
+                        ]),
+                  ]),
+            ],
+          TeamElement e =>
+            teamSettings(context, controller, e, write, begin, commit),
+          PathElement e =>
+            pathSettings(context, controller, e, write, begin, commit),
+          _ => const <Widget>[],
+        },
+        presetsPanelSection(context, controller, element),
+      ],
+    ),
   ];
 }
 

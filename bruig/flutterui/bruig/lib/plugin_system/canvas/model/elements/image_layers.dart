@@ -152,6 +152,12 @@ class ImageLayer {
   final int cueGap;
   final int? cueLength;
 
+  /// basePlace is where the base picture sits in the frame, in [layerUnits],
+  /// once it has been moved or sized on its own -- or kept where it was as
+  /// the frame round it was resized. Null fills the frame, as every base
+  /// picture did before it could be placed.
+  final Rect? basePlace;
+
   /// mask is where over the frame an adjustment, texture, colour or paint
   /// layer shows -- marks in fractions of the frame, as a picture's mask's
   /// are of the picture. A picture layer's mask is its look's.
@@ -185,6 +191,7 @@ class ImageLayer {
     this.cueGap = 0,
     this.cueLength,
     this.mask = const ImageMask(),
+    this.basePlace,
   });
 
   /// base is the base layer as it is before anything has been done to it.
@@ -197,6 +204,7 @@ class ImageLayer {
   /// is the same as there being no layers at all.
   bool get plain =>
       isBase &&
+      basePlace == null &&
       name.isEmpty &&
       cue == VectorCue.together &&
       cueGap == 0 &&
@@ -247,9 +255,9 @@ class ImageLayer {
       ImageLayer(id: newElementId(), kind: LayerKind.fill, fill: fill);
 
   /// place is where a picture layer sits, in layer units.
-  Rect get place => look == null
-      ? const Rect.fromLTWH(0, 0, layerUnits, layerUnits)
-      : Rect.fromLTWH(look!.x, look!.y, look!.width, look!.height);
+  Rect get place => look != null
+      ? Rect.fromLTWH(look!.x, look!.y, look!.width, look!.height)
+      : basePlace ?? const Rect.fromLTWH(0, 0, layerUnits, layerUnits);
 
   /// turn is a picture layer's rotation within the frame, in degrees.
   double get turn => look?.rotation ?? 0;
@@ -274,6 +282,8 @@ class ImageLayer {
     int? cueLength,
     bool clearCueLength = false,
     ImageMask? mask,
+    Rect? basePlace,
+    bool clearBasePlace = false,
   }) =>
       ImageLayer(
         id: id ?? this.id,
@@ -295,11 +305,13 @@ class ImageLayer {
         cueGap: cueGap ?? this.cueGap,
         cueLength: clearCueLength ? null : cueLength ?? this.cueLength,
         mask: mask ?? this.mask,
+        basePlace: clearBasePlace ? null : basePlace ?? this.basePlace,
       );
 
-  /// placed is this picture layer moved to [place] and turned to [turn].
+  /// placed is this picture layer -- or the base picture -- moved to
+  /// [place] and, a picture layer, turned to [turn].
   ImageLayer placed(Rect place, {double? turn}) => look == null
-      ? this
+      ? (isBase ? copyWith(basePlace: place) : this)
       : copyWith(
           look: look!.withBase(
               x: place.left,
@@ -317,7 +329,9 @@ class ImageLayer {
         if (blend != LayerBlend.normal) "blend": blend.name,
         if (clip) "clip": true,
         if (look case var l?) "look": l.toJson(),
-        if (flipX) "fx": true,
+        // Its own key: "fx" is the effects', and a layer flipped and with
+        // an effect lost the flip when it was saved.
+        if (flipX) "flipX": true,
         if (flipY) "fy": true,
         if (kind == LayerKind.fill) "fill": fill.toJson(),
         if (kind == LayerKind.adjustment) "adjust": adjust.toJson(),
@@ -328,6 +342,7 @@ class ImageLayer {
         if (cueGap != 0) "gap": cueGap,
         if (cueLength != null) "len": cueLength,
         if (!mask.empty) "mask": mask.toJson(),
+        if (basePlace case var p?) "place": [p.left, p.top, p.width, p.height],
       };
 
   static ImageLayer? fromJson(Map<String, dynamic> json) {
@@ -351,7 +366,7 @@ class ImageLayer {
       blend: LayerBlend.fromName(json["blend"] as String?),
       clip: jsonBool(json["clip"], false),
       look: look,
-      flipX: jsonBool(json["fx"], false),
+      flipX: jsonBool(json["flipX"], false) || json["fx"] == true,
       flipY: jsonBool(json["fy"], false),
       fill: PaintSpec.fromJson(json["fill"], const Color(0xFF000000)),
       adjust: jsonSpec(
@@ -369,6 +384,11 @@ class ImageLayer {
       cueGap: jsonDouble(json["gap"], 0).round(),
       cueLength: json["len"] is num ? (json["len"] as num).round() : null,
       mask: jsonSpec(json["mask"], ImageMask.fromJson, const ImageMask()),
+      basePlace: switch (json["place"]) {
+        [num l, num t, num w, num h] =>
+          Rect.fromLTWH(l.toDouble(), t.toDouble(), w.toDouble(), h.toDouble()),
+        _ => null,
+      },
     );
   }
 }
@@ -740,4 +760,34 @@ ImageElement withLookApplied(ImageElement e, Map<String, dynamic> data) {
   }
   stack.addAll(over);
   return e.withLayers(stack);
+}
+
+/// keptInPlace is [now] -- [was] with its frame moved or resized -- with
+/// every layer that has a place of its own kept where it was on the page:
+/// the base picture and the picture layers at their size, a paint layer's
+/// strokes where they were painted. Moved without a change of size, the
+/// layers go with the frame, as they always have. A picture with no layers
+/// is its base picture, which fills its frame however it is sized.
+ImageElement keptInPlace(ImageElement was, ImageElement now) {
+  if (!now.layered) return now;
+  var a = was.box.inner(was.bounds), b = now.box.inner(now.bounds);
+  if (a.size == b.size || a.isEmpty || b.isEmpty) return now;
+  Rect to(Rect place) => layerPlace(b, layerRect(a, place));
+  Offset at(Offset f) => Offset((a.left + f.dx * a.width - b.left) / b.width,
+      (a.top + f.dy * a.height - b.top) / b.height);
+  var shorter = math.min(a.width, a.height) / math.min(b.width, b.height);
+  return now.withLayers([
+    for (var l in now.stack)
+      switch (l.kind) {
+        LayerKind.picture => l.placed(to(l.place), turn: l.turn),
+        LayerKind.base => l.copyWith(basePlace: to(l.place)),
+        LayerKind.paint => l.copyWith(strokes: [
+            for (var s in l.strokes)
+              s.copyWith(
+                  points: [for (var p in s.points) at(p)],
+                  radius: s.radius * shorter),
+          ]),
+        _ => l,
+      },
+  ]);
 }

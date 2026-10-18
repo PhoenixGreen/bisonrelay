@@ -54,11 +54,6 @@ class ColourSlot {
   });
 }
 
-/// _strokeToSee is a line wide enough to be seen, for a shape given a line
-/// colour while it had none.
-double _strokeToSee(ShapeElement e) =>
-    (math.min(e.width, e.height) * 0.015).clamp(1.0, 6.0);
-
 /// colourSlotsFor is the colours the Colour section offers now: the
 /// selected element's -- the one that covers an area, and the one that
 /// draws its line or its words -- or, with nothing selected, or the
@@ -314,12 +309,12 @@ List<ColourSlot> colourSlotsFor(CanvasController controller) {
                 ? s.copyWith(strokeWidth: 0)
                 : s.copyWith(
                     strokeColor: c,
-                    strokeWidth: s.strokeWidth > 0 ? null : _strokeToSee(s)),
+                    strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s)),
             (g) => g == null
                 ? s.copyWith(flatStroke: true)
                 : s.copyWith(
                     strokeFade: g,
-                    strokeWidth: s.strokeWidth > 0 ? null : _strokeToSee(s))),
+                    strokeWidth: s.strokeWidth > 0 ? null : strokeToSee(s))),
       ];
     case LineElement l:
       return [

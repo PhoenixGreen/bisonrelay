@@ -12,7 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/video_settings.dart';
 import 'package:flutter/material.dart';
 
@@ -65,8 +65,8 @@ List<Widget> backgroundMediaSettings(
   var commit = controller.endInteraction;
 
   return [
-    boxed(
-      context,
+    expanderAsSection(
+      Icons.image_outlined,
       CanvasExpander(
         key: const ValueKey("backgroundPicture"),
         label: "Picture",
@@ -120,8 +120,8 @@ List<Widget> backgroundMediaSettings(
     ),
     // A drawing behind everything: an .svg, kept a drawing, sharp at any
     // size. Over the picture and under the video.
-    boxed(
-      context,
+    expanderAsSection(
+      Icons.draw_outlined,
       CanvasExpander(
         key: const ValueKey("backgroundDrawing"),
         label: "Drawing",
@@ -187,8 +187,8 @@ List<Widget> backgroundMediaSettings(
         ],
       ),
     ),
-    boxed(
-      context,
+    expanderAsSection(
+      Icons.smart_display_outlined,
       CanvasExpander(
         key: const ValueKey("backgroundVideo"),
         label: "Video",
@@ -246,8 +246,8 @@ List<Widget> backgroundMediaSettings(
     // has one keeps it -- changed, or taken off, here -- but a new one is
     // not offered: two places to put a soundtrack is one too many.
     if (sound != null)
-      boxed(
-        context,
+      expanderAsSection(
+        Icons.library_music_outlined,
         CanvasExpander(
           key: const ValueKey("backgroundSound"),
           label: "Sound",

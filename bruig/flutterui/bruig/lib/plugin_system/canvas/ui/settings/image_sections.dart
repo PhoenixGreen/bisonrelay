@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
@@ -18,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart'
 import 'package:bruig/plugin_system/canvas/ui/settings/effects_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -187,7 +190,11 @@ class _Sections {
   Widget position() {
     var look = _look;
     String summary;
-    if (picked.isBase) {
+    // A plain picture is its frame, and is placed as any element is; with
+    // layers, its base picture has a place in the frame of its own, and the
+    // frame is the Frame section's.
+    var framed = picked.isBase && !e.layered;
+    if (framed) {
       summary = "${e.x.round()}, ${e.y.round()} · "
           "${e.width.round()} × ${e.height.round()}";
     } else {
@@ -204,7 +211,7 @@ class _Sections {
       remember: _remember("position"),
       initiallyOpen: true,
       children: [
-        if (picked.isBase)
+        if (framed)
           positionGroup(controller, e, write, begin, commit)
         else ...[
           layerPositionGroup(controller, e, picked, write, begin, commit),
@@ -279,7 +286,7 @@ class _Sections {
                         : "Masked",
             if (mask.marks.isNotEmpty)
               "${mask.marks.length} mark${mask.marks.length == 1 ? "" : "s"}",
-            if (feather > 0) "feather ${_trim(feather)} px",
+            if (feather > 0) "feather ${shortNumber(feather)} px",
           ].join(" · ");
     if (_picture && _look.removal.mode != RemovalMode.none) {
       summary += " · ${_look.removal.mode.label}";
@@ -361,9 +368,10 @@ class _Sections {
 
   Widget colour() {
     var look = _look;
-    var image = look.hasImage
+    var picture = look.hasImage
         ? controller.images.resolve(look.assetId, look.removal)
         : null;
+    var image = picture == null ? null : controller.images.thumbnail(picture);
     var changes = [
       look.filter != ImageFilterPreset.none,
       picked.blend != LayerBlend.normal,
@@ -398,14 +406,17 @@ class _Sections {
       children: [
         CanvasTiles<ImageFilterPreset>(
           key: const ValueKey("imageFilter"),
+          foldAs: "image.tiles.filter",
           label: "Filter",
-          help: "A ready-made look for the whole picture. Point at one to "
-              "try it on the canvas; click to keep it.",
+          help: "A ready-made look for the whole picture. Click one to "
+              "use it.",
           columns: 4,
           tiles: [
             for (var f in ImageFilterPreset.values)
               CanvasTile(f, f.label,
-                  preview: (_) => _FilterPreview(image: image, filter: f)),
+                  drawnFrom: (f, image),
+                  paint: (canvas, size) =>
+                      paintFilterPreview(canvas, size, image, f)),
           ],
           selected: (f) => look.filter == f,
           keyOf: (f) => "imageFilter-${f.name}",
@@ -479,12 +490,6 @@ class _Sections {
       for (var f in effects) f.kind.label,
       if (outline > 0) "Outline",
     ];
-    void now(List<LayerEffect> next) {
-      begin();
-      write(e.withLayer(picked.id, (l) => l.copyWith(effects: next)));
-      commit();
-    }
-
     return CanvasSection(
       key: const ValueKey("imageSection-effects"),
       icon: Icons.auto_awesome_outlined,
@@ -503,28 +508,18 @@ class _Sections {
         _now(next);
       },
       children: [
-        CanvasTiles<EffectKind>(
-          help:
-              "Each one switched on and off by itself; its settings show once it is on.",
-          key: const ValueKey("imageEffects"),
-          columns: 4,
-          multiple: true,
-          previewHeight: 28,
+        EffectTiles(
+          controller: controller,
+          element: e,
+          layer: picked,
+          write: write,
+          begin: begin,
+          commit: commit,
           tiles: [
             for (var k in EffectKind.values)
               CanvasTile(k, k.label, icon: _effectIcon(k)),
           ],
-          selected: (k) => effects.any((f) => f.kind == k),
-          keyOf: (k) => "effectTile-${k.name}",
-          onPick: (k) => now(effects.any((f) => f.kind == k)
-              ? [
-                  for (var f in effects)
-                    if (f.kind != k) f
-                ]
-              : [...effects, LayerEffect(kind: k)]),
         ),
-        ...effectsGroups(controller, e, picked, write, begin, commit,
-            adder: false),
         if (_picture)
           ...pictureLookGroups(_look, _writeLook, begin, commit,
               shown: _look.hasImage,
@@ -569,8 +564,9 @@ class _Sections {
       children: [
         CanvasTiles<AdjustKind>(
           help:
-              "What the adjustment does to every layer under it -- or, clipped, to the one under it. Point at one to try it.",
+              "What the adjustment does to every layer under it -- or, clipped, to the one under it.",
           key: const ValueKey("adjustKind"),
+          foldAs: "image.tiles.adjust",
           columns: 4,
           previewHeight: 28,
           tiles: [
@@ -614,13 +610,16 @@ class _Sections {
           (l) => l.copyWith(texture: texture.copyWith(values: const {})))),
       children: [
         CanvasTiles<TextureKind>(
-          help:
-              "Drawn over the whole frame by the canvas itself, at any size. Point at one to try it.",
+          help: "Drawn over the whole frame by the canvas itself, at any size.",
           key: const ValueKey("textureKind"),
+          foldAs: "image.tiles.texture",
           columns: 4,
           tiles: [
             for (var k in TextureKind.values)
-              CanvasTile(k, k.label, preview: (_) => _TexturePreview(k)),
+              CanvasTile(k, k.label,
+                  drawnFrom: (k, TextureShader.ready.value),
+                  paint: (canvas, size) =>
+                      _TexturePainter(k).paint(canvas, size)),
           ],
           selected: (k) => texture.kind == k,
           keyOf: (k) => "textureKind-${k.name}",
@@ -658,8 +657,10 @@ class _Sections {
       // time, or clears them when that is what is meant.
       children: [
         imageToolTiles(controller, e, picked, paintTools, settings,
-            help: "Paint on this layer, and rub it out again. A pen's "
-                "pressure sets the width of the line."),
+            help: "Paint on this layer, and rub it out again. Pick a brush "
+                "below, or make one of your own; a pen's pressure and lean "
+                "drive it as its Pen settings say."),
+        if (_holds(paintTools)) PaintBrushCards(controller: controller),
         strokesGroup("Paint", picked.strokes, set),
       ],
     );
@@ -721,8 +722,7 @@ class _Sections {
       remember: _remember("animation"),
       children: [
         elementAnimationSection(controller, e, a,
-            (next) => write(e.copyWith(animation: next)), begin, commit,
-            flat: true),
+            (next) => write(e.copyWith(animation: next)), begin, commit),
         if (controller.cues.isNotEmpty) elementCueGroup(controller, e),
         if (index > 0 && a.on)
           CanvasControlGroup(
@@ -792,9 +792,39 @@ class _Sections {
         icon: Icons.crop_square,
         title: "Frame",
         scope: "Whole image",
-        summary: "Background, border, saved designs and looks",
+        summary: e.layered
+            ? "${e.width.round()} × ${e.height.round()} · "
+                "${e.scaleContent ? "content scales" : "content stays put"}"
+            : "Background, border, saved designs and looks",
         remember: "image.frame",
         children: [
+          // The frame round the layers: where it is and how big, and whether
+          // sizing it sizes them. A plain picture's is in Position.
+          if (e.layered) ...[
+            positionGroup(controller, e, write, begin, commit),
+            CanvasControlGroup(
+              key: const ValueKey("imageFrameScaling"),
+              label: "When the frame is resized",
+              help: "Off, the frame is resized round the layers: each stays "
+                  "its size, where it is on the page -- so a layer can run "
+                  "past the base picture, and the base picture can be sized "
+                  "on its own in Position. On, everything in the frame is "
+                  "scaled with it.",
+              rule: false,
+              children: [
+                CanvasToggle(
+                  key: const ValueKey("imageScaleContent"),
+                  label: "Scale content",
+                  value: e.scaleContent,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(scaleContent: v));
+                    commit();
+                  },
+                ),
+              ],
+            ),
+          ],
           presetsSection(context, controller, e),
           boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
               remember: "image",
@@ -806,9 +836,6 @@ class _Sections {
         ],
       );
 }
-
-String _trim(double v) =>
-    v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
 
 IconData _effectIcon(EffectKind k) => switch (k) {
       EffectKind.dropShadow => Icons.filter_none,
@@ -837,46 +864,29 @@ IconData _adjustIcon(AdjustKind k) => switch (k) {
       AdjustKind.invert => Icons.invert_colors,
     };
 
-/// _FilterPreview is the picture itself through a filter, or -- with no
-/// picture loaded yet -- a run of colours through it.
-class _FilterPreview extends StatelessWidget {
-  final dynamic image;
-  final ImageFilterPreset filter;
-  const _FilterPreview({required this.image, required this.filter});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget picture = image == null
-        ? const DecoratedBox(
-            decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [
-            Color(0xFF3E4A5C),
-            Color(0xFFE8B630),
-            Color(0xFF3F8A4E),
-          ])))
-        : RawImage(image: image, fit: BoxFit.cover);
-    var matrix = presetMatrix(filter);
-    if (matrix == null) return picture;
-    return ColorFiltered(
-        colorFilter: ColorFilter.matrix(matrix), child: picture);
+/// paintFilterPreview is the picture itself through [filter], or -- with no
+/// picture yet -- a strip of colour through it, so the tiles still differ.
+void paintFilterPreview(
+    Canvas canvas, Size size, ui.Image? image, ImageFilterPreset filter) {
+  var all = Offset.zero & size;
+  var matrix = presetMatrix(filter);
+  var paint = Paint()..filterQuality = FilterQuality.medium;
+  if (matrix != null) paint.colorFilter = ColorFilter.matrix(matrix);
+  if (image == null) {
+    paint.shader = const LinearGradient(colors: [
+      Color(0xFF3E4A5C),
+      Color(0xFFE8B630),
+      Color(0xFF3F8A4E),
+    ]).createShader(all);
+    canvas.drawRect(all, paint);
+    return;
   }
-}
-
-/// _TexturePreview is a texture drawn by its own shader, over a mid grey.
-class _TexturePreview extends StatelessWidget {
-  final TextureKind kind;
-  const _TexturePreview(this.kind);
-
-  @override
-  Widget build(BuildContext context) {
-    TextureShader.load();
-    return ValueListenableBuilder<bool>(
-      valueListenable: TextureShader.ready,
-      builder: (context, ready, _) => ready
-          ? CustomPaint(painter: _TexturePainter(kind))
-          : const Icon(Icons.grain, size: 18),
-    );
-  }
+  // Cover: the picture's middle, cut to the tile's shape.
+  var iw = image.width.toDouble(), ih = image.height.toDouble();
+  var scale = math.max(size.width / iw, size.height / ih);
+  var sw = size.width / scale, sh = size.height / scale;
+  canvas.drawImageRect(
+      image, Rect.fromLTWH((iw - sw) / 2, (ih - sh) / 2, sw, sh), all, paint);
 }
 
 class _TexturePainter extends CustomPainter {

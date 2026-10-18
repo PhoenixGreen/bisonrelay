@@ -857,22 +857,6 @@ enum TeamFormation {
       metres.fold(0.0, (most, m) => m.$1 > most ? m.$1 : most);
 }
 
-/// defaultSquadNumbers is 1 for the keeper and 2..11 out, which is what a
-/// blank team sheet has on it before anybody has been named.
-const List<String> defaultSquadNumbers = [
-  "1",
-  "2",
-  "3",
-  "4",
-  "5",
-  "6",
-  "7",
-  "8",
-  "9",
-  "10",
-  "11",
-];
-
 /// PlayerSpot is one player: who they are, where they stand, and the two
 /// switches every layer has.
 ///

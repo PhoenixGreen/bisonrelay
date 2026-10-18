@@ -302,8 +302,13 @@ class _ChartDataEditorState extends State<ChartDataEditor> {
     _write(data.copyWith(series: out));
   }
 
+  // At the ordinary size inside a card: a grid with buttons over each
+  // column has its own measure, and card-sized buttons overran it.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      CanvasCards.none(Builder(builder: _build));
+
+  Widget _build(BuildContext context) {
     // The series on their own, for the panel that shows them under the table
     // rather than inside it. A column of numbers and what that column is
     // called are two questions -- "are these the right figures" and "how

@@ -1433,10 +1433,12 @@ Rect boxResized(Rect box, int handle, Offset to,
         Offset(anchor.dx + (to.dx >= anchor.dx ? w : -w),
             anchor.dy + (to.dy >= anchor.dy ? h : -h)));
   }
-  if (next.width < least)
+  if (next.width < least) {
     next = Rect.fromLTWH(next.left, next.top, least, next.height);
-  if (next.height < least)
+  }
+  if (next.height < least) {
     next = Rect.fromLTWH(next.left, next.top, next.width, least);
+  }
   return next;
 }
 

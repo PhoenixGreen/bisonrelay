@@ -348,8 +348,13 @@ class CanvasStageState extends State<CanvasStage> {
   /// asking for the other thing is a second click.
   String? get _framing {
     var e = controller.editingImage;
+    // With layers round it the base picture has a place of its own, and is
+    // moved and sized by that -- see ImageLayer.basePlace -- so there is no
+    // framing to show: it showed the whole unmasked picture where the frame
+    // was rather than where the picture is.
     if (e == null ||
         !e.hasImage ||
+        e.layered ||
         controller.imageLayer != baseLayerId ||
         controller.imageTool != ImageTool.move) {
       return null;
@@ -2471,6 +2476,22 @@ class CanvasStageState extends State<CanvasStage> {
   double _penWidth = 1;
   double _eraseReach = 0;
 
+  /// _penLean is which way, and how far, the pen leans -- across and down,
+  /// each -1 to 1 -- or null for a mouse, or a pen that does not say.
+  Offset? _penLean() {
+    var tablet = TabletInput.instance;
+    if (tablet.fresh) return Offset(tablet.tiltX, tablet.tiltY);
+    var ev = _pointer;
+    if (ev == null ||
+        (ev.kind != PointerDeviceKind.stylus &&
+            ev.kind != PointerDeviceKind.invertedStylus)) {
+      return null;
+    }
+    // Flutter's own: how far over, a quarter turn at most, and which way.
+    var lean = (ev.tilt / (math.pi / 2)).clamp(0.0, 1.0);
+    return Offset(math.sin(ev.orientation), -math.cos(ev.orientation)) * lean;
+  }
+
   /// _penSample is the pen as [_pointer] last reported it, at [doc]: its
   /// pressure and tilt where it is a pen that says -- a mouse, or a platform
   /// that passes neither on, gives null, and the brush makes do with speed.
@@ -2821,8 +2842,9 @@ class CanvasStageState extends State<CanvasStage> {
                   ? e.shapes![i]
                   : null;
               var t = shape?.liveText;
-              if (t != null)
+              if (t != null) {
                 controller.retypeVectorText(i, t.copyWith(text: v));
+              }
             },
           ),
         ),
@@ -3589,7 +3611,12 @@ class CanvasStageState extends State<CanvasStage> {
         if (l.kind == LayerKind.picture && l.visible && also.contains(l.id))
           LayerSpace(e, l).corners
     ];
-    if (picked == null || picked.kind != LayerKind.picture) {
+    // The base picture has a place of its own once there are layers round
+    // it -- see ImageLayer.basePlace -- and is handled as a picture layer is,
+    // without the knob: it turns with the element.
+    var handled = picked != null &&
+        (picked.kind == LayerKind.picture || (picked.isBase && e.layered));
+    if (!handled) {
       var inner = e.box.inner(e.bounds);
       var space = LayerSpace(e, ImageLayer.base);
       return StageLayers(
@@ -3608,7 +3635,7 @@ class CanvasStageState extends State<CanvasStage> {
       chosen: chosen,
       picked: space.corners,
       handles: [for (var h in boxHandles(space.rect)) space.fromLayer(h)],
-      knob: _layerKnob(space),
+      knob: picked.isBase ? null : _layerKnob(space),
     );
   }
 
@@ -3620,9 +3647,11 @@ class CanvasStageState extends State<CanvasStage> {
     if (controller.imageTool.masks) return _pressMask(e, doc);
     if (controller.imageTool.paints) return _pressBrush(e, doc);
     var picked = controller.pickedLayer;
-    if (picked != null && picked.kind == LayerKind.picture && picked.visible) {
+    if (picked != null &&
+        (picked.kind == LayerKind.picture || (picked.isBase && e.layered)) &&
+        picked.visible) {
       var space = LayerSpace(e, picked);
-      if ((doc - _layerKnob(space)).distance <= _layerReach) {
+      if (!picked.isBase && (doc - _layerKnob(space)).distance <= _layerReach) {
         return _holdLayer(picked, _DragMode.imageLayerTurn, -1);
       }
       for (var (i, h) in boxHandles(space.rect).indexed) {
@@ -3648,6 +3677,16 @@ class CanvasStageState extends State<CanvasStage> {
     }
     if (!_containsPoint(e, doc)) return false;
     controller.pickImageLayer(baseLayerId);
+    // With layers round it, the base picture is moved about the frame as a
+    // picture layer is, where it is pressed.
+    if (e.layered) {
+      var base = e.layerById(baseLayerId)!;
+      if (LayerSpace(e, base).contains(doc)) {
+        return _holdLayer(base, _DragMode.imageLayerMove, -1);
+      }
+      _mode = _DragMode.none;
+      return true;
+    }
     // The base picture always fills its frame, so moving it is moving it
     // about inside the frame -- which only a picture filling the frame has
     // room to do. See ImageFraming.
@@ -3808,7 +3847,9 @@ class CanvasStageState extends State<CanvasStage> {
           radius: controller.paintSize,
           hardness: controller.paintHardness,
           strength: controller.paintStrength,
-          colour: controller.paintColour);
+          colour: controller.paintColour,
+          tip: controller.paintTip,
+          tilt: [if (_penLean() case var lean?) lean]);
       controller.changePaint((s) => [...s, mark], transient: true);
       _strokeAt = (doc) => _frameFraction(controller.editingImage!, doc);
       _mode = _DragMode.imageBrush;
@@ -3866,6 +3907,7 @@ class CanvasStageState extends State<CanvasStage> {
     if (at == null) return;
     var f = at(doc);
     var pressure = _penSample(doc).pressure;
+    var lean = _penLean();
     List<StrokeMark> grown(List<StrokeMark> strokes) {
       if (strokes.isEmpty) return strokes;
       var last = strokes.last;
@@ -3876,7 +3918,10 @@ class CanvasStageState extends State<CanvasStage> {
             points: [...last.points, f],
             pressure: last.pressure.isEmpty || pressure == null
                 ? last.pressure
-                : [...last.pressure, pressure]),
+                : [...last.pressure, pressure],
+            tilt: last.tilt.isEmpty || lean == null
+                ? last.tilt
+                : [...last.tilt, lean]),
       ];
     }
 
@@ -5600,6 +5645,7 @@ class CanvasStageState extends State<CanvasStage> {
                   child: ClipRect(
                     child: CustomPaint(
                       painter: StagePainter(
+                        drafting: controller.interacting,
                         backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,

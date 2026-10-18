@@ -183,6 +183,20 @@ ImageElement _shifted(ImageElement e, Rect inner, String id, Offset by) =>
         (l) => l.placed(layerPlace(inner, layerRect(inner, l.place).shift(by)),
             turn: l.turn));
 
+/// withLayersMoved is [e] with the layers [ids] moved by [by], in the
+/// canvas's units -- what the arrow keys do to the layers picked.
+ImageElement withLayersMoved(ImageElement e, List<String> ids, Offset by) {
+  var inner = e.box.inner(e.bounds);
+  if (inner.isEmpty) return e;
+  var next = e;
+  for (var id in ids) {
+    if (next.layerById(id)?.kind == LayerKind.picture) {
+      next = _shifted(next, inner, id, by);
+    }
+  }
+  return next;
+}
+
 /// withLayersAligned lines the layers [ids] of [e] up on one edge or middle,
 /// against the box they make between them -- as CanvasController
 /// .alignSelected does elements, so the outermost stay put.

@@ -1033,17 +1033,6 @@ class VectorText {
         signature: signature ?? this.signature,
       );
 
-  /// sameType is whether [other] is set in the same type -- the words and
-  /// where they are aside.
-  bool sameType(VectorText other) =>
-      family == other.family &&
-      weight == other.weight &&
-      italic == other.italic &&
-      size == other.size &&
-      spacing == other.spacing &&
-      leading == other.leading &&
-      align == other.align;
-
   Map<String, dynamic> toJson() => {
         "t": text,
         "font": family,

@@ -82,8 +82,9 @@ Uint8List segment(SegmentJob job) {
     bool first = round == 0;
     bool known(int i, bool subject) {
       var s = job.seeds[i];
-      if (s != Seed.unknown)
+      if (s != Seed.unknown) {
         return s == (subject ? Seed.subject : Seed.background);
+      }
       if (first) {
         if (prior == null) return false;
         return subject ? prior[i] >= 192 : prior[i] < 64;

@@ -21,6 +21,7 @@ import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,6 +76,9 @@ Widget panel(CanvasController c) => MultiProvider(
     );
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   group("the curves", () {
     test("ease in and ease in & out start and end where they should", () {
       for (var c in [ChartEase.easeIn, ChartEase.easeInOut]) {
@@ -290,18 +294,16 @@ void main() {
       await tester.pumpAndSettle();
       VectorElement now() => c.document.elementById("v") as VectorElement;
 
-      var family = find.byKey(const ValueKey("elementAnimationFamily"));
-      if (family.evaluate().isEmpty) {
-        var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-        await tester.ensureVisible(heading.first);
-        await tester.tap(heading.first);
+      Future<void> press(String key) async {
+        var tile = find.byKey(ValueKey(key));
+        await tester.ensureVisible(tile);
+        await tester.pumpAndSettle();
+        await tester.tap(tile);
         await tester.pumpAndSettle();
       }
-      tester
-          .widget<CanvasDropdown<ElementAnimationFamily?>>(family)
-          .onChanged(ElementAnimationFamily.slide);
-      await tester.pumpAndSettle();
+
+      // The kinds are tiles, in a sectioned panel.
+      await press("elementArrive-slide");
       expect(now().animation.preset.family, ElementAnimationFamily.slide);
       expect(find.byKey(const ValueKey("elementAnimationPreset")), findsNothing,
           reason: "one slide, not four");
@@ -312,11 +314,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(now().animation.direction, AnimationDirection.below);
       // The way out, with its own.
-      tester
-          .widget<CanvasDropdown<ElementAnimationFamily?>>(
-              find.byKey(const ValueKey("elementAnimationExitFamily")))
-          .onChanged(ElementAnimationFamily.slide);
-      await tester.pumpAndSettle();
+      await press("elementLeave-slide");
       tester
           .widget<CanvasDropdown<AnimationDirection>>(
               find.byKey(const ValueKey("elementAnimationExitDirection")))
@@ -518,8 +516,9 @@ void main() {
     await tester.pumpWidget(panel(c));
     await tester.pumpAndSettle();
     bool lit(String tool) => tester
-        .widget<CanvasIconButton>(find.byKey(ValueKey("vectorTool-$tool")))
-        .active;
+        .widget<CanvasToolTiles<VectorTool>>(
+            find.byKey(const ValueKey("vectorTools")))
+        .lit(VectorTool.values.byName(tool));
     c.vectorTool = VectorTool.align;
     await tester.pumpAndSettle();
     expect(lit("align"), isTrue);
@@ -574,7 +573,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets("Kind and Which share a line; numbers, not sliders",
+  testWidgets("kinds are tiles, Which is under them; numbers, not sliders",
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(const CanvasDocument()
@@ -591,29 +590,18 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(panel(c));
     await tester.pumpAndSettle();
-    var kind = find.byKey(const ValueKey("elementAnimationFamily"));
-    if (kind.evaluate().isEmpty) {
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
-      await tester.pumpAndSettle();
-    }
-    for (var (k, w) in const [
-      ("elementAnimationFamily", "elementAnimationPreset"),
-      ("elementAnimationExitFamily", "elementAnimationExit"),
-    ]) {
-      var a = tester.getRect(find.byKey(ValueKey(k)));
-      var b = tester.getRect(find.byKey(ValueKey(w)));
-      expect(a.top, closeTo(b.top, 1), reason: "$k beside $w");
-      expect(a.width, closeTo(b.width, 1), reason: "half each");
-    }
-    var strength = find.byKey(const ValueKey("elementAnimationStrength"));
-    expect(
-        tester.getRect(strength).top, greaterThan(tester.getRect(kind).bottom),
-        reason: "the motion on the line below");
+    // The kinds are tiles, each way; which of the kind is a dropdown of the
+    // card's width under them, and the motion numbers to scrub.
+    expect(find.byKey(const ValueKey("elementArriveKinds")), findsOneWidget);
+    expect(find.byKey(const ValueKey("elementLeaveKinds")), findsOneWidget);
+    var which = tester.getRect(
+        find.byKey(const ValueKey("elementAnimationPreset")));
+    var kinds =
+        tester.getRect(find.byKey(const ValueKey("elementArriveKinds")));
+    expect(which.top, greaterThan(kinds.bottom),
+        reason: "which one, under the kinds");
+    expect(find.byKey(const ValueKey("elementAnimationExit")), findsOneWidget);
     expect(find.byType(Slider), findsNothing, reason: "numbers to scrub");
-    expect(find.text("TIMING / KEYFRAME"), findsOneWidget);
     expect(find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // button settings.dart is a button's settings.
@@ -18,159 +19,171 @@ List<Widget> buttonSettings(
     VoidCallback commit) {
   var action = e.action;
   return [
-    // No caption: the panel header says "Button settings" already, and a
-    // group called Button directly under it was the word twice.
-    //
-    // What it says and what it does, on one line: those are the two things a
-    // button is, and they were two groups with a heading each. What it looks
-    // like when the pointer is over it is a colour somebody picks once.
-    CanvasMoreGroup(
-        label: "Button",
-        hideCaption: true,
-        remember: "buttonMore",
-        // No lines through this panel. What it says, what it does, how its
-        // label is set and what the box round it looks like are one question
-        // -- what is this button -- and a rule between each pair of them made
-        // four answers out of it.
-        rule: false,
-        tooltip: "What it looks like under the pointer",
-        row: [
-          CanvasTextField(
-            label: "Label",
-            value: e.label,
-            width: 150,
-            onChanged: (v) => write(e.copyWith(label: v)),
-            onCommit: commit,
+    section(e, "button",
+        icon: Icons.smart_button_outlined,
+        title: "Button",
+        summary: "\"${e.label}\" · ${action.kind.label}",
+        initiallyOpen: true,
+        children: [
+          CanvasControlGroup(
+            label: "What it says and does",
+            help: "The words on the button, and what pressing it does -- "
+                "jump to a frame or a scene, play or stop a sound, show or "
+                "hide an element, open a link.",
+            rule: false,
+            children: [
+              CanvasTextField(
+                label: "Label",
+                value: e.label,
+                width: 150,
+                onChanged: (v) => write(e.copyWith(label: v)),
+                onCommit: commit,
+              ),
+              CanvasDropdown<ButtonActionKind>(
+                label: "Does",
+                value: action.kind,
+                width: 150,
+                options: [for (var k in ButtonActionKind.values) (k, k.label)],
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(action: action.copyWith(kind: v)));
+                  commit();
+                },
+              ),
+              if (action.kind.needsFrame)
+                CanvasNumberField(
+                  label: "Frame",
+                  value: action.frame.toDouble(),
+                  min: 0,
+                  max: (controller.document.frames - 1).toDouble(),
+                  width: 54,
+                  onChanged: (v) => write(
+                      e.copyWith(action: action.copyWith(frame: v.round()))),
+                  onCommit: commit,
+                ),
+              // A sound is an Audio element, on this canvas or on the master under
+              // it -- a button on page three can pause the music the master plays
+              // on every page.
+              if (action.kind.needsSound)
+                CanvasDropdown<String>(
+                  key: const ValueKey("buttonSound"),
+                  label: "Sound or video",
+                  value: action.elementId,
+                  width: 170,
+                  options: [
+                    ("", "Nothing"),
+                    for (var other in controller.document.elements)
+                      if (_playable(other)) (other.id, other.name),
+                    if (!controller.document.editingMaster)
+                      for (var other
+                          in controller.document.masterScene?.elements ??
+                              const <CanvasElement>[])
+                        if (_playable(other))
+                          (other.id, "${other.name} (master)"),
+                    // What the background plays: a button that stops the music is
+                    // most of what a music bed needs.
+                    for (var other in controller.document.drawnBackground.media)
+                      (other.id, other.name),
+                  ],
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(action: action.copyWith(elementId: v)));
+                    commit();
+                  },
+                ),
+              if (action.kind.needsElement && !action.kind.needsSound)
+                CanvasDropdown<String>(
+                  label: "Element",
+                  value: action.elementId,
+                  width: 150,
+                  options: [
+                    ("", "Nothing"),
+                    for (var other in controller.document.elements)
+                      if (other.id != e.id) (other.id, other.name),
+                  ],
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(action: action.copyWith(elementId: v)));
+                    commit();
+                  },
+                ),
+              // Which canvas of this document to show. Held by id rather than by
+              // place in the order, so rearranging the scenes does not quietly point
+              // the button at a different one.
+              if (action.kind.needsScene)
+                CanvasDropdown<String>(
+                  key: const ValueKey("buttonScene"),
+                  label: "Scene",
+                  value: action.elementId,
+                  width: 170,
+                  options: [
+                    ("", "Nothing"),
+                    for (var (i, scene)
+                        in controller.document.allScenes.indexed)
+                      (scene.id, controller.document.nameOf(i)),
+                  ],
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(action: action.copyWith(elementId: v)));
+                    commit();
+                  },
+                ),
+              if (action.kind.needsUrl)
+                CanvasTextField(
+                  label: "Link",
+                  value: action.url,
+                  width: 220,
+                  hint: "https://",
+                  onChanged: (v) =>
+                      write(e.copyWith(action: action.copyWith(url: v))),
+                  onCommit: commit,
+                ),
+            ],
           ),
-          CanvasDropdown<ButtonActionKind>(
-            label: "Does",
-            value: action.kind,
-            width: 150,
-            options: [for (var k in ButtonActionKind.values) (k, k.label)],
-            onChanged: (v) {
-              begin();
-              write(e.copyWith(action: action.copyWith(kind: v)));
-              commit();
-            },
-          ),
-          if (action.kind.needsFrame)
-            CanvasNumberField(
-              label: "Frame",
-              value: action.frame.toDouble(),
-              min: 0,
-              max: (controller.document.frames - 1).toDouble(),
-              width: 54,
-              onChanged: (v) =>
-                  write(e.copyWith(action: action.copyWith(frame: v.round()))),
-              onCommit: commit,
-            ),
-          // A sound is an Audio element, on this canvas or on the master under
-          // it -- a button on page three can pause the music the master plays
-          // on every page.
-          if (action.kind.needsSound)
-            CanvasDropdown<String>(
-              key: const ValueKey("buttonSound"),
-              label: "Sound or video",
-              value: action.elementId,
-              width: 170,
-              options: [
-                ("", "Nothing"),
-                for (var other in controller.document.elements)
-                  if (_playable(other)) (other.id, other.name),
-                if (!controller.document.editingMaster)
-                  for (var other in controller.document.masterScene?.elements ??
-                      const <CanvasElement>[])
-                    if (_playable(other)) (other.id, "${other.name} (master)"),
-                // What the background plays: a button that stops the music is
-                // most of what a music bed needs.
-                for (var other in controller.document.drawnBackground.media)
-                  (other.id, other.name),
-              ],
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(action: action.copyWith(elementId: v)));
-                commit();
-              },
-            ),
-          if (action.kind.needsElement && !action.kind.needsSound)
-            CanvasDropdown<String>(
-              label: "Element",
-              value: action.elementId,
-              width: 150,
-              options: [
-                ("", "Nothing"),
-                for (var other in controller.document.elements)
-                  if (other.id != e.id) (other.id, other.name),
-              ],
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(action: action.copyWith(elementId: v)));
-                commit();
-              },
-            ),
-          // Which canvas of this document to show. Held by id rather than by
-          // place in the order, so rearranging the scenes does not quietly point
-          // the button at a different one.
-          if (action.kind.needsScene)
-            CanvasDropdown<String>(
-              key: const ValueKey("buttonScene"),
-              label: "Scene",
-              value: action.elementId,
-              width: 170,
-              options: [
-                ("", "Nothing"),
-                for (var (i, scene) in controller.document.allScenes.indexed)
-                  (scene.id, controller.document.nameOf(i)),
-              ],
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(action: action.copyWith(elementId: v)));
-                commit();
-              },
-            ),
-          if (action.kind.needsUrl)
-            CanvasTextField(
-              label: "Link",
-              value: action.url,
-              width: 220,
-              hint: "https://",
-              onChanged: (v) =>
-                  write(e.copyWith(action: action.copyWith(url: v))),
-              onCommit: commit,
-            ),
-        ],
-        more: [
-          CanvasColorButton(
-            label: "Hover fill",
-            color: e.hoverFill,
-            onChanged: (c) {
-              begin();
-              write(e.copyWith(hoverFill: c));
-              commit();
-            },
-          ),
-          CanvasColorButton(
-            label: "Hover text",
-            color: e.hoverTextColor,
-            onChanged: (c) {
-              begin();
-              write(e.copyWith(hoverTextColor: c));
-              commit();
-            },
+          CanvasControlGroup(
+            label: "Under the pointer",
+            help: "The colours it turns while the pointer is over it, so a "
+                "reader can tell it can be pressed.",
+            rule: false,
+            children: [
+              CanvasColorButton(
+                label: "Hover fill",
+                color: e.hoverFill,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(hoverFill: c));
+                  commit();
+                },
+              ),
+              CanvasColorButton(
+                label: "Hover text",
+                color: e.hoverTextColor,
+                onChanged: (c) {
+                  begin();
+                  write(e.copyWith(hoverTextColor: c));
+                  commit();
+                },
+              ),
+            ],
           ),
         ]),
-    ...typeGroups(
-        e.textSpec, (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
-        label: "Label type", remember: "buttonLabel", rule: false),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "button", rule: false),
-    // How it arrives, in a section of its own like every other thing in a box.
-    // Arriving is not pressing: one is what the canvas does to the button, the
-    // other what somebody does to the canvas.
-    boxed(
-        context,
-        elementAnimationSection(controller, e, e.animation,
-            (a) => write(e.copyWith(animation: a)), begin, commit)),
+    section(e, "type",
+        icon: Icons.text_fields,
+        title: "Label type",
+        summary: typeSummary(e.textSpec),
+        children: typeGroups(e.textSpec,
+            (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
+            label: "Label type", remember: "buttonLabel", rule: false)),
+    section(e, "box",
+        icon: Icons.crop_square,
+        title: "Box",
+        summary: boxSummary(e.box),
+        children: [
+          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+              remember: "button", rule: false),
+        ]),
+    animationPanelSection(controller, e, e.animation,
+        (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
 }
 

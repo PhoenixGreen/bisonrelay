@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sound_tools.dart';
@@ -72,298 +73,331 @@ List<Widget> audioSettings(
     clipNow(clip.copyWith(playlist: sources));
   }
 
-  return [
-    CanvasControlGroup(
-      label: "Sound",
-      hideCaption: true,
-      rule: false,
-      children: [
+  var soundGroup = CanvasControlGroup(
+    label: "Sound",
+    hideCaption: true,
+    rule: false,
+    children: [
+      CanvasIconButton(
+        key: const ValueKey("audioAdd"),
+        icon: Icons.library_music_outlined,
+        tooltip: list.isEmpty ? "Add a sound file" : "Add another file",
+        onPressed: add,
+      ),
+      if (!clip.isEmpty)
         CanvasIconButton(
-          key: const ValueKey("audioAdd"),
-          icon: Icons.library_music_outlined,
-          tooltip: list.isEmpty ? "Add a sound file" : "Add another file",
-          onPressed: add,
+          key: const ValueKey("audioListen"),
+          icon: state.playing ? Icons.pause : Icons.play_arrow,
+          tooltip: state.playing ? "Pause" : "Listen",
+          onPressed: () => controller.pressAudio(e, AudioControl.playPause),
         ),
-        if (!clip.isEmpty)
-          CanvasIconButton(
-            key: const ValueKey("audioListen"),
-            icon: state.playing ? Icons.pause : Icons.play_arrow,
-            tooltip: state.playing ? "Pause" : "Listen",
-            onPressed: () => controller.pressAudio(e, AudioControl.playPause),
-          ),
-        if (!clip.isEmpty)
-          CanvasIconButton(
-            icon: Icons.stop,
-            tooltip: "Stop, and back to the start",
-            onPressed: () => controller.audio.stop(e.id),
-          ),
-        if (list.isEmpty)
-          const CanvasHint(
-              "Add a sound file: MP3, WAV, Ogg or FLAC. M4A and AIFF are "
-              "converted when ffmpeg is installed."),
-        if (controller.audioUnavailable)
-          const CanvasHint(
-              "No sound device could be opened, so nothing will be heard. "
-              "Check that one is connected and not in use."),
-        // One line per file: its name, the part of it that plays, and where
-        // it sits in the list. More than one file is a playlist.
-        for (var (i, source) in list.indexed) ...[
-          const CanvasLineBreak(),
-          CanvasChip(
-            label: source.name.isEmpty ? "Sound ${i + 1}" : source.name,
-            onRemove: () =>
-                clipNow(clip.copyWith(playlist: [...list]..removeAt(i))),
-          ),
-          CanvasNumberField(
-            key: ValueKey("audioStart$i"),
-            label: "Start",
-            value: source.start,
-            min: 0,
-            max: source.length > 0 ? source.length : 36000,
-            decimals: 1,
-            width: 58,
-            onChanged: (v) => setSource(i, source.copyWith(start: v)),
-            onCommit: commit,
-          ),
-          CanvasNumberField(
-            key: ValueKey("audioEnd$i"),
-            label: "End",
-            // Nought is "to the end", and shows as the end where the length
-            // is known -- a field reading 0 beside a start of 10 reads as a
-            // range that is backwards.
-            value: source.end > 0 ? source.end : source.length,
-            min: 0,
-            max: source.length > 0 ? source.length : 36000,
-            decimals: 1,
-            width: 58,
-            onChanged: (v) => setSource(
-                i,
-                source.copyWith(
-                    end: source.length > 0 && v >= source.length ? 0 : v)),
-            onCommit: commit,
-          ),
-          if (list.length > 1) ...[
-            CanvasIconButton(
-              icon: Icons.arrow_upward,
-              tooltip: "Play earlier",
-              onPressed: i == 0 ? null : () => move(i, -1),
-            ),
-            CanvasIconButton(
-              icon: Icons.arrow_downward,
-              tooltip: "Play later",
-              onPressed: i == list.length - 1 ? null : () => move(i, 1),
-            ),
-          ],
-        ],
-        if (list.isNotEmpty)
-          const CanvasHint("Start and End are seconds into the file."),
-      ],
-    ),
-    CanvasMoreGroup(
-      label: "Playback",
-      remember: "audioPlaybackMore",
-      rule: false,
-      tooltip: "Fades, and where it starts",
-      row: [
-        CanvasSlider(
-          label: "Volume",
-          // A sound on the timeline goes to twice -- six decibels up; a
-          // speaker's is where its own control starts, which tops out at one.
-          value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0).toDouble(),
-          max: clip.timed ? 2 : 1,
-          onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
-          onCommit: commit,
+      if (!clip.isEmpty)
+        CanvasIconButton(
+          icon: Icons.stop,
+          tooltip: "Stop, and back to the start",
+          onPressed: () => controller.audio.stop(e.id),
         ),
-        CanvasDropdown<MediaLoop>(
-          key: const ValueKey("audioLoop"),
-          label: "Repeat",
-          value: clip.loop,
-          width: 130,
-          options: [for (var l in MediaLoop.values) (l, l.label)],
-          onChanged: (v) => clipNow(clip.copyWith(loop: v)),
+      if (list.isEmpty)
+        const CanvasHint(
+            "Add a sound file: MP3, WAV, Ogg or FLAC. M4A and AIFF are "
+            "converted when ffmpeg is installed."),
+      if (controller.audioUnavailable)
+        const CanvasHint(
+            "No sound device could be opened, so nothing will be heard. "
+            "Check that one is connected and not in use."),
+      // One line per file: its name, the part of it that plays, and where
+      // it sits in the list. More than one file is a playlist.
+      for (var (i, source) in list.indexed) ...[
+        const CanvasLineBreak(),
+        CanvasChip(
+          label: source.name.isEmpty ? "Sound ${i + 1}" : source.name,
+          onRemove: () =>
+              clipNow(clip.copyWith(playlist: [...list]..removeAt(i))),
         ),
-        if (!clip.timed)
-          CanvasToggle(
-            key: const ValueKey("audioAutoplay"),
-            label: "Start by itself",
-            value: clip.autoplay,
-            onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
-          ),
-        // The one setting only the master can mean -- see
-        // MediaClip.acrossPages -- so it is only offered there.
-        if (across && !clip.timed) ...[
-          CanvasToggle(
-            key: const ValueKey("audioAcross"),
-            label: "Across ${word.many}",
-            value: clip.acrossPages,
-            onChanged: (v) => clipNow(clip.copyWith(acrossPages: v)),
-          ),
-          CanvasHint(clip.acrossPages
-              ? "Keeps playing as the ${word.many} change."
-              : "Stops when the ${word.one} changes."),
-        ],
-        // The timeline is for a backdrop's sound, which is a soundtrack; a
-        // speaker is something a reader presses, which is the opposite.
-        if (background) ...[
-          const CanvasLineBreak(),
-          ...timelineControls(controller, clip,
-              key: "audio",
-              now: clipNow,
-              write: (next) => write(e.copyWith(clip: next)),
-              commit: commit),
-        ],
-      ],
-      more: [
         CanvasNumberField(
-          key: const ValueKey("audioFadeIn"),
-          label: "Fade in",
-          value: clip.fadeIn,
+          key: ValueKey("audioStart$i"),
+          label: "Start",
+          value: source.start,
           min: 0,
-          max: 60,
+          max: source.length > 0 ? source.length : 36000,
           decimals: 1,
           width: 58,
-          onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeIn: v))),
+          onChanged: (v) => setSource(i, source.copyWith(start: v)),
           onCommit: commit,
         ),
         CanvasNumberField(
-          key: const ValueKey("audioFadeOut"),
-          label: "Fade out",
-          value: clip.fadeOut,
+          key: ValueKey("audioEnd$i"),
+          label: "End",
+          // Nought is "to the end", and shows as the end where the length
+          // is known -- a field reading 0 beside a start of 10 reads as a
+          // range that is backwards.
+          value: source.end > 0 ? source.end : source.length,
           min: 0,
-          max: 60,
+          max: source.length > 0 ? source.length : 36000,
           decimals: 1,
           width: 58,
-          onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeOut: v))),
+          onChanged: (v) => setSource(
+              i,
+              source.copyWith(
+                  end: source.length > 0 && v >= source.length ? 0 : v)),
           onCommit: commit,
         ),
+        if (list.length > 1) ...[
+          CanvasIconButton(
+            icon: Icons.arrow_upward,
+            tooltip: "Play earlier",
+            onPressed: i == 0 ? null : () => move(i, -1),
+          ),
+          CanvasIconButton(
+            icon: Icons.arrow_downward,
+            tooltip: "Play later",
+            onPressed: i == list.length - 1 ? null : () => move(i, 1),
+          ),
+        ],
+      ],
+      if (list.isNotEmpty)
+        const CanvasHint("Start and End are seconds into the file."),
+    ],
+  );
+  var playbackGroup = CanvasMoreGroup(
+    label: "Playback",
+    remember: "audioPlaybackMore",
+    rule: false,
+    tooltip: "Fades, and where it starts",
+    row: [
+      CanvasSlider(
+        label: "Volume",
+        // A sound on the timeline goes to twice -- six decibels up; a
+        // speaker's is where its own control starts, which tops out at one.
+        value: clip.volume.clamp(0.0, clip.timed ? 2.0 : 1.0).toDouble(),
+        max: clip.timed ? 2 : 1,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
+        onCommit: commit,
+      ),
+      CanvasDropdown<MediaLoop>(
+        key: const ValueKey("audioLoop"),
+        label: "Repeat",
+        value: clip.loop,
+        width: 130,
+        options: [for (var l in MediaLoop.values) (l, l.label)],
+        onChanged: (v) => clipNow(clip.copyWith(loop: v)),
+      ),
+      if (!clip.timed)
         CanvasToggle(
-          label: "Start muted",
-          value: clip.muted,
-          onChanged: (v) => clipNow(clip.copyWith(muted: v)),
+          key: const ValueKey("audioAutoplay"),
+          label: "Start by itself",
+          value: clip.autoplay,
+          onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
         ),
-        CanvasHint(clip.autoplay
-            ? "It starts when the canvas plays, and on each ${word.one} it "
-                "is on as that ${word.one} opens during playback."
-            : "Fades are seconds, at the start and end of each file."),
+      // The one setting only the master can mean -- see
+      // MediaClip.acrossPages -- so it is only offered there.
+      if (across && !clip.timed) ...[
+        CanvasToggle(
+          key: const ValueKey("audioAcross"),
+          label: "Across ${word.many}",
+          value: clip.acrossPages,
+          onChanged: (v) => clipNow(clip.copyWith(acrossPages: v)),
+        ),
+        CanvasHint(clip.acrossPages
+            ? "Keeps playing as the ${word.many} change."
+            : "Stops when the ${word.one} changes."),
       ],
-    ),
-    if (!background)
-      CanvasControlGroup(
-        label: "Reader's controls",
-        rule: false,
+      // The timeline is for a backdrop's sound, which is a soundtrack; a
+      // speaker is something a reader presses, which is the opposite.
+      if (background) ...[
+        const CanvasLineBreak(),
+        ...timelineControls(controller, clip,
+            key: "audio",
+            now: clipNow,
+            write: (next) => write(e.copyWith(clip: next)),
+            commit: commit),
+      ],
+    ],
+    more: [
+      CanvasNumberField(
+        key: const ValueKey("audioFadeIn"),
+        label: "Fade in",
+        value: clip.fadeIn,
+        min: 0,
+        max: 60,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeIn: v))),
+        onCommit: commit,
+      ),
+      CanvasNumberField(
+        key: const ValueKey("audioFadeOut"),
+        label: "Fade out",
+        value: clip.fadeOut,
+        min: 0,
+        max: 60,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeOut: v))),
+        onCommit: commit,
+      ),
+      CanvasToggle(
+        label: "Start muted",
+        value: clip.muted,
+        onChanged: (v) => clipNow(clip.copyWith(muted: v)),
+      ),
+      CanvasHint(clip.autoplay
+          ? "It starts when the canvas plays, and on each ${word.one} it "
+              "is on as that ${word.one} opens during playback."
+          : "Fades are seconds, at the start and end of each file."),
+    ],
+  );
+  // A backdrop's sound or one on the timeline: its groups, laid into
+  // whatever section shows it -- not a speaker on the canvas, so no
+  // controls of a reader's, no icon, no box, no arrival.
+  if (background) {
+    return [
+      soundGroup,
+      playbackGroup,
+      // The sound's channel in the mix, beside the master: its level, its
+      // effects -- opening here, in place -- and what it ducks.
+      if (background && clip.timed)
+        CanvasMixer.section(
+            key: ValueKey(
+                "mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
+            controller: controller,
+            channel: clip.channel.isEmpty ? e.id : clip.channel),
+      // What can be done to a sound on the timeline as a whole.
+      if (background && clip.timed)
+        CanvasSoundTools(controller: controller, e: e),
+    ];
+  }
+  var files = list.length;
+  return [
+    section(e, "sound",
+        icon: Icons.library_music_outlined,
+        title: "Sound",
+        summary: files == 0
+            ? "No sound yet"
+            : "$files file${files == 1 ? "" : "s"} · ${clip.loop.label}"
+                "${clip.autoplay ? " · starts by itself" : ""}",
+        initiallyOpen: true,
+        children: [soundGroup, playbackGroup]),
+    section(e, "controls",
+        icon: Icons.tune,
+        title: "Reader's controls",
+        summary: e.controls.isEmpty
+            ? "Nothing to press"
+            : e.controls.map((c) => c.label).join(" · "),
         children: [
-          for (var control in AudioControl.values)
-            CanvasToggle(
-              key: ValueKey("audioControl${control.name}"),
-              label: control.label,
-              value: e.has(control),
-              onChanged: (on) {
-                var controls = [
-                  for (var c in AudioControl.values)
-                    if (c == control ? on : e.has(c)) c,
-                ];
-                now(_fitted(e.copyWith(controls: controls)));
-              },
-            ),
-          if (e.controls.isEmpty)
-            const CanvasHint(
-                "Nothing to press: the speaker is a picture, and the sound "
-                "plays by itself or from a button. A sound only ever started by "
-                "buttons can be hidden -- hidden is not drawn, and still plays."),
-        ],
-      ),
-    if (!background)
-      CanvasMoreGroup(
-        label: "Icon",
-        remember: "audioIconMore",
-        rule: false,
-        tooltip: "Your own pictures for the icon",
-        row: [
-          CanvasDropdown<AudioGlyph>(
-            key: const ValueKey("audioGlyph"),
-            label: "Shape",
-            value: e.glyph,
-            width: 130,
-            options: [for (var g in AudioGlyph.values) (g, g.label)],
-            onChanged: (v) => now(e.copyWith(glyph: v)),
+          CanvasControlGroup(
+            label: "Reader's controls",
+            rule: false,
+            children: [
+              for (var control in AudioControl.values)
+                CanvasToggle(
+                  key: ValueKey("audioControl${control.name}"),
+                  label: control.label,
+                  value: e.has(control),
+                  onChanged: (on) {
+                    var controls = [
+                      for (var c in AudioControl.values)
+                        if (c == control ? on : e.has(c)) c,
+                    ];
+                    now(_fitted(e.copyWith(controls: controls)));
+                  },
+                ),
+              if (e.controls.isEmpty)
+                const CanvasHint(
+                    "Nothing to press: the speaker is a picture, and the sound "
+                    "plays by itself or from a button. A sound only ever started by "
+                    "buttons can be hidden -- hidden is not drawn, and still plays."),
+            ],
           ),
-          CanvasColorButton(
+        ]),
+    section(e, "icon",
+        icon: Icons.volume_up_outlined,
+        title: "Icon",
+        summary: e.glyph.label,
+        children: [
+          CanvasMoreGroup(
             label: "Icon",
-            color: e.iconColor,
-            onChanged: (c) => now(e.copyWith(iconColor: c)),
-          ),
-          CanvasColorButton(
-            label: "Playing",
-            color: e.accent,
-            onChanged: (c) => now(e.copyWith(accent: c)),
-          ),
-        ],
-        more: [
-          for (var (label, id, set) in [
-            ("Icon", e.picture, (String v) => e.copyWith(picture: v)),
-            (
-              "Paused",
-              e.pausedPicture,
-              (String v) => e.copyWith(pausedPicture: v)
-            ),
-            (
-              "Muted",
-              e.mutedPicture,
-              (String v) => e.copyWith(mutedPicture: v)
-            ),
-          ]) ...[
-            CanvasReadout(
-                label: label,
-                value: id.isEmpty ? "Drawn" : "Picture",
-                width: 64),
-            CanvasIconButton(
-              icon: Icons.add_photo_alternate_outlined,
-              tooltip: "Use a picture for the ${label.toLowerCase()} icon",
-              onPressed: () async {
-                var picked = await pickCanvasImage(context);
-                if (picked != null) now(set(picked));
-              },
-            ),
-            CanvasIconButton(
-              icon: Icons.photo_library_outlined,
-              tooltip: "Use a picture you have already added",
-              onPressed: () async {
-                var picked = await showRecentPictures(context);
-                if (picked != null) now(set(picked));
-              },
-            ),
-            if (id.isNotEmpty)
-              CanvasIconButton(
-                icon: Icons.hide_image_outlined,
-                tooltip: "Back to the drawn icon",
-                onPressed: () => now(set("")),
+            remember: "audioIconMore",
+            rule: false,
+            tooltip: "Your own pictures for the icon",
+            row: [
+              CanvasDropdown<AudioGlyph>(
+                key: const ValueKey("audioGlyph"),
+                label: "Shape",
+                value: e.glyph,
+                width: 130,
+                options: [for (var g in AudioGlyph.values) (g, g.label)],
+                onChanged: (v) => now(e.copyWith(glyph: v)),
               ),
-            const CanvasLineBreak(),
-          ],
-          const CanvasHint(
-              "Paused and Muted fall back to Icon, so one picture is enough. "
-              "Three make an icon that changes with the sound."),
-        ],
-      ),
-    if (!background)
-      boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-          remember: "audio", rule: false),
-    if (!background)
-      boxed(
-          context,
-          elementAnimationSection(controller, e, e.animation,
-              (a) => write(e.copyWith(animation: a)), begin, commit)),
-    // The sound's channel in the mix, beside the master: its level, its
-    // effects -- opening here, in place -- and what it ducks.
-    if (background && clip.timed)
-      CanvasMixer.section(
-          key: ValueKey(
-              "mixerSection-${clip.channel.isEmpty ? e.id : clip.channel}"),
-          controller: controller,
-          channel: clip.channel.isEmpty ? e.id : clip.channel),
-    // What can be done to a sound on the timeline as a whole.
-    if (background && clip.timed)
-      CanvasSoundTools(controller: controller, e: e),
+              CanvasColorButton(
+                label: "Icon",
+                color: e.iconColor,
+                onChanged: (c) => now(e.copyWith(iconColor: c)),
+              ),
+              CanvasColorButton(
+                label: "Playing",
+                color: e.accent,
+                onChanged: (c) => now(e.copyWith(accent: c)),
+              ),
+            ],
+            more: [
+              for (var (label, id, set) in [
+                ("Icon", e.picture, (String v) => e.copyWith(picture: v)),
+                (
+                  "Paused",
+                  e.pausedPicture,
+                  (String v) => e.copyWith(pausedPicture: v)
+                ),
+                (
+                  "Muted",
+                  e.mutedPicture,
+                  (String v) => e.copyWith(mutedPicture: v)
+                ),
+              ]) ...[
+                CanvasReadout(
+                    label: label,
+                    value: id.isEmpty ? "Drawn" : "Picture",
+                    width: 64),
+                CanvasIconButton(
+                  icon: Icons.add_photo_alternate_outlined,
+                  tooltip: "Use a picture for the ${label.toLowerCase()} icon",
+                  onPressed: () async {
+                    var picked = await pickCanvasImage(context);
+                    if (picked != null) now(set(picked));
+                  },
+                ),
+                CanvasIconButton(
+                  icon: Icons.photo_library_outlined,
+                  tooltip: "Use a picture you have already added",
+                  onPressed: () async {
+                    var picked = await showRecentPictures(context);
+                    if (picked != null) now(set(picked));
+                  },
+                ),
+                if (id.isNotEmpty)
+                  CanvasIconButton(
+                    icon: Icons.hide_image_outlined,
+                    tooltip: "Back to the drawn icon",
+                    onPressed: () => now(set("")),
+                  ),
+                const CanvasLineBreak(),
+              ],
+              const CanvasHint(
+                  "Paused and Muted fall back to Icon, so one picture is enough. "
+                  "Three make an icon that changes with the sound."),
+            ],
+          ),
+        ]),
+    section(e, "box",
+        icon: Icons.crop_square,
+        title: "Box",
+        summary: boxSummary(e.box),
+        children: [
+          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+              remember: "audio", rule: false),
+        ]),
+    animationPanelSection(controller, e, e.animation,
+        (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
 }
 

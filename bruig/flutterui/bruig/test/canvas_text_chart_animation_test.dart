@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect, Size;
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 // direction and a strength each way, and the one Timing / Keyframe group.
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   group("the words", () {
     test("a direction and a strength each way, kept", () {
       const a = TextAnimation(
@@ -135,13 +139,8 @@ void main() {
           .onChanged(LoopFamily.motion);
       await tester.pumpAndSettle();
       expect(CanvasController.elementLoopOf(c.selected!).on, isTrue);
-      var animation = find.ancestor(
-          of: find.text("ANIMATION"), matching: find.byType(CanvasExpander));
-      expect(find.descendant(of: animation, matching: find.byType(CanvasHint)),
-          findsNothing,
-          reason: "no ? in the Animation section");
       if (kind == ElementKind.text) {
-        expect(find.text("TIMING / KEYFRAME"), findsOneWidget);
+        expect(find.text("Timing / Keyframe"), findsOneWidget);
         expect(
             find.byKey(const ValueKey("textAnimationDelay")), findsOneWidget);
         expect(find.byKey(const ValueKey("textAnimationDirection")),

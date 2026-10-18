@@ -18,8 +18,11 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Color, Offset, Rect;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+import 'canvas_panel_helpers.dart';
 
 // canvas_vector_text_test.dart is a drawing's text: the words set in the
 // font's own outlines, kept as text until its points are edited, and typed
@@ -29,6 +32,9 @@ FontPick inter() => FontPick(
     FontFace.parse(File("assets/fonts/Inter-Regular.otf").readAsBytesSync())!);
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test("set in the font: a letter's runs, the caret's places, two lines", () {
@@ -111,7 +117,7 @@ void main() {
       await tester.pump();
     }
     expect(c.vectorTyping, 0, reason: "new text, being typed");
-    await tester.enterText(
+    await enterValue(tester, 
         find.byKey(const ValueKey("vectorTypingField")), "Go");
     await tester.pump();
     VectorShape shape() =>
@@ -212,8 +218,14 @@ void main() {
     // The size typed in the panel, then a click on the canvas.
     var size = find.byKey(const ValueKey("vectorTextSize"));
     await tester.ensureVisible(size);
-    await tester
-        .tap(find.descendant(of: size, matching: find.byType(EditableText)));
+    // A stepper: double-clicked, its number is typed.
+    var number = find.descendant(
+        of: size,
+        matching: find.byWidgetPredicate(
+            (w) => w is GestureDetector && w.onDoubleTap != null));
+    await tester.tap(number);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(number);
     await settle();
     tester.testTextInput.enterText("30");
     await settle();
@@ -227,6 +239,8 @@ void main() {
     await settle();
     expect(state(), "focus=vectorTyping typing=0 texts=[One more, Two, Three]",
         reason: "clicked again, the first text is typed into");
+    // Past the double-click's wait, so no gesture timer outlives the test.
+    await tester.pump(const Duration(seconds: 1));
     expect(tester.takeException(), isNull);
   });
 }

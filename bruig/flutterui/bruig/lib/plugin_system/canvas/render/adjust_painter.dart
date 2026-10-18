@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
@@ -134,43 +135,36 @@ List<double> _uniforms(ImageAdjustment a) {
   }
 }
 
-/// _scaleOf is how many device pixels one unit of [canvas] is drawn across
-/// at the moment, as near as can be told.
-double _scaleOf(ui.Canvas canvas) {
-  var m = canvas.getTransform();
-  var sx = math.sqrt(m[0] * m[0] + m[1] * m[1]);
-  var sy = math.sqrt(m[4] * m[4] + m[5] * m[5]);
-  var dpr = ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1;
-  return math.max(sx, sy) * math.max(1.0, dpr);
-}
-
-/// _kept is each element's adjusted pictures, by what they are of.
-final Expando<Map<String, ui.Image>> _kept = Expando("adjusted");
-
 /// paintAdjusted draws [below] -- a picture of what is under the adjustment,
-/// covering [room] in [canvas]'s units -- through [adjust]. [owner] and [key]
-/// name the result so it can be kept; null [owner] keeps nothing, for a
-/// picture still waiting on something to load.
+/// covering [room] in [canvas]'s units -- through [adjust]. [key] names the
+/// result so it can be kept, drawn from [from] -- see raster_cache.dart;
+/// null keeps nothing, for a picture still waiting on something to load.
 void paintAdjusted(
     ui.Canvas canvas, Rect room, ImageAdjustment adjust, ui.Picture below,
-    {Object? owner, String key = ""}) {
+    {String? key, List<Object?> from = const []}) {
   var program = AdjustShader._program;
   if (program == null || room.isEmpty) {
     canvas.drawPicture(below);
     return;
   }
-  var scale = _scaleOf(canvas);
+  var scale = deviceScaleOf(canvas);
   // Never more than a large poster's worth: past that, a picture's own
   // pixels give out long before the canvas's do.
   var most = math.min(4096 / math.max(room.width, room.height),
       math.sqrt(16e6 / (room.width * room.height)));
+  if (RasterCache.drafting) {
+    most = math.min(
+        most, RasterCache.draftSide / math.max(room.width, room.height));
+  }
   scale = math.max(0.05, math.min(scale, most));
   var w = math.max(1, (room.width * scale).ceil());
   var h = math.max(1, (room.height * scale).ceil());
-  var name = "$key|$w|$h|${room.left},${room.top},${room.width},${room.height}";
-
-  var cache = owner == null ? null : (_kept[owner] ??= {});
-  var made = cache?[name];
+  // Kept by its layer and not by where it is: moved, the same pixels are
+  // the same pixels. What it is of is in [from], with the adjustment's own
+  // settings.
+  var made = key == null
+      ? null
+      : RasterCache.instance.sized(key, [adjust, room.size, ...from], w, h);
   if (made == null) {
     var recorder = ui.PictureRecorder();
     var raster = ui.Canvas(recorder);
@@ -198,11 +192,8 @@ void paintAdjusted(
     made = out.endRecording().toImageSync(w, h);
     shader.dispose();
     under.dispose();
-    if (cache != null) {
-      // One or two per adjustment: the size it is being looked at, and the
-      // one before -- a zoom does not leave a trail of rasters behind.
-      if (cache.length > 6) cache.remove(cache.keys.first)?.dispose();
-      cache[name] = made;
+    if (key != null) {
+      RasterCache.instance.putSized(key, [adjust, room.size, ...from], made);
     } else {
       _loose.add(made);
       while (_loose.length > 8) {
@@ -210,8 +201,11 @@ void paintAdjusted(
       }
     }
   }
-  canvas.drawImageRect(made, Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
-      room, Paint()..filterQuality = FilterQuality.medium);
+  canvas.drawImageRect(
+      made,
+      Rect.fromLTWH(0, 0, made.width.toDouble(), made.height.toDouble()),
+      room,
+      Paint()..filterQuality = FilterQuality.medium);
 }
 
 /// _loose is adjusted pictures nobody is keeping -- drawn over things still

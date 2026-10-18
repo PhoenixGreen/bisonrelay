@@ -35,6 +35,8 @@ class SavedPresetStore extends ChangeNotifier {
       SavedPresetStore._(SavedPresetKind.pitchView);
   static final SavedPresetStore looks =
       SavedPresetStore._(SavedPresetKind.look);
+  static final SavedPresetStore paintBrushes =
+      SavedPresetStore._(SavedPresetKind.paintBrush);
 
   /// of is the store for a kind, for the code that has one in hand.
   static SavedPresetStore of(SavedPresetKind kind) => switch (kind) {
@@ -43,6 +45,7 @@ class SavedPresetStore extends ChangeNotifier {
         SavedPresetKind.brush => brushes,
         SavedPresetKind.pitchView => pitchViews,
         SavedPresetKind.look => looks,
+        SavedPresetKind.paintBrush => paintBrushes,
       };
 
   final SavedPresetKind kind;

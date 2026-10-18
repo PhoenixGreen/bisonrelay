@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_chart_estimates_test.dart is a figure worked out rather than looked
@@ -72,6 +73,9 @@ Future<double> _weight(ChartElement e, {int from = 0, int to = _w}) async {
 }
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   group("a chart that marks its estimates", () {
     test("says so, and only when a row is marked", () {
       var plain = ChartData.parse("Cat\tA\n2019\t1\n2020\t2");

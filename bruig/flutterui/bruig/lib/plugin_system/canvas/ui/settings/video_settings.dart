@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -89,353 +90,392 @@ List<Widget> videoSettings(
   void writeLook(CanvasElement edited) =>
       write(e.withPicture(edited as ImageElement));
 
-  return [
-    // How the picture is laid on the canvas: normally, or as light -- a
-    // flare or a glitch shot on black, screened or added so only its bright
-    // parts show. Not for a backdrop, which has nothing under it to blend with.
-    if (!background)
-      CanvasControlGroup(
-          key: const ValueKey("videoBlendGroup"),
-          label: "Blend",
-          hideCaption: true,
-          rule: false,
-          children: [
-            CanvasDropdown<LayerBlend>(
-              key: const ValueKey("videoBlend"),
-              label: "Laid on as",
-              value: e.blend,
-              width: 110,
-              options: [for (var b in LayerBlend.values) (b, b.label)],
-              onChanged: (v) => now(e.copyWith(blend: v)),
-            ),
-          ]),
-    CanvasControlGroup(
-      label: "Video",
+  var blendGroup = CanvasControlGroup(
+      key: const ValueKey("videoBlendGroup"),
+      label: "Blend",
       hideCaption: true,
       rule: false,
       children: [
-        CanvasIconButton(
-          key: const ValueKey("videoAdd"),
-          icon: Icons.video_library_outlined,
-          tooltip: list.isEmpty ? "Add a video file" : "Add another file",
-          onPressed: add,
+        CanvasDropdown<LayerBlend>(
+          key: const ValueKey("videoBlend"),
+          label: "Laid on as",
+          value: e.blend,
+          width: 110,
+          options: [for (var b in LayerBlend.values) (b, b.label)],
+          onChanged: (v) => now(e.copyWith(blend: v)),
         ),
-        if (!e.isLink && !clip.isEmpty) ...[
-          CanvasIconButton(
-            key: const ValueKey("videoPlay"),
-            icon: show.playing ? Icons.pause : Icons.play_arrow,
-            tooltip: show.playing ? "Pause" : "Play",
-            onPressed: () => controller.pressVideo(e, VideoPart.playPause),
-          ),
-          CanvasIconButton(
-            icon: Icons.stop,
-            tooltip: "Stop, and back to the poster",
-            onPressed: () => controller.video.stop(e.id),
-          ),
-        ],
-        if (!background)
-          CanvasTextField(
-            key: const ValueKey("videoLink"),
-            label: "Or a link",
-            value: e.link,
-            hint: "https://youtube.com/…",
-            width: 180,
-            onChanged: (v) => write(e.copyWith(link: v.trim())),
-            onCommit: commit,
-          ),
-        if (e.isLink) ...[
-          CanvasNumberField(
-            label: "Opens at",
-            value: e.linkStart,
-            min: 0,
-            max: 36000,
-            width: 62,
-            onChanged: (v) => write(e.copyWith(linkStart: v)),
-            onCommit: commit,
-          ),
-          const CanvasLineBreak(),
-          CanvasIconButton(
-            icon: Icons.add_photo_alternate_outlined,
-            tooltip: "Choose a picture to show for it",
-            onPressed: () async {
-              var id = await pickCanvasImage(context);
-              if (id != null) {
-                now(e.copyWith(look: e.look.copyWith(assetId: id)));
-              }
-            },
-          ),
-          CanvasIconButton(
-            icon: Icons.photo_library_outlined,
-            tooltip: "Use a picture you have already added",
-            onPressed: () async {
-              var id = await showRecentPictures(context);
-              if (id != null) {
-                now(e.copyWith(look: e.look.copyWith(assetId: id)));
-              }
-            },
-          ),
-          CanvasHint(
-              "A ${VideoHost.of(e.link).label} link shows a picture and opens "
-              "the video when pressed, after asking. It is somebody else's "
-              "video, so it cannot be keyed, trimmed or put into an export -- "
-              "add the file for that."),
-        ],
-        if (!e.isLink && list.isEmpty)
-          const CanvasHint(
-              "Add a video file (ffmpeg reads it), or paste a link to a video "
-              "on YouTube, Vimeo or anywhere else."),
-        if (!e.isLink)
-          for (var (i, source) in list.indexed) ...[
-            const CanvasLineBreak(),
-            CanvasChip(
-              label: source.name.isEmpty ? "Video ${i + 1}" : source.name,
-              onRemove: () =>
-                  clipNow(clip.copyWith(playlist: [...list]..removeAt(i))),
-            ),
-            CanvasNumberField(
-              key: ValueKey("videoStart$i"),
-              label: "Start",
-              value: source.start,
-              min: 0,
-              max: source.length > 0 ? source.length : 36000,
-              decimals: 1,
-              width: 58,
-              onChanged: (v) => setSource(i, source.copyWith(start: v)),
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              key: ValueKey("videoEnd$i"),
-              label: "End",
-              value: source.end > 0 ? source.end : source.length,
-              min: 0,
-              max: source.length > 0 ? source.length : 36000,
-              decimals: 1,
-              width: 58,
-              onChanged: (v) => setSource(
-                  i,
-                  source.copyWith(
-                      end: source.length > 0 && v >= source.length ? 0 : v)),
-              onCommit: commit,
-            ),
-            if (list.length > 1) ...[
-              CanvasIconButton(
-                icon: Icons.arrow_upward,
-                tooltip: "Play earlier",
-                onPressed: i == 0 ? null : () => move(i, -1),
-              ),
-              CanvasIconButton(
-                icon: Icons.arrow_downward,
-                tooltip: "Play later",
-                onPressed: i == list.length - 1 ? null : () => move(i, 1),
-              ),
-            ],
-          ],
+      ]);
+  var videoGroup = CanvasControlGroup(
+    label: "Video",
+    hideCaption: true,
+    rule: false,
+    children: [
+      CanvasIconButton(
+        key: const ValueKey("videoAdd"),
+        icon: Icons.video_library_outlined,
+        tooltip: list.isEmpty ? "Add a video file" : "Add another file",
+        onPressed: add,
+      ),
+      if (!e.isLink && !clip.isEmpty) ...[
+        CanvasIconButton(
+          key: const ValueKey("videoPlay"),
+          icon: show.playing ? Icons.pause : Icons.play_arrow,
+          tooltip: show.playing ? "Pause" : "Play",
+          onPressed: () => controller.pressVideo(e, VideoPart.playPause),
+        ),
+        CanvasIconButton(
+          icon: Icons.stop,
+          tooltip: "Stop, and back to the poster",
+          onPressed: () => controller.video.stop(e.id),
+        ),
       ],
-    ),
-    if (!e.isLink)
-      CanvasMoreGroup(
-        label: "Playback",
-        remember: "videoPlaybackMore",
-        rule: false,
-        tooltip: "Fades, and where it starts",
-        row: [
-          CanvasSlider(
-            label: "Volume",
-            value: clip.volume,
-            onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
-            onCommit: commit,
-          ),
-          CanvasDropdown<MediaLoop>(
-            key: const ValueKey("videoLoop"),
-            label: "Repeat",
-            value: clip.loop,
-            width: 130,
-            options: [for (var l in MediaLoop.values) (l, l.label)],
-            onChanged: (v) => clipNow(clip.copyWith(loop: v)),
-          ),
-          // On the timeline, the playhead says when it starts and whether it
-          // carries on -- so those two questions are not asked.
-          if (!clip.timed)
-            CanvasToggle(
-              key: const ValueKey("videoAutoplay"),
-              label: "Start by itself",
-              value: clip.autoplay,
-              onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
-            ),
-          if (across && !clip.timed) ...[
-            CanvasToggle(
-              key: const ValueKey("videoAcross"),
-              label: "Across ${word.many}",
-              value: clip.acrossPages,
-              onChanged: (v) => clipNow(clip.copyWith(acrossPages: v)),
-            ),
-            CanvasHint(clip.acrossPages
-                ? "Keeps playing as the ${word.many} change."
-                : "Stops when the ${word.one} changes."),
-          ],
+      if (!background)
+        CanvasTextField(
+          key: const ValueKey("videoLink"),
+          label: "Or a link",
+          value: e.link,
+          hint: "https://youtube.com/…",
+          width: 180,
+          onChanged: (v) => write(e.copyWith(link: v.trim())),
+          onCommit: commit,
+        ),
+      if (e.isLink) ...[
+        CanvasNumberField(
+          label: "Opens at",
+          value: e.linkStart,
+          min: 0,
+          max: 36000,
+          width: 62,
+          onChanged: (v) => write(e.copyWith(linkStart: v)),
+          onCommit: commit,
+        ),
+        const CanvasLineBreak(),
+        CanvasIconButton(
+          icon: Icons.add_photo_alternate_outlined,
+          tooltip: "Choose a picture to show for it",
+          onPressed: () async {
+            var id = await pickCanvasImage(context);
+            if (id != null) {
+              now(e.copyWith(look: e.look.copyWith(assetId: id)));
+            }
+          },
+        ),
+        CanvasIconButton(
+          icon: Icons.photo_library_outlined,
+          tooltip: "Use a picture you have already added",
+          onPressed: () async {
+            var id = await showRecentPictures(context);
+            if (id != null) {
+              now(e.copyWith(look: e.look.copyWith(assetId: id)));
+            }
+          },
+        ),
+        CanvasHint(
+            "A ${VideoHost.of(e.link).label} link shows a picture and opens "
+            "the video when pressed, after asking. It is somebody else's "
+            "video, so it cannot be keyed, trimmed or put into an export -- "
+            "add the file for that."),
+      ],
+      if (!e.isLink && list.isEmpty)
+        const CanvasHint(
+            "Add a video file (ffmpeg reads it), or paste a link to a video "
+            "on YouTube, Vimeo or anywhere else."),
+      if (!e.isLink)
+        for (var (i, source) in list.indexed) ...[
           const CanvasLineBreak(),
-          ...timelineControls(controller, clip,
-              key: "video",
-              now: clipNow,
-              write: (next) => write(e.copyWith(clip: next)),
-              commit: commit),
-        ],
-        more: [
+          CanvasChip(
+            label: source.name.isEmpty ? "Video ${i + 1}" : source.name,
+            onRemove: () =>
+                clipNow(clip.copyWith(playlist: [...list]..removeAt(i))),
+          ),
           CanvasNumberField(
-            label: "Fade in",
-            value: clip.fadeIn,
+            key: ValueKey("videoStart$i"),
+            label: "Start",
+            value: source.start,
             min: 0,
-            max: 60,
+            max: source.length > 0 ? source.length : 36000,
             decimals: 1,
             width: 58,
-            onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeIn: v))),
+            onChanged: (v) => setSource(i, source.copyWith(start: v)),
             onCommit: commit,
           ),
           CanvasNumberField(
-            label: "Fade out",
-            value: clip.fadeOut,
+            key: ValueKey("videoEnd$i"),
+            label: "End",
+            value: source.end > 0 ? source.end : source.length,
             min: 0,
-            max: 60,
+            max: source.length > 0 ? source.length : 36000,
             decimals: 1,
             width: 58,
-            onChanged: (v) =>
-                write(e.copyWith(clip: clip.copyWith(fadeOut: v))),
+            onChanged: (v) => setSource(
+                i,
+                source.copyWith(
+                    end: source.length > 0 && v >= source.length ? 0 : v)),
             onCommit: commit,
           ),
-          CanvasToggle(
-            label: "Start muted",
-            value: clip.muted,
-            onChanged: (v) => clipNow(clip.copyWith(muted: v)),
-          ),
-          const CanvasHint("Fades are seconds, and fade the picture and its "
-              "sound together, at the start and end of each file."),
-        ],
-      ),
-    if (!e.isLink && !background && !clip.timed)
-      CanvasControlGroup(
-        label: "Reader's controls",
-        rule: false,
-        children: [
-          for (var control in VideoControl.values)
-            CanvasToggle(
-              key: ValueKey("videoControl${control.name}"),
-              label: control.label,
-              value: e.has(control),
-              onChanged: (on) => now(e.copyWith(controls: [
-                for (var c in VideoControl.values)
-                  if (c == control ? on : e.has(c)) c,
-              ])),
-            ),
-        ],
-      ),
-    if (!e.isLink)
-      CanvasControlGroup(
-        label: "Green screen",
-        rule: false,
-        children: [
-          CanvasToggle(
-            key: const ValueKey("videoKey"),
-            label: "Take out the screen",
-            value: e.key.on,
-            onChanged: (v) => now(e.copyWith(key: e.key.copyWith(on: v))),
-          ),
-          if (e.key.on) ...[
-            CanvasColorButton(
-              key: const ValueKey("videoKeyColour"),
-              label: "Screen",
-              color: e.key.color,
-              onChanged: (c) => now(e.copyWith(key: e.key.copyWith(color: c))),
+          if (list.length > 1) ...[
+            CanvasIconButton(
+              icon: Icons.arrow_upward,
+              tooltip: "Play earlier",
+              onPressed: i == 0 ? null : () => move(i, -1),
             ),
             CanvasIconButton(
-              icon: Icons.circle,
-              tooltip: "A green screen",
-              onPressed: () => now(e.copyWith(
-                  key: e.key.copyWith(color: const Color(0xFF00B140)))),
+              icon: Icons.arrow_downward,
+              tooltip: "Play later",
+              onPressed: i == list.length - 1 ? null : () => move(i, 1),
             ),
-            CanvasIconButton(
-              icon: Icons.circle_outlined,
-              tooltip: "A blue screen",
-              onPressed: () => now(e.copyWith(
-                  key: e.key.copyWith(color: const Color(0xFF0047BB)))),
-            ),
-            const CanvasLineBreak(),
-            for (var (label, value, apply)
-                in <(String, double, ChromaKey Function(double))>[
-              (
-                "Tolerance",
-                e.key.tolerance,
-                (v) => e.key.copyWith(tolerance: v)
-              ),
-              ("Softness", e.key.softness, (v) => e.key.copyWith(softness: v)),
-              ("Spill", e.key.spill, (v) => e.key.copyWith(spill: v)),
-            ])
-              CanvasSlider(
-                label: label,
-                value: value,
-                width: 72,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(key: apply(v)));
-                },
-                onCommit: commit,
-              ),
-            const CanvasHint(
-                "Tolerance is how much of the screen goes, softness how "
-                "gently the edge falls away, and spill how much green is "
-                "taken back out of what is left."),
           ],
         ],
+    ],
+  );
+  var playbackGroup = CanvasMoreGroup(
+    label: "Playback",
+    remember: "videoPlaybackMore",
+    rule: false,
+    tooltip: "Fades, and where it starts",
+    row: [
+      CanvasSlider(
+        label: "Volume",
+        value: clip.volume,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(volume: v))),
+        onCommit: commit,
       ),
-    CanvasControlGroup(label: "Colour", rule: false, children: [
-      CanvasDropdown<ImageFit>(
-        label: "Fit",
-        value: e.look.fit,
-        width: 106,
-        options: [for (var f in ImageFit.values) (f, f.label)],
-        onChanged: (v) => now(e.copyWith(look: e.look.copyWith(fit: v))),
+      CanvasDropdown<MediaLoop>(
+        key: const ValueKey("videoLoop"),
+        label: "Repeat",
+        value: clip.loop,
+        width: 130,
+        options: [for (var l in MediaLoop.values) (l, l.label)],
+        onChanged: (v) => clipNow(clip.copyWith(loop: v)),
       ),
+      // On the timeline, the playhead says when it starts and whether it
+      // carries on -- so those two questions are not asked.
+      if (!clip.timed)
+        CanvasToggle(
+          key: const ValueKey("videoAutoplay"),
+          label: "Start by itself",
+          value: clip.autoplay,
+          onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
+        ),
+      if (across && !clip.timed) ...[
+        CanvasToggle(
+          key: const ValueKey("videoAcross"),
+          label: "Across ${word.many}",
+          value: clip.acrossPages,
+          onChanged: (v) => clipNow(clip.copyWith(acrossPages: v)),
+        ),
+        CanvasHint(clip.acrossPages
+            ? "Keeps playing as the ${word.many} change."
+            : "Stops when the ${word.one} changes."),
+      ],
+      const CanvasLineBreak(),
+      ...timelineControls(controller, clip,
+          key: "video",
+          now: clipNow,
+          write: (next) => write(e.copyWith(clip: next)),
+          commit: commit),
+    ],
+    more: [
       CanvasNumberField(
-        label: "Saturation",
-        decimals: 2,
-        width: 62,
-        value: e.look.saturation,
+        label: "Fade in",
+        value: clip.fadeIn,
         min: 0,
-        max: 3,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(look: e.look.copyWith(saturation: v)));
-        },
+        max: 60,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeIn: v))),
         onCommit: commit,
       ),
       CanvasNumberField(
-        label: "Brightness",
-        decimals: 2,
-        width: 62,
-        value: e.look.brightness,
+        label: "Fade out",
+        value: clip.fadeOut,
         min: 0,
-        max: 3,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(look: e.look.copyWith(brightness: v)));
-        },
+        max: 60,
+        decimals: 1,
+        width: 58,
+        onChanged: (v) => write(e.copyWith(clip: clip.copyWith(fadeOut: v))),
         onCommit: commit,
       ),
-    ]),
-    ...pictureLookGroups(e.picture, writeLook, begin, commit, shown: true),
-    if (!background)
-      boxGroup(
-          e.look.box,
-          (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
-          begin,
-          commit,
-          remember: "video",
-          label: "Background and Border",
-          fillLabel: "Background",
-          rule: false),
-    if (!background)
-      boxed(
-          context,
-          elementAnimationSection(controller, e, e.animation,
-              (a) => write(e.copyWith(animation: a)), begin, commit)),
+      CanvasToggle(
+        label: "Start muted",
+        value: clip.muted,
+        onChanged: (v) => clipNow(clip.copyWith(muted: v)),
+      ),
+      const CanvasHint("Fades are seconds, and fade the picture and its "
+          "sound together, at the start and end of each file."),
+    ],
+  );
+  var readersGroup = CanvasControlGroup(
+    label: "Reader's controls",
+    rule: false,
+    children: [
+      for (var control in VideoControl.values)
+        CanvasToggle(
+          key: ValueKey("videoControl${control.name}"),
+          label: control.label,
+          value: e.has(control),
+          onChanged: (on) => now(e.copyWith(controls: [
+            for (var c in VideoControl.values)
+              if (c == control ? on : e.has(c)) c,
+          ])),
+        ),
+    ],
+  );
+  var greenGroup = CanvasControlGroup(
+    label: "Green screen",
+    rule: false,
+    children: [
+      CanvasToggle(
+        key: const ValueKey("videoKey"),
+        label: "Take out the screen",
+        value: e.key.on,
+        onChanged: (v) => now(e.copyWith(key: e.key.copyWith(on: v))),
+      ),
+      if (e.key.on) ...[
+        CanvasColorButton(
+          key: const ValueKey("videoKeyColour"),
+          label: "Screen",
+          color: e.key.color,
+          onChanged: (c) => now(e.copyWith(key: e.key.copyWith(color: c))),
+        ),
+        CanvasIconButton(
+          icon: Icons.circle,
+          tooltip: "A green screen",
+          onPressed: () => now(
+              e.copyWith(key: e.key.copyWith(color: const Color(0xFF00B140)))),
+        ),
+        CanvasIconButton(
+          icon: Icons.circle_outlined,
+          tooltip: "A blue screen",
+          onPressed: () => now(
+              e.copyWith(key: e.key.copyWith(color: const Color(0xFF0047BB)))),
+        ),
+        const CanvasLineBreak(),
+        for (var (label, value, apply)
+            in <(String, double, ChromaKey Function(double))>[
+          ("Tolerance", e.key.tolerance, (v) => e.key.copyWith(tolerance: v)),
+          ("Softness", e.key.softness, (v) => e.key.copyWith(softness: v)),
+          ("Spill", e.key.spill, (v) => e.key.copyWith(spill: v)),
+        ])
+          CanvasSlider(
+            label: label,
+            value: value,
+            width: 72,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(key: apply(v)));
+            },
+            onCommit: commit,
+          ),
+        const CanvasHint(
+            "Tolerance is how much of the screen goes, softness how "
+            "gently the edge falls away, and spill how much green is "
+            "taken back out of what is left."),
+      ],
+    ],
+  );
+  var colourGroup = CanvasControlGroup(label: "Colour", rule: false, children: [
+    CanvasDropdown<ImageFit>(
+      label: "Fit",
+      value: e.look.fit,
+      width: 106,
+      options: [for (var f in ImageFit.values) (f, f.label)],
+      onChanged: (v) => now(e.copyWith(look: e.look.copyWith(fit: v))),
+    ),
+    CanvasNumberField(
+      label: "Saturation",
+      decimals: 2,
+      width: 62,
+      value: e.look.saturation,
+      min: 0,
+      max: 3,
+      onChanged: (v) {
+        begin();
+        write(e.copyWith(look: e.look.copyWith(saturation: v)));
+      },
+      onCommit: commit,
+    ),
+    CanvasNumberField(
+      label: "Brightness",
+      decimals: 2,
+      width: 62,
+      value: e.look.brightness,
+      min: 0,
+      max: 3,
+      onChanged: (v) {
+        begin();
+        write(e.copyWith(look: e.look.copyWith(brightness: v)));
+      },
+      onCommit: commit,
+    ),
+  ]);
+  var lookGroups =
+      pictureLookGroups(e.picture, writeLook, begin, commit, shown: true);
+  // A backdrop's video: its groups, laid into the section that shows it.
+  // Nothing under it to blend with, no reader's controls, no box of its
+  // own and no arrival.
+  if (background) {
+    return [
+      videoGroup,
+      if (!e.isLink) playbackGroup,
+      if (!e.isLink) greenGroup,
+      colourGroup,
+      ...lookGroups,
+    ];
+  }
+  var files = list.length;
+  return [
+    section(e, "video",
+        icon: Icons.smart_display_outlined,
+        title: "Video",
+        summary: e.isLink
+            ? "A link"
+            : files == 0
+                ? "No video yet"
+                : "$files file${files == 1 ? "" : "s"} · ${clip.loop.label}",
+        initiallyOpen: true,
+        children: [
+          videoGroup,
+          if (!e.isLink) playbackGroup,
+        ]),
+    if (!e.isLink && !clip.timed)
+      section(e, "controls",
+          icon: Icons.tune,
+          title: "Reader's controls",
+          summary: e.controls.isEmpty
+              ? "Nothing to press"
+              : e.controls.map((c) => c.label).join(" · "),
+          children: [readersGroup]),
+    section(e, "look",
+        icon: Icons.palette_outlined,
+        title: "Look",
+        summary: [
+          e.look.fit.label,
+          if (e.blend != LayerBlend.normal) e.blend.label,
+          if (!e.isLink && e.key.on) "green screen out",
+        ].join(" · "),
+        children: [
+          blendGroup,
+          colourGroup,
+          if (!e.isLink) greenGroup,
+          ...lookGroups,
+        ]),
+    section(e, "box",
+        icon: Icons.crop_square,
+        title: "Background and border",
+        summary: boxSummary(e.look.box),
+        children: [
+          boxGroup(
+              e.look.box,
+              (box) => write(e.copyWith(look: e.look.copyWith(box: box))),
+              begin,
+              commit,
+              remember: "video",
+              label: "Background and Border",
+              fillLabel: "Background",
+              rule: false),
+        ]),
+    animationPanelSection(controller, e, e.animation,
+        (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
 }

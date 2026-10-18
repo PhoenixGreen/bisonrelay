@@ -610,7 +610,7 @@ class _PathData {
       _skip();
       if (_i >= d.length) break;
       var c = d[_i];
-      if (RegExp(r"[A-Za-z]").hasMatch(c)) {
+      if (_letter.hasMatch(c)) {
         command = c;
         _i++;
       } else if (command == null) {
@@ -1050,3 +1050,7 @@ const Map<String, Color> _named = {
   "chocolate": Color(0xFFD2691E),
   "sienna": Color(0xFFA0522D),
 };
+
+/// _letter is a path command's letter -- compiled once, since a path's
+/// every character is asked.
+final RegExp _letter = RegExp(r"[A-Za-z]");

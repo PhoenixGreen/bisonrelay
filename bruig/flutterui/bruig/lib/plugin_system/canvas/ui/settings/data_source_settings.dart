@@ -1119,11 +1119,27 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     var preset = presetById(source.preset);
     var allowed = context.watch<CanvasPreferences>().allowFetching;
 
+    // In a section of its own -- see element_sections.dart -- laid out
+    // flat, with its refresh at the top: the section is the fold.
+    var flat = CanvasCards.on(context);
+    var refresh = CanvasIconButton(
+      key: const ValueKey("sourceRefresh"),
+      tight: true,
+      icon: _busy ? Icons.hourglass_empty : Icons.refresh,
+      tooltip: !source.on
+          ? "Choose where the data comes from first"
+          : source.fetchedAt == null
+              ? "Read the data and put it in the ${target.noun}"
+              : "Read the data again — last updated "
+                  "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
+      onPressed: source.on && !_busy ? _refresh : null,
+    );
     var where = boxed(
       context,
       CanvasExpander(
         label: target.label,
         remember: target.remember,
+        flat: flat,
         trailing: _summary(source),
         // In the heading, so a table is refreshed with one press and without
         // opening anything. It is the thing this section is for.
@@ -1141,7 +1157,10 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
                       "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
           onPressed: source.on && !_busy ? _refresh : null,
         ),
-        children: _sourceControls(context, preset, allowed),
+        children: [
+          if (flat) Align(alignment: Alignment.centerRight, child: refresh),
+          ..._sourceControls(context, preset, allowed),
+        ],
       ),
     );
 

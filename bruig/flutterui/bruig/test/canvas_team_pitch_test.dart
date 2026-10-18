@@ -22,7 +22,10 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_panel_helpers.dart';
 
 // canvas_team_pitch_test.dart is a team standing on a pitch: that it goes
 // wherever the pitch goes, that a player dragged lands where the pointer is,
@@ -38,6 +41,9 @@ List<TeamElement> _teams(CanvasDocument d) => [
     ];
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   _photoEditorTests();
   group("a team on a pitch", () {
     test("the football preset's teams stand on its pitch", () {
@@ -474,6 +480,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(teamIn(controller, id).ballLook.trail, isTrue);
       var shadow = find.byKey(const ValueKey("teamBallShadow"));
+      await tester.ensureVisible(shadow);
+      await tester.pumpAndSettle();
       await tester.tap(shadow);
       await tester.pumpAndSettle();
       expect(teamIn(controller, id).ballLook.shadow, isFalse);
@@ -512,7 +520,9 @@ void main() {
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(teamIn(controller, id).ball, isNotNull);
-      expect(find.text("11 + ball"), findsOneWidget);
+      expect(find.text("11 players + ball"), findsOneWidget);
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(teamIn(controller, id).ball, isNull);
@@ -668,7 +678,7 @@ void _photoEditorTests() {
     // The default size moves every circle nobody has sized, and not the
     // one that has been.
     var own = team.players[0].crop!.radius!;
-    await tester.enterText(
+    await enterValue(tester, 
         find.byKey(const ValueKey("teamPhotoDefaultSize")), "4");
     await tester.pumpAndSettle();
     expect(team.photoCropSize, closeTo(0.04, 1e-9));

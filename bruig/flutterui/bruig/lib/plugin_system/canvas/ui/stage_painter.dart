@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
@@ -305,7 +306,12 @@ class StagePainter extends CustomPainter {
   /// answered no and the placeholder stayed until something unrelated forced
   /// a repaint. The reported version of that was a picture put in a table
   /// cell showing a grey crossed box until another cell was clicked.
+  /// drafting draws what is rasterised -- adjustments, effects -- at a
+  /// smaller size while a gesture is under way; see RasterCache.drafting.
+  final bool drafting;
+
   StagePainter({
+    this.drafting = false,
     this.backgrounds,
     required this.page,
     required this.view,
@@ -368,6 +374,15 @@ class StagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    RasterCache.drafting = drafting;
+    try {
+      _paint(canvas, size);
+    } finally {
+      RasterCache.drafting = false;
+    }
+  }
+
+  void _paint(Canvas canvas, Size size) {
     // A shadow under the frame, so the canvas reads as a sheet on a desk
     // rather than as a region of the window -- which matters most when the
     // document's own background happens to be the same colour as the editor's.
@@ -1223,8 +1238,9 @@ class StagePainter extends CustomPainter {
       }
     }
 
-    if (across)
+    if (across) {
       dashed(Offset(v.center.dx, r.top), Offset(v.center.dx, r.bottom));
+    }
     if (down) dashed(Offset(r.left, v.center.dy), Offset(r.right, v.center.dy));
   }
 
@@ -1657,6 +1673,7 @@ class StagePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(StagePainter old) =>
+      old.drafting != drafting ||
       old.guides != guides ||
       !identical(old.snapped, snapped) ||
       !identical(old.framing, framing) ||

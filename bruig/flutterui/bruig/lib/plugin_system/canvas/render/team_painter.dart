@@ -847,7 +847,7 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
   var look = e.ballLook;
   var lifted = g != null && !g.place.flat;
   if (look.trail) _paintBallTrail(canvas, e, spot, at, g, frame, r);
-  if (look.shadow)
+  if (look.shadow) {
     canvas.drawOval(
         Rect.fromCenter(
             center: lifted
@@ -858,6 +858,7 @@ void _paintBall(ui.Canvas canvas, TeamElement e, PlayerSpot spot,
         Paint()
           ..color = const Color(0x66000000)
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * k * 0.25));
+  }
 
   // Rolled as far as it has travelled.
   var spin = 0.0;

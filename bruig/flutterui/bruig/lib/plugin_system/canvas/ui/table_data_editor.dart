@@ -129,8 +129,13 @@ class _TableDataEditorState extends State<TableDataEditor> {
     ]);
   }
 
+  // At the ordinary size inside a card: a grid with buttons over each
+  // column has its own measure, and card-sized buttons overran it.
   @override
-  Widget build(BuildContext context) => CanvasDataEditorShell(
+  Widget build(BuildContext context) =>
+      CanvasCards.none(Builder(builder: _build));
+
+  Widget _build(BuildContext context) => CanvasDataEditorShell(
         remember: "canvasTableData",
         // Per table, for the same reason a chart's is per chart.
         scope: widget.elementId,

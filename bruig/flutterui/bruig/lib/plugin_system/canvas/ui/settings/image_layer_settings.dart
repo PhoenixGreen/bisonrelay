@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'dart:math' as math;
 
 import 'package:bruig/components/paint_spec.dart';
@@ -54,6 +55,14 @@ Future<void> addImageLayerOf(BuildContext context, CanvasController controller,
     if (id == null) return;
     var size = await pictureSize(id) ?? const Size(1, 1);
     if (controller.imageEditing != e.id) controller.editImage(e.id);
+    // An empty base is filled first: the first picture is what the others
+    // go over, and the frame takes its shape.
+    var now = controller.editingImage ?? e;
+    if (!now.hasImage) {
+      controller.changeImage(fitToPicture(now.copyWith(assetId: id), size));
+      controller.pickImageLayer(baseLayerId);
+      return;
+    }
     controller.addImageLayer(ImageLayer.picture(id, placeFor(inner, size)));
   }
 
@@ -67,6 +76,9 @@ Future<void> addImageLayerOf(BuildContext context, CanvasController controller,
     default:
   }
   if (!editing) controller.editImage(e.id);
+  // Over an empty base, anything else is the bottom of the picture: added
+  // just over the base, whatever was picked.
+  if (!e.hasImage) controller.pickImageLayer(baseLayerId);
   switch (what) {
     case LayerAdd.adjustment:
       controller.addImageLayer(ImageLayer.adjusting(AdjustKind.hueSaturation));
@@ -128,6 +140,7 @@ class LayerThumbnail extends StatelessWidget {
         var fill = layer.fill;
         inside = DecoratedBox(
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(3),
             color: fill.fades ? null : fill.color,
             gradient:
                 fill.fades ? LinearGradient(colors: fill.rampFor().$1) : null,
@@ -140,12 +153,17 @@ class LayerThumbnail extends StatelessWidget {
             : controller.images.resolve(look.assetId, look.removal);
         inside = image == null
             ? Icon(Icons.image_outlined, size: size, color: muted)
-            : RawImage(image: image, fit: BoxFit.cover);
+            : CustomPaint(
+                size: Size.infinite,
+                painter: _CoverPainter(controller.images.thumbnail(image)));
     }
+    // No clip of its own: the picture rounds its own corners as it is
+    // drawn. A clip a chip was a pass of its own every frame the strip
+    // scrolled.
     return Container(
       width: width,
       height: height,
-      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.all(1),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4),
@@ -155,6 +173,32 @@ class LayerThumbnail extends StatelessWidget {
       child: inside,
     );
   }
+}
+
+/// _CoverPainter draws [image] covering its box, corners rounded -- inside
+/// its own drawing, so a strip of them needs no clipping layer.
+class _CoverPainter extends CustomPainter {
+  final ui.Image image;
+  _CoverPainter(this.image);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var all = Offset.zero & size;
+    var iw = image.width.toDouble(), ih = image.height.toDouble();
+    var scale = math.max(size.width / iw, size.height / ih);
+    var sw = size.width / scale, sh = size.height / scale;
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(all, const Radius.circular(3)));
+    canvas.drawImageRect(
+        image,
+        Rect.fromLTWH((iw - sw) / 2, (ih - sh) / 2, sw, sh),
+        all,
+        Paint()..filterQuality = FilterQuality.medium);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_CoverPainter old) => !identical(old.image, image);
 }
 
 /// staggerLayers brings [e]'s layers in one after another over its arrival
@@ -263,6 +307,23 @@ class _ImageLayersListState extends State<ImageLayersList> {
     return Focus(
       debugLabel: "imageLayers",
       onKeyEvent: (node, event) {
+        // The arrows move the layers picked, as they do with the canvas in
+        // focus -- a layer picked here is a layer picked.
+        if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+            picked.isNotEmpty) {
+          var step = HardwareKeyboard.instance.isShiftPressed ? 10.0 : 1.0;
+          var by = switch (event.logicalKey) {
+            LogicalKeyboardKey.arrowLeft => Offset(-step, 0),
+            LogicalKeyboardKey.arrowRight => Offset(step, 0),
+            LogicalKeyboardKey.arrowUp => Offset(0, -step),
+            LogicalKeyboardKey.arrowDown => Offset(0, step),
+            _ => null,
+          };
+          if (by != null) {
+            controller.nudgeSelected(by.dx, by.dy);
+            return KeyEventResult.handled;
+          }
+        }
         if (event is! KeyDownEvent || picked == baseLayerId || picked.isEmpty) {
           return KeyEventResult.ignored;
         }
@@ -274,8 +335,10 @@ class _ImageLayersListState extends State<ImageLayersList> {
         return KeyEventResult.handled;
       },
       // A context under the Focus, so a press on a layer can take the keys.
+      // Painted on its own, as each section is.
       child: Builder(
-          builder: (context) => Container(
+          builder: (context) => RepaintBoundary(
+                  child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
@@ -359,8 +422,15 @@ class _ImageLayersListState extends State<ImageLayersList> {
                       _strip(context, theme, e, picked),
                   ],
                 ),
-              )),
+              ))),
     );
+  }
+
+  /// _thumbOf is the picture [layer]'s thumbnail is of, if it has one.
+  Object? _thumbOf(ImageElement e, ImageLayer layer) {
+    var look = layer.isBase ? e : layer.look;
+    if (look == null || !look.hasImage) return null;
+    return controller.images.resolve(look.assetId, look.removal);
   }
 
   /// _strip is the layers in a line, front first.
@@ -379,14 +449,24 @@ class _ImageLayersListState extends State<ImageLayersList> {
         scrollDirection: Axis.horizontal,
         buildDefaultDragHandles: false,
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-        onReorder: (from, to) {
-          if (to > from) to -= 1;
+        onReorderItem: (from, to) {
           controller.changeImage(withLayerMoved(e, n - 1 - from, n - 1 - to));
         },
         children: [
           for (var row = 0; row < n; row++)
-            Builder(
+            // Each chip kept until what it shows changes: an edit to one
+            // layer rebuilt all of them. See CanvasKept -- a press picks
+            // through this state, so a kept chip picks as it is now.
+            CanvasKept(
                 key: ValueKey("imageLayerChip-${stack[n - 1 - row].id}"),
+                deps: [
+                  stack[n - 1 - row],
+                  _picks.contains(stack[n - 1 - row].id),
+                  row,
+                  n,
+                  _thumbOf(e, stack[n - 1 - row]),
+                  theme.colors,
+                ],
                 builder: (context) {
                   var layer = stack[n - 1 - row];
                   var on = _picks.contains(layer.id);
@@ -470,8 +550,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         buildDefaultDragHandles: false,
-        onReorder: (from, to) {
-          if (to > from) to -= 1;
+        onReorderItem: (from, to) {
           controller.changeImage(withLayerMoved(e, n - 1 - from, n - 1 - to));
         },
         children: [
@@ -808,14 +887,17 @@ Widget layerBlendTiles(
     VoidCallback commit) {
   return CanvasTiles<LayerBlend>(
     key: const ValueKey("imageLayerBlend"),
+    foldAs: "image.tiles.blend",
     label: "Blend mode",
-    help: "How this layer mixes with the layers under it. Point at one to "
-        "try it on the canvas; click to keep it.",
+    help: "How this layer mixes with the layers under it. Click one to "
+        "use it.",
     columns: 4,
     previewHeight: 26,
     tiles: [
       for (var b in LayerBlend.values)
-        CanvasTile(b, b.label, preview: (_) => blendPreview(b)),
+        CanvasTile(b, b.label,
+            drawnFrom: b,
+            paint: (canvas, size) => _BlendPainter(b).paint(canvas, size)),
     ],
     selected: (b) => picked.blend == b,
     keyOf: (b) => "imageLayerBlend-${b.name}",
@@ -892,7 +974,7 @@ List<Widget> layerQuickMoves(
   var place = picked.place;
   // The picture's own proportions in the frame's units, where it has loaded:
   // what "fit" and "fill" keep, and what a squashed layer goes back to.
-  var image = controller.images.original(picked.look!.assetId);
+  var image = controller.images.original((picked.look ?? e).assetId);
   double? aspect;
   if (image != null && inner.width > 0 && inner.height > 0) {
     aspect = image.width / image.height;
@@ -914,18 +996,22 @@ List<Widget> layerQuickMoves(
   }
 
   return [
-    CanvasTextButton(
-      key: const ValueKey("imageLayerFlipX"),
-      icon: Icons.swap_horiz,
-      label: "Flip across",
-      onPressed: () => now(picked.copyWith(flipX: !picked.flipX)),
-    ),
-    CanvasTextButton(
-      key: const ValueKey("imageLayerFlipY"),
-      icon: Icons.swap_vert,
-      label: "Flip down",
-      onPressed: () => now(picked.copyWith(flipY: !picked.flipY)),
-    ),
+    // The base picture has no flip of its own: a mirror is a picture
+    // layer's.
+    if (!picked.isBase)
+      CanvasTextButton(
+        key: const ValueKey("imageLayerFlipX"),
+        icon: Icons.swap_horiz,
+        label: "Flip across",
+        onPressed: () => now(picked.copyWith(flipX: !picked.flipX)),
+      ),
+    if (!picked.isBase)
+      CanvasTextButton(
+        key: const ValueKey("imageLayerFlipY"),
+        icon: Icons.swap_vert,
+        label: "Flip down",
+        onPressed: () => now(picked.copyWith(flipY: !picked.flipY)),
+      ),
     CanvasTextButton(
       key: const ValueKey("imageLayerFill"),
       label: "Fill frame",
@@ -950,9 +1036,11 @@ List<Widget> layerQuickMoves(
       CanvasTextButton(
         key: const ValueKey("imageLayerProportions"),
         label: "Its own shape",
-        onPressed: () => now(picked.copyWith(
-            look: withPictureProportions(picked.look!, inner,
-                Size(image.width.toDouble(), image.height.toDouble())))),
+        onPressed: () => now(picked.isBase
+            ? picked.placed(fitted(cover: false))
+            : picked.copyWith(
+                look: withPictureProportions(picked.look!, inner,
+                    Size(image.width.toDouble(), image.height.toDouble())))),
       ),
   ];
 }
@@ -997,7 +1085,8 @@ Widget layerPositionGroup(
     VoidCallback commit) {
   var inner = e.box.inner(e.bounds);
   var rect = layerRect(inner, layer.place);
-  var look = layer.look!;
+  // The base picture's own settings are the element's.
+  var look = layer.look ?? e;
   void live(ImageLayer next) {
     begin();
     write(e.withLayer(layer.id, (_) => next));
@@ -1064,30 +1153,37 @@ Widget layerPositionGroup(
         onCommit: commit,
       ),
       // The angle on a line of its own, the whole width: a turn is read
-      // more finely than a position.
-      const CanvasBlockBreak(),
-      CanvasStepper(
-        key: const ValueKey("layerAngle"),
-        // Two to a line, as an element's are -- see positionGroup.
-        width: 104,
-        label: "Angle",
-        value: layer.turn,
-        min: -360,
-        max: 360,
-        suffix: "°",
-        step: 15,
-        dragStep: 1,
-        defaultValue: 0,
-        onChanged: (v) => live(layer.placed(layer.place, turn: v)),
-        onCommit: commit,
-      ),
+      // more finely than a position. Not for the base picture, which is
+      // turned with the element.
+      if (!layer.isBase) const CanvasBlockBreak(),
+      if (!layer.isBase)
+        CanvasStepper(
+          key: const ValueKey("layerAngle"),
+          // Two to a line, as an element's are -- see positionGroup.
+          width: 104,
+          label: "Angle",
+          value: layer.turn,
+          min: -360,
+          max: 360,
+          suffix: "°",
+          step: 15,
+          dragStep: 1,
+          defaultValue: 0,
+          onChanged: (v) => live(layer.placed(layer.place, turn: v)),
+          onCommit: commit,
+        ),
       CanvasToggle(
         key: const ValueKey("layerLockAspect"),
         label: "Keep its proportions",
         value: look.base.lockAspect,
         onChanged: (v) {
-          live(layer.copyWith(
-              look: look.withBase(lockAspect: v) as ImageElement));
+          if (layer.isBase) {
+            begin();
+            write(e.withBase(lockAspect: v));
+          } else {
+            live(layer.copyWith(
+                look: look.withBase(lockAspect: v) as ImageElement));
+          }
           commit();
         },
       ),
@@ -1199,6 +1295,7 @@ class _SubjectButton extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     return FutureBuilder<bool>(
       future: SubjectFinder.available(),
+      initialData: SubjectFinder.known,
       builder: (context, available) {
         var can = available.data ?? false;
         var busy = controller.maskBusy != null;
@@ -1247,13 +1344,6 @@ class _SubjectButton extends StatelessWidget {
     );
   }
 }
-
-/// maskGroups are the picked picture's mask -- on or off, inverted, its
-/// marks undone or cleared -- and its edge refined.
-List<Widget> maskGroups(CanvasController controller, ImageElement look,
-        SettingsWrite writeLook, VoidCallback begin, VoidCallback commit) =>
-    maskGroupsFor(look.mask, (next) => writeLook(look.copyWith(mask: next)),
-        begin, commit);
 
 /// maskGroupsFor is the mask groups for any [mask], written by [put] --
 /// a picture's, or a frame-masked layer's.

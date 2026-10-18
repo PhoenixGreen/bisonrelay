@@ -84,13 +84,31 @@ const double bandGroupHeight = 11 + 5 + controlHeight;
 /// it, and the controls are a size up and further apart: a panel of sections
 /// is read a section at a time, and has the room.
 class CanvasCards extends InheritedWidget {
-  const CanvasCards({required super.child, super.key});
+  /// title is the section's own, so a card does not say it a second time.
+  final String title;
 
-  static bool on(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CanvasCards>() != null;
+  /// off is a part of a card drawn at the ordinary size -- a grid of cells
+  /// with buttons over each column, which has its own measure.
+  final bool off;
+
+  const CanvasCards(
+      {required super.child, this.title = "", this.off = false, super.key});
+
+  /// none is [child] at the ordinary size, inside a card or not.
+  static Widget none(Widget child) => CanvasCards(off: true, child: child);
+
+  static bool on(BuildContext context) {
+    var cards = context.dependOnInheritedWidgetOfExactType<CanvasCards>();
+    return cards != null && !cards.off;
+  }
+
+  /// titleOf is the title of the section [context] is in.
+  static String titleOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasCards>()?.title ?? "";
 
   @override
-  bool updateShouldNotify(CanvasCards old) => false;
+  bool updateShouldNotify(CanvasCards old) =>
+      old.title != title || old.off != off;
 }
 
 /// cardControlHeight, cardLabelHeight and cardLabelGap are controlHeight,
@@ -246,31 +264,131 @@ class CanvasSeparator extends StatelessWidget {
 ///
 /// Tap as well as hover, because a hint reachable only by hovering is a hint
 /// that does not exist on a touch screen.
-class CanvasHint extends StatelessWidget {
+class CanvasHint extends StatefulWidget {
   final String message;
-  const CanvasHint(this.message, {super.key});
+
+  /// round draws it as a card's "?": a ring a size up, with the mark in it.
+  final bool round;
+
+  const CanvasHint(this.message, {this.round = false, super.key});
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: message,
-        triggerMode: TooltipTriggerMode.tap,
-        // Wider than the sidebar, because the sidebar is what it is too big
-        // for. A tooltip the width of the column it is explaining would be the
-        // paragraph again, in a box.
-        constraints: const BoxConstraints(maxWidth: 300),
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Icon(
-            Icons.help_outline,
-            size: 13,
-            color: ThemeNotifier.of(context)
-                .colors
-                .onSurfaceVariant
-                .withValues(alpha: 0.7),
+  State<CanvasHint> createState() => _CanvasHintState();
+}
+
+/// The "?" opens on a click, never on a hover: passing over one on the way
+/// to a control beside it put a paragraph over the control, which is the
+/// opposite of help. A click anywhere else, or on the "?" again, shuts it.
+class _CanvasHintState extends State<CanvasHint> {
+  final LayerLink _link = LayerLink();
+  OverlayEntry? _bubble;
+
+  void _toggle() {
+    if (_bubble != null) {
+      _close();
+      return;
+    }
+    _bubble = OverlayEntry(
+      builder: (context) => _bubbleOf(context),
+    );
+    Overlay.of(context).insert(_bubble!);
+    setState(() {});
+  }
+
+  /// _bubbleOf is the open "?": what it says, under it, and a click anywhere
+  /// else shutting it. The theme is read here, as it is drawn -- read in the
+  /// click that opened it, it was a lookup from outside the tree.
+  Widget _bubbleOf(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Stack(children: [
+      Positioned.fill(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _close,
+        ),
+      ),
+      CompositedTransformFollower(
+        link: _link,
+        showWhenUnlinked: false,
+        targetAnchor: Alignment.bottomRight,
+        followerAnchor: Alignment.topRight,
+        offset: const Offset(0, 6),
+        child: Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(8),
+          color: theme.colors.surfaceContainerHigh,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(widget.message,
+                  style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: theme.colors.onSurface)),
+            ),
           ),
         ),
-      );
+      ),
+    ]);
+  }
+
+  void _close() {
+    _bubble?.remove();
+    _bubble = null;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _bubble?.remove();
+    _bubble = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var open = _bubble != null;
+    var ink = open
+        ? theme.colors.primary
+        : theme.colors.onSurfaceVariant.withValues(alpha: 0.75);
+    Widget mark = widget.round
+        ? Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: open
+                      ? theme.colors.primary
+                      : theme.colors.outlineVariant),
+            ),
+            child: Text("?",
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: ink)),
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Icon(Icons.help_outline, size: 13, color: ink),
+          );
+    return CompositedTransformTarget(
+      link: _link,
+      child: Semantics(
+        button: true,
+        label: "Help",
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _toggle,
+            child: mark,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// CanvasFill marks a control that should grow to help fill its line.
@@ -864,7 +982,7 @@ class CanvasControlGroup extends StatelessWidget {
         [if (help != null && help!.isNotEmpty) help!, ...hints].join("\n\n");
     var shut = folded == true;
     var title = TextStyle(
-        fontSize: 13.5,
+        fontSize: 12.5,
         fontWeight: FontWeight.w600,
         color: theme.colors.onSurface);
     Widget name = onRename != null
@@ -882,8 +1000,14 @@ class CanvasControlGroup extends StatelessWidget {
         ]),
       );
     }
+    // Named in a card where there is a "?" to ask about it -- a "?" beside
+    // no name is a question about nothing -- but never with the name of
+    // the section it is in, said twice.
+    var named = label.isNotEmpty &&
+        (!hideCaption || about.isNotEmpty) &&
+        label != CanvasCards.titleOf(context);
     return canvasCard(context,
-        title: hideCaption ? null : name,
+        title: named ? name : null,
         help: about,
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -937,6 +1061,20 @@ class CanvasControlGroup extends StatelessWidget {
     }
     var shut = folded == true;
 
+    // Every "?" in the group goes up on to its heading row, on the right,
+    // as one: a "?" among the controls reads as one of them, and two on a
+    // row are two questions for one answer.
+    var about = [
+      if (help != null && help!.isNotEmpty) help!,
+      for (var c in children)
+        if (c is CanvasHint) c.message,
+    ].join("\n\n");
+    var controls = [
+      for (var c in children)
+        if (c is! CanvasHint) c
+    ];
+    var hint = about.isEmpty ? null : CanvasHint(about);
+
     // Along the band the groups sit side by side, so what separates them is
     // room to the right and a line between them -- not a rule underneath,
     // which in a Row is an underline drawn across the strip and a dozen
@@ -952,10 +1090,13 @@ class CanvasControlGroup extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!hideCaption)
+                if (!hideCaption || hint != null)
                   Padding(
                       padding: const EdgeInsets.only(bottom: 5, left: 1),
-                      child: caption),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (!hideCaption) caption,
+                        if (hint != null) hint,
+                      ])),
                 // Spaced as well as run-spaced. Without it the last control of
                 // one group and the first of the next were touching, which is
                 // what "1280 × 72055.0 KiB" was.
@@ -970,7 +1111,7 @@ class CanvasControlGroup extends StatelessWidget {
                     spacing: 4,
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
-                    children: children,
+                    children: controls,
                   ),
                 if (below != null && !shut) below!,
               ],
@@ -1014,15 +1155,22 @@ class CanvasControlGroup extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!hideCaption)
+          if (!hideCaption || hint != null)
             Padding(
                 padding: EdgeInsets.only(bottom: captionGap, left: 1),
-                child: caption),
+                child: Row(children: [
+                  Expanded(
+                    child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: hideCaption ? const SizedBox.shrink() : caption),
+                  ),
+                  if (hint != null) hint,
+                ])),
           // No spacing between them: each control carries its own right-hand
           // padding, as it did under the Wrap this replaced. Adding a gap here
           // as well is four pixels a control, which is what pushed a row that
           // had been measured to fit onto two lines.
-          if (!shut) CanvasWrap(runSpacing: canvasRowGap, children: children),
+          if (!shut) CanvasWrap(runSpacing: canvasRowGap, children: controls),
           if (below != null && !shut) below!,
           if (rule) const CanvasGroupRule(),
         ],
@@ -1111,7 +1259,7 @@ class CanvasTextButton extends StatelessWidget implements CanvasGrowable {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: card ? 13 : 11,
+                            fontSize: card ? 12 : 11,
                             fontWeight:
                                 primary ? FontWeight.w600 : FontWeight.normal,
                             color: ink)),
@@ -1180,7 +1328,7 @@ class CanvasSegmented<T> extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          fontSize: card ? 12.5 : 11,
+                          fontSize: card ? 12 : 11,
                           fontWeight: option == value
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -1224,6 +1372,28 @@ Widget canvasCard(BuildContext context,
     {Widget? title, String help = "", required Widget body}) {
   var theme = ThemeNotifier.of(context);
   var heading = title != null || help.isNotEmpty;
+  // A card inside a card -- a group in a folding part of a section -- is
+  // a block with its name over it, not a ground on a ground.
+  if (context.dependOnInheritedWidgetOfExactType<_InCard>() != null) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (heading)
+            Padding(
+              padding: const EdgeInsets.only(right: 10, bottom: 10),
+              child: Row(children: [
+                Expanded(child: title ?? const SizedBox.shrink()),
+                if (help.isNotEmpty) CanvasHint(help, round: true),
+              ]),
+            ),
+          body,
+        ],
+      ),
+    );
+  }
   return Container(
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.fromLTRB(14, 12, 4, 14),
@@ -1242,54 +1412,29 @@ Widget canvasCard(BuildContext context,
             padding: const EdgeInsets.only(right: 10, bottom: 12),
             child: Row(children: [
               Expanded(child: title ?? const SizedBox.shrink()),
-              if (help.isNotEmpty) CanvasHelp(help),
+              if (help.isNotEmpty) CanvasHint(help, round: true),
             ]),
           ),
-        body,
+        _InCard(child: body),
       ],
     ),
   );
 }
 
+/// _InCard marks what is inside a card, so a card in it draws as a block.
+class _InCard extends InheritedWidget {
+  const _InCard({required super.child});
+
+  @override
+  bool updateShouldNotify(_InCard old) => false;
+}
+
 /// canvasCardTitle is a card's name, as text.
 Widget canvasCardTitle(BuildContext context, String text) => Text(text,
     style: TextStyle(
-        fontSize: 13.5,
+        fontSize: 12.5,
         fontWeight: FontWeight.w600,
         color: ThemeNotifier.of(context).colors.onSurface));
-
-/// CanvasHelp is the round "?" beside a card's name: what the group is for,
-/// shown on hover or a press.
-class CanvasHelp extends StatelessWidget {
-  final String message;
-  const CanvasHelp(this.message, {super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var theme = ThemeNotifier.of(context);
-    return Tooltip(
-      message: message,
-      triggerMode: TooltipTriggerMode.tap,
-      preferBelow: true,
-      waitDuration: const Duration(milliseconds: 300),
-      constraints: const BoxConstraints(maxWidth: 320),
-      child: Container(
-        width: 24,
-        height: 24,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: theme.colors.outlineVariant),
-        ),
-        child: Text("?",
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: theme.colors.onSurfaceVariant)),
-      ),
-    );
-  }
-}
 
 /// CanvasNumberField is a number with a label above it.
 ///
@@ -1448,7 +1593,11 @@ class _CanvasNumberFieldState extends State<CanvasNumberField> {
         decimals: widget.decimals,
         step: _arrowStep,
         dragStep: step,
-        suffix: widget.suffix,
+        // A word after a number, "2 years", wants a space; a sign, "40%",
+        // does not.
+        suffix: RegExp(r"^[A-Za-z]").hasMatch(widget.suffix)
+            ? " ${widget.suffix}"
+            : widget.suffix,
         grow: widget.grow,
         onChanged: widget.onChanged,
         onCommit: widget.onCommit,
@@ -1742,6 +1891,21 @@ class _CanvasMoreGroupState extends State<CanvasMoreGroup> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    // In a card, everything at once: the section it is in already folds,
+    // and a second thing to open inside it is a setting found twice over.
+    if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
+      return CanvasControlGroup(
+        label: widget.label,
+        hideCaption: widget.hideCaption,
+        rule: widget.rule,
+        onRename: widget.onRename,
+        children: [
+          ...widget.row,
+          if (widget.more.isNotEmpty) const CanvasLineBreak(),
+          ...widget.more,
+        ],
+      );
+    }
     return CanvasControlGroup(
       label: widget.label,
       hideCaption: widget.hideCaption,
@@ -2014,117 +2178,198 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     var name = Text(text, overflow: TextOverflow.ellipsis);
     var lead = leading;
     if (lead == null) return name;
-    return Row(children: [
-      lead(v),
-      const SizedBox(width: 6),
-      Flexible(child: name),
-    ]);
+    // Too narrow for a picture and a name -- a style in a forty-pixel
+    // slot -- it is the picture alone, shrunk to fit, rather than a row
+    // that overruns. The dropdown is always laid out at a width it is
+    // given, never asked how wide it would like to be.
+    return LayoutBuilder(builder: (context, box) {
+      if (box.maxWidth < 72) {
+        return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: lead(v));
+      }
+      return Row(children: [
+        lead(v),
+        const SizedBox(width: 6),
+        Flexible(child: name),
+      ]);
+    });
+  }
+
+  /// _step is the option [by] from the one chosen -- the arrows either side
+  /// of a dropdown in a card -- or null at either end.
+  T? _step(int by) {
+    var values = [for (var (v, _) in options) v];
+    var at = values.indexOf(value);
+    var next = at + by;
+    if (at < 0 || next < 0 || next >= values.length) return null;
+    return values[next];
+  }
+
+  /// _arrow is one of a card's dropdown arrows.
+  Widget _arrow(ThemeNotifier theme, IconData icon, int by) {
+    var to = enabled ? _step(by) : null;
+    var name = key is ValueKey<String> ? (key as ValueKey<String>).value : null;
+    return Semantics(
+      button: true,
+      label: by < 0 ? "Previous $label" : "Next $label",
+      child: InkWell(
+        key:
+            name == null ? null : ValueKey("$name-${by < 0 ? "less" : "more"}"),
+        onTap: to == null ? null : () => onChanged(to as T),
+        child: SizedBox(
+          width: 32,
+          child: Icon(icon,
+              size: 18,
+              color: theme.colors.onSurfaceVariant
+                  .withValues(alpha: to == null ? 0.3 : 0.9)),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    var card = CanvasCards.on(context) && !CanvasControlScope.isInline(context);
+    // A bare DropdownButton rather than a DropdownButtonFormField, which
+    // is a FormField and keeps its own copy of the value. In a settings
+    // bar the value changes from outside constantly -- a different element
+    // is selected, an undo lands -- and a form field would go on showing
+    // whatever was chosen in it last.
+    //
+    // Its own Material, because ink -- the splash, and the highlight a
+    // focused control keeps -- is painted by the nearest Material
+    // *ancestor*, in that ancestor's coordinates. Without one here the
+    // nearest was the whole sidebar, so the highlight left behind by
+    // choosing a chart type was drawn at the dropdown's position in the
+    // sidebar and stayed there: a grey box floating over the Add panel
+    // while the settings scrolled underneath it. Painted here it is in
+    // the right place and clipped to the control.
+    var list = Material(
+      type: MaterialType.transparency,
+      // And no highlight at all once the menu has closed. In a settings
+      // panel the focused control is not a thing anybody is tracking, and
+      // a box that stays lit after a choice reads as something still
+      // open.
+      child: DropdownButton<T>(
+        focusColor: Colors.transparent,
+        value: options.any((o) => o.$1 == value) ? value : null,
+        isDense: true,
+        isExpanded: true,
+        underline: const SizedBox.shrink(),
+        style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
+        iconSize: card ? 0 : 16,
+        icon: card ? const SizedBox.shrink() : null,
+        // The closed button shows the name and nothing else. Without
+        // this it draws the chosen item's own widget, which for a
+        // marked option is the background and the cross as well --
+        // a row of controls inside a box an inch wide.
+        selectedItemBuilder: marked.isEmpty &&
+                leading == null &&
+                groupOf == null
+            ? null
+            : (context) => [
+                  for (var (v, text, heading) in _rows())
+                    heading
+                        ? const SizedBox.shrink()
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: marked.isEmpty
+                                ? _named(v as T, text)
+                                : Text(text, overflow: TextOverflow.ellipsis),
+                          ),
+                ],
+        items: [
+          for (var (v, text, heading) in _rows())
+            if (heading)
+              DropdownMenuItem<T>(
+                enabled: false,
+                child: Text(text.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colors.onSurfaceVariant)),
+              )
+            else
+              DropdownMenuItem<T>(
+                value: v,
+                child: _Previewed<T>(
+                  value: v as T,
+                  onPreview: onPreview,
+                  child: marked.contains(v)
+                      ? _markedOption(theme, v, text)
+                      : _named(v, text),
+                ),
+              ),
+        ],
+        onChanged: enabled
+            ? (v) {
+                // Null is a real answer where the type says it is one --
+                // a dropdown of "None, Fade, Slide" is a dropdown whose
+                // first entry is null, and refusing it meant None could
+                // be chosen and nothing happened.
+                if (v == null && null is! T) return;
+                onChanged(v as T);
+              }
+            : null,
+      ),
+    );
+    // In a card an arrow either side steps through the options, as a
+    // stepper's step through numbers, and the middle opens the whole list.
+    var box = card
+        ? Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color:
+                  theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
+              border: Border.all(color: theme.colors.outlineVariant),
+            ),
+            child:
+                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _arrow(theme, Icons.chevron_left, -1),
+              Container(width: 1, color: theme.colors.outlineVariant),
+              Expanded(
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: list,
+                ),
+              ),
+              Container(width: 1, color: theme.colors.outlineVariant),
+              _arrow(theme, Icons.chevron_right, 1),
+            ]),
+          )
+        : Container(
+            // Centred in its box: at the top, the words sat high and left a
+            // band of nothing underneath.
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: theme.colors.outlineVariant),
+            ),
+            child: list,
+          );
+    // In a card, never narrower than its two arrows and a word between
+    // them: a type panel's Case at fifty pixels was an arrow, an arrow, and
+    // an overflow.
+    var least = CanvasControlScope.widthFor(context, width);
+    if (card) least = math.max(least, 120.0);
     return _labelled(
       theme,
       label,
-      cap: tight ? CanvasControlScope.widthFor(context, width) : null,
+      cap: tight ? least : null,
       canvasSized(
         context,
-        min: CanvasControlScope.widthFor(context, width),
+        min: least,
         height: heightIn(context),
         grow: grow,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: theme.colors.outlineVariant),
-          ),
-          // A bare DropdownButton rather than a DropdownButtonFormField, which
-          // is a FormField and keeps its own copy of the value. In a settings
-          // bar the value changes from outside constantly -- a different element
-          // is selected, an undo lands -- and a form field would go on showing
-          // whatever was chosen in it last.
-          //
-          // Its own Material, because ink -- the splash, and the highlight a
-          // focused control keeps -- is painted by the nearest Material
-          // *ancestor*, in that ancestor's coordinates. Without one here the
-          // nearest was the whole sidebar, so the highlight left behind by
-          // choosing a chart type was drawn at the dropdown's position in the
-          // sidebar and stayed there: a grey box floating over the Add panel
-          // while the settings scrolled underneath it. Painted here it is in
-          // the right place and clipped to the control.
-          child: Material(
-            type: MaterialType.transparency,
-            // And no highlight at all once the menu has closed. In a settings
-            // panel the focused control is not a thing anybody is tracking, and
-            // a box that stays lit after a choice reads as something still
-            // open.
-            child: DropdownButton<T>(
-              focusColor: Colors.transparent,
-              value: options.any((o) => o.$1 == value) ? value : null,
-              isDense: true,
-              isExpanded: true,
-              underline: const SizedBox.shrink(),
-              style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
-              iconSize: 16,
-              // The closed button shows the name and nothing else. Without
-              // this it draws the chosen item's own widget, which for a
-              // marked option is the background and the cross as well --
-              // a row of controls inside a box an inch wide.
-              selectedItemBuilder:
-                  marked.isEmpty && leading == null && groupOf == null
-                      ? null
-                      : (context) => [
-                            for (var (v, text, heading) in _rows())
-                              heading
-                                  ? const SizedBox.shrink()
-                                  : Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: marked.isEmpty
-                                          ? _named(v as T, text)
-                                          : Text(text,
-                                              overflow: TextOverflow.ellipsis),
-                                    ),
-                          ],
-              items: [
-                for (var (v, text, heading) in _rows())
-                  if (heading)
-                    DropdownMenuItem<T>(
-                      enabled: false,
-                      child: Text(text.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 10,
-                              letterSpacing: 0.8,
-                              fontWeight: FontWeight.w600,
-                              color: theme.colors.onSurfaceVariant)),
-                    )
-                  else
-                    DropdownMenuItem<T>(
-                      value: v,
-                      child: _Previewed<T>(
-                        value: v as T,
-                        onPreview: onPreview,
-                        child: marked.contains(v)
-                            ? _markedOption(theme, v, text)
-                            : _named(v, text),
-                      ),
-                    ),
-              ],
-              onChanged: enabled
-                  ? (v) {
-                      // Null is a real answer where the type says it is one --
-                      // a dropdown of "None, Fade, Slide" is a dropdown whose
-                      // first entry is null, and refusing it meant None could
-                      // be chosen and nothing happened.
-                      if (v == null && null is! T) return;
-                      onChanged(v as T);
-                    }
-                  : null,
-            ),
-          ),
-        ),
+        child: box,
       ),
     );
   }
@@ -2539,7 +2784,13 @@ class CanvasChip extends StatelessWidget {
             color: here ? theme.colors.primary : theme.colors.outlineVariant),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(label, style: const TextStyle(fontSize: 11)),
+        // Shortened rather than overrunning a narrow card.
+        Flexible(
+          child: Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11)),
+        ),
         if (onRemove case var remove?)
           Tooltip(
             message: "Stop laying out for $label",
@@ -2595,7 +2846,7 @@ class CanvasToggle extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 13, color: theme.colors.onSurface)),
+                            fontSize: 12, color: theme.colors.onSurface)),
                   ),
                   _Switch(on: value, theme: theme),
                 ]),
@@ -2994,9 +3245,10 @@ Widget _labelled(ThemeNotifier theme, String label, Widget child,
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            // As wide as its words, not held to its control's: in a card
+            // there is the room, and "Col..." over a swatch said nothing.
             SizedBox(
                 height: cardLabelHeight,
-                width: cap,
                 child: Text(label,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -3167,6 +3419,55 @@ class _CanvasExpanderState extends State<CanvasExpander> {
         mainAxisSize: MainAxisSize.min,
         children: widget.children,
       );
+    }
+    // In a section, a card that folds: its name -- and how it is set --
+    // to press, and what it holds under it.
+    if (CanvasCards.on(context) && !CanvasControlScope.isInline(context)) {
+      var muted = theme.colors.onSurfaceVariant;
+      return canvasCard(context,
+          title: Row(children: [
+            Expanded(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  key: widget.remember == null
+                      ? null
+                      : ValueKey("expander-${widget.remember}"),
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: _toggle,
+                  child: Row(children: [
+                    AnimatedRotation(
+                      turns: _open ? 0.25 : 0,
+                      duration: const Duration(milliseconds: 120),
+                      child: Icon(Icons.chevron_right, size: 18, color: muted),
+                    ),
+                    const SizedBox(width: 4),
+                    Flexible(child: canvasCardTitle(context, widget.label)),
+                    if (widget.trailing != null) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(widget.trailing!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 10.5, color: muted)),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+            ),
+            if (widget.action != null) widget.action!,
+          ]),
+          body: !_open
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: widget.children,
+                  ),
+                ));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

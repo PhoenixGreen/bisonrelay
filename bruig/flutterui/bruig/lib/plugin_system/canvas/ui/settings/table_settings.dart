@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/table_data_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/data_source_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 
 // table settings.dart is a table's settings.
@@ -23,8 +24,9 @@ List<Widget> tableSettings(
       // Its own section, like the chart's numbers. The cells are the longest
       // thing in these settings and the least often changed once they are
       // right, so they were pushing everything else off the bottom.
-      boxed(
-        context,
+      expanderSection(
+        e,
+        Icons.table_chart_outlined,
         CanvasExpander(
           label: "Table",
           remember: "tableCells",
@@ -55,12 +57,19 @@ List<Widget> tableSettings(
           ],
         ),
       ),
-      dataSourceSection(context, controller, e, write, begin, commit),
+      section(e, "source",
+          icon: Icons.cloud_download_outlined,
+          title: "Data source",
+          summary: e.source.kind.label,
+          children: [
+            dataSourceSection(context, controller, e, write, begin, commit),
+          ]),
       // Sorting is its own section next to the cells, because it is about the
       // data rather than about how the table looks -- and because three
       // columns and their directions is more than a band's worth of controls.
-      boxed(
-        context,
+      expanderSection(
+        e,
+        Icons.sort,
         CanvasExpander(
           label: "Order",
           remember: "tableSort",
@@ -138,8 +147,9 @@ List<Widget> tableSettings(
       // they really are one: a green chip wherever a column says W is a rule
       // about a column and a word, a highlighted row is a rule about a row,
       // and a points column set slightly larger is a rule about a column.
-      boxed(
-        context,
+      expanderSection(
+        e,
+        Icons.auto_awesome_outlined,
         CanvasExpander(
           label: "Special cells",
           remember: "tableRules",
@@ -176,8 +186,9 @@ List<Widget> tableSettings(
       // dozen colour rows are what pushed the data and the order off the
       // bottom of the panel; a reader setting a table up goes to those first
       // and comes here once.
-      boxed(
-        context,
+      expanderSection(
+        e,
+        Icons.palette_outlined,
         CanvasExpander(
           label: "Style",
           remember: "tableStyle",
@@ -468,10 +479,8 @@ List<Widget> tableSettings(
         ),
       ),
       // How it arrives, in a section of its own like a headline's.
-      boxed(
-          context,
-          elementAnimationSection(controller, e, e.animation,
-              (a) => write(e.copyWith(animation: a)), begin, commit)),
+      animationPanelSection(controller, e, e.animation,
+          (a) => write(e.copyWith(animation: a)), begin, commit),
     ];
 
 /// _columnSizing is which of the three states a table's columns are in:

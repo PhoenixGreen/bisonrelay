@@ -92,17 +92,3 @@ Map<String, dynamic> recoloured(
   return _walk(json, (v) => _rgb(v) == old ? (v & 0xFF000000) | next : v)
       as Map<String, dynamic>;
 }
-
-/// coloursUsed is the colours [json] is drawn in, by how often, most used
-/// first, opacity set aside.
-List<Color> coloursUsed(Map<String, dynamic> json) {
-  var counts = <int, int>{};
-  _walk(json, (v) {
-    var rgb = _rgb(v);
-    counts[rgb] = (counts[rgb] ?? 0) + 1;
-    return v;
-  });
-  var order = counts.keys.toList()
-    ..sort((a, b) => counts[b]!.compareTo(counts[a]!));
-  return [for (var rgb in order) Color(0xFF000000 | rgb)];
-}

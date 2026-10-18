@@ -364,7 +364,7 @@ class _TileState extends State<_Tile> {
               Positioned(
                 left: 4,
                 bottom: 4,
-                child: _Badge(_duration(a.length)),
+                child: _Badge(clipLength(a.length)),
               ),
             if (_over)
               Positioned(
@@ -403,8 +403,10 @@ class _RowState extends State<_Row> {
     return MouseRegion(
       onEnter: (_) => setState(() => _over = true),
       onExit: (_) => setState(() => _over = false),
+      // Taller where a credit sits under the name: two lines in thirty-six
+      // pixels overflowed by four.
       child: SizedBox(
-        height: 36,
+        height: a.credited ? 44 : 36,
         child: Row(children: [
           _Still(a, width: 40, height: 28),
           const SizedBox(width: 8),
@@ -435,7 +437,7 @@ class _RowState extends State<_Row> {
           if (a.length > 0 && a.kind != AssetKind.picture)
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: Text(_duration(a.length),
+              child: Text(clipLength(a.length),
                   style: TextStyle(
                       fontSize: 11, color: theme.colors.onSurfaceVariant)),
             ),
@@ -605,7 +607,8 @@ class _Badge extends StatelessWidget {
       );
 }
 
-String _duration(double seconds) {
+/// clipLength is a length of sound written as a clock reads it, 3:07.
+String clipLength(double seconds) {
   if (seconds <= 0) return "";
   var s = seconds.round();
   return "${s ~/ 60}:${(s % 60).toString().padLeft(2, "0")}";

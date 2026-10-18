@@ -89,7 +89,8 @@ class LayerPicture {
     var look = lookOf(e, layerId);
     if (layer == null || look == null) return null;
     var space = LayerSpace(e, layer);
-    var rect = layer.isBase ? space.inner : space.rect;
+    // The base picture's place is its own now, as a picture layer's is.
+    var rect = space.rect;
     var placement = placeImage(size, rect, look.fit,
         crop: look.crop, framing: look.framing);
     return LayerPicture._(space, layer, size, placement);
@@ -149,6 +150,10 @@ class SubjectFinder {
 
   /// available is whether this machine can find a subject: macOS 14 or
   /// later. Asked once.
+  /// known is the answer [available] has already had, if it has had one --
+  /// for drawing the button straight away rather than a frame later.
+  static bool? get known => _available;
+
   static Future<bool> available() async {
     var known = _available;
     if (known != null) return known;
@@ -261,13 +266,6 @@ Future<Uint8List?> combinedSubject(ImageMask mask, ui.Image? current,
             how == MaskCombine.subtract ? BlendMode.dstOut : BlendMode.srcOver);
   });
 }
-
-/// flattenedMask is the whole of [mask] -- subject and marks, not inverted
-/// and not refined -- as a grey PNG for a picture of [size] pixels: what a
-/// tool that works on the mask's pixels starts from.
-Future<Uint8List?> flattenedMask(
-        ImageMask mask, ui.Image? subject, Size size) =>
-    maskPng(size, (canvas) => paintMaskMarks(canvas, mask, size, subject));
 
 /// _pixelsOf renders [draw] into a [w] x [h] picture and reads it back as
 /// RGBA bytes.

@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -159,6 +160,89 @@ void main() {
         expect(got[c], closeTo(want[c], by), reason: reason ?? "$got ≈ $want");
       }
     }
+
+    test("an adjustment is kept when its picture moves, not when it changes",
+        () async {
+      var cache = RasterCache.instance..clear();
+      var e = over("red", [
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+      ]);
+      await pixel(e, 50, 50);
+      var drawn = cache.drawn;
+      expect(cache.length, greaterThan(0), reason: "kept, by name");
+
+      // Moved: a new element, the same layers -- nothing drawn again.
+      await pixel(e.withBase(x: e.x + 7) as ImageElement, 50, 50);
+      expect(cache.drawn, drawn, reason: "where it is is not what it is of");
+
+      // The adjustment changed: drawn again, and the old one let go of.
+      var changed = e.withLayer(e.stack.last.id,
+          (l) => l.copyWith(adjust: const ImageAdjustment(kind: AdjustKind.threshold)));
+      var length = cache.length;
+      await pixel(changed, 50, 50);
+      expect(cache.drawn, drawn + 1);
+      expect(cache.length, length, reason: "replaced, not added to");
+
+      // The base picture changed under it: drawn again.
+      await pixel(changed.copyWith(assetId: "blue"), 50, 50);
+      expect(cache.drawn, drawn + 2);
+    });
+
+    test("resized through many sizes, a layer keeps one raster", () async {
+      var cache = RasterCache.instance..clear();
+      var e = over("red", [
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+      ]);
+      await pixel(e, 10, 10);
+      var length = cache.length;
+      for (var w = 60; w < 100; w += 4) {
+        await pixel(e.withBase(width: w.toDouble()) as ImageElement, 10, 10);
+      }
+      expect(cache.length, length,
+          reason: "each size replaced the last, rather than joining it");
+    });
+
+    test("a gesture draws with a full raster still good, and drafts only "
+        "what changed", () async {
+      var cache = RasterCache.instance..clear();
+      var e = over("red", [
+        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
+      ]);
+      await pixel(e, 50, 50);
+      var drawn = cache.drawn;
+      RasterCache.drafting = true;
+      try {
+        near(await pixel(e.withBase(x: e.x + 3) as ImageElement, 50, 50),
+            [0, 255, 255]);
+        expect(cache.drawn, drawn, reason: "the full one, not a draft");
+        var changed = e.withLayer(
+            e.stack.last.id,
+            (l) => l.copyWith(
+                adjust: const ImageAdjustment(kind: AdjustKind.threshold)));
+        await pixel(changed, 50, 50);
+        expect(cache.drawn, drawn + 1, reason: "a draft of what changed");
+      } finally {
+        RasterCache.drafting = false;
+      }
+      var length = cache.length;
+      await pixel(e, 50, 50);
+      expect(cache.length, lessThanOrEqualTo(length),
+          reason: "drawn full again, the draft let go of");
+    });
+
+    test("the kept rasters are held to their budget", () async {
+      var cache = RasterCache.instance..clear();
+      for (var i = 0; i < 40; i++) {
+        var r = ui.PictureRecorder();
+        ui.Canvas(r).drawRect(const Rect.fromLTWH(0, 0, 1, 1), Paint());
+        // 3000 x 3000 is 36MB: forty of them is far past the budget.
+        cache.put("e|$i", const [], r.endRecording().toImageSync(3000, 3000));
+      }
+      expect(cache.bytes, lessThanOrEqualTo(rasterBudget));
+      expect(cache.length, lessThan(40));
+      cache.clear();
+      expect(cache.bytes, 0);
+    });
 
     test("invert", () async {
       near(

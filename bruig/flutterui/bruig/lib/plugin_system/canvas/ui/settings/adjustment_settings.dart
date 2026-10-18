@@ -534,8 +534,9 @@ class _LevelsHistogramState extends State<LevelsHistogram> {
                     var handles = [xOf(black), xOf(mid.toDouble()), xOf(white)];
                     var best = 0;
                     for (var i = 1; i < 3; i++) {
-                      if ((handles[i] - x).abs() < (handles[best] - x).abs())
+                      if ((handles[i] - x).abs() < (handles[best] - x).abs()) {
                         best = i;
+                      }
                     }
                     setState(() => _held = best);
                     drag(ev.localPosition, done: false);

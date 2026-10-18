@@ -126,7 +126,12 @@ class EdgeCleaner {
       }
       _made[key] = image;
       _order.add(key);
+      // The cleaning it replaces is let go of, unless it is still kept to
+      // be drawn again: left to the collector, each was two thousand pixels
+      // across of memory nothing could reach.
+      var was = _last[look.assetId];
       _last[look.assetId] = image;
+      if (was != null && !_made.values.contains(was)) was.dispose();
       // A handful kept: a slider dragged back to where it was is instant.
       while (_order.length > 6) {
         var old = _order.removeAt(0);

@@ -2,6 +2,9 @@ import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 import 'package:bruig/plugin_system/canvas/presets/background_looks.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural/generators.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'dart:convert';
+
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
 
 // procedural_thumb.dart is a background drawn small: what a style or a look
@@ -21,14 +24,18 @@ class ProceduralThumb extends StatelessWidget {
   const ProceduralThumb(this.spec,
       {this.width = 36, this.height = 20, this.radius = 3, super.key});
 
+  // Drawn once and kept -- see TileSnapshot. A generated pattern is
+  // thousands of marks, some through layers of their own, and a panel of
+  // looks replayed every one of them on every frame it scrolled.
   @override
-  Widget build(BuildContext context) => RepaintBoundary(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          child: CustomPaint(
-            size: Size(width, height),
-            painter: _ThumbPainter(spec),
-          ),
+  Widget build(BuildContext context) => SizedBox(
+        width: width,
+        height: height,
+        child: TileSnapshot(
+          id: "pattern:${jsonEncode(spec.toJson())}",
+          paint: _ThumbPainter(spec).paint,
+          ground: const Color(0x00000000),
+          radius: radius,
         ),
       );
 }

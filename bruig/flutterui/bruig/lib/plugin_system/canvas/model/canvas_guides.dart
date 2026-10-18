@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 

@@ -307,18 +307,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(now(c).layerById(_layer.id)!.place.height, closeTo(750, 1e-9));
 
-      // The base picked, the place is the element's again.
+      // The base picked, the place is the base picture's own in the frame;
+      // the frame's -- the element's -- is in the Frame section.
       await tapKey(tester, "imageLayer-base");
+      expect(find.byKey(const ValueKey("layerX")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementX")), findsNothing);
+      await openSection(tester, "image.frame");
       expect(find.byKey(const ValueKey("elementX")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageScaleContent")), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a blend mode is seen on the canvas before it is chosen",
+    testWidgets("a blend mode is clicked, never tried on a hover",
         (tester) async {
       var c = await pumpPanel(tester);
       await tapKey(tester, "imageLayer-${_layer.id}");
       await openSection(tester, "image.picture.colour");
-      var undoable = c.canUndo;
+      await openTiles(tester, "image.tiles.blend");
 
       var screen = find.byKey(const ValueKey("imageLayerBlend-screen"));
       await tester.ensureVisible(screen);
@@ -329,18 +334,15 @@ void main() {
       await gesture.addPointer(location: Offset.zero);
       await gesture.moveTo(tester.getCenter(screen));
       await tester.pumpAndSettle();
-      expect(now(c).layerById(_layer.id)!.blend, LayerBlend.screen,
-          reason: "shown while the pointer is on it");
-      expect(c.canUndo, undoable, reason: "but not an edit");
-
-      // Left without choosing: back as it was.
-      await gesture.moveTo(Offset.zero);
-      await tester.pumpAndSettle();
+      // Tried on a hover, the panel took the tile tried for the one chosen:
+      // its highlight followed the pointer about.
       expect(now(c).layerById(_layer.id)!.blend, LayerBlend.normal);
       expect(c.trying, isFalse);
 
       // Chosen: kept, as one undo step.
       var multiply = find.byKey(const ValueKey("imageLayerBlend-multiply"));
+      await tester.ensureVisible(multiply);
+      await tester.pumpAndSettle();
       await gesture.moveTo(tester.getCenter(multiply));
       await tester.pumpAndSettle();
       await tester.tap(multiply);

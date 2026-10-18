@@ -167,6 +167,10 @@ void main() {
       expect(asRowKey("Avalanche"), "avalanche");
       // Punctuation goes, and nothing is left dangling on the end.
       expect(asRowKey("USD Coin (USDC)"), "usd-coin-usdc");
+      // Nothing left hanging off the end: the pattern that took trailing
+      // dashes off asked for a dash and a dollar sign, so it never did.
+      expect(asRowKey("Hull City."), "hull-city");
+      expect(asRowKey("Rangers - "), "rangers");
       expect(asRowKey(""), "");
       expect(asRowKey("   "), "");
     });

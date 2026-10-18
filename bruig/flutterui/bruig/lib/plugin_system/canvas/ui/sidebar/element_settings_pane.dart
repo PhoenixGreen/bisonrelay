@@ -2,9 +2,9 @@ import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/background_media_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/stagger_section.dart';
@@ -74,6 +74,9 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var showing = document.editedBackground;
 
     var pattern = ProceduralSettings(
+      // In sections, as every element's settings are.
+      sections: true,
+      rememberAs: "canvasBackground",
       // How long the canvas is, for the button that makes one run of a
       // movement fit it.
       canvasFrames: document.frames,
@@ -100,20 +103,28 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
 
     // And what the background carries over the pattern: a picture, a video,
     // a sound.
-    var settings = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    var settings = CanvasSections(
+      key: const ValueKey("backgroundSections"),
       children: [
-        // The designs saved from here or from a background element, to start
-        // from or to keep this one.
-        backgroundPresetsSection(context, controller, showing.spec,
-            onUse: (spec) {
-          controller.beginInteraction();
-          controller.setBackground(showing.copyWith(spec: spec));
-          controller.endInteraction();
-        }),
         pattern,
-        const SizedBox(height: canvasGroupGap),
         ...backgroundMediaSettings(context, controller),
+        // The designs saved from here or from a background element, to start
+        // from or to keep this one -- last, as on every element.
+        CanvasSection(
+          key: const ValueKey("elementSection-presets"),
+          icon: Icons.bookmarks_outlined,
+          title: "Presets",
+          summary: "Backgrounds to start from",
+          remember: "canvasBackground.presets",
+          children: [
+            backgroundPresetsSection(context, controller, showing.spec,
+                onUse: (spec) {
+              controller.beginInteraction();
+              controller.setBackground(showing.copyWith(spec: spec));
+              controller.endInteraction();
+            }),
+          ],
+        ),
       ],
     );
 
@@ -172,36 +183,3 @@ String elementSettingsTitle(CanvasController controller) {
 const String elementSettingsHint =
     "The settings of whatever is selected. With nothing selected these are "
     "the canvas's own background, which is what the whole page is drawn on.";
-
-/// CanvasSectionHeading is a small capitalised label above a group of things,
-/// with an optional question mark beside it explaining what they are.
-class CanvasSectionHeading extends StatelessWidget {
-  final String text;
-  final String? hint;
-  const CanvasSectionHeading(this.text, {this.hint, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var label = Text(
-      text.toUpperCase(),
-      style: TextStyle(
-        fontSize: 10,
-        letterSpacing: 0.8,
-        fontWeight: FontWeight.w600,
-        color: ThemeNotifier.of(context)
-            .colors
-            .onSurfaceVariant
-            .withValues(alpha: 0.75),
-      ),
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6, top: 2),
-      child: hint == null
-          ? label
-          : Row(mainAxisSize: MainAxisSize.min, children: [
-              label,
-              CanvasHint(hint!),
-            ]),
-    );
-  }
-}

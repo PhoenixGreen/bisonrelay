@@ -152,6 +152,106 @@ void main() {
               ImageLayer(id: "paint", kind: LayerKind.paint, strokes: strokes),
             ]);
 
+    test("a brush's tip and the pen's lean come back as they were saved",
+        () {
+      const tip = BrushTip(
+          roundness: 0.2,
+          angle: 30,
+          followTilt: true,
+          spacing: 0.1,
+          scatter: 0.4,
+          grain: 0.5,
+          pressureSize: 0.3,
+          pressureOpacity: 0.6,
+          pressureCurve: 1.5,
+          tiltSize: 1);
+      var s = const StrokeMark(
+          kind: StrokeKind.paint,
+          points: [Offset(0.1, 0.2), Offset(0.3, 0.4)],
+          tip: tip,
+          tilt: [Offset(0.5, -0.25), Offset(0.25, 0)]);
+      var back = StrokeMark.fromJson(s.toJson());
+      expect(back.tip, tip);
+      expect(back.tilt, s.tilt);
+      // And a stroke from before there were tips is the round brush.
+      expect(StrokeMark.fromJson(_across(StrokeKind.paint).toJson()).tip,
+          const BrushTip());
+    });
+
+    // Ten pixels either side of the line at y = 50 for a round brush; how far
+    // the paint reaches up from it tells a round tip from a flat one.
+    int reachUp(Uint8List p) {
+      var up = 0;
+      for (var y = 50; y >= 30; y--) {
+        if (at(p, 50, y)[1] < 128) up = 50 - y;
+      }
+      return up;
+    }
+
+    StrokeMark tipped(BrushTip tip,
+            {List<Offset> tilt = const [], List<double> pressure = const []}) =>
+        StrokeMark(
+            kind: StrokeKind.paint,
+            points: const [Offset(0.1, 0.5), Offset(0.9, 0.5)],
+            pressure: pressure,
+            radius: 0.1,
+            hardness: 1,
+            colour: const ui.Color(0xFFFF0000),
+            tip: tip,
+            tilt: tilt);
+
+    test("a flat nib lying along the line is thin across it", () async {
+      var round = reachUp(await render(painted([tipped(const BrushTip())])));
+      var flat = reachUp(await render(painted(
+          [tipped(const BrushTip(roundness: 0.2, spacing: 0.1))])));
+      expect(round, greaterThanOrEqualTo(8));
+      expect(flat, lessThanOrEqualTo(3), reason: "a fifth as tall: $flat");
+    });
+
+    test("a nib that follows the pen turns as the pen leans", () async {
+      const nib = BrushTip(roundness: 0.2, spacing: 0.1, followTilt: true);
+      // Leaning across: the nib stands upright, broad across the line.
+      var leaning = reachUp(await render(painted([
+        tipped(nib, tilt: const [Offset(1, 0), Offset(1, 0)])
+      ])));
+      // Upright, with no lean to follow, it lies at its own angle.
+      var upright = reachUp(await render(painted([tipped(nib)])));
+      expect(leaning, greaterThanOrEqualTo(8));
+      expect(upright, lessThanOrEqualTo(3));
+    });
+
+    test("grain leaves gaps in the paint", () async {
+      int red(Uint8List p) {
+        var n = 0;
+        for (var x = 15; x < 85; x++) {
+          for (var y = 42; y < 58; y++) {
+            if (at(p, x, y)[1] < 128) n++;
+          }
+        }
+        return n;
+      }
+
+      var solid = red(await render(painted([tipped(const BrushTip())])));
+      var grainy = red(await render(painted([
+        tipped(const BrushTip(grain: 0.9, spacing: 0.6))
+      ])));
+      expect(grainy, lessThan(solid * 0.9), reason: "$grainy of $solid");
+    });
+
+    test("a light touch fades the paint where the brush says so", () async {
+      var firm = await render(painted([
+        tipped(const BrushTip(pressureSize: 0, pressureOpacity: 1),
+            pressure: const [1, 1])
+      ]));
+      var light = await render(painted([
+        tipped(const BrushTip(pressureSize: 0, pressureOpacity: 1),
+            pressure: const [0.3, 0.3])
+      ]));
+      expect(at(firm, 50, 50), [255, 0, 0]);
+      expect(at(light, 50, 50)[1], greaterThan(60),
+          reason: "lighter, the white showing through");
+    });
+
     test("paint lies where it was painted", () async {
       var p = await render(painted([_across(StrokeKind.paint)]));
       expect(at(p, 50, 50), [255, 0, 0]);

@@ -24,6 +24,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
@@ -56,6 +57,9 @@ AudioElement speaker(String id,
         box: const BoxSpec(fill: Color(0xFF223046), borderRadius: 999));
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   late Directory root;
   late FakeEngine engine;
 
@@ -581,6 +585,8 @@ void main() {
       await show(tester, settingsOf(c));
 
       var before = c.document.elements.single.width;
+      await tester.ensureVisible(find.byKey(const ValueKey("audioControlvolume")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("audioControlvolume")));
       await tester.pumpAndSettle();
       var after = c.document.elements.single as AudioElement;
@@ -602,10 +608,18 @@ void main() {
       c.selectOnly("s");
       await show(tester, settingsOf(c));
 
+      await tester.ensureVisible(find.byKey(const ValueKey("audioAutoplay")));
+
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byKey(const ValueKey("audioAutoplay")));
       await tester.pumpAndSettle();
       expect(
           (c.document.elements.single as AudioElement).clip.autoplay, isTrue);
+
+      await tester.ensureVisible(find.byKey(const ValueKey("audioLoop")));
+
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey("audioLoop")));
       await tester.pumpAndSettle();
@@ -630,6 +644,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("s");
       await show(tester, settingsOf(c));
+      await tester.ensureVisible(find.byKey(const ValueKey("audioAcross")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("audioAcross")));
       await tester.pumpAndSettle();
       expect((c.document.elements.single as AudioElement).clip.acrossPages,

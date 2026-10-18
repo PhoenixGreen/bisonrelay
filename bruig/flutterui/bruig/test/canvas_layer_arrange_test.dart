@@ -199,6 +199,91 @@ void main() {
     });
   });
 
+  group("the arrow keys", () {
+    testWidgets("move the layers picked, a canvas unit at a time",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      c.editImage("i", layer: _a.id);
+      c.pickImageLayer(_b.id, add: true);
+      // A frame two hundred wide is a thousand layer units: five a unit.
+      c.nudgeSelected(1, 0);
+      expect(_now(c).layerById(_a.id)!.place.left, closeTo(5, 1e-6));
+      expect(_now(c).layerById(_b.id)!.place.left, closeTo(605, 1e-6));
+      expect(_now(c).x, 100, reason: "the picture itself stays");
+      c.nudgeSelected(0, 10);
+      expect(_now(c).layerById(_a.id)!.place.top, closeTo(50, 1e-6));
+
+      // With the base picked, the picture moves.
+      c.pickImageLayer(baseLayerId);
+      c.nudgeSelected(1, 0);
+      expect(_now(c).x, 101);
+    });
+
+    testWidgets("work from the layers list as from the canvas",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      tester.view.physicalSize = const Size(900, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await _seed(tester, c);
+      await tester.pumpAndSettle();
+      var chip = find.byKey(ValueKey("imageLayer-${_a.id}"));
+      await tester.ensureVisible(chip);
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(_now(c).layerById(_a.id)!.place.left, closeTo(5, 1e-6));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(_now(c).layerById(_a.id)!.place.top, closeTo(50, 1e-6));
+    });
+  });
+
+  group("the base picture on the stage", () {
+    testWidgets("with layers round it, is dragged about its frame",
+        (tester) async {
+      var key = GlobalKey<CanvasStageState>();
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      await tester.pumpWidget(_host(SizedBox(
+          width: 800,
+          height: 600,
+          child: CanvasStage(key: key, controller: c))));
+      await _seed(tester, c);
+      await tester.pumpAndSettle();
+      c.editImage("i");
+      await tester.pumpAndSettle();
+      var stage = key.currentState!;
+      var scale = stage.pageRect.width / c.document.size.width;
+      Offset screen(Offset p) => stage.pageRect.topLeft + p * scale;
+
+      // Over the base alone: right of the top-left layer, above the other.
+      await tester.dragFrom(
+          screen(const Offset(240, 140)), Offset(30 * scale, 0));
+      await tester.pumpAndSettle();
+      var base = _now(c).layerById(baseLayerId)!.place;
+      expect(base.left, greaterThan(50), reason: "the base moved: $base");
+      expect(base.width, layerUnits, reason: "its size kept");
+      expect(_now(c).layerById(_a.id)!.place, _a.place,
+          reason: "and nothing else");
+      expect(_now(c).x, 100, reason: "the frame stayed put");
+    });
+  });
+
   group("in the panel", () {
     Future<CanvasController> pumpPanel(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});

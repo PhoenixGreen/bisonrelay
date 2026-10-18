@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 
 // stock_panel.dart is the Stock section of the Assets sidebar: search Pixabay,
 // the Noun Project, Freesound and Jamendo, look and listen, and use what fits.
@@ -553,7 +554,7 @@ class _StockPanelState extends State<StockPanel> {
                 _Thumb(item: item, width: 96, height: 72),
               if (item.length > 0)
                 Positioned(
-                    left: 4, bottom: 4, child: _Badge(_duration(item.length))),
+                    left: 4, bottom: 4, child: _Badge(clipLength(item.length))),
               // A video is watched before it is chosen: a small copy,
               // fetched when this is pressed and thrown away after.
               if (item.kind == AssetKind.video && item.preview.isNotEmpty)
@@ -642,7 +643,7 @@ class _StockPanelState extends State<StockPanel> {
           if (item.length > 0)
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: Text(_duration(item.length),
+              child: Text(clipLength(item.length),
                   style: TextStyle(
                       fontSize: 11, color: theme.colors.onSurfaceVariant)),
             ),
@@ -794,12 +795,6 @@ class _Badge extends StatelessWidget {
         child: Text(text,
             style: const TextStyle(fontSize: 10, color: Color(0xFFFFFFFF))),
       );
-}
-
-String _duration(double seconds) {
-  if (seconds <= 0) return "";
-  var s = seconds.round();
-  return "${s ~/ 60}:${(s % 60).toString().padLeft(2, "0")}";
 }
 
 /// _Previewer plays one stock sound at a time, fetched to a temporary file --

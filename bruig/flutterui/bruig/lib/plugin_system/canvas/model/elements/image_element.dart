@@ -644,6 +644,11 @@ class ImageElement extends CanvasElement {
   /// the picture, in order -- under its mask. See image_strokes.dart.
   final List<StrokeMark> retouch;
 
+  /// scaleContent makes resizing the picture's frame scale its layers with
+  /// it. Off, the frame is resized round them: each stays its size, where it
+  /// is on the page -- see keptInPlace.
+  final bool scaleContent;
+
   const ImageElement(
     super.base, {
     this.assetId = "",
@@ -664,6 +669,7 @@ class ImageElement extends CanvasElement {
     this.layers = const [],
     this.mask = const ImageMask(),
     this.retouch = const [],
+    this.scaleContent = false,
   });
 
   @override
@@ -764,7 +770,12 @@ class ImageElement extends CanvasElement {
   bool get hasImage => assetId.isNotEmpty;
 
   @override
-  CanvasElement rebase(ElementBase base) => ImageElement(base,
+  CanvasElement rebase(ElementBase base) {
+    var next = _rebased(base);
+    return scaleContent ? next : keptInPlace(this, next);
+  }
+
+  ImageElement _rebased(ElementBase base) => ImageElement(base,
       assetId: assetId,
       fit: fit,
       box: box,
@@ -782,7 +793,8 @@ class ImageElement extends CanvasElement {
       animation: animation,
       layers: layers,
       mask: mask,
-      retouch: retouch);
+      retouch: retouch,
+      scaleContent: scaleContent);
 
   ImageElement copyWith({
     String? assetId,
@@ -804,6 +816,7 @@ class ImageElement extends CanvasElement {
     List<ImageLayer>? layers,
     ImageMask? mask,
     List<StrokeMark>? retouch,
+    bool? scaleContent,
   }) =>
       ImageElement(base,
           assetId: assetId ?? this.assetId,
@@ -823,7 +836,8 @@ class ImageElement extends CanvasElement {
           animation: animation ?? this.animation,
           layers: layers ?? this.layers,
           mask: mask ?? this.mask,
-          retouch: retouch ?? this.retouch);
+          retouch: retouch ?? this.retouch,
+          scaleContent: scaleContent ?? this.scaleContent);
 
   @override
   Map<String, dynamic> props() => {
@@ -847,6 +861,7 @@ class ImageElement extends CanvasElement {
         if (layered) "layers": [for (var l in stack) l.toJson()],
         if (!mask.empty) "mask": mask.toJson(),
         if (retouch.isNotEmpty) "retouch": [for (var s in retouch) s.toJson()],
+        if (scaleContent) "scaleContent": true,
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -888,7 +903,8 @@ class ImageElement extends CanvasElement {
                   if (ImageLayer.fromJson(l) case var layer?) layer,
           ],
           mask: jsonSpec(json["mask"], ImageMask.fromJson, const ImageMask()),
-          retouch: strokesFromJson(json["retouch"]));
+          retouch: strokesFromJson(json["retouch"]),
+          scaleContent: jsonBool(json["scaleContent"], false));
 }
 
 /// fitToPicture gives an element the proportions of the picture in it.
@@ -911,10 +927,15 @@ ImageElement fitToPicture(ImageElement e, Size picture) {
     width = height * aspect;
   }
 
-  return e.rebase(box.copyWith(
+  var fitted = e.rebase(box.copyWith(
     x: box.x + (box.width - width) / 2,
     y: box.y + (box.height - height) / 2,
     width: width,
     height: height,
   )) as ImageElement;
+  // The frame took the new picture's shape for the picture: it fills it,
+  // whatever the layers round it did.
+  return fitted.layered
+      ? fitted.withLayer(baseLayerId, (l) => l.copyWith(clearBasePlace: true))
+      : fitted;
 }

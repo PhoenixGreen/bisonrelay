@@ -17,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +58,9 @@ Widget host(CanvasController c, {bool stage = false}) => MultiProvider(
     );
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   test("each element's colours: a drawing's shape, a shape, none", () {
     var c = CanvasController(const CanvasDocument().addElement(drawing()));
     addTearDown(c.dispose);

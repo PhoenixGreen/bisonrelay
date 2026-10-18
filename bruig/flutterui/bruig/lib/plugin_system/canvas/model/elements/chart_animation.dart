@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 
 // chart_animation.dart is how a chart arrives: which preset, how much its
 // items overlap, and what the end of the movement does.
@@ -127,7 +128,7 @@ enum ChartEase {
         var u = t - 1;
         return 1 + (c + 1) * u * u * u + c * u * u;
       case ChartEase.bounce:
-        return _bounce(t);
+        return bounceOut(t);
       case ChartEase.spring:
         // A decaying oscillation. Three visible swings before it settles,
         // which is enough to read as a spring and few enough to stop being
@@ -135,21 +136,6 @@ enum ChartEase {
         var decay = math.pow(2, -9 * t).toDouble();
         return 1 - decay * math.cos(t * math.pi * 6);
     }
-  }
-
-  static double _bounce(double t) {
-    const n = 7.5625, d = 2.75;
-    if (t < 1 / d) return n * t * t;
-    if (t < 2 / d) {
-      var u = t - 1.5 / d;
-      return n * u * u + 0.75;
-    }
-    if (t < 2.5 / d) {
-      var u = t - 2.25 / d;
-      return n * u * u + 0.9375;
-    }
-    var u = t - 2.625 / d;
-    return n * u * u + 0.984375;
   }
 }
 

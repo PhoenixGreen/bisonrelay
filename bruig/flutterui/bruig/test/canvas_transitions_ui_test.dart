@@ -110,6 +110,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.first.custom, isTrue);
 
+    await tester.ensureVisible(find.text("Set on this scene"));
+    await tester.pumpAndSettle();
     await tester.tap(find.text("Set on this scene"));
     await tester.pumpAndSettle();
     expect(controller.document.allScenes.first.custom, isFalse);

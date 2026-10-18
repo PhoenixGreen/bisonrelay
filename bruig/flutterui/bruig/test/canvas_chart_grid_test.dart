@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +21,9 @@ import 'package:provider/provider.dart';
 // stood over the numbers underneath.
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   Future<CanvasController> panel(WidgetTester tester, ChartData data) async {
     var element = ChartElement(
       const ElementBase(id: "c", width: 400, height: 300),

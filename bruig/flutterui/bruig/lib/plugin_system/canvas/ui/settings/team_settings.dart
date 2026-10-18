@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/recent_pictures.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_photo_editor.dart';
 
@@ -33,306 +34,334 @@ List<Widget> teamSettings(
   }
 
   return [
-    // No caption: the panel header says "Team settings" already, and a
-    // group called Team directly under it was the word twice.
-    CanvasControlGroup(
-        label: "Team",
-        hideCaption: true,
-        rule: false,
+    section(e, "team",
+        icon: Icons.groups_outlined,
+        title: "Team",
+        summary: "${e.sport.label} · ${e.formation.label}"
+            "${e.ball != null ? " · ball" : ""}",
+        initiallyOpen: true,
         children: [
-          // The pitch the team stands on. Linked, it goes wherever the pitch
-          // goes -- moved, turned, zoomed or tilted -- and its players are
-          // kept in the pitch's own metres. See team_painter.dart.
-          _pitchDropdown(controller, e, now),
-          CanvasDropdown<TeamSport>(
-            key: const ValueKey("teamSport"),
-            label: "Sport",
-            value: e.sport,
-            width: 138,
-            options: [for (var s in TeamSport.values) (s, s.label)],
-            // Changing the sport re-lays the squad out and numbers it afresh,
-            // since a formation belongs to one game and the squad size changes
-            // with it.
-            onChanged: (v) => now(e.withSport(v)),
-          ),
-          CanvasDropdown<TeamFormation>(
-            label: "Formation",
-            value: e.sport.formations.contains(e.formation)
-                ? e.formation
-                : e.sport.formations.first,
-            width: 118,
-            options: [for (var f in e.sport.formations) (f, f.label)],
-            onChanged: (v) => now(e.withFormation(v)),
-          ),
-          CanvasDropdown<FormationSpread>(
-            label: "Spread",
-            value: e.spread,
-            width: 108,
-            options: [for (var v in FormationSpread.values) (v, v.label)],
-            // The same eleven positions, two pictures: the shape at kick-off sits
-            // inside its own half, the shape in possession has its forwards over
-            // the halfway line. See FormationSpread.
-            onChanged: (v) => now(e.withFormation(e.formation, spread: v)),
-          ),
-          CanvasToggle(
-            label: "Attack left",
-            value: e.mirrored,
-            // Turning the team round re-lays it out, which is how the away side
-            // faces the home side rather than both running at the same goal.
-            onChanged: (v) => now(e.withFormation(e.formation, mirror: v)),
-          ),
-          if (!e.linked)
-            CanvasIconButton(
-              icon: e.frameLocked ? Icons.lock : Icons.lock_open,
-              tooltip: e.frameLocked
-                  ? "The team's box is pinned — players still move"
-                  : "Pin the team's box so only players move",
-              active: e.frameLocked,
-              onPressed: () => now(e.copyWith(frameLocked: !e.frameLocked)),
-            ),
-          CanvasIconButton(
-            icon: Icons.refresh,
-            tooltip: "Reset formation",
-            onPressed: () => now(e.withFormation(e.formation)),
-          ),
-          // The ball: one more thing on the pitch that moves the way a player
-          // does -- dragged, keyframed, or sent along a path.
-          CanvasToggle(
-            key: const ValueKey("teamBall"),
-            label: "Ball",
-            value: e.ball != null,
-            onChanged: (v) => now(e.withBall(v)),
-          ),
-          // Positions rather than names, as a switch: the names are kept, and
-          // turning it off brings them back.
-          CanvasIconButton(
-            key: const ValueKey("teamNameByPosition"),
-            icon: Icons.badge_outlined,
-            tooltip: e.namesByPosition ? "Show names" : "Show positions",
-            active: e.namesByPosition,
-            onPressed: () =>
-                now(e.copyWith(namesByPosition: !e.namesByPosition)),
-          ),
+          CanvasControlGroup(
+              label: "Team",
+              hideCaption: true,
+              rule: false,
+              children: [
+                // The pitch the team stands on. Linked, it goes wherever the pitch
+                // goes -- moved, turned, zoomed or tilted -- and its players are
+                // kept in the pitch's own metres. See team_painter.dart.
+                _pitchDropdown(controller, e, now),
+                CanvasDropdown<TeamSport>(
+                  key: const ValueKey("teamSport"),
+                  label: "Sport",
+                  value: e.sport,
+                  width: 138,
+                  options: [for (var s in TeamSport.values) (s, s.label)],
+                  // Changing the sport re-lays the squad out and numbers it afresh,
+                  // since a formation belongs to one game and the squad size changes
+                  // with it.
+                  onChanged: (v) => now(e.withSport(v)),
+                ),
+                CanvasDropdown<TeamFormation>(
+                  label: "Formation",
+                  value: e.sport.formations.contains(e.formation)
+                      ? e.formation
+                      : e.sport.formations.first,
+                  width: 118,
+                  options: [for (var f in e.sport.formations) (f, f.label)],
+                  onChanged: (v) => now(e.withFormation(v)),
+                ),
+                CanvasDropdown<FormationSpread>(
+                  label: "Spread",
+                  value: e.spread,
+                  width: 108,
+                  options: [for (var v in FormationSpread.values) (v, v.label)],
+                  // The same eleven positions, two pictures: the shape at kick-off sits
+                  // inside its own half, the shape in possession has its forwards over
+                  // the halfway line. See FormationSpread.
+                  onChanged: (v) =>
+                      now(e.withFormation(e.formation, spread: v)),
+                ),
+                CanvasToggle(
+                  label: "Attack left",
+                  value: e.mirrored,
+                  // Turning the team round re-lays it out, which is how the away side
+                  // faces the home side rather than both running at the same goal.
+                  onChanged: (v) =>
+                      now(e.withFormation(e.formation, mirror: v)),
+                ),
+                if (!e.linked)
+                  CanvasIconButton(
+                    icon: e.frameLocked ? Icons.lock : Icons.lock_open,
+                    tooltip: e.frameLocked
+                        ? "The team's box is pinned — players still move"
+                        : "Pin the team's box so only players move",
+                    active: e.frameLocked,
+                    onPressed: () =>
+                        now(e.copyWith(frameLocked: !e.frameLocked)),
+                  ),
+                CanvasIconButton(
+                  icon: Icons.refresh,
+                  tooltip: "Reset formation",
+                  onPressed: () => now(e.withFormation(e.formation)),
+                ),
+                // The ball: one more thing on the pitch that moves the way a player
+                // does -- dragged, keyframed, or sent along a path.
+                CanvasToggle(
+                  key: const ValueKey("teamBall"),
+                  label: "Ball",
+                  value: e.ball != null,
+                  onChanged: (v) => now(e.withBall(v)),
+                ),
+                // Positions rather than names, as a switch: the names are kept, and
+                // turning it off brings them back.
+                CanvasIconButton(
+                  key: const ValueKey("teamNameByPosition"),
+                  icon: Icons.badge_outlined,
+                  tooltip: e.namesByPosition ? "Show names" : "Show positions",
+                  active: e.namesByPosition,
+                  onPressed: () =>
+                      now(e.copyWith(namesByPosition: !e.namesByPosition)),
+                ),
+              ]),
+          if (e.ball != null) _ballGroup(e, now, begin, write, commit),
         ]),
-    _squadList(context, controller, e, write, begin, commit, now),
-    if (e.ball != null) _ballGroup(e, now, begin, write, commit),
-    // What the players look like: a dot, a shirt or a portrait, the kit's
-    // pattern, faces, and the finishing.
-    CanvasControlGroup(label: "Design", rule: false, children: [
-      CanvasDropdown<TokenStyle>(
-        key: const ValueKey("teamToken"),
-        label: "Players as",
-        value: e.tokenStyle,
-        width: 104,
-        options: [for (var t in TokenStyle.values) (t, t.label)],
-        onChanged: (v) => now(e.copyWith(tokenStyle: v)),
-      ),
-      CanvasDropdown<KitPattern>(
-        key: const ValueKey("teamKit"),
-        label: "Kit",
-        value: e.kitPattern,
-        width: 104,
-        options: [for (var k in KitPattern.values) (k, k.label)],
-        onChanged: (v) => now(e.copyWith(kitPattern: v)),
-      ),
-      CanvasDropdown<NameStyle>(
-        key: const ValueKey("teamNameStyle"),
-        label: "Names",
-        value: e.nameStyle,
-        width: 90,
-        options: [for (var n in NameStyle.values) (n, n.label)],
-        onChanged: (v) => now(e.copyWith(nameStyle: v)),
-      ),
-      if (e.tokenStyle == TokenStyle.portrait)
-        CanvasToggle(
-          key: const ValueKey("teamFaces"),
-          label: "Faces",
-          value: e.faces,
-          onChanged: (v) => now(e.copyWith(faces: v)),
-        ),
-      CanvasToggle(
-        key: const ValueKey("teamShadow"),
-        label: "Shadow",
-        value: e.shadow,
-        onChanged: (v) => now(e.copyWith(shadow: v)),
-      ),
-      CanvasToggle(
-        key: const ValueKey("teamRuns"),
-        label: "Runs",
-        value: e.showRuns,
-        onChanged: (v) => now(e.copyWith(showRuns: v)),
-      ),
-    ]),
-    CanvasControlGroup(label: "Colours", rule: false, children: [
-      if (e.sport.hasKeeper)
-        CanvasColorButton(
-          label: "Keeper",
-          color: e.keeperColor,
-          onChanged: (c) => now(e.copyWith(keeperColor: c)),
-        ),
-      CanvasColorButton(
-        label: "Players",
-        color: e.playerColor,
-        onChanged: (c) => now(e.copyWith(playerColor: c)),
-      ),
-      CanvasColorButton(
-        key: const ValueKey("teamSecond"),
-        label: "Second",
-        color: e.secondaryColor,
-        onChanged: (c) => now(e.copyWith(secondaryColor: c)),
-      ),
-      CanvasColorButton(
-        label: "Outline",
-        color: e.outlineColor,
-        onChanged: (c) => now(e.copyWith(outlineColor: c)),
-      ),
-      // The element's own opacity rather than a second one of the team's. Two
-      // opacities multiplying together is a control that appears not to work
-      // whenever the other one is down.
-      CanvasNumberField(
-        label: "Opacity",
-        decimals: 2,
-        width: 62,
-        value: e.opacity,
-        min: 0,
-        max: 1,
-        onChanged: (v) {
-          begin();
-          write(e.withBase(opacity: v));
-        },
-        onCommit: commit,
-      ),
-    ]),
-    CanvasControlGroup(label: "Dots", rule: false, children: [
-      CanvasNumberField(
-        key: const ValueKey("teamDotWidth"),
-        label: "Width",
-        value: e.dotWidth,
-        min: 4,
-        max: 400,
-        width: 56,
-        onChanged: (v) {
-          begin();
-          // Locked, the two move together, which is what keeps a player marker
-          // a circle. An oval is almost always somebody having dragged one
-          // field without meaning to.
-          write(e.copyWith(
-              dotWidth: v, dotHeight: e.lockDotAspect ? v : e.dotHeight));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        key: const ValueKey("teamDotHeight"),
-        label: "Height",
-        value: e.dotHeight,
-        min: 4,
-        max: 400,
-        width: 56,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(
-              dotHeight: v, dotWidth: e.lockDotAspect ? v : e.dotWidth));
-        },
-        onCommit: commit,
-      ),
-      CanvasIconButton(
-        icon: e.lockDotAspect ? Icons.link : Icons.link_off,
-        tooltip: e.lockDotAspect
-            ? "Width and height move together"
-            : "Width and height are independent",
-        active: e.lockDotAspect,
-        onPressed: () => now(e.copyWith(
-            lockDotAspect: !e.lockDotAspect,
-            dotHeight: e.lockDotAspect ? e.dotHeight : e.dotWidth)),
-      ),
-      CanvasNumberField(
-        label: "Ring",
-        value: e.ringWidth,
-        min: 0,
-        max: 40,
-        decimals: 1,
-        width: 54,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(ringWidth: v));
-        },
-        onCommit: commit,
-      ),
-      if (!e.linked)
-        CanvasNumberField(
-          label: "Angle",
-          value: e.rotation,
-          min: -180,
-          max: 180,
-          width: 56,
-          suffix: "°",
-          onChanged: (v) {
-            begin();
-            write(e.withBase(rotation: v));
-          },
-          onCommit: commit,
-        ),
-    ]),
-    // One set of type for the number and the name. They were two identical
-    // panels, and the two drifted -- a team's names ended up in a different
-    // face from its numbers without anybody having chosen that.
-    ...typeGroups(
-      e.labelSpec,
-      (spec) {
-        begin();
-        write(e.copyWith(labelSpec: spec));
-      },
-      begin,
-      commit,
-      label: "Numbers and names",
-      remember: "team",
-      rule: false,
-    ),
-    CanvasControlGroup(label: "Labels", rule: false, children: [
-      CanvasToggle(
-        label: "Numbers",
-        value: e.showNumbers,
-        onChanged: (v) => now(e.copyWith(showNumbers: v)),
-      ),
-      CanvasToggle(
-        label: "Names",
-        value: e.showNames,
-        onChanged: (v) => now(e.copyWith(showNames: v)),
-      ),
-      CanvasDropdown<LabelPosition>(
-        label: "Name at",
-        value: e.namePosition,
-        width: 92,
-        options: [for (var p in LabelPosition.values) (p, p.label)],
-        onChanged: (v) => now(e.copyWith(namePosition: v)),
-      ),
-      CanvasNumberField(
-        label: "Gap",
-        value: e.nameGap,
-        min: 0,
-        max: 80,
-        decimals: 1,
-        width: 50,
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(nameGap: v));
-        },
-        onCommit: commit,
-      ),
-      CanvasNumberField(
-        label: "Turn",
-        value: e.labelRotation,
-        min: -180,
-        max: 180,
-        width: 56,
-        suffix: "°",
-        onChanged: (v) {
-          begin();
-          write(e.copyWith(labelRotation: v));
-        },
-        onCommit: commit,
-      ),
-    ]),
+    section(e, "players",
+        icon: Icons.person_outline,
+        title: "Players",
+        summary: e.ball == null
+            ? "${e.players.length} players"
+            : "${e.players.length - 1} players + ball",
+        children: [
+          _squadList(context, controller, e, write, begin, commit, now),
+        ]),
+    section(e, "look",
+        icon: Icons.palette_outlined,
+        title: "Look",
+        summary: e.tokenStyle.label,
+        children: [
+          CanvasControlGroup(label: "Design", rule: false, children: [
+            CanvasDropdown<TokenStyle>(
+              key: const ValueKey("teamToken"),
+              label: "Players as",
+              value: e.tokenStyle,
+              width: 104,
+              options: [for (var t in TokenStyle.values) (t, t.label)],
+              onChanged: (v) => now(e.copyWith(tokenStyle: v)),
+            ),
+            CanvasDropdown<KitPattern>(
+              key: const ValueKey("teamKit"),
+              label: "Kit",
+              value: e.kitPattern,
+              width: 104,
+              options: [for (var k in KitPattern.values) (k, k.label)],
+              onChanged: (v) => now(e.copyWith(kitPattern: v)),
+            ),
+            CanvasDropdown<NameStyle>(
+              key: const ValueKey("teamNameStyle"),
+              label: "Names",
+              value: e.nameStyle,
+              width: 90,
+              options: [for (var n in NameStyle.values) (n, n.label)],
+              onChanged: (v) => now(e.copyWith(nameStyle: v)),
+            ),
+            if (e.tokenStyle == TokenStyle.portrait)
+              CanvasToggle(
+                key: const ValueKey("teamFaces"),
+                label: "Faces",
+                value: e.faces,
+                onChanged: (v) => now(e.copyWith(faces: v)),
+              ),
+            CanvasToggle(
+              key: const ValueKey("teamShadow"),
+              label: "Shadow",
+              value: e.shadow,
+              onChanged: (v) => now(e.copyWith(shadow: v)),
+            ),
+            CanvasToggle(
+              key: const ValueKey("teamRuns"),
+              label: "Runs",
+              value: e.showRuns,
+              onChanged: (v) => now(e.copyWith(showRuns: v)),
+            ),
+          ]),
+          CanvasControlGroup(label: "Colours", rule: false, children: [
+            if (e.sport.hasKeeper)
+              CanvasColorButton(
+                label: "Keeper",
+                color: e.keeperColor,
+                onChanged: (c) => now(e.copyWith(keeperColor: c)),
+              ),
+            CanvasColorButton(
+              label: "Players",
+              color: e.playerColor,
+              onChanged: (c) => now(e.copyWith(playerColor: c)),
+            ),
+            CanvasColorButton(
+              key: const ValueKey("teamSecond"),
+              label: "Second",
+              color: e.secondaryColor,
+              onChanged: (c) => now(e.copyWith(secondaryColor: c)),
+            ),
+            CanvasColorButton(
+              label: "Outline",
+              color: e.outlineColor,
+              onChanged: (c) => now(e.copyWith(outlineColor: c)),
+            ),
+            // The element's own opacity rather than a second one of the team's. Two
+            // opacities multiplying together is a control that appears not to work
+            // whenever the other one is down.
+            CanvasNumberField(
+              label: "Opacity",
+              decimals: 2,
+              width: 62,
+              value: e.opacity,
+              min: 0,
+              max: 1,
+              onChanged: (v) {
+                begin();
+                write(e.withBase(opacity: v));
+              },
+              onCommit: commit,
+            ),
+          ]),
+          CanvasControlGroup(label: "Dots", rule: false, children: [
+            CanvasNumberField(
+              key: const ValueKey("teamDotWidth"),
+              label: "Width",
+              value: e.dotWidth,
+              min: 4,
+              max: 400,
+              width: 56,
+              onChanged: (v) {
+                begin();
+                // Locked, the two move together, which is what keeps a player marker
+                // a circle. An oval is almost always somebody having dragged one
+                // field without meaning to.
+                write(e.copyWith(
+                    dotWidth: v, dotHeight: e.lockDotAspect ? v : e.dotHeight));
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              key: const ValueKey("teamDotHeight"),
+              label: "Height",
+              value: e.dotHeight,
+              min: 4,
+              max: 400,
+              width: 56,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(
+                    dotHeight: v, dotWidth: e.lockDotAspect ? v : e.dotWidth));
+              },
+              onCommit: commit,
+            ),
+            CanvasIconButton(
+              icon: e.lockDotAspect ? Icons.link : Icons.link_off,
+              tooltip: e.lockDotAspect
+                  ? "Width and height move together"
+                  : "Width and height are independent",
+              active: e.lockDotAspect,
+              onPressed: () => now(e.copyWith(
+                  lockDotAspect: !e.lockDotAspect,
+                  dotHeight: e.lockDotAspect ? e.dotHeight : e.dotWidth)),
+            ),
+            CanvasNumberField(
+              label: "Ring",
+              value: e.ringWidth,
+              min: 0,
+              max: 40,
+              decimals: 1,
+              width: 54,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(ringWidth: v));
+              },
+              onCommit: commit,
+            ),
+            if (!e.linked)
+              CanvasNumberField(
+                label: "Angle",
+                value: e.rotation,
+                min: -180,
+                max: 180,
+                width: 56,
+                suffix: "°",
+                onChanged: (v) {
+                  begin();
+                  write(e.withBase(rotation: v));
+                },
+                onCommit: commit,
+              ),
+          ]),
+        ]),
+    section(e, "labels",
+        icon: Icons.badge_outlined,
+        title: "Numbers and names",
+        summary: [
+          if (e.showNumbers) "Numbers",
+          if (e.showNames) "names",
+          typeSummary(e.labelSpec),
+        ].join(" · "),
+        children: [
+          ...typeGroups(
+            e.labelSpec,
+            (spec) {
+              begin();
+              write(e.copyWith(labelSpec: spec));
+            },
+            begin,
+            commit,
+            label: "Numbers and names",
+            remember: "team",
+            rule: false,
+          ),
+          CanvasControlGroup(label: "Labels", rule: false, children: [
+            CanvasToggle(
+              label: "Numbers",
+              value: e.showNumbers,
+              onChanged: (v) => now(e.copyWith(showNumbers: v)),
+            ),
+            CanvasToggle(
+              label: "Names",
+              value: e.showNames,
+              onChanged: (v) => now(e.copyWith(showNames: v)),
+            ),
+            CanvasDropdown<LabelPosition>(
+              label: "Name at",
+              value: e.namePosition,
+              width: 92,
+              options: [for (var p in LabelPosition.values) (p, p.label)],
+              onChanged: (v) => now(e.copyWith(namePosition: v)),
+            ),
+            CanvasNumberField(
+              label: "Gap",
+              value: e.nameGap,
+              min: 0,
+              max: 80,
+              decimals: 1,
+              width: 50,
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(nameGap: v));
+              },
+              onCommit: commit,
+            ),
+            CanvasNumberField(
+              label: "Turn",
+              value: e.labelRotation,
+              min: -180,
+              max: 180,
+              width: 56,
+              suffix: "°",
+              onChanged: (v) {
+                begin();
+                write(e.copyWith(labelRotation: v));
+              },
+              onCommit: commit,
+            ),
+          ]),
+        ]),
   ];
 }
 
@@ -356,6 +385,8 @@ Widget _squadList(
         CanvasExpander(
           label: "Players",
           remember: "team.players",
+          // In its own section, which is its heading.
+          flat: true,
           trailing: e.ball == null
               ? "${e.players.length}"
               : "${e.players.length - 1} + ball",
@@ -372,8 +403,11 @@ Widget _squadList(
                   commit: commit,
                 ),
               ),
+            // At the ordinary size, as a grid of cells is: a squad is
+            // eleven rows of the same few fields, and card-sized they were
+            // three ragged lines a player.
             for (var i = 0; i < e.players.length; i++)
-              _PlayerRow(
+              CanvasCards.none(_PlayerRow(
                 key: ValueKey("player-$i-${e.id}"),
                 controller: controller,
                 team: e,
@@ -382,7 +416,7 @@ Widget _squadList(
                 begin: begin,
                 commit: commit,
                 now: now,
-              ),
+              )),
           ],
         ));
 

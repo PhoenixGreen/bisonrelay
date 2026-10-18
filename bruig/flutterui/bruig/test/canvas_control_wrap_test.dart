@@ -22,6 +22,9 @@ import 'package:provider/provider.dart';
 // a panel that has not been finished.
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   Future<void> pump(WidgetTester tester, Widget child,
       {double width = 420}) async {
     tester.view.physicalSize = Size(width, 1400);
@@ -69,8 +72,10 @@ void main() {
       expect(w.left, closeTo(x.left, 0.5));
       // Short of the margin by the lock's width: the lines share their
       // columns, and W and H have the lock beside them.
-      expect(y.right, greaterThan(420 - 70),
-          reason: "the line stops well short of the margin: $y");
+      var card =
+          tester.getRect(find.byKey(const ValueKey("elementSection-position")));
+      expect(y.right, greaterThan(card.right - 100),
+          reason: "the line stops well short of the card's margin: $y");
     });
 
     testWidgets("and gives the same width to each of them", (tester) async {
@@ -128,11 +133,10 @@ void main() {
         await tester.pumpAndSettle();
         // The stepper's box is what is drawn: from its arrow's top to foot.
         var drawn = tester.getRect(find.byKey(ValueKey("$key-less")));
-        expect(drawn.height, closeTo(stepperHeight - 2, 1), reason: key);
+        expect(drawn.height, closeTo(cardControlHeight - 2, 1), reason: key);
         expect(drawn.bottom, closeTo(tester.getRect(slot).bottom - 1, 1),
             reason: "$key is drawn short of the foot of its row");
-        expect(tester.getRect(slot).height,
-            closeTo(controlWithLabelHeight, 0.5),
+        expect(tester.getRect(slot).height, closeTo(cardCaptioned, 0.5),
             reason: "$key stands as tall as any other captioned control");
       }
     });
@@ -185,45 +189,26 @@ void main() {
     });
   });
 
-  group("the text element's type line", () {
-    Future<void> text(WidgetTester tester, double width) async {
+  group("the text element's type card", () {
+    testWidgets("pairs its settings, two to a line, in an ordinary sidebar",
+        (tester) async {
+      // In a card the controls are a size up, so four to a line no longer
+      // fits a narrow sidebar: the face and the size share one, the weight
+      // and the colour the next.
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
       addTearDown(controller.dispose);
       controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller),
-          width: width);
-    }
+      await pump(tester, CanvasDesignPanel(controller: controller), width: 360);
 
-    testWidgets("holds all four settings and the button in a narrow sidebar",
-        (tester) async {
-      // The face, the size, the weight, the colour and the button that opens
-      // the rest. The first dropdown asked for a hundred and eighteen pixels,
-      // which is what pushed the last of them onto a line of their own the
-      // moment anybody pulled the sidebar in.
-      await text(tester, 300);
-
-      // The whole control, not the caption or the icon inside it: a caption
-      // is eleven pixels tall and the switch beside it twenty-seven, so on
-      // one line their tops are fourteen apart. Every control on this panel
-      // reserves the caption's height above itself, words or no words, so
-      // the boxes are all the same height and start level.
       Finder box(Finder of, Type type) =>
-          find.ancestor(of: of, matching: find.byType(type));
-      var top =
-          tester.getRect(box(find.text("Font"), CanvasDropdown<String>)).top;
-      for (var (what, of) in <(String, Finder)>[
-        ("Size", box(find.text("Size"), CanvasNumberField)),
-        ("Weight", box(find.text("Weight"), CanvasDropdown<int>)),
-        // The colour, which is where the two switches used to be: it is
-        // changed again and again where they are set once. See typeGroups.
-        ("the colour", find.byType(CanvasColorButton).first),
-        ("the button", find.byKey(const ValueKey("more-textType"))),
-      ]) {
-        expect(tester.getRect(of).top, closeTo(top, 0.5),
-            reason: "$what is on a line of its own");
-      }
+          find.ancestor(of: of, matching: find.byType(type)).first;
+      var font = tester.getRect(box(find.text("Font"), CanvasDropdown<String>));
+      var size = tester.getRect(box(find.text("Size"), CanvasStepper));
+      expect(size.top, closeTo(font.top, 0.5), reason: "Size beside Font");
+      expect(size.right, lessThanOrEqualTo(360 + 0.5));
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -262,25 +247,14 @@ void main() {
       }
     });
 
-    testWidgets("keep Who follows on one line with the frames and the button",
-        (tester) async {
-      // The dropdown asked for a hundred and seventy-six pixels, which pushed
-      // the two frame fields and the button onto a line of their own the
-      // moment anybody pulled the sidebar in.
-      await path(tester, 300);
-      var foot = tester
-          .getRect(find.ancestor(
-              of: find.text("Who follows"),
-              matching: find.byType(CanvasDropdown<String>)))
-          .bottom;
-      for (var (what, of) in <(String, Finder)>[
-        ("Start", find.byKey(const ValueKey("pathStartFrame"))),
-        ("End", find.byKey(const ValueKey("pathEndFrame"))),
-        ("the button", find.byKey(const ValueKey("more-pathFollowMore"))),
-      ]) {
-        expect(tester.getRect(of).bottom, closeTo(foot, 0.5),
-            reason: "$what is on a line of its own");
-      }
+    testWidgets("keep the two frames on one line", (tester) async {
+      // Who follows has the width of the card to itself; the start and the
+      // end of the run share the line under it.
+      await path(tester, 380);
+      var start = tester.getRect(find.byKey(const ValueKey("pathStartFrame")));
+      var end = tester.getRect(find.byKey(const ValueKey("pathEndFrame")));
+      expect(end.top, closeTo(start.top, 0.5));
+      expect(end.right, lessThanOrEqualTo(380 + 0.5));
     });
   });
 
@@ -295,76 +269,54 @@ void main() {
           width: width);
     }
 
-    Future<void> open(WidgetTester tester, String key) async {
-      var button = find.byKey(ValueKey(key));
-      await tester.ensureVisible(button);
-      await tester.pumpAndSettle();
-      await tester.tap(button);
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets("leaves the row the button is on exactly as it was",
+    testWidgets("in a card, there is no button: everything is out",
         (tester) async {
-      // The room left over is shared by the smallest amount any line can
-      // afford, so that the lines of a group come out in the same columns.
-      // Across the button that is wrong: the line revealed afforded less, so
-      // opening it pulled the row above in. Settings already on screen moving
-      // when something appears under them is the one thing a reveal must not
-      // do.
-      // Narrow enough that the four side fields the button reveals afford
-      // less than the row above them, which is the case this is about. On a
-      // wide panel there is slack everywhere and nothing moves either way.
+      // A section already folds; a button inside a card hiding the rest was
+      // a setting found twice over.
       await text(tester, 300);
-      var field = find.byKey(const ValueKey("boxBorder"));
-      var shut = tester.getRect(field);
-
-      await open(tester, "more-textBox");
-      expect(tester.getRect(field).width, closeTo(shut.width, 0.5));
-      expect(tester.getRect(field).left, closeTo(shut.left, 0.5));
-
-      // Shut again: an opened area stays open for the rest of the file.
-      await open(tester, "more-textBox");
+      expect(find.byKey(const ValueKey("more-textBox")), findsNothing);
+      expect(find.byKey(const ValueKey("boxBorder")), findsOneWidget);
     });
 
     testWidgets("and the sides, the corners and the room line up",
         (tester) async {
-      // Three rows of four numbers, one under another. The corners asked for
-      // fifty pixels against the sides' fifty-six, which is six pixels a
-      // column and a row visibly out of step with the two around it.
+      // Split into one each, the border's sides, the corners and the
+      // padding's sides are three blocks of four, one under another, in the
+      // same columns.
       await text(tester, 360);
-      await open(tester, "more-textBox");
+      for (var link in ["boxBorderLink", "boxRadiusLink", "boxPaddingLink"]) {
+        await tester.ensureVisible(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+      }
 
-      var sides = tester.getRect(find.byKey(const ValueKey("boxBorderLeft")));
-      for (var key in ["boxRadius↖", "boxPadLeft"]) {
+      var sides = tester.getRect(find.byKey(const ValueKey("boxBorderTop")));
+      for (var key in ["boxRadius↖", "boxPadTop"]) {
         var box = tester.getRect(find.byKey(ValueKey(key)));
         expect(box.left, closeTo(sides.left, 0.5), reason: key);
         expect(box.width, closeTo(sides.width, 0.5), reason: key);
       }
+      expect(tester.takeException(), isNull);
 
-      await open(tester, "more-textBox");
+      // Joined again, for the tests after this one.
+      for (var link in ["boxBorderLink", "boxRadiusLink", "boxPaddingLink"]) {
+        await tester.ensureVisible(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+      }
     });
   });
 
   group("the lines down a panel", () {
-    testWidgets("are one: the one under where the element sits",
+    testWidgets("are not drawn in a sectioned one: a card is its own edge",
         (tester) async {
-      // Most elements are one run of lines answering one question -- what is
-      // this path, what is this button, what does this picture look like --
-      // and a rule between each pair turned that into five answers. What is
-      // left is the gap, which is why it is three times the gap between two
-      // lines of one group.
-      //
-      // The position row keeps its rule, because where an element sits really
-      // is a different subject from what it is.
-      //
-      // Not every kind: a chart and a table are several subjects and say so.
       for (var kind in [
         ElementKind.line,
         ElementKind.button,
         ElementKind.shape,
         ElementKind.path,
-        // Not a picture: its panel is sections of cards, and a card is its
-        // own edge -- see panel_kit.dart.
         ElementKind.counter,
         ElementKind.player,
       ]) {
@@ -376,27 +328,84 @@ void main() {
         await pump(tester, CanvasDesignPanel(controller: controller),
             width: 420);
 
-        expect(find.byType(CanvasGroupRule), findsOneWidget,
-            reason: "${kind.label} draws more than the position rule");
+        expect(
+            find.descendant(
+                of: find.byType(CanvasSection),
+                matching: find.byType(CanvasGroupRule)),
+            findsNothing,
+            reason: kind.label);
       }
     });
   });
 
+  // Outside a section -- several elements picked, a dialog -- groups are
+  // still a run of captioned lines, ruled off and spaced by the numbers in
+  // controls.dart. A host of their own, since no element's panel is one.
+  Future<void> flat(WidgetTester tester) => pump(
+        tester,
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 400,
+            child: CanvasControlScope(
+              maxWidth: 400,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CanvasControlGroup(label: "One", children: [
+                    CanvasNumberField(
+                        key: const ValueKey("a"),
+                        label: "A",
+                        value: 1,
+                        onChanged: (v) {}),
+                    const CanvasLineBreak(),
+                    CanvasNumberField(
+                        key: const ValueKey("b"),
+                        label: "B",
+                        value: 2,
+                        onChanged: (v) {}),
+                  ]),
+                  CanvasControlGroup(label: "Two", rule: false, children: [
+                    CanvasNumberField(
+                        key: const ValueKey("c"),
+                        label: "C",
+                        value: 3,
+                        onChanged: (v) {}),
+                  ]),
+                  CanvasMoreGroup(
+                    label: "Three",
+                    remember: "flatMore",
+                    row: [
+                      CanvasNumberField(
+                          key: const ValueKey("d"),
+                          label: "D",
+                          value: 4,
+                          onChanged: (v) {}),
+                    ],
+                    more: [
+                      CanvasNumberField(
+                          key: const ValueKey("e"),
+                          label: "E",
+                          value: 5,
+                          onChanged: (v) {}),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
   group("the space between groups", () {
     testWidgets("is the same above a rule as below it", (tester) async {
       // Nearer one group than the other, a rule reads as belonging to that
-      // one -- which is the opposite of what a divider is for. It was twelve
-      // above and sixteen below, on every group in the panel.
-      await panel(tester, width: 420);
-
-      var rules = find.byType(CanvasGroupRule);
-      expect(rules, findsWidgets);
-      // The rule carries the gap above the line inside itself, so its box
-      // starts where the group above it ends.
-      var rule = tester.getRect(rules.first);
-      var above = tester.getRect(find.byKey(const ValueKey("elementAngle")));
-      var below = tester.getRect(find.byKey(const ValueKey("elementPresets")));
-
+      // one -- which is the opposite of what a divider is for.
+      await flat(tester);
+      var rule = tester.getRect(find.byType(CanvasGroupRule).first);
+      var above = tester.getRect(find.byKey(const ValueKey("b")));
+      var below = tester.getRect(find.text("TWO"));
       expect(rule.top, closeTo(above.bottom, 0.5));
       expect(rule.height, closeTo(canvasGroupGap + 1, 0.5),
           reason: "the gap above the line, and the line");
@@ -405,36 +414,18 @@ void main() {
 
     testWidgets("and the same below a group with no rule under it",
         (tester) async {
-      // Two groups with nothing between them used to sit a row gap apart, on
-      // the grounds that an unruled group is one the next continues. That is
-      // true of two groups and false of five: a run of them reads as one
-      // undivided block, and the rules were the only thing holding it apart.
-      await panel(tester, width: 420);
-
-      // The text element's box row, and the columns line under it. Neither
-      // has a rule: they are two of the five lines that answer "how do these
-      // words look".
-      var document = const CanvasDocument();
-      var element = newElement(ElementKind.text, document);
-      var controller = CanvasController(document.addElement(element));
-      addTearDown(controller.dispose);
-      controller.selectOnly(element.id);
-      await pump(tester, CanvasDesignPanel(controller: controller), width: 420);
-
-      var box = tester.getRect(find.byKey(const ValueKey("boxBorder")));
-      var columns = tester.getRect(find.text("COLUMNS"));
-      expect(find.byType(CanvasGroupRule), findsWidgets);
-      expect(columns.top - box.bottom, closeTo(canvasGroupGap, 1.5));
+      await flat(tester);
+      var c = tester.getRect(find.byKey(const ValueKey("c")));
+      var three = tester.getRect(find.text("THREE"));
+      expect(three.top - c.bottom, closeTo(canvasGroupGap, 1.5));
     });
 
     testWidgets("and a line of a group is the row gap from the next",
         (tester) async {
-      // X Y, W H, then Angle and Opacity: three lines of one group, which
-      // is a closer thing than two groups.
-      await panel(tester, width: 420);
-      var x = tester.getRect(find.byKey(const ValueKey("elementX")));
-      var w = tester.getRect(find.byKey(const ValueKey("elementW")));
-      expect(w.top - x.bottom, closeTo(canvasRowGap, 0.5));
+      await flat(tester);
+      var a = tester.getRect(find.byKey(const ValueKey("a")));
+      var b = tester.getRect(find.byKey(const ValueKey("b")));
+      expect(b.top - a.bottom, closeTo(canvasRowGap, 0.5));
     });
   });
 
@@ -442,34 +433,55 @@ void main() {
     testWidgets("is drawn on a ground of its own", (tester) async {
       // Opened, these settings run straight into whatever is below them, and
       // a reader who has scrolled past the button has nothing saying which of
-      // the controls in front of them came out of it. A line at the foot --
-      // which is what this was -- says where they stop and nothing says where
-      // they start.
-      await panel(tester, width: 420);
+      // the controls in front of them came out of it.
+      await flat(tester);
       Finder ground() => find.byKey(const ValueKey("more-ground"));
       expect(ground(), findsNothing);
 
-      var button = find.byKey(const ValueKey("more-chartGridMore"));
-      await tester.ensureVisible(button);
-      await tester.pumpAndSettle();
+      var button = find.byKey(const ValueKey("more-flatMore"));
       await tester.tap(button);
       await tester.pumpAndSettle();
 
       expect(ground(), findsOneWidget);
       var area = tester.getRect(ground());
-      var lines = tester.getRect(find.byKey(const ValueKey("chartAxisSteps")));
-      expect(area.top, lessThan(lines.top),
+      var inner = tester.getRect(find.byKey(const ValueKey("e")));
+      expect(area.top, lessThan(inner.top),
           reason: "the settings it holds are inside it");
-      expect(area.bottom, greaterThan(lines.bottom));
+      expect(area.bottom, greaterThan(inner.bottom));
       expect(area.width, greaterThan(300),
           reason: "the width of the panel, not of a control: $area");
       expect(tester.getRect(button).bottom, lessThanOrEqualTo(area.top),
           reason: "and it starts under the button that opened it");
 
-      // Shut it again: an open button stays open for the rest of the file.
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(ground(), findsNothing);
+    });
+  });
+
+  group("a dropdown whose options are drawn", () {
+    testWidgets("fits a slot narrower than its picture", (tester) async {
+      // A style's picture is wider than the room a narrow panel leaves the
+      // name of the one chosen: cut off, not an overflow.
+      await pump(
+        tester,
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 60,
+            child: CanvasDropdown<int>(
+              label: "Style",
+              value: 1,
+              width: 41,
+              grow: false,
+              options: const [(1, "Dots"), (2, "Rings")],
+              leading: (v) => const SizedBox(width: 36, height: 16),
+              onChanged: (v) {},
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 

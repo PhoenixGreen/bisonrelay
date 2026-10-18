@@ -134,8 +134,28 @@ either way is worse than none, because it reads as cover.
 
 ## Sectioned panels
 
-A picture's panel is the first built from `panel_kit.dart`, and the rest are
-meant to follow it:
+Every element's panel is sections now -- a picture's first, then the rest
+and the canvas's own background (2026-10-18). The earlier parts of this file
+describe the flat layout, which is still what a group outside a section --
+several elements picked, a dialog -- is drawn as.
+
+Every panel has the same frame, from `element_sections.dart`:
+**Position** first (`positionSection`), the element's own sections, then
+**Animation** (`animationPanelSection`, with the cue card) and **Presets**
+(`presetsPanelSection`) last. Each section is remembered per kind of element
+-- `shape.fill`, not `fill` -- through `section(e, name, ...)`. An expander
+that was a subject of its own becomes a section with `expanderSection`; one
+left inside a section draws itself as a card that folds, and `boxed` adds no
+border there. A `CanvasMoreGroup` in a card shows everything, row and more:
+the section is the fold. A loose `CanvasHint` among a section's own children
+goes to the "?" on its heading row, and `CanvasSection.action` puts a button
+there. A grid with buttons over its columns -- a table's cells, a squad --
+keeps the ordinary size inside a card with `CanvasCards.none`.
+
+`ProceduralSettings(sections: true)` lays a background out as Pattern
+layers, Pattern, Colour and amount, Movement, Effects and Lights.
+
+The parts:
 
 - `CanvasSection` for each subject -- an icon, a title, and a one-line
   `summary` of how it is set, so the panel reads shut. `changes` puts a dot
@@ -151,8 +171,13 @@ meant to follow it:
   and every `CanvasNumberField` is drawn as a `CanvasStepper` -- an arrow
   either side of a number dragged sideways or double-clicked to type. None
   of this changes a panel that is not in sections.
+- `CanvasSidesField` for four numbers that are usually one -- a border's
+  sides, a box's corners, its padding: one stepper and a link that splits
+  it into one each. `roomFields` and `cornerFields` build it; there is no
+  separate line of sides behind a More button any more.
 - `CanvasTiles` for a choice that can be shown -- a filter, a blend, a
-  texture -- tried on the canvas through `onPreview` while pointed at;
+  texture, a shape, an animation's kind -- clicked, never tried on a hover
+  in a card (a hover try made the panel treat the hovered tile as chosen);
   `CanvasToolTiles` for a section's tools, with the one in hand's settings
   under them; `CanvasSegmented` for two to four short choices side by side;
   `CanvasTextButton` for an action said in words.

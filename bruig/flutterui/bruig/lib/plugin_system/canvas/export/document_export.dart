@@ -39,9 +39,6 @@ enum DocumentAs {
   final String description;
   const DocumentAs(this.label, this.description);
 
-  /// isEpub is the two that are books.
-  bool get isEpub => this != pdf;
-
   String get extension => this == pdf ? "pdf" : "epub";
   String get mime => this == pdf ? "application/pdf" : epubMime;
 }

@@ -421,6 +421,13 @@ class TableRule {
   /// for an answer already known.
   static final Map<String, _Span> _spans = {};
 
+  /// _spanOf parses [spec], keeping the map to the ranges a canvas has:
+  /// cleared past a few hundred, as _lowered is.
+  static _Span _spanOf(String spec) {
+    if (_spans.length > 256) _spans.clear();
+    return _Span.parse(spec);
+  }
+
   /// spanMatches is the little range language, shared by the rows and the
   /// columns because they are asking the same question.
   ///
@@ -431,7 +438,7 @@ class TableRule {
   /// reason an unknown column name does: a typo should show up as a rule that
   /// does nothing, not as a table painted entirely green.
   static bool spanMatches(String spec, int index) =>
-      (_spans[spec] ??= _Span.parse(spec)).covers(index + 1);
+      (_spans[spec] ??= _spanOf(spec)).covers(index + 1);
 
   /// matchesColumn is whether [index] is one of the columns this rule is
   /// about.
@@ -507,8 +514,8 @@ class TableRule {
     }
   }
 
-  static bool _wordish(String c) =>
-      c.isNotEmpty && RegExp(r"[a-z0-9]").hasMatch(c);
+  static bool _wordish(String c) => c.isNotEmpty && _letterOrDigit.hasMatch(c);
+  static final RegExp _letterOrDigit = RegExp(r"[a-z0-9]");
 
   TableRule copyWith({
     String? column,

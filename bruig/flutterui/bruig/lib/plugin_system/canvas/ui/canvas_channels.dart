@@ -70,10 +70,6 @@ const double _volumeGrab = 4;
 /// or the playhead to land on it.
 const double _snapReach = 8;
 
-/// timelineHeaderWidth is the channel strips' column as it starts. The reader
-/// drags it -- see CanvasController.headerWidth.
-const double timelineHeaderWidth = 150;
-
 /// channelColour is the edge of a channel's strip: green for sound, yellow
 /// for the sound of a video.
 Color channelColour(bool video) =>

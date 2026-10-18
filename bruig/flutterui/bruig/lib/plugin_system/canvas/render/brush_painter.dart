@@ -14,36 +14,131 @@ import 'package:flutter/painting.dart';
 // blurred, lightened -- and kept only where the dabs are.
 
 /// paintDabs lays [points] (in [canvas]'s units) down as dabs, [radius]
-/// across at full pressure, with [paint]'s colour.
+/// across at full pressure, with [paint]'s colour, in the shape and the way
+/// [tip] says -- see BrushTip. [tilt] is the pen's lean at each point;
+/// [seed] fixes the scatter and the grain, so a stroke drawn again comes out
+/// the same.
 void paintDabs(ui.Canvas canvas, List<Offset> points, List<double> pressure,
-    double radius, double hardness, Paint paint) {
+    double radius, double hardness, Paint paint,
+    {BrushTip tip = const BrushTip(),
+    List<Offset> tilt = const [],
+    int seed = 0}) {
   if (points.isEmpty || radius <= 0) return;
   var soft = (1 - hardness).clamp(0.0, 1.0);
-  double pressureAt(int i) =>
-      pressure.isEmpty ? 1 : pressure[math.min(i, pressure.length - 1)];
-  void dab(Offset c, double p) {
-    // Lighter pressure is a thinner line, never less than a quarter of the
-    // brush, which is where a pen's first touch starts.
-    var r = radius * (0.25 + 0.75 * p);
+  double pressureAt(int i) {
+    if (pressure.isEmpty) return 1;
+    var p = pressure[math.min(i, pressure.length - 1)];
+    return tip.pressureCurve == 1
+        ? p
+        : math.pow(p.clamp(0.0, 1.0), tip.pressureCurve).toDouble();
+  }
+
+  Offset tiltAt(int i) =>
+      tilt.isEmpty ? Offset.zero : tilt[math.min(i, tilt.length - 1)];
+
+  // The size a dab is at a pressure and a lean: a light touch thins it by
+  // as much as the tip says, a pen laid over widens it.
+  double sizeAt(double p, Offset t) =>
+      radius *
+      (1 - tip.pressureSize * (1 - p)) *
+      (1 + tip.tiltSize * math.min(1.0, t.distance));
+
+  // A number in 0..1 for the n-th dab, the same every time for one seed.
+  double noise(int n, int salt) {
+    var v = math.sin(n * 12.9898 + salt * 78.233 + seed * 0.618) * 43758.5453;
+    return v - v.floorToDouble();
+  }
+
+  var n = 0;
+  void dab(Offset c, double p, Offset t) {
+    n++;
+    var r = sizeAt(p, t);
+    if (r <= 0.2) return;
+    var alpha = 1 - tip.pressureOpacity * (1 - p);
+    if (tip.pressureOpacity > 0 && alpha < 1) {
+      // Dabs overlap -- about two over the spacing of them at any spot --
+      // and overlapping, a light dab builds back to solid. Each is laid
+      // down as strong as it must be for the ones over a spot to come to
+      // what the touch asked for: what a paint program calls flow.
+      var over = (2 / tip.spacing).clamp(1.0, 60.0);
+      alpha = 1 - math.pow(1 - alpha, 1 / over).toDouble();
+    }
+    var at = c;
+    if (tip.scatter > 0) {
+      var a = noise(n, 3) * math.pi * 2;
+      var d = noise(n, 4) * tip.scatter * r;
+      at = c + Offset(math.cos(a), math.sin(a)) * d;
+    }
     var sigma = r * soft * 0.35;
     var dabPaint = Paint()
-      ..color = paint.color
+      ..color = paint.color.withValues(alpha: paint.color.a * alpha)
       ..blendMode = paint.blendMode;
     if (sigma > 0.3) {
       dabPaint.maskFilter = MaskFilter.blur(BlurStyle.normal, sigma);
     }
-    canvas.drawCircle(c, math.max(0.5, r - sigma), dabPaint);
+    var body = math.max(0.5, r - sigma);
+    if (tip.grain > 0) {
+      // Grain: the dab as specks where the paper's tooth catches it, fewer
+      // the coarser the grain -- a solid dab under its neighbours left no
+      // gaps however many were dropped.
+      // How much of a dab is specks: enough that, with the dabs over a spot
+      // -- about two over the spacing -- the paper shows through as much as
+      // the grain says, whatever size the stroke is drawn at.
+      var over = (2 / tip.spacing).clamp(1.0, 60.0);
+      var paper = tip.grain * 0.8;
+      var share = 1 - math.pow(paper, 1 / over).toDouble();
+      var area = share * body * body * tip.roundness;
+      var specks = (area / 0.36).floor().clamp(1, 40);
+      var speck = math.sqrt(area / specks);
+      var lean = t.distance;
+      var angle = tip.followTilt && lean > 0.05
+          ? math.atan2(t.dy, t.dx) + math.pi / 2
+          : tip.angle * math.pi / 180;
+      var ca = math.cos(angle), sa = math.sin(angle);
+      for (var k = 0; k < specks; k++) {
+        var a = noise(n * 97 + k, 5) * math.pi * 2;
+        var d = math.sqrt(noise(n * 97 + k, 6)) * body;
+        var x = math.cos(a) * d, y = math.sin(a) * d * tip.roundness;
+        canvas.drawCircle(
+            at + Offset(x * ca - y * sa, x * sa + y * ca), speck, dabPaint);
+      }
+      return;
+    }
+    if (tip.roundness >= 0.999) {
+      canvas.drawCircle(at, body, dabPaint);
+      return;
+    }
+    // A flat nib: an oval, laid at the tip's angle -- or the way the pen
+    // leans, where it follows the pen and the pen says.
+    var lean = t.distance;
+    var angle = tip.followTilt && lean > 0.05
+        ? math.atan2(t.dy, t.dx) + math.pi / 2
+        : tip.angle * math.pi / 180;
+    canvas.save();
+    canvas.translate(at.dx, at.dy);
+    canvas.rotate(angle);
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset.zero,
+            width: body * 2,
+            height: math.max(1.0, body * 2 * tip.roundness)),
+        dabPaint);
+    canvas.restore();
   }
 
-  dab(points.first, pressureAt(0));
+  dab(points.first, pressureAt(0), tiltAt(0));
   for (var i = 1; i < points.length; i++) {
     var a = points[i - 1], b = points[i];
     var pa = pressureAt(i - 1), pb = pressureAt(i);
-    var gap = math.max(0.5, radius * (0.25 + 0.75 * math.min(pa, pb)) * 0.2);
+    var ta = tiltAt(i - 1), tb = tiltAt(i);
+    var least = math.min(sizeAt(pa, ta), sizeAt(pb, tb));
+    // A flat nib is spaced by its thin side, or it leaves a dotted line.
+    var across = least * math.min(1.0, math.max(tip.roundness, 0.15));
+    var gap = math.max(0.5, across * tip.spacing);
     var steps = ((b - a).distance / gap).ceil();
     for (var s = 1; s <= steps; s++) {
       var t = s / steps;
-      dab(Offset.lerp(a, b, t)!, pa + (pb - pa) * t);
+      dab(Offset.lerp(a, b, t)!, pa + (pb - pa) * t, Offset.lerp(ta, tb, t)!);
     }
   }
 }
@@ -66,10 +161,13 @@ void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
     for (var p in s.points) Offset(p.dx * size.width, p.dy * size.height)
   ];
   var radius = s.radius * short;
+  // What the tip can reach beyond the brush's own size: leant over, and
+  // thrown off the line.
+  var reach = radius * (1 + s.tip.tiltSize) * (1 + s.tip.scatter);
   // A layer per stroke: its opacity is the layer's, so its dabs build up to
   // it and no further.
   canvas.saveLayer(
-      _strokeBounds(points, radius),
+      _strokeBounds(points, reach),
       Paint()
         ..color = Color.fromRGBO(0, 0, 0, s.strength)
         ..blendMode =
@@ -82,7 +180,10 @@ void _paintStroke(ui.Canvas canvas, StrokeMark s, Size size) {
       s.hardness,
       Paint()
         ..color =
-            s.kind == StrokeKind.erase ? const Color(0xFFFFFFFF) : s.colour);
+            s.kind == StrokeKind.erase ? const Color(0xFFFFFFFF) : s.colour,
+      tip: s.tip,
+      tilt: s.tilt,
+      seed: (s.points.first.dx * 100003 + s.points.first.dy * 7919).round());
   canvas.restore();
 }
 
@@ -142,10 +243,18 @@ void paintPaintLayer(
           raster, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
       picture = flat.endRecording();
     }
+    var was = _painted[key];
     kept = _Painted(List.of(settled), size, picture, raster);
     _painted[key] = kept;
+    // What it replaced is let go of now rather than whenever the collector
+    // gets to it: drawn into the new picture, it is held there by the
+    // engine, and its own pixels are nobody's.
+    was?.picture.dispose();
+    was?.raster?.dispose();
     while (_painted.length > 24) {
-      _painted.remove(_painted.keys.first);
+      var gone = _painted.remove(_painted.keys.first);
+      gone?.picture.dispose();
+      gone?.raster?.dispose();
     }
   }
   canvas.save();
@@ -196,11 +305,16 @@ class SharpenShader {
 
 /// _blurred is [image] blurred by [sigma] of its own pixels, made once and
 /// kept with it: what sharpening pushes the picture away from.
+///
+/// A few radii a picture, the most recently used: each is a whole picture's
+/// worth of pixels, and a radius dragged across its range asked for a new
+/// one at every step and kept them all.
 final Expando<Map<double, ui.Image>> _blurs = Expando("sharpenBlurs");
+const int _blursKept = 4;
 ui.Image _blurred(ui.Image image, double sigma) {
-  var kept = _blurs[image] ??= {};
-  var made = kept[sigma];
-  if (made != null) return made;
+  var kept = _blurs[image] ??= <double, ui.Image>{};
+  var made = kept.remove(sigma);
+  if (made != null) return kept[sigma] = made;
   var recorder = ui.PictureRecorder();
   var c = ui.Canvas(recorder);
   c.saveLayer(
@@ -212,6 +326,9 @@ ui.Image _blurred(ui.Image image, double sigma) {
   c.restore();
   made = recorder.endRecording().toImageSync(image.width, image.height);
   kept[sigma] = made;
+  while (kept.length > _blursKept) {
+    kept.remove(kept.keys.first)!.dispose();
+  }
   return made;
 }
 

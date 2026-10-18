@@ -26,6 +26,7 @@ import 'package:bruig/plugin_system/canvas/ui/element_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
@@ -114,6 +115,9 @@ VideoElement video(String id,
         controls: controls);
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   late Directory root;
   late FakeEngine engine;
   late FakeFrames frames;
@@ -679,7 +683,7 @@ void main() {
       expect(find.byKey(const ValueKey("videoLoop")), findsNothing);
       expect(
           find.byWidgetPredicate((w) =>
-              w is Tooltip && (w.message ?? "").contains("YouTube link")),
+              w is CanvasHint && w.message.contains("YouTube link")),
           findsOneWidget,
           reason: "the hint says why a link cannot be keyed or trimmed");
     });
@@ -691,6 +695,10 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("v");
       await show(tester, settingsOf(c));
+
+      await tester.ensureVisible(find.byKey(const ValueKey("videoKey")));
+
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey("videoKey")));
       await tester.pumpAndSettle();
@@ -707,8 +715,8 @@ void main() {
       expect(after.look.filter, ImageFilterPreset.values.last);
       expect(after.id, "v");
       expect(after.bounds, video("v").bounds);
-      expect(find.text("CROP"), findsWidgets);
-      expect(find.text("OUTLINE"), findsWidgets);
+      expect(find.text("Crop"), findsWidgets);
+      expect(find.text("Outline"), findsWidgets);
     });
 
     testWidgets("on the master it can be told to keep playing", (tester) async {
@@ -723,6 +731,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("v");
       await show(tester, settingsOf(c));
+      await tester.ensureVisible(find.byKey(const ValueKey("videoAcross")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("videoAcross")));
       await tester.pumpAndSettle();
       expect((c.document.elements.single as VideoElement).clip.acrossPages,

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/font_outlines.dart';
 import 'package:flutter/services.dart';

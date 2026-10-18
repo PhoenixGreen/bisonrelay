@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:io' show File;
-import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 import 'dart:ui' show Color, Offset, Rect, Size;
 
@@ -959,6 +958,10 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// interacting is whether a gesture is under way -- a drag on the canvas,
+  /// a number being scrubbed -- which the canvas draws a little faster for.
+  bool get interacting => _interaction != null;
+
   /// beginInteraction starts a gesture: everything until [endInteraction] is
   /// one undo step.
   void beginInteraction() {
@@ -1174,6 +1177,16 @@ class CanvasController extends ChangeNotifier {
   /// nudgeSelected moves everything chosen, which is what the arrow keys do.
   void nudgeSelected(double dx, double dy, {bool transient = false}) {
     if (_selection.isEmpty) return;
+    // With a picture's layers open and picture layers picked, the arrows
+    // move those layers inside it; with the base picked, the picture.
+    if (editingImage case var e?) {
+      var ids = [for (var l in alignableLayers) l.id];
+      if (ids.isNotEmpty) {
+        replaceElement(withLayersMoved(e, ids, Offset(dx, dy)),
+            transient: transient);
+        return;
+      }
+    }
     var next = _document;
     for (var element in selectedElements) {
       if (element.locked) continue;
@@ -2034,6 +2047,38 @@ class CanvasController extends ChangeNotifier {
     _paintStrength = v.clamp(0.01, 1.0);
     notifyListeners();
   }
+
+  /// paintTip is the paint brush's shape and how the pen drives it -- see
+  /// BrushTip -- and paintBrush the brush it was last taken from, by id, or
+  /// "" once anything about it has been changed by hand.
+  BrushTip get paintTip => _paintTip;
+  BrushTip _paintTip = const BrushTip();
+  set paintTip(BrushTip v) {
+    _paintTip = v;
+    _paintBrush = "";
+    notifyListeners();
+  }
+
+  String get paintBrush => _paintBrush;
+  String _paintBrush = "round";
+
+  /// useBrush takes everything about the paint brush from [brush].
+  void useBrush(BrushPreset brush) {
+    _paintSize = brush.size;
+    _paintHardness = brush.hardness;
+    _paintStrength = brush.strength;
+    _paintTip = brush.tip;
+    _paintBrush = brush.id;
+    notifyListeners();
+  }
+
+  /// currentBrush is the paint brush as it is set now, as a preset that can
+  /// be kept under [name].
+  BrushPreset currentBrush(String name) => BrushPreset("", name,
+      size: _paintSize,
+      hardness: _paintHardness,
+      strength: _paintStrength,
+      tip: _paintTip);
 
   /// burning makes the dodge tool burn, as Option held does for a stroke.
   bool get burning => _burning;

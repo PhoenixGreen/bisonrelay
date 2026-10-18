@@ -18,8 +18,11 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+import 'canvas_panel_helpers.dart';
 
 // canvas_text_items_test.dart is a text element carrying more than one piece
 // of writing.
@@ -56,6 +59,9 @@ TextElement _card({List<TextItem>? items}) => TextElement(
     );
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group("where the pieces go", () {
@@ -411,15 +417,22 @@ void main() {
 
     var group = find.ancestor(
         of: find.text("01"), matching: find.byType(CanvasMoreGroup));
-    var face = tester.getRect(find.descendant(
-        of: group, matching: find.byType(CanvasDropdown<String>)));
-    var size = tester.getRect(
-        find.descendant(of: group, matching: find.byType(CanvasNumberField)));
-    var weight = tester.getRect(
-        find.descendant(of: group, matching: find.byType(CanvasDropdown<int>)));
+    var face = tester.getRect(find
+        .descendant(of: group, matching: find.byType(CanvasDropdown<String>))
+        .first);
+    var size = tester.getRect(find
+        .descendant(of: group, matching: find.byType(CanvasNumberField))
+        .first);
+    var weight = tester.getRect(find
+        .descendant(of: group, matching: find.byType(CanvasDropdown<int>))
+        .first);
 
-    expect(size.top, closeTo(face.top, 0.5), reason: "one line");
-    expect(weight.top, closeTo(face.top, 0.5));
+    // A size up in a card, so at this width the three take a line each --
+    // and none of them runs off the side.
+    expect(size.top, greaterThanOrEqualTo(face.top));
+    expect(weight.top, greaterThan(face.bottom));
+    expect(face.right, lessThanOrEqualTo(300));
+    expect(size.right, lessThanOrEqualTo(300));
     expect(weight.right, lessThanOrEqualTo(300));
   });
 
@@ -473,7 +486,7 @@ void main() {
 
       expect(find.byType(TextField), findsOneWidget,
           reason: "an editor opened over the piece");
-      await tester.enterText(find.byType(TextField), "Decred");
+      await enterValue(tester, find.byType(TextField), "Decred");
       await tester.pumpAndSettle();
 
       var after = controller.document.elementById("c") as TextElement;
@@ -513,7 +526,7 @@ void main() {
 
       expect(find.byType(TextField), findsOneWidget,
           reason: "the second click opened it for typing");
-      await tester.enterText(find.byType(TextField), "Decred");
+      await enterValue(tester, find.byType(TextField), "Decred");
       await tester.pumpAndSettle();
       expect(
           (controller.document.elementById("c") as TextElement)
@@ -555,7 +568,7 @@ void main() {
       await tester.tapAt(at);
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsOneWidget);
-      await tester.enterText(find.byType(TextField), "Decred");
+      await enterValue(tester, find.byType(TextField), "Decred");
       await tester.pumpAndSettle();
       expect(
           (controller.document.elementById("c") as TextElement)
@@ -657,7 +670,7 @@ void main() {
       await tester.tapAt(at);
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), "Burn it");
+      await enterValue(tester, find.byType(TextField), "Burn it");
       await tester.pumpAndSettle();
 
       var after = controller.document.elementById("c") as TextElement;

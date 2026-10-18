@@ -38,9 +38,6 @@ class CanvasRowNames {
   /// and a future there is a panel that flickers into place.
   static Map<String, String>? known(String presetId) => _loaded[presetId];
 
-  /// namesOf is the same list as names to suggest, or null.
-  static List<String>? namesOf(String presetId) => _names[presetId];
-
   /// idFor is what to ask for when a row says [cell]: the fetched identifier,
   /// the preset's own where nothing has been fetched, and the cell's own key
   /// where neither knows it.

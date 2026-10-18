@@ -31,7 +31,11 @@ enum SavedPresetKind {
 
   /// look is a picture's grade -- its adjustments, textures and colour
   /// layers -- to put on another picture. See lookData.
-  look("looks");
+  look("looks"),
+
+  /// paintBrush is a brush for a picture's paint layers somebody made --
+  /// see BrushPreset.
+  paintBrush("paint-brushes");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -113,7 +117,8 @@ class SavedPreset {
         SavedPresetKind.canvas => _canvasScenes(on),
         SavedPresetKind.brush ||
         SavedPresetKind.pitchView ||
-        SavedPresetKind.look =>
+        SavedPresetKind.look ||
+        SavedPresetKind.paintBrush =>
           const [],
       };
 

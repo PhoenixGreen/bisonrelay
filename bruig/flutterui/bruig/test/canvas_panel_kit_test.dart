@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
@@ -5,11 +6,15 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -171,6 +176,52 @@ void main() {
     });
   });
 
+  group("the sides field", () {
+    testWidgets("one number for four, a link to split them and join them",
+        (tester) async {
+      var values = [4.0, 4.0, 4.0, 4.0];
+      await tester.pumpWidget(_host(StatefulBuilder(
+          builder: (context, set) => Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 320,
+                  child: CanvasSidesField(
+                    name: "pad",
+                    label: "Padding",
+                    values: values,
+                    parts: const ["Top", "Right", "Bottom", "Left"],
+                    partKeys: const ["padT", "padR", "padB", "padL"],
+                    onChanged: (side, v) => set(() {
+                      if (side == null) {
+                        values = [v, v, v, v];
+                      } else {
+                        values = [...values]..[side] = v;
+                      }
+                    }),
+                  ),
+                ),
+              ))));
+      expect(find.byKey(const ValueKey("padT")), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("pad-more")));
+      await tester.pump();
+      expect(values, [5, 5, 5, 5], reason: "one number for all four");
+
+      await tester.tap(find.byKey(const ValueKey("padLink")));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("padT")), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("padB-more")));
+      await tester.pump();
+      expect(values, [5, 5, 6, 5], reason: "one side on its own");
+      expect(tester.takeException(), isNull);
+
+      // Joined, on the first.
+      await tester.tap(find.byKey(const ValueKey("padLink")));
+      await tester.pumpAndSettle();
+      expect(values, [5, 5, 5, 5]);
+      expect(find.byKey(const ValueKey("padT")), findsNothing);
+    });
+  });
+
   group("the picture's sections", () {
     Future<CanvasController> pumpPanel(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
@@ -272,12 +323,11 @@ void main() {
           findsNothing);
     });
 
-    testWidgets("a filter is tried on the canvas while pointed at",
+    testWidgets("open, a tile card is clicked too, never tried on a hover",
         (tester) async {
       var c = await pumpPanel(tester);
       await openSection(tester, "image.picture.colour");
-      ImageElement now() => c.document.elementById("i")! as ImageElement;
-      var undoable = c.canUndo;
+      await openTiles(tester, "image.tiles.filter");
       var noir = find.byKey(const ValueKey("imageFilter-noir"));
       await tester.ensureVisible(noir);
       await tester.pumpAndSettle();
@@ -286,25 +336,205 @@ void main() {
       await mouse.addPointer(location: Offset.zero);
       await mouse.moveTo(tester.getCenter(noir));
       await tester.pumpAndSettle();
-      expect(now().filter, ImageFilterPreset.noir);
-      expect(c.canUndo, undoable, reason: "tried, not done");
+      expect(c.trying, isFalse,
+          reason: "a hover tried it, and the highlight followed the pointer");
       await mouse.moveTo(Offset.zero);
-      await tester.pumpAndSettle();
-      expect(now().filter, ImageFilterPreset.none);
     });
 
-    testWidgets("an effect's tile switches it on and off", (tester) async {
+    testWidgets("a tile kept from an earlier build picks with what is set now",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      ImageElement now() => c.document.elementById("i")! as ImageElement;
+      await openSection(tester, "image.picture.colour");
+      await openTiles(tester, "image.tiles.filter");
+      // Changed from outside the tiles -- the tiles show the same, and are
+      // kept as they were built.
+      c.changeImage(now().copyWith(brightness: 1.4));
+      await tester.pumpAndSettle();
+      var sepia = find.byKey(const ValueKey("imageFilter-sepia"));
+      await tester.ensureVisible(sepia);
+      await tester.tap(sepia);
+      await tester.pumpAndSettle();
+      expect(now().filter, ImageFilterPreset.sepia);
+      expect(now().brightness, 1.4,
+          reason: "the pick of the build it was kept from wrote back the "
+              "brightness that build knew");
+    });
+
+    testWidgets(
+        "an effect's tile puts it on once, then opens and shuts its settings",
+        (tester) async {
       var c = await pumpPanel(tester);
       await openSection(tester, "image.picture.effects");
       ImageLayer base() => (c.document.elementById("i")! as ImageElement)
           .stack
           .firstWhere((l) => l.isBase);
+      bool lit(String kind) => tester
+          .widget<CanvasTiles<EffectKind>>(
+              find.byKey(const ValueKey("imageEffects")))
+          .selected(EffectKind.values.byName(kind));
+      bool ticked(String kind) => tester
+          .widget<CanvasTiles<EffectKind>>(
+              find.byKey(const ValueKey("imageEffects")))
+          .ticked!(EffectKind.values.byName(kind));
+
+      // The first press: on, its settings open, lit and ticked.
       await tapKey(tester, "effectTile-outerGlow");
       expect(base().effects.single.kind.name, "outerGlow");
-      expect(find.byKey(const ValueKey("effect-outerGlow")), findsOneWidget,
-          reason: "its settings, now it is on");
+      expect(find.byKey(const ValueKey("effect-outerGlow")), findsOneWidget);
+      expect(lit("outerGlow"), isTrue);
+      expect(ticked("outerGlow"), isTrue);
+
+      // The second: its settings shut -- and the effect still on, ticked.
       await tapKey(tester, "effectTile-outerGlow");
-      expect(base().effects, isEmpty);
+      expect(base().effects.single.on, isTrue);
+      expect(find.byKey(const ValueKey("effect-outerGlow")), findsNothing);
+      expect(lit("outerGlow"), isFalse);
+      expect(ticked("outerGlow"), isTrue);
+
+      // A second effect on, with the first shut: both on at once.
+      await tapKey(tester, "effectTile-dropShadow");
+      expect(base().effects, hasLength(2));
+      expect(find.byKey(const ValueKey("effect-dropShadow")), findsOneWidget);
+      expect(find.byKey(const ValueKey("effect-outerGlow")), findsNothing);
+
+      // Only its switch turns it off; the tick goes with it.
+      await tapKey(tester, "effectOn-dropShadow");
+      expect(
+          base().effects.firstWhere((f) => f.kind.name == "dropShadow").on,
+          isFalse);
+      expect(ticked("dropShadow"), isFalse);
+    });
+
+    testWidgets("shut, a tile card is a strip with the one chosen in view",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      var e = c.document.elementById("i")! as ImageElement;
+      // The last filter, so the strip has to be scrolled to show it.
+      c.changeImage(e.copyWith(filter: ImageFilterPreset.values.last));
+      await tester.pumpAndSettle();
+      await openSection(tester, "image.picture.colour");
+      // Shut it, if an earlier test opened it.
+      if (find
+          .byKey(const ValueKey("tilesStrip-image.tiles.filter"))
+          .evaluate()
+          .isEmpty) {
+        await tapKey(tester, "tilesFold-image.tiles.filter");
+      }
+      expect(find.byKey(const ValueKey("tilesStrip-image.tiles.filter")),
+          findsOneWidget);
+      var name = ImageFilterPreset.values.last.label;
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("tilesFold-image.tiles.filter")),
+              matching: find.text(name)),
+          findsOneWidget,
+          reason: "the heading says which is in use");
+      var strip = tester
+          .getRect(find.byKey(const ValueKey("tilesStrip-image.tiles.filter")));
+      var tile = tester.getRect(find.byKey(
+          ValueKey("imageFilter-${ImageFilterPreset.values.last.name}")));
+      expect(strip.contains(tile.center), isTrue, reason: "scrolled to it");
+
+      // Opened, every one of them.
+      await openTiles(tester, "image.tiles.filter");
+      for (var f in ImageFilterPreset.values) {
+        expect(find.byKey(ValueKey("imageFilter-${f.name}")), findsOneWidget);
+      }
+    });
+
+    testWidgets("shut, a strip is clicked, never tried on a hover",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      await openSection(tester, "image.picture.colour");
+      if (find
+          .byKey(const ValueKey("tilesStrip-image.tiles.filter"))
+          .evaluate()
+          .isEmpty) {
+        await tapKey(tester, "tilesFold-image.tiles.filter");
+      }
+      var sepia = find.byKey(const ValueKey("imageFilter-sepia"));
+      await tester.ensureVisible(sepia);
+      await tester.pumpAndSettle();
+      var mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(sepia));
+      await tester.pumpAndSettle();
+      expect(c.trying, isFalse,
+          reason: "a hover tried it, the strip scrolled to it, and on again");
+      await tester.tap(sepia);
+      await tester.pumpAndSettle();
+      expect((c.document.elementById("i")! as ImageElement).filter,
+          ImageFilterPreset.sepia);
+    });
+
+    testWidgets("the animation's kinds are tiles, with the kind's own card",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      await openSection(tester, "image.picture.animation");
+      ImageElement now() => c.document.elementById("i")! as ImageElement;
+      expect(find.byKey(const ValueKey("elementArriveHow")), findsNothing);
+      await tapKey(tester, "elementArrive-slide");
+      expect(now().animation.on, isTrue);
+      expect(now().animation.preset.family.name, "slide");
+      expect(find.byKey(const ValueKey("elementArriveHow")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementAnimationLength")),
+          findsOneWidget);
+      await tapKey(tester, "elementArrive-none");
+      expect(now().animation.on, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a dropdown's arrows step through its options",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      await tester.pumpAndSettle();
+      await openSection(tester, "image.picture.position");
+      ImageElement now() => c.document.elementById("i")! as ImageElement;
+      var fit = find.ancestor(
+          of: find.text("Fit"), matching: find.byType(CanvasDropdown<ImageFit>));
+      var before = now().fit;
+      var more = find.descendant(
+          of: fit,
+          matching: find.byWidgetPredicate((w) =>
+              w is Semantics && w.properties.label == "Next Fit"));
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(now().fit, ImageFit.values[ImageFit.values.indexOf(before) + 1]);
+      var less = find.descendant(
+          of: fit,
+          matching: find.byWidgetPredicate((w) =>
+              w is Semantics && w.properties.label == "Previous Fit"));
+      await tester.tap(less);
+      await tester.pumpAndSettle();
+      expect(now().fit, before);
+    });
+
+    testWidgets("a \"?\" opens on a click, never on a hover",
+        (tester) async {
+      await pumpPanel(tester);
+      await openSection(tester, "image.picture.position");
+      var hint = find
+          .descendant(
+              of: find.byKey(const ValueKey("sectionBody-image.picture.position")),
+              matching: find.byType(CanvasHint))
+          .first;
+      var message = tester.widget<CanvasHint>(hint).message;
+      await tester.ensureVisible(hint);
+      await tester.pumpAndSettle();
+      var mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(hint));
+      await tester.pump(const Duration(seconds: 2));
+      expect(find.text(message), findsNothing, reason: "not on a hover");
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget, reason: "on a click");
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsNothing, reason: "and shut by another");
     });
 
     testWidgets("a tool picked from the keys opens its section",
@@ -332,6 +562,84 @@ void main() {
       await tapKey(tester, "imageTool-lasso");
       expect(c.imageEditing, "i");
       expect(c.imageTool, ImageTool.lasso);
+    });
+  });
+
+  group("the paint brushes", () {
+    Future<void> idle(WidgetTester tester) async {
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 4)));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    Future<CanvasController> pumpPaint(WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(const CanvasDocument().addElement(ImageElement(
+          const ElementBase(id: "i", x: 0, y: 0, width: 200, height: 200),
+          assetId: "abcdefghij123456",
+          layers: [
+            ImageLayer.base,
+            const ImageLayer(id: "paint", kind: LayerKind.paint),
+          ])));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      c.editImage("i", layer: "paint");
+      c.imageTool = ImageTool.paint;
+      tester.view.physicalSize = const Size(900, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+          _host(SizedBox(width: 420, child: CanvasDesignPanel(controller: c))));
+      await idle(tester);
+      return c;
+    }
+
+    Future<void> tapKey(WidgetTester tester, String key) async {
+      var found = find.byKey(ValueKey(key));
+      await tester.ensureVisible(found);
+      await tester.tap(found);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("a brush is picked, changed, kept, and taken away",
+        (tester) async {
+      var root = Directory.systemTemp.createTempSync("brushes");
+      addTearDown(() => root.deleteSync(recursive: true));
+      CanvasStorage.rootOverride = root.path;
+      addTearDown(() => CanvasStorage.rootOverride = null);
+      SavedPresetStore.paintBrushes.forget();
+
+      var c = await pumpPaint(tester);
+      await openTiles(tester, "image.tiles.brush");
+      await tapKey(tester, "paintBrush-calligraphy");
+      expect(c.paintBrush, "calligraphy");
+      expect(c.paintTip.followTilt, isTrue);
+      expect(c.paintTip.roundness, closeTo(0.15, 1e-9));
+
+      // Changed by hand, it is a brush of its own.
+      await tapKey(tester, "paintRound-more");
+      expect(c.paintTip.roundness, closeTo(0.2, 1e-9));
+      expect(c.paintBrush, "");
+
+      // Kept, it is among the brushes, and picked.
+      await tapKey(tester, "paintBrushSave");
+      await idle(tester);
+      expect(SavedPresetStore.paintBrushes.presets, hasLength(1));
+      var kept = SavedPresetStore.paintBrushes.presets.single;
+      expect(c.paintBrush, kept.id);
+      expect(find.byKey(ValueKey("paintBrush-${kept.id}")), findsOneWidget);
+
+      // A stroke painted now carries the brush's tip.
+      expect(c.paintTip.roundness, closeTo(0.2, 1e-9));
+
+      await tapKey(tester, "paintBrushDelete");
+      await idle(tester);
+      expect(SavedPresetStore.paintBrushes.presets, isEmpty);
+      expect(c.paintBrush, "round");
+      expect(tester.takeException(), isNull);
     });
   });
 

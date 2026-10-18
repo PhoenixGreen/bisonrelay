@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/layer_effects.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -270,7 +271,8 @@ void paintCanvasDocument(
           counterRunning: counterRunning,
           audioState: audioState,
           videoShow: videoShow,
-          previewing: previewing);
+          previewing: previewing,
+          backgrounds: backgrounds);
   // With a camera, the master is drawn as it is and the scene through the
   // camera, as two runs rather than one list stacked together.
   if (camera != null) {
@@ -297,7 +299,8 @@ void paintCanvasDocument(
       counterRunning: counterRunning,
       audioState: audioState,
       videoShow: videoShow,
-      previewing: previewing);
+      previewing: previewing,
+      backgrounds: backgrounds);
 }
 
 /// _paintScene draws one canvas's worth of elements.
@@ -327,6 +330,7 @@ void _paintScene(
   /// Null in an export, which shows the poster.
   VideoShow Function(VideoElement)? videoShow,
   ({String id, int frame})? previewing,
+  ProceduralCache? backgrounds,
 }) {
   // Lines that are only there to carry somebody's text, and have been asked to
   // stay out of the picture. Collected first because the text that hides a line
@@ -354,6 +358,7 @@ void _paintScene(
         counterRunning: counterRunning,
         audioState: audioState,
         videoShow: videoShow,
+        backgrounds: backgrounds,
         hovered: element.id == hoveredButton);
   }
 }
@@ -541,6 +546,10 @@ void paintElement(
   /// far an arrival has got, a count, a bow -- is still drawn, because that
   /// is the element's content rather than where it is.
   bool poseOutside = false,
+
+  /// backgrounds is the editor's cache of generated patterns, which a
+  /// background element is drawn from as the canvas's own background is.
+  ProceduralCache? backgrounds,
 }) {
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var outer = poseOutside ? Keyframe.rest : pose;
@@ -792,7 +801,7 @@ void paintElement(
                 videoShow?.call(e) ?? VideoShow.idle(e), images));
       case BackgroundElement e:
         _paintBackgroundElement(
-            canvas, bounds, e, time, frameRate.toDouble(), images);
+            canvas, bounds, e, time, frameRate.toDouble(), images, backgrounds);
       case PathElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => _paintPath(canvas, bounds, e, editing));
@@ -1829,8 +1838,8 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
     paintAdjusted(canvas, room, adjustment.adjust, below,
         // Kept only once everything under it has loaded: kept earlier, the
         // picture that arrived late would never be adjusted.
-        owner: complete ? e : null,
-        key: "${adjustment.id}|$at");
+        key: complete ? "${e.id}|${adjustment.id}|$at" : null,
+        from: layersFrom(e, stack.sublist(0, at)));
     _frameMasked(canvas, inner, adjustment);
   });
   canvas.restore();
@@ -1959,8 +1968,10 @@ void _paintGroups(ui.Canvas canvas, Rect inner, ImageElement e,
           var base = _record((r) => _paintLayer(r, inner, e, layer, images));
           _arriving(canvas, arrive, c, room, () {
             paintAdjusted(canvas, room, c.adjust, base,
-                owner: images.misses == misses && arrive == null ? e : null,
-                key: "${c.id}|clip");
+                key: images.misses == misses && arrive == null
+                    ? "${e.id}|${c.id}|clip"
+                    : null,
+                from: layersFrom(e, [layer]));
             _frameMasked(canvas, inner, c);
           });
           base.dispose();
@@ -1996,7 +2007,8 @@ void _paintDressed(ui.Canvas canvas, Rect inner, ImageElement e,
   var content = _record((r) => _paintLayer(r, inner, e, layer, images));
   paintWithEffects(canvas, room, math.min(inner.width, inner.height) / 1000,
       layer.effects, content,
-      owner: images.misses == misses ? e : null, key: layer.id);
+      key: images.misses == misses ? "${e.id}|${layer.id}|fx" : null,
+      from: layersFrom(e, [layer]));
   content.dispose();
 }
 
@@ -2074,9 +2086,8 @@ void paintMaskView(
     canvas.translate(-bounds.center.dx, -bounds.center.dy);
   }
   var inner = e.box.inner(bounds);
-  var rect = inner;
+  var rect = layerRect(inner, layer.place);
   if (!layer.isBase) {
-    rect = layerRect(inner, layer.place);
     canvas.translate(rect.center.dx, rect.center.dy);
     if (layer.turn != 0) canvas.rotate(layer.turn * math.pi / 180);
     if (layer.flipX || layer.flipY) {
@@ -2116,7 +2127,10 @@ void _paintLayer(ui.Canvas canvas, Rect inner, ImageElement e, ImageLayer layer,
   switch (layer.kind) {
     case LayerKind.base:
       var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
-      if (image != null) _paintPicture(canvas, inner, e, image, images);
+      // In its own place: the frame, until it is moved or sized on its own.
+      if (image != null) {
+        _paintPicture(canvas, layerRect(inner, layer.place), e, image, images);
+      }
     case LayerKind.fill:
       canvas.drawRect(inner, layer.fill.into(Paint(), inner));
     case LayerKind.adjustment:
@@ -2490,15 +2504,38 @@ void _paintButton(ui.Canvas canvas, Rect bounds, ButtonElement e, bool hovered,
   paintTextInBox(canvas, spec.textCase.apply(e.label), spec, inner, clip: true);
 }
 
-void _paintBackgroundElement(ui.Canvas canvas, Rect bounds, BackgroundElement e,
-    double time, double frameRate, CanvasImageSource? images) {
+void _paintBackgroundElement(
+    ui.Canvas canvas,
+    Rect bounds,
+    BackgroundElement e,
+    double time,
+    double frameRate,
+    CanvasImageSource? images,
+    ProceduralCache? backgrounds) {
   if (e.cornerRadius > 0) {
     canvas.save();
     canvas.clipRRect(
         RRect.fromRectAndRadius(bounds, Radius.circular(e.cornerRadius)));
   }
-  paintProcedural(canvas, bounds, e.spec,
-      time: time, frameRate: frameRate, images: images);
+  // Drawn from the editor's cache where it can be, as the canvas's own
+  // background is: generated afresh on every repaint, a metal or a surface
+  // panel was eighty milliseconds of every frame anything on the canvas
+  // moved.
+  // During a gesture -- the panel being resized -- the last one made,
+  // stretched, and a new one made when the gesture ends.
+  var ready = backgrounds?.imageFor(
+          e.spec, bounds.size, time, images, !RasterCache.drafting, false) ??
+      (RasterCache.drafting ? backgrounds?.latestFor(e.spec) : null);
+  if (ready != null) {
+    canvas.drawImageRect(
+        ready,
+        Rect.fromLTWH(0, 0, ready.width.toDouble(), ready.height.toDouble()),
+        bounds,
+        Paint()..filterQuality = FilterQuality.low);
+  } else {
+    paintProcedural(canvas, bounds, e.spec,
+        time: time, frameRate: frameRate, images: images);
+  }
   if (e.cornerRadius > 0) canvas.restore();
 }
 

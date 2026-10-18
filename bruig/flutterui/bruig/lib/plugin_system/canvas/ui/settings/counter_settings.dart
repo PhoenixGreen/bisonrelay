@@ -2,6 +2,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -37,183 +38,219 @@ List<Widget> counterSettings(
       : controller.counterValue(e);
 
   return [
-    CanvasControlGroup(
-        label: "Counts",
-        hideCaption: true,
-        rule: false,
+    section(e, "number",
+        icon: Icons.pin_outlined,
+        title: "Number",
+        summary: "${e.format(e.from)} to ${e.format(e.to)}"
+            "${e.before.isNotEmpty || e.after.isNotEmpty ? " · ${e.textFor(here)}" : ""}",
+        initiallyOpen: true,
         children: [
-          CanvasNumberField(
-            key: const ValueKey("counterFrom"),
-            label: "From",
-            value: e.from,
-            min: -1000000000,
-            max: 1000000000,
-            decimals: e.decimals,
-            width: 84,
-            onChanged: (v) => write(e.copyWith(from: v)),
-            onCommit: commit,
-          ),
-          CanvasNumberField(
-            key: const ValueKey("counterTo"),
-            label: "To",
-            value: e.to,
-            min: -1000000000,
-            max: 1000000000,
-            decimals: e.decimals,
-            width: 84,
-            onChanged: (v) => write(e.copyWith(to: v)),
-            onCommit: commit,
-          ),
-          CanvasNumberField(
-            key: const ValueKey("counterDecimals"),
-            label: "Decimals",
-            value: e.decimals.toDouble(),
-            min: 0,
-            max: 8,
-            decimals: 0,
-            width: 54,
-            onChanged: (v) => write(e.copyWith(decimals: v.round())),
-            onCommit: commit,
-          ),
-          // The grouping and the point are one choice rather than two: a number
-          // written 1.234,56 is not 1,234.56 with a different point, it is a
-          // different convention -- and the two time formats are not grouping at
-          // all.
-          CanvasDropdown<CounterSeparator>(
-            key: const ValueKey("counterSeparator"),
-            label: "Written",
-            value: e.separator,
-            width: 132,
-            options: [
-              for (var s in CounterSeparator.values)
-                (s, s == CounterSeparator.none ? "Plain" : s.label)
-            ],
-            onChanged: (v) => now(e.copyWith(separator: v)),
-          ),
-          CanvasHint("Counts ${e.format(e.from)} to ${e.format(e.to)}"
-              "${e.separator.isTime ? ", reading the value as seconds" : ""}."),
-        ]),
-    CanvasControlGroup(label: "Words", rule: false, children: [
-      CanvasTextField(
-        key: const ValueKey("counterBefore"),
-        label: "Before",
-        value: e.before,
-        width: 96,
-        onChanged: (v) => write(e.copyWith(before: v)),
-        onCommit: commit,
-      ),
-      CanvasTextField(
-        key: const ValueKey("counterAfter"),
-        label: "After",
-        value: e.after,
-        width: 96,
-        onChanged: (v) => write(e.copyWith(after: v)),
-        onCommit: commit,
-      ),
-      CanvasHint("Now: ${e.textFor(here)}"),
-    ]),
-    boxed(context, _countSection(context, controller, e, write, begin, commit)),
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Number type",
-        remember: "counterNumberType",
-        trailing: "${e.numberSpec.fontSize.round()}",
-        children: [
-          ...typeGroups(e.numberSpec,
-              (spec) => write(e.copyWith(numberSpec: spec)), begin, commit,
-              label: "Number type",
+          CanvasControlGroup(
+              label: "Counts",
               hideCaption: true,
-              remember: "counterNumber"),
-          CanvasControlGroup(label: "Spacing", children: [
-            CanvasNumberField(
-              key: const ValueKey("counterGap"),
-              label: "Words gap",
-              value: e.gap,
-              min: 0,
-              max: 8,
-              decimals: 2,
-              width: 62,
-              onChanged: (v) {
-                begin();
-                write(e.copyWith(gap: v));
-              },
+              rule: false,
+              children: [
+                CanvasNumberField(
+                  key: const ValueKey("counterFrom"),
+                  label: "From",
+                  value: e.from,
+                  min: -1000000000,
+                  max: 1000000000,
+                  decimals: e.decimals,
+                  width: 84,
+                  onChanged: (v) => write(e.copyWith(from: v)),
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("counterTo"),
+                  label: "To",
+                  value: e.to,
+                  min: -1000000000,
+                  max: 1000000000,
+                  decimals: e.decimals,
+                  width: 84,
+                  onChanged: (v) => write(e.copyWith(to: v)),
+                  onCommit: commit,
+                ),
+                CanvasNumberField(
+                  key: const ValueKey("counterDecimals"),
+                  label: "Decimals",
+                  value: e.decimals.toDouble(),
+                  min: 0,
+                  max: 8,
+                  decimals: 0,
+                  width: 54,
+                  onChanged: (v) => write(e.copyWith(decimals: v.round())),
+                  onCommit: commit,
+                ),
+                // The grouping and the point are one choice rather than two: a number
+                // written 1.234,56 is not 1,234.56 with a different point, it is a
+                // different convention -- and the two time formats are not grouping at
+                // all.
+                CanvasDropdown<CounterSeparator>(
+                  key: const ValueKey("counterSeparator"),
+                  label: "Written",
+                  value: e.separator,
+                  width: 132,
+                  options: [
+                    for (var s in CounterSeparator.values)
+                      (s, s == CounterSeparator.none ? "Plain" : s.label)
+                  ],
+                  onChanged: (v) => now(e.copyWith(separator: v)),
+                ),
+                CanvasHint("Counts ${e.format(e.from)} to ${e.format(e.to)}"
+                    "${e.separator.isTime ? ", reading the value as seconds" : ""}."),
+              ]),
+          CanvasControlGroup(label: "Words", rule: false, children: [
+            CanvasTextField(
+              key: const ValueKey("counterBefore"),
+              label: "Before",
+              value: e.before,
+              width: 96,
+              onChanged: (v) => write(e.copyWith(before: v)),
               onCommit: commit,
             ),
-            const CanvasHint(
-                "The space between the number and the words either side of "
-                "it, in the number's own ems -- so it holds when the type is "
-                "shrunk to fit. A gap set in pixels for sixty-point figures "
-                "is a chasm beside twenty-point ones."),
-          ]),
-        ],
-      ),
-    ),
-    boxed(
-      context,
-      CanvasExpander(
-        label: "Words type",
-        remember: "counterAffixType",
-        trailing: "${e.affixSpec.fontSize.round()}",
-        children: [
-          ...typeGroups(e.affixSpec,
-              (spec) => write(e.copyWith(affixSpec: spec)), begin, commit,
-              label: "Words type", hideCaption: true, remember: "counterWords"),
-          CanvasControlGroup(label: "Placing", children: [
-            CanvasToggle(
-              key: const ValueKey("counterLoose"),
-              label: "Place freely",
-              value: e.loose,
-              onChanged: (v) => now(e.copyWith(loose: v)),
+            CanvasTextField(
+              key: const ValueKey("counterAfter"),
+              label: "After",
+              value: e.after,
+              width: 96,
+              onChanged: (v) => write(e.copyWith(after: v)),
+              onCommit: commit,
             ),
-            if (e.loose) ...[
-              ..._placing(
-                  "Before",
-                  e.beforeAt,
-                  (at) => write(e.copyWith(beforeAt: at)),
-                  begin,
-                  commit,
-                  "counterBeforeAt"),
-              const CanvasLineBreak(),
-              ..._placing(
-                  "After",
-                  e.afterAt,
-                  (at) => write(e.copyWith(afterAt: at)),
-                  begin,
-                  commit,
-                  "counterAfterAt"),
-            ],
-            CanvasHint(e.loose
-                ? "Each word sits where it is put, as a fraction of the box "
-                    "from its middle: nought is the middle and half is the "
-                    "edge. They can be dragged on the canvas as well."
-                : "The words sit on the number's own line. Turn this on to "
-                    "put them anywhere in the box -- a currency in a corner, "
-                    "a unit under the figures."),
+            CanvasHint("Now: ${e.textFor(here)}"),
           ]),
-        ],
-      ),
-    ),
-    boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
-        remember: "counter", rule: false),
-    CanvasControlGroup(label: "Size", rule: false, children: [
-      CanvasToggle(
-        key: const ValueKey("counterFit"),
-        label: "Shrink to fit",
-        value: e.fit,
-        onChanged: (v) => now(e.copyWith(fit: v)),
-      ),
-      const CanvasHint(
-          "The width of a number changes as it counts. Left to itself, a "
-          "counter set to look right at 42 is cut off at 1,234,567 -- so the "
-          "type is sized to the widest value the count will ever reach, and "
-          "then stays there. Turn it off to keep the type exactly as set."),
-    ]),
-    boxed(context, _buttonsSection(context, e, write, begin, commit, now)),
-    boxed(
-        context,
-        elementAnimationSection(controller, e, e.animation,
-            (a) => write(e.copyWith(animation: a)), begin, commit)),
+        ]),
+    section(e, "count",
+        icon: Icons.timer_outlined,
+        title: "Count",
+        summary: e.keyed ? "Keyframes on the timeline" : "Live",
+        children: [
+          _countSection(context, controller, e, write, begin, commit),
+        ]),
+    section(e, "type",
+        icon: Icons.text_fields,
+        title: "Type",
+        summary: "Number ${e.numberSpec.fontSize.round()} · "
+            "words ${e.affixSpec.fontSize.round()}",
+        children: [
+          boxed(
+            context,
+            CanvasExpander(
+              label: "Number type",
+              remember: "counterNumberType",
+              trailing: "${e.numberSpec.fontSize.round()}",
+              children: [
+                ...typeGroups(
+                    e.numberSpec,
+                    (spec) => write(e.copyWith(numberSpec: spec)),
+                    begin,
+                    commit,
+                    label: "Number type",
+                    hideCaption: true,
+                    remember: "counterNumber"),
+                CanvasControlGroup(label: "Spacing", children: [
+                  CanvasNumberField(
+                    key: const ValueKey("counterGap"),
+                    label: "Words gap",
+                    value: e.gap,
+                    min: 0,
+                    max: 8,
+                    decimals: 2,
+                    width: 62,
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(gap: v));
+                    },
+                    onCommit: commit,
+                  ),
+                  const CanvasHint(
+                      "The space between the number and the words either side of "
+                      "it, in the number's own ems -- so it holds when the type is "
+                      "shrunk to fit. A gap set in pixels for sixty-point figures "
+                      "is a chasm beside twenty-point ones."),
+                ]),
+              ],
+            ),
+          ),
+          boxed(
+            context,
+            CanvasExpander(
+              label: "Words type",
+              remember: "counterAffixType",
+              trailing: "${e.affixSpec.fontSize.round()}",
+              children: [
+                ...typeGroups(e.affixSpec,
+                    (spec) => write(e.copyWith(affixSpec: spec)), begin, commit,
+                    label: "Words type",
+                    hideCaption: true,
+                    remember: "counterWords"),
+                CanvasControlGroup(label: "Placing", children: [
+                  CanvasToggle(
+                    key: const ValueKey("counterLoose"),
+                    label: "Place freely",
+                    value: e.loose,
+                    onChanged: (v) => now(e.copyWith(loose: v)),
+                  ),
+                  if (e.loose) ...[
+                    ..._placing(
+                        "Before",
+                        e.beforeAt,
+                        (at) => write(e.copyWith(beforeAt: at)),
+                        begin,
+                        commit,
+                        "counterBeforeAt"),
+                    const CanvasLineBreak(),
+                    ..._placing(
+                        "After",
+                        e.afterAt,
+                        (at) => write(e.copyWith(afterAt: at)),
+                        begin,
+                        commit,
+                        "counterAfterAt"),
+                  ],
+                  CanvasHint(e.loose
+                      ? "Each word sits where it is put, as a fraction of the box "
+                          "from its middle: nought is the middle and half is the "
+                          "edge. They can be dragged on the canvas as well."
+                      : "The words sit on the number's own line. Turn this on to "
+                          "put them anywhere in the box -- a currency in a corner, "
+                          "a unit under the figures."),
+                ]),
+              ],
+            ),
+          ),
+        ]),
+    section(e, "box",
+        icon: Icons.crop_square,
+        title: "Box",
+        summary: [boxSummary(e.box), if (e.fit) "shrinks to fit"].join(" · "),
+        children: [
+          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+              remember: "counter", rule: false),
+          CanvasControlGroup(label: "Size", rule: false, children: [
+            CanvasToggle(
+              key: const ValueKey("counterFit"),
+              label: "Shrink to fit",
+              value: e.fit,
+              onChanged: (v) => now(e.copyWith(fit: v)),
+            ),
+            const CanvasHint(
+                "The width of a number changes as it counts. Left to itself, a "
+                "counter set to look right at 42 is cut off at 1,234,567 -- so the "
+                "type is sized to the widest value the count will ever reach, and "
+                "then stays there. Turn it off to keep the type exactly as set."),
+          ]),
+        ]),
+    section(e, "buttons",
+        icon: Icons.smart_button_outlined,
+        title: "Buttons",
+        summary: e.buttons.isEmpty
+            ? "None"
+            : e.buttons.map((b) => b.label).join(" · "),
+        children: [_buttonsSection(context, e, write, begin, commit, now)]),
+    animationPanelSection(controller, e, e.animation,
+        (a) => write(e.copyWith(animation: a)), begin, commit),
   ];
 }
 
@@ -239,6 +276,8 @@ Widget _countSection(
   return CanvasExpander(
     label: "Count",
     remember: "counterCount",
+    // In its own section, which is its heading.
+    flat: true,
     trailing: e.keyed ? "Keyframes" : "Live",
     children: [
       CanvasControlGroup(label: "Count", hideCaption: true, children: [
@@ -502,6 +541,7 @@ Widget _buttonsSection(
     CanvasExpander(
       label: "Buttons",
       remember: "counterButtons",
+      flat: true,
       trailing: e.buttons.isEmpty ? "None" : "${e.buttons.length}",
       children: [
         CanvasControlGroup(label: "Buttons", hideCaption: true, children: [

@@ -66,3 +66,39 @@ Future<void> typeInto(WidgetTester tester, Finder field, String text) async {
   await tester.testTextInput.receiveAction(TextInputAction.done);
   await tester.pumpAndSettle();
 }
+
+/// openTiles opens the folding tiles remembered as [name] -- "image.tiles.
+/// filter", say -- into their grid, if they are shut.
+Future<void> openTiles(WidgetTester tester, String name) async {
+  if (find.byKey(ValueKey("tilesStrip-$name")).evaluate().isEmpty) return;
+  var head = find.byKey(ValueKey("tilesFold-$name"));
+  await tester.ensureVisible(head);
+  await tester.tap(head);
+  await tester.pumpAndSettle();
+}
+
+/// enterValue types [text] into [field] whatever it is drawn as: straight
+/// into a text field, or -- a number in a card, drawn as a stepper -- the
+/// way typeInto does.
+Future<void> enterValue(WidgetTester tester, Finder field, String text) async {
+  var editable =
+      find.descendant(of: field, matching: find.byType(EditableText), matchRoot: true);
+  if (editable.evaluate().isNotEmpty) {
+    await tester.enterText(field, text);
+    return;
+  }
+  await typeInto(tester, field, text);
+}
+
+/// openFold opens the folding card an expander is drawn as in a section --
+/// remembered as [remember] -- unless [shows], something inside it, is
+/// already there.
+Future<void> openFold(WidgetTester tester, String remember,
+    {required Finder shows}) async {
+  if (shows.evaluate().isNotEmpty) return;
+  var head = find.byKey(ValueKey("expander-$remember"));
+  await tester.ensureVisible(head);
+  await tester.pumpAndSettle();
+  await tester.tap(head);
+  await tester.pumpAndSettle();
+}

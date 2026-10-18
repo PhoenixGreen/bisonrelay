@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
@@ -57,6 +58,9 @@ CanvasBackground withVideo(String id) => CanvasBackground(
         controls: const [], clip: playing(film, sound: filmSound)));
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   late Directory root;
   late FakeEngine engine;
 
@@ -316,11 +320,11 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// open brings the section [label] into view: every section is open in
+    /// these tests.
     Future<void> open(WidgetTester tester, String label) async {
-      var heading = find.text(label.toUpperCase());
-      if (heading.evaluate().isEmpty) heading = find.text(label);
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
+      var section = find.byKey(ValueKey("background$label"));
+      await tester.ensureVisible(section);
       await tester.pumpAndSettle();
     }
 
@@ -361,7 +365,10 @@ void main() {
       expect(c.document.editedBackground.video!.key.on, isFalse,
           reason: "an edit to the backdrop is one undo step");
 
-      await tester.tap(find.byTooltip("Take the video off the background"));
+      var off = find.byTooltip("Take the video off the background");
+      await tester.ensureVisible(off);
+      await tester.pumpAndSettle();
+      await tester.tap(off);
       await tester.pumpAndSettle();
       expect(c.document.editedBackground.video, isNull);
     });

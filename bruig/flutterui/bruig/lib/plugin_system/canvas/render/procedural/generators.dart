@@ -1837,8 +1837,9 @@ void _halftone(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
 /// constant-width ray reads as a starburst clip-art, which is the wrong
 /// decade.
 void _speedLines(ui.Canvas canvas, Rect rect, ProceduralSpec spec, double t) {
-  if (spec.choice("burstKind") == 1)
+  if (spec.choice("burstKind") == 1) {
     return _parallelLines(canvas, rect, spec, t);
+  }
   // The vanishing point wanders with the seed, but stays near the middle: a
   // burst centred on a corner is a fan, not a burst. Unless it is put
   // somewhere, which is what a burst behind a figure off to one side wants.

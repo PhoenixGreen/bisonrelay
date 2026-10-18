@@ -134,7 +134,8 @@ List<Widget> effectsGroups(
     SettingsWrite write,
     VoidCallback begin,
     VoidCallback commit,
-    {bool adder = true}) {
+    {bool adder = true,
+    Set<EffectKind>? shown}) {
   var effects = layer.effects;
   ImageElement with_(List<LayerEffect> next) =>
       e.withLayer(layer.id, (l) => l.copyWith(effects: next));
@@ -174,36 +175,122 @@ List<Widget> effectsGroups(
         ],
       ),
     for (var (i, f) in effects.indexed)
-      CanvasControlGroup(
-        key: ValueKey("effect-${f.kind.name}"),
-        label: f.kind.label,
-        rule: false,
-        children: [
-          CanvasToggle(
-            key: ValueKey("effectOn-${f.kind.name}"),
-            label: "On",
-            value: f.on,
-            onChanged: (v) => now(replaced(i, f.copyWith(on: v))),
-          ),
-          CanvasIconButton(
-            key: ValueKey("effectRemove-${f.kind.name}"),
-            icon: Icons.delete_outline,
-            tooltip: "Take the ${f.kind.label.toLowerCase()} off",
-            onPressed: () => now([...effects]..removeAt(i)),
-          ),
-          if (f.kind.usesColour)
-            CanvasColorButton(
-              key: ValueKey("effectColour-${f.kind.name}"),
-              label: "Colour",
-              color: f.colour,
-              onChanged: (c) => now(replaced(i, f.copyWith(colour: c))),
+      if (shown == null || shown.contains(f.kind))
+        CanvasControlGroup(
+          key: ValueKey("effect-${f.kind.name}"),
+          label: f.kind.label,
+          help: "Switched off here, it stays on the list, ready to come back; "
+              "the bin takes it off altogether.",
+          rule: false,
+          children: [
+            CanvasToggle(
+              key: ValueKey("effectOn-${f.kind.name}"),
+              label: "On",
+              value: f.on,
+              onChanged: (v) => now(replaced(i, f.copyWith(on: v))),
             ),
-          const CanvasLineBreak(),
-          ..._fields("effect-${f.kind.name}", f.kind.params, f.value, (k, v) {
-            begin();
-            write(with_(replaced(i, f.withValue(k, v))));
-          }, commit),
-        ],
-      ),
+            if (f.kind.usesColour)
+              CanvasColorButton(
+                key: ValueKey("effectColour-${f.kind.name}"),
+                label: "Colour",
+                color: f.colour,
+                onChanged: (c) => now(replaced(i, f.copyWith(colour: c))),
+              ),
+            const CanvasLineBreak(),
+            ..._fields("effect-${f.kind.name}", f.kind.params, f.value, (k, v) {
+              begin();
+              write(with_(replaced(i, f.withValue(k, v))));
+            }, commit),
+            CanvasTextButton(
+              key: ValueKey("effectRemove-${f.kind.name}"),
+              icon: Icons.delete_outline,
+              label: "Take it off",
+              onPressed: () => now([...effects]..removeAt(i)),
+            ),
+          ],
+        ),
   ];
+}
+
+/// _openEffects is which effects have their settings open, for each layer,
+/// for this run of the app: the panel is rebuilt on every edit, and a
+/// setting opened has to stay open through the edit it was opened for.
+final Map<String, Set<EffectKind>> _openEffects = {};
+
+/// EffectTiles is a layer's effects as tiles. The first press on one puts
+/// the effect on and opens its settings; after that a press opens and shuts
+/// the settings, and only the switch in them turns the effect off. A tile
+/// wears a tick while its effect is on and is lit while its settings are
+/// open -- so several effects can be on with one, or none, open.
+class EffectTiles extends StatefulWidget {
+  final CanvasController controller;
+  final ImageElement element;
+  final ImageLayer layer;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  final List<CanvasTile<EffectKind>> tiles;
+
+  const EffectTiles(
+      {required this.controller,
+      required this.element,
+      required this.layer,
+      required this.write,
+      required this.begin,
+      required this.commit,
+      required this.tiles,
+      super.key});
+
+  @override
+  State<EffectTiles> createState() => _EffectTilesState();
+}
+
+class _EffectTilesState extends State<EffectTiles> {
+  Set<EffectKind> get _open => _openEffects.putIfAbsent(
+      "${widget.element.id}|${widget.layer.id}", () => {});
+
+  void _press(EffectKind k) {
+    var effects = widget.layer.effects;
+    if (!effects.any((f) => f.kind == k)) {
+      widget.begin();
+      widget.write(widget.element.withLayer(widget.layer.id,
+          (l) => l.copyWith(effects: [...effects, LayerEffect(kind: k)])));
+      widget.commit();
+      setState(() => _open.add(k));
+      return;
+    }
+    setState(() => _open.contains(k) ? _open.remove(k) : _open.add(k));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var effects = widget.layer.effects;
+    var open = _open;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CanvasTiles<EffectKind>(
+          key: const ValueKey("imageEffects"),
+          label: "Effects",
+          help: "Press one to put it on and open its settings; press it again "
+              "to shut them -- the effect stays on, ticked. Turn it off with "
+              "the switch in its settings.",
+          // One line that scrolls, as the tools do, not rows squeezed in.
+          scrolls: true,
+          tileWidth: 84,
+          multiple: true,
+          previewHeight: 28,
+          tiles: widget.tiles,
+          selected: (k) => open.contains(k) && effects.any((f) => f.kind == k),
+          ticked: (k) => effects.any((f) => f.kind == k && f.on),
+          keyOf: (k) => "effectTile-${k.name}",
+          onPick: _press,
+        ),
+        ...effectsGroups(widget.controller, widget.element, widget.layer,
+            widget.write, widget.begin, widget.commit,
+            adder: false, shown: open),
+      ],
+    );
+  }
 }

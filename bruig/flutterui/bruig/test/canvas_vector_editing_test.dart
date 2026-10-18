@@ -35,9 +35,12 @@ import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Path;
 import 'package:flutter/services.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'canvas_panel_helpers.dart';
 
 // canvas_vector_editing_test.dart is a drawing edited point by point: where
 // its points are on the canvas, what a press takes hold of, the edits, the
@@ -98,6 +101,9 @@ Set<VectorPick> picksOfAll(VectorElement e, int shape) => {
     };
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   group("where a point is", () {
     test("on the canvas and back, turned too", () {
       var e = drawing(square, rotation: 90);
@@ -2050,11 +2056,11 @@ void main() {
       ));
       var field = find.byType(TextField);
       expect(tester.widget<TextField>(field).controller!.text, "0.50");
-      await tester.enterText(field, "0.73");
+      await enterValue(tester, field, "0.73");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
       expect(value, 0.73);
-      await tester.enterText(field, "9");
+      await enterValue(tester, field, "9");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
       expect(value, 1, reason: "kept to the slider's range");

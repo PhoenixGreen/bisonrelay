@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
@@ -58,42 +59,40 @@ void paintTexture(ui.Canvas canvas, Rect frame, TextureSpec spec) {
   shader.dispose();
 }
 
-/// _scaleOf is how many device pixels one unit of [canvas] is drawn across.
-double _scaleOf(ui.Canvas canvas) {
-  var m = canvas.getTransform();
-  var sx = math.sqrt(m[0] * m[0] + m[1] * m[1]);
-  var sy = math.sqrt(m[4] * m[4] + m[5] * m[5]);
-  var dpr = ui.PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1;
-  return math.max(sx, sy) * math.max(1.0, dpr);
-}
-
-final Expando<Map<String, ui.Image>> _rasters = Expando("effectRasters");
 final List<ui.Image> _loose = [];
 
 /// _raster is [content] -- covering [room] -- as pixels at the size [canvas]
-/// is drawn at, kept against [owner] under [key] where there is an owner.
+/// is drawn at, kept as [key], drawn from [from], where there is a key.
 (ui.Image, Rect) _raster(ui.Canvas canvas, Rect room, ui.Picture content,
-    Object? owner, String key) {
-  var scale = _scaleOf(canvas);
+    String? key, List<Object?> from) {
+  var scale = deviceScaleOf(canvas);
   var most = math.min(4096 / math.max(room.width, room.height),
       math.sqrt(16e6 / (room.width * room.height)));
+  if (RasterCache.drafting) {
+    most = math.min(
+        most, RasterCache.draftSide / math.max(room.width, room.height));
+  }
   scale = math.max(0.05, math.min(scale, most));
   var w = math.max(1, (room.width * scale).ceil());
   var h = math.max(1, (room.height * scale).ceil());
+  var made = key == null
+      ? null
+      : RasterCache.instance.sized(key, [room.size, ...from], w, h);
+  if (made != null) {
+    return (
+      made,
+      Rect.fromLTWH(0, 0, made.width.toDouble(), made.height.toDouble())
+    );
+  }
   var src = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
-  var name = "$key|$w|$h|$room";
-  var cache = owner == null ? null : (_rasters[owner] ??= {});
-  var made = cache?[name];
-  if (made != null) return (made, src);
   var recorder = ui.PictureRecorder();
   var raster = ui.Canvas(recorder);
   raster.scale(w / room.width, h / room.height);
   raster.translate(-room.left, -room.top);
   raster.drawPicture(content);
   made = recorder.endRecording().toImageSync(w, h);
-  if (cache != null) {
-    if (cache.length > 6) cache.remove(cache.keys.first)?.dispose();
-    cache[name] = made;
+  if (key != null) {
+    RasterCache.instance.putSized(key, [room.size, ...from], made);
   } else {
     _loose.add(made);
     while (_loose.length > 8) {
@@ -122,10 +121,10 @@ ui.ImageFilter? _chain(List<ui.ImageFilter> filters) {
 
 /// paintWithEffects draws [content] -- a layer, covering [room] -- with
 /// [effects], [unit] canvas units to a thousandth of the frame's shorter
-/// side. [owner] and [key] name what is rasterised, so it is kept.
+/// side. [key] names what is rasterised, drawn from [from], so it is kept.
 void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Picture content,
-    {Object? owner, String key = ""}) {
+    {String? key, List<Object?> from = const []}) {
   var on = [
     for (var f in effects)
       if (f.on) f
@@ -178,7 +177,7 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
   if (copies.isEmpty) {
     canvas.drawPicture(content);
   } else {
-    var (image, src) = _raster(canvas, room, content, owner, key);
+    var (image, src) = _raster(canvas, room, content, key, [effects, ...from]);
     _paintCopies(canvas, room, unit, copies.toList(), image, src);
   }
   for (var f in on.where((f) => f.kind == EffectKind.innerShadow)) {

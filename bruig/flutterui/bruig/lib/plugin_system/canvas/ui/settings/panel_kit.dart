@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+import 'dart:collection';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -64,9 +66,14 @@ class CanvasStepper extends StatefulWidget implements CanvasGrowable {
   /// the stepper's own key.
   final String? name;
 
+  /// fill makes it as wide as it is given, for one laid out by hand -- in a
+  /// row of its own rather than a line of a group.
+  final bool fill;
+
   const CanvasStepper({
     required this.label,
     this.name,
+    this.fill = false,
     required this.value,
     required this.onChanged,
     this.min = -100000,
@@ -288,7 +295,7 @@ class _CanvasStepperState extends State<CanvasStepper> {
               maxLines: 1,
               overflow: TextOverflow.clip,
               style: TextStyle(
-                  fontSize: CanvasCards.on(context) ? 14 : 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: theme.colors.onSurface),
             ),
@@ -298,8 +305,50 @@ class _CanvasStepperState extends State<CanvasStepper> {
     );
   }
 
+  /// _built is what [build] made last, from [_was]: a stepper showing the
+  /// same as it did is handed back as it was, so an edit elsewhere in the
+  /// panel does not go through every stepper in it. Everything it does when
+  /// pressed reads [widget] then, so nothing kept is out of date.
+  Widget? _built;
+  List<Object?> _was = const [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _built = null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    var w = widget;
+    var now = [
+      w.label,
+      w.value,
+      w.min,
+      w.max,
+      w.decimals,
+      w.suffix,
+      w.changed,
+      w.width,
+      w.grow,
+      w.fill,
+      w.name,
+      w.key,
+      _editing,
+      ThemeNotifier.of(context).colors,
+    ];
+    var same = _built != null && now.length == _was.length;
+    for (var i = 0; same && i < now.length; i++) {
+      same = now[i] == _was[i];
+    }
+    if (!same) {
+      _built = _build(context);
+      _was = now;
+    }
+    return _built!;
+  }
+
+  Widget _build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var changed = widget.changed;
     var accent = theme.colors.primary;
@@ -364,11 +413,16 @@ class _CanvasStepperState extends State<CanvasStepper> {
           children: [
             SizedBox(height: cardLabelHeight, child: caption),
             const SizedBox(height: cardLabelGap),
-            canvasSized(context,
-                min: CanvasControlScope.widthFor(context, widget.width),
-                height: cardControlHeight,
-                grow: widget.grow,
-                child: box),
+            widget.fill
+                ? SizedBox(
+                    width: double.infinity,
+                    height: cardControlHeight,
+                    child: box)
+                : canvasSized(context,
+                    min: CanvasControlScope.widthFor(context, widget.width),
+                    height: cardControlHeight,
+                    grow: widget.grow,
+                    child: box),
           ],
         ),
       );
@@ -386,11 +440,14 @@ class _CanvasStepperState extends State<CanvasStepper> {
           SizedBox(
               height: math.max(0.0,
                   controlWithLabelHeight - controlLabelHeight - stepperHeight)),
-          canvasSized(context,
-              min: CanvasControlScope.widthFor(context, widget.width),
-              height: stepperHeight,
-              grow: widget.grow,
-              child: box),
+          widget.fill
+              ? SizedBox(
+                  width: double.infinity, height: stepperHeight, child: box)
+              : canvasSized(context,
+                  min: CanvasControlScope.widthFor(context, widget.width),
+                  height: stepperHeight,
+                  grow: widget.grow,
+                  child: box),
         ],
       ),
     );
@@ -399,6 +456,50 @@ class _CanvasStepperState extends State<CanvasStepper> {
 
 /// CanvasTile is one choice in a row of [CanvasTiles]: a picture of what it
 /// does and the word for it.
+/// CanvasKept is [builder]'s widget, built again only when one of [deps] is
+/// not what it was -- or something it reads from above, the theme say, has
+/// changed.
+///
+/// Every edit rebuilds the whole panel, and most of it -- the layers strip,
+/// the headings of the sections that are shut -- is what it was: the same
+/// widget handed back is a subtree Flutter does not go through at all. What
+/// it is handed must be everything the widget shows, and anything it does
+/// when pressed must look up what is current then, not keep what was: a
+/// widget kept is a callback kept.
+class CanvasKept extends StatefulWidget {
+  final List<Object?> deps;
+  final WidgetBuilder builder;
+  const CanvasKept({required this.deps, required this.builder, super.key});
+
+  @override
+  State<CanvasKept> createState() => _CanvasKeptState();
+}
+
+class _CanvasKeptState extends State<CanvasKept> {
+  Widget? _built;
+  List<Object?> _deps = const [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _built = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var deps = widget.deps;
+    var same = _built != null && deps.length == _deps.length;
+    for (var i = 0; same && i < deps.length; i++) {
+      same = identical(deps[i], _deps[i]) || deps[i] == _deps[i];
+    }
+    if (!same) {
+      _built = widget.builder(context);
+      _deps = List.of(deps);
+    }
+    return _built!;
+  }
+}
+
 class CanvasTile<T> {
   final T value;
   final String label;
@@ -407,7 +508,99 @@ class CanvasTile<T> {
   final WidgetBuilder? preview;
   final IconData? icon;
 
-  const CanvasTile(this.value, this.label, {this.preview, this.icon});
+  /// paint draws what choosing it does, as [preview] does -- once, into a
+  /// small picture kept and drawn again as it is: see TileSnapshot. Preferred
+  /// to [preview] for anything drawn through a layer or a filter.
+  final TilePaint? paint;
+
+  /// drawnFrom is everything [preview] draws from, where it is not just
+  /// [value] -- the picture a filter is shown on. Given, or with no preview
+  /// at all, a tile in a folding card is built once and kept until it
+  /// changes; see CanvasKept.
+  final Object? drawnFrom;
+
+  const CanvasTile(this.value, this.label,
+      {this.preview, this.icon, this.drawnFrom, this.paint});
+}
+
+/// TilePaint draws a tile's picture into [size].
+typedef TilePaint = void Function(Canvas canvas, Size size);
+
+/// _snapshots is every tile's picture, drawn once, the most recently drawn
+/// last. A strip of tiles scrolled was every tile's filter, blend layer and
+/// shader drawn again on every frame -- with nothing kept between frames, as
+/// the renderer keeps nothing -- and a rounded clip a tile on top. Drawn
+/// from here, a tile is one picture, clipped in place.
+final LinkedHashMap<String, ui.Image> _snapshots = LinkedHashMap();
+const int _snapshotsKept = 240;
+
+/// TileSnapshot is [paint] drawn once at the size it is shown, kept as
+/// [id], and drawn from then on as that picture with its corners rounded.
+class TileSnapshot extends StatelessWidget {
+  final String id;
+  final TilePaint paint;
+  final Color ground;
+  final double radius;
+  const TileSnapshot(
+      {required this.id,
+      required this.paint,
+      required this.ground,
+      this.radius = 5,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+      size: Size.infinite,
+      painter: _SnapshotPainter(id, paint, ground, radius,
+          MediaQuery.maybeDevicePixelRatioOf(context) ?? 1));
+}
+
+class _SnapshotPainter extends CustomPainter {
+  final String id;
+  final TilePaint draw;
+  final Color ground;
+  final double radius;
+  final double ratio;
+  _SnapshotPainter(this.id, this.draw, this.ground, this.radius, this.ratio);
+
+  ui.Image _image(Size size) {
+    var w = math.max(1, (size.width * ratio).round());
+    var h = math.max(1, (size.height * ratio).round());
+    var key = "$id|${ground.toARGB32()}|${w}x$h";
+    var kept = _snapshots.remove(key);
+    if (kept != null) return _snapshots[key] = kept;
+    var recorder = ui.PictureRecorder();
+    var canvas = Canvas(recorder)..scale(w / size.width, h / size.height);
+    canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    draw(canvas, size);
+    var picture = recorder.endRecording();
+    var made = picture.toImageSync(w, h);
+    picture.dispose();
+    _snapshots[key] = made;
+    while (_snapshots.length > _snapshotsKept) {
+      _snapshots.remove(_snapshots.keys.first)!.dispose();
+    }
+    return made;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    var image = _image(size);
+    var all = Offset.zero & size;
+    canvas.save();
+    canvas.clipRRect(RRect.fromRectAndRadius(all, Radius.circular(radius)));
+    canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        all,
+        Paint()..filterQuality = FilterQuality.medium);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_SnapshotPainter old) =>
+      old.id != id || old.ground != ground || old.ratio != ratio;
 }
 
 /// CanvasTiles is a choice made by looking rather than by reading: a grid of
@@ -434,8 +627,28 @@ class CanvasTiles<T> extends StatelessWidget {
   /// help is what the choice does, behind the "?" of its card.
   final String help;
 
+  /// ticked is which tiles wear a tick, where that is not the same as which
+  /// are lit -- an effect that is on, whose settings are shut. Null is the
+  /// lit ones, with [multiple].
+  final bool Function(T)? ticked;
+
+  /// scrolls lays the tiles in one line that scrolls sideways rather than
+  /// in rows, at [tileWidth] each.
+  final bool scrolls;
+  final double tileWidth;
+
+  /// foldAs makes the card fold, remembered under that name: shut, its tiles
+  /// are one line that scrolls sideways, with the one chosen in view and
+  /// named in the heading; open, all of them. As the layers strip does --
+  /// a choice made once and then mostly looked at takes a line, not a block.
+  final String? foldAs;
+
   const CanvasTiles({
+    this.scrolls = false,
+    this.tileWidth = 78,
     this.help = "",
+    this.ticked,
+    this.foldAs,
     required this.tiles,
     required this.selected,
     required this.onPick,
@@ -466,6 +679,33 @@ class CanvasTiles<T> extends StatelessWidget {
         ],
       );
     });
+    if (card && foldAs != null) return _FoldingTiles<T>(tiles: this);
+    if (card && scrolls) {
+      return canvasCard(context,
+          title: label == null ? null : canvasCardTitle(context, label!),
+          help: help,
+          body: Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: SizedBox(
+              height: previewHeight + 30,
+              // Every tile built, not only those in view: a handful, and a
+              // tile scrolled out of view is still one to reach.
+              child: SingleChildScrollView(
+                key: ValueKey("tilesRow-$label"),
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (var (i, t) in tiles.indexed)
+                    Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
+                      child: SizedBox(
+                          width: tileWidth,
+                          child: _tile(context, theme, t, hover: false)),
+                    ),
+                ]),
+              ),
+            ),
+          ));
+    }
     // In a section, a card of its own, named, with the "?" beside the name.
     if (card) {
       return canvasCard(context,
@@ -508,13 +748,14 @@ class CanvasTiles<T> extends StatelessWidget {
     );
   }
 
-  Widget _tile(BuildContext context, ThemeNotifier theme, CanvasTile<T> t) {
+  Widget _tile(BuildContext context, ThemeNotifier theme, CanvasTile<T> t,
+      {bool hover = true, VoidCallback? tapped}) {
     var on = selected(t.value);
     var accent = theme.colors.primary;
+    var tries = hover && onPreview != null && !multiple;
     return MouseRegion(
-      onEnter:
-          onPreview == null || multiple ? null : (_) => onPreview!(t.value),
-      onExit: onPreview == null || multiple ? null : (_) => onPreview!(null),
+      onEnter: tries ? (_) => onPreview!(t.value) : null,
+      onExit: tries ? (_) => onPreview!(null) : null,
       child: Semantics(
         button: true,
         selected: on,
@@ -524,10 +765,11 @@ class CanvasTiles<T> extends StatelessWidget {
           child: InkWell(
             key: keyOf == null ? null : ValueKey(keyOf!(t.value)),
             borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              onPreview?.call(null);
-              onPick(t.value);
-            },
+            onTap: tapped ??
+                () {
+                  onPreview?.call(null);
+                  onPick(t.value);
+                },
             child: Container(
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
@@ -539,21 +781,36 @@ class CanvasTiles<T> extends StatelessWidget {
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Stack(children: [
-                  Container(
-                    height: previewHeight,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(5),
-                      color: theme.colors.surfaceContainerHighest,
+                  if (t.paint != null)
+                    // Drawn once and kept -- see TileSnapshot.
+                    SizedBox(
+                      height: previewHeight,
+                      width: double.infinity,
+                      child: TileSnapshot(
+                          id: "${t.value.runtimeType}:${t.value}:"
+                              "${t.drawnFrom.hashCode}",
+                          paint: t.paint!,
+                          ground: theme.colors.surfaceContainerHighest),
+                    )
+                  else
+                    Container(
+                      height: previewHeight,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(5),
+                        color: theme.colors.surfaceContainerHighest,
+                      ),
+                      alignment: Alignment.center,
+                      child: t.preview != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(5),
+                              child:
+                                  SizedBox.expand(child: t.preview!(context)))
+                          : Icon(t.icon ?? Icons.circle_outlined,
+                              size: 20,
+                              color:
+                                  on ? accent : theme.colors.onSurfaceVariant),
                     ),
-                    alignment: Alignment.center,
-                    child: t.preview != null
-                        ? SizedBox.expand(child: t.preview!(context))
-                        : Icon(t.icon ?? Icons.circle_outlined,
-                            size: 20,
-                            color: on ? accent : theme.colors.onSurfaceVariant),
-                  ),
-                  if (multiple && on)
+                  if ((ticked?.call(t.value) ?? (multiple && on)))
                     Positioned(
                       top: 2,
                       right: 2,
@@ -619,6 +876,10 @@ class CanvasSection extends StatefulWidget {
   final int changes;
   final VoidCallback? onReset;
 
+  /// action is a button on the heading row, outside its fold: what a
+  /// section does without being opened -- refreshing a table's data.
+  final Widget? action;
+
   /// remember names where its open state is kept, as CanvasExpander's.
   final String remember;
   final bool initiallyOpen;
@@ -637,24 +898,32 @@ class CanvasSection extends StatefulWidget {
     this.scope,
     this.changes = 0,
     this.onReset,
+    this.action,
     this.initiallyOpen = false,
     this.forceOpen = false,
     super.key,
   });
+
+  /// openAll starts every section open, for the tests of what a control
+  /// does rather than of where it is folded away.
+  @visibleForTesting
+  static bool openAll = false;
 
   @override
   State<CanvasSection> createState() => _CanvasSectionState();
 }
 
 class _CanvasSectionState extends State<CanvasSection> {
-  late bool _open = rememberedSection(widget.remember) ?? widget.initiallyOpen;
+  late bool _open = CanvasSection.openAll ||
+      (rememberedSection(widget.remember) ?? widget.initiallyOpen);
 
   @override
   void initState() {
     super.initState();
     if (widget.forceOpen) {
       _open = true;
-    } else if (rememberedSection(widget.remember) == null) {
+    } else if (!CanvasSection.openAll &&
+        rememberedSection(widget.remember) == null) {
       restoreSection(widget.remember, (open) {
         if (mounted) setState(() => _open = open);
       });
@@ -675,14 +944,138 @@ class _CanvasSectionState extends State<CanvasSection> {
     keepSection(widget.remember, _open);
   }
 
+  /// _help is the notes among the section's own children -- a hint not in
+  /// any card -- said once, by the "?" on its heading row.
+  String get _help => [
+        for (var c in widget.children)
+          if (c is CanvasHint) c.message
+      ].join("\n\n");
+
+  /// _heading is the section's heading line: its icon, its name and what is
+  /// set in it, and -- open, with something changed -- its reset.
+  Widget _heading(ThemeNotifier theme, bool open, bool changed) {
+    var accent = theme.colors.primary;
+    var muted = theme.colors.onSurfaceVariant;
+    return Row(children: [
+      Expanded(
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            key: ValueKey("section-${widget.remember}"),
+            borderRadius: BorderRadius.circular(12),
+            onTap: _toggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+              child: Row(children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(9),
+                    color: open
+                        ? accent.withValues(alpha: 0.16)
+                        : theme.colors.surfaceContainerHighest,
+                  ),
+                  child:
+                      Icon(widget.icon, size: 16, color: open ? accent : muted),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colors.onSurface)),
+                        ),
+                        if (widget.scope != null) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(7),
+                              border: Border.all(
+                                  color: theme.colors.outlineVariant),
+                            ),
+                            child: Text(widget.scope!,
+                                style: TextStyle(fontSize: 10, color: muted)),
+                          ),
+                        ],
+                      ]),
+                      if (widget.summary.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(widget.summary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10.5, color: muted)),
+                        ),
+                    ],
+                  ),
+                ),
+                if (changed)
+                  Container(
+                    key: ValueKey("sectionChanged-${widget.remember}"),
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.only(left: 8),
+                    decoration:
+                        BoxDecoration(color: accent, shape: BoxShape.circle),
+                  ),
+                const SizedBox(width: 6),
+                AnimatedRotation(
+                  turns: open ? 0.25 : 0,
+                  duration: const Duration(milliseconds: 120),
+                  child: Icon(Icons.chevron_right, size: 20, color: muted),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+      // Outside the heading's ink, so pressing them does not also fold
+      // the section: what it is for, and what it does shut.
+      if (_help.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: CanvasHint(_help, round: true),
+        ),
+      if (widget.action != null)
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: widget.action!,
+        ),
+      if (open && changed && widget.onReset != null)
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: CanvasIconButton(
+            key: ValueKey("sectionReset-${widget.remember}"),
+            tight: true,
+            icon: Icons.restart_alt,
+            tooltip: "Reset ${widget.title}",
+            onPressed: () => widget.onReset?.call(),
+          ),
+        ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
     var open = _open;
-    var accent = theme.colors.primary;
-    var muted = theme.colors.onSurfaceVariant;
     var changed = widget.changes > 0;
-    return Container(
+    // Painted on its own: one section changed is that section painted
+    // again, not the whole panel.
+    return RepaintBoundary(
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -698,123 +1091,43 @@ class _CanvasSectionState extends State<CanvasSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(children: [
-            Expanded(
-              child: Material(
-                type: MaterialType.transparency,
-                child: InkWell(
-                  key: ValueKey("section-${widget.remember}"),
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: _toggle,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-                    child: Row(children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(9),
-                          color: open
-                              ? accent.withValues(alpha: 0.16)
-                              : theme.colors.surfaceContainerHighest,
-                        ),
-                        child: Icon(widget.icon,
-                            size: 18, color: open ? accent : muted),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(children: [
-                              Flexible(
-                                child: Text(widget.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: theme.colors.onSurface)),
-                              ),
-                              if (widget.scope != null) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(7),
-                                    border: Border.all(
-                                        color: theme.colors.outlineVariant),
-                                  ),
-                                  child: Text(widget.scope!,
-                                      style: TextStyle(
-                                          fontSize: 10, color: muted)),
-                                ),
-                              ],
-                            ]),
-                            if (widget.summary.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(widget.summary,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style:
-                                        TextStyle(fontSize: 12, color: muted)),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (changed)
-                        Container(
-                          key: ValueKey("sectionChanged-${widget.remember}"),
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                              color: accent, shape: BoxShape.circle),
-                        ),
-                      const SizedBox(width: 6),
-                      AnimatedRotation(
-                        turns: open ? 0.25 : 0,
-                        duration: const Duration(milliseconds: 120),
-                        child:
-                            Icon(Icons.chevron_right, size: 20, color: muted),
-                      ),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-            // Outside the heading's ink, so pressing it does not also fold
-            // the section.
-            if (open && changed && widget.onReset != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: CanvasIconButton(
-                  key: ValueKey("sectionReset-${widget.remember}"),
-                  tight: true,
-                  icon: Icons.restart_alt,
-                  tooltip: "Reset ${widget.title}",
-                  onPressed: widget.onReset,
-                ),
-              ),
-          ]),
+          // The heading is what it was unless what it says has changed --
+          // nine of them, rebuilt on every edit, were half of a shut panel's
+          // work. See CanvasKept.
+          CanvasKept(
+            deps: [
+              widget.icon,
+              widget.title,
+              widget.summary,
+              widget.scope,
+              changed,
+              open,
+              widget.onReset != null,
+              _help,
+              widget.action,
+              theme.colors,
+            ],
+            builder: (context) => _heading(theme, open, changed),
+          ),
           if (open)
             CanvasCards(
+              title: widget.title,
               child: Padding(
                 key: ValueKey("sectionBody-${widget.remember}"),
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
-                  children: widget.children,
+                  children: [
+                    for (var c in widget.children)
+                      if (c is! CanvasHint) c
+                  ],
                 ),
               ),
             ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -834,8 +1147,16 @@ class CanvasToolTiles<T> extends StatelessWidget {
   /// help is what the tools are for, behind the "?" of their card.
   final String help;
 
+  /// alsoActive lights a tool besides the one in hand -- the select tool
+  /// whose picks an align tool lines up.
+  final bool Function(T)? alsoActive;
+
+  /// lit is whether [tool] is drawn as in hand.
+  bool lit(T tool) => tool == active || (alsoActive?.call(tool) ?? false);
+
   const CanvasToolTiles({
     this.help = "",
+    this.alsoActive,
     required this.tools,
     required this.active,
     required this.onPick,
@@ -854,65 +1175,89 @@ class CanvasToolTiles<T> extends StatelessWidget {
       for (var t in tools)
         if (t.$1 == active) t
     ].firstOrNull;
+    // The tool's own notes go behind the card's "?", never on a row of its
+    // settings.
+    var notes = [
+      for (var w in settings)
+        if (w is CanvasHint) w.message
+    ];
+    var controls = [
+      for (var w in settings)
+        if (w is! CanvasHint) w
+    ];
+    var about = [if (help.isNotEmpty) help, ...notes].join("\n\n");
     var body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           padding: EdgeInsets.only(right: card ? 10 : 0),
+          // A line that scrolls sideways, each tile its own width: squeezed
+          // to fit, six tools came out too narrow for their names.
           child: LayoutBuilder(builder: (context, box) {
             const gap = 6.0;
             var n = tools.length;
             var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
-            var each = math.max(44.0, (width - gap * (n - 1)) / n);
-            return Wrap(spacing: gap, runSpacing: gap, children: [
-              for (var (tool, icon, short) in tools)
-                SizedBox(
-                  width: each,
-                  child: Tooltip(
-                    message: tooltipOf(tool),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: InkWell(
-                        key: ValueKey(keyOf(tool)),
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () => onPick(tool == active ? null : tool),
-                        child: Container(
-                          height: card ? 56 : 46,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            color: tool == active
-                                ? accent.withValues(alpha: 0.16)
-                                : null,
-                            border: Border.all(
-                                color: tool == active
-                                    ? accent
-                                    : theme.colors.outlineVariant,
-                                width: tool == active ? 1.5 : 1),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(icon,
-                                  size: card ? 20 : 18,
-                                  color: tool == active
-                                      ? accent
-                                      : theme.colors.onSurfaceVariant),
-                              const SizedBox(height: 4),
-                              Text(short,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      fontSize: card ? 10.5 : 9.5,
-                                      color: theme.colors.onSurface)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ]);
+            var each = math.max(64.0, (width - gap * (n - 1)) / n);
+            return SizedBox(
+                height: card ? 56 : 46,
+                child: SingleChildScrollView(
+                    key: const ValueKey("toolsRow"),
+                    scrollDirection: Axis.horizontal,
+                    child: Row(children: [
+                      for (var (i, (tool, icon, short)) in tools.indexed)
+                        Padding(
+                            padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
+                            child: SizedBox(
+                              width: each,
+                              child: Tooltip(
+                                message: tooltipOf(tool),
+                                child: Material(
+                                  type: MaterialType.transparency,
+                                  child: InkWell(
+                                    key: ValueKey(keyOf(tool)),
+                                    borderRadius: BorderRadius.circular(10),
+                                    onTap: () =>
+                                        onPick(tool == active ? null : tool),
+                                    child: Container(
+                                      height: card ? 56 : 46,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        color: lit(tool)
+                                            ? accent.withValues(alpha: 0.16)
+                                            : null,
+                                        border: Border.all(
+                                            color: lit(tool)
+                                                ? accent
+                                                : theme.colors.outlineVariant,
+                                            width: lit(tool) ? 1.5 : 1),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(icon,
+                                              size: card ? 20 : 18,
+                                              color: lit(tool)
+                                                  ? accent
+                                                  : theme
+                                                      .colors.onSurfaceVariant),
+                                          const SizedBox(height: 4),
+                                          Text(short,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                  fontSize: card ? 10.5 : 9.5,
+                                                  color:
+                                                      theme.colors.onSurface)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )),
+                    ])));
           }),
         ),
         if (held == null)
@@ -932,18 +1277,311 @@ class CanvasToolTiles<T> extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: theme.colors.onSurface)),
           ),
-          if (settings.isNotEmpty)
+          if (controls.isNotEmpty)
             CanvasWrap(
-                runSpacing: card ? cardGap : canvasRowGap, children: settings),
+                runSpacing: card ? cardGap : canvasRowGap, children: controls),
         ],
       ],
     );
     if (card) {
       return canvasCard(context,
-          title: canvasCardTitle(context, "Tools"), help: help, body: body);
+          title: canvasCardTitle(context, "Tools"), help: about, body: body);
     }
     return Padding(
         padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
         child: body);
+  }
+}
+
+/// _FoldingTiles is a card of tiles that folds -- see CanvasTiles.foldAs.
+class _FoldingTiles<T> extends StatefulWidget {
+  final CanvasTiles<T> tiles;
+  const _FoldingTiles({required this.tiles, super.key});
+
+  @override
+  State<_FoldingTiles<T>> createState() => _FoldingTilesState<T>();
+}
+
+class _FoldingTilesState<T> extends State<_FoldingTiles<T>> {
+  late bool _open = rememberedSection(widget.tiles.foldAs!) ?? false;
+
+  /// _kept is [tile], built once and kept while it shows the same -- see
+  /// CanvasKept. Pressed, it picks through the tiles as they are now: the
+  /// pick of the build it was kept from would write back what that build
+  /// knew.
+  Widget _kept(BuildContext context, ThemeNotifier theme, CanvasTile<T> tile) {
+    var t = widget.tiles;
+    void tapped() => widget.tiles.onPick(tile.value);
+    if ((tile.preview != null || tile.paint != null) &&
+        tile.drawnFrom == null) {
+      return t._tile(context, theme, tile, hover: false, tapped: tapped);
+    }
+    return CanvasKept(
+      key: ValueKey(tile.value),
+      deps: [
+        tile.value,
+        tile.label,
+        tile.icon,
+        tile.drawnFrom,
+        t.selected(tile.value),
+        t.ticked?.call(tile.value),
+        t.previewHeight,
+        theme.colors,
+      ],
+      builder: (context) => widget.tiles
+          ._tile(context, theme, tile, hover: false, tapped: tapped),
+    );
+  }
+
+  final ScrollController _strip = ScrollController();
+
+  /// _shown is the tile the strip last brought into view, so it is brought
+  /// there once when it is chosen and not again on every rebuild -- which
+  /// would snap the strip back under somebody scrolling it.
+  int _shown = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    var key = widget.tiles.foldAs!;
+    if (rememberedSection(key) == null) {
+      restoreSection(key, (open) {
+        if (mounted) setState(() => _open = open);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _strip.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    setState(() {
+      _open = !_open;
+      _shown = -1;
+    });
+    keepSection(widget.tiles.foldAs, _open);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var t = widget.tiles;
+    const gap = 8.0;
+    var chosen = [
+      for (var tile in t.tiles)
+        if (t.selected(tile.value)) tile
+    ];
+    var title = Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: ValueKey("tilesFold-${t.foldAs}"),
+        borderRadius: BorderRadius.circular(6),
+        onTap: _toggle,
+        child: Row(children: [
+          AnimatedRotation(
+            turns: _open ? 0.25 : 0,
+            duration: const Duration(milliseconds: 120),
+            child: Icon(Icons.chevron_right,
+                size: 18, color: theme.colors.onSurfaceVariant),
+          ),
+          const SizedBox(width: 4),
+          canvasCardTitle(context, t.label ?? ""),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(chosen.map((c) => c.label).join(" · "),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 10.5, color: theme.colors.onSurfaceVariant)),
+          ),
+        ]),
+      ),
+    );
+    var body = LayoutBuilder(builder: (context, box) {
+      var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
+      var each = math.max(40.0, (width - gap * (t.columns - 1)) / t.columns);
+      // Open, clicked too: a tile tried on a hover was, to the panel, the
+      // tile chosen -- the highlight followed the pointer about, and the
+      // settings that hang on the choice came and went under it.
+      if (_open) {
+        return Wrap(spacing: gap, runSpacing: gap, children: [
+          for (var tile in t.tiles)
+            SizedBox(width: each, child: _kept(context, theme, tile)),
+        ]);
+      }
+      // The one chosen brought into view -- once, when it is chosen.
+      var at = t.tiles.indexWhere((tile) => t.selected(tile.value));
+      if (at >= 0 && at != _shown) {
+        _shown = at;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_strip.hasClients) return;
+          var target = at * (each + gap) - (width - each) / 2;
+          _strip.jumpTo(
+              target.clamp(0.0, _strip.position.maxScrollExtent).toDouble());
+        });
+      }
+      return SizedBox(
+        height: t.previewHeight + 30,
+        child: SingleChildScrollView(
+          key: ValueKey("tilesStrip-${t.foldAs}"),
+          controller: _strip,
+          scrollDirection: Axis.horizontal,
+          // Clicked, never tried on a hover: a hover tried the tile, the
+          // tile tried was the one chosen, the strip scrolled to bring it
+          // into view under the pointer -- and the pointer was on the next.
+          child: Row(children: [
+            for (var (i, tile) in t.tiles.indexed)
+              Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
+                child:
+                    SizedBox(width: each, child: _kept(context, theme, tile)),
+              ),
+          ]),
+        ),
+      );
+    });
+    return canvasCard(context,
+        title: title,
+        help: t.help,
+        body: Padding(padding: const EdgeInsets.only(right: 10), child: body));
+  }
+}
+
+/// _unlinked is which side fields have been split into their four, for this
+/// run of the app.
+final Set<String> _unlinked = {};
+
+/// CanvasSidesField is four numbers that are usually one -- a border's
+/// sides, a box's corners, its padding -- as one stepper with a link beside
+/// it. Pressed, the link splits it into the four, two to a line; pressed
+/// again, they join on the first. Four that already differ show split.
+class CanvasSidesField extends StatefulWidget {
+  final String label;
+
+  /// name keys the one stepper, and its link as "${name}Link".
+  final String name;
+
+  /// values are the four, in the order of [parts].
+  final List<double> values;
+
+  /// parts are what each of the four is called on its own stepper, and
+  /// [partKeys] how each is keyed.
+  final List<String> parts;
+  final List<String> partKeys;
+
+  final double max;
+  final double step;
+
+  /// onChanged sets one of the four -- or, with a null side, all of them.
+  final void Function(int? side, double value) onChanged;
+  final VoidCallback? onCommit;
+
+  const CanvasSidesField({
+    required this.label,
+    required this.name,
+    required this.values,
+    required this.parts,
+    required this.partKeys,
+    required this.onChanged,
+    this.onCommit,
+    this.max = 400,
+    this.step = 1,
+    super.key,
+  });
+
+  bool get even => values.every((v) => v == values.first);
+
+  @override
+  State<CanvasSidesField> createState() => _CanvasSidesFieldState();
+}
+
+class _CanvasSidesFieldState extends State<CanvasSidesField> {
+  bool get _split => _unlinked.contains(widget.name) || !widget.even;
+
+  void _toggle() {
+    if (_split) {
+      _unlinked.remove(widget.name);
+      // Joined on the first, so the one number is true of all four.
+      if (!widget.even) {
+        widget.onChanged(null, widget.values.first);
+        widget.onCommit?.call();
+      }
+    } else {
+      _unlinked.add(widget.name);
+    }
+    setState(() {});
+  }
+
+  CanvasStepper _stepper(int? side) => CanvasStepper(
+        key: ValueKey(side == null ? widget.name : widget.partKeys[side]),
+        label: side == null ? widget.label : widget.parts[side],
+        value: side == null ? widget.values.first : widget.values[side],
+        min: 0,
+        max: widget.max,
+        step: widget.step,
+        dragStep: 1,
+        fill: true,
+        onChanged: (v) => widget.onChanged(side, v),
+        onCommit: widget.onCommit,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var split = _split;
+    var link = CanvasIconButton(
+      key: ValueKey("${widget.name}Link"),
+      // Not the chain the proportion lock wears: these are four sides,
+      // shown as one box or as its edges.
+      icon: split ? Icons.border_outer : Icons.border_all,
+      tooltip: split ? "All four the same" : "Set each one",
+      active: split,
+      onPressed: _toggle,
+    );
+    Widget body;
+    if (!split) {
+      body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: _stepper(null)),
+        link,
+      ]);
+    } else {
+      Widget pair(int a, int b) => Row(children: [
+            Expanded(child: _stepper(a)),
+            Expanded(child: _stepper(b)),
+          ]);
+      body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(widget.label,
+                    style: TextStyle(
+                        fontSize: CanvasCards.on(context) ? 11.5 : 9.5,
+                        color: theme.colors.onSurfaceVariant)),
+              ),
+              pair(0, 1),
+              const SizedBox(height: 6),
+              pair(2, 3),
+            ],
+          ),
+        ),
+        Padding(
+            padding: EdgeInsets.only(
+                top: CanvasCards.on(context) ? 0 : controlLabelHeight),
+            child: link),
+      ]);
+    }
+    // A line of its own, the width of the panel -- or, along the band over
+    // the canvas, which has no width to fill, a width of its own.
+    return SizedBox(
+      width: CanvasControlScope.isInline(context) ? 260 : double.infinity,
+      child: body,
+    );
   }
 }

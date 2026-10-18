@@ -48,6 +48,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +62,9 @@ import 'canvas_panel_helpers.dart';
 // wiring is what these check: tap the thing, look at the document.
 
 void main() {
+  // What the controls do, not where they are folded: every section open.
+  setUpAll(() => CanvasSection.openAll = true);
+  tearDownAll(() => CanvasSection.openAll = false);
   var published = 0;
   setUp(() => published = 0);
 
@@ -309,7 +313,7 @@ void main() {
           findsOneWidget,
           reason: "it should show the current width");
 
-      await tester.enterText(field, "800");
+      await enterValue(tester, field, "800");
       await tester.pump();
       // The width published at. The design keeps the space it was laid out
       // in and is scaled on the way out -- see CanvasSize.
@@ -402,7 +406,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text("Custom…").last);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, "25");
+      await enterValue(tester, find.byType(TextField).last, "25");
       await tester.tap(find.text("OK"));
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 25);
@@ -424,7 +428,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text("Custom…").last);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, "90");
+      await enterValue(tester, find.byType(TextField).last, "90");
       await tester.tap(find.text("OK"));
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, 90);
@@ -435,7 +439,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text("Custom…").last);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, "400");
+      await enterValue(tester, find.byType(TextField).last, "400");
       await tester.tap(find.text("OK"));
       await tester.pumpAndSettle();
       expect(controller.document.frameRate, maxFrameRate);
@@ -537,7 +541,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasSettingsPanel(controller: controller));
 
-      await tester.enterText(find.byKey(const ValueKey("canvasWidth")), "2560");
+      await enterValue(tester, find.byKey(const ValueKey("canvasWidth")), "2560");
       await tester.pump();
       expect(controller.document.size.width, 1280,
           reason: "a resolution: the design is where it was");
@@ -604,9 +608,9 @@ void main() {
       await pump(tester, CanvasSettingsPanel(controller: controller));
 
       var field = find.byKey(const ValueKey("canvasWidth"));
-      await tester.enterText(field, "900");
+      await enterValue(tester, field, "900");
       await tester.pump();
-      await tester.enterText(field, "901");
+      await enterValue(tester, field, "901");
       await tester.pump();
       controller.endInteraction();
 
@@ -879,7 +883,8 @@ void main() {
       // The panel header names the element now, so the first group no longer
       // captions itself with the same word.
       expect(find.text("TEAM SETTINGS"), findsOneWidget);
-      expect(find.text("PLAYERS"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-players")),
+          findsOneWidget);
     });
 
     testWidgets("choosing a formation moves everybody", (tester) async {
@@ -907,7 +912,6 @@ void main() {
       var controller = await panel(tester);
       var id = teamIn(controller).id;
 
-      expect(find.byKey(ValueKey("name-0-$id")), findsNothing);
       // Scrolled to first: the squad list is below the fold in a panel this
       // tall, and a tap at a point outside the viewport hits nothing.
       await _openPlayers(tester);
@@ -915,11 +919,11 @@ void main() {
       // The goalkeeper is the first row, and is labelled as such.
       expect(find.text("GK"), findsOneWidget);
 
-      await tester.enterText(find.byKey(ValueKey("name-0-$id")), "Banks");
+      await enterValue(tester, find.byKey(ValueKey("name-0-$id")), "Banks");
       await tester.pump();
       expect(teamIn(controller).players.first.name, "Banks");
 
-      await tester.enterText(find.byKey(ValueKey("num-0-$id")), "01");
+      await enterValue(tester, find.byKey(ValueKey("num-0-$id")), "01");
       await tester.pump();
       expect(teamIn(controller).players.first.number, "01",
           reason: "a squad number is written, not counted");
@@ -944,7 +948,7 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      await tester.enterText(find.byKey(ValueKey("x-0-$id")), "260");
+      await enterValue(tester, find.byKey(ValueKey("x-0-$id")), "260");
       await tester.pump();
       var keeper = teamIn(controller).players.first;
       expect(teamIn(controller).centreOf(keeper).dx, closeTo(260, 0.5),
@@ -998,7 +1002,7 @@ void main() {
       var controller = await panel(tester);
       expect(teamIn(controller).lockDotAspect, isTrue);
 
-      await tester.enterText(find.byKey(const ValueKey("teamDotWidth")), "60");
+      await enterValue(tester, find.byKey(const ValueKey("teamDotWidth")), "60");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60);
       expect(teamIn(controller).dotHeight, 60);
@@ -1010,7 +1014,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(lock);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey("teamDotHeight")), "20");
+      await enterValue(tester, find.byKey(const ValueKey("teamDotHeight")), "20");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60, reason: "now independent");
       expect(teamIn(controller).dotHeight, 20);
@@ -1021,7 +1025,8 @@ void main() {
       // They were two identical panels, and the two drifted -- a team's names
       // ended up in a different face from its numbers.
       var controller = await panel(tester);
-      expect(find.text("NUMBERS AND NAMES"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-labels")),
+          findsOneWidget);
       expect(teamIn(controller).labelSpec.fontSize, isNotNull);
     });
   });
@@ -1111,12 +1116,12 @@ void main() {
 
       expect(find.text("Still"), findsOneWidget);
 
-      await tester.enterText(find.byKey(const ValueKey("canvasFrames")), "24");
+      await enterValue(tester, find.byKey(const ValueKey("canvasFrames")), "24");
       await tester.pump();
       expect(controller.document.frames, 24);
       expect(find.text("Still"), findsNothing);
 
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("canvasFrameRate")), "30");
       await tester.pump();
       expect(controller.document.frameRate, 30);
@@ -1142,11 +1147,11 @@ void main() {
       expect(find.descendant(of: length, matching: find.text("40")),
           findsOneWidget);
 
-      await tester.enterText(playhead, "25");
+      await enterValue(tester, playhead, "25");
       await tester.pump();
       expect(controller.frame, 24);
 
-      await tester.enterText(length, "600");
+      await enterValue(tester, length, "600");
       await tester.pump();
       expect(controller.document.frames, 600);
     });
@@ -2284,8 +2289,11 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNull);
-      await tester.tap(find.byTooltip("Add a keyframe here for this element's "
-          "position, size, angle and fade"));
+      var add = find.byTooltip("Add a keyframe here for this element's "
+          "position, size, angle and fade");
+      await tester.ensureVisible(add);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
       await tester.pumpAndSettle();
       expect(controller.document.elementById("s")!.track!.keyAt(7), isNotNull);
 
@@ -2370,7 +2378,7 @@ void main() {
       // with nothing written in it offered none of them -- which is exactly
       // the state a bubble is in when it has just been added.
       await panel(tester, shapeOf(ShapeKind.speechBubble));
-      expect(find.text("BUBBLE"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
       expect(find.text("Body"), findsOneWidget);
       expect(find.text("Tail"), findsOneWidget);
       // Where the tail points is a measurement, so it is behind the button
@@ -2381,20 +2389,20 @@ void main() {
 
     testWidgets("and still shows them once it has one", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble), text: "Hello");
-      expect(find.text("BUBBLE"), findsOneWidget);
-      expect(find.text("LABEL TYPE"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
+      expect(find.text("Label type"), findsWidgets);
     });
 
     testWidgets("another shape shows none of them", (tester) async {
       await panel(tester, shapeOf(ShapeKind.star), text: "Hi");
-      expect(find.text("BUBBLE"), findsNothing);
+      expect(find.byKey(const ValueKey("elementSection-bubble")), findsNothing);
       expect(find.text("Tail"), findsNothing);
     });
 
     testWidgets("the label's type appears only when there is a label",
         (tester) async {
       await panel(tester, shapeOf(ShapeKind.star));
-      expect(find.text("LABEL TYPE"), findsNothing);
+      expect(find.text("Label type"), findsNothing);
     });
 
     testWidgets("changing the tail writes it to the element", (tester) async {
@@ -2417,7 +2425,7 @@ void main() {
     testWidgets("the tail angle can be typed", (tester) async {
       var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
       await tail(tester);
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("bubbleTailAngle")), "270");
       await tester.pump();
       expect(
@@ -2797,7 +2805,7 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await tester.enterText(find.byKey(const ValueKey("canvasFrames")), "125");
+      await enterValue(tester, find.byKey(const ValueKey("canvasFrames")), "125");
       await tester.pump();
       expect(controller.document.frames, 125);
     });
@@ -2996,9 +3004,10 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      await tester.drag(
-          find.byKey(const ValueKey("elementOpacity-number")),
-          const Offset(-25, 0));
+      var number = find.byKey(const ValueKey("elementOpacity-number"));
+      await tester.ensureVisible(number);
+      await tester.pumpAndSettle();
+      await tester.drag(number, const Offset(-25, 0));
       await tester.pumpAndSettle(const Duration(seconds: 1));
 
       // A percent a pixel, so twenty-five pixels is a quarter.
@@ -3042,7 +3051,7 @@ void main() {
       await doubleClick(tester, "Shape");
       expect(field, findsOneWidget);
 
-      await tester.enterText(field, "Goal area");
+      await enterValue(tester, field, "Goal area");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
@@ -3061,7 +3070,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await doubleClick(tester, "Goal area");
-      await tester.enterText(field, "   ");
+      await enterValue(tester, field, "   ");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
@@ -3224,7 +3233,7 @@ void main() {
       // figure left it.
       expect(tableIn(controller).topPad, tableIn(controller).cellPadding);
 
-      await tester.enterText(find.byKey(const ValueKey("tablePadTop")), "30");
+      await enterValue(tester, find.byKey(const ValueKey("tablePadTop")), "30");
       await tester.pumpAndSettle();
       expect(tableIn(controller).topPad, 30);
       expect(tableIn(controller).leftPad, tableIn(controller).cellPadding,
@@ -3381,7 +3390,6 @@ void main() {
       // Adding and removing in the same place, rather than one here and one
       // at the foot of a section that has to be opened first.
       var controller = await panel(tester);
-      await press(tester, find.text("SPECIAL CELLS"));
       expect(find.byTooltip("Add a rule"), findsOneWidget);
 
       await press(tester, find.byTooltip("Add a rule"));
@@ -3392,23 +3400,20 @@ void main() {
       // twenty.
       expect(find.byTooltip("Remove this rule"), findsNothing,
           reason: "the rule is closed");
-      await press(tester, find.text("EVERY CELL"));
+      await openFold(tester, "tableRule0",
+          shows: find.byTooltip("Remove this rule"));
       await press(tester, find.byTooltip("Remove this rule"));
       expect(tableIn(controller).rules, isEmpty);
     });
 
-    /// sections is every collapsible section's label, in the order they are
-    /// laid out down the panel.
-    ///
-    /// Read off the widgets rather than off the text, because the pane heads
-    /// itself with the element's own name -- "Table" for a table -- and a
-    /// section called Table is a second one of those.
+    /// sections is every section's title, in the order they are laid out
+    /// down the panel.
     List<String> sections(WidgetTester tester) {
       var found = [
-        for (var element in find.byType(CanvasExpander).evaluate())
+        for (var element in find.byType(CanvasSection).evaluate())
           (
             tester.getTopLeft(find.byWidget(element.widget)).dy,
-            (element.widget as CanvasExpander).label,
+            (element.widget as CanvasSection).title,
           ),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
       return [for (var (_, label) in found) label];
@@ -3456,31 +3461,30 @@ void main() {
       // button.
       expect(find.byKey(const ValueKey("elementPresets")), findsOneWidget);
       expect(sections(tester), [
+        "Position",
         "Table",
-        "Data",
+        "Data source",
         "Order",
         "Special cells",
         "Style",
-        // And last, how it arrives -- a handful of choices made once and
-        // then left alone, like a headline's.
+        // Then how it arrives -- a handful of choices made once and then
+        // left alone, like a headline's -- and the designs saved, as on
+        // every element.
         "Animation",
+        "Presets",
       ]);
     });
 
     testWidgets("the two sets of type controls fold away inside Style",
         (tester) async {
       await panel(tester);
-      // Inside Style, which is shut, so neither is even listed yet.
-      expect(find.text("CELL TYPE"), findsNothing);
-      expect(find.text("Weight"), findsNothing);
-
-      await press(tester, find.text("STYLE"));
-      expect(find.text("CELL TYPE"), findsOneWidget);
-      expect(find.text("HEADER TYPE"), findsOneWidget);
+      // Inside Style, each a card that folds: listed, but folded away.
+      expect(find.text("Cell type"), findsOneWidget);
+      expect(find.text("Header type"), findsOneWidget);
       expect(find.text("Weight"), findsNothing,
           reason: "listed, but still folded away");
 
-      await press(tester, find.text("CELL TYPE"));
+      await openFold(tester, "tableCellType", shows: find.text("Weight"));
       expect(find.text("Weight"), findsOneWidget);
     });
 
@@ -3518,21 +3522,17 @@ void main() {
       // a licence for a new one, which is what the checks below catch.
       tester.takeException();
 
-      await press(tester, find.text("DATA"));
-      expect(find.text("KEY"), findsOneWidget,
+      expect(find.text("Key"), findsOneWidget,
           reason: "the key field only exists once the source is an address, "
               "so without it this test is testing nothing");
       expect(tester.takeException(), isNull);
 
-      await press(tester, find.text("COLUMNS"));
+      await press(tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
       expect(tester.takeException(), isNull);
 
-      // Shut again. A section remembers whether it is open in a static map
-      // that outlives one test, so a section left open here is a section open
-      // in every test that runs after this one -- and the panel has more than
-      // one button called Add once this section is showing.
-      await press(tester, find.text("COLUMNS"));
-      await press(tester, find.text("DATA"));
+      // Shut again: a fold remembers whether it is open in a static map that
+      // outlives one test.
+      await press(tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
     });
 
     testWidgets("a table is refreshed and reordered from the headings",
@@ -3871,27 +3871,13 @@ void main() {
     /// showAnimation opens the Animation section if it is shut, and hands
     /// back what shuts it again -- an expander remembers, and the memory
     /// outlives the test.
+    /// showAnimation is the Animation section, open: every section is open
+    /// in these tests, and nothing needs shutting after.
     Future<Future<void> Function()> showAnimation(WidgetTester tester) async {
-      var open = find
-          .byKey(const ValueKey("elementAnimationFamily"))
-          .evaluate()
-          .isNotEmpty;
-      if (!open) {
-        await tester.ensureVisible(find.text("ANIMATION"));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text("ANIMATION"));
-        await tester.pumpAndSettle();
-      }
-      return () async {
-        if (!open) {
-          // Scrolled to first: tapped where it was, under the panel's own
-          // heading, it shut the whole panel for every test after.
-          await tester.ensureVisible(find.text("ANIMATION"));
-          await tester.pumpAndSettle();
-          await tester.tap(find.text("ANIMATION"));
-          await tester.pumpAndSettle();
-        }
-      };
+      var section = find.byKey(const ValueKey("elementSection-animation"));
+      await tester.ensureVisible(section);
+      await tester.pumpAndSettle();
+      return () async {};
     }
 
     // Easing belongs to the keyframe it leaves, so it is offered wherever
@@ -3989,15 +3975,9 @@ void main() {
         controller.setKeyframe(element.id, const Keyframe(frame: 0, dx: 4));
         await pump(tester, CanvasDesignPanel(controller: controller));
 
-        await tester.ensureVisible(find.text("ANIMATION"));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text("ANIMATION"));
-        await tester.pumpAndSettle();
         expect(
             find.byKey(const ValueKey("elementKeyframeEasing")), findsOneWidget,
             reason: kind.name);
-        await tester.tap(find.text("ANIMATION"));
-        await tester.pumpAndSettle();
       }
     });
 
@@ -4073,11 +4053,11 @@ void main() {
 
     testWidgets("count from, to and how the number is written", (tester) async {
       var controller = await panel(tester);
-      await tester.enterText(find.byKey(const ValueKey("counterTo")), "250");
+      await enterValue(tester, find.byKey(const ValueKey("counterTo")), "250");
       await tester.pumpAndSettle();
       expect(counterIn(controller).to, 250);
 
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("counterDecimals")), "2");
       await tester.pumpAndSettle();
       expect(counterIn(controller).decimals, 2);
@@ -4087,7 +4067,7 @@ void main() {
     testWidgets("the words either side are the counter's, not the number's",
         (tester) async {
       var controller = await panel(tester);
-      await tester.enterText(find.byKey(const ValueKey("counterBefore")), "£");
+      await enterValue(tester, find.byKey(const ValueKey("counterBefore")), "£");
       await tester.pumpAndSettle();
       expect(counterIn(controller).before, "£");
       expect(counterIn(controller).textFor(12), "£12");
@@ -4125,7 +4105,7 @@ void main() {
 
       controller.frame = 10;
       await tester.pumpAndSettle();
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("counterPointValue")), "140");
       await tester.pumpAndSettle();
 
@@ -4221,14 +4201,15 @@ void main() {
       // sections rather than in a group of their own, and a section nobody
       // opens is a setting nobody has.
       var controller = await panel(tester);
-      await press(tester, find.text("NUMBER TYPE"));
+      await openFold(tester, "counterNumberType",
+          shows: find.byKey(const ValueKey("counterGap")));
       expect(find.byKey(const ValueKey("counterGap")), findsOneWidget);
-      await tester.enterText(find.byKey(const ValueKey("counterGap")), "1.5");
+      await enterValue(tester, find.byKey(const ValueKey("counterGap")), "1.5");
       await tester.pumpAndSettle();
       expect(counterIn(controller).gap, 1.5);
-      await press(tester, find.text("NUMBER TYPE"));
 
-      await press(tester, find.text("WORDS TYPE"));
+      await openFold(tester, "counterAffixType",
+          shows: find.byKey(const ValueKey("counterLoose")));
       expect(find.byKey(const ValueKey("counterLoose")), findsOneWidget);
       expect(find.byKey(const ValueKey("counterBeforeAtX")), findsNothing);
 
@@ -4243,19 +4224,17 @@ void main() {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
 
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("counterAfterAtY")), "0.3");
       await tester.pumpAndSettle();
       expect(counterIn(controller).afterAt.dy, 0.3);
       expect(counterIn(controller).beforeAt.dy, 0,
           reason: "one word, not both");
-      await press(tester, find.text("WORDS TYPE"));
     });
 
     testWidgets("the buttons are switched on one at a time", (tester) async {
       var controller =
           await panel(tester, shape: (e) => e.copyWith(keyed: false));
-      await press(tester, find.text("BUTTONS"));
       expect(counterIn(controller).buttons, isEmpty);
 
       await press(
@@ -4268,7 +4247,6 @@ void main() {
       await press(
           tester, find.byKey(const ValueKey("counterButton-startStop")));
       expect(counterIn(controller).buttons, [CounterButton.input]);
-      await press(tester, find.text("BUTTONS"));
     });
   });
 
@@ -4388,21 +4366,17 @@ void main() {
       expect(hints(), isEmpty, reason: "with two series it has its answer");
     });
 
-    testWidgets("the grid line carries the switches and hides the rest",
+    testWidgets("the grid card carries the switches, the lines and their colour",
         (tester) async {
-      // Four switches and a button. What is ruled and what is written on the
-      // plot are the things anybody changes; how finely it is ruled and what
-      // colour the rules are are things they set once.
+      // In a card, everything at once: the Grid section already folds, and
+      // a button inside it hiding the rest was a setting found twice over.
       var controller = await panel(tester);
       Finder toggle(String label) => find.ancestor(
           of: find.text(label), matching: find.byType(CanvasToggle));
       for (var label in ["Grid", "Axes", "Log scale", "Values"]) {
         expect(toggle(label), findsOneWidget, reason: label);
       }
-      expect(find.text("Lines"), findsNothing);
-      expect(find.byKey(const ValueKey("chartAxisSteps")), findsNothing);
-
-      await press(tester, find.byKey(const ValueKey("more-chartGridMore")));
+      expect(find.byKey(const ValueKey("more-chartGridMore")), findsNothing);
       expect(find.byKey(const ValueKey("chartAxisSteps")), findsOneWidget);
       // The rules' colour with them. It was in a section called Style, two
       // headings away from the switch it belongs to.
@@ -4412,8 +4386,6 @@ void main() {
       var was = chartIn(controller).showValues;
       await press(tester, toggle("Values"));
       expect(chartIn(controller).showValues, !was);
-      // Shut it again: an open button stays open for the rest of the file.
-      await press(tester, find.byKey(const ValueKey("more-chartGridMore")));
     });
 
     testWidgets("the first series' Drawn as is the chart's own type",
@@ -4734,18 +4706,12 @@ void main() {
       await panel(tester);
 
       var panelWidth = tester.getSize(find.byType(CanvasLayersPanel)).width;
-      for (var name in ["DATA SOURCE", "TABLE", "ANIMATION"]) {
-        var heading = find.text(name);
-        await tester.ensureVisible(heading);
+      for (var name in ["source", "chart", "animation"]) {
+        var section = find.byKey(ValueKey("elementSection-$name"));
+        await tester.ensureVisible(section);
         await tester.pumpAndSettle();
-        // The box around the section, which is the widest thing in it.
-        var box = tester.getSize(find
-            .ancestor(
-                of: heading,
-                matching: find.byWidgetPredicate(
-                    (w) => w is Container && w.decoration is BoxDecoration))
-            .first);
-        expect(box.width, greaterThan(panelWidth * 0.8), reason: name);
+        expect(tester.getSize(section).width, greaterThan(panelWidth * 0.8),
+            reason: name);
       }
     });
 
@@ -4798,7 +4764,7 @@ void main() {
       // By name rather than by counting: there are four Size fields in this
       // section -- the title's, the description's, and one per axis -- and
       // counting finds a different one every time a field is added.
-      await tester.enterText(
+      await enterValue(tester, 
           find.byKey(const ValueKey("chartDescriptionSize")), "44");
       await tester.pump();
 
@@ -4818,9 +4784,10 @@ void main() {
       expect(chartIn(controller).data.series.length, 1);
       expect(
           tester
-              .getTopLeft(find.text("SERIES"))
+              .getTopLeft(find.text("Series"))
               .dy
-              .compareTo(tester.getTopLeft(find.text("TABLE")).dy),
+              .compareTo(
+                  tester.getTopLeft(find.byType(ChartDataEditor).first).dy),
           1,
           reason: "directly under the numbers it names");
 
@@ -4852,7 +4819,7 @@ void main() {
     // over each was the only thing saying where one ended, and a caption is
     // nine pixels tall and grey.
 
-    testWidgets("a group is ruled off from the next", (tester) async {
+    testWidgets("a group is a card of its own, in a section", (tester) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -4861,12 +4828,13 @@ void main() {
       await pump(tester, CanvasDesignPanel(controller: controller));
 
       expect(find.byType(CanvasControlGroup), findsWidgets);
-      // One rule per group, drawn under it.
-      var rules = find.descendant(
-          of: find.byType(CanvasControlGroup),
-          matching: find.byWidgetPredicate(
-              (w) => w is Container && w.constraints?.maxHeight == 1.0));
-      expect(rules, findsWidgets);
+      // A card says where one group ends and the next begins; a rule under
+      // each as well would be the same thing said twice.
+      expect(
+          find.descendant(
+              of: find.byType(CanvasSection),
+              matching: find.byType(CanvasGroupRule)),
+          findsNothing);
     });
 
     testWidgets("where it is and how it is turned are two lines",
@@ -4912,8 +4880,8 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      expect(find.textContaining("POINTS ("), findsOneWidget,
-          reason: "a group with its count in the caption, not an expander");
+      expect(find.textContaining("Points ("), findsOneWidget,
+          reason: "a card with its count in the name, not a fold");
       expect(find.byKey(ValueKey("node-frame-0-${element.id}")), findsOneWidget,
           reason: "and the first point's row is already showing");
     });
@@ -4954,11 +4922,8 @@ void main() {
       // The control that chooses which shape keeps its own label. The other
       // two "Shape"s in the column are the chip that adds one and the layer
       // row that names it, neither of which is this panel repeating itself.
-      expect(
-          find.descendant(
-              of: find.byType(CanvasDropdown<ShapeKind>),
-              matching: find.text("Shape")),
-          findsOneWidget);
+      expect(find.byKey(const ValueKey("shapeKind-rectangle")), findsOneWidget,
+          reason: "chosen from tiles, each the shape itself");
     });
 
     testWidgets("a field that explains itself has no caption", (tester) async {
@@ -5012,11 +4977,8 @@ void main() {
     /// -- so a test cannot assume it starts closed and cannot simply tap the
     /// heading, which would shut one a previous test left open.
     Future<void> openAnimation(WidgetTester tester) async {
-      if (find.text("ARRIVING").evaluate().isNotEmpty) return;
-      var heading = find.text("ANIMATION");
-      await tester.ensureVisible(heading);
-      await tester.pumpAndSettle();
-      await tester.tap(heading);
+      var section = find.byKey(const ValueKey("elementSection-animation"));
+      await tester.ensureVisible(section);
       await tester.pumpAndSettle();
     }
 
@@ -5161,11 +5123,11 @@ void main() {
       // text element's presets are checked: a dropdown builds the items it
       // can see.
       List<String> offered() => [
-            for (var (_, text) in tester
-                .widget<CanvasDropdown<ChartAnimationPreset>>(
-                    find.byKey(const ValueKey("chartAnimationPreset")))
-                .options)
-              text,
+            for (var tile in tester
+                .widget<CanvasTiles<ChartAnimationPreset>>(
+                    find.byKey(const ValueKey("chartArriveKinds")))
+                .tiles)
+              tile.label,
           ];
 
       expect(offered().first, "None",
@@ -5253,8 +5215,8 @@ void main() {
       // columns, with what they are drawn as above them and how that drawing
       // looks below.
       await panel(tester);
-      expect(find.text("TABLE"), findsOneWidget);
-      expect(find.text("2 rows, 1 series"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-chart")), findsOneWidget);
+      expect(find.textContaining("2 rows, 1 series"), findsOneWidget);
     });
 
     testWidgets("it switches between pasted text and a table", (tester) async {
@@ -5273,7 +5235,7 @@ void main() {
       expect(find.byTooltip("Raw table"), findsOneWidget);
 
       // The first row's category, then its value.
-      await tester.enterText(
+      await enterValue(tester, 
           find
               .descendant(
                   of: find.byType(ChartDataEditor).first,
@@ -5730,14 +5692,15 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      var before = tester.widget<TextField>(find.byType(TextField).first);
+      var before = tester.widget<CanvasStepper>(find.byType(CanvasStepper).first);
       controller.zoom = 2.5;
       controller.pan = const Offset2(30, 30);
       await tester.pumpAndSettle();
 
       expect(
           identical(
-              tester.widget<TextField>(find.byType(TextField).first), before),
+              tester.widget<CanvasStepper>(find.byType(CanvasStepper).first),
+              before),
           isTrue,
           reason: "the same widget instance: nothing was rebuilt");
     });
@@ -5950,15 +5913,8 @@ void main() {
     /// test, so tapping unconditionally shuts the one the test before left
     /// open -- and everything inside it is then nowhere to be found.
     Future<void> open(WidgetTester tester) async {
-      if (find
-          .byKey(const ValueKey("textAnimationPreset"))
-          .evaluate()
-          .isNotEmpty) {
-        return;
-      }
-      await tester.ensureVisible(find.text("ANIMATION"));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("ANIMATION"));
+      var kinds = find.byKey(const ValueKey("textArriveKinds"));
+      await tester.ensureVisible(kinds);
       await tester.pumpAndSettle();
     }
 
@@ -5981,12 +5937,10 @@ void main() {
       // The family first. Choosing one applies its first preset, so the
       // canvas shows something at once rather than waiting for a second
       // choice.
-      var kind = find.byKey(const ValueKey("textAnimationFamily"));
+      var kind = find.byKey(const ValueKey("textArrive-sequential"));
       await tester.ensureVisible(kind);
       await tester.pumpAndSettle();
       await tester.tap(kind);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text("Sequential").last);
       await tester.pumpAndSettle();
 
       var after = controller.document.elements.single as TextElement;
@@ -6025,9 +5979,9 @@ void main() {
 
       // Read off the controls rather than off an open menu: a dropdown builds
       // the items it can see, and thirty of them do not fit on a screen.
-      var families = tester.widget<CanvasDropdown<TextAnimationFamily?>>(
-          find.byKey(const ValueKey("textAnimationFamily")));
-      var kinds = [for (var (_, text) in families.options) text];
+      var families = tester.widget<CanvasTiles<TextAnimationFamily?>>(
+          find.byKey(const ValueKey("textArriveKinds")));
+      var kinds = [for (var tile in families.tiles) tile.label];
       expect(kinds.first, "None",
           reason: "the way to have none of it comes first");
       for (var family in TextAnimationFamily.values) {
@@ -6095,13 +6049,8 @@ void main() {
     /// A column remembers whether it was open by its *name*, so that the one
     /// left open stays open when a column is moved past it -- which means the
     /// memory outlives a test, exactly as a section's does.
-    Future<void> openColumn(WidgetTester tester, String name) async {
-      if (find.text("Header").evaluate().isNotEmpty) return;
-      await tester.ensureVisible(find.text(name).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(name).first);
-      await tester.pumpAndSettle();
-    }
+    Future<void> openColumn(WidgetTester tester, String name) =>
+        openFold(tester, "chartSourceCol:$name", shows: find.text("Header"));
 
     /// open opens the section if it is not already open.
     ///
@@ -6113,10 +6062,10 @@ void main() {
     Future<void> open(WidgetTester tester, String section,
         [String probe = "Preset"]) async {
       if (find.text(probe).evaluate().isNotEmpty) return;
-      await tester.ensureVisible(find.text(section));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(section));
-      await tester.pumpAndSettle();
+      // The sections are open; Columns is a card that folds inside one.
+      if (section == "COLUMNS") {
+        await openFold(tester, "chartSourceColumns", shows: find.text(probe));
+      }
     }
 
     testWidgets("it is a section of its own, beside the numbers",
@@ -6125,8 +6074,9 @@ void main() {
       // the numbers themselves -- and two of them on one panel is a panel
       // nobody can navigate.
       await panel(tester);
-      expect(find.text("DATA SOURCE"), findsOneWidget);
-      expect(find.text("TABLE"), findsOneWidget,
+      expect(find.byKey(const ValueKey("elementSection-source")),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-chart")), findsOneWidget,
           reason: "the numbers themselves are still a section of their own");
     });
 
@@ -6144,17 +6094,19 @@ void main() {
 
       var headings = [
         for (var it
-            in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
-          it.label,
+            in tester.widgetList<CanvasSection>(find.byType(CanvasSection)))
+          it.title,
       ];
+      expect(find.byKey(const ValueKey("expander-chartSourceColumns")),
+          findsOneWidget,
+          reason: "the mapping, a card that folds in Data source");
       // Labels is not among them: it is a run of plain lines now rather than
       // a section, so it has no expander to be counted here. What is left
       // reads as the work does -- where the numbers come from, the numbers,
       // how they are mapped, and last how the chart arrives.
       var wanted = [
         "Data source",
-        "Columns",
-        "Table",
+        "Chart",
         "Animation",
       ];
       expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
@@ -6183,11 +6135,11 @@ void main() {
       await open(tester, "COLUMNS", "Path to the list");
 
       // Closed, each says its name and what it is mapped to.
-      expect(find.text("COIN SUPPLY (DCR)"), findsWidgets);
+      expect(find.text("Coin supply (DCR)"), findsWidgets);
       expect(find.text("Header"), findsNothing,
           reason: "the settings are behind the line, not spread down it");
 
-      await openColumn(tester, "COIN SUPPLY (DCR)");
+      await openColumn(tester, "Coin supply (DCR)");
       expect(find.text("Header"), findsOneWidget);
       // A cell can hold a club badge and a badge chosen by hand has to
       // survive a refresh. Neither is true of a number on a chart, so on one
@@ -6209,7 +6161,7 @@ void main() {
         map: const ChartSourceMap(categoryColumn: 0, valueColumns: [1]),
       );
       await open(tester, "COLUMNS", "Path to the list");
-      await openColumn(tester, "COIN SUPPLY (DCR)");
+      await openColumn(tester, "Coin supply (DCR)");
 
       var earlier = find.byTooltip("Move this column earlier");
       await tester.ensureVisible(earlier.last);
@@ -6286,13 +6238,13 @@ void main() {
       expect(find.text("Each one is"), findsOneWidget,
           reason: "adding a year of transactions up is the point of the "
               "feature, and it cannot be guessed from the numbers");
-      expect(find.text("year"), findsOneWidget,
+      expect(find.text("1 year"), findsOneWidget,
           reason: "a reading every N *years* — one of them, so singular");
-      // The hint is a tooltip on a question mark, so what it says is read off
-      // the widget rather than off the screen.
+      // The hint is behind a question mark, so what it says is read off the
+      // widget rather than off the screen.
       var hints = [
-        for (var it in tester.widgetList<Tooltip>(find.byType(Tooltip)))
-          it.message ?? "",
+        for (var it in tester.widgetList<CanvasHint>(find.byType(CanvasHint)))
+          it.message,
       ];
       expect(hints.any((m) => m.contains("One reading a year, on 1 January")),
           isTrue,
@@ -6586,7 +6538,7 @@ void main() {
       // percentage is the zoom.
       var field = find.byType(TextField);
       expect(field, findsOneWidget);
-      await tester.enterText(field, "250");
+      await enterValue(tester, field, "250");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
@@ -7070,61 +7022,38 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.whereType<TextElement>().single;
 
-    testWidgets("are five sections, in the order the work happens",
+    testWidgets("are sections, in the order the work happens",
         (tester) async {
-      // How it is laid out, which words are different, and how it arrives.
-      // Flat, it was eight groups down one narrow column with the animation
-      // settings below the fold.
-      //
-      // Three of them are not among them any more. The type was a section
-      // that was open every time anybody looked, which is a chevron and a
-      // word standing between the panel and the first thing it is for; the
-      // columns and the line are one row each, and a heading with a chevron
-      // on it for one row is more furniture than setting.
+      // Where it is, what it says, how it is set, its box, the line it
+      // follows, which words are different, how it arrives -- and the
+      // designs saved of its kind, as every element's panel ends.
       await panel(tester);
-      var headings = [
-        for (var it
-            in tester.widgetList<CanvasExpander>(find.byType(CanvasExpander)))
-          it.label,
-      ];
-      for (var gone in ["Type", "Columns", "On a line"]) {
-        expect(headings, isNot(contains(gone)));
-      }
-      // And they are still on the panel, in that order, as rows.
-      expect(find.text("COLUMNS"), findsOneWidget);
-      expect(find.text("ON A LINE"), findsOneWidget);
-      expect(tester.getRect(find.text("COLUMNS")).top,
-          lessThan(tester.getRect(find.text("ON A LINE")).top));
-
-      var wanted = [
+      var found = [
+        for (var element in find.byType(CanvasSection).evaluate())
+          (
+            tester.getTopLeft(find.byWidget(element.widget)).dy,
+            (element.widget as CanvasSection).title,
+          ),
+      ]..sort((a, b) => a.$1.compareTo(b.$1));
+      expect([for (var (_, title) in found) title], [
+        "Position",
+        "Words",
+        "Type",
+        "Box and columns",
+        "On a line",
         "Parts of the text",
         "Animation",
-      ];
-      expect([for (var w in wanted) headings.contains(w)], everyElement(isTrue),
-          reason: "$headings");
-      var places = [for (var w in wanted) headings.indexOf(w)];
-      var sorted = [...places]..sort();
-      expect(places, sorted, reason: "out of order: $headings");
+        "Presets",
+      ]);
     });
 
-    testWidgets("the colour settings are behind the type button",
+    testWidgets("the colour settings are in the type card, not behind a button",
         (tester) async {
-      // One line and one button for one piece of writing. This is the element
-      // that has several pieces of writing in it, and a row each plus a
-      // colour row each is a panel nothing can be found in. Everywhere else
-      // the colour keeps a row of its own -- see the table below.
+      // In a card, everything at once: the Type section already folds, and
+      // a button inside it was a setting found twice over.
       await panel(tester);
-      expect(find.text("COLOUR"), findsOneWidget,
-          reason: "the sidebar's Colour section, and no group of its own "
-              "here");
-      expect(find.text("Outline"), findsNothing, reason: "nor its controls");
-
-      var button = find.byTooltip("Spacing, alignment and case");
-      await tester.ensureVisible(button.first);
-      await tester.pumpAndSettle();
-      await tester.tap(button.first);
-      await tester.pumpAndSettle();
-      expect(find.text("Outline"), findsOneWidget);
+      expect(find.text("Outline"), findsWidgets);
+      expect(find.byTooltip("Spacing, alignment and case"), findsNothing);
       expect(find.byType(CanvasColorButton), findsWidgets);
     });
 
@@ -7248,7 +7177,7 @@ void main() {
           find.descendant(of: group, matching: find.byType(CanvasNumberField));
       await tester.ensureVisible(size.first);
       await tester.pumpAndSettle();
-      await tester.enterText(size.first, "11");
+      await enterValue(tester, size.first, "11");
       await tester.pumpAndSettle();
       expect(textIn(controller).items.first.spec.fontSize, 11);
       expect(textIn(controller).textSpec.fontSize, isNot(11));
@@ -7358,7 +7287,7 @@ void main() {
 
       await tester.ensureVisible(side);
       await tester.pumpAndSettle();
-      await tester.enterText(side, "14");
+      await enterValue(tester, side, "14");
       await tester.pumpAndSettle();
       expect(textIn(controller).items.first.side, 14);
     });
@@ -7383,7 +7312,8 @@ void main() {
               of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
           matching: find.byType(CanvasDropdown<String>)));
       var add = tester.getRect(find.byKey(const ValueKey("textAddItem")));
-      var box = tester.getRect(find.text("BOX"));
+      var box = tester
+          .getRect(find.byKey(const ValueKey("elementSection-box")));
 
       var ownFont = tester.getRect(find.byWidgetPredicate(
           (w) => w is CanvasDropdown<String> && w.label == "Font"));
@@ -7393,13 +7323,11 @@ void main() {
           of: find.ancestor(
               of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
           matching: find.byType(CanvasDropdown<int>)));
-      // The same row, to the pixel: both fill the panel and share what is
-      // left over the same way. Reported when they did not -- the slot and
-      // the bin were on a piece's line, so there was nothing left to share.
+      // Lined up on the left, each in a card of its own: the piece's card
+      // and the words' are laid out each for itself, so their right-hand
+      // ends are their own.
       expect(piece.left, ownFont.left);
-      expect(piece.right, ownFont.right);
-      expect(pieceWeight.left, ownWeight.left);
-      expect(pieceWeight.right, ownWeight.right);
+      expect(pieceWeight.top, greaterThan(ownWeight.top));
       expect(piece.top, greaterThan(own.top), reason: "under the words");
       expect(add.top, greaterThan(piece.top), reason: "and the + under it");
       expect(box.top, greaterThan(add.top), reason: "the box comes after");
@@ -7460,8 +7388,13 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      expect(find.byIcon(Icons.format_underlined), findsNothing);
-      expect(find.text("Underline"), findsOneWidget);
+      var type = find.byKey(const ValueKey("elementSection-type"));
+      expect(
+          find.descendant(
+              of: type, matching: find.byIcon(Icons.format_underlined)),
+          findsNothing);
+      expect(find.descendant(of: type, matching: find.text("Underline")),
+          findsOneWidget);
     });
 
     testWidgets("a part is there to fill in before anything is added",
@@ -7473,14 +7406,9 @@ void main() {
       var controller = await panel(tester);
       expect(textIn(controller).parts, isEmpty);
 
-      // A section heading is drawn in capitals.
-      var heading = find.text("PARTS OF THE TEXT");
+      var heading = find.byKey(const ValueKey("elementSection-textParts"));
       await tester.ensureVisible(heading);
       await tester.pumpAndSettle();
-      if (find.byKey(const ValueKey("partBold0")).evaluate().isEmpty) {
-        await tester.tap(heading);
-        await tester.pumpAndSettle();
-      }
 
       var bold = find.byKey(const ValueKey("partBold0"));
       expect(bold, findsOneWidget, reason: "a row, before the plus was used");
@@ -7510,14 +7438,9 @@ void main() {
       );
       await panel(tester, element: element);
 
-      // A section heading is drawn in capitals.
-      var heading = find.text("PARTS OF THE TEXT");
+      var heading = find.byKey(const ValueKey("elementSection-textParts"));
       await tester.ensureVisible(heading);
       await tester.pumpAndSettle();
-      if (find.byKey(const ValueKey("partBold0")).evaluate().isEmpty) {
-        await tester.tap(heading);
-        await tester.pumpAndSettle();
-      }
 
       var tops = <double>[];
       for (var key in [
@@ -7635,7 +7558,7 @@ void main() {
       var opacity = find.byKey(const ValueKey("textFillOpacity"));
       await tester.ensureVisible(opacity);
       await tester.pumpAndSettle();
-      await tester.enterText(opacity, "0.25");
+      await enterValue(tester, opacity, "0.25");
       await tester.pumpAndSettle();
       expect(textIn(controller).textSpec.fill.opacity, 0.25);
     });
@@ -7730,14 +7653,8 @@ void main() {
         ],
       );
       await panel(tester, element: middle);
-      var button = find.byKey(const ValueKey("more-textItemnType"));
-      expect(button, findsOneWidget, reason: "the piece's own button");
-      if (find.byKey(const ValueKey("textItemGap0")).evaluate().isEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
+      // In a card, the piece's settings are all out: no button to open.
+      expect(find.byKey(const ValueKey("more-textItemnType")), findsNothing);
       // A hint is a question mark with a tooltip, so it is found by what it
       // has to say rather than by what is written on the panel.
       expect(centredHint, findsOneWidget);
@@ -7787,14 +7704,19 @@ void main() {
       ]));
       await tester.pumpAndSettle();
 
-      // The same controls every other box gets, from the same place: the one
-      // number and the four beside it, for the corners and for the room.
-      for (var key in [
-        "textItem0Radius",
-        "textItem0Radius↖",
-        "textItem0Padding",
-        "textItem0PadLeft",
-      ]) {
+      // The same controls every other box gets, from the same place: one
+      // number for the corners and one for the room, each with a link that
+      // splits it into one each.
+      expect(find.byKey(const ValueKey("textItem0Radius")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textItem0Padding")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textItem0Radius↖")), findsNothing);
+      for (var link in ["textItem0RadiusLink", "textItem0PaddingLink"]) {
+        await tester.ensureVisible(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey(link)));
+        await tester.pumpAndSettle();
+      }
+      for (var key in ["textItem0Radius↖", "textItem0PadLeft"]) {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
     });
@@ -7871,7 +7793,7 @@ void main() {
       var name = find.byKey(const ValueKey("textItemName0"));
       await tester.ensureVisible(name);
       await tester.pumpAndSettle();
-      await tester.enterText(name, "Leeds badge");
+      await enterValue(tester, name, "Leeds badge");
       await tester.pumpAndSettle();
 
       expect(textIn(controller).items.single.name, "Leeds badge");
@@ -7903,7 +7825,7 @@ void main() {
       var field =
           find.ancestor(of: find.text("01"), matching: find.byType(TextField));
       expect(field, findsOneWidget, reason: "it opened for typing");
-      await tester.enterText(field, "The number");
+      await enterValue(tester, field, "The number");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
@@ -7953,7 +7875,7 @@ void main() {
       var controller = await panel(tester);
       expect(find.text("Fit to box"), findsOneWidget);
       expect(find.text("Font"), findsOneWidget);
-      expect(find.text("BOX"), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-box")), findsOneWidget);
 
       // Scrolled to first: with four panels in the column the settings can
       // start below the fold, and a tap outside the viewport hits nothing.
@@ -7985,7 +7907,7 @@ void main() {
       controller.selectOnly("head");
       await pump(tester, CanvasDesignPanel(controller: controller));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text("COLUMNS"));
+      await tester.ensureVisible(find.text("No blank first line"));
       await tester.pumpAndSettle();
 
       expect(find.text("No blank first line"), findsOneWidget,
@@ -8103,7 +8025,7 @@ void main() {
       await tester.ensureVisible(field);
       await tester.pumpAndSettle();
 
-      await tester.enterText(field, "3");
+      await enterValue(tester, field, "3");
       await tester.pumpAndSettle();
       expect(textIn(controller).columns.count, 3);
       // And the rest of them arrive once there is a gutter to put them in.

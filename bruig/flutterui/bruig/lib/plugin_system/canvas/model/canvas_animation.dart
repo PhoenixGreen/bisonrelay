@@ -50,22 +50,6 @@ enum KeyframeEasing {
   static KeyframeEasing fromName(String? name) => values
       .firstWhere((e) => e.name == name, orElse: () => KeyframeEasing.linear);
 
-  /// _bounce is the classic four-stage bounce, the same curve ChartEase uses.
-  static double _bounce(double t) {
-    const n = 7.5625, d = 2.75;
-    if (t < 1 / d) return n * t * t;
-    if (t < 2 / d) {
-      var u = t - 1.5 / d;
-      return n * u * u + 0.75;
-    }
-    if (t < 2.5 / d) {
-      var u = t - 2.25 / d;
-      return n * u * u + 0.9375;
-    }
-    var u = t - 2.625 / d;
-    return n * u * u + 0.984375;
-  }
-
   /// apply maps a 0..1 position between two keyframes onto an eased one.
   double apply(double t) {
     switch (this) {
@@ -89,7 +73,7 @@ enum KeyframeEasing {
       case KeyframeEasing.bounce:
         if (t <= 0) return 0;
         if (t >= 1) return 1;
-        return _bounce(t);
+        return bounceOut(t);
       case KeyframeEasing.spring:
         // A decaying oscillation: three visible swings before it settles,
         // which is enough to read as a spring and few enough to stop being
@@ -629,4 +613,21 @@ class KeyframeChannel {
   /// like any other, so moving them is moving keyframes and needs nothing of
   /// its own on the timeline.
   static const String count = "count";
+}
+
+/// bounceOut is the classic four-stage bounce -- the one curve a keyframe's
+/// easing and a chart's both bounce on.
+double bounceOut(double t) {
+  const n = 7.5625, d = 2.75;
+  if (t < 1 / d) return n * t * t;
+  if (t < 2 / d) {
+    var u = t - 1.5 / d;
+    return n * u * u + 0.75;
+  }
+  if (t < 2.5 / d) {
+    var u = t - 2.25 / d;
+    return n * u * u + 0.9375;
+  }
+  var u = t - 2.625 / d;
+  return n * u * u + 0.984375;
 }
