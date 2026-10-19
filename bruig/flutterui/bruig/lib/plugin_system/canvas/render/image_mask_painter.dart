@@ -88,7 +88,8 @@ void paintMaskMarks(
           ..filterQuality = FilterQuality.medium
           ..colorFilter = _subjectAlpha);
   } else {
-    canvas.drawRect(whole, Paint()..color = const Color(0xFFFFFFFF));
+    // Past the picture's edges, as a fade's is -- see paintMaskMark.
+    canvas.drawRect(_beyond(whole), Paint()..color = const Color(0xFFFFFFFF));
   }
   for (var mark in mask.marks) {
     paintMaskMark(canvas, mark, size);
@@ -128,12 +129,20 @@ void paintMaskMark(ui.Canvas canvas, MaskMark mark, Size size) {
                 from, to, const [Color(0xFFFFFFFF), Color(0x00FFFFFF)]);
         // A gradient carries on as its end colours past its ends, so one
         // rectangle covers the lot: a line's hidden side wholly hidden, a
-        // radial fade wholly hidden past its rim.
-        canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+        // radial fade wholly hidden past its rim. Drawn past the picture's
+        // edges: drawn to them, the half-covered pixel along each edge was
+        // half hidden of a half-shown base -- a quarter of the picture left
+        // showing, a hairline round every faded picture. The mask is clipped
+        // to the picture where it is used.
+        canvas.drawRect(_beyond(Offset.zero & size), Paint()..shader = shader);
       }
   }
   canvas.restore();
 }
+
+/// _beyond is [r] grown well past its edges, so nothing drawn to cover it
+/// leaves a part-covered pixel along them.
+Rect _beyond(Rect r) => r.inflate(math.max(4, r.longestSide * 0.01));
 
 /// _paintDabs lays a brush stroke down as dabs along its path, each as wide
 /// as the pen was pressed there.
@@ -245,8 +254,11 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
         ..imageFilter = refineFilter(mask.refine, scale));
   canvas.save();
   // Nothing of the mask past the part of the picture that is drawn -- a
-  // crop's mask must not reach out over the frame.
-  canvas.clipRect(placement.dst);
+  // crop's mask must not reach out over the frame. A hard clip: a smoothed
+  // one does not soften the mask along its edge, it softens how much of the
+  // mask is applied there -- so the pixel the edge crossed kept part of the
+  // picture whatever the mask said, a hairline round every faded picture.
+  canvas.clipRect(placement.dst, doAntiAlias: false);
   canvas.translate(m.dx, m.dy);
   canvas.scale(m.sx, m.sy);
   canvas.drawPicture(maskPicture(mask, picture, subject));

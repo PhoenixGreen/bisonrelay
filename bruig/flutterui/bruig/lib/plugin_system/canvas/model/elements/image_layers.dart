@@ -10,6 +10,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart'
     show VectorCue;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
+
+export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
+    show LayerBlend;
 
 // image_layers.dart is a picture made of several: the layers an Image
 // element is composited from, and the arithmetic of where each one sits.
@@ -62,39 +66,6 @@ enum LayerKind {
 
   static LayerKind fromName(String? name) =>
       values.firstWhere((k) => k.name == name, orElse: () => LayerKind.picture);
-}
-
-/// LayerBlend is how a layer is laid over the layers below it.
-///
-/// Every mode an image editor offers, in the order they are usually listed
-/// in: normal, the darkening ones, the lightening ones, the contrast ones,
-/// the comparing ones and the colour ones. Our own names, as with every other
-/// enum a document saves.
-enum LayerBlend {
-  normal("Normal", BlendMode.srcOver),
-  darken("Darken", BlendMode.darken),
-  multiply("Multiply", BlendMode.multiply),
-  colorBurn("Colour burn", BlendMode.colorBurn),
-  lighten("Lighten", BlendMode.lighten),
-  screen("Screen", BlendMode.screen),
-  colorDodge("Colour dodge", BlendMode.colorDodge),
-  add("Add", BlendMode.plus),
-  overlay("Overlay", BlendMode.overlay),
-  softLight("Soft light", BlendMode.softLight),
-  hardLight("Hard light", BlendMode.hardLight),
-  difference("Difference", BlendMode.difference),
-  exclusion("Exclusion", BlendMode.exclusion),
-  hue("Hue", BlendMode.hue),
-  saturation("Saturation", BlendMode.saturation),
-  colour("Colour", BlendMode.color),
-  luminosity("Luminosity", BlendMode.luminosity);
-
-  final String label;
-  final BlendMode flutter;
-  const LayerBlend(this.label, this.flutter);
-
-  static LayerBlend fromName(String? name) =>
-      values.firstWhere((b) => b.name == name, orElse: () => LayerBlend.normal);
 }
 
 /// ImageLayer is one layer of a composited picture.
@@ -165,6 +136,12 @@ class ImageLayer {
 
   /// framed is whether this layer is masked over the frame rather than over
   /// a picture of its own.
+  /// retouchesUnder is whether this is a paint layer carrying retouching --
+  /// a clone, a heal, a dodge -- done to everything under it in the frame,
+  /// rather than to one picture. See paintRetouchUnder.
+  bool get retouchesUnder =>
+      kind == LayerKind.paint && strokes.any((s) => s.kind.retouches);
+
   bool get framed =>
       kind == LayerKind.adjustment ||
       kind == LayerKind.texture ||
@@ -293,7 +270,13 @@ class ImageLayer {
         opacity: (opacity ?? this.opacity).clamp(0.0, 1.0),
         blend: blend ?? this.blend,
         clip: clip ?? this.clip,
-        look: look ?? this.look,
+        // A picture layer's mask is its look's: given here, it goes there,
+        // rather than onto a field nothing reads for a picture.
+        look: mask != null &&
+                kind == LayerKind.picture &&
+                (look ?? this.look) != null
+            ? (look ?? this.look)!.copyWith(mask: mask)
+            : look ?? this.look,
         flipX: flipX ?? this.flipX,
         flipY: flipY ?? this.flipY,
         fill: fill ?? this.fill,
@@ -304,7 +287,7 @@ class ImageLayer {
         cue: cue ?? this.cue,
         cueGap: cueGap ?? this.cueGap,
         cueLength: clearCueLength ? null : cueLength ?? this.cueLength,
-        mask: mask ?? this.mask,
+        mask: kind == LayerKind.picture ? this.mask : mask ?? this.mask,
         basePlace: clearBasePlace ? null : basePlace ?? this.basePlace,
       );
 
@@ -762,6 +745,79 @@ ImageElement withLookApplied(ImageElement e, Map<String, dynamic> data) {
   return e.withLayers(stack);
 }
 
+/// _maskInPlace is a layer that covers the frame with its mask's marks --
+/// fractions of the frame -- moved to where they were on the page.
+ImageLayer _maskInPlace(
+    ImageLayer l, Offset Function(Offset) at, double shorter) {
+  if (!l.framed || l.mask.marks.isEmpty) return l;
+  return l.copyWith(
+      mask: l.mask.copyWith(marks: [
+    for (var m in l.mask.marks)
+      m.copyWith(
+          points: [for (var p in m.points) at(p)], radius: m.radius * shorter),
+  ]));
+}
+
+/// contentRectOf is everything drawn in [e]'s layers, in a frame at
+/// [inner]: the base picture, the picture layers -- turned, the box round
+/// the turned picture -- and the paint, as far as each stroke's brush
+/// reaches. Not what covers the whole frame -- a colour, a texture, an
+/// adjustment -- which is the frame's, and not the effects, which reach past
+/// whatever they are on without being part of it. Null for nothing.
+Rect? contentRectOf(ImageElement e, Rect inner) {
+  Rect? all;
+  void add(Rect r) => all = all == null ? r : all!.expandToInclude(r);
+  var short = math.min(inner.width, inner.height);
+  for (var l in e.stack) {
+    switch (l.kind) {
+      case LayerKind.base:
+        if (e.hasImage) add(layerRect(inner, l.place));
+      case LayerKind.picture:
+        if (!(l.look?.hasImage ?? false)) continue;
+        var r = layerRect(inner, l.place);
+        if (l.turn == 0) {
+          add(r);
+          continue;
+        }
+        var t = l.turn * math.pi / 180;
+        var c = r.center;
+        Offset turned(Offset p) {
+          var d = p - c;
+          return c +
+              Offset(d.dx * math.cos(t) - d.dy * math.sin(t),
+                  d.dx * math.sin(t) + d.dy * math.cos(t));
+        }
+
+        var corners = [
+          turned(r.topLeft),
+          turned(r.topRight),
+          turned(r.bottomLeft),
+          turned(r.bottomRight)
+        ];
+        add(Rect.fromLTRB(
+            corners.map((p) => p.dx).reduce(math.min),
+            corners.map((p) => p.dy).reduce(math.min),
+            corners.map((p) => p.dx).reduce(math.max),
+            corners.map((p) => p.dy).reduce(math.max)));
+      case LayerKind.paint:
+        for (var s in l.strokes) {
+          // Rubbing out and retouching lay nothing down of their own.
+          if (s.kind != StrokeKind.paint || s.points.isEmpty) continue;
+          var reach = s.radius * short;
+          for (var p in s.points) {
+            add(Rect.fromCircle(
+                center: Offset(inner.left + p.dx * inner.width,
+                    inner.top + p.dy * inner.height),
+                radius: reach));
+          }
+        }
+      case LayerKind.fill || LayerKind.texture || LayerKind.adjustment:
+        break;
+    }
+  }
+  return all;
+}
+
 /// keptInPlace is [now] -- [was] with its frame moved or resized -- with
 /// every layer that has a place of its own kept where it was on the page:
 /// the base picture and the picture layers at their size, a paint layer's
@@ -781,13 +837,20 @@ ImageElement keptInPlace(ImageElement was, ImageElement now) {
       switch (l.kind) {
         LayerKind.picture => l.placed(to(l.place), turn: l.turn),
         LayerKind.base => l.copyWith(basePlace: to(l.place)),
-        LayerKind.paint => l.copyWith(strokes: [
-            for (var s in l.strokes)
-              s.copyWith(
-                  points: [for (var p in s.points) at(p)],
-                  radius: s.radius * shorter),
-          ]),
-        _ => l,
+        LayerKind.paint => _maskInPlace(
+            l.copyWith(strokes: [
+              for (var s in l.strokes)
+                s.copyWith(
+                    points: [for (var p in s.points) at(p)],
+                    radius: s.radius * shorter,
+                    // Where a clone copies from is a distance across the
+                    // frame, and the frame is a different size now.
+                    source: Offset(s.source.dx * a.width / b.width,
+                        s.source.dy * a.height / b.height)),
+            ]),
+            at,
+            shorter),
+        _ => _maskInPlace(l, at, shorter),
       },
   ]);
 }

@@ -398,6 +398,23 @@ void main() {
       });
     });
 
+    testWidgets("a video not on the timeline plays from its scene's start",
+        (tester) async {
+      await tester.runAsync(() async {
+        var v = timedVideo("v", at: 30);
+        v = v.copyWith(clip: v.clip.copyWith(timed: false));
+        var doc = CanvasDocument(frameRate: 25, frames: 100, elements: [v]);
+        var fake = FakeFrames(10);
+        var media = ExportMedia.of(doc,
+            frames: fake, locate: (kind, id) async => "/$id")!;
+        var show = (await media.at(0))(v);
+        expect(show.frame, isNotNull, reason: "playing, not its poster");
+        expect(show.controls, isFalse, reason: "no player in a film");
+        expect(fake.openedAt, [0], reason: "from the start, not where it was");
+        media.dispose();
+      });
+    });
+
     // The real thing: a canvas with a video on its timeline, exported, and
     // the file asked what is in it.
     testWidgets("an MP4 of a timed video carries its picture and its sound",

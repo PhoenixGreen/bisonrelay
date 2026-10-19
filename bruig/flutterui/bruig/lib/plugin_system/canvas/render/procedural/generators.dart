@@ -229,7 +229,7 @@ void _paintOnce(ui.Canvas canvas, Rect rect, ProceduralSpec input, double time,
     canvas.saveLayer(
         rect,
         Paint()
-          ..blendMode = layer.blend.mode
+          ..blendMode = layer.blend.flutter
           ..color = Color.fromRGBO(0, 0, 0, layer.opacity.clamp(0.0, 1.0)));
     if (ls.style == ProceduralStyle.plain) _paintBase(canvas, rect, ls);
     // On the background's clock, at the layer's own pace.

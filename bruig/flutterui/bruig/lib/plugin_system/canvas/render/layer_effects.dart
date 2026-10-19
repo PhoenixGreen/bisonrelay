@@ -119,12 +119,29 @@ ui.ImageFilter? _chain(List<ui.ImageFilter> filters) {
   return f;
 }
 
+/// _brightnessAsShape is a picture as its brightness: solid where it is
+/// white, gone where it is black.
+const _brightnessAsShape = ColorFilter.matrix([
+  0, 0, 0, 0, 255, //
+  0, 0, 0, 0, 255, //
+  0, 0, 0, 0, 255, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+]);
+
 /// paintWithEffects draws [content] -- a layer, covering [room] -- with
 /// [effects], [unit] canvas units to a thousandth of the frame's shorter
 /// side. [key] names what is rasterised, drawn from [from], so it is kept.
+///
+/// [lightening] is the blend of a layer laid by one that only lightens --
+/// screen, add: it shows where it is bright, not where it is drawn, so its
+/// shadow and glow take its shape from its brightness, and it is laid over
+/// them by that blend too. Taken from where it is drawn, a screened
+/// photograph of a light on black glows as a rectangle; laid over its glow
+/// plainly, its black covers the glow.
 void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
     List<LayerEffect> effects, ui.Picture content,
-    {String? key, List<Object?> from = const []}) {
+    {String? key, List<Object?> from = const [], BlendMode? lightening}) {
+  var byBrightness = lightening != null;
   var on = [
     for (var f in effects)
       if (f.on) f
@@ -154,7 +171,13 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
       var d = _towards(f.value("angle"), f.value("distance") * unit);
       canvas.translate(d.dx, d.dy);
     }
-    canvas.drawPicture(content);
+    if (byBrightness) {
+      canvas.saveLayer(reach, Paint()..colorFilter = _brightnessAsShape);
+      canvas.drawPicture(content);
+      canvas.restore();
+    } else {
+      canvas.drawPicture(content);
+    }
     canvas.restore();
   }
 
@@ -166,6 +189,7 @@ void paintWithEffects(ui.Canvas canvas, Rect room, double unit,
   canvas.saveLayer(
       reach,
       Paint()
+        ..blendMode = lightening ?? BlendMode.srcOver
         ..imageFilter = blur > 0.05
             ? ui.ImageFilter.blur(
                 sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal)

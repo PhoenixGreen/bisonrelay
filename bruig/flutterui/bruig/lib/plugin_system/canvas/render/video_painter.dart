@@ -37,6 +37,10 @@ class VideoShow {
   /// not drawn at all, the way a clip is not in a film before it is cut in.
   final bool hidden;
 
+  /// controls is whether the player's buttons are drawn over it. Not in a
+  /// film made of the canvas: nobody can press them there.
+  final bool controls;
+
   const VideoShow({
     this.playing = false,
     this.muted = false,
@@ -48,6 +52,7 @@ class VideoShow {
     this.poster = "",
     this.opacity = 1,
     this.hidden = false,
+    this.controls = true,
   });
 
   factory VideoShow.idle(VideoElement e) {

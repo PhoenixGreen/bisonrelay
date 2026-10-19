@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -128,7 +129,7 @@ CanvasElement newElement(
           textSpec: TextSpec(fontSize: unit, weight: 700));
 
     case ElementKind.line:
-      return LineElement(base, strokeWidth: unit * 0.18, endEnd: LineEnd.arrow);
+      return LineElement(base, strokeWidth: unit * 0.18);
 
     case ElementKind.chart:
       return ChartElement(base,
@@ -188,17 +189,25 @@ CanvasElement newElement(
       return VideoElement(base.copyWith(lockAspect: true));
 
     case ElementKind.table:
-      return TableElement(base,
-          cellSpec: TextSpec(fontSize: unit * 0.55, align: TextAlignSpec.left),
-          headerSpec: TextSpec(
-              fontSize: unit * 0.55, weight: 700, align: TextAlignSpec.left),
-          cellPadding: unit * 0.35,
-          rows: const [
-            ["Name", "Value", "Change"],
-            ["First", "120", "+4%"],
-            ["Second", "185", "+11%"],
-            ["Third", "143", "-2%"],
-          ]);
+      // In the colours the canvas is already in, rather than a look of its
+      // own that has to be undone cell by cell.
+      return tableInColours(
+          TableElement(base,
+              cellSpec:
+                  TextSpec(fontSize: unit * 0.55, align: TextAlignSpec.left),
+              headerSpec: TextSpec(
+                  fontSize: unit * 0.55,
+                  weight: 700,
+                  align: TextAlignSpec.left),
+              cellPadding: unit * 0.35,
+              rows: const [
+                ["Name", "Value", "Change"],
+                ["First", "120", "+4%"],
+                ["Second", "185", "+11%"],
+                ["Third", "143", "-2%"],
+              ]),
+          canvasColours(
+              document.background.spec.background, document.elements));
 
     case ElementKind.button:
       return ButtonElement(base,

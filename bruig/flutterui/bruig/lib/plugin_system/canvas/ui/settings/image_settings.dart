@@ -549,6 +549,7 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     ValueChanged<ImageElement?>? tryLook,
     bool shape = true,
     bool framing = true,
+    bool drift = false,
     bool crop = true,
     bool filter = true,
     bool overlay = true,
@@ -570,9 +571,11 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
             ("", "Rectangle"),
             for (var k in ShapeKind.values) (k.name, k.label),
           ],
+          // Cut to a shape, it clips to it: a circle with a stroke running
+          // out of it is not a circle.
           onChanged: (v) => now(v.isEmpty
               ? e.copyWith(clearFrame: true)
-              : e.copyWith(frame: ShapeKind.fromName(v))),
+              : e.copyWith(frame: ShapeKind.fromName(v), clip: true)),
         ),
       ]),
     // Framing is the same three numbers the double-click gesture writes -- see
@@ -619,6 +622,43 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           onPressed: () => now(e.copyWith(framing: const ImageFraming())),
         ),
       ]),
+    // The documentary's slow move over a still: the frame stays put and the
+    // picture drifts inside it, the length of the scene.
+    if (shown && framing && drift && e.fit == ImageFit.cover)
+      CanvasControlGroup(
+          key: const ValueKey("imageDrift"),
+          label: "Drift",
+          help: "A slow zoom or pan across the picture, the length of the "
+              "scene -- the frame stays where it is. Starts from the framing "
+              "above.",
+          rule: false,
+          children: [
+            CanvasDropdown<DriftKind>(
+              key: const ValueKey("imageDriftKind"),
+              label: "",
+              value: e.drift.kind,
+              width: 112,
+              options: [for (var k in DriftKind.values) (k, k.label)],
+              onChanged: (v) =>
+                  now(e.copyWith(drift: e.drift.copyWith(kind: v))),
+            ),
+            if (e.drift.on)
+              CanvasNumberField(
+                key: const ValueKey("imageDriftAmount"),
+                label: "By",
+                min: 1,
+                max: 100,
+                decimals: 0,
+                suffix: "%",
+                width: 52,
+                value: e.drift.amount * 100,
+                onChanged: (v) {
+                  begin();
+                  write(e.copyWith(drift: e.drift.copyWith(amount: v / 100)));
+                },
+                onCommit: commit,
+              ),
+          ]),
     if (shown && crop)
       CanvasControlGroup(label: "Crop", rule: false, children: [
         for (var (label, value, apply)

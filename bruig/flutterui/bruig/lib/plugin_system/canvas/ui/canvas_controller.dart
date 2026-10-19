@@ -932,6 +932,12 @@ class CanvasController extends ChangeNotifier {
     _endPreview();
     if (identical(next, _document)) return;
 
+    // A picture's frame takes in what was put past it -- once a change is
+    // made, not at every step of a drag, whose sums start from where things
+    // were when it began. See endInteraction, and changePaint, which grows
+    // it as the stroke goes.
+    if (!transient) next = _imagesGrown(next, _document);
+
     if (!transient && _interaction == null) {
       _undo.add(_document);
       if (_undo.length > _maxUndo) _undo.removeAt(0);
@@ -958,6 +964,20 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// _imagesGrown is [next] with the frame of every picture changed since
+  /// [was] grown to take in what is drawn in it. See
+  /// ImageElement.grownToFit.
+  CanvasDocument _imagesGrown(CanvasDocument next, CanvasDocument was) {
+    var out = next;
+    for (var e in next.elements) {
+      if (e is! ImageElement || e.clip || !e.layered) continue;
+      if (identical(was.elementById(e.id), e)) continue;
+      var grown = e.grownToFit();
+      if (!identical(grown, e)) out = out.withElement(grown);
+    }
+    return out;
+  }
+
   /// interacting is whether a gesture is under way -- a drag on the canvas,
   /// a number being scrubbed -- which the canvas draws a little faster for.
   bool get interacting => _interaction != null;
@@ -975,6 +995,14 @@ class CanvasController extends ChangeNotifier {
     var before = _interaction;
     _interaction = null;
     if (before == null || identical(before, _document)) return;
+    // In the same step as the gesture: a layer dragged out of the frame and
+    // the frame grown round it are one thing to take back.
+    var grown = _imagesGrown(_document, before);
+    if (!identical(grown, _document)) {
+      _document = grown;
+      _dirty = true;
+      scheduleAutosave();
+    }
     _undo.add(before);
     if (_undo.length > _maxUndo) _undo.removeAt(0);
     _redo.clear();
@@ -1035,11 +1063,34 @@ class CanvasController extends ChangeNotifier {
     return true;
   }
 
+  /// withCountLaidOut is a new keyframed counter with its count pinned: its
+  /// start where the playhead is and its finish two seconds on -- or the two
+  /// seconds before the end, when the playhead is too near it. Without them
+  /// From and To would do nothing until both were pinned by hand, and a
+  /// counter that sits still reads as one that is broken.
+  CounterElement withCountLaidOut(CounterElement e) {
+    var last = _document.frames - 1;
+    if (!e.keyed || e.track != null || last < 1) return e;
+    var rate = math.max(1, _document.frameRate);
+    var start = _frame.clamp(0, last);
+    var end = math.min(last, start + rate * 2);
+    if (end - start < rate ~/ 2) {
+      end = last;
+      start = math.max(0, last - rate * 2);
+    }
+    return e.withBase(
+        track: ElementTrack([
+      Keyframe(frame: start).withValue(KeyframeChannel.count, e.from),
+      Keyframe(frame: end).withValue(KeyframeChannel.count, e.to),
+    ])) as CounterElement;
+  }
+
   /// replaceElement is the commonest edit there is: one element changed.
   void replaceElement(CanvasElement element, {bool transient = false}) =>
       apply(_document.withElement(element), transient: transient);
 
   void addElement(CanvasElement element, {bool select = true}) {
+    if (element is CounterElement) element = withCountLaidOut(element);
     apply(_document.addElement(element));
     if (select) selectOnly(element.id);
   }
@@ -2102,6 +2153,42 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// retouchWholeFrame is whether the retouching brushes work on everything
+  /// in the frame -- every layer, as one picture -- rather than on the
+  /// picture picked. Strokes made so go on a paint layer of their own, over
+  /// the layer picked: see retouchesFrame.
+  bool get retouchWholeFrame => _retouchWholeFrame;
+  bool _retouchWholeFrame = false;
+  set retouchWholeFrame(bool v) {
+    if (v == _retouchWholeFrame) return;
+    _retouchWholeFrame = v;
+    // Where to copy from was a fraction of one picture or of the frame.
+    cloneFrom = null;
+  }
+
+  /// retouchesFrame is whether a retouching stroke now works on the whole
+  /// frame: asked to, or with a layer picked that has no picture of its own
+  /// to work on -- a paint layer, an adjustment, a colour.
+  bool get retouchesFrame =>
+      _retouchWholeFrame || (pickedLayer?.framed ?? false);
+
+  /// _cloneFollowsFrame keeps where a whole-frame clone copies from on the
+  /// same part of the picture when the frame it is measured in changes from
+  /// [was]'s to [now]'s.
+  void _cloneFollowsFrame(ImageElement was, ImageElement now) {
+    if (!retouchesFrame) return;
+    var a = was.box.inner(was.bounds), b = now.box.inner(now.bounds);
+    if (b.isEmpty) return;
+    if (_cloneFrom case var f?) {
+      _cloneFrom = Offset((a.left + f.dx * a.width - b.left) / b.width,
+          (a.top + f.dy * a.height - b.top) / b.height);
+    }
+    if (cloneOffset case var o?) {
+      cloneOffset =
+          Offset(o.dx * a.width / b.width, o.dy * a.height / b.height);
+    }
+  }
+
   /// noteForBrush says something about the brush in its settings row.
   void noteForBrush(String? note) {
     _maskNote = note;
@@ -2113,9 +2200,13 @@ class CanvasController extends ChangeNotifier {
       {bool transient = false}) {
     var e = editingImage, layer = pickedLayer;
     if (e == null || layer == null || layer.kind != LayerKind.paint) return;
-    replaceElement(
-        e.withLayer(layer.id, (l) => l.copyWith(strokes: edit(l.strokes))),
-        transient: transient);
+    var next =
+        e.withLayer(layer.id, (l) => l.copyWith(strokes: edit(l.strokes)));
+    // Painted past the frame, the frame grows as the stroke goes, so the
+    // stroke is drawn where it is being painted.
+    var grown = next.grownToFit();
+    if (!identical(grown, next)) _cloneFollowsFrame(next, grown);
+    replaceElement(grown, transient: transient);
   }
 
   /// changeRetouch changes the retouching done to the picked picture.

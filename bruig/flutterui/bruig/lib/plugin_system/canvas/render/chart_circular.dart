@@ -80,6 +80,9 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
         }
         start += sweep;
       }
+      if (inner > 0 && e.centreLabel.trim().isNotEmpty) {
+        paintCentreLabel(canvas, centre, inner, e, values, total, reveal);
+      }
 
     case ChartType.radialBar:
       var values = data.series.first.values;
@@ -201,4 +204,30 @@ void paintCircular(ui.Canvas canvas, Rect area, ChartElement e, double reveal) {
     default:
       break;
   }
+}
+
+/// paintCentreLabel writes a donut's centre label in its hole of [radius]:
+/// "{total}" as the slices that have arrived added up, so the total counts
+/// up as they open. Sized to the hole, in the values' type.
+void paintCentreLabel(ui.Canvas canvas, Offset centre, double radius,
+    ChartElement e, List<double> values, double total, double reveal) {
+  var arrived = 0.0;
+  for (var i = 0; i < values.length; i++) {
+    var slice = sliceProgress(e, reveal, i, values.length);
+    if (!slice.gone) arrived += values[i].abs() * slice.size.clamp(0.0, 1.0);
+  }
+  var words =
+      e.centreLabel.replaceAll("{total}", e.numbers.format(arrived)).trim();
+  var lines = words.split("\n");
+  var longest = lines.fold<int>(1, (m, l) => math.max(m, l.length));
+  var across = radius * 1.5;
+  var size = math.min(radius * 0.7 / lines.length, across / (longest * 0.58));
+  paintTextInBox(
+      canvas,
+      words,
+      e.valueSpec.copyWith(
+          fontSize: size,
+          align: TextAlignSpec.center,
+          verticalAlign: VerticalAlignSpec.middle),
+      Rect.fromCenter(center: centre, width: across, height: radius * 1.5));
 }

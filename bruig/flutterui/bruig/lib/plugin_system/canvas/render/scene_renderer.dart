@@ -14,7 +14,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/render/edge_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
@@ -678,7 +680,8 @@ void paintElement(
   // A video laid on as light or shade is composited through the same layer
   // its fade is: the blend has to be on the outermost layer, the one that
   // meets what is under the element, or it blends against nothing.
-  var blend = element is VideoElement ? element.blend.mode : BlendMode.srcOver;
+  var blend =
+      element is VideoElement ? element.blend.flutter : BlendMode.srcOver;
   var layered = alpha < 0.999 || blend != BlendMode.srcOver;
   if (layered) {
     // Grown before saving the layer, because a shadow, an outline or a glow
@@ -713,6 +716,12 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintLine(canvas, _bowed(e, pose)));
       case ImageElement e:
+        // A drift runs the length of the scene, the frame staying put.
+        if (e.drift.on && document != null && document.frames > 1) {
+          e = e.copyWith(
+              framing:
+                  e.drift.framed(e.framing, frame / (document.frames - 1)));
+        }
         if (_layerByLayer(e, pose) case var arrive?) {
           _paintImage(canvas, bounds, e, images, arrive: arrive);
         } else {
@@ -797,11 +806,19 @@ void paintElement(
             bounds,
             e.animation,
             pose,
-            () => _paintVideo(canvas, bounds, e,
-                videoShow?.call(e) ?? VideoShow.idle(e), images));
+            () => paintEdgeMasked(
+                canvas,
+                bounds,
+                e.edges,
+                () => _paintVideo(canvas, bounds, e,
+                    videoShow?.call(e) ?? VideoShow.idle(e), images)));
       case BackgroundElement e:
-        _paintBackgroundElement(
-            canvas, bounds, e, time, frameRate.toDouble(), images, backgrounds);
+        paintEdgeMasked(
+            canvas,
+            bounds,
+            e.mask,
+            () => _paintBackgroundElement(canvas, bounds, e, time,
+                frameRate.toDouble(), images, backgrounds));
       case PathElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => _paintPath(canvas, bounds, e, editing));
@@ -1618,7 +1635,18 @@ ui.Canvas? _arrivingCanvas;
 void _paintImage(
     ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images,
     {_LayerArrive? arrive}) {
-  paintBox(canvas, bounds, e.box, images);
+  // The border over the picture, not under it: under, a picture that runs
+  // to its box's edge -- which is what a picture with no padding does --
+  // covered its own border, and the border only showed with padding added
+  // to make room round the picture for it.
+  paintBoxFill(canvas, bounds, e.box, images);
+  _paintImageInside(canvas, bounds, e, images, arrive: arrive);
+  paintBoxBorder(canvas, bounds, e.box);
+}
+
+void _paintImageInside(
+    ui.Canvas canvas, Rect bounds, ImageElement e, CanvasImageSource? images,
+    {_LayerArrive? arrive}) {
   var inner = e.box.inner(bounds);
   if (inner.width <= 0 || inner.height <= 0) return;
 
@@ -1775,15 +1803,26 @@ void _paintLayered(
   }
 
   canvas.save();
-  if (e.frame != null) {
-    canvas
-        .clipPath(shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
-  } else if (e.box.isRounded) {
-    canvas.clipRRect(e.box.insetRounded(inner));
+  Rect room;
+  if (!e.clip) {
+    // Nothing cut: what runs past the frame -- a layer dragged out of it, a
+    // stroke not yet taken in, a shadow -- is drawn where it is. The frame
+    // takes the pictures and the paint in as they are put there (see
+    // ImageElement.grownToFit); the room is for what it does not.
+    room = inner
+        .expandToInclude(contentRectOf(e, inner) ?? inner)
+        .inflate(math.max(_outlineRoom(e), _effectsReach(e, inner)));
   } else {
-    canvas.clipRect(inner.inflate(_outlineRoom(e)));
+    if (e.frame != null) {
+      canvas.clipPath(
+          shapePath(e.frame!, inner, bubble: const SpeechBubbleSpec()));
+    } else if (e.box.isRounded) {
+      canvas.clipRRect(e.box.insetRounded(inner));
+    } else {
+      canvas.clipRect(inner.inflate(_outlineRoom(e)));
+    }
+    room = inner.inflate(_outlineRoom(e));
   }
-  var room = inner.inflate(_outlineRoom(e));
   canvas.saveLayer(room, Paint());
   var watched = _Watched(images);
   _paintStack(canvas, inner, e, stack, watched, room, arrive);
@@ -1815,8 +1854,11 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
   for (var i = stack.length - 1; i >= 0; i--) {
     var l = stack[i];
     // A clipped adjustment changes only the layer it is clipped to, and is
-    // drawn with it -- see _paintGroups.
-    if (l.kind == LayerKind.adjustment && l.visible && !(l.clip && i > 0)) {
+    // drawn with it -- see _paintGroups. A paint layer retouching what is
+    // under it works on everything under it, as an adjustment does.
+    if (l.visible &&
+        (l.kind == LayerKind.adjustment && !(l.clip && i > 0) ||
+            l.retouchesUnder)) {
       at = i;
       break;
     }
@@ -1832,6 +1874,24 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
   // adjusted picture is not kept then.
   var complete = images.misses == misses && arrive == null;
   canvas.drawPicture(below);
+  if (stack[at].retouchesUnder) {
+    // The clone, the heal, the dodge, worked on everything under the layer
+    // as one picture -- across the whole frame, not one picture's pixels --
+    // and the layer's own paint over that.
+    var layer = stack[at];
+    canvas.saveLayer(room, _over(layer));
+    _arriving(canvas, arrive, layer, room, () {
+      paintRetouchUnder(canvas, inner, below, layer.strokes,
+          key: complete ? "${e.id}|${layer.id}|under" : null,
+          from: layersFrom(e, stack.sublist(0, at)));
+      paintPaintLayer(canvas, inner, layer.strokes, "${e.id}|${layer.id}");
+      _frameMasked(canvas, inner, layer);
+    });
+    canvas.restore();
+    below.dispose();
+    _paintGroups(canvas, inner, e, stack.sublist(at + 1), images, room, arrive);
+    return;
+  }
   var adjustment = stack[at];
   canvas.saveLayer(room, _over(adjustment));
   _arriving(canvas, arrive, adjustment, room, () {
@@ -2008,7 +2068,8 @@ void _paintDressed(ui.Canvas canvas, Rect inner, ImageElement e,
   paintWithEffects(canvas, room, math.min(inner.width, inner.height) / 1000,
       layer.effects, content,
       key: images.misses == misses ? "${e.id}|${layer.id}|fx" : null,
-      from: layersFrom(e, [layer]));
+      from: layersFrom(e, [layer]),
+      lightening: layer.blend.lightens ? layer.blend.flutter : null);
   content.dispose();
 }
 
@@ -2221,7 +2282,9 @@ void _paintVideo(ui.Canvas canvas, Rect bounds, VideoElement e, VideoShow show,
           inner,
           clip: true);
     }
-    paintVideoControls(canvas, e, videoParts(e, bounds), show);
+    if (show.controls) {
+      paintVideoControls(canvas, e, videoParts(e, bounds), show);
+    }
     return;
   }
 
@@ -2241,7 +2304,35 @@ void _paintVideo(ui.Canvas canvas, Rect bounds, VideoElement e, VideoShow show,
       _OneFrame(frame, images));
   if (fading) canvas.restore();
 
-  paintVideoControls(canvas, e, videoParts(e, bounds), show);
+  if (show.controls) {
+    paintVideoControls(canvas, e, videoParts(e, bounds), show);
+  }
+}
+
+/// _effectsReach is how far past what they are on [e]'s layers' effects
+/// reach -- a shadow thrown and blurred, a glow, a smear -- in a frame at
+/// [inner].
+double _effectsReach(ImageElement e, Rect inner) {
+  var unit = math.min(inner.width, inner.height) / 1000;
+  var most = 0.0;
+  for (var l in e.stack) {
+    for (var f in l.effects) {
+      if (!f.on) continue;
+      var reach = 0.0;
+      for (var name in const ["distance", "blur", "size", "spread", "amount"]) {
+        if (f.kind.params.any((p) => p.key == name)) {
+          // Blurs are a sigma of half the figure, and fade out by about
+          // three of those.
+          reach += f.value(name) * (name == "blur" || name == "size" ? 1.5 : 1);
+        }
+      }
+      // A zoom's amount is how much bigger its last copy is: of the whole
+      // frame, not of a thousandth of it.
+      if (f.kind == EffectKind.zoomBlur) reach = f.value("amount") * 1000;
+      most = math.max(most, reach);
+    }
+  }
+  return most * unit;
 }
 
 /// _outlineRoom is how far outside its box a picture's outline may reach.
@@ -2471,7 +2562,7 @@ void _drawImage(ui.Canvas canvas, ui.Image image, Rect rect, ImageFit fit,
     canvas.clipRect(dst);
     canvas.translate(m.dx, m.dy);
     canvas.scale(m.sx, m.sy);
-    paintRetouch(
+    paintRetouchKept(
         canvas,
         image,
         Size(image.width.toDouble(), image.height.toDouble()),

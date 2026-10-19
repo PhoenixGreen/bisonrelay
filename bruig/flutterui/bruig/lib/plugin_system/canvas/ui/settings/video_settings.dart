@@ -257,6 +257,10 @@ List<Widget> videoSettings(
           value: clip.autoplay,
           onChanged: (v) => clipNow(clip.copyWith(autoplay: v)),
         ),
+      if (!clip.timed)
+        const CanvasHint("In a video made of the canvas it plays from the "
+            "start of its scene, without its controls. Put it on the "
+            "timeline to choose when."),
       if (across && !clip.timed) ...[
         CanvasToggle(
           key: const ValueKey("videoAcross"),
@@ -460,6 +464,8 @@ List<Widget> videoSettings(
           if (!e.isLink) greenGroup,
           ...lookGroups,
         ]),
+    edgeMaskSection(
+        e, e.edges, (m) => write(e.copyWith(edges: m)), begin, commit),
     section(e, "box",
         icon: Icons.crop_square,
         title: "Background and border",

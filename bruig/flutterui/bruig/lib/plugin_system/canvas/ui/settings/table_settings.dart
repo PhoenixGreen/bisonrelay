@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/canvas_palette.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/table_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/data_presets.dart';
@@ -233,6 +234,22 @@ List<Widget> tableSettings(
                   "above, it is simply not drawn or measured."),
             ]),
             CanvasControlGroup(label: "Look", children: [
+              CanvasTextButton(
+                key: const ValueKey("tableMatchCanvas"),
+                icon: Icons.format_paint_outlined,
+                label: "Match the canvas",
+                onPressed: () {
+                  var d = controller.document;
+                  begin();
+                  write(tableInColours(
+                      e,
+                      canvasColours(d.background.spec.background, [
+                        for (var other in d.elements)
+                          if (other.id != e.id) other
+                      ])));
+                  commit();
+                },
+              ),
               CanvasDropdown<TableGrid>(
                 label: "Rules",
                 value: e.grid,

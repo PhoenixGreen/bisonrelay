@@ -3552,7 +3552,9 @@ class CanvasStageState extends State<CanvasStage> {
           controller.paintSize * math.min(inner.width, inner.height)
         ));
       }
-      var on = _maskPicture(e);
+      var on = controller.retouchesFrame
+          ? LayerPicture.frame(e, picked)
+          : _maskPicture(e);
       if (on == null) return const StageLayers();
       Offset? marker;
       if (tool == ImageTool.clone && controller.cloneFrom != null) {
@@ -3830,7 +3832,9 @@ class CanvasStageState extends State<CanvasStage> {
     var alt = HardwareKeyboard.instance.isAltPressed;
     var pressure = _penSample(doc).pressure;
     if (!tool.retouches) {
-      if (!_containsPoint(e, doc)) return false;
+      // Anywhere at all on a picture that does not clip: the frame grows to
+      // take the paint in. One that clips paints only inside itself.
+      if (e.clip && !_containsPoint(e, doc)) return false;
       controller.beginInteraction();
       // Paint goes on a paint layer: one is made over the layer picked,
       // where that is not one already -- in the same step as the stroke.
@@ -3855,11 +3859,18 @@ class CanvasStageState extends State<CanvasStage> {
       _mode = _DragMode.imageBrush;
       return true;
     }
-    var on = _maskPicture(e);
+    // Across the whole frame, the strokes are a paint layer's, in fractions
+    // of the frame; on one picture, that picture's, in fractions of it.
+    var whole = controller.retouchesFrame;
+    var on = whole
+        ? LayerPicture.frame(e, controller.pickedLayer ?? ImageLayer.base)
+        : _maskPicture(e);
     if (on == null) return _containsPoint(e, doc);
     var f = on.toPicture(doc);
     bool within(double v) => v >= 0 && v <= 1;
-    if (!(within(f.dx) && within(f.dy)) && !_containsPoint(e, doc)) {
+    if (!(whole && !e.clip) &&
+        !(within(f.dx) && within(f.dy)) &&
+        !_containsPoint(e, doc)) {
       return false;
     }
     var source = Offset.zero;
@@ -3895,8 +3906,22 @@ class CanvasStageState extends State<CanvasStage> {
         strength: controller.paintStrength,
         source: source);
     controller.beginInteraction();
-    controller.changeRetouch((s) => [...s, mark], transient: true);
-    _strokeAt = on.toPicture;
+    if (whole) {
+      // A layer of its own, over the one picked, in the same step as the
+      // stroke -- unless the one picked is a paint layer already.
+      if (controller.pickedLayer?.kind != LayerKind.paint) {
+        controller
+            .addImageLayer(ImageLayer.painting().copyWith(name: "Retouch"));
+      }
+      controller.changePaint((s) => [...s, mark], transient: true);
+    } else {
+      controller.changeRetouch((s) => [...s, mark], transient: true);
+    }
+    // Across the whole frame, measured in the frame as it is at each step:
+    // it grows as the stroke goes past it.
+    _strokeAt = whole
+        ? (doc) => _frameFraction(controller.editingImage!, doc)
+        : on.toPicture;
     _mode = _DragMode.imageBrush;
     return true;
   }
@@ -3925,7 +3950,8 @@ class CanvasStageState extends State<CanvasStage> {
       ];
     }
 
-    if (controller.imageTool.retouches) {
+    if (controller.imageTool.retouches &&
+        controller.pickedLayer?.kind != LayerKind.paint) {
       controller.changeRetouch(grown, transient: true);
     } else {
       controller.changePaint(grown, transient: true);

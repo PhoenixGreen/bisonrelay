@@ -1,6 +1,9 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
-import 'package:flutter/painting.dart';
+import 'package:bruig/plugin_system/canvas/model/layer_blend.dart';
+
+export 'package:bruig/plugin_system/canvas/model/layer_blend.dart'
+    show LayerBlend;
 
 // procedural_layers.dart is the patterns laid over a background's own.
 //
@@ -8,28 +11,6 @@ import 'package:flutter/painting.dart';
 // actually want are usually several things at once -- a mesh of colour with a
 // faint grid over it, stars over a nebula over a gradient. Each layer is a
 // whole background recipe of its own, laid on with an opacity and a blend.
-
-/// LayerBlend is how a layer is combined with what is under it.
-enum LayerBlend {
-  normal("Normal", BlendMode.srcOver),
-  screen("Screen", BlendMode.screen),
-  add("Add", BlendMode.plus),
-  multiply("Multiply", BlendMode.multiply),
-  overlay("Overlay", BlendMode.overlay),
-  softLight("Soft light", BlendMode.softLight),
-  dodge("Dodge", BlendMode.colorDodge),
-  lighten("Lighten", BlendMode.lighten),
-  darken("Darken", BlendMode.darken),
-  difference("Difference", BlendMode.difference),
-  colour("Colour", BlendMode.color);
-
-  final String label;
-  final BlendMode mode;
-  const LayerBlend(this.label, this.mode);
-
-  static LayerBlend fromName(String? name) =>
-      values.firstWhere((b) => b.name == name, orElse: () => LayerBlend.normal);
-}
 
 /// maxBackgroundLayers is how many layers can be laid over a background.
 const int maxBackgroundLayers = 3;

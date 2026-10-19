@@ -425,6 +425,12 @@ class ChartElement extends CanvasElement {
   /// innerRadius is the hole in a donut, as a fraction of the outer radius.
   final double innerRadius;
 
+  /// centreLabel is the words in a donut's hole -- "{total}" in them is the
+  /// slices added up, counting up as they arrive -- or empty for none. A
+  /// donut's hole is where its one number goes: the total, the share that
+  /// matters, the thing the slices are slices of.
+  final String centreLabel;
+
   /// showPoints marks each reading on a line or an area.
   ///
   /// A line says the shape of a series and a dot says where a reading
@@ -502,6 +508,7 @@ class ChartElement extends CanvasElement {
     this.barRadius = 4,
     this.barFloor = 0,
     this.innerRadius = 0.55,
+    this.centreLabel = "",
     this.showPoints = false,
     this.pointSize = 0,
     this.pointColor = const Color(0x00000000),
@@ -662,6 +669,7 @@ class ChartElement extends CanvasElement {
     double? barRadius,
     double? barFloor,
     double? innerRadius,
+    String? centreLabel,
     bool? showPoints,
     double? pointSize,
     Color? pointColor,
@@ -720,6 +728,7 @@ class ChartElement extends CanvasElement {
           barRadius: barRadius,
           barFloor: barFloor,
           innerRadius: innerRadius,
+          centreLabel: centreLabel,
           showPoints: showPoints,
           pointSize: pointSize,
           pointColor: pointColor,
@@ -782,6 +791,7 @@ class ChartElement extends CanvasElement {
     double? barRadius,
     double? barFloor,
     double? innerRadius,
+    String? centreLabel,
     bool? showPoints,
     double? pointSize,
     Color? pointColor,
@@ -843,6 +853,7 @@ class ChartElement extends CanvasElement {
           barRadius: barRadius ?? this.barRadius,
           barFloor: barFloor ?? this.barFloor,
           innerRadius: innerRadius ?? this.innerRadius,
+          centreLabel: centreLabel ?? this.centreLabel,
           showPoints: showPoints ?? this.showPoints,
           pointSize: pointSize ?? this.pointSize,
           pointColor: pointColor ?? this.pointColor,
@@ -912,6 +923,7 @@ class ChartElement extends CanvasElement {
         // the file it always did.
         if (barFloor > 0) "barFloor": barFloor,
         "inner": innerRadius,
+        if (centreLabel.isNotEmpty) "centre": centreLabel,
         "sw": strokeWidth,
         if (showPoints) "points": true,
         if (pointSize > 0) "pointSize": pointSize,
@@ -1007,6 +1019,7 @@ class ChartElement extends CanvasElement {
       barRadius: jsonDouble(json["barRadius"], 4),
       barFloor: jsonDouble(json["barFloor"], 0),
       innerRadius: jsonDouble(json["inner"], 0.55),
+      centreLabel: json["centre"] is String ? json["centre"] as String : "",
       strokeWidth: jsonDouble(json["sw"], 3),
       showPoints: jsonBool(json["points"], false),
       pointSize: jsonDouble(json["pointSize"], 0).clamp(0, 200),

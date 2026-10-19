@@ -1,5 +1,9 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // canvas_counter_test.dart is the number a counter writes.
@@ -124,6 +128,45 @@ void main() {
       expect(e.keyed, isTrue);
       expect(e.live, isFalse);
       expect(e.copyWith(keyed: false).live, isTrue);
+    });
+  });
+
+  group("a new one", () {
+    CanvasDocument long() =>
+        const CanvasDocument().copyWith(frames: 300, frameRate: 30);
+
+    test("arrives with its count pinned from the playhead", () {
+      var c = CanvasController(long());
+      addTearDown(c.dispose);
+      c.frame = 30;
+      var made = newElement(ElementKind.counter, c.document) as CounterElement;
+      c.addElement(made);
+      var e = c.document.elementById(made.id)! as CounterElement;
+      var keys = e.track!.keys;
+      expect([for (var k in keys) k.frame], [30, 90]);
+      expect(keys.first.values[KeyframeChannel.count], e.from);
+      expect(keys.last.values[KeyframeChannel.count], e.to);
+      c.frame = 60;
+      expect(c.valueAt(e, KeyframeChannel.count, e.from), greaterThan(e.from),
+          reason: "it counts");
+    });
+
+    test("near the end, it counts up to the end", () {
+      var c = CanvasController(long());
+      addTearDown(c.dispose);
+      c.frame = 295;
+      var made = newElement(ElementKind.counter, c.document) as CounterElement;
+      c.addElement(made);
+      var keys = c.document.elementById(made.id)!.track!.keys;
+      expect([for (var k in keys) k.frame], [239, 299]);
+    });
+
+    test("a live one, or one frame, is left alone", () {
+      var c = CanvasController(const CanvasDocument());
+      addTearDown(c.dispose);
+      var made = newElement(ElementKind.counter, c.document) as CounterElement;
+      c.addElement(made);
+      expect(c.document.elementById(made.id)!.track, isNull);
     });
   });
 

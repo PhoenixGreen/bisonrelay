@@ -307,7 +307,8 @@ class StrokeMark {
           {List<Offset>? points,
           List<double>? pressure,
           List<Offset>? tilt,
-          double? radius}) =>
+          double? radius,
+          Offset? source}) =>
       StrokeMark(
         kind: kind,
         points: points ?? this.points,
@@ -316,7 +317,7 @@ class StrokeMark {
         hardness: hardness,
         strength: strength,
         colour: colour,
-        source: source,
+        source: source ?? this.source,
         tip: tip,
         tilt: tilt ?? this.tilt,
       );

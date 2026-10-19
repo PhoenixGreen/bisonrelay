@@ -146,6 +146,8 @@ List<Widget> elementSettings(
                           ),
                         ]),
                   ]),
+              edgeMaskSection(
+                  e, e.mask, (m) => write(e.copyWith(mask: m)), begin, commit),
             ],
           TeamElement e =>
             teamSettings(context, controller, e, write, begin, commit),

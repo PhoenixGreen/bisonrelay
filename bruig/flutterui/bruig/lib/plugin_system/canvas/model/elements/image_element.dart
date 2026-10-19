@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -578,6 +579,70 @@ class ImageFraming {
       );
 }
 
+/// DriftKind is which way a picture drifts across its scene -- the slow
+/// pan and zoom of a documentary over a still photograph.
+enum DriftKind {
+  none("None"),
+  zoomIn("Zoom in"),
+  zoomOut("Zoom out"),
+  panLeft("Pan left"),
+  panRight("Pan right"),
+  panUp("Pan up"),
+  panDown("Pan down");
+
+  final String label;
+  const DriftKind(this.label);
+
+  static DriftKind fromName(String? name) =>
+      values.firstWhere((k) => k.name == name, orElse: () => none);
+}
+
+/// ImageDrift is a picture moving within its frame across its scene, the
+/// frame itself staying put: a zoom into it, or a pan across it.
+class ImageDrift {
+  final DriftKind kind;
+
+  /// amount is how far: how much closer a zoom ends, and how much closer a
+  /// pan is held, to have room to move across -- 0.15 is 15%.
+  final double amount;
+
+  const ImageDrift({this.kind = DriftKind.none, this.amount = 0.15});
+
+  bool get on => kind != DriftKind.none && amount > 0;
+
+  /// framed is [framing] [t] of the way through the drift, 0 to 1.
+  ImageFraming framed(ImageFraming framing, double t) {
+    t = t.clamp(0.0, 1.0);
+    var a = amount.clamp(0.0, 1.0);
+    double across(double from, double to) => from + (to - from) * t;
+    return switch (kind) {
+      DriftKind.none => framing,
+      DriftKind.zoomIn => framing.copyWith(zoom: framing.zoom * (1 + a * t)),
+      DriftKind.zoomOut =>
+        framing.copyWith(zoom: framing.zoom * (1 + a * (1 - t))),
+      // The camera moves left: the picture slides right under it, so the
+      // part of it shown runs from its right towards its left.
+      DriftKind.panLeft =>
+        framing.copyWith(zoom: framing.zoom * (1 + a), x: across(1, 0)),
+      DriftKind.panRight =>
+        framing.copyWith(zoom: framing.zoom * (1 + a), x: across(0, 1)),
+      DriftKind.panUp =>
+        framing.copyWith(zoom: framing.zoom * (1 + a), y: across(1, 0)),
+      DriftKind.panDown =>
+        framing.copyWith(zoom: framing.zoom * (1 + a), y: across(0, 1)),
+    };
+  }
+
+  ImageDrift copyWith({DriftKind? kind, double? amount}) =>
+      ImageDrift(kind: kind ?? this.kind, amount: amount ?? this.amount);
+
+  Map<String, dynamic> toJson() => {"kind": kind.name, "amount": amount};
+
+  factory ImageDrift.fromJson(Map<String, dynamic> json) => ImageDrift(
+      kind: DriftKind.fromName(json["kind"] as String?),
+      amount: jsonDouble(json["amount"], 0.15).clamp(0.0, 1.0));
+}
+
 /// ImageElement is a picture on the canvas.
 ///
 /// It holds an [assetId], not the bytes. The bytes live once in the canvas
@@ -605,6 +670,10 @@ class ImageElement extends CanvasElement {
   /// framing is where that part sits inside the frame, and how far in. See
   /// [ImageFraming].
   final ImageFraming framing;
+
+  /// drift is the picture moving within its frame across the scene: a slow
+  /// zoom or pan. See ImageDrift.
+  final ImageDrift drift;
 
   /// frame is a shape the picture is cut to -- a circle, a star, a speech
   /// bubble. Null leaves it rectangular.
@@ -649,6 +718,12 @@ class ImageElement extends CanvasElement {
   /// is on the page -- see keptInPlace.
   final bool scaleContent;
 
+  /// clip cuts everything in the picture to its frame: a picture cut to a
+  /// circle, a rounded card. Off, nothing is cut -- a stroke painted past the
+  /// frame, a layer dragged out of it, a shadow -- and the frame grows to take
+  /// in what is drawn past it. See grownToFit.
+  final bool clip;
+
   const ImageElement(
     super.base, {
     this.assetId = "",
@@ -660,6 +735,7 @@ class ImageElement extends CanvasElement {
     this.brightness = 1,
     this.crop = const ImageCrop(),
     this.framing = const ImageFraming(),
+    this.drift = const ImageDrift(),
     this.frame,
     this.filter = ImageFilterPreset.none,
     this.outline = const ImageOutline(),
@@ -670,6 +746,7 @@ class ImageElement extends CanvasElement {
     this.mask = const ImageMask(),
     this.retouch = const [],
     this.scaleContent = false,
+    this.clip = false,
   });
 
   @override
@@ -785,6 +862,7 @@ class ImageElement extends CanvasElement {
       brightness: brightness,
       crop: crop,
       framing: framing,
+      drift: drift,
       frame: frame,
       filter: filter,
       outline: outline,
@@ -794,7 +872,8 @@ class ImageElement extends CanvasElement {
       layers: layers,
       mask: mask,
       retouch: retouch,
-      scaleContent: scaleContent);
+      scaleContent: scaleContent,
+      clip: clip);
 
   ImageElement copyWith({
     String? assetId,
@@ -806,6 +885,7 @@ class ImageElement extends CanvasElement {
     double? brightness,
     ImageCrop? crop,
     ImageFraming? framing,
+    ImageDrift? drift,
     ShapeKind? frame,
     bool clearFrame = false,
     ImageFilterPreset? filter,
@@ -817,6 +897,7 @@ class ImageElement extends CanvasElement {
     ImageMask? mask,
     List<StrokeMark>? retouch,
     bool? scaleContent,
+    bool? clip,
   }) =>
       ImageElement(base,
           assetId: assetId ?? this.assetId,
@@ -828,6 +909,7 @@ class ImageElement extends CanvasElement {
           brightness: brightness ?? this.brightness,
           crop: crop ?? this.crop,
           framing: framing ?? this.framing,
+          drift: drift ?? this.drift,
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
@@ -837,7 +919,8 @@ class ImageElement extends CanvasElement {
           layers: layers ?? this.layers,
           mask: mask ?? this.mask,
           retouch: retouch ?? this.retouch,
-          scaleContent: scaleContent ?? this.scaleContent);
+          scaleContent: scaleContent ?? this.scaleContent,
+          clip: clip ?? this.clip);
 
   @override
   Map<String, dynamic> props() => {
@@ -850,6 +933,7 @@ class ImageElement extends CanvasElement {
         if (brightness != 1) "bri": brightness,
         if (!crop.isWhole) "crop": crop.toJson(),
         if (!framing.isDefault) "framing": framing.toJson(),
+        if (drift.on) "drift": drift.toJson(),
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
@@ -862,6 +946,7 @@ class ImageElement extends CanvasElement {
         if (!mask.empty) "mask": mask.toJson(),
         if (retouch.isNotEmpty) "retouch": [for (var s in retouch) s.toJson()],
         if (scaleContent) "scaleContent": true,
+        if (clip != _clippedBefore(frame, box)) "clip": clip,
       };
 
   factory ImageElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -886,6 +971,8 @@ class ImageElement extends CanvasElement {
           crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
           framing: jsonSpec(
               json["framing"], ImageFraming.fromJson, const ImageFraming()),
+          drift:
+              jsonSpec(json["drift"], ImageDrift.fromJson, const ImageDrift()),
           frame: json["frame"] is String
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,
@@ -904,8 +991,81 @@ class ImageElement extends CanvasElement {
           ],
           mask: jsonSpec(json["mask"], ImageMask.fromJson, const ImageMask()),
           retouch: strokesFromJson(json["retouch"]),
-          scaleContent: jsonBool(json["scaleContent"], false));
+          scaleContent: jsonBool(json["scaleContent"], false),
+          clip: json.containsKey("clip")
+              ? jsonBool(json["clip"], false)
+              : _clippedBefore(
+                  json["frame"] is String ? ShapeKind.rectangle : null,
+                  jsonSpec(json["box"], BoxSpec.fromJson,
+                      const BoxSpec(padding: 0))));
+
+  /// grownToFit is this picture with its frame grown to take in everything
+  /// drawn in it -- its pictures, its paint -- each kept where it is on the
+  /// page. Never smaller: a frame that shrank whenever a stroke was taken
+  /// back would move under the pointer. Unchanged when it clips.
+  ImageElement grownToFit() {
+    if (clip || !layered) return this;
+    var inner = box.inner(bounds);
+    var content = contentRectOf(this, inner);
+    if (content == null) return this;
+    var need = inner.expandToInclude(content);
+    // A hair over is a rounding error, not a stroke past the edge.
+    if (need.left >= inner.left - 0.01 &&
+        need.top >= inner.top - 0.01 &&
+        need.right <= inner.right + 0.01 &&
+        need.bottom <= inner.bottom + 0.01) {
+      return this;
+    }
+    return _framedTo(need, inner);
+  }
+
+  /// fittedToContent is this picture with its frame exactly round what is
+  /// drawn in it -- smaller as well as larger -- everything kept where it is
+  /// on the page.
+  ImageElement fittedToContent() {
+    if (!layered) return this;
+    var inner = box.inner(bounds);
+    var content = contentRectOf(this, inner);
+    if (content == null || content.isEmpty) return this;
+    return _framedTo(content, inner);
+  }
+
+  /// _framedTo is this picture with its inner frame, now [inner], made [to]
+  /// -- the padding round it kept -- and every layer where it was on the
+  /// page, turned picture or not.
+  ImageElement _framedTo(Rect to, Rect inner) {
+    var b = bounds;
+    var next = Rect.fromLTRB(
+        b.left - (inner.left - to.left),
+        b.top - (inner.top - to.top),
+        b.right + (to.right - inner.right),
+        b.bottom + (to.bottom - inner.bottom));
+    var resized = keptInPlace(
+        this,
+        _rebased(base.copyWith(
+            x: next.left,
+            y: next.top,
+            width: next.width,
+            height: next.height)));
+    if (rotation == 0) return resized;
+    // Turned, a picture turns about its middle, and the middle has moved:
+    // the whole of it is carried back by what that moved everything on the
+    // page, so the layers stay where they were seen.
+    var moved = next.center - b.center;
+    var t = rotation * math.pi / 180;
+    var turned = Offset(moved.dx * math.cos(t) - moved.dy * math.sin(t),
+        moved.dx * math.sin(t) + moved.dy * math.cos(t));
+    var d = turned - moved;
+    return resized._rebased(resized.base
+        .copyWith(x: resized.base.x + d.dx, y: resized.base.y + d.dy));
+  }
 }
+
+/// _clippedBefore is whether a picture saved before it could be told to
+/// clip did: one cut to a shape or with rounded corners, so those look as
+/// they did. Every other one draws what runs past its frame.
+bool _clippedBefore(ShapeKind? frame, BoxSpec box) =>
+    frame != null || box.isRounded;
 
 /// fitToPicture gives an element the proportions of the picture in it.
 ///

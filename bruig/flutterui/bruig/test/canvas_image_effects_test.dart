@@ -72,7 +72,8 @@ void main() {
               .copyWith(seed: 42));
       var picture = ImageLayer.picture("red", const Rect.fromLTWH(0, 0, 9, 9))
           .copyWith(effects: [
-        const LayerEffect(kind: EffectKind.dropShadow, colour: ui.Color(0xFF00FF00))
+        const LayerEffect(
+                kind: EffectKind.dropShadow, colour: ui.Color(0xFF00FF00))
             .withValue("distance", 30),
         const LayerEffect(kind: EffectKind.blur, on: false),
       ]);
@@ -106,9 +107,20 @@ void main() {
       images = _Pictures({
         "white": await _picture(8, 8, (x, y) => [255, 255, 255, 255]),
         "grey": await _picture(8, 8, (x, y) => [128, 128, 128, 255]),
+        "black": await _picture(8, 8, (x, y) => [0, 0, 0, 255]),
+        // A white square in the middle third of black: a light on black,
+        // the kind of picture that is screened over a scene.
+        "light": await _picture(
+            30,
+            30,
+            (x, y) => x >= 10 && x < 20 && y >= 10 && y < 20
+                ? [255, 255, 255, 255]
+                : [0, 0, 0, 255]),
         // A red square in the middle third, nothing round it.
-        "square": await _picture(30, 30, (x, y) =>
-            x >= 10 && x < 20 && y >= 10 && y < 20
+        "square": await _picture(
+            30,
+            30,
+            (x, y) => x >= 10 && x < 20 && y >= 10 && y < 20
                 ? [255, 0, 0, 255]
                 : [0, 0, 0, 0]),
       });
@@ -134,13 +146,10 @@ void main() {
     }
 
     /// onWhite is the square over a white ground, with [effects].
-    ImageElement onWhite(List<LayerEffect> effects) => ImageElement(_box,
-        assetId: "white",
-        fit: ImageFit.stretch,
-        layers: [
+    ImageElement onWhite(List<LayerEffect> effects) =>
+        ImageElement(_box, assetId: "white", fit: ImageFit.stretch, layers: [
           ImageLayer.base,
-          ImageLayer.picture(
-                  "square", const Rect.fromLTWH(0, 0, 1000, 1000))
+          ImageLayer.picture("square", const Rect.fromLTWH(0, 0, 1000, 1000))
               .copyWith(effects: effects),
         ]);
 
@@ -148,7 +157,10 @@ void main() {
       var p = await render(ImageElement(_box,
           assetId: "white",
           fit: ImageFit.stretch,
-          layers: [ImageLayer.base, ImageLayer.texturing(TextureKind.vignette)]));
+          layers: [
+            ImageLayer.base,
+            ImageLayer.texturing(TextureKind.vignette)
+          ]));
       expect(at(p, 50, 50)[0], greaterThan(240));
       expect(at(p, 2, 2)[0], lessThan(120));
     });
@@ -170,14 +182,12 @@ void main() {
     });
 
     test("a new seed is a different grain", () async {
-      ImageElement grain(int seed) => ImageElement(_box,
-              assetId: "grey",
-              fit: ImageFit.stretch,
-              layers: [
-                ImageLayer.base,
-                ImageLayer.texturing(TextureKind.grain).copyWith(
-                    texture: TextureSpec(kind: TextureKind.grain, seed: seed))
-              ]);
+      ImageElement grain(int seed) =>
+          ImageElement(_box, assetId: "grey", fit: ImageFit.stretch, layers: [
+            ImageLayer.base,
+            ImageLayer.texturing(TextureKind.grain).copyWith(
+                texture: TextureSpec(kind: TextureKind.grain, seed: seed))
+          ]);
       var a = await render(grain(1)), b = await render(grain(2));
       var same = await render(grain(1));
       expect(a, same, reason: "the same seed draws the same");
@@ -187,17 +197,15 @@ void main() {
     test("a texture is the same texture drawn twice the size", () async {
       // Halftone dots measured in the frame's units: a dot at a point of
       // the canvas is a dot there at any size it is exported at.
-      var e = ImageElement(_box,
-          assetId: "white",
-          fit: ImageFit.stretch,
-          layers: [
-            ImageLayer.base,
-            ImageLayer.texturing(TextureKind.halftone).copyWith(
-                texture: const TextureSpec(kind: TextureKind.halftone)
-                    .withValue("cell", 100)
-                    .withValue("angle", 0)
-                    .withValue("dot", 0.5))
-          ]);
+      var e =
+          ImageElement(_box, assetId: "white", fit: ImageFit.stretch, layers: [
+        ImageLayer.base,
+        ImageLayer.texturing(TextureKind.halftone).copyWith(
+            texture: const TextureSpec(kind: TextureKind.halftone)
+                .withValue("cell", 100)
+                .withValue("angle", 0)
+                .withValue("dot", 0.5))
+      ]);
       var one = await render(e), two = await render(e, scale: 2);
       var agree = 0, count = 0;
       for (var y = 3; y < 100; y += 7) {
@@ -235,6 +243,26 @@ void main() {
       var beside = at(p, 30, 50);
       expect(beside[2], greaterThan(200));
       expect(beside[0], lessThan(60));
+    });
+
+    test("a screened layer glows round what is bright in it", () async {
+      var p = await render(
+          ImageElement(_box, assetId: "black", fit: ImageFit.stretch, layers: [
+        ImageLayer.base,
+        ImageLayer.picture("light", const Rect.fromLTWH(250, 250, 500, 500))
+            .copyWith(blend: LayerBlend.screen, effects: [
+          const LayerEffect(
+                  kind: EffectKind.outerGlow, colour: ui.Color(0xFF0000FF))
+              .withValue("spread", 40)
+              .withValue("size", 0)
+              .withValue("opacity", 1),
+        ]),
+      ]));
+      // The light is 42..58 of a layer 25..75: the glow is round the light,
+      // not round the black the light is on.
+      expect(at(p, 39, 50)[2], greaterThan(150), reason: "round the light");
+      expect(at(p, 23, 50)[2], lessThan(40), reason: "not round the layer");
+      expect(at(p, 50, 50), [255, 255, 255]);
     });
 
     test("an inner shadow darkens the inside of one edge", () async {
@@ -298,8 +326,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
           ChangeNotifierProvider<CanvasPreferences>(
               create: (c) => CanvasPreferences()),
         ],

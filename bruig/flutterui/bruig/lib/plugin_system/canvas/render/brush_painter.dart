@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
@@ -208,6 +209,14 @@ const double _side = 2048;
 /// kept for the next frame.
 void paintPaintLayer(
     ui.Canvas canvas, Rect frame, List<StrokeMark> strokes, String key) {
+  // Retouching on a paint layer is drawn from what is under it -- see
+  // paintRetouchUnder -- not laid down as colour.
+  if (strokes.any((s) => s.kind.retouches)) {
+    strokes = [
+      for (var s in strokes)
+        if (!s.kind.retouches) s
+    ];
+  }
   if (strokes.isEmpty || frame.isEmpty) return;
   var aspect = frame.width / frame.height;
   var size = aspect >= 1
@@ -306,15 +315,16 @@ class SharpenShader {
 /// _blurred is [image] blurred by [sigma] of its own pixels, made once and
 /// kept with it: what sharpening pushes the picture away from.
 ///
-/// A few radii a picture, the most recently used: each is a whole picture's
-/// worth of pixels, and a radius dragged across its range asked for a new
-/// one at every step and kept them all.
-final Expando<Map<double, ui.Image>> _blurs = Expando("sharpenBlurs");
+/// A few in all, the most recently used, whatever picture they are of: each
+/// is a whole picture's worth of pixels. Kept a few a picture, they were
+/// never let go of with the picture -- and a whole-frame retouch makes a new
+/// picture to work on whenever what is under it changes.
+final _blurs = <(ui.Image, double), ui.Image>{};
 const int _blursKept = 4;
 ui.Image _blurred(ui.Image image, double sigma) {
-  var kept = _blurs[image] ??= <double, ui.Image>{};
-  var made = kept.remove(sigma);
-  if (made != null) return kept[sigma] = made;
+  var kept = _blurs;
+  var made = kept.remove((image, sigma));
+  if (made != null) return kept[(image, sigma)] = made;
   var recorder = ui.PictureRecorder();
   var c = ui.Canvas(recorder);
   c.saveLayer(
@@ -324,8 +334,10 @@ ui.Image _blurred(ui.Image image, double sigma) {
             sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp));
   c.drawImage(image, Offset.zero, Paint());
   c.restore();
-  made = recorder.endRecording().toImageSync(image.width, image.height);
-  kept[sigma] = made;
+  var picture = recorder.endRecording();
+  made = picture.toImageSync(image.width, image.height);
+  picture.dispose();
+  kept[(image, sigma)] = made;
   while (kept.length > _blursKept) {
     kept.remove(kept.keys.first)!.dispose();
   }
@@ -408,6 +420,116 @@ void _paintSmudge(ui.Canvas canvas, ui.Image image, Paint picturePaint,
     canvas.drawCircle(at, math.max(0.5, r - sigma), mask);
     canvas.restore();
   }
+}
+
+/// paintRetouchUnder draws the retouching among [strokes] -- in fractions of
+/// the frame -- worked on [below], everything under the layer they are on,
+/// drawn into [frame]. What is under is made into pixels to work on, kept as
+/// [key] while what it is drawn [from] is the same: a stroke being drawn
+/// does not draw everything under it again on every frame.
+void paintRetouchUnder(
+    ui.Canvas canvas, Rect frame, ui.Picture below, List<StrokeMark> strokes,
+    {String? key, List<Object?> from = const []}) {
+  var marks = [
+    for (var s in strokes)
+      if (s.kind.retouches) s
+  ];
+  if (marks.isEmpty || frame.isEmpty) return;
+  var most = math.min(4096 / math.max(frame.width, frame.height),
+      math.sqrt(16e6 / (frame.width * frame.height)));
+  if (RasterCache.drafting) {
+    most = math.min(
+        most, RasterCache.draftSide / math.max(frame.width, frame.height));
+  }
+  var scale = math.max(0.05, math.min(deviceScaleOf(canvas), most));
+  var w = math.max(1, (frame.width * scale).ceil());
+  var h = math.max(1, (frame.height * scale).ceil());
+  var made = key == null
+      ? null
+      : RasterCache.instance.sized(key, [frame.size, ...from], w, h);
+  var kept = made != null;
+  if (made == null) {
+    var recorder = ui.PictureRecorder();
+    var raster = ui.Canvas(recorder);
+    raster.scale(w / frame.width, h / frame.height);
+    raster.translate(-frame.left, -frame.top);
+    raster.drawPicture(below);
+    var picture = recorder.endRecording();
+    made = picture.toImageSync(w, h);
+    picture.dispose();
+    if (key != null) {
+      RasterCache.instance.putSized(key, [frame.size, ...from], made);
+      kept = true;
+    }
+  }
+  var size = Size(made.width.toDouble(), made.height.toDouble());
+  canvas.save();
+  canvas.clipRect(frame);
+  canvas.translate(frame.left, frame.top);
+  canvas.scale(frame.width / size.width, frame.height / size.height);
+  paintRetouchKept(canvas, made, size, marks, null);
+  canvas.restore();
+  if (!kept) made.dispose();
+}
+
+/// paintRetouchKept is paintRetouch with every stroke but the last kept as
+/// pixels, so only the last is drawn again on each frame.
+///
+/// Every stroke drawn afresh on every frame was every blur, every heal, every
+/// clone redone each time the pointer moved -- a picture slower with each
+/// stroke put on it. The strokes before the last change only when a stroke
+/// is taken back, so they are drawn once, as what they put down over a clear
+/// picture, and kept; the last is the one being drawn. Each stroke samples
+/// the picture itself, not the strokes before it, so the two together are
+/// what drawing them all would be.
+void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
+    List<StrokeMark> marks, ColorFilter? colour) {
+  var strokes = [
+    for (var s in marks)
+      if (s.points.isNotEmpty && s.kind.retouches) s
+  ];
+  if (strokes.length < 2 || size.isEmpty) {
+    paintRetouch(canvas, image, size, strokes, colour);
+    return;
+  }
+  var settled = strokes.sublist(0, strokes.length - 1);
+  // Named by the picture and the first stroke on it, which stay the same
+  // object while strokes are added after it: unique to the picture, with
+  // nothing to thread through to here.
+  var key = "retouch|${identityHashCode(image)}|"
+      "${identityHashCode(settled.first)}";
+  var from = <Object?>[image, size, ...settled];
+  var most = math.min(
+      1.0,
+      math.min(4096 / math.max(size.width, size.height),
+          math.sqrt(16e6 / (size.width * size.height))));
+  if (RasterCache.drafting) {
+    most = math.min(
+        most, RasterCache.draftSide / math.max(size.width, size.height));
+  }
+  var w = math.max(1, (size.width * most).ceil());
+  var h = math.max(1, (size.height * most).ceil());
+  var kept = RasterCache.instance.sized(key, from, w, h);
+  if (kept == null) {
+    var recorder = ui.PictureRecorder();
+    var c = ui.Canvas(recorder);
+    c.scale(w / size.width, h / size.height);
+    // Without the picture's colours: they are put on as it is drawn, as
+    // they are on the picture under it.
+    paintRetouch(c, image, size, settled, null);
+    var picture = recorder.endRecording();
+    kept = picture.toImageSync(w, h);
+    picture.dispose();
+    RasterCache.instance.putSized(key, from, kept);
+  }
+  canvas.drawImageRect(
+      kept,
+      Rect.fromLTWH(0, 0, kept.width.toDouble(), kept.height.toDouble()),
+      Offset.zero & size,
+      Paint()
+        ..filterQuality = FilterQuality.medium
+        ..colorFilter = colour);
+  paintRetouch(canvas, image, size, [strokes.last], colour);
 }
 
 /// paintRetouch draws [marks] -- retouching, in fractions of the picture --

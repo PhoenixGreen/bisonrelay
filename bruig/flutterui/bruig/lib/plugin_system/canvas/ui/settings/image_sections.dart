@@ -255,6 +255,8 @@ class _Sections {
             // Framing only where there is slack to frame with -- the note
             // saying so is in the Picture card's "?".
             framing: look.fit == ImageFit.cover,
+            // A drift runs on the picture the element is, not on a layer.
+            drift: picked.isBase,
             filter: false,
             overlay: false,
             outline: false),
@@ -637,6 +639,9 @@ class _Sections {
     var settings = _holds(paintTools)
         ? brushToolSettings(controller, picked)
         : const <Widget>[];
+    var retouching = _holds(retouchTools)
+        ? brushToolSettings(controller, picked)
+        : const <Widget>[];
     var n = picked.strokes.length;
     void set(List<dynamic> next) {
       begin();
@@ -651,7 +656,7 @@ class _Sections {
       summary: n == 0 ? "Nothing painted yet" : "$n stroke${n == 1 ? "" : "s"}",
       remember: _remember("own"),
       initiallyOpen: true,
-      forceOpen: _holds(paintTools),
+      forceOpen: _holds(paintTools) || _holds(retouchTools),
       // Strokes are work done, not a setting moved: no dot, and no reset
       // that would wipe them -- the Strokes group takes them back one at a
       // time, or clears them when that is what is meant.
@@ -661,6 +666,10 @@ class _Sections {
                 "below, or make one of your own; a pen's pressure and lean "
                 "drive it as its Pen settings say."),
         if (_holds(paintTools)) PaintBrushCards(controller: controller),
+        imageToolTiles(controller, e, picked, retouchTools, retouching,
+            help: "Retouching on a paint layer works on everything under it, "
+                "anywhere in the frame: copy one part over another, heal, "
+                "lighten or darken, soften, crisp or smudge."),
         strokesGroup("Paint", picked.strokes, set),
       ],
     );
@@ -824,9 +833,51 @@ class _Sections {
                 ),
               ],
             ),
+            CanvasControlGroup(
+              key: const ValueKey("imageFrameClip"),
+              label: "What runs past the frame",
+              help: "Off, nothing is cut: paint a stroke past the frame or "
+                  "drag a layer out of it and the frame grows to take it in, "
+                  "and a shadow or a glow is drawn where it falls. On, "
+                  "everything is cut to the frame -- for a picture cut to a "
+                  "shape, or with rounded corners. Fit to content makes the "
+                  "frame exactly round what is in it, smaller as well as "
+                  "larger.",
+              rule: false,
+              children: [
+                CanvasToggle(
+                  key: const ValueKey("imageClip"),
+                  label: "Clip to frame",
+                  value: e.clip,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(clip: v));
+                    commit();
+                  },
+                ),
+                CanvasTextButton(
+                  key: const ValueKey("imageFitFrame"),
+                  icon: Icons.fit_screen_outlined,
+                  label: "Fit frame to content",
+                  onPressed: () {
+                    begin();
+                    write(e.fittedToContent());
+                    commit();
+                  },
+                ),
+              ],
+            ),
           ],
           presetsSection(context, controller, e),
-          boxGroup(e.box, (box) => write(e.copyWith(box: box)), begin, commit,
+          // Rounding the corners cuts to them: corners round a picture that
+          // spills past them are not corners.
+          boxGroup(
+              e.box,
+              (box) => write(e.copyWith(
+                  box: box,
+                  clip: box.isRounded && !e.box.isRounded ? true : null)),
+              begin,
+              commit,
               remember: "image",
               label: "Background and border",
               fillLabel: "Background",

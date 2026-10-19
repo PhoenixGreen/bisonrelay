@@ -20,7 +20,11 @@ String toolHint(CanvasController controller, ImageTool tool) => switch (tool) {
       ImageTool.refine => "Brush along hair and soft edges",
       ImageTool.brush => "Paint to hide · X swaps to show",
       ImageTool.lasso => "Draw round what to hide",
-      ImageTool.fade => "Drag the way the fade runs",
+      ImageTool.fade => controller.maskRadial
+          ? "Drag out from the middle · whole inside, faded past the end"
+          : controller.maskHide
+              ? "Drag from hidden to shown"
+              : "Drag from brought back to unchanged",
       ImageTool.paint => "Paint · the pen's pressure sets the width",
       ImageTool.erase => "Rub out paint",
       ImageTool.clone => controller.cloneFrom == null

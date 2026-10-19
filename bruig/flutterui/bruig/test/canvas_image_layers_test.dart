@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -83,6 +84,28 @@ Future<List<int>> _pixel(
 const _box = ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100);
 
 void main() {
+  test("a background layer saved as dodge comes back as colour dodge", () {
+    expect(LayerBlend.fromName("dodge"), LayerBlend.colorDodge);
+    expect(LayerBlend.fromName("colorDodge"), LayerBlend.colorDodge);
+    expect(LayerBlend.fromName("nonsense"), LayerBlend.normal);
+  });
+
+  test("a picture layer's mask, given to the layer, is its look's", () {
+    // Its own mask field is for the other kinds of layer; a mask handed to a
+    // picture layer went there and was never read.
+    const mask = ImageMask(marks: [
+      MaskMark(kind: MaskMarkKind.fade, points: [Offset(0, 0), Offset(1, 1)]),
+    ]);
+    var layer = ImageLayer.picture(
+            "aaaaaaaaaaaaaaa1", const Rect.fromLTWH(0, 0, 500, 500))
+        .copyWith(mask: mask);
+    expect(layer.look!.mask.marks, hasLength(1));
+    var fill = ImageLayer.solid(const PaintSpec(Color(0xFF000000)))
+        .copyWith(mask: mask);
+    expect(fill.mask.marks, hasLength(1),
+        reason: "the other kinds keep theirs");
+  });
+
   test("a flipped layer with an effect keeps both when it is saved", () {
     var l = ImageLayer.picture(
             "aaaaaaaaaaaaaaa1", const Rect.fromLTWH(0, 0, 500, 500))

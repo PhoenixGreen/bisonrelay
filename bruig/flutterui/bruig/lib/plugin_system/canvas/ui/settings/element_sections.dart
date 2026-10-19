@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/storage/element_preset_store.dart';
@@ -200,3 +201,77 @@ Widget notInCards(Widget child) => Builder(
 Widget onlyInCards(Widget child) => Builder(
     builder: (context) =>
         CanvasCards.on(context) ? child : const SizedBox.shrink());
+
+/// edgeMaskSection is [mask], the edges of [e]'s box softened and faded --
+/// for a video or a pattern, whose hard rectangle is so often what needs
+/// taking away.
+Widget edgeMaskSection(CanvasElement e, EdgeMask mask,
+    ValueChanged<EdgeMask> write, VoidCallback begin, VoidCallback commit) {
+  void now(EdgeMask next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  return section(e, "mask",
+      icon: Icons.blur_on,
+      title: "Mask",
+      summary: !mask.on
+          ? "Hard edges"
+          : [
+              if (mask.feather > 0) "soft ${(mask.feather * 100).round()}%",
+              if (mask.fade != EdgeFade.none) mask.fade.label.toLowerCase(),
+            ].join(" · "),
+      changes: mask.on ? 1 : 0,
+      onReset: () => now(const EdgeMask()),
+      children: [
+        CanvasControlGroup(
+            key: const ValueKey("edgeMask"),
+            label: "Edges",
+            help: "Soft edges fade the whole box out round its rim. A fade "
+                "takes it away from one side, from two, or from the rim in "
+                "-- whole in the middle. Reach is how far in the fade runs.",
+            rule: false,
+            children: [
+              CanvasNumberField(
+                key: const ValueKey("edgeMaskFeather"),
+                label: "Soft",
+                value: mask.feather * 100,
+                min: 0,
+                max: 50,
+                decimals: 0,
+                suffix: "%",
+                width: 52,
+                onChanged: (v) {
+                  begin();
+                  write(mask.copyWith(feather: v / 100));
+                },
+                onCommit: commit,
+              ),
+              CanvasDropdown<EdgeFade>(
+                key: const ValueKey("edgeMaskFade"),
+                label: "Fade",
+                value: mask.fade,
+                width: 140,
+                options: [for (var f in EdgeFade.values) (f, f.label)],
+                onChanged: (v) => now(mask.copyWith(fade: v)),
+              ),
+              if (mask.fade != EdgeFade.none)
+                CanvasNumberField(
+                  key: const ValueKey("edgeMaskReach"),
+                  label: "Reach",
+                  value: mask.reach * 100,
+                  min: 1,
+                  max: 100,
+                  decimals: 0,
+                  suffix: "%",
+                  width: 52,
+                  onChanged: (v) {
+                    begin();
+                    write(mask.copyWith(reach: v / 100));
+                  },
+                  onCommit: commit,
+                ),
+            ]),
+      ]);
+}

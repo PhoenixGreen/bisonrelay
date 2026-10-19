@@ -2131,6 +2131,34 @@ void _chartTests() {
       expect(legendEntriesForTest(e, 1).map((k) => k.name), ["A", "B"]);
     });
 
+    test("a donut writes its centre label in its hole", () async {
+      var e = ChartElement(
+        const ElementBase(id: "c", width: 400, height: 300),
+        type: ChartType.donut,
+        data: ChartData.parse("Cat\tShare\nOne\t8\nTwo\t14\nThree\t11"),
+        valueSpec:
+            const TextSpec(fontSize: 14, weight: 700, color: Color(0xFFFFFFFF)),
+      );
+      int lit(Uint8List p) {
+        // The hole: a box well inside the ring, round the middle.
+        var n = 0;
+        for (var y = 135; y < 165; y++) {
+          for (var x = 170; x < 230; x++) {
+            var i = (y * 400 + x) * 4;
+            if (p[i + 3] > 200 && p[i] > 200 && p[i + 1] > 200) n++;
+          }
+        }
+        return n;
+      }
+
+      expect(lit(await _chartPixels(e)), 0, reason: "an empty hole");
+      var labelled = e.copyWith(centreLabel: "{total}");
+      expect(lit(await _chartPixels(labelled)), greaterThan(40));
+      var back = elementFromJson(labelled.toJson()) as ChartElement;
+      expect(back.centreLabel, "{total}");
+      expect((elementFromJson(e.toJson()) as ChartElement).centreLabel, "");
+    });
+
     test("floating labels leave the chart exactly where it was", () async {
       // The reported fault: a key moved to the left took a third of the
       // width, so a pie became a small ring in the corner -- a change to the

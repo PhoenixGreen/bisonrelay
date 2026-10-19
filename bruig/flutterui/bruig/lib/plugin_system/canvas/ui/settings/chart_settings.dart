@@ -721,6 +721,40 @@ List<Widget> chartSettings(
           // A pie's slices are one series' values, so their colours are the
           // categories' rather than the series' -- a button each, in the order the
           // slices are drawn.,
+          // A donut's hole: how big, and what is written in it.
+          if (e.type == ChartType.donut)
+            CanvasControlGroup(
+                key: const ValueKey("chartDonutHole"),
+                label: "Middle",
+                rule: false,
+                children: [
+                  CanvasNumberField(
+                    key: const ValueKey("chartHole"),
+                    label: "Hole",
+                    value: e.innerRadius * 100,
+                    min: 10,
+                    max: 90,
+                    decimals: 0,
+                    suffix: "%",
+                    width: 52,
+                    onChanged: (v) {
+                      begin();
+                      write(e.copyWith(innerRadius: v / 100));
+                    },
+                    onCommit: commit,
+                  ),
+                  CanvasTextField(
+                    key: const ValueKey("chartCentreLabel"),
+                    label: "Says",
+                    hint: "{total}",
+                    value: e.centreLabel,
+                    width: 140,
+                    onChanged: (v) => write(e.copyWith(centreLabel: v)),
+                    onCommit: commit,
+                  ),
+                  const CanvasHint("Words in the middle of the ring. {total} "
+                      "is the slices added up, and counts up as they arrive."),
+                ]),
           CanvasControlGroup(
               label: "Numbers",
               hideCaption: true,

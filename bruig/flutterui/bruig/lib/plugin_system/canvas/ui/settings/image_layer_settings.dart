@@ -1280,6 +1280,23 @@ List<Widget> maskToolSettings(
       ),
       percent("maskFadeStrength", "Strength", controller.maskStrength, 1, 100,
           (v) => controller.maskStrength = v),
+      // Which end is which is the one thing a fade cannot show before it
+      // is drawn, and the wrong guess is the picture gone where it was meant
+      // to stay.
+      CanvasHint(switch ((controller.maskRadial, controller.maskHide)) {
+        (false, true) => "Press where the picture is to be gone and drag to "
+            "where it is to be whole: hidden where you press, shown where "
+            "you let go.",
+        (false, false) => "Press where the picture is to come back fully "
+            "and drag to where it stays as it was: shown where you press, "
+            "unchanged where you let go.",
+        (true, true) => "Press in the middle, which stays whole, and drag "
+            "out to where it is to be gone: shown in the middle, hidden past "
+            "where you let go.",
+        (true, false) => "Press in the middle and drag out: the middle "
+            "stays as it was, and everything past where you let go comes "
+            "back.",
+      }),
     ],
   ];
 }
@@ -1465,14 +1482,30 @@ List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
 /// retouching brush is in hand.
 List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
   var tool = controller.imageTool;
-  if (tool.retouches &&
-      picked.kind != LayerKind.base &&
-      picked.kind != LayerKind.picture) {
-    return const [
-      CanvasHint("Retouching works on a picture: pick the base picture or a "
-          "picture layer."),
-    ];
-  }
+  var picture =
+      picked.kind == LayerKind.base || picked.kind == LayerKind.picture;
+  var scope = <Widget>[
+    if (tool.retouches && picture) ...[
+      CanvasSegmented<bool>(
+        key: const ValueKey("retouchScope"),
+        label: "Works on",
+        options: const [(false, "This picture"), (true, "Every layer")],
+        value: controller.retouchWholeFrame,
+        keyOf: (whole) => whole ? "retouchWhole" : "retouchPicture",
+        onChanged: (whole) => controller.retouchWholeFrame = whole,
+      ),
+      if (controller.retouchWholeFrame)
+        const CanvasHint("Works on everything in the frame as it looks, "
+            "anywhere in the frame. The strokes go on a Retouch layer of "
+            "their own, over this one."),
+    ],
+    if (tool.retouches && !picture)
+      CanvasHint(picked.kind == LayerKind.paint
+          ? "Works on everything under this layer, anywhere in the frame."
+          : "Works on everything under this layer, anywhere in the frame. "
+              "The strokes go on a Retouch layer of their own, over this "
+              "one."),
+  ];
   Widget percent(String key, String label, double value, double min, double max,
           ValueChanged<double> set,
           {int decimals = 0}) =>
@@ -1508,6 +1541,7 @@ List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
     _ => "Softens what it goes over.",
   };
   return [
+    ...scope,
     if (tool == ImageTool.paint)
       CanvasColorButton(
         key: const ValueKey("paintColour"),

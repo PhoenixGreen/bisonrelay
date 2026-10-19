@@ -110,7 +110,10 @@ class _Placed {
 
   _Placed(this.element, this.start, this.until);
 
+  /// clip is the element's clip as the export plays it: a video that is not
+  /// on the timeline from the start of its scene, wherever it was once put.
   MediaClip get clip => switch (element) {
+        VideoElement v when !v.clip.timed => v.clip.copyWith(at: 0),
         VideoElement v => v.clip,
         AudioElement a => a.clip,
         _ => const MediaClip(),
@@ -126,8 +129,12 @@ class _Placed {
   }
 }
 
+/// _timed is whether [e] plays in an export. A video plays whether it is on
+/// the timeline or not: one that is not starts with its scene, as a film
+/// has no viewer to press its play button -- and a poster with a player's
+/// controls drawn on it was what it had been.
 bool _timed(CanvasElement e) => switch (e) {
-      VideoElement v => v.clip.timed && !v.isLink && !v.clip.isEmpty,
+      VideoElement v => !v.isLink && !v.clip.isEmpty,
       AudioElement a => a.clip.timed && !a.clip.isEmpty,
       _ => false,
     };
@@ -212,7 +219,15 @@ class ExportMedia {
       if (frame < p.start || frame >= p.until) continue;
       var moment = _momentAt(p, frame);
       if (moment == null) {
-        shows[e.id] = const VideoShow(hidden: true);
+        // A video that is not on the timeline stays on its last frame once
+        // it has played, as it does on the page; one on the timeline has
+        // been cut out.
+        shows[e.id] = e.clip.timed
+            ? const VideoShow(hidden: true)
+            : VideoShow(
+                controls: false,
+                frame: p.current?.image,
+                poster: e.clip.playlist.last.posterId);
         continue;
       }
       await _frameAt(p, moment);
@@ -227,6 +242,7 @@ class ExportMedia {
         frame: p.current?.image,
         poster: source.posterId,
         opacity: moment.gain,
+        controls: false,
       );
     }
     return (e) => shows[e.id] ?? VideoShow.idle(e);

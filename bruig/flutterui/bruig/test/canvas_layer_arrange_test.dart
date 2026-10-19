@@ -79,8 +79,7 @@ void main() {
     });
 
     test("aligned to the bottom, each meets the lowest", () {
-      var e =
-          withLayersAligned(_element(), [_a.id, _b.id], CanvasAlign.bottom);
+      var e = withLayersAligned(_element(), [_a.id, _b.id], CanvasAlign.bottom);
       expect(e.layerById(_a.id)!.place.bottom, closeTo(900, 1e-6));
       expect(e.layerById(_b.id)!.place.bottom, closeTo(900, 1e-6));
     });
@@ -91,10 +90,8 @@ void main() {
       var long = ImageLayer.picture(
               "ccccccccccccccc1", const Rect.fromLTWH(0, 0, 400, 100))
           .placed(const Rect.fromLTWH(0, 0, 400, 100), turn: 90);
-      var e = withLayersAligned(
-          _element(layers: [ImageLayer.base, long, _b]),
-          [long.id, _b.id],
-          CanvasAlign.left);
+      var e = withLayersAligned(_element(layers: [ImageLayer.base, long, _b]),
+          [long.id, _b.id], CanvasAlign.left);
       expect(e.layerById(_b.id)!.place.left, closeTo(150, 1e-6));
       expect(e.layerById(long.id)!.place, long.place, reason: "outermost");
     });
@@ -102,10 +99,8 @@ void main() {
     test("spread, the gaps come out even and the ends stay", () {
       var c1 = ImageLayer.picture(
           "ccccccccccccccc1", const Rect.fromLTWH(100, 0, 100, 100));
-      var e = withLayersSpread(
-          _element(layers: [ImageLayer.base, _a, c1, _b]),
-          [_a.id, c1.id, _b.id],
-          true);
+      var e = withLayersSpread(_element(layers: [ImageLayer.base, _a, c1, _b]),
+          [_a.id, c1.id, _b.id], true);
       var a = e.layerById(_a.id)!.place;
       var c = e.layerById(c1.id)!.place;
       var b = e.layerById(_b.id)!.place;
@@ -186,12 +181,19 @@ void main() {
       await tester.dragFrom(
           screen(const Offset(150, 150)), Offset(40 * scale, 0));
       await tester.pumpAndSettle();
-      var a = _now(c).layerById(_a.id)!.place;
-      var b = _now(c).layerById(_b.id)!.place;
-      expect(a.left, greaterThan(100), reason: "the one held moved");
-      expect(b.left - _b.place.left, closeTo(a.left - _a.place.left, 1e-6),
+      // On the page: one dragged past the frame grows it, and what a place
+      // is in -- fractions of the frame -- with it.
+      Rect onPage(ImageElement e, Rect place) =>
+          layerRect(e.box.inner(e.bounds), place);
+      var was = _element(), now = _now(c);
+      var a = onPage(now, now.layerById(_a.id)!.place);
+      var b = onPage(now, now.layerById(_b.id)!.place);
+      var a0 = onPage(was, _a.place), b0 = onPage(was, _b.place);
+      expect(a.left, greaterThan(a0.left), reason: "the one held moved");
+      expect(b.left - b0.left, closeTo(a.left - a0.left, 1e-6),
           reason: "and the other with it, as far");
-      expect(a.top, _a.place.top);
+      expect(a.top, closeTo(a0.top, 1e-6));
+      expect(a.width, closeTo(a0.width, 1e-6), reason: "its size kept");
 
       c.undo();
       expect(_now(c).layerById(_a.id)!.place, _a.place, reason: "one step");
@@ -221,8 +223,7 @@ void main() {
       expect(_now(c).x, 101);
     });
 
-    testWidgets("work from the layers list as from the canvas",
-        (tester) async {
+    testWidgets("work from the layers list as from the canvas", (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(const CanvasDocument().addElement(_element()));
       addTearDown(c.dispose);
@@ -275,12 +276,21 @@ void main() {
       await tester.dragFrom(
           screen(const Offset(240, 140)), Offset(30 * scale, 0));
       await tester.pumpAndSettle();
-      var base = _now(c).layerById(baseLayerId)!.place;
-      expect(base.left, greaterThan(50), reason: "the base moved: $base");
-      expect(base.width, layerUnits, reason: "its size kept");
-      expect(_now(c).layerById(_a.id)!.place, _a.place,
-          reason: "and nothing else");
-      expect(_now(c).x, 100, reason: "the frame stayed put");
+      // Dragged part way out of its frame, which grows to take it in: on
+      // the page, it moved and nothing else did.
+      Rect onPage(ImageElement e, Rect place) =>
+          layerRect(e.box.inner(e.bounds), place);
+      var was = _element(), now = _now(c);
+      var base = onPage(now, now.layerById(baseLayerId)!.place);
+      var base0 = onPage(was, was.layerById(baseLayerId)!.place);
+      expect(base.left, greaterThan(base0.left + 20),
+          reason: "the base moved: $base");
+      expect(base.width, closeTo(base0.width, 1e-6), reason: "its size kept");
+      var a = onPage(now, now.layerById(_a.id)!.place);
+      var a0 = onPage(was, _a.place);
+      expect(a.topLeft.dx, closeTo(a0.left, 1e-6), reason: "and nothing else");
+      expect(a.topLeft.dy, closeTo(a0.top, 1e-6));
+      expect(_now(c).x, 100, reason: "the frame's left stayed put");
     });
   });
 
@@ -320,15 +330,15 @@ void main() {
       await tapKey(tester, "imageLayer-${_b.id}");
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       expect(c.imageLayers, [_a.id, _b.id]);
-      expect(find.byKey(const ValueKey("imageSection-arrange")), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("imageSection-arrange")), findsOneWidget);
 
       await tapKey(tester, "layerAlign-left");
       expect(_now(c).layerById(_b.id)!.place.left, closeTo(0, 1e-6));
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a long press carries a layer along the strip",
-        (tester) async {
+    testWidgets("a long press carries a layer along the strip", (tester) async {
       var c = await pumpPanel(tester);
       if (find.byKey(const ValueKey("imageLayersRows")).evaluate().isNotEmpty) {
         await tapKey(tester, "imageLayersOpen");
@@ -365,9 +375,7 @@ void main() {
       // And it writes the crop.
       await typeInto(
           tester,
-          find
-              .descendant(of: crop, matching: find.byType(CanvasStepper))
-              .first,
+          find.descendant(of: crop, matching: find.byType(CanvasStepper)).first,
           "0.25");
       expect(_now(c).layerById(_a.id)!.look!.crop.left, closeTo(0.25, 1e-6));
     });

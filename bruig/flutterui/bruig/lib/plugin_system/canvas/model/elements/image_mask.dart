@@ -80,12 +80,14 @@ class MaskMark {
     this.radial = false,
   });
 
-  MaskMark copyWith({List<Offset>? points, List<double>? pressure}) => MaskMark(
+  MaskMark copyWith(
+          {List<Offset>? points, List<double>? pressure, double? radius}) =>
+      MaskMark(
         kind: kind,
         points: points ?? this.points,
         hide: hide,
         pressure: pressure ?? this.pressure,
-        radius: radius,
+        radius: radius ?? this.radius,
         hardness: hardness,
         strength: strength,
         radial: radial,

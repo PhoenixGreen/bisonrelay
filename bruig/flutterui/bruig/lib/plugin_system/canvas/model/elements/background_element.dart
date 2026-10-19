@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/procedural_spec.dart';
 
 /// BackgroundElement is a generated pattern in a rectangle.
@@ -19,28 +20,35 @@ class BackgroundElement extends CanvasElement {
   /// block.
   final double cornerRadius;
 
+  /// mask softens its edges and fades it out. See EdgeMask.
+  final EdgeMask mask;
+
   const BackgroundElement(
     super.base, {
     this.spec = const ProceduralSpec(),
     this.cornerRadius = 0,
+    this.mask = const EdgeMask(),
   });
 
   @override
   ElementKind get kind => ElementKind.background;
 
   @override
-  CanvasElement rebase(ElementBase base) =>
-      BackgroundElement(base, spec: spec, cornerRadius: cornerRadius);
+  CanvasElement rebase(ElementBase base) => BackgroundElement(base,
+      spec: spec, cornerRadius: cornerRadius, mask: mask);
 
-  BackgroundElement copyWith({ProceduralSpec? spec, double? cornerRadius}) =>
+  BackgroundElement copyWith(
+          {ProceduralSpec? spec, double? cornerRadius, EdgeMask? mask}) =>
       BackgroundElement(base,
           spec: spec ?? this.spec,
-          cornerRadius: cornerRadius ?? this.cornerRadius);
+          cornerRadius: cornerRadius ?? this.cornerRadius,
+          mask: mask ?? this.mask);
 
   @override
   Map<String, dynamic> props() => {
         "spec": spec.toJson(),
         if (cornerRadius > 0) "cr": cornerRadius,
+        if (mask.on) "mask": mask.toJson(),
       };
 
   factory BackgroundElement.fromJson(
@@ -48,5 +56,6 @@ class BackgroundElement extends CanvasElement {
       BackgroundElement(b,
           spec: jsonSpec(
               json["spec"], ProceduralSpec.fromJson, const ProceduralSpec()),
-          cornerRadius: jsonDouble(json["cr"], 0));
+          cornerRadius: jsonDouble(json["cr"], 0),
+          mask: jsonSpec(json["mask"], EdgeMask.fromJson, const EdgeMask()));
 }

@@ -1140,6 +1140,16 @@ TextSpan _partedSpan(String text, TextSpec spec, List<TextPart> parts,
 /// paintBox draws a [BoxSpec]: the fill, then the border, both rounded.
 void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
     [CanvasImageSource? images]) {
+  paintBoxFill(canvas, rect, box, images);
+  paintBoxBorder(canvas, rect, box);
+}
+
+/// paintBoxFill is the inside of a box -- its colour, and a picture or a
+/// pattern over that -- without its border, for an element that draws
+/// something over its fill and then its border over that. See
+/// paintBoxBorder.
+void paintBoxFill(ui.Canvas canvas, Rect rect, BoxSpec box,
+    [CanvasImageSource? images]) {
   if (rect.width <= 0 || rect.height <= 0) return;
   var filled = PaintSpec(box.fill, gradient: box.fillFade);
   if (filled.shows) {
@@ -1152,6 +1162,11 @@ void paintBox(ui.Canvas canvas, Rect rect, BoxSpec box,
     paintThroughText(canvas, rect, box.painted, images,
         () => canvas.drawRRect(box.rounded(rect), Paint()));
   }
+}
+
+/// paintBoxBorder is a box's border alone, inside its edge.
+void paintBoxBorder(ui.Canvas canvas, Rect rect, BoxSpec box) {
+  if (rect.width <= 0 || rect.height <= 0) return;
   if (!box.hasBorder) return;
 
   var paint =

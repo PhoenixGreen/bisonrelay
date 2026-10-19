@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -10,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
+import 'package:bruig/plugin_system/canvas/render/brush_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -84,15 +87,15 @@ void main() {
           colour: ui.Color(0xFF00FF00),
           strength: 0.5),
     ]);
-    var e = ImageElement(_box,
-        assetId: "white",
-        retouch: [
-          const StrokeMark(
-              kind: StrokeKind.clone,
-              points: [Offset(0.5, 0.5)],
-              source: Offset(-0.25, 0.1)),
-        ],
-        layers: [ImageLayer.base, paint]);
+    var e = ImageElement(_box, assetId: "white", retouch: [
+      const StrokeMark(
+          kind: StrokeKind.clone,
+          points: [Offset(0.5, 0.5)],
+          source: Offset(-0.25, 0.1)),
+    ], layers: [
+      ImageLayer.base,
+      paint
+    ]);
     var back = elementFromJson(e.toJson()) as ImageElement;
     var s = back.layers[1].strokes.single;
     expect(back.layers[1].kind, LayerKind.paint);
@@ -152,8 +155,7 @@ void main() {
               ImageLayer(id: "paint", kind: LayerKind.paint, strokes: strokes),
             ]);
 
-    test("a brush's tip and the pen's lean come back as they were saved",
-        () {
+    test("a brush's tip and the pen's lean come back as they were saved", () {
       const tip = BrushTip(
           roundness: 0.2,
           angle: 30,
@@ -202,8 +204,8 @@ void main() {
 
     test("a flat nib lying along the line is thin across it", () async {
       var round = reachUp(await render(painted([tipped(const BrushTip())])));
-      var flat = reachUp(await render(painted(
-          [tipped(const BrushTip(roundness: 0.2, spacing: 0.1))])));
+      var flat = reachUp(await render(
+          painted([tipped(const BrushTip(roundness: 0.2, spacing: 0.1))])));
       expect(round, greaterThanOrEqualTo(8));
       expect(flat, lessThanOrEqualTo(3), reason: "a fifth as tall: $flat");
     });
@@ -232,9 +234,8 @@ void main() {
       }
 
       var solid = red(await render(painted([tipped(const BrushTip())])));
-      var grainy = red(await render(painted([
-        tipped(const BrushTip(grain: 0.9, spacing: 0.6))
-      ])));
+      var grainy = red(await render(
+          painted([tipped(const BrushTip(grain: 0.9, spacing: 0.6))])));
       expect(grainy, lessThan(solid * 0.9), reason: "$grainy of $solid");
     });
 
@@ -324,6 +325,124 @@ void main() {
       expect(at(p, 90, 50), [0, 0, 255], reason: "only where it went");
     });
 
+    test("retouching on a paint layer works on every layer under it", () async {
+      // Green painted on the left, on a layer of its own over the picture;
+      // a clone on a second paint layer copies it to the right.
+      var e =
+          ImageElement(_box, assetId: "white", fit: ImageFit.stretch, layers: [
+        ImageLayer.base,
+        ImageLayer(id: "paint", kind: LayerKind.paint, strokes: [
+          StrokeMark(
+              kind: StrokeKind.paint,
+              points: const [Offset(0.1, 0.3), Offset(0.4, 0.3)],
+              radius: 0.08,
+              hardness: 1,
+              colour: const ui.Color(0xFF00FF00)),
+        ]),
+        ImageLayer(id: "retouch", kind: LayerKind.paint, strokes: [
+          const StrokeMark(
+              kind: StrokeKind.clone,
+              points: [Offset(0.6, 0.3), Offset(0.9, 0.3)],
+              radius: 0.08,
+              hardness: 1,
+              source: Offset(-0.5, 0)),
+        ]),
+      ]);
+      var p = await render(e);
+      expect(at(p, 25, 30), [0, 255, 0]);
+      expect(at(p, 75, 30), [0, 255, 0], reason: "copied from the layer under");
+      expect(at(p, 75, 70), [255, 255, 255], reason: "only where it went");
+    });
+
+    test("a drift pans across the picture the length of the scene", () async {
+      // Red on the left half, blue on the right, held twice as close: the
+      // middle of the frame is red at the start and blue by the end.
+      var e = ImageElement(_box,
+          assetId: "halves",
+          fit: ImageFit.cover,
+          drift: const ImageDrift(kind: DriftKind.panRight, amount: 1));
+      Future<List<int>> middleAt(int frame) async {
+        var document = CanvasDocument(
+            size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+            frames: 11,
+            elements: [e]);
+        var image = await renderFrame(document, images: images, frame: frame);
+        try {
+          var raw = await image.toByteData(
+              format: ui.ImageByteFormat.rawStraightRgba);
+          return at(raw!.buffer.asUint8List(), 50, 50);
+        } finally {
+          image.dispose();
+        }
+      }
+
+      expect(await middleAt(0), [255, 0, 0]);
+      expect(await middleAt(10), [0, 0, 255]);
+      var back = elementFromJson(e.toJson()) as ImageElement;
+      expect(back.drift.kind, DriftKind.panRight);
+      expect(back.drift.amount, 1);
+    });
+
+    test("a zoom drift starts where the framing is and closes in", () {
+      const drift = ImageDrift(kind: DriftKind.zoomIn, amount: 0.2);
+      const framing = ImageFraming(x: 0.3, zoom: 1.5);
+      expect(drift.framed(framing, 0).zoom, 1.5);
+      expect(drift.framed(framing, 1).zoom, closeTo(1.8, 1e-9));
+      expect(drift.framed(framing, 1).x, 0.3);
+      const out = ImageDrift(kind: DriftKind.zoomOut, amount: 0.2);
+      expect(out.framed(const ImageFraming(), 1).zoom, 1);
+    });
+
+    test("strokes kept as pixels draw what drawing them all afresh does",
+        () async {
+      var picture = images.images["halves"]!;
+      const size = Size(20, 20);
+      var marks = [
+        _across(StrokeKind.blur, y: 0.2),
+        _across(StrokeKind.dodge, y: 0.45),
+        _across(StrokeKind.clone, y: 0.7, source: const Offset(0.3, 0)),
+        _across(StrokeKind.blur, y: 0.85),
+      ];
+      Future<Uint8List> draw(void Function(Canvas) paint) async {
+        var recorder = ui.PictureRecorder();
+        var canvas = Canvas(recorder);
+        canvas.drawImage(picture, Offset.zero, Paint());
+        paint(canvas);
+        var image = await recorder.endRecording().toImage(20, 20);
+        try {
+          return (await image.toByteData(
+                  format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
+        } finally {
+          image.dispose();
+        }
+      }
+
+      var fresh =
+          await draw((c) => paintRetouch(c, picture, size, marks, null));
+      var drawn = RasterCache.instance.drawn;
+      var kept =
+          await draw((c) => paintRetouchKept(c, picture, size, marks, null));
+      expect(RasterCache.instance.drawn, drawn + 1);
+      var worst = 0;
+      for (var i = 0; i < fresh.length; i++) {
+        worst = math.max(worst, (fresh[i] - kept[i]).abs());
+      }
+      expect(worst, lessThan(6));
+
+      // The next stroke grows: the ones before it are not drawn again.
+      var grown = [
+        ...marks.sublist(0, 3),
+        marks.last.copyWith(points: [
+          ...marks.last.points,
+          const Offset(0.95, 0.9),
+        ])
+      ];
+      await draw((c) => paintRetouchKept(c, picture, size, grown, null));
+      expect(RasterCache.instance.drawn, drawn + 1);
+    });
+
     test("spot heal fills the spot with what is round it", () async {
       var plain = await render(retouched("spot", const []));
       expect(at(plain, 50, 50)[1], lessThan(30));
@@ -402,7 +521,8 @@ void main() {
 
   group("on the stage", () {
     Future<(CanvasController, Offset Function(Offset))> open(
-        WidgetTester tester, ImageTool tool, {String asset = "white"}) async {
+        WidgetTester tester, ImageTool tool,
+        {String asset = "white"}) async {
       var key = GlobalKey<CanvasStageState>();
       var c = CanvasController(const CanvasDocument().addElement(ImageElement(
           const ElementBase(id: "i", x: 100, y: 100, width: 200, height: 200),
@@ -416,8 +536,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -449,7 +568,8 @@ void main() {
     testWidgets("painting on a picture makes a paint layer for it",
         (tester) async {
       var (c, screen) = await open(tester, ImageTool.paint);
-      await tester.dragFrom(screen(const Offset(150, 200)), const Offset(60, 0));
+      await tester.dragFrom(
+          screen(const Offset(150, 200)), const Offset(60, 0));
       await tester.pumpAndSettle();
       var paint = now(c).stack.last;
       expect(paint.kind, LayerKind.paint);
@@ -466,7 +586,8 @@ void main() {
     testWidgets("Option paints with the eraser", (tester) async {
       var (c, screen) = await open(tester, ImageTool.paint);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-      await tester.dragFrom(screen(const Offset(150, 200)), const Offset(60, 0));
+      await tester.dragFrom(
+          screen(const Offset(150, 200)), const Offset(60, 0));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pumpAndSettle();
       expect(now(c).stack.last.strokes.single.kind, StrokeKind.erase);
@@ -475,7 +596,8 @@ void main() {
     testWidgets("clone wants a source, then keeps its distance from it",
         (tester) async {
       var (c, screen) = await open(tester, ImageTool.clone);
-      await tester.dragFrom(screen(const Offset(250, 200)), const Offset(20, 0));
+      await tester.dragFrom(
+          screen(const Offset(250, 200)), const Offset(20, 0));
       await tester.pumpAndSettle();
       expect(now(c).retouch, isEmpty);
       expect(c.maskNote, contains("Option-click"));
@@ -486,9 +608,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.cloneFrom!.dx, closeTo(0.25, 0.02));
 
-      await tester.dragFrom(screen(const Offset(250, 200)), const Offset(20, 0));
+      await tester.dragFrom(
+          screen(const Offset(250, 200)), const Offset(20, 0));
       await tester.pumpAndSettle();
-      await tester.dragFrom(screen(const Offset(250, 250)), const Offset(20, 0));
+      await tester.dragFrom(
+          screen(const Offset(250, 250)), const Offset(20, 0));
       await tester.pumpAndSettle();
       var marks = now(c).retouch;
       expect(marks, hasLength(2));
@@ -509,11 +633,48 @@ void main() {
       expect(c.imageEditing, isNull);
     });
 
+    testWidgets("cloning every layer goes on a Retouch layer of the frame",
+        (tester) async {
+      var (c, screen) = await open(tester, ImageTool.clone);
+      c.retouchWholeFrame = true;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.tapAt(screen(const Offset(150, 200)));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      expect(c.cloneFrom!.dx, closeTo(0.25, 0.02));
+
+      await tester.dragFrom(
+          screen(const Offset(250, 200)), const Offset(20, 0));
+      await tester.pumpAndSettle();
+      var layer = now(c).stack.last;
+      expect(layer.kind, LayerKind.paint);
+      expect(layer.name, "Retouch");
+      expect(c.imageLayer, layer.id);
+      expect(layer.strokes.single.kind, StrokeKind.clone);
+      expect(layer.strokes.single.points.first.dx, closeTo(0.75, 0.02));
+      expect(layer.strokes.single.source.dx, closeTo(-0.5, 0.03));
+      expect(now(c).retouch, isEmpty, reason: "not the picture's own");
+
+      // The next stroke goes on the same layer.
+      await tester.dragFrom(
+          screen(const Offset(250, 250)), const Offset(20, 0));
+      await tester.pumpAndSettle();
+      expect(now(c).stack, hasLength(2));
+      expect(now(c).stack.last.strokes, hasLength(2));
+
+      c.undo();
+      c.undo();
+      expect(now(c).stack, hasLength(1),
+          reason: "the layer and its first stroke are one step");
+    });
+
     testWidgets("Option turns dodging into burning", (tester) async {
       var (c, screen) = await open(tester, ImageTool.dodge);
-      await tester.dragFrom(screen(const Offset(150, 200)), const Offset(30, 0));
+      await tester.dragFrom(
+          screen(const Offset(150, 200)), const Offset(30, 0));
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-      await tester.dragFrom(screen(const Offset(150, 250)), const Offset(30, 0));
+      await tester.dragFrom(
+          screen(const Offset(150, 250)), const Offset(30, 0));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pumpAndSettle();
       expect([for (var m in now(c).retouch) m.kind],
@@ -544,12 +705,14 @@ void main() {
   testWidgets("a paint layer's strokes are taken back from the panel",
       (tester) async {
     SharedPreferences.setMockInitialValues({});
-    var layer = ImageLayer(
-        id: "paint",
-        kind: LayerKind.paint,
-        strokes: [_across(StrokeKind.paint), _across(StrokeKind.paint, y: 0.2)]);
-    var c = CanvasController(const CanvasDocument().addElement(
-        ImageElement(_box, assetId: "white", layers: [ImageLayer.base, layer])));
+    var layer = ImageLayer(id: "paint", kind: LayerKind.paint, strokes: [
+      _across(StrokeKind.paint),
+      _across(StrokeKind.paint, y: 0.2)
+    ]);
+    var c = CanvasController(const CanvasDocument().addElement(ImageElement(
+        _box,
+        assetId: "white",
+        layers: [ImageLayer.base, layer])));
     addTearDown(c.dispose);
     c.selectOnly("i");
     c.editImage("i", layer: "paint");
