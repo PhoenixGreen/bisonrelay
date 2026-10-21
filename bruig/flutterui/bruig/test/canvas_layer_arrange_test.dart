@@ -70,6 +70,54 @@ Widget _host(Widget child) => MultiProvider(
     );
 
 void main() {
+  group("a locked layer", () {
+    test("is saved locked, and a press goes through it", () {
+      var locked = _a.copyWith(locked: true);
+      var e = _element(layers: [ImageLayer.base, locked, _b]);
+      var back = elementFromJson(e.toJson()) as ImageElement;
+      expect(back.layerById(_a.id)!.locked, isTrue);
+      expect(back.layerById(_b.id)!.locked, isFalse);
+      // Over the top-left quarter, where it is: the base under it instead.
+      var inner = e.box.inner(e.bounds);
+      expect(layerAt(e, inner.topLeft + const Offset(20, 20)).isBase, isTrue);
+      expect(
+          layerAt(_element(), inner.topLeft + const Offset(20, 20)).id, _a.id);
+    });
+
+    test("is not lined up or nudged with the others", () {
+      var c = CanvasController(const CanvasDocument().addElement(
+          _element(layers: [ImageLayer.base, _a.copyWith(locked: true), _b])));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      c.editImage("i", layer: _b.id);
+      c.pickImageLayer(_a.id, add: true);
+      expect([for (var l in c.alignableLayers) l.id], [_b.id]);
+      c.nudgeSelected(10, 0);
+      expect(_now(c).layerById(_a.id)!.place, _a.place);
+      expect(_now(c).layerById(_b.id)!.place, isNot(_b.place));
+    });
+
+    test(
+        "solo holds every layer but the picked one, and ends with the "
+        "picture", () {
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      c.editImage("i", layer: _a.id);
+      c.imageSolo = true;
+      var e = _now(c);
+      expect(c.layerLocked(e.layerById(_a.id)!), isFalse);
+      expect(c.layerLocked(e.layerById(_b.id)!), isTrue);
+      expect(c.layerLocked(e.layerById(baseLayerId)!), isTrue);
+      // It follows the pick.
+      c.pickImageLayer(_b.id);
+      expect(c.layerLocked(e.layerById(_b.id)!), isFalse);
+      expect(c.layerLocked(e.layerById(_a.id)!), isTrue);
+      c.editImage(null);
+      expect(c.imageSolo, isFalse);
+    });
+  });
+
   group("lining layers up", () {
     test("aligned left, each meets the leftmost; the leftmost stays", () {
       var e = withLayersAligned(_element(), [_a.id, _b.id], CanvasAlign.left);
@@ -160,6 +208,56 @@ void main() {
       var scale = stage.pageRect.width / c.document.size.width;
       return (p) => stage.pageRect.topLeft + p * scale;
     }
+
+    testWidgets("a locked layer is not picked or dragged on the canvas",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(
+          _element(layers: [ImageLayer.base, _a.copyWith(locked: true), _b])));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      var screen = await pump(tester, c);
+      c.editImage("i");
+      await tester.pumpAndSettle();
+      var scale = (screen(const Offset(1, 0)) - screen(Offset.zero)).dx;
+      await tester.dragFrom(
+          screen(const Offset(150, 150)), Offset(30 * scale, 0));
+      await tester.pumpAndSettle();
+      // On the page: the press went through to the base picture under it,
+      // and the frame may have grown round that.
+      Rect onPage(ImageElement e, String id) =>
+          layerRect(e.box.inner(e.bounds), e.layerById(id)!.place);
+      var was = _element();
+      expect(
+          onPage(_now(c), _a.id).left, closeTo(onPage(was, _a.id).left, 1e-6),
+          reason: "held");
+      expect(onPage(_now(c), _a.id).width,
+          closeTo(onPage(was, _a.id).width, 1e-6));
+      expect(c.imageLayer, isNot(_a.id), reason: "not picked");
+    });
+
+    testWidgets("soloed, only the picked layer moves", (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_element()));
+      addTearDown(c.dispose);
+      c.selectOnly("i");
+      var screen = await pump(tester, c);
+      c.editImage("i", layer: _a.id);
+      c.imageSolo = true;
+      await tester.pumpAndSettle();
+      var scale = (screen(const Offset(1, 0)) - screen(Offset.zero)).dx;
+      var base = _now(c).layerById(baseLayerId)!.place;
+      // On the other layer, and on the base: nothing moves.
+      await tester.dragFrom(
+          screen(const Offset(250, 250)), Offset(20 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(_now(c).layerById(_b.id)!.place, _b.place);
+      expect(_now(c).layerById(baseLayerId)!.place, base);
+      expect(c.imageLayer, _a.id, reason: "still the soloed one");
+      // On the soloed one: it does.
+      await tester.dragFrom(
+          screen(const Offset(150, 150)), Offset(20 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(_now(c).layerById(_a.id)!.place, isNot(_a.place));
+    });
 
     testWidgets("Shift-click picks a second layer, and a drag moves both",
         (tester) async {
@@ -360,12 +458,30 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("a layer locks from its row, and Solo from the heading",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      c.editImage("i", layer: _a.id);
+      await tester.pumpAndSettle();
+      await openLayerList(tester);
+      await tapKey(tester, "imageLayerLock-${_b.id}");
+      expect(_now(c).layerById(_b.id)!.locked, isTrue);
+      await tapKey(tester, "imageLayerLock-${_b.id}");
+      expect(_now(c).layerById(_b.id)!.locked, isFalse);
+      await tapKey(tester, "imageLayersSolo");
+      expect(c.imageSolo, isTrue);
+      expect(_now(c).layerById(_b.id)!.locked, isFalse,
+          reason: "solo holds it without locking it for good");
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("every number in a card is a stepper -- the crop's too",
         (tester) async {
       var c = await pumpPanel(tester);
       c.editImage("i", layer: _a.id);
       await tester.pumpAndSettle();
-      await openSection(tester, "image.picture.position");
+      // The crop is with the mask now: how much of the picture shows.
+      await openSection(tester, "image.picture.mask");
       var crop = find.byWidgetPredicate(
           (w) => w is CanvasControlGroup && w.label == "Crop");
       expect(find.descendant(of: crop, matching: find.byType(CanvasStepper)),

@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
@@ -193,7 +194,10 @@ class _Sections {
     // A plain picture is its frame, and is placed as any element is; with
     // layers, its base picture has a place in the frame of its own, and the
     // frame is the Frame section's.
-    var framed = picked.isBase && !e.layered;
+    // A picture alone -- flipped, or with an effect, but nothing laid over
+    // it and filling its frame -- is still placed as any element is.
+    var framed = picked.isBase &&
+        (!e.layered || (e.stack.length == 1 && picked.basePlace == null));
     if (framed) {
       summary = "${e.x.round()}, ${e.y.round()} · "
           "${e.width.round()} × ${e.height.round()}";
@@ -211,33 +215,29 @@ class _Sections {
       remember: _remember("position"),
       initiallyOpen: true,
       children: [
-        if (framed)
-          positionGroup(controller, e, write, begin, commit)
-        else ...[
+        if (framed) ...[
+          positionGroup(controller, e, write, begin, commit),
+          quickMoveTiles(controller, e, picked, write, begin, commit,
+              placing: false),
+        ] else ...[
           layerPositionGroup(controller, e, picked, write, begin, commit),
-          CanvasControlGroup(
-            label: "Quick moves",
-            help: "One press each: flip it, fill the frame with it, fit it "
-                "inside, put it in the middle, or give it back the picture's "
-                "own proportions.",
-            rule: false,
-            children:
-                layerQuickMoves(controller, e, picked, write, begin, commit),
-          ),
+          quickMoveTiles(controller, e, picked, write, begin, commit),
         ],
         CanvasControlGroup(
           label: "Picture",
           help: "Put a picture in or replace it -- from a file or from the "
               "pictures already added -- change its size and quality, or "
-              "take it out. Fit is how it fills its frame; with Cover, "
-              "double-click the picture to move it about inside its frame "
-              "and scroll to zoom.",
+              "take it out. Fills its box is how the picture fills the box "
+              "it is in: Cover fills it and trims what runs over, Show whole "
+              "shows all of it inside, Stretch pulls it to the box. With "
+              "Cover, double-click the picture to move it about inside its "
+              "box and scroll to zoom.",
           rule: false,
           children: [
             ...pictureSourceButtons(context, look, _writeLook, begin, commit,
                 layerFrame: _layerFrame),
             CanvasDropdown<ImageFit>(
-              label: "Fit",
+              label: "Fills its box",
               value: look.fit,
               width: 106,
               options: [for (var f in ImageFit.values) (f, f.label)],
@@ -255,8 +255,15 @@ class _Sections {
             // Framing only where there is slack to frame with -- the note
             // saying so is in the Picture card's "?".
             framing: look.fit == ImageFit.cover,
-            // A drift runs on the picture the element is, not on a layer.
-            drift: picked.isBase,
+            // The base picture's shape cuts the whole element -- it is the
+            // frame's, in the Frame section. A layer's cuts only the layer.
+            shape: !picked.isBase,
+            // A layer's mirror, which the crop has to know: its left is on
+            // the right. The base picture's is read off its own layer.
+            flipX: !picked.isBase && picked.flipX,
+            flipY: !picked.isBase && picked.flipY,
+            // The crop is with the mask: see mask().
+            crop: false,
             filter: false,
             overlay: false,
             outline: false),
@@ -293,6 +300,7 @@ class _Sections {
     if (_picture && _look.removal.mode != RemovalMode.none) {
       summary += " · ${_look.removal.mode.label}";
     }
+    if (_picture && !_look.crop.isWhole) summary += " · cropped";
     var changes = (mask.empty ? 0 : 1) + (mask.refine.any ? 1 : 0);
     void put(ImageMask next) {
       if (framed) {
@@ -305,7 +313,9 @@ class _Sections {
     return CanvasSection(
       key: const ValueKey("imageSection-mask"),
       icon: Icons.content_cut,
-      title: "Mask",
+      // How much of the picture shows: what is painted away, and what is
+      // trimmed off its edges.
+      title: _picture ? "Mask & crop" : "Mask",
       summary: summary,
       remember: _remember("mask"),
       forceOpen: _holds(tools),
@@ -328,6 +338,19 @@ class _Sections {
         if (_picture)
           pictureRemovalGroup(controller, _look, _writeLook, begin, commit,
               layer: !picked.isBase),
+        // The crop: the picture's edges trimmed off by numbers, beside the
+        // mask that paints parts of it away.
+        if (_picture)
+          ...pictureLookGroups(_look, _writeLook, begin, commit,
+              shown: _look.hasImage,
+              shape: false,
+              framing: false,
+              crop: true,
+              filter: false,
+              overlay: false,
+              outline: false,
+              flipX: !picked.isBase && picked.flipX,
+              flipY: !picked.isBase && picked.flipY),
       ],
     );
   }
@@ -840,9 +863,9 @@ class _Sections {
                   "drag a layer out of it and the frame grows to take it in, "
                   "and a shadow or a glow is drawn where it falls. On, "
                   "everything is cut to the frame -- for a picture cut to a "
-                  "shape, or with rounded corners. Fit to content makes the "
-                  "frame exactly round what is in it, smaller as well as "
-                  "larger.",
+                  "shape, or with rounded corners. Wrap frame to content "
+                  "makes the frame exactly round what is in it, smaller as "
+                  "well as larger.",
               rule: false,
               children: [
                 CanvasToggle(
@@ -858,7 +881,7 @@ class _Sections {
                 CanvasTextButton(
                   key: const ValueKey("imageFitFrame"),
                   icon: Icons.fit_screen_outlined,
-                  label: "Fit frame to content",
+                  label: "Wrap frame to content",
                   onPressed: () {
                     begin();
                     write(e.fittedToContent());
@@ -868,6 +891,32 @@ class _Sections {
               ],
             ),
           ],
+          CanvasControlGroup(
+            key: const ValueKey("imageFrameShape"),
+            label: "Frame shape",
+            help: "Cut the whole picture -- every layer and the paint on it "
+                "-- to a shape. Choosing one turns Clip to frame on.",
+            rule: false,
+            children: [
+              CanvasDropdown<String>(
+                key: const ValueKey("imageFrameShapeKind"),
+                label: "Cut to",
+                value: e.frame?.name ?? "",
+                width: 128,
+                options: [
+                  ("", "Rectangle"),
+                  for (var k in ShapeKind.values) (k.name, k.label),
+                ],
+                onChanged: (v) {
+                  begin();
+                  write(v.isEmpty
+                      ? e.copyWith(clearFrame: true)
+                      : e.copyWith(frame: ShapeKind.fromName(v), clip: true));
+                  commit();
+                },
+              ),
+            ],
+          ),
           presetsSection(context, controller, e),
           // Rounding the corners cuts to them: corners round a picture that
           // spills past them are not corners.

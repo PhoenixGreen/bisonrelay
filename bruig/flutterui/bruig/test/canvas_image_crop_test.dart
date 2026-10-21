@@ -14,6 +14,38 @@ import 'package:flutter_test/flutter_test.dart';
 // a crop tool: moving a handle zooms and stretches the image".
 
 void main() {
+  group("the picture round its frame, while it is reframed", () {
+    // A photograph 1000 x 600 covering a frame 400 x 240, with the top
+    // quarter and the bottom quarter cropped off -- the frame trimmed with
+    // them, as cropping does.
+    const size = Size(1000, 600);
+    const crop = ImageCrop(top: 0.25, bottom: 0.75);
+    var frame = const Rect.fromLTWH(100, 100 + 60, 400, 120);
+
+    test("lines up with the part drawn, whatever was cropped", () {
+      var p = placeImage(size, frame, ImageFit.cover, crop: crop);
+      var whole = p.wholeDst;
+      // The pixel at the top of what is drawn is in the same place in the
+      // whole picture drawn round it.
+      var sy = whole.height / size.height;
+      expect(whole.top + p.src.top * sy, closeTo(p.dst.top, 1e-9));
+      expect(whole.left + p.src.left * (whole.width / size.width),
+          closeTo(p.dst.left, 1e-9));
+      // The whole picture at the scale the part is drawn at: not shifted
+      // down by the share cropped off the top, a second copy under the
+      // first.
+      expect(whole.top, closeTo(100, 1e-9));
+      expect(whole.height, closeTo(240, 1e-9));
+    });
+
+    test("uncropped, it is where it always was", () {
+      var p = placeImage(size, const Rect.fromLTWH(0, 0, 300, 300),
+          ImageFit.cover, framing: const ImageFraming(x: 0.2));
+      expect(p.wholeDst.left, closeTo(-p.src.left * 0.5, 1e-9));
+      expect(p.wholeDst.width, closeTo(500, 1e-9));
+    });
+  });
+
   const picture = Size(1000, 1000);
 
   test("a crop takes a share of what the frame is showing", () {

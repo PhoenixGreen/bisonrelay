@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
@@ -54,8 +55,8 @@ enum RemovalMode {
 /// binding. render/ maps them; there is no reason for a saved document to
 /// depend on somebody else's enum.
 enum ImageFit {
-  cover("Fill the box"),
-  contain("Fit inside"),
+  cover("Cover"),
+  contain("Show whole"),
   stretch("Stretch");
 
   final String label;
@@ -579,68 +580,57 @@ class ImageFraming {
       );
 }
 
-/// DriftKind is which way a picture drifts across its scene -- the slow
-/// pan and zoom of a documentary over a still photograph.
-enum DriftKind {
-  none("None"),
-  zoomIn("Zoom in"),
-  zoomOut("Zoom out"),
-  panLeft("Pan left"),
-  panRight("Pan right"),
-  panUp("Pan up"),
-  panDown("Pan down");
-
-  final String label;
-  const DriftKind(this.label);
-
-  static DriftKind fromName(String? name) =>
-      values.firstWhere((k) => k.name == name, orElse: () => none);
+/// driftedFraming is [framing] [t] of the way through a drift -- [preset],
+/// one of the Drift loops -- that moves [amount] of the picture: how much
+/// closer a zoom ends, or how much closer a pan is held to have room to
+/// move across. The frame stays put; the picture moves inside it.
+ImageFraming driftedFraming(
+    ImageFraming framing, LoopPreset preset, double amount, double t) {
+  t = t.clamp(0.0, 1.0);
+  var a = amount.clamp(0.0, 1.0);
+  double across(double from, double to) => from + (to - from) * t;
+  return switch (preset) {
+    LoopPreset.driftIn => framing.copyWith(zoom: framing.zoom * (1 + a * t)),
+    LoopPreset.driftOut =>
+      framing.copyWith(zoom: framing.zoom * (1 + a * (1 - t))),
+    // The camera moves left: the picture slides right under it, so the
+    // part of it shown runs from its right towards its left.
+    LoopPreset.driftLeft =>
+      framing.copyWith(zoom: framing.zoom * (1 + a), x: across(1, 0)),
+    LoopPreset.driftRight =>
+      framing.copyWith(zoom: framing.zoom * (1 + a), x: across(0, 1)),
+    LoopPreset.driftUp =>
+      framing.copyWith(zoom: framing.zoom * (1 + a), y: across(1, 0)),
+    LoopPreset.driftDown =>
+      framing.copyWith(zoom: framing.zoom * (1 + a), y: across(0, 1)),
+    _ => framing,
+  };
 }
 
-/// ImageDrift is a picture moving within its frame across its scene, the
-/// frame itself staying put: a zoom into it, or a pan across it.
-class ImageDrift {
-  final DriftKind kind;
+/// driftPerStrength is how much of the picture a drift moves at a loop's
+/// strength of 1: fifteen per cent, the documentary's slow creep.
+const double driftPerStrength = 0.15;
 
-  /// amount is how far: how much closer a zoom ends, and how much closer a
-  /// pan is held, to have room to move across -- 0.15 is 15%.
-  final double amount;
-
-  const ImageDrift({this.kind = DriftKind.none, this.amount = 0.15});
-
-  bool get on => kind != DriftKind.none && amount > 0;
-
-  /// framed is [framing] [t] of the way through the drift, 0 to 1.
-  ImageFraming framed(ImageFraming framing, double t) {
-    t = t.clamp(0.0, 1.0);
-    var a = amount.clamp(0.0, 1.0);
-    double across(double from, double to) => from + (to - from) * t;
-    return switch (kind) {
-      DriftKind.none => framing,
-      DriftKind.zoomIn => framing.copyWith(zoom: framing.zoom * (1 + a * t)),
-      DriftKind.zoomOut =>
-        framing.copyWith(zoom: framing.zoom * (1 + a * (1 - t))),
-      // The camera moves left: the picture slides right under it, so the
-      // part of it shown runs from its right towards its left.
-      DriftKind.panLeft =>
-        framing.copyWith(zoom: framing.zoom * (1 + a), x: across(1, 0)),
-      DriftKind.panRight =>
-        framing.copyWith(zoom: framing.zoom * (1 + a), x: across(0, 1)),
-      DriftKind.panUp =>
-        framing.copyWith(zoom: framing.zoom * (1 + a), y: across(1, 0)),
-      DriftKind.panDown =>
-        framing.copyWith(zoom: framing.zoom * (1 + a), y: across(0, 1)),
-    };
-  }
-
-  ImageDrift copyWith({DriftKind? kind, double? amount}) =>
-      ImageDrift(kind: kind ?? this.kind, amount: amount ?? this.amount);
-
-  Map<String, dynamic> toJson() => {"kind": kind.name, "amount": amount};
-
-  factory ImageDrift.fromJson(Map<String, dynamic> json) => ImageDrift(
-      kind: DriftKind.fromName(json["kind"] as String?),
-      amount: jsonDouble(json["amount"], 0.15).clamp(0.0, 1.0));
+/// _driftAsLoop is [animation] given the drift a picture saved before drifts
+/// were loops had -- {"kind": "zoomIn", "amount": 0.15} -- as its loop,
+/// where it has no loop of its own.
+ElementAnimation _driftAsLoop(ElementAnimation animation, Object? drift) {
+  if (drift is! Map<String, dynamic> || animation.loop.on) return animation;
+  var preset = switch (drift["kind"]) {
+    "zoomIn" => LoopPreset.driftIn,
+    "zoomOut" => LoopPreset.driftOut,
+    "panLeft" => LoopPreset.driftLeft,
+    "panRight" => LoopPreset.driftRight,
+    "panUp" => LoopPreset.driftUp,
+    "panDown" => LoopPreset.driftDown,
+    _ => LoopPreset.none,
+  };
+  if (preset == LoopPreset.none) return animation;
+  return animation.copyWith(
+      loop: ElementLoop(
+          preset: preset,
+          strength: jsonDouble(drift["amount"], driftPerStrength) /
+              driftPerStrength));
 }
 
 /// ImageElement is a picture on the canvas.
@@ -670,10 +660,6 @@ class ImageElement extends CanvasElement {
   /// framing is where that part sits inside the frame, and how far in. See
   /// [ImageFraming].
   final ImageFraming framing;
-
-  /// drift is the picture moving within its frame across the scene: a slow
-  /// zoom or pan. See ImageDrift.
-  final ImageDrift drift;
 
   /// frame is a shape the picture is cut to -- a circle, a star, a speech
   /// bubble. Null leaves it rectangular.
@@ -735,7 +721,6 @@ class ImageElement extends CanvasElement {
     this.brightness = 1,
     this.crop = const ImageCrop(),
     this.framing = const ImageFraming(),
-    this.drift = const ImageDrift(),
     this.frame,
     this.filter = ImageFilterPreset.none,
     this.outline = const ImageOutline(),
@@ -815,29 +800,56 @@ class ImageElement extends CanvasElement {
   /// The arithmetic is the frame's, not the picture's: the box shows
   /// [crop.width] of the picture across its own width, so a strip of the
   /// picture is worth that much of the box.
-  ImageElement croppedTo(ImageCrop next) {
+  ///
+  /// With layers, what is trimmed is the base picture's own place in the
+  /// frame, not the frame: the frame holds the layers too, and trimmed it
+  /// kept the picture where it was on the page -- the crop then blew what
+  /// was left up to fill it, which is a zoom. [flipX] and [flipY] are a
+  /// picture layer's mirror, whose left is on the right; the base picture's
+  /// is its own layer's.
+  ImageElement croppedTo(ImageCrop next,
+      {bool flipX = false, bool flipY = false}) {
     var was = crop;
     if (was.width <= 0 || was.height <= 0) {
       return copyWith(crop: next);
     }
-    var perX = width / was.width;
-    var perY = height / was.height;
+    var base = layered ? stack.firstWhere((l) => l.isBase) : null;
+    if (base != null) {
+      flipX = base.flipX;
+      flipY = base.flipY;
+    }
+    var box = base?.place ?? Rect.fromLTWH(x, y, width, height);
+    var perX = box.width / was.width;
+    var perY = box.height / was.height;
 
-    var left = x + (next.left - was.left) * perX;
-    var right = x + width - (was.right - next.right) * perX;
-    var top = y + (next.top - was.top) * perY;
-    var bottom = y + height - (was.bottom - next.bottom) * perY;
+    // How far each side of the picture comes in, and on which side of the
+    // box that side is.
+    var inL = (next.left - was.left) * perX;
+    var inR = (was.right - next.right) * perX;
+    var inT = (next.top - was.top) * perY;
+    var inB = (was.bottom - next.bottom) * perY;
+    if (flipX) (inL, inR) = (inR, inL);
+    if (flipY) (inT, inB) = (inB, inT);
+    var trimmed = Rect.fromLTRB(
+        box.left + inL, box.top + inT, box.right - inR, box.bottom - inB);
 
-    // Never inside out, and never so small it cannot be grabbed again.
-    const least = 8.0;
-    if (right - left < least || bottom - top < least) {
+    // Never inside out, and never so small it cannot be grabbed again: 8
+    // canvas units, which in a layer's place is the same share of the frame.
+    var least = base == null
+        ? 8.0
+        : 8.0 * layerUnits / math.max(1e-9, math.min(width, height));
+    if (trimmed.width < least || trimmed.height < least) {
       return copyWith(crop: next);
     }
+    if (base != null) {
+      return copyWith(crop: next)
+          .withLayer(base.id, (l) => l.copyWith(basePlace: trimmed));
+    }
     return copyWith(crop: next).withBase(
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
+      x: trimmed.left,
+      y: trimmed.top,
+      width: trimmed.width,
+      height: trimmed.height,
     ) as ImageElement;
   }
 
@@ -862,7 +874,6 @@ class ImageElement extends CanvasElement {
       brightness: brightness,
       crop: crop,
       framing: framing,
-      drift: drift,
       frame: frame,
       filter: filter,
       outline: outline,
@@ -885,7 +896,6 @@ class ImageElement extends CanvasElement {
     double? brightness,
     ImageCrop? crop,
     ImageFraming? framing,
-    ImageDrift? drift,
     ShapeKind? frame,
     bool clearFrame = false,
     ImageFilterPreset? filter,
@@ -909,7 +919,6 @@ class ImageElement extends CanvasElement {
           brightness: brightness ?? this.brightness,
           crop: crop ?? this.crop,
           framing: framing ?? this.framing,
-          drift: drift ?? this.drift,
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
@@ -933,7 +942,6 @@ class ImageElement extends CanvasElement {
         if (brightness != 1) "bri": brightness,
         if (!crop.isWhole) "crop": crop.toJson(),
         if (!framing.isDefault) "framing": framing.toJson(),
-        if (drift.on) "drift": drift.toJson(),
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
@@ -971,8 +979,6 @@ class ImageElement extends CanvasElement {
           crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
           framing: jsonSpec(
               json["framing"], ImageFraming.fromJson, const ImageFraming()),
-          drift:
-              jsonSpec(json["drift"], ImageDrift.fromJson, const ImageDrift()),
           frame: json["frame"] is String
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,
@@ -981,8 +987,10 @@ class ImageElement extends CanvasElement {
               json["outline"], ImageOutline.fromJson, const ImageOutline()),
           overlay: colorFromJson(json["overlay"], const Color(0x00000000)),
           blend: OverlayBlend.fromName(json["blend"] as String?),
-          animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()),
+          animation: _driftAsLoop(
+              jsonSpec(json["anim"], ElementAnimation.fromJson,
+                  const ElementAnimation()),
+              json["drift"]),
           layers: [
             if (json["layers"] case List raw)
               for (var l in raw)

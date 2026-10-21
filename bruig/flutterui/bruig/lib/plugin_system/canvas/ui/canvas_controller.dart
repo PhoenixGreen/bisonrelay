@@ -434,6 +434,7 @@ class CanvasController extends ChangeNotifier {
             _document.elementById(picture) is! ImageElement)) {
       _imageEditing = null;
       _imageLayer = baseLayerId;
+      _imageSolo = false;
     }
     if (_imageEditing != null && editingImage?.layerById(_imageLayer) == null) {
       _imageLayer = baseLayerId;
@@ -1705,12 +1706,30 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// alignableLayers are the picked layers that have a place of their own
-  /// in the frame to line up: picture layers, shown. An adjustment or a
-  /// texture covers the whole frame and has nowhere to move to.
+  /// in the frame to line up: picture layers, shown, and not locked. An
+  /// adjustment or a texture covers the whole frame and has nowhere to move
+  /// to.
   List<ImageLayer> get alignableLayers => [
         for (var l in pickedLayers)
-          if (l.kind == LayerKind.picture && l.visible) l
+          if (l.kind == LayerKind.picture && l.visible && !layerLocked(l)) l
       ];
+
+  /// imageSolo is whether only the picked layer of the picture being edited
+  /// can be worked on, every other one held as if locked -- following the
+  /// pick, so picking another layer in the list solos that one. A way of
+  /// working, not part of the picture: it is not saved.
+  bool get imageSolo => _imageSolo;
+  bool _imageSolo = false;
+  set imageSolo(bool v) {
+    if (v == _imageSolo) return;
+    _imageSolo = v;
+    notifyListeners();
+  }
+
+  /// layerLocked is whether [layer] of the picture being edited is held
+  /// where it is on the canvas: locked, or not the soloed one.
+  bool layerLocked(ImageLayer layer) =>
+      layer.locked || (_imageSolo && layer.id != _imageLayerId);
 
   /// aligning is how many things the align tools would line up: picked
   /// picture layers while a picture is open, elements otherwise.
@@ -1742,6 +1761,9 @@ class CanvasController extends ChangeNotifier {
   /// them. Edited is selected, as a drawing is -- see notifyListeners.
   void editImage(String? id, {String? layer}) {
     if (_imageEditing == id && layer == null) return;
+    // Solo is a way of working on one picture; another, or none, starts
+    // without it.
+    if (_imageEditing != id) _imageSolo = false;
     _imageEditing = id;
     _imageLayer = layer ?? baseLayerId;
     if (id != null) {

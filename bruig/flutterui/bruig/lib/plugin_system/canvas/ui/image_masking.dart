@@ -102,7 +102,9 @@ class LayerPicture {
   Offset toPicture(Offset canvasPoint) {
     var local =
         _inFrame ? space.toFrame(canvasPoint) : space.toLayer(canvasPoint);
-    if (!_inFrame) {
+    // A picture -- a layer's or the base -- mirrored in its place is
+    // mirrored back, so a stroke lands on the pixels under the pointer.
+    if (!layer.framed) {
       var r = space.rect;
       if (layer.flipX) local = Offset(r.left + r.right - local.dx, local.dy);
       if (layer.flipY) local = Offset(local.dx, r.top + r.bottom - local.dy);
@@ -120,7 +122,9 @@ class LayerPicture {
     var px = Offset(f.dx * size.width, f.dy * size.height);
     var local = Offset(dst.left + (px.dx - src.left) / src.width * dst.width,
         dst.top + (px.dy - src.top) / src.height * dst.height);
-    if (!_inFrame) {
+    // A picture -- a layer's or the base -- mirrored in its place is
+    // mirrored back, so a stroke lands on the pixels under the pointer.
+    if (!layer.framed) {
       var r = space.rect;
       if (layer.flipX) local = Offset(r.left + r.right - local.dx, local.dy);
       if (layer.flipY) local = Offset(local.dx, r.top + r.bottom - local.dy);

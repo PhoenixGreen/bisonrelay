@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'dart:math' as math;
@@ -54,11 +55,26 @@ class RasterCache {
   int get bytes => _bytes;
   int get length => _kept.length;
 
+  /// keys is what is kept, by name, for the tests.
+  Iterable<String> get keys => _kept.keys;
+
   /// get is the raster kept as [key], if it was drawn from [from].
   ui.Image? get(String key, List<Object?> from) {
     var kept = _kept.remove(key);
     if (kept == null) return null;
     if (!_same(kept.from, from)) {
+      if (CanvasPerf.on) {
+        // Which part of what it was drawn from is not what it was.
+        var at = -1;
+        for (var i = 0; i < math.min(kept.from.length, from.length); i++) {
+          if (!identical(kept.from[i], from[i]) && kept.from[i] != from[i]) {
+            at = i;
+            break;
+          }
+        }
+        CanvasPerf.count("drop $key part $at "
+            "${at < 0 ? "length" : from[at].runtimeType}");
+      }
       _drop(kept);
       return null;
     }
@@ -76,16 +92,46 @@ class RasterCache {
   /// pictures of sizes nobody would draw at again. While drafting, a full
   /// one still good is better than a draft and is used rather than drawing
   /// one.
+  ///
+  /// A full one near enough the size asked for is used rather than drawn
+  /// again: within a third smaller and twice as large, it is scaled to fit.
+  /// Asked for to the pixel, every frame of a sidebar sliding open -- the
+  /// canvas a few pixels smaller each frame -- drew every layer under an
+  /// adjustment again, and the panels crawled.
+  ///
+  /// A thumbnail of it -- the scene's, in the scenes list -- is kept apart
+  /// from the one the canvas draws: kept as one, each was drawn again in
+  /// turn for the other, and every change on the canvas drew everything
+  /// under an adjustment twice over, a second of the graphics card's time
+  /// each on a picture of six masked photographs.
   ui.Image? sized(String key, List<Object?> from, int w, int h) {
+    key = "$key|${_sizeClass(w, h)}";
     var full = get("$key|full", from);
     if (drafting) return full ?? get("$key|draft", from);
-    if (full != null && full.width == w && full.height == h) return full;
+    if (full != null &&
+        nearEnough(full.width, w) &&
+        nearEnough(full.height, h)) {
+      return full;
+    }
     return null;
   }
+
+  /// _sizeClass is which size a raster [w] by [h] is kept as: one class to
+  /// each four times larger -- 256 to 1023 across, 1024 to 4095 -- so a
+  /// thumbnail and the canvas are kept apart, and a canvas drawn a little
+  /// larger or smaller stays in its own.
+  static String _sizeClass(int w, int h) =>
+      "x${(math.log(math.max(1, math.max(w, h))) / math.ln2 / 2).floor()}";
+
+  /// nearEnough is whether a raster [had] pixels across will do for [want]:
+  /// not so much smaller it is blurred, nor so much larger it is waste.
+  static bool nearEnough(int had, int want) =>
+      had >= want * 0.75 - 1 && had <= want * 2 + 1;
 
   /// putSized keeps [image] as what [sized] finds for [key]: the draft while
   /// drafting, or the full one, with the draft let go of.
   void putSized(String key, List<Object?> from, ui.Image image) {
+    key = "$key|${_sizeClass(image.width, image.height)}";
     if (!drafting) {
       var draft = _kept.remove("$key|draft");
       if (draft != null) _drop(draft);
@@ -100,6 +146,7 @@ class RasterCache {
   /// put keeps [image] as [key], drawn from [from]. The cache owns it now.
   void put(String key, List<Object?> from, ui.Image image) {
     drawn++;
+    CanvasPerf.count("rasterPut");
     var old = _kept.remove(key);
     if (old != null) _drop(old);
     var kept = _Kept(from, image);

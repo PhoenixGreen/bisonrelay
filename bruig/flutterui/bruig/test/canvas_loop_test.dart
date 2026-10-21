@@ -14,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_timeline.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -415,7 +414,7 @@ void main() {
       VectorElement now() => c.document.elementById("v") as VectorElement;
 
       // Open the Animation section, if it is shut.
-      var family = find.byKey(const ValueKey("elementLoopFamily"));
+      var family = find.byKey(const ValueKey("elementLoopKinds"));
       if (family.evaluate().isEmpty) {
         var heading = find.byWidgetPredicate(
             (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
@@ -423,9 +422,9 @@ void main() {
         await tester.tap(heading.first);
         await tester.pumpAndSettle();
       }
-      tester
-          .widget<CanvasDropdown<LoopFamily?>>(family)
-          .onChanged(LoopFamily.motion);
+      var tile = find.byKey(ValueKey("elementLoop-motion"));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(now().animation.loop.preset, LoopPreset.float);
       expect(find.byKey(const ValueKey("elementLoopCycle")), findsOneWidget);
@@ -480,7 +479,7 @@ void main() {
       Text scope() => tester.widget<Text>(
           find.byKey(const ValueKey("vectorShapeAnimationScope")));
 
-      var family = find.byKey(const ValueKey("elementLoopFamily"));
+      var family = find.byKey(const ValueKey("elementLoopKinds"));
       if (family.evaluate().isEmpty) {
         var heading = find.byWidgetPredicate(
             (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
@@ -492,9 +491,9 @@ void main() {
       expect(find.text("Shape looping"), findsNothing);
       expect(scope().data, contains("as the drawing"));
 
-      tester
-          .widget<CanvasDropdown<LoopFamily?>>(family)
-          .onChanged(LoopFamily.light);
+      var tile = find.byKey(ValueKey("elementLoop-light"));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(now().shapes![1].animation?.loop.preset, LoopPreset.shimmer);
       expect(now().shapes![0].animation, isNull);

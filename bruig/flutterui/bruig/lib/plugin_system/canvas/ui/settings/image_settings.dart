@@ -59,7 +59,7 @@ List<Widget> _pictureSettings(
           ...pictureSourceButtons(context, e, write, begin, commit,
               layerFrame: layerFrame),
           CanvasDropdown<ImageFit>(
-            label: "Fit",
+            label: "Fills its box",
             value: e.fit,
             width: 106,
             options: [for (var f in ImageFit.values) (f, f.label)],
@@ -549,7 +549,8 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     ValueChanged<ImageElement?>? tryLook,
     bool shape = true,
     bool framing = true,
-    bool drift = false,
+    bool flipX = false,
+    bool flipY = false,
     bool crop = true,
     bool filter = true,
     bool overlay = true,
@@ -590,7 +591,7 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
     if (shown && framing && e.fit != ImageFit.cover)
       const CanvasHint(
           "Framing — moving the picture about inside its box and zooming it "
-          "— is for a picture that fills its frame. Set Fit to Cover to "
+          "— is for a picture that fills its frame. Set Fills its box to Cover to "
           "reach it: contained shows the whole picture and stretched pulls "
           "it to the box, and neither leaves anything to move."),
     if (shown && framing && e.fit == ImageFit.cover)
@@ -622,43 +623,6 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           onPressed: () => now(e.copyWith(framing: const ImageFraming())),
         ),
       ]),
-    // The documentary's slow move over a still: the frame stays put and the
-    // picture drifts inside it, the length of the scene.
-    if (shown && framing && drift && e.fit == ImageFit.cover)
-      CanvasControlGroup(
-          key: const ValueKey("imageDrift"),
-          label: "Drift",
-          help: "A slow zoom or pan across the picture, the length of the "
-              "scene -- the frame stays where it is. Starts from the framing "
-              "above.",
-          rule: false,
-          children: [
-            CanvasDropdown<DriftKind>(
-              key: const ValueKey("imageDriftKind"),
-              label: "",
-              value: e.drift.kind,
-              width: 112,
-              options: [for (var k in DriftKind.values) (k, k.label)],
-              onChanged: (v) =>
-                  now(e.copyWith(drift: e.drift.copyWith(kind: v))),
-            ),
-            if (e.drift.on)
-              CanvasNumberField(
-                key: const ValueKey("imageDriftAmount"),
-                label: "By",
-                min: 1,
-                max: 100,
-                decimals: 0,
-                suffix: "%",
-                width: 52,
-                value: e.drift.amount * 100,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(drift: e.drift.copyWith(amount: v / 100)));
-                },
-                onCommit: commit,
-              ),
-          ]),
     if (shown && crop)
       CanvasControlGroup(label: "Crop", rule: false, children: [
         for (var (label, value, apply)
@@ -680,14 +644,15 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
               // The frame is trimmed with the crop, so the picture that is
               // left stays where it is instead of being re-fitted into the
               // same box -- see ImageElement.croppedTo.
-              write(e.croppedTo(apply(v)));
+              write(e.croppedTo(apply(v), flipX: flipX, flipY: flipY));
             },
             onCommit: commit,
           ),
         CanvasIconButton(
           icon: Icons.crop_free,
           tooltip: "Show the whole picture again",
-          onPressed: () => now(e.croppedTo(const ImageCrop())),
+          onPressed: () =>
+              now(e.croppedTo(const ImageCrop(), flipX: flipX, flipY: flipY)),
         ),
       ]),
     if (shown && (filter || overlay))

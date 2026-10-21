@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/foundation.dart';
@@ -37,12 +38,17 @@ class AdjustShader {
 }
 
 /// _lutOf is the 256-across strip a curve or a gradient map is read from,
-/// kept with the adjustment it is for.
-final Expando<ui.Image> _luts = Expando("adjustLut");
+/// kept with the adjustment it is for -- the last few, let go of as they
+/// fall out: a slider dragged makes a new adjustment at every step, and
+/// kept with each of them until the collector came round, they piled up.
+final List<(ImageAdjustment, ui.Image)> _luts = [];
+const int _lutsKept = 6;
 
 ui.Image _lutOf(ImageAdjustment adjust) {
-  var kept = _luts[adjust];
-  if (kept != null) return kept;
+  for (var (a, image) in _luts) {
+    if (identical(a, adjust)) return image;
+  }
+  CanvasPerf.count("lut");
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
   Color at(double x) {
@@ -78,8 +84,13 @@ ui.Image _lutOf(ImageAdjustment adjust) {
     canvas.drawRect(
         Rect.fromLTWH(i.toDouble(), 0, 1, 1), Paint()..color = at(i / 255));
   }
-  var image = recorder.endRecording().toImageSync(256, 1);
-  _luts[adjust] = image;
+  var picture = recorder.endRecording();
+  var image = picture.toImageSync(256, 1);
+  picture.dispose();
+  _luts.add((adjust, image));
+  while (_luts.length > _lutsKept) {
+    _luts.removeAt(0).$2.dispose();
+  }
   return image;
 }
 
@@ -147,6 +158,19 @@ void paintAdjusted(
     canvas.drawPicture(below);
     return;
   }
+  // Where the engine can, the adjustment is a filter over what is under it
+  // as that is drawn -- nothing drawn on its own first, nothing to keep. Drawn
+  // into a picture of its own to be adjusted, what is under was a second of
+  // the graphics card's time on a picture of six masked photographs, again
+  // whenever anything under it moved.
+  if (_adjustFilter(program, adjust) case var filter?) {
+    CanvasPerf.count("adjust (filter)");
+    canvas.saveLayer(room, Paint()..imageFilter = filter);
+    canvas.drawPicture(below);
+    canvas.restore();
+    return;
+  }
+  CanvasPerf.count(key == null ? "adjust (not kept)" : "adjust");
   var scale = deviceScaleOf(canvas);
   // Never more than a large poster's worth: past that, a picture's own
   // pixels give out long before the canvas's do.
@@ -166,19 +190,38 @@ void paintAdjusted(
       ? null
       : RasterCache.instance.sized(key, [adjust, room.size, ...from], w, h);
   if (made == null) {
-    var recorder = ui.PictureRecorder();
-    var raster = ui.Canvas(recorder);
-    raster.scale(w / room.width, h / room.height);
-    raster.translate(-room.left, -room.top);
-    raster.drawPicture(below);
-    var under = recorder.endRecording().toImageSync(w, h);
+    // What is under it, kept apart from the adjustment: a slider dragged
+    // changes the adjustment at every step and nothing under it, and the
+    // whole of what is under -- every layer, up to a poster's pixels -- was
+    // drawn again at every one.
+    var underFrom = [room.size, ...from];
+    var under = key == null
+        ? null
+        : RasterCache.instance.sized("$key|under", underFrom, w, h);
+    var keptUnder = under != null;
+    if (under == null) {
+      CanvasPerf.count("adjustUnder ${w}x$h");
+      var recorder = ui.PictureRecorder();
+      var raster = ui.Canvas(recorder);
+      raster.scale(w / room.width, h / room.height);
+      raster.translate(-room.left, -room.top);
+      raster.drawPicture(below);
+      var picture = recorder.endRecording();
+      under = picture.toImageSync(w, h);
+      picture.dispose();
+      if (key != null) {
+        RasterCache.instance.putSized("$key|under", underFrom, under);
+        keptUnder = true;
+      }
+    }
 
+    CanvasPerf.count("adjustMade");
     var u = _uniforms(adjust);
     var shader = program.fragmentShader()
-      ..setFloat(0, 0)
-      ..setFloat(1, 0)
-      ..setFloat(2, w.toDouble())
-      ..setFloat(3, h.toDouble())
+      ..setFloat(0, w.toDouble())
+      ..setFloat(1, h.toDouble())
+      ..setFloat(2, 0)
+      ..setFloat(3, 0)
       ..setFloat(4, adjust.kind.mode.toDouble());
     for (var i = 0; i < 12; i++) {
       shader.setFloat(5 + i, u[i]);
@@ -189,9 +232,11 @@ void paintAdjusted(
     var out = ui.PictureRecorder();
     ui.Canvas(out).drawRect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
         Paint()..shader = shader);
-    made = out.endRecording().toImageSync(w, h);
+    var adjusted = out.endRecording();
+    made = adjusted.toImageSync(w, h);
+    adjusted.dispose();
     shader.dispose();
-    under.dispose();
+    if (!keptUnder) under.dispose();
     if (key != null) {
       RasterCache.instance.putSized(key, [adjust, room.size, ...from], made);
     } else {
@@ -206,6 +251,56 @@ void paintAdjusted(
       Rect.fromLTWH(0, 0, made.width.toDouble(), made.height.toDouble()),
       room,
       Paint()..filterQuality = FilterQuality.medium);
+}
+
+/// _filters is the adjustment filters made, the last few, by the adjustment
+/// they are for: a filter is made once for each, not on every frame.
+final List<(ImageAdjustment, ui.ImageFilter)> _filters = [];
+
+/// adjustsByFilter is whether adjustments are being drawn as image filters
+/// -- nothing rasterised, nothing kept -- rather than into kept pictures.
+bool get adjustsByFilter => _filtering == true;
+
+/// _filtering is whether the engine draws a shader as an image filter --
+/// Impeller does, the others do not -- found out the first time it is
+/// asked.
+bool? _filtering;
+
+/// _adjustFilter is [adjust] as an image filter, or null where the engine
+/// cannot draw one and the adjustment is drawn into a picture instead.
+ui.ImageFilter? _adjustFilter(
+    ui.FragmentProgram program, ImageAdjustment adjust) {
+  if (_filtering == false) return null;
+  for (var (a, f) in _filters) {
+    if (identical(a, adjust)) return f;
+  }
+  var u = _uniforms(adjust);
+  // The size, floats 0 and 1, and the picture under, sampler 0, are the
+  // engine's to set.
+  var shader = program.fragmentShader()
+    ..setFloat(2, 0)
+    ..setFloat(3, 0)
+    ..setFloat(4, adjust.kind.mode.toDouble());
+  for (var i = 0; i < 12; i++) {
+    shader.setFloat(5 + i, u[i]);
+  }
+  shader.setImageSampler(1, _lutOf(adjust));
+  ui.ImageFilter filter;
+  try {
+    filter = ui.ImageFilter.shader(shader);
+  } on UnsupportedError {
+    _filtering = false;
+    shader.dispose();
+    return null;
+  }
+  _filtering = true;
+  _filters.add((adjust, filter));
+  // Each holds its shader; the oldest are let go of, and the collector
+  // takes them once nothing drawn still uses them.
+  while (_filters.length > _lutsKept) {
+    _filters.removeAt(0);
+  }
+  return filter;
 }
 
 /// _loose is adjusted pictures nobody is keeping -- drawn over things still

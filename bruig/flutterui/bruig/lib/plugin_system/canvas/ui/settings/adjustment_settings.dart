@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
@@ -9,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
 import 'package:flutter/material.dart';
 
 // adjustment_settings.dart is an adjustment layer's settings: what it does,
@@ -415,25 +417,41 @@ class _CurvePainter extends CustomPainter {
   bool shouldRepaint(_CurvePainter old) => true;
 }
 
-/// _histograms are what has been counted, against the picture and layer
-/// they were counted for -- the picture never changes, so neither does its
-/// count.
-final Expando<Map<String, List<int>>> _histograms = Expando("histograms");
+/// _histograms are what has been counted, by picture and layer, against
+/// what was under the layer when it was -- not against the picture: the
+/// picture is a new one whenever anything in it changes, the adjustment's
+/// own slider included, and counted again at every step of a drag.
+final Map<String, (List<Object?>, List<int>)> _histograms = {};
+
+/// _sameUnder is whether two lists of what is under a layer are the same.
+bool _sameUnder(List<Object?> a, List<Object?> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (!identical(a[i], b[i]) && a[i] != b[i]) return false;
+  }
+  return true;
+}
 
 /// histogramOf counts the brightness of what is under the layer [layerId]
 /// of [e], in 256 steps -- weighted by how much of each pixel is there.
 Future<List<int>?> histogramOf(
     ImageElement e, String layerId, CanvasImageSource? images) async {
-  var kept = _histograms[e] ??= {};
-  var done = kept[layerId];
-  if (done != null) return done;
+  var at = e.stack.indexWhere((l) => l.id == layerId);
+  if (at < 0) return null;
   var inner = e.box.inner(e.bounds);
+  var under = [inner.size, ...layersFrom(e, e.stack.sublist(0, at))];
+  var name = "${e.id}|$layerId";
+  if (_histograms[name] case (var from, var bins)
+      when _sameUnder(from, under)) {
+    return bins;
+  }
   if (inner.width <= 0 || inner.height <= 0) return null;
   // Counted on a few hundred pixels across: a histogram's shape, not its
   // grain.
   var k = math.min(1.0, 256 / math.max(inner.width, inner.height));
   var w = math.max(1, (inner.width * k).round());
   var h = math.max(1, (inner.height * k).round());
+  CanvasPerf.count("histogram");
   var image = await renderUnder(e, layerId, images, w, h);
   if (image == null) return null;
   try {
@@ -447,7 +465,11 @@ Future<List<int>?> histogramOf(
       var l = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]).round();
       bins[l.clamp(0, 255)] += p[i + 3];
     }
-    kept[layerId] = bins;
+    _histograms[name] = (under, bins);
+    // A few dozen pictures' worth at most; the oldest go first.
+    while (_histograms.length > 32) {
+      _histograms.remove(_histograms.keys.first);
+    }
     return bins;
   } finally {
     image.dispose();

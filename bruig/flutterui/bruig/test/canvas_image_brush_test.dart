@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
@@ -18,6 +20,7 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
@@ -354,13 +357,17 @@ void main() {
       expect(at(p, 75, 70), [255, 255, 255], reason: "only where it went");
     });
 
-    test("a drift pans across the picture the length of the scene", () async {
+    test("a drift loop pans across the picture the length of the scene",
+        () async {
       // Red on the left half, blue on the right, held twice as close: the
       // middle of the frame is red at the start and blue by the end.
       var e = ImageElement(_box,
           assetId: "halves",
           fit: ImageFit.cover,
-          drift: const ImageDrift(kind: DriftKind.panRight, amount: 1));
+          animation: ElementAnimation(
+              loop: ElementLoop(
+                  preset: LoopPreset.driftRight,
+                  strength: 1 / driftPerStrength)));
       Future<List<int>> middleAt(int frame) async {
         var document = CanvasDocument(
             size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
@@ -379,18 +386,37 @@ void main() {
       expect(await middleAt(0), [255, 0, 0]);
       expect(await middleAt(10), [0, 0, 255]);
       var back = elementFromJson(e.toJson()) as ImageElement;
-      expect(back.drift.kind, DriftKind.panRight);
-      expect(back.drift.amount, 1);
+      expect(back.animation.loop.preset, LoopPreset.driftRight);
     });
 
     test("a zoom drift starts where the framing is and closes in", () {
-      const drift = ImageDrift(kind: DriftKind.zoomIn, amount: 0.2);
       const framing = ImageFraming(x: 0.3, zoom: 1.5);
-      expect(drift.framed(framing, 0).zoom, 1.5);
-      expect(drift.framed(framing, 1).zoom, closeTo(1.8, 1e-9));
-      expect(drift.framed(framing, 1).x, 0.3);
-      const out = ImageDrift(kind: DriftKind.zoomOut, amount: 0.2);
-      expect(out.framed(const ImageFraming(), 1).zoom, 1);
+      expect(driftedFraming(framing, LoopPreset.driftIn, 0.2, 0).zoom, 1.5);
+      expect(driftedFraming(framing, LoopPreset.driftIn, 0.2, 1).zoom,
+          closeTo(1.8, 1e-9));
+      expect(driftedFraming(framing, LoopPreset.driftIn, 0.2, 1).x, 0.3);
+      expect(
+          driftedFraming(const ImageFraming(), LoopPreset.driftOut, 0.2, 1)
+              .zoom,
+          1);
+    });
+
+    test("a drift goes once across its span, and holds at the end", () {
+      const loop = ElementLoop(preset: LoopPreset.driftIn, from: 10, to: 20);
+      expect(loop.driftAt(0, last: 99), 0);
+      expect(loop.driftAt(15, last: 99), closeTo(0.5, 1e-9));
+      expect(loop.driftAt(60, last: 99), 1);
+      expect(loop.phaseAt(15, last: 99), isNull,
+          reason: "it does not go round");
+    });
+
+    test("a picture saved with a drift of its own comes back with the loop",
+        () {
+      var json = const ImageElement(_box, assetId: "halves").toJson()
+        ..["drift"] = {"kind": "panLeft", "amount": 0.3};
+      var back = elementFromJson(json) as ImageElement;
+      expect(back.animation.loop.preset, LoopPreset.driftLeft);
+      expect(back.animation.loop.strength, closeTo(2, 1e-9));
     });
 
     test("strokes kept as pixels draw what drawing them all afresh does",
@@ -441,6 +467,44 @@ void main() {
       ];
       await draw((c) => paintRetouchKept(c, picture, size, grown, null));
       expect(RasterCache.instance.drawn, drawn + 1);
+    });
+
+    test("the base picture flipped is drawn mirrored", () async {
+      ImageElement halves({bool flip = false}) => ImageElement(_box,
+          assetId: "halves",
+          fit: ImageFit.stretch,
+          layers: [ImageLayer.base.copyWith(flipX: flip)]);
+      var plain = await render(halves());
+      expect(at(plain, 20, 50), [255, 0, 0]);
+      var flipped = await render(halves(flip: true));
+      expect(at(flipped, 20, 50), [0, 0, 255], reason: "blue on the left now");
+      expect(at(flipped, 80, 50), [255, 0, 0]);
+    });
+
+    test("a picture with layers is cropped, not zoomed", () async {
+      // Red on the left half, blue on the right, under an empty paint layer.
+      ImageElement halves({bool flip = false}) =>
+          ImageElement(_box, assetId: "halves", fit: ImageFit.stretch, layers: [
+            ImageLayer.base.copyWith(flipX: flip),
+            const ImageLayer(id: "paint", kind: LayerKind.paint),
+          ]);
+      bool red(List<int> p) => p[0] > 200 && p[2] < 60;
+      bool blue(List<int> p) => p[2] > 200 && p[0] < 60;
+
+      // The left half of the picture cropped off: the blue stays where it
+      // was, and the red is gone -- not the blue blown up to fill the frame.
+      var cropped = halves().croppedTo(const ImageCrop(left: 0.5, right: 1));
+      expect(cropped.bounds, halves().bounds, reason: "the frame stays");
+      var p = await render(cropped);
+      expect(blue(at(p, 75, 50)), isTrue);
+      expect(blue(at(p, 25, 50)) || red(at(p, 25, 50)), isFalse,
+          reason: "nothing where the red was: ${at(p, 25, 50)}");
+
+      // Flipped, the picture's left -- the red -- is on the right.
+      var flipped = await render(
+          halves(flip: true).croppedTo(const ImageCrop(left: 0.5, right: 1)));
+      expect(blue(at(flipped, 25, 50)), isTrue);
+      expect(blue(at(flipped, 75, 50)) || red(at(flipped, 75, 50)), isFalse);
     });
 
     test("spot heal fills the spot with what is round it", () async {
@@ -666,6 +730,33 @@ void main() {
       c.undo();
       expect(now(c).stack, hasLength(1),
           reason: "the layer and its first stroke are one step");
+    });
+
+    testWidgets("the brush's ring stays under the pointer through a stroke",
+        (tester) async {
+      var (c, screen) = await open(tester, ImageTool.brush);
+      Offset? ring() {
+        for (var w
+            in tester.widgetList<CustomPaint>(find.byType(CustomPaint))) {
+          if (w.painter case StagePainter p) {
+            if (p.editingLayers?.ring case (var at, _)) return at;
+          }
+        }
+        return null;
+      }
+
+      var g = await tester.startGesture(screen(const Offset(150, 200)));
+      await tester.pump();
+      await g.moveTo(screen(const Offset(200, 220)));
+      await tester.pump();
+      await g.moveTo(screen(const Offset(240, 240)));
+      await tester.pump();
+      var at = ring();
+      expect(at, isNotNull);
+      expect((at! - const Offset(240, 240)).distance, lessThan(1),
+          reason: "where the pointer is, not where the stroke began");
+      await g.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets("Option turns dodging into burning", (tester) async {

@@ -83,13 +83,13 @@ class _SteppedState extends State<_Stepped> {
 }
 
 ImageElement _picture() => ImageElement(
-    const ElementBase(id: "i", x: 0, y: 0, width: 200, height: 200),
-    assetId: "abcdefghij123456",
-    layers: [
-      ImageLayer.base,
-      ImageLayer.picture(
-          "toptoptoptoptop1", const Rect.fromLTWH(0, 0, 500, 500)),
-    ]);
+        const ElementBase(id: "i", x: 0, y: 0, width: 200, height: 200),
+        assetId: "abcdefghij123456",
+        layers: [
+          ImageLayer.base,
+          ImageLayer.picture(
+              "toptoptoptoptop1", const Rect.fromLTWH(0, 0, 500, 500)),
+        ]);
 
 void main() {
   group("the stepper", () {
@@ -223,9 +223,11 @@ void main() {
   });
 
   group("the picture's sections", () {
-    Future<CanvasController> pumpPanel(WidgetTester tester) async {
+    Future<CanvasController> pumpPanel(WidgetTester tester,
+        {ImageElement? picture}) async {
       SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(const CanvasDocument().addElement(_picture()));
+      var c = CanvasController(
+          const CanvasDocument().addElement(picture ?? _picture()));
       addTearDown(c.dispose);
       c.selectOnly("i");
       tester.view.physicalSize = const Size(900, 4000);
@@ -263,8 +265,56 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("an adjustment has its own sections instead",
+    testWidgets(
+        "a picture on its own flips from Position, and stays placed "
+        "as an element", (tester) async {
+      var c = await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456"));
+      ImageElement now() => c.document.elementById("i")! as ImageElement;
+      await tapKey(tester, "imageLayerFlipX");
+      expect(now().stack.single.flipX, isTrue);
+      expect(find.byKey(const ValueKey("imageQuickMoves")), findsOneWidget,
+          reason: "still the element's own placing, flips and all");
+      expect(find.byKey(const ValueKey("imageLayerFill")), findsNothing,
+          reason: "alone in its frame, there is no frame to fill");
+      await tapKey(tester, "imageLayerFlipY");
+      expect(now().stack.single.flipY, isTrue);
+      await tapKey(tester, "imageLayerFlipX");
+      expect(now().stack.single.flipX, isFalse, reason: "pressed again, back");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        "with layers over it, the base picture flips from its quick "
+        "moves", (tester) async {
+      var c = await pumpPanel(tester);
+      await tapKey(tester, "imageLayerFlipX");
+      var e = c.document.elementById("i")! as ImageElement;
+      expect(e.stack.first.flipX, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the frame's shape is the Frame's; a picture fills its box",
         (tester) async {
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456"));
+      expect(find.byKey(const ValueKey("imageFrameShape")), findsOneWidget);
+      expect(find.text("Cut to"), findsOneWidget,
+          reason: "once, in Frame -- not again on the base picture");
+      expect(find.text("Fills its box"), findsOneWidget);
+      expect(find.text("Wrap frame to content"), findsNothing,
+          reason: "a picture with no layers is its frame");
+      expect(c.document.elementById("i"), isA<ImageElement>());
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("an adjustment has its own sections instead", (tester) async {
       var c = await pumpPanel(tester);
       await addLayer(tester, "imageAddAdjustment");
       expect(c.pickedLayer?.kind, LayerKind.adjustment);
@@ -400,8 +450,7 @@ void main() {
 
       // Only its switch turns it off; the tick goes with it.
       await tapKey(tester, "effectOn-dropShadow");
-      expect(
-          base().effects.firstWhere((f) => f.kind.name == "dropShadow").on,
+      expect(base().effects.firstWhere((f) => f.kind.name == "dropShadow").on,
           isFalse);
       expect(ticked("dropShadow"), isFalse);
     });
@@ -479,45 +528,46 @@ void main() {
       expect(now().animation.on, isTrue);
       expect(now().animation.preset.family.name, "slide");
       expect(find.byKey(const ValueKey("elementArriveHow")), findsOneWidget);
-      expect(find.byKey(const ValueKey("elementAnimationLength")),
-          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementAnimationLength")), findsOneWidget);
       await tapKey(tester, "elementArrive-none");
       expect(now().animation.on, isFalse);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a dropdown's arrows step through its options",
-        (tester) async {
+    testWidgets("a dropdown's arrows step through its options", (tester) async {
       var c = await pumpPanel(tester);
       await tester.pumpAndSettle();
       await openSection(tester, "image.picture.position");
       ImageElement now() => c.document.elementById("i")! as ImageElement;
       var fit = find.ancestor(
-          of: find.text("Fit"), matching: find.byType(CanvasDropdown<ImageFit>));
+          of: find.text("Fills its box"),
+          matching: find.byType(CanvasDropdown<ImageFit>));
       var before = now().fit;
       var more = find.descendant(
           of: fit,
           matching: find.byWidgetPredicate((w) =>
-              w is Semantics && w.properties.label == "Next Fit"));
+              w is Semantics && w.properties.label == "Next Fills its box"));
       await tester.tap(more);
       await tester.pumpAndSettle();
       expect(now().fit, ImageFit.values[ImageFit.values.indexOf(before) + 1]);
       var less = find.descendant(
           of: fit,
           matching: find.byWidgetPredicate((w) =>
-              w is Semantics && w.properties.label == "Previous Fit"));
+              w is Semantics &&
+              w.properties.label == "Previous Fills its box"));
       await tester.tap(less);
       await tester.pumpAndSettle();
       expect(now().fit, before);
     });
 
-    testWidgets("a \"?\" opens on a click, never on a hover",
-        (tester) async {
+    testWidgets("a \"?\" opens on a click, never on a hover", (tester) async {
       await pumpPanel(tester);
       await openSection(tester, "image.picture.position");
       var hint = find
           .descendant(
-              of: find.byKey(const ValueKey("sectionBody-image.picture.position")),
+              of: find
+                  .byKey(const ValueKey("sectionBody-image.picture.position")),
               matching: find.byType(CanvasHint))
           .first;
       var message = tester.widget<CanvasHint>(hint).message;
@@ -648,7 +698,8 @@ void main() {
       var c = CanvasController(const CanvasDocument().addElement(_picture()));
       addTearDown(c.dispose);
       c.selectOnly("i");
-      await tester.pumpWidget(_host(Center(child: ImageToolHint(controller: c))));
+      await tester
+          .pumpWidget(_host(Center(child: ImageToolHint(controller: c))));
       return c;
     }
 

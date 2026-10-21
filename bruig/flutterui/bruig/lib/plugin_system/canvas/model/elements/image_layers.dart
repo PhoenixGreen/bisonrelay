@@ -77,6 +77,11 @@ class ImageLayer {
   final String name;
 
   final bool visible;
+
+  /// locked keeps the layer as it is while others are worked on: it cannot
+  /// be picked, moved, sized or painted on on the canvas -- though it is
+  /// still drawn, and still set from the panel.
+  final bool locked;
   final double opacity;
   final LayerBlend blend;
 
@@ -96,7 +101,8 @@ class ImageLayer {
   /// painter draws them.
   final ImageElement? look;
 
-  /// flipX and flipY mirror a picture layer within its place.
+  /// flipX and flipY mirror a picture -- a layer's, or the base picture --
+  /// within its place.
   final bool flipX;
   final bool flipY;
 
@@ -153,6 +159,7 @@ class ImageLayer {
     required this.kind,
     this.name = "",
     this.visible = true,
+    this.locked = false,
     this.opacity = 1,
     this.blend = LayerBlend.normal,
     this.clip = false,
@@ -187,9 +194,12 @@ class ImageLayer {
       cueGap == 0 &&
       cueLength == null &&
       visible &&
+      !locked &&
       opacity == 1 &&
       blend == LayerBlend.normal &&
       !clip &&
+      !flipX &&
+      !flipY &&
       effects.isEmpty;
 
   /// picture is a new picture layer showing [assetId] at [place].
@@ -243,6 +253,7 @@ class ImageLayer {
     String? id,
     String? name,
     bool? visible,
+    bool? locked,
     double? opacity,
     LayerBlend? blend,
     bool? clip,
@@ -267,6 +278,7 @@ class ImageLayer {
         kind: kind,
         name: name ?? this.name,
         visible: visible ?? this.visible,
+        locked: locked ?? this.locked,
         opacity: (opacity ?? this.opacity).clamp(0.0, 1.0),
         blend: blend ?? this.blend,
         clip: clip ?? this.clip,
@@ -308,6 +320,7 @@ class ImageLayer {
         "k": kind.name,
         if (name.isNotEmpty) "name": name,
         if (!visible) "hide": true,
+        if (locked) "lock": true,
         if (opacity != 1) "op": opacity,
         if (blend != LayerBlend.normal) "blend": blend.name,
         if (clip) "clip": true,
@@ -345,6 +358,7 @@ class ImageLayer {
       kind: kind,
       name: jsonString(json["name"], ""),
       visible: !jsonBool(json["hide"], false),
+      locked: jsonBool(json["lock"], false),
       opacity: jsonDouble(json["op"], 1).clamp(0.0, 1.0),
       blend: LayerBlend.fromName(json["blend"] as String?),
       clip: jsonBool(json["clip"], false),
@@ -488,10 +502,14 @@ class LayerSpace {
 }
 
 /// layerAt is the topmost shown picture layer of [e] under [canvasPoint], or
-/// the base layer where there is none.
-ImageLayer layerAt(ImageElement e, Offset canvasPoint) {
+/// the base layer where there is none. [locked] says which layers are not
+/// to be picked -- a locked one, or every one but the soloed -- and a press
+/// goes through them to whatever is under.
+ImageLayer layerAt(ImageElement e, Offset canvasPoint,
+    {bool Function(ImageLayer)? locked}) {
   for (var layer in e.stack.reversed) {
     if (!layer.visible || layer.kind != LayerKind.picture) continue;
+    if (locked?.call(layer) ?? layer.locked) continue;
     if (LayerSpace(e, layer).contains(canvasPoint)) return layer;
   }
   return e.stack.firstWhere((l) => l.isBase);
@@ -827,7 +845,15 @@ Rect? contentRectOf(ImageElement e, Rect inner) {
 ImageElement keptInPlace(ImageElement was, ImageElement now) {
   if (!now.layered) return now;
   var a = was.box.inner(was.bounds), b = now.box.inner(now.bounds);
-  if (a.size == b.size || a.isEmpty || b.isEmpty) return now;
+  // The same size within rounding: a frame's size is worked out from its
+  // edges, and moved, the same width comes out a hair different -- which
+  // read as a resize, and left every layer behind on the page.
+  bool same(double p, double q) => (p - q).abs() <= 1e-6 * math.max(1, p.abs());
+  if (same(a.width, b.width) && same(a.height, b.height) ||
+      a.isEmpty ||
+      b.isEmpty) {
+    return now;
+  }
   Rect to(Rect place) => layerPlace(b, layerRect(a, place));
   Offset at(Offset f) => Offset((a.left + f.dx * a.width - b.left) / b.width,
       (a.top + f.dy * a.height - b.top) / b.height);

@@ -16,7 +16,12 @@ enum LoopFamily {
   motion("Motion"),
   light("Light & colour"),
   line("Line"),
-  effect("Effects");
+  effect("Effects"),
+
+  /// drift is a picture moving slowly inside its frame -- the documentary's
+  /// pan and zoom over a still -- once, across the loop's span. For
+  /// pictures only: see LoopFamily.forElement.
+  drift("Drift");
 
   final String label;
   const LoopFamily(this.label);
@@ -90,7 +95,16 @@ enum LoopPreset {
   ripple("Ripple", LoopFamily.effect),
 
   /// glitch breaks into torn, colour-split slices in short bursts.
-  glitch("Glitch bursts", LoopFamily.effect);
+  glitch("Glitch bursts", LoopFamily.effect),
+
+  /// The drifts: the picture moved inside its frame, the frame staying put,
+  /// once from the loop's start to its end -- closer, further, or across.
+  driftIn("Zoom in", LoopFamily.drift),
+  driftOut("Zoom out", LoopFamily.drift),
+  driftLeft("Pan left", LoopFamily.drift),
+  driftRight("Pan right", LoopFamily.drift),
+  driftUp("Pan up", LoopFamily.drift),
+  driftDown("Pan down", LoopFamily.drift);
 
   final String label;
   final LoopFamily family;
@@ -113,6 +127,10 @@ enum LoopPreset {
           true,
         _ => false,
       };
+
+  /// drifts is whether it moves a picture inside its frame, once across its
+  /// span, rather than going round. See ElementLoop.driftAt.
+  bool get drifts => family == LoopFamily.drift;
 
   /// banded is whether it sweeps a band, whose width and angle mean
   /// something.
@@ -225,7 +243,8 @@ class ElementLoop {
   /// loop is not playing then: before it starts, after it stops, or resting
   /// between two goes round.
   (double, int)? phaseAt(int frame, {int? arrived, required int last}) {
-    if (!on) return null;
+    // A drift does not go round; see driftAt.
+    if (!on || preset.drifts) return null;
     var (start, end) = span(arrived: arrived, last: last);
     if (frame < start || frame > end) return null;
     var period = math.max(1, cycle + math.max(0, gap));
@@ -233,6 +252,18 @@ class ElementLoop {
     if (into >= cycle) return null;
     var p = ease.apply(into / math.max(1, cycle)).clamp(0.0, 1.0);
     return (p, (frame - start) ~/ period);
+  }
+
+  /// driftAt is how far through a drift is at [frame], eased -- 0 before
+  /// it starts, 1 once it has ended, where it stays -- or null for a loop
+  /// that is not one. Once across the whole span: its cycle, rest and
+  /// repeats are a going-round's, and a drift does not go round.
+  double? driftAt(int frame, {int? arrived, required int last}) {
+    if (!on || !preset.drifts) return null;
+    var start = from ?? arrived ?? 0;
+    var end = math.max(start, to ?? last);
+    var t = end <= start ? 1.0 : (frame - start) / (end - start);
+    return ease.apply(t.clamp(0.0, 1.0)).clamp(0.0, 1.0);
   }
 
   /// poseAt is how the element is moved, turned, sized and faded by the

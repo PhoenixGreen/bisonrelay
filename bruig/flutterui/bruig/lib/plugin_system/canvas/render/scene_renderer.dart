@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_mask_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
@@ -716,11 +717,17 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintLine(canvas, _bowed(e, pose)));
       case ImageElement e:
-        // A drift runs the length of the scene, the frame staying put.
-        if (e.drift.on && document != null && document.frames > 1) {
-          e = e.copyWith(
-              framing:
-                  e.drift.framed(e.framing, frame / (document.frames - 1)));
+        // A drift -- one of the Drift loops -- moves the picture inside its
+        // frame across the loop's span, the frame staying put.
+        if (_wholeLoop(e) case var loop? when loop.preset.drifts) {
+          var t = loop.driftAt(frame,
+              arrived: arrivalEnd(e),
+              last: (document?.frames ?? (1 << 30)) - 1);
+          if (t != null) {
+            e = e.copyWith(
+                framing: driftedFraming(e.framing, loop.preset,
+                    driftPerStrength * loop.strength, t));
+          }
         }
         if (_layerByLayer(e, pose) case var arrive?) {
           _paintImage(canvas, bounds, e, images, arrive: arrive);
@@ -1673,7 +1680,7 @@ void _paintImageInside(
     canvas.clipRRect(e.box.insetRounded(inner));
   } else {
     // Room for an outline to be outside something. A picture that fills its
-    // box -- which is what "Fill the box" does, and it is the default -- has
+    // box -- which is what "Cover" does, and it is the default -- has
     // its own edge exactly on the clip, so an outward band had nowhere to go
     // and the width control appeared to do nothing at all. The picture is
     // still drawn inside the box; only the band is let out, which is what
@@ -1873,7 +1880,19 @@ void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
   // What is under it changes frame by frame while layers arrive, so the
   // adjusted picture is not kept then.
   var complete = images.misses == misses && arrive == null;
-  canvas.drawPicture(below);
+  // What is under is drawn as it is and the adjusted picture over it -- for
+  // what shows through: an adjustment at part strength, blended, masked or
+  // arriving. Wholly over it, the adjusted picture covers every pixel of
+  // what is under, and drawing all of that first was a picture's every
+  // layer drawn for nothing on every frame.
+  var top = stack[at];
+  var covers = !top.retouchesUnder &&
+      top.opacity >= 1 &&
+      top.blend == LayerBlend.normal &&
+      !top.mask.active &&
+      arrive == null &&
+      AdjustShader.ready.value;
+  if (!covers) canvas.drawPicture(below);
   if (stack[at].retouchesUnder) {
     // The clone, the heal, the dodge, worked on everything under the layer
     // as one picture -- across the whole frame, not one picture's pixels --
@@ -2083,7 +2102,10 @@ class _Watched extends CanvasImageSource implements CleansEdges {
   @override
   ui.Image? resolve(String assetId, BackgroundRemoval removal) {
     var image = source?.resolve(assetId, removal);
-    if (image == null) misses++;
+    if (image == null) {
+      misses++;
+      CanvasPerf.count("miss $assetId");
+    }
     return image;
   }
 
@@ -2102,7 +2124,10 @@ class _Watched extends CanvasImageSource implements CleansEdges {
     var s = source;
     if (s is CleansEdges) {
       var image = (s as CleansEdges).cleaned(look, picture);
-      if (image == null) misses++;
+      if (image == null) {
+        misses++;
+        CanvasPerf.count("miss cleaned ${look.assetId}");
+      }
       return image;
     }
     return null;
@@ -2148,7 +2173,7 @@ void paintMaskView(
   }
   var inner = e.box.inner(bounds);
   var rect = layerRect(inner, layer.place);
-  if (!layer.isBase) {
+  if (!layer.isBase || layer.flipX || layer.flipY) {
     canvas.translate(rect.center.dx, rect.center.dy);
     if (layer.turn != 0) canvas.rotate(layer.turn * math.pi / 180);
     if (layer.flipX || layer.flipY) {
@@ -2188,9 +2213,19 @@ void _paintLayer(ui.Canvas canvas, Rect inner, ImageElement e, ImageLayer layer,
   switch (layer.kind) {
     case LayerKind.base:
       var image = e.hasImage ? images?.resolve(e.assetId, e.removal) : null;
-      // In its own place: the frame, until it is moved or sized on its own.
+      // In its own place: the frame, until it is moved or sized on its own
+      // -- mirrored there, where it is flipped.
       if (image != null) {
-        _paintPicture(canvas, layerRect(inner, layer.place), e, image, images);
+        var rect = layerRect(inner, layer.place);
+        var flipped = layer.flipX || layer.flipY;
+        if (flipped) {
+          canvas.save();
+          canvas.translate(rect.center.dx, rect.center.dy);
+          canvas.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+          canvas.translate(-rect.center.dx, -rect.center.dy);
+        }
+        _paintPicture(canvas, rect, e, image, images);
+        if (flipped) canvas.restore();
       }
     case LayerKind.fill:
       canvas.drawRect(inner, layer.fill.into(Paint(), inner));

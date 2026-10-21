@@ -380,7 +380,7 @@ List<Widget> videoSettings(
   );
   var colourGroup = CanvasControlGroup(label: "Colour", rule: false, children: [
     CanvasDropdown<ImageFit>(
-      label: "Fit",
+      label: "Fills its box",
       value: e.look.fit,
       width: 106,
       options: [for (var f in ImageFit.values) (f, f.label)],

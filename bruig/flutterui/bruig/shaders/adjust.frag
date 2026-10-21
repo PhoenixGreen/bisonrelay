@@ -10,8 +10,10 @@
 
 #include <flutter/runtime_effect.glsl>
 
-uniform vec2 uOrigin;
+// uSize first and uImage the first sampler: as an image filter -- see
+// ImageFilter.shader -- the engine sets both, to the layer being drawn.
 uniform vec2 uSize;
+uniform vec2 uOrigin;
 uniform float uMode;
 uniform vec4 uA;
 uniform vec4 uB;

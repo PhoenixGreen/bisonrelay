@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -61,7 +62,17 @@ class StageFraming {
   /// tilted photograph would be reframed against a level ghost of itself.
   final double rotation;
 
-  const StageFraming(this.image, this.src, this.dst, this.frame, this.rotation);
+  /// pivot is what the element turns about: the middle of its frame, which
+  /// is not the middle of a picture placed in a frame grown round layers.
+  final Offset? pivot;
+
+  /// flipX and flipY are the picture's own mirror in its place, which the
+  /// ghost of the rest of it has too.
+  final bool flipX;
+  final bool flipY;
+
+  const StageFraming(this.image, this.src, this.dst, this.frame, this.rotation,
+      {this.pivot, this.flipX = false, this.flipY = false});
 }
 
 /// StagePainter draws the document, the page edge, the handles and the
@@ -373,7 +384,10 @@ class StagePainter extends CustomPainter {
         ]));
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(Canvas canvas, Size size) =>
+      CanvasPerf.time("stagePaint", () => _paintStage(canvas, size));
+
+  void _paintStage(Canvas canvas, Size size) {
     RasterCache.drafting = drafting;
     try {
       _paint(canvas, size);
@@ -1432,8 +1446,14 @@ class StagePainter extends CustomPainter {
     canvas.translate(origin.dx, origin.dy);
     canvas.scale(scale);
     if (it.rotation != 0) {
-      canvas.translate(it.frame.center.dx, it.frame.center.dy);
+      var pivot = it.pivot ?? it.frame.center;
+      canvas.translate(pivot.dx, pivot.dy);
       canvas.rotate(it.rotation);
+      canvas.translate(-pivot.dx, -pivot.dy);
+    }
+    if (it.flipX || it.flipY) {
+      canvas.translate(it.frame.center.dx, it.frame.center.dy);
+      canvas.scale(it.flipX ? -1 : 1, it.flipY ? -1 : 1);
       canvas.translate(-it.frame.center.dx, -it.frame.center.dy);
     }
 

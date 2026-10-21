@@ -19,7 +19,9 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/render/adjust_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/raster_cache.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/adjustment_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,16 +70,13 @@ void main() {
     test("an adjustment layer comes back as it was", () {
       var layer = ImageLayer.adjusting(AdjustKind.curves).copyWith(
           adjust: const ImageAdjustment(kind: AdjustKind.curves)
-              .withCurve(CurveChannel.red, const [
-                Offset(0, 0),
-                Offset(0.5, 0.7),
-                Offset(1, 1)
-              ])
+              .withCurve(CurveChannel.red,
+                  const [Offset(0, 0), Offset(0.5, 0.7), Offset(1, 1)])
               .withValue("unused", 3)
               .copyWith(colour: const ui.Color(0xFF112233)),
           opacity: 0.4);
-      var e = ImageElement(_box,
-          assetId: "red", layers: [ImageLayer.base, layer]);
+      var e =
+          ImageElement(_box, assetId: "red", layers: [ImageLayer.base, layer]);
       var back = (elementFromJson(e.toJson()) as ImageElement).layers[1];
       expect(back.kind, LayerKind.adjustment);
       expect(back.opacity, 0.4);
@@ -98,13 +97,18 @@ void main() {
   group("curves", () {
     test("the straight line is the straight line", () {
       for (var x = 0.0; x <= 1; x += 0.1) {
-        expect(curveAt(const [Offset(0, 0), Offset(1, 1)], x),
-            closeTo(x, 1e-9));
+        expect(
+            curveAt(const [Offset(0, 0), Offset(1, 1)], x), closeTo(x, 1e-9));
       }
     });
 
     test("an S curve passes through its points and never overshoots", () {
-      const s = [Offset(0, 0), Offset(0.25, 0.15), Offset(0.75, 0.85), Offset(1, 1)];
+      const s = [
+        Offset(0, 0),
+        Offset(0.25, 0.15),
+        Offset(0.75, 0.85),
+        Offset(1, 1)
+      ];
       expect(curveAt(s, 0.25), closeTo(0.15, 1e-9));
       expect(curveAt(s, 0.75), closeTo(0.85, 1e-9));
       var last = -1.0;
@@ -124,6 +128,8 @@ void main() {
         "red": await _picture(8, 8, (x, y) => [255, 0, 0, 255]),
         "blue": await _picture(8, 8, (x, y) => [0, 0, 255, 255]),
         "grey": await _picture(8, 8, (x, y) => [100, 100, 100, 255]),
+        "black": await _picture(8, 8, (x, y) => [0, 0, 0, 255]),
+        "white": await _picture(8, 8, (x, y) => [255, 255, 255, 255]),
         // Red on the left, yellow on the right.
         "kit": await _picture(
             8, 8, (x, y) => x < 4 ? [220, 20, 20, 255] : [240, 200, 20, 255]),
@@ -146,11 +152,11 @@ void main() {
       }
     }
 
-    ImageElement over(String base, List<ImageLayer> layers) => ImageElement(
-        _box,
-        assetId: base,
-        fit: ImageFit.stretch,
-        layers: [ImageLayer.base, ...layers]);
+    ImageElement over(String base, List<ImageLayer> layers) =>
+        ImageElement(_box,
+            assetId: base,
+            fit: ImageFit.stretch,
+            layers: [ImageLayer.base, ...layers]);
 
     ImageLayer adjusting(ImageAdjustment a) =>
         ImageLayer.adjusting(a.kind).copyWith(adjust: a);
@@ -163,10 +169,17 @@ void main() {
 
     test("an adjustment is kept when its picture moves, not when it changes",
         () async {
+      // Under Impeller an adjustment is a filter drawn as it goes: there is
+      // no raster to keep or count.
+      await pixel(
+          over("red",
+              [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
+          1,
+          1);
+      if (adjustsByFilter) return markTestSkipped("drawn as a filter");
       var cache = RasterCache.instance..clear();
-      var e = over("red", [
-        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
-      ]);
+      var e = over(
+          "red", [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]);
       await pixel(e, 50, 50);
       var drawn = cache.drawn;
       expect(cache.length, greaterThan(0), reason: "kept, by name");
@@ -176,23 +189,117 @@ void main() {
       expect(cache.drawn, drawn, reason: "where it is is not what it is of");
 
       // The adjustment changed: drawn again, and the old one let go of.
-      var changed = e.withLayer(e.stack.last.id,
-          (l) => l.copyWith(adjust: const ImageAdjustment(kind: AdjustKind.threshold)));
+      var changed = e.withLayer(
+          e.stack.last.id,
+          (l) => l.copyWith(
+              adjust: const ImageAdjustment(kind: AdjustKind.threshold)));
       var length = cache.length;
       await pixel(changed, 50, 50);
-      expect(cache.drawn, drawn + 1);
+      expect(cache.drawn, drawn + 1,
+          reason: "the adjusted picture only: what is under it is kept -- a "
+              "slider dragged does not draw every layer under it again");
       expect(cache.length, length, reason: "replaced, not added to");
 
-      // The base picture changed under it: drawn again.
+      // The base picture changed under it: what is under drawn again, and
+      // the adjusted picture with it.
       await pixel(changed.copyWith(assetId: "blue"), 50, 50);
-      expect(cache.drawn, drawn + 2);
+      expect(cache.drawn, drawn + 3);
+    });
+
+    test("a histogram is counted once while only its adjustment changes",
+        () async {
+      var e = over(
+          "grey", [adjusting(const ImageAdjustment(kind: AdjustKind.levels))]);
+      var id = e.stack.last.id;
+      var first = await histogramOf(e, id, images);
+      expect(first, isNotNull);
+      var moved = e.withLayer(
+          id, (l) => l.copyWith(adjust: l.adjust.withValue("black", 0.2)));
+      expect(identical(await histogramOf(moved, id, images), first), isTrue,
+          reason: "what is under it did not change");
+      var other = moved.copyWith(assetId: "red");
+      expect(identical(await histogramOf(other, id, images), first), isFalse,
+          reason: "the picture under it did");
+    });
+
+    test("drawn a little bigger or smaller, an adjustment is not redrawn",
+        () async {
+      // Under Impeller an adjustment is a filter drawn as it goes: there is
+      // no raster to keep or count.
+      await pixel(
+          over("red",
+              [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
+          1,
+          1);
+      if (adjustsByFilter) return markTestSkipped("drawn as a filter");
+      // A sidebar sliding open shrinks the canvas a few pixels a frame;
+      // each frame drew everything under the adjustment again.
+      var cache = RasterCache.instance..clear();
+      var e = over(
+          "red", [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]);
+      Future<void> at(double scale) async {
+        var document = CanvasDocument(
+            size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+            elements: [e]);
+        (await renderFrame(document, images: images, scale: scale)).dispose();
+      }
+
+      await at(1);
+      var drawn = cache.drawn;
+      for (var s in [0.97, 0.9, 0.85, 1.1, 1.3]) {
+        await at(s);
+      }
+      expect(cache.drawn, drawn, reason: "near enough: the one kept, scaled");
+      await at(3);
+      expect(cache.drawn, greaterThan(drawn),
+          reason: "far bigger: drawn again");
+    });
+
+    test("a thumbnail of it does not throw away the canvas's", () async {
+      // Under Impeller an adjustment is a filter drawn as it goes: there is
+      // no raster to keep or count.
+      await pixel(
+          over("red",
+              [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
+          1,
+          1);
+      if (adjustsByFilter) return markTestSkipped("drawn as a filter");
+      // The scenes list draws every scene small whenever the canvas changes.
+      // Kept in one place, the thumbnail's and the canvas's each threw the
+      // other's away, and everything under the adjustment was drawn again
+      // for both, on every change.
+      var cache = RasterCache.instance..clear();
+      var e = over("red",
+          [adjusting(const ImageAdjustment(kind: AdjustKind.blackWhite))]);
+      Future<void> at(double scale) async {
+        var document = CanvasDocument(
+            size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+            elements: [e]);
+        (await renderFrame(document, images: images, scale: scale)).dispose();
+      }
+
+      await at(6); // the canvas
+      await at(1.5); // its thumbnail
+      var drawn = cache.drawn;
+      for (var i = 0; i < 4; i++) {
+        await at(6);
+        await at(1.5);
+      }
+      expect(cache.drawn, drawn, reason: "each kept its own");
     });
 
     test("resized through many sizes, a layer keeps one raster", () async {
+      // Under Impeller an adjustment is a filter drawn as it goes: there is
+      // no raster to keep or count.
+      await pixel(
+          over("red",
+              [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
+          1,
+          1);
+      if (adjustsByFilter) return markTestSkipped("drawn as a filter");
       var cache = RasterCache.instance..clear();
-      var e = over("red", [
-        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
-      ]);
+      var e = over(
+          "red", [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]);
       await pixel(e, 10, 10);
       var length = cache.length;
       for (var w = 60; w < 100; w += 4) {
@@ -202,12 +309,20 @@ void main() {
           reason: "each size replaced the last, rather than joining it");
     });
 
-    test("a gesture draws with a full raster still good, and drafts only "
+    test(
+        "a gesture draws with a full raster still good, and drafts only "
         "what changed", () async {
+      // Under Impeller an adjustment is a filter drawn as it goes: there is
+      // no raster to keep or count.
+      await pixel(
+          over("red",
+              [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
+          1,
+          1);
+      if (adjustsByFilter) return markTestSkipped("drawn as a filter");
       var cache = RasterCache.instance..clear();
-      var e = over("red", [
-        adjusting(const ImageAdjustment(kind: AdjustKind.invert))
-      ]);
+      var e = over(
+          "red", [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]);
       await pixel(e, 50, 50);
       var drawn = cache.drawn;
       RasterCache.drafting = true;
@@ -247,9 +362,8 @@ void main() {
     test("invert", () async {
       near(
           await pixel(
-              over("red", [
-                adjusting(const ImageAdjustment(kind: AdjustKind.invert))
-              ]),
+              over("red",
+                  [adjusting(const ImageAdjustment(kind: AdjustKind.invert))]),
               50,
               50),
           [0, 255, 255]);
@@ -259,8 +373,8 @@ void main() {
       var a = const ImageAdjustment(kind: AdjustKind.threshold);
       near(await pixel(over("grey", [adjusting(a)]), 50, 50), [0, 0, 0]);
       near(
-          await pixel(over("grey", [adjusting(a.withValue("level", 0.2))]),
-              50, 50),
+          await pixel(
+              over("grey", [adjusting(a.withValue("level", 0.2))]), 50, 50),
           [255, 255, 255]);
     });
 
@@ -306,11 +420,23 @@ void main() {
       expect(p[2], greaterThan(p[0]));
     });
 
+    test("a gradient map runs dark to light along its colours", () async {
+      var a = const ImageAdjustment(
+          kind: AdjustKind.gradientMap,
+          fade: PaintSpec(ui.Color(0xFF0000FF),
+              gradient: GradientSpec(to: ui.Color(0xFFFFFF00))));
+      var dark = await pixel(over("black", [adjusting(a)]), 50, 50);
+      var light = await pixel(over("white", [adjusting(a)]), 50, 50);
+      var mid = await pixel(over("grey", [adjusting(a)]), 50, 50);
+      print("gradient map: black $dark grey $mid white $light");
+      near(dark, [0, 0, 255], by: 12);
+      near(light, [255, 255, 0], by: 12);
+    });
+
     test("opacity lets the unadjusted show through", () async {
       var layer = adjusting(const ImageAdjustment(kind: AdjustKind.invert))
           .copyWith(opacity: 0.5);
-      near(await pixel(over("red", [layer]), 50, 50), [128, 128, 128],
-          by: 8);
+      near(await pixel(over("red", [layer]), 50, 50), [128, 128, 128], by: 8);
     });
 
     test("only what is under it is adjusted", () async {
@@ -343,8 +469,7 @@ void main() {
               50,
               50),
           [255, 0, 0]);
-      near(
-          await pixel(over("red", [invert.copyWith(visible: false)]), 50, 50),
+      near(await pixel(over("red", [invert.copyWith(visible: false)]), 50, 50),
           [255, 0, 0]);
     });
   });
@@ -363,8 +488,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
           ChangeNotifierProvider<CanvasPreferences>(
               create: (c) => CanvasPreferences()),
         ],
@@ -381,7 +505,6 @@ void main() {
         (c.document.elementById("i")! as ImageElement)
             .stack
             .firstWhere((l) => l.kind == LayerKind.adjustment);
-
 
     testWidgets("an adjustment is added, picked, and set", (tester) async {
       var c = await pumpPanel(tester);
@@ -413,8 +536,10 @@ void main() {
       await addLayer(tester, "imageAddAdjustment");
       var layer = c.pickedLayer!;
       var e = c.document.elementById("i")! as ImageElement;
-      c.changeImage(e.withLayer(layer.id,
-          (l) => l.copyWith(adjust: const ImageAdjustment(kind: AdjustKind.curves))));
+      c.changeImage(e.withLayer(
+          layer.id,
+          (l) => l.copyWith(
+              adjust: const ImageAdjustment(kind: AdjustKind.curves))));
       await tester.pumpAndSettle();
 
       var square = find.byKey(const ValueKey("curveSquare"));

@@ -1741,7 +1741,7 @@ Widget _animationCards(
           (loop) => now(animation.copyWith(loop: loop)), (loop) {
         begin();
         write(animation.copyWith(loop: loop));
-      }, commit),
+      }, commit, drifts: element is ImageElement),
       if (animation.cuts)
         ...effectBits(
             animation.effect,
@@ -1888,7 +1888,8 @@ Widget loopGroup(
     void Function(ElementLoop) live,
     VoidCallback commit,
     {String keys = "element",
-    String label = "Looping"}) {
+    String label = "Looping",
+    bool drifts = false}) {
   Widget frames(String key, String label, int value, int least,
           ElementLoop Function(int) set) =>
       CanvasNumberField(
@@ -1902,136 +1903,204 @@ Widget loopGroup(
         onChanged: (v) => live(set(v.round())),
         onCommit: commit,
       );
-  return CanvasControlGroup(label: label, children: [
-    CanvasDropdown<LoopFamily?>(
-      key: ValueKey("${keys}LoopFamily"),
-      label: "Kind",
-      value: loop.on ? loop.preset.family : null,
+  var families = [
+    for (var family in LoopFamily.values)
+      // The drifts move a picture inside its frame: only a picture has one.
+      if (family != LoopFamily.drift || drifts) family,
+  ];
+  var which = <Widget>[
+    CanvasDropdown<LoopPreset>(
+      key: ValueKey("${keys}LoopPreset"),
+      label: "Which",
+      value: loop.preset,
       width: 132,
       options: [
-        (null, "None"),
-        for (var family in LoopFamily.values) (family, family.label),
+        for (var preset in LoopPreset.inFamily(loop.preset.family))
+          (preset, preset.label),
       ],
-      onChanged: (family) => now(loop.copyWith(
-          preset: family == null
-              ? LoopPreset.none
-              : LoopPreset.inFamily(family).first)),
+      onChanged: (v) => now(loop.copyWith(preset: v)),
     ),
-    if (loop.on) ...[
-      CanvasDropdown<LoopPreset>(
-        key: ValueKey("${keys}LoopPreset"),
-        label: "Which",
-        value: loop.preset,
-        width: 132,
-        options: [
-          for (var preset in LoopPreset.inFamily(loop.preset.family))
-            (preset, preset.label),
-        ],
-        onChanged: (v) => now(loop.copyWith(preset: v)),
-      ),
+  ];
+  var settings = <Widget>[
+    // A drift goes once across its span, not round: no cycle to time.
+    if (!loop.preset.drifts) ...[
       frames("${keys}LoopCycle", "Cycle", loop.cycle, 1,
           (v) => loop.copyWith(cycle: v)),
       frames(
           "${keys}LoopGap", "Gap", loop.gap, 0, (v) => loop.copyWith(gap: v)),
       frames("${keys}LoopRepeats", "Repeats", loop.repeats, 0,
           (v) => loop.copyWith(repeats: v)),
-      // How each go round is paced. Only the curves that stay inside it: a
-      // round's phase stops at its ends, so an overshoot would be a pause.
-      easeDropdown<ChartEase>(
-        key: ValueKey("${keys}LoopEase"),
-        value: loop.ease,
-        values: const [
-          ChartEase.linear,
-          ChartEase.easeIn,
-          ChartEase.easeOut,
-          ChartEase.easeInOut,
-        ],
-        name: (c) => c.label,
-        curve: (c) => c.apply,
-        onChanged: (c) => now(loop.copyWith(ease: c)),
-      ),
-      // The colour it draws with, for the loops that draw -- a gradient for
-      // a colour wave, whose band is the gradient -- and the band's width
-      // and lean, for the loops that sweep one.
-      if (loop.preset.coloured)
-        CanvasColorButton(
-          key: ValueKey("${keys}LoopColour"),
-          label: "Colour",
-          color: loop.colour.color,
-          gradient: loop.preset == LoopPreset.colourWave
-              ? loop.colour.gradient
-              : null,
-          onGradientChanged: loop.preset == LoopPreset.colourWave
-              ? (g) => now(loop.copyWith(
-                  colour: g == null
-                      ? loop.colour.copyWith(plain: true)
-                      : loop.colour.copyWith(gradient: g)))
-              : null,
-          onChanged: (c) =>
-              now(loop.copyWith(colour: loop.colour.copyWith(color: c))),
-        ),
-      if (loop.preset.banded) ...[
-        CanvasSlider(
-          key: ValueKey("${keys}LoopBand"),
-          label: "Band",
-          value: loop.band,
-          min: 0.05,
-          max: 1,
-          width: 80,
-          onChanged: (v) => live(loop.copyWith(band: v)),
-          onCommit: commit,
-        ),
-        CanvasNumberField(
-          key: ValueKey("${keys}LoopAngle"),
-          label: "Angle",
-          min: -90,
-          max: 90,
-          decimals: 0,
-          width: 52,
-          value: loop.angle,
-          onChanged: (v) => live(loop.copyWith(angle: v)),
-          onCommit: commit,
-        ),
+    ],
+    // How each go round is paced. Only the curves that stay inside it: a
+    // round's phase stops at its ends, so an overshoot would be a pause.
+    easeDropdown<ChartEase>(
+      key: ValueKey("${keys}LoopEase"),
+      value: loop.ease,
+      values: const [
+        ChartEase.linear,
+        ChartEase.easeIn,
+        ChartEase.easeOut,
+        ChartEase.easeInOut,
       ],
+      name: (c) => c.label,
+      curve: (c) => c.apply,
+      onChanged: (c) => now(loop.copyWith(ease: c)),
+    ),
+    // The colour it draws with, for the loops that draw -- a gradient for
+    // a colour wave, whose band is the gradient -- and the band's width
+    // and lean, for the loops that sweep one.
+    if (loop.preset.coloured)
+      CanvasColorButton(
+        key: ValueKey("${keys}LoopColour"),
+        label: "Colour",
+        color: loop.colour.color,
+        gradient:
+            loop.preset == LoopPreset.colourWave ? loop.colour.gradient : null,
+        onGradientChanged: loop.preset == LoopPreset.colourWave
+            ? (g) => now(loop.copyWith(
+                colour: g == null
+                    ? loop.colour.copyWith(plain: true)
+                    : loop.colour.copyWith(gradient: g)))
+            : null,
+        onChanged: (c) =>
+            now(loop.copyWith(colour: loop.colour.copyWith(color: c))),
+      ),
+    if (loop.preset.banded) ...[
       CanvasSlider(
-        key: ValueKey("${keys}LoopStrength"),
-        label: "Strength",
-        value: loop.strength,
-        max: 3,
-        width: 90,
-        onChanged: (v) => live(loop.copyWith(strength: v)),
+        key: ValueKey("${keys}LoopBand"),
+        label: "Band",
+        value: loop.band,
+        min: 0.05,
+        max: 1,
+        width: 80,
+        onChanged: (v) => live(loop.copyWith(band: v)),
         onCommit: commit,
       ),
-      CanvasDropdown<bool>(
-        key: ValueKey("${keys}LoopStarts"),
-        label: "Starts",
-        value: loop.from == null,
-        width: 120,
-        options: const [(true, "After arriving"), (false, "At a frame")],
-        onChanged: (after) => now(after
-            ? loop.copyWith(clearFrom: true)
-            : loop.copyWith(from: controller.frame)),
+      CanvasNumberField(
+        key: ValueKey("${keys}LoopAngle"),
+        label: "Angle",
+        min: -90,
+        max: 90,
+        decimals: 0,
+        width: 52,
+        value: loop.angle,
+        onChanged: (v) => live(loop.copyWith(angle: v)),
+        onCommit: commit,
       ),
-      if (loop.from case var from?)
-        frames("${keys}LoopFrom", "Frame", from + 1, 1,
-            (v) => loop.copyWith(from: v - 1)),
-      CanvasDropdown<bool>(
-        key: ValueKey("${keys}LoopEnds"),
-        label: "Ends",
-        value: loop.to == null,
-        width: 120,
-        options: const [(true, "Scene end"), (false, "At a frame")],
-        onChanged: (end) => now(end
-            ? loop.copyWith(clearTo: true)
-            : loop.copyWith(
-                to: math.max(loop.from ?? 0, controller.document.frames - 1))),
-      ),
-      if (loop.to case var to?)
-        frames("${keys}LoopTo", "Frame", to + 1, 1,
-            (v) => loop.copyWith(to: v - 1)),
     ],
-  ]);
+    CanvasSlider(
+      key: ValueKey("${keys}LoopStrength"),
+      label: "Strength",
+      value: loop.strength,
+      max: 3,
+      width: 90,
+      onChanged: (v) => live(loop.copyWith(strength: v)),
+      onCommit: commit,
+    ),
+    CanvasDropdown<bool>(
+      key: ValueKey("${keys}LoopStarts"),
+      label: "Starts",
+      value: loop.from == null,
+      width: 120,
+      options: const [(true, "After arriving"), (false, "At a frame")],
+      onChanged: (after) => now(after
+          ? loop.copyWith(clearFrom: true)
+          : loop.copyWith(from: controller.frame)),
+    ),
+    if (loop.from case var from?)
+      frames("${keys}LoopFrom", "Frame", from + 1, 1,
+          (v) => loop.copyWith(from: v - 1)),
+    CanvasDropdown<bool>(
+      key: ValueKey("${keys}LoopEnds"),
+      label: "Ends",
+      value: loop.to == null,
+      width: 120,
+      options: const [(true, "Scene end"), (false, "At a frame")],
+      onChanged: (end) => now(end
+          ? loop.copyWith(clearTo: true)
+          : loop.copyWith(
+              to: math.max(loop.from ?? 0, controller.document.frames - 1))),
+    ),
+    if (loop.to case var to?)
+      frames(
+          "${keys}LoopTo", "Frame", to + 1, 1, (v) => loop.copyWith(to: v - 1)),
+  ];
+  return Builder(builder: (context) {
+    // In a sectioned panel, as the arrival and the exit are: the kinds as
+    // tiles, and the one chosen's settings in a card under them.
+    if (CanvasCards.on(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CanvasTiles<LoopFamily?>(
+            key: ValueKey("${keys}LoopKinds"),
+            label: label,
+            help: "What it goes on doing once it has arrived -- or from a "
+                "frame of its own -- until the scene ends, or for so many "
+                "times. Pick a kind; which, how long and how strong are in "
+                "the card under it.",
+            scrolls: true,
+            tileWidth: 72,
+            previewHeight: 30,
+            tiles: [
+              for (var f in <LoopFamily?>[null, ...families])
+                CanvasTile(f, f?.label ?? "None", icon: _loopIcon(f)),
+            ],
+            selected: (f) => loop.on ? loop.preset.family == f : f == null,
+            keyOf: (f) => "${keys}Loop-${f?.name ?? "none"}",
+            onPick: (f) => now(loop.copyWith(
+                preset: f == null
+                    ? LoopPreset.none
+                    : LoopPreset.inFamily(f).first)),
+          ),
+          if (loop.on)
+            CanvasControlGroup(
+              key: ValueKey("${keys}LoopHow"),
+              label: "${loop.preset.label} loop",
+              help: "The loop's own settings: which of its kind, how long "
+                  "each go round takes and rests, how many times, how "
+                  "strongly, and from when until when.",
+              rule: false,
+              children: [
+                ...which,
+                const CanvasLineBreak(),
+                ...settings,
+              ],
+            ),
+        ],
+      );
+    }
+    return CanvasControlGroup(label: label, children: [
+      CanvasDropdown<LoopFamily?>(
+        key: ValueKey("${keys}LoopFamily"),
+        label: "Kind",
+        value: loop.on ? loop.preset.family : null,
+        width: 132,
+        options: [
+          (null, "None"),
+          // The drifts move a picture inside its frame: only a picture has one.
+          for (var family in families) (family, family.label),
+        ],
+        onChanged: (family) => now(loop.copyWith(
+            preset: family == null
+                ? LoopPreset.none
+                : LoopPreset.inFamily(family).first)),
+      ),
+      if (loop.on) ...[...which, ...settings],
+    ]);
+  });
 }
+
+/// _loopIcon is what each kind of loop is drawn as on its tile.
+IconData _loopIcon(LoopFamily? f) => switch (f) {
+      null => Icons.block,
+      LoopFamily.motion => Icons.waves,
+      LoopFamily.light => Icons.flare,
+      LoopFamily.line => Icons.timeline,
+      LoopFamily.effect => Icons.auto_awesome_outlined,
+      LoopFamily.drift => Icons.panorama_outlined,
+    };
 
 /// keyframeEasingControls are the keyframe's easing and the button that
 /// gives every keyframe the same -- nothing, for an element with no

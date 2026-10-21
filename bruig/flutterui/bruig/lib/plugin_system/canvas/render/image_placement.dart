@@ -56,6 +56,24 @@ class ImagePlacement {
   Offset get slack => Offset(math.max(0, whole.width - window.width),
       math.max(0, whole.height - window.height));
 
+  /// wholeDst is where the whole picture would be drawn, cut off where it is
+  /// not -- what reframing shows faintly round the frame.
+  ///
+  /// Measured from [src] and [dst], the part actually drawn and where: the
+  /// two are the same pixels, so the rest lines up with them whatever was
+  /// cropped. Measured from the [window] against [dst], as it was, a crop
+  /// off the top slid the whole picture down by the share it took -- a
+  /// second copy of the picture under the first.
+  Rect get wholeDst {
+    if (src.width <= 0 || src.height <= 0) return dst;
+    var sx = dst.width / src.width, sy = dst.height / src.height;
+    return Rect.fromLTWH(
+        dst.left - (src.left - whole.left) * sx,
+        dst.top - (src.top - whole.top) * sy,
+        whole.width * sx,
+        whole.height * sy);
+  }
+
   /// toImage turns a point on the canvas into one in the picture, as a
   /// fraction of its full width and height -- which is how a brush stroke is
   /// stored, so that it survives the element being resized, refitted or

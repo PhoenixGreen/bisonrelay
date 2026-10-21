@@ -138,6 +138,37 @@ void main() {
       expect(fitted.bounds, const Rect.fromLTWH(100, 100, 200, 200));
     });
 
+    test("moved, everything in it goes with it", () {
+      // Edges far from round numbers: the frame's size, worked out from its
+      // edges, comes out a hair different where it is moved to -- which read
+      // as a resize, and left the layers behind on the page.
+      var e = ImageElement(
+          const ElementBase(
+              id: "i",
+              x: 374.6223314829666,
+              y: 133.4284666657575,
+              width: 612.7139758032177,
+              height: 349.7104735245903),
+          assetId: "white",
+          layers: [
+            ImageLayer.base.copyWith(
+                basePlace: const Rect.fromLTWH(219.56, 527.77, 780.43, 472.22)),
+            ImageLayer.picture("white", const Rect.fromLTWH(0, 0, 400, 400)),
+          ]);
+      var moved = e.withBase(x: e.x + 41.44, y: e.y + 24.11) as ImageElement;
+      for (var i = 0; i < e.stack.length; i++) {
+        expect(moved.stack[i].place, e.stack[i].place,
+            reason: "${e.stack[i].kind} in the same place in the frame");
+      }
+      var c = CanvasController(const CanvasDocument().addElement(e));
+      addTearDown(c.dispose);
+      c.beginInteraction();
+      c.replaceElement(moved, transient: true);
+      c.endInteraction();
+      expect(c.document.elementById("i")!.bounds, moved.bounds,
+          reason: "not pulled back and grown round where it was");
+    });
+
     test("does not grow when it clips", () {
       var e = painted().copyWith(clip: true);
       expect(identical(e.grownToFit(), e), isTrue);

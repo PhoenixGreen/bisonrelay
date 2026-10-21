@@ -463,7 +463,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey("vectorShapeAnimationScope")),
         findsOneWidget);
-    var family = find.byKey(const ValueKey("elementLoopFamily"));
+    var family = find.byKey(const ValueKey("elementLoopKinds"));
     if (family.evaluate().isEmpty) {
       var heading = find.byWidgetPredicate(
           (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
@@ -471,9 +471,9 @@ void main() {
       await tester.tap(heading.first);
       await tester.pumpAndSettle();
     }
-    tester
-        .widget<CanvasDropdown<LoopFamily?>>(family)
-        .onChanged(LoopFamily.motion);
+    var tile = find.byKey(ValueKey("elementLoop-motion"));
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
     await tester.pumpAndSettle();
     expect(now().shapes![1].owns, isNotEmpty);
     var reset = find.byKey(const ValueKey("vectorShapeAnimationReset"));
@@ -594,8 +594,8 @@ void main() {
     // card's width under them, and the motion numbers to scrub.
     expect(find.byKey(const ValueKey("elementArriveKinds")), findsOneWidget);
     expect(find.byKey(const ValueKey("elementLeaveKinds")), findsOneWidget);
-    var which = tester.getRect(
-        find.byKey(const ValueKey("elementAnimationPreset")));
+    var which =
+        tester.getRect(find.byKey(const ValueKey("elementAnimationPreset")));
     var kinds =
         tester.getRect(find.byKey(const ValueKey("elementArriveKinds")));
     expect(which.top, greaterThan(kinds.bottom),

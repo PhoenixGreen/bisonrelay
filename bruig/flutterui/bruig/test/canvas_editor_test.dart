@@ -2936,17 +2936,19 @@ void main() {
           reason: "and it says where they went");
     });
 
-    testWidgets("shape, crop and overlay appear only once there is a picture",
+    testWidgets("crop and overlay appear only once there is a picture",
         (tester) async {
       await panel(tester, empty());
-      expect(group("Shape"), findsNothing);
       expect(group("Crop"), findsNothing);
       expect(group("Overlay"), findsNothing);
 
       await panel(tester, filled());
-      expect(group("Shape"), findsOneWidget);
       expect(group("Crop"), findsOneWidget);
       expect(group("Overlay"), findsOneWidget);
+      // The base picture's shape cuts the whole of it, so it is the frame's:
+      // in Frame, picture or not, and not a second time with the picture.
+      expect(group("Frame shape"), findsOneWidget);
+      expect(group("Shape"), findsNothing);
     });
 
     testWidgets("the overlay colour appears only once a blend is chosen",

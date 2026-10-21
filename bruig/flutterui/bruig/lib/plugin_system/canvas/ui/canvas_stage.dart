@@ -3632,12 +3632,16 @@ class CanvasStageState extends State<CanvasStage> {
           ].map(space.fromFrame).toList());
     }
     var space = LayerSpace(e, picked);
+    // Locked, it is outlined but has nothing to take hold of.
+    var held = controller.layerLocked(picked);
     return StageLayers(
       others: others,
       chosen: chosen,
       picked: space.corners,
-      handles: [for (var h in boxHandles(space.rect)) space.fromLayer(h)],
-      knob: picked.isBase ? null : _layerKnob(space),
+      handles: held
+          ? const []
+          : [for (var h in boxHandles(space.rect)) space.fromLayer(h)],
+      knob: picked.isBase || held ? null : _layerKnob(space),
     );
   }
 
@@ -3646,12 +3650,25 @@ class CanvasStageState extends State<CanvasStage> {
   /// under the press, then the base picture. False when the press missed the
   /// picture altogether, which closes it.
   bool _pressLayers(ImageElement e, Offset doc) {
+    var picked = controller.pickedLayer;
+    // A locked layer is not drawn on, masked or moved here. The press is
+    // still the picture's, so it stays open.
+    if (picked != null &&
+        controller.layerLocked(picked) &&
+        (controller.imageTool.masks || controller.imageTool.paints)) {
+      controller.noteForBrush(controller.imageSolo
+          ? "Another layer is soloed: pick this one, or turn Solo off."
+          : "This layer is locked: unlock it in the layers list to work on "
+              "it.");
+      _mode = _DragMode.none;
+      return true;
+    }
     if (controller.imageTool.masks) return _pressMask(e, doc);
     if (controller.imageTool.paints) return _pressBrush(e, doc);
-    var picked = controller.pickedLayer;
     if (picked != null &&
         (picked.kind == LayerKind.picture || (picked.isBase && e.layered)) &&
-        picked.visible) {
+        picked.visible &&
+        !controller.layerLocked(picked)) {
       var space = LayerSpace(e, picked);
       if (!picked.isBase && (doc - _layerKnob(space)).distance <= _layerReach) {
         return _holdLayer(picked, _DragMode.imageLayerTurn, -1);
@@ -3662,7 +3679,7 @@ class CanvasStageState extends State<CanvasStage> {
         }
       }
     }
-    var under = layerAt(e, doc);
+    var under = layerAt(e, doc, locked: controller.layerLocked);
     if (!under.isBase) {
       // Shift or Command picks it as well, or lets it go again; a press on
       // one already picked keeps the others, so they move together.
@@ -3678,6 +3695,12 @@ class CanvasStageState extends State<CanvasStage> {
       return _holdLayer(under, _DragMode.imageLayerMove, -1);
     }
     if (!_containsPoint(e, doc)) return false;
+    // Locked, the base picture is not picked or moved: the press only keeps
+    // the picture open.
+    if (controller.layerLocked(under)) {
+      _mode = _DragMode.none;
+      return true;
+    }
     controller.pickImageLayer(baseLayerId);
     // With layers round it, the base picture is moved about the frame as a
     // picture layer is, where it is pressed.
@@ -3964,7 +3987,10 @@ class CanvasStageState extends State<CanvasStage> {
     _layersMoved = mode == _DragMode.imageLayerMove
         ? [
             for (var l in controller.pickedLayers)
-              if (l.kind == LayerKind.picture && l.id != layer.id) l
+              if (l.kind == LayerKind.picture &&
+                  l.id != layer.id &&
+                  !controller.layerLocked(l))
+                l
           ]
         : const [];
     _layerHandle = handle;
@@ -4029,11 +4055,23 @@ class CanvasStageState extends State<CanvasStage> {
   /// _framingPlacement is where the picture is drawn right now, asked of the
   /// same code that draws it.
   ImagePlacement? _framingPlacement(ImageElement e, ui.Image image) {
-    var inner = e.box.inner(e.boundsAt(controller.frame));
+    var inner = _framingRect(e);
     if (inner.width <= 0 || inner.height <= 0) return null;
     return placeImage(
         Size(image.width.toDouble(), image.height.toDouble()), inner, e.fit,
         crop: e.crop, framing: e.framing);
+  }
+
+  /// _framingRect is where the picture being reframed is drawn: its frame,
+  /// or -- with layers round it -- its own place in the frame, which is no
+  /// longer the whole of it once the frame has grown round a layer or a
+  /// stroke.
+  Rect _framingRect(ImageElement e) {
+    var inner = e.box.inner(e.boundsAt(controller.frame));
+    if (!e.layered) return inner;
+    var base =
+        e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
+    return layerRect(inner, base.place);
   }
 
   /// _framingView is what the painter draws over a picture being reframed:
@@ -4043,26 +4081,13 @@ class CanvasStageState extends State<CanvasStage> {
       var placement = _framingPlacement(e, image);
       if (placement == null || placement.src.width <= 0) return null;
 
-      // Doc units per picture pixel, which is the same in both directions --
-      // a cover never distorts -- so one number scales the whole ghost.
-      // Against the window rather than against what is drawn: the ghost
-      // shows where the frame sits in the picture, and the crop is not part
-      // of that question. See ImagePlacement.window.
-      var window = placement.window;
-      var perPixel = placement.dst.width / window.width;
-      var whole = placement.whole;
-      var dst = Rect.fromLTWH(
-        placement.dst.left - (window.left - whole.left) * perPixel,
-        placement.dst.top - (window.top - whole.top) * perPixel,
-        whole.width * perPixel,
-        whole.height * perPixel,
-      );
-      return StageFraming(
-          image,
-          whole,
-          dst,
-          e.box.inner(e.boundsAt(controller.frame)),
-          e.rotationAt(controller.frame) * math.pi / 180);
+      var base =
+          e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
+      return StageFraming(image, placement.whole, placement.wholeDst,
+          _framingRect(e), e.rotationAt(controller.frame) * math.pi / 180,
+          pivot: e.boundsAt(controller.frame).center,
+          flipX: base.flipX,
+          flipY: base.flipY);
     }
     return null;
   }
@@ -4191,7 +4216,11 @@ class CanvasStageState extends State<CanvasStage> {
     if (_framedPicture() case (var e, var image)) {
       var placement = _framingPlacement(e, image);
       if (placement == null) return;
-      var perPixel = placement.dst.width / placement.window.width;
+      // Canvas units per picture pixel, from what is drawn and where: the
+      // window is the picture before the crop, and the drawn part after it.
+      var perPixel = placement.src.width <= 0
+          ? 0.0
+          : placement.dst.width / placement.src.width;
       if (perPixel <= 0) return;
       var slack = placement.slack;
 
@@ -4203,6 +4232,12 @@ class CanvasStageState extends State<CanvasStage> {
         travel = Offset(travel.dx * math.cos(a) - travel.dy * math.sin(a),
             travel.dx * math.sin(a) + travel.dy * math.cos(a));
       }
+      // And by its mirror: a picture flipped across moves the other way
+      // inside its frame for the same drag.
+      var base =
+          e.stack.firstWhere((l) => l.isBase, orElse: () => ImageLayer.base);
+      travel = Offset(base.flipX ? -travel.dx : travel.dx,
+          base.flipY ? -travel.dy : travel.dy);
 
       controller.replaceElement(
           e.copyWith(
@@ -4574,6 +4609,10 @@ class CanvasStageState extends State<CanvasStage> {
 
   void _onPointerMove(PointerMoveEvent event) {
     _pointer = event;
+    // Held down as well as hovering: a brush's ring is drawn where the
+    // pointer last was, and only hovering moved it -- so through a stroke it
+    // stayed where the stroke began.
+    _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
     // A press that travels is a drag of the chart, not a hold of its key.
     if (_legendHold != null &&
@@ -5671,7 +5710,10 @@ class CanvasStageState extends State<CanvasStage> {
                   child: ClipRect(
                     child: CustomPaint(
                       painter: StagePainter(
-                        drafting: controller.interacting,
+                        // A tile tried on as the pointer passes over it is a glimpse too:
+                        // drawn as a gesture is, then properly when it is
+                        // picked or let go of.
+                        drafting: controller.interacting || controller.trying,
                         backgrounds: _backgrounds,
                         page: _pageRect,
                         view: _viewRect,

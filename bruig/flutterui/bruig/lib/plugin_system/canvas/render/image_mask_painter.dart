@@ -74,6 +74,55 @@ ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
   return picture;
 }
 
+/// _Rastered is a mask drawn into pixels: what it was drawn for, and them.
+class _Rastered {
+  final ui.Image? subject;
+  final Size size;
+  final ui.Image image;
+  _Rastered(this.subject, this.size, this.image);
+}
+
+/// _rastered is the masks last drawn, as pixels, the most recently drawn
+/// last -- let go of as they fall out.
+final Map<ImageMask, _Rastered> _rastered = LinkedHashMap.identity();
+
+/// _maskSide is the most a mask is drawn into across: a mask is an edge's
+/// softness, not a photograph's detail.
+const double _maskSide = 2048;
+
+/// maskImage is [mask] for a picture of [size] pixels as pixels, white what
+/// is kept, at most [_maskSide] across -- drawn once, then kept with the
+/// mask.
+///
+/// Drawn as its recording on every frame instead, a mask was its every mark
+/// again: a brush stroke is a soft dab at every step along it, each blurred
+/// on its own, and a picture of six masked photographs was thousands of
+/// them -- a second of the graphics card's time whenever it was drawn
+/// anywhere but straight to the screen.
+ui.Image maskImage(ImageMask mask, Size size, ui.Image? subject) {
+  var kept = _rastered.remove(mask);
+  if (kept != null && kept.size == size && identical(kept.subject, subject)) {
+    _rastered[mask] = kept;
+    return kept.image;
+  }
+  kept?.image.dispose();
+  var k = math.min(1.0, _maskSide / math.max(size.width, size.height));
+  var w = math.max(1, (size.width * k).round());
+  var h = math.max(1, (size.height * k).round());
+  var recorder = ui.PictureRecorder();
+  var canvas = ui.Canvas(recorder);
+  canvas.scale(w / size.width, h / size.height);
+  canvas.drawPicture(maskPicture(mask, size, subject));
+  var picture = recorder.endRecording();
+  var image = picture.toImageSync(w, h);
+  picture.dispose();
+  _rastered[mask] = _Rastered(subject, size, image);
+  while (_rastered.length > _recordedMost) {
+    _rastered.remove(_rastered.keys.first)!.image.dispose();
+  }
+  return image;
+}
+
 /// paintMaskMarks draws [mask]'s subject and marks, as alpha, into a picture
 /// of [size] pixels. Not inverted -- see maskPicture.
 void paintMaskMarks(
@@ -247,8 +296,14 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
     {BlendMode blend = BlendMode.dstIn, Rect? bounds}) {
   var m = pictureToPlacement(placement);
   var scale = math.min(m.sx.abs(), m.sy.abs());
+  // The layer only as large as the picture and as far as its edge is
+  // softened past it: left unbounded, each masked picture's feathering was
+  // a blur over everything it was drawn in, once a frame no longer cut its
+  // layers to it.
+  var r = mask.refine;
+  var reach = (r.feather * 1.5 + r.smooth + r.shift.abs()) * scale + 2;
   canvas.saveLayer(
-      bounds,
+      bounds ?? placement.dst.inflate(reach),
       Paint()
         ..blendMode = blend
         ..imageFilter = refineFilter(mask.refine, scale));
@@ -261,7 +316,13 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
   canvas.clipRect(placement.dst, doAntiAlias: false);
   canvas.translate(m.dx, m.dy);
   canvas.scale(m.sx, m.sy);
-  canvas.drawPicture(maskPicture(mask, picture, subject));
+  // As pixels, drawn once and kept: see maskImage.
+  var image = maskImage(mask, picture, subject);
+  canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & picture,
+      Paint()..filterQuality = FilterQuality.medium);
   canvas.restore();
   canvas.restore();
 }

@@ -12,7 +12,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -126,7 +125,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       var keys = kind == ElementKind.text ? "text" : "chart";
-      var family = find.byKey(ValueKey("${keys}LoopFamily"));
+      var family = find.byKey(ValueKey("${keys}LoopKinds"));
       if (family.evaluate().isEmpty) {
         var heading = find.text("ANIMATION");
         await tester.ensureVisible(heading.first);
@@ -134,9 +133,9 @@ void main() {
         await tester.pumpAndSettle();
       }
       expect(family, findsOneWidget, reason: "a Looping group");
-      tester
-          .widget<CanvasDropdown<LoopFamily?>>(family)
-          .onChanged(LoopFamily.motion);
+      var tile = find.byKey(ValueKey("${keys}Loop-motion"));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(CanvasController.elementLoopOf(c.selected!).on, isTrue);
       if (kind == ElementKind.text) {

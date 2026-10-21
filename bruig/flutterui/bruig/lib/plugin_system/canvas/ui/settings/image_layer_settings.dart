@@ -389,6 +389,19 @@ class _ImageLayersListState extends State<ImageLayersList> {
                           ),
                         ),
                       ),
+                      // Solo: only the picked layer can be worked on, the
+                      // rest held as if locked, whichever is picked.
+                      CanvasIconButton(
+                        key: const ValueKey("imageLayersSolo"),
+                        tight: true,
+                        icon: Icons.center_focus_strong_outlined,
+                        tooltip: controller.imageSolo
+                            ? "Solo on: only the picked layer can be edited"
+                            : "Solo: lock every layer but the picked one",
+                        active: controller.imageSolo,
+                        onPressed: () =>
+                            controller.imageSolo = !controller.imageSolo,
+                      ),
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: _AddButton(
@@ -700,6 +713,19 @@ class _ImageLayersListState extends State<ImageLayersList> {
                       : () => controller.removeImageLayer(layer.id),
                   label: "Delete"),
             ],
+            // Locked, it is kept as it is while the others are worked on; a
+            // soloed picture holds every other layer the same way, and they
+            // say so with the lock shut but faint.
+            tap(
+                "imageLayerLock-${layer.id}",
+                layer.locked
+                    ? Icons.lock
+                    : controller.layerLocked(layer)
+                        ? Icons.lock_outline
+                        : Icons.lock_open_outlined,
+                () => change(e.withLayer(
+                    layer.id, (l) => l.copyWith(locked: !l.locked))),
+                label: layer.locked ? "Unlock" : "Lock"),
             tap(
                 "imageLayerShow-${layer.id}",
                 layer.visible
@@ -955,15 +981,34 @@ Widget layerStrengthGroup(ImageElement e, ImageLayer picked,
   );
 }
 
-/// layerQuickMoves are the quick ways of putting the picked picture layer
-/// somewhere: flipped, filling the frame, inside it, in the middle.
-List<Widget> layerQuickMoves(
+/// QuickMove is one press that places a picture: mirrored, filling or
+/// fitted to its frame, centred, or given back its own proportions.
+enum QuickMove {
+  flipX("Flip across", Icons.swap_horiz, "imageLayerFlipX"),
+  flipY("Flip down", Icons.swap_vert, "imageLayerFlipY"),
+  fill("Cover frame", Icons.fullscreen, "imageLayerFill"),
+  fit("Inside frame", Icons.fit_screen_outlined, "imageLayerFit"),
+  centre("Centre", Icons.filter_center_focus, "imageLayerCentre"),
+  shape("Own shape", Icons.aspect_ratio, "imageLayerProportions");
+
+  final String label;
+  final IconData icon;
+  final String key;
+  const QuickMove(this.label, this.icon, this.key);
+}
+
+/// quickMoveTiles is the quick moves for [picked], as tiles -- the same
+/// row the mask and retouch tools are -- with a flip lit while the picture
+/// is flipped. [placing] off is a picture alone in its frame, which is
+/// placed as an element is: the flips and nothing else.
+Widget quickMoveTiles(
     CanvasController controller,
     ImageElement e,
     ImageLayer picked,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit) {
+    VoidCallback commit,
+    {bool placing = true}) {
   var inner = e.box.inner(e.bounds);
   void now(ImageLayer next) {
     begin();
@@ -995,54 +1040,61 @@ List<Widget> layerQuickMoves(
         inner, Rect.fromCenter(center: inner.center, width: w, height: h));
   }
 
-  return [
-    // The base picture has no flip of its own: a mirror is a picture
-    // layer's.
-    if (!picked.isBase)
-      CanvasTextButton(
-        key: const ValueKey("imageLayerFlipX"),
-        icon: Icons.swap_horiz,
-        label: "Flip across",
-        onPressed: () => now(picked.copyWith(flipX: !picked.flipX)),
-      ),
-    if (!picked.isBase)
-      CanvasTextButton(
-        key: const ValueKey("imageLayerFlipY"),
-        icon: Icons.swap_vert,
-        label: "Flip down",
-        onPressed: () => now(picked.copyWith(flipY: !picked.flipY)),
-      ),
-    CanvasTextButton(
-      key: const ValueKey("imageLayerFill"),
-      label: "Fill frame",
-      onPressed: () => now(picked.placed(fitted(cover: true), turn: 0)),
-    ),
-    CanvasTextButton(
-      key: const ValueKey("imageLayerFit"),
-      label: "Fit inside",
-      onPressed: () => now(picked.placed(fitted(cover: false), turn: 0)),
-    ),
-    CanvasTextButton(
-      key: const ValueKey("imageLayerCentre"),
-      label: "Centre",
-      onPressed: () => now(picked.placed(
-          Rect.fromCenter(
-              center: const Offset(layerUnits / 2, layerUnits / 2),
-              width: place.width,
-              height: place.height),
-          turn: picked.turn)),
-    ),
-    if (image != null)
-      CanvasTextButton(
-        key: const ValueKey("imageLayerProportions"),
-        label: "Its own shape",
-        onPressed: () => now(picked.isBase
-            ? picked.placed(fitted(cover: false))
-            : picked.copyWith(
-                look: withPictureProportions(picked.look!, inner,
-                    Size(image.width.toDouble(), image.height.toDouble())))),
-      ),
+  var moves = [
+    QuickMove.flipX,
+    QuickMove.flipY,
+    if (placing) ...[
+      QuickMove.fill,
+      QuickMove.fit,
+      QuickMove.centre,
+      if (image != null) QuickMove.shape,
+    ],
   ];
+  return CanvasToolTiles<QuickMove>(
+    key: const ValueKey("imageQuickMoves"),
+    tools: [for (var m in moves) (m, m.icon, m.label)],
+    active: null,
+    alsoActive: (m) =>
+        m == QuickMove.flipX && picked.flipX ||
+        m == QuickMove.flipY && picked.flipY,
+    keyOf: (m) => m.key,
+    tooltipOf: (m) => m.label,
+    help: placing
+        ? "One press each: flip it, size it to cover the frame or to sit "
+            "inside it, put it in the middle, or give it back the picture's "
+            "own proportions. A flip is lit while it is flipped; press it again "
+            "to put it back."
+        : "Mirror the picture across, or upside down. A flip is lit while "
+            "it is flipped; press it again to put it back.",
+    onPick: (m) {
+      switch (m) {
+        case QuickMove.flipX:
+          now(picked.copyWith(flipX: !picked.flipX));
+        case QuickMove.flipY:
+          now(picked.copyWith(flipY: !picked.flipY));
+        case QuickMove.fill:
+          now(picked.placed(fitted(cover: true), turn: 0));
+        case QuickMove.fit:
+          now(picked.placed(fitted(cover: false), turn: 0));
+        case QuickMove.centre:
+          now(picked.placed(
+              Rect.fromCenter(
+                  center: const Offset(layerUnits / 2, layerUnits / 2),
+                  width: place.width,
+                  height: place.height),
+              turn: picked.turn));
+        case QuickMove.shape:
+          if (image == null) return;
+          now(picked.isBase
+              ? picked.placed(fitted(cover: false))
+              : picked.copyWith(
+                  look: withPictureProportions(picked.look!, inner,
+                      Size(image.width.toDouble(), image.height.toDouble()))));
+        case null:
+          break;
+      }
+    },
+  );
 }
 
 /// fillLayerSettings is a colour layer's colour, or its fade.
