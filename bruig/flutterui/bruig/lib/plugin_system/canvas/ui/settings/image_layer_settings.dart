@@ -403,7 +403,7 @@ class _ImageLayersListState extends State<ImageLayersList> {
                       ),
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: _AddButton(
+                        child: LayersAddButton(
                           open: _adding,
                           onPressed: () => setState(() => _adding = !_adding),
                         ),
@@ -740,11 +740,17 @@ class _ImageLayersListState extends State<ImageLayersList> {
   }
 }
 
-/// _AddButton is the strip's "+ Add", which opens the kinds of layer.
-class _AddButton extends StatelessWidget {
+/// LayersAddButton is a layers strip's "+ Add", which opens the kinds of
+/// layer: a picture's, and a drawing's. Never shortened -- it is one word.
+class LayersAddButton extends StatelessWidget {
   final bool open;
   final VoidCallback onPressed;
-  const _AddButton({required this.open, required this.onPressed});
+  final String tapKey;
+  const LayersAddButton(
+      {required this.open,
+      required this.onPressed,
+      this.tapKey = "imageLayersAdd",
+      super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -753,7 +759,7 @@ class _AddButton extends StatelessWidget {
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
-        key: const ValueKey("imageLayersAdd"),
+        key: ValueKey(tapKey),
         borderRadius: BorderRadius.circular(7),
         onTap: onPressed,
         child: Container(

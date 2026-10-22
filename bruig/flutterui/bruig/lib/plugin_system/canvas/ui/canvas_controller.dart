@@ -2383,6 +2383,27 @@ class CanvasController extends ChangeNotifier {
   VectorPick? get vectorPick =>
       _vectorPicks.length == 1 ? _vectorPicks.first : null;
 
+  /// vectorSolo holds every layer of the drawing being edited but the one
+  /// picked, as a picture's Solo does: only it can be picked or edited on
+  /// the canvas. For this run of the app; off when the drawing is put down.
+  bool get vectorSolo => _vectorSolo;
+  bool _vectorSolo = false;
+  set vectorSolo(bool on) {
+    if (_vectorSolo == on) return;
+    _vectorSolo = on;
+    if (on) {
+      vectorSoloOf = _soloOf;
+    } else if (vectorSoloOf == _soloOf) {
+      vectorSoloOf = null;
+    }
+    notifyListeners();
+  }
+
+  int? _soloOf(VectorElement e) =>
+      _vectorSolo && e.id == _vectorEditing && _vectorShape >= 0
+          ? groupOf(e, _vectorShape)
+          : null;
+
   /// vectorTool is what a press on the drawing being edited does: pick and
   /// move points, put them down with the pen, scale them, or tint them.
   VectorTool get vectorTool => _vectorTool;
@@ -3253,6 +3274,10 @@ class CanvasController extends ChangeNotifier {
   }
 
   void _resetVectorEditing() {
+    if (_vectorSolo) {
+      _vectorSolo = false;
+      if (vectorSoloOf == _soloOf) vectorSoloOf = null;
+    }
     _vectorItems = const {};
     _lastSelect = VectorTool.select;
     _vectorShape = -1;
@@ -7201,6 +7226,7 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (vectorSoloOf == _soloOf) vectorSoloOf = null;
     _disposedForWaveform = true;
     _autosave?.cancel();
     _playback?.cancel();

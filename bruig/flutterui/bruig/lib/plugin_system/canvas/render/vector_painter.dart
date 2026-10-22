@@ -326,8 +326,10 @@ void _paintVector(
 
 /// _paintGroup draws one shape -- with whatever is combined into it, its
 /// tints and its rub-outs -- in the drawing's own units.
-void _paintGroup(ui.Canvas canvas, VectorDrawn d) {
+void _paintGroup(ui.Canvas canvas, VectorDrawn d, {bool evenHidden = false}) {
   var shape = d.style;
+  // Hidden from its Layers row: left out, its place in the order kept.
+  if (shape.hidden && !evenHidden) return;
   // Tinted or rubbed out, a shape is drawn into a layer of its own for its
   // tints to be laid on and its rub-outs taken out of -- its own, so what
   // is drawn over it later is untouched by them. See _paintTints and
@@ -447,6 +449,25 @@ void paintVectorGroup(
   canvas.translate(p.dx, p.dy);
   canvas.scale(p.sx, p.sy);
   _paintGroup(canvas, d);
+  canvas.restore();
+}
+
+/// paintVectorThumbnail draws [d] -- one layer of a drawing -- alone and
+/// filling [size], for its row in the Layers list: hidden or not, so a
+/// hidden layer still shows what it is.
+void paintVectorThumbnail(ui.Canvas canvas, Size size, VectorDrawn d) {
+  var r = d.outline
+      .getBounds()
+      .inflate(d.style.stroke == null ? 0 : d.style.strokeWidth / 2);
+  if (r.isEmpty || r.width <= 0 && r.height <= 0) return;
+  var w = math.max(r.width, 1e-6), h = math.max(r.height, 1e-6);
+  var k = math.min(size.width / w, size.height / h) * 0.86;
+  canvas.save();
+  canvas.clipRect(Offset.zero & size);
+  canvas.translate(size.width / 2, size.height / 2);
+  canvas.scale(k);
+  canvas.translate(-r.center.dx, -r.center.dy);
+  _paintGroup(canvas, d, evenHidden: true);
   canvas.restore();
 }
 

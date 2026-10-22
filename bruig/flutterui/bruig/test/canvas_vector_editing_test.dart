@@ -217,6 +217,52 @@ void main() {
     });
   });
 
+  group("a layer hidden or locked", () {
+    VectorElement held({bool hidden = false, bool locked = false}) {
+      var e = drawing(square);
+      return e.withShape(
+          0, e.shapes![0].copyWith(hidden: hidden, locked: locked));
+    }
+
+    test("is kept so", () {
+      var e = held(hidden: true, locked: true);
+      var back =
+          VectorShape.fromJson(jsonDecode(jsonEncode(e.shapes![0].toJson())))!;
+      expect([back.hidden, back.locked], [true, true]);
+      var plain = VectorShape.fromJson(
+          jsonDecode(jsonEncode(drawing(square).shapes![0].toJson())))!;
+      expect([plain.hidden, plain.locked], [false, false]);
+    });
+
+    test("is passed over on the canvas", () {
+      // The square's middle, on the canvas: the element is at 100,100.
+      const middle = Offset(150, 150);
+      expect(shapeAt(drawing(square), middle, 2), 0);
+      expect(shapeAt(held(locked: true), middle, 2), -1);
+      expect(shapeAt(held(hidden: true), middle, 2), -1);
+      expect(allPicks(held(locked: true)), isEmpty);
+    });
+
+    test("hidden, is not drawn", () async {
+      Future<int> red(VectorElement e) async {
+        var recorder = PictureRecorder();
+        paintVector(
+            Canvas(recorder), const Rect.fromLTWH(0, 0, 100, 100), e, null);
+        var image = await recorder.endRecording().toImage(100, 100);
+        var raw = (await image.toByteData(format: ImageByteFormat.rawRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        return raw[(50 * 100 + 50) * 4];
+      }
+
+      expect(await red(drawing(square)), greaterThan(200));
+      expect(await red(held(hidden: true)), 0);
+      expect(await red(held(locked: true)), greaterThan(200),
+          reason: "locked is still drawn");
+    });
+  });
+
   group("the controller", () {
     CanvasController withDrawing() {
       var c =
@@ -322,11 +368,12 @@ void main() {
       // A filled square, no line: nothing to say about ends or corners.
       expect(find.byKey(const ValueKey("vectorCap")), findsNothing);
       expect(find.byKey(const ValueKey("vectorJoin")), findsNothing);
-      var edit = find.byKey(const ValueKey("vectorEdit"));
-      await tester.ensureVisible(edit);
-      await tester.tap(edit);
+      // The tool in hand pressed again puts the drawing down.
+      var inHand = find.byKey(const ValueKey("vectorTool-tint"));
+      await tester.ensureVisible(inHand);
+      await tester.tap(inHand);
       await tester.pumpAndSettle();
-      expect(c.vectorEditing, isNull, reason: "the icon stops editing too");
+      expect(c.vectorEditing, isNull, reason: "the tool stops editing");
     });
 
     testWidgets("each tool's settings are on the row below the tools",
@@ -408,10 +455,17 @@ void main() {
       c.editVector("v");
       c.vectorTool = VectorTool.scale;
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey("vectorPointWidth")), findsNothing,
-          reason: "nothing picked, nothing to type");
+      // Nothing picked: there to be seen, faint and out of reach.
+      bool reachable() => tester
+          .widgetList<IgnorePointer>(find.ancestor(
+              of: find.byKey(const ValueKey("vectorPointWidth")),
+              matching: find.byType(IgnorePointer)))
+          .every((w) => !w.ignoring);
+      expect(find.byKey(const ValueKey("vectorPointWidth")), findsOneWidget);
+      expect(reachable(), isFalse, reason: "nothing picked, nothing to type");
       c.pickVectorPoint(const VectorPick(0, 0, 1));
       await tester.pumpAndSettle();
+      expect(reachable(), isTrue);
       tester
           .widget<CanvasNumberField>(
               find.byKey(const ValueKey("vectorPointWidth")))
@@ -428,7 +482,111 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets("the playlist lists the shapes, steps cues, and moves them",
+    testWidgets("the layers: Add in full, Whole drawing, and Solo",
+        (tester) async {
+      var c = await show(
+          tester,
+          drawing('$square'
+              '<path d="M10 10 L20 10 L20 20 Z" fill="blue"/>'));
+      VectorElement now() => c.document.elementById("v") as VectorElement;
+      Future<void> tapKey(String key) async {
+        var found = find.byKey(ValueKey(key));
+        await tester.ensureVisible(found);
+        await tester.tap(found);
+        await tester.pumpAndSettle();
+      }
+
+      // "Add" whole, and its kinds as tiles.
+      var add = find.descendant(
+          of: find.byKey(const ValueKey("vectorLayersAdd")),
+          matching: find.text("Add"));
+      expect(add, findsOneWidget);
+      expect(tester.getSize(add).width, greaterThan(15));
+      await tapKey("vectorLayersAdd");
+      expect(find.byKey(const ValueKey("vectorAddTiles")), findsOneWidget);
+      await tapKey("vectorLayersAdd-pen");
+      expect(c.vectorEditing, "v");
+      expect(c.vectorTool, VectorTool.pen);
+
+      // The whole drawing, first: every shape at once.
+      await tapKey("vectorLayer-1");
+      expect(c.vectorShape, 1);
+      await tapKey("vectorLayerAll");
+      expect(c.vectorShape, -1);
+
+      // Solo holds every layer but the one picked.
+      await tapKey("vectorLayer-1");
+      await tapKey("vectorLayersSolo");
+      expect(c.vectorSolo, isTrue);
+      expect(shapeHeld(now(), 0), isTrue);
+      expect(shapeHeld(now(), 1), isFalse);
+      c.editVector(null);
+      await tester.pumpAndSettle();
+      expect(c.vectorSolo, isFalse, reason: "off with the drawing put down");
+      expect(shapeHeld(now(), 0), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a tool taken up from Add is brought into view on the shelf",
+        (tester) async {
+      var c = await show(tester, drawing(square));
+      // A sidebar's width, where the line of tools runs past its end.
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      var add = find.byKey(const ValueKey("vectorLayersAdd"));
+      await tester.ensureVisible(add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      var pencil = find.byKey(const ValueKey("vectorLayersAdd-pencil"));
+      await tester.ensureVisible(pencil);
+      await tester.tap(pencil);
+      await tester.pumpAndSettle();
+      expect(c.vectorTool, VectorTool.pencil);
+      var tile = find.byKey(const ValueKey("vectorTool-pencil"));
+      var row = find.byKey(const ValueKey("toolsRow"));
+      var shown = tester.getRect(row), at = tester.getRect(tile);
+      expect(at.left, greaterThanOrEqualTo(shown.left - 0.5));
+      expect(at.right, lessThanOrEqualTo(shown.right + 0.5),
+          reason: "the pencil in view, lit, not off the end of the line");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("colours sit in Drawing; the drawing's file in Position",
+        (tester) async {
+      await show(tester, drawing(square));
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-drawing")),
+              matching: find.byKey(const ValueKey("vectorShapeGroup"))),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-shape")), findsNothing);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-position")),
+              matching: find.byKey(const ValueKey("vectorDrawingControls"))),
+          findsOneWidget);
+      expect(
+          tester
+              .widget<CanvasDropdown<VectorFit>>(
+                  find.byKey(const ValueKey("vectorFit")))
+              .label,
+          "",
+          reason: "no Fit heading");
+    });
+
+    testWidgets("the layers list the shapes, pick, move, hide and lock them",
         (tester) async {
       var c = await show(
           tester,
@@ -437,58 +595,67 @@ void main() {
               '<path d="M30 30 L40 30 L40 40 Z" fill="green"/>'));
       tester.view.physicalSize = const Size(1400, 2400);
       await tester.pumpAndSettle();
-      if (find.byKey(const ValueKey("vectorPlaylist-0")).evaluate().isEmpty) {
-        var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
-        await tester.ensureVisible(heading);
-        await tester.tap(heading);
+      VectorElement now() => c.document.elementById("v") as VectorElement;
+      Future<void> tapKey(String key) async {
+        var found = find.byKey(ValueKey(key));
+        await tester.ensureVisible(found);
+        await tester.tap(found);
         await tester.pumpAndSettle();
       }
-      expect(find.byKey(const ValueKey("vectorPlaylist-2")), findsOneWidget);
-      VectorElement now() => c.document.elementById("v") as VectorElement;
 
-      // The cue steps on with each press.
-      await tester.tap(find.byKey(const ValueKey("vectorCue-1")));
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].cue, VectorCue.after);
-      await tester.tap(find.byKey(const ValueKey("vectorCue-1")));
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].cue, VectorCue.gap);
-      await tester.tap(find.byKey(const ValueKey("vectorGapMore-1")));
-      await tester.pumpAndSettle();
-      expect(now().shapes![1].cueGap, 13);
+      expect(find.byKey(const ValueKey("vectorLayersStrip")), findsOneWidget);
+      // Opened, a row for each, front at the top.
+      await tapKey("vectorLayersOpen");
+      var rows = find.byWidgetPredicate((w) =>
+          w.key is ValueKey<String> &&
+          (w.key as ValueKey<String>).value.startsWith("vectorLayerRow-"));
+      expect(rows, findsNWidgets(3));
+      expect(
+          tester.getTopLeft(find.byKey(const ValueKey("vectorLayerRow-2"))).dy,
+          lessThan(tester
+              .getTopLeft(find.byKey(const ValueKey("vectorLayerRow-0")))
+              .dy));
 
-      // A row picks its shape.
-      await tester.tap(find.byKey(const ValueKey("vectorPlaylist-2")));
-      await tester.pumpAndSettle();
+      // A row picks its shape, opening the drawing.
+      await tapKey("vectorLayer-2");
+      expect(c.vectorEditing, "v");
       expect(c.vectorShape, 2);
 
-      // The arrows move a shape -- and with it its cue.
-      await tester.tap(find.byKey(const ValueKey("vectorUp-1")));
-      await tester.pumpAndSettle();
-      expect(now().shapes!.first.fill, const Color(0xFF0000FF));
-      expect(now().shapes!.first.cue, VectorCue.gap);
+      // The picked one's arrows move it back.
+      await tapKey("vectorLayerDown-2");
+      expect(now().shapes![1].fill, const Color(0xFF008000));
+      expect(now().shapes![2].fill, const Color(0xFF0000FF));
 
-      // And a drag with the mouse, hovering first, as a hand would.
-      var handle = find.descendant(
-          of: find.byKey(const ValueKey("vectorPlaylist-0")),
-          matching: find.byIcon(Icons.drag_indicator));
-      var g = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await g.addPointer(location: tester.getCenter(handle));
-      await g.moveTo(tester.getCenter(handle));
-      await tester.pump(const Duration(seconds: 2));
-      await g.down(tester.getCenter(handle));
-      await tester.pump(const Duration(milliseconds: 100));
-      var rowHeight =
-          tester.getSize(find.byKey(const ValueKey("vectorPlaylist-0"))).height;
-      for (var k = 1; k <= 10; k++) {
-        await g.moveBy(Offset(0, rowHeight * 2.2 / 10));
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      await g.up();
+      // Hidden and locked: kept in the order, out of reach.
+      await tapKey("vectorLayerShow-0");
+      expect(now().shapes![0].hidden, isTrue);
+      await tapKey("vectorLayerLock-1");
+      expect(now().shapes![1].locked, isTrue);
+      expect(shapeHeld(now(), 0), isTrue);
+      expect(shapeHeld(now(), 1), isTrue);
+      expect(shapeHeld(now(), 2), isFalse);
+
+      // When one comes in is in Animation now, the picked layer's.
+      c.pickVectorShape(2);
       await tester.pumpAndSettle();
-      expect(now().shapes!.last.fill, const Color(0xFF0000FF),
-          reason: "dragged to the end");
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
+      if (find.byKey(const ValueKey("vectorCue-2")).evaluate().isEmpty) {
+        await tester.ensureVisible(heading.first);
+        await tester.tap(heading.first);
+        await tester.pumpAndSettle();
+      }
+      tester
+          .widget<CanvasDropdown<VectorCue>>(
+              find.byKey(const ValueKey("vectorCue-2")))
+          .onChanged(VectorCue.gap);
+      await tester.pumpAndSettle();
+      expect(now().shapes![2].cue, VectorCue.gap);
+      tester
+          .widget<CanvasStepper>(find.byKey(const ValueKey("vectorGap-2")))
+          .onChanged(13);
+      await tester.pumpAndSettle();
+      expect(now().shapes![2].cueGap, 13);
       expect(tester.takeException(), isNull);
     });
 
@@ -530,16 +697,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a drawing not yet edited offers Edit points, no colours",
+    testWidgets(
+        "a drawing not yet edited offers its tools and Tint, no colours",
         (tester) async {
       await show(
           tester,
           const VectorElement(ElementBase(id: "v"),
               assetId: "0123456789abcdef.svg"));
-      expect(find.byKey(const ValueKey("vectorEdit")), findsOneWidget);
+      expect(find.byKey(const ValueKey("vectorEdit")), findsNothing);
       expect(find.byKey(const ValueKey("vectorShapeGroup")), findsNothing);
-      expect(find.byKey(const ValueKey("vectorTool-pen")), findsNothing,
-          reason: "the tools come out with the editing");
+      expect(find.byKey(const ValueKey("vectorTool-pen")), findsOneWidget,
+          reason: "the tools are there to start editing with");
+      expect(find.byKey(const ValueKey("vectorTint")), findsOneWidget,
+          reason: "the only way to colour a drawing not taken apart");
+      expect(find.byKey(const ValueKey("vectorLayers")), findsNothing,
+          reason: "no layers until it is taken apart");
+    });
+
+    testWidgets("an edited drawing has no Tint unless one is on",
+        (tester) async {
+      await show(tester, drawing(square));
+      expect(find.byKey(const ValueKey("vectorTint")), findsNothing);
+      expect(find.byKey(const ValueKey("vectorLayers")), findsOneWidget);
     });
 
     testWidgets("an edited one's colours change the shape picked, or all",
@@ -550,12 +729,12 @@ void main() {
           .widget<CanvasMoreGroup>(
               find.byKey(const ValueKey("vectorShapeGroup")))
           .label;
-      expect(group(), "All shapes");
+      expect(group(), "Colour · every shape");
 
       c.editVector("v");
       c.pickVectorShape(1);
       await tester.pumpAndSettle();
-      expect(group(), "Shape 2 of 2");
+      expect(group(), "Colour · shape 2");
       var fillOn = find.byKey(const ValueKey("vectorFillOn"));
       await tester.ensureVisible(fillOn);
       await tester.tap(fillOn);

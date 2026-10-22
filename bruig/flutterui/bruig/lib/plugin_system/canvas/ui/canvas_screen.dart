@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_dialogs.dart';
@@ -635,7 +636,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 top: 10,
                 left: 16,
                 right: 16,
-                child: Center(child: ImageToolHint(controller: _controller)),
+                // A drawing's as well: only one is ever being edited.
+                child: Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  ImageToolHint(controller: _controller),
+                  VectorToolHint(controller: _controller),
+                ])),
               ),
               // The pose bar still sits over the design rather than pushing
               // it: it is opened while watching an animation, where a shift

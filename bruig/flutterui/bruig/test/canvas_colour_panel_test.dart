@@ -234,8 +234,7 @@ void main() {
         reason: "and not the base between them");
   });
 
-  testWidgets("a playlist row with a gap fits a narrow sidebar",
-      (tester) async {
+  testWidgets("a layer's gap fits a narrow sidebar", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var e = drawing();
     e = e.copyWith(shapes: [
@@ -268,13 +267,19 @@ void main() {
                                   context, c, c.selected!))))))),
     ));
     await tester.pumpAndSettle();
-    var heading = find.byWidgetPredicate(
-        (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
-    if (find.byKey(const ValueKey("vectorPlaylist-1")).evaluate().isEmpty) {
+    // The gap is the picked layer's, in Animation.
+    c.editVector("v");
+    c.pickVectorShape(1);
+    await tester.pumpAndSettle();
+    if (find.byKey(const ValueKey("vectorGap-1")).evaluate().isEmpty) {
+      var heading = find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
+      await tester.ensureVisible(heading.first);
       await tester.tap(heading.first);
       await tester.pumpAndSettle();
     }
     expect(find.byKey(const ValueKey("vectorGap-1")), findsOneWidget);
+    expect(find.byKey(const ValueKey("vectorLayers")), findsOneWidget);
     expect(tester.takeException(), isNull, reason: "no overflow");
   });
 

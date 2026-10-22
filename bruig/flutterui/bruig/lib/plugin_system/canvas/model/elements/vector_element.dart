@@ -324,6 +324,13 @@ class VectorShape {
   /// for the first of a run of combined shapes.
   final ElementAnimation? animation;
 
+  /// hidden leaves the shape out of the drawing, and locked holds it as it
+  /// is while the others are worked on: neither can be picked on the canvas.
+  /// Each is its layer's, in the Layers list -- read for the first of a run
+  /// of combined shapes, as [cue] is.
+  final bool hidden;
+  final bool locked;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -343,6 +350,8 @@ class VectorShape {
     this.animation,
     this.owns = const {},
     this.text,
+    this.hidden = false,
+    this.locked = false,
   });
 
   VectorShape copyWith({
@@ -372,6 +381,8 @@ class VectorShape {
     bool clearAnimation = false,
     VectorText? text,
     bool clearText = false,
+    bool? hidden,
+    bool? locked,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -393,6 +404,8 @@ class VectorShape {
         animation: clearAnimation ? null : animation ?? this.animation,
         owns: clearAnimation ? const {} : owns ?? this.owns,
         text: clearText ? null : text ?? this.text,
+        hidden: hidden ?? this.hidden,
+        locked: locked ?? this.locked,
       );
 
   /// tapered is whether its line is thicker or thinner at some points than
@@ -453,6 +466,8 @@ class VectorShape {
         if (animation != null) "anim": animation!.toJson(),
         if (animation != null) "animOwn": [for (var p in owns) p.name],
         if (liveText case var t?) "text": t.toJson(),
+        if (hidden) "hid": true,
+        if (locked) "lock": true,
       };
 
   /// liveText is [text] while this shape is still the letters it was laid
@@ -526,6 +541,8 @@ class VectorShape {
           ? VectorText.fromJson(json["text"] as Map<String, dynamic>)
           : null,
       animation: _animationFromJson(json),
+      hidden: json["hid"] == true,
+      locked: json["lock"] == true,
       // Kept before the parts were told apart: all of them its own.
       owns: json["animOwn"] is List
           ? {

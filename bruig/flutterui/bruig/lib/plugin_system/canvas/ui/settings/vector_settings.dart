@@ -24,9 +24,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/tablet_input.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 // vector_settings.dart is a drawing's settings: which drawing, how it sits in
 // its box, editing it point by point -- and while it is being edited, how
@@ -118,30 +118,6 @@ List<Widget> vectorSettings(
     if (!live) commit();
   }
 
-  /// use puts the drawing [id] in, given the drawing's proportions as a
-  /// picture is -- the box shrunk to them, never grown.
-  Future<void> use(String id) async {
-    var aspect = await _drawingAspect(id);
-    var next =
-        e.copyWith(assetId: id, viewBox: ui.Rect.zero, clearShapes: true);
-    if (aspect != null) {
-      var b = e.bounds;
-      var w = b.width, h = b.height;
-      if (w / h > aspect) {
-        w = h * aspect;
-      } else {
-        h = w / aspect;
-      }
-      next = next.withBase(
-          x: b.center.dx - w / 2,
-          y: b.center.dy - h / 2,
-          width: w,
-          height: h) as VectorElement;
-    }
-    controller.editVector(null);
-    now(next);
-  }
-
   // What the shape controls show: the picked shape's, or the first's.
   var shown = one ? shapes[picked] : (shapes.isEmpty ? null : shapes.first);
 
@@ -167,6 +143,24 @@ List<Widget> vectorSettings(
           ? VectorTool.selectShapes
           : VectorTool.select)
       : controller.vectorTool;
+  var tools = [
+    for (var tool in const [
+      VectorTool.select,
+      VectorTool.selectShapes,
+      VectorTool.pen,
+      VectorTool.scale,
+      VectorTool.tint,
+      VectorTool.boolean,
+      VectorTool.align,
+      VectorTool.corner,
+      VectorTool.pencil,
+      VectorTool.eraser,
+      VectorTool.shapes,
+      VectorTool.knife,
+      VectorTool.text,
+    ])
+      (tool, vectorToolIcon(tool), short[tool]!),
+  ];
   return [
     section(e, "drawing",
         icon: Icons.draw_outlined,
@@ -175,151 +169,50 @@ List<Widget> vectorSettings(
           e.hasDrawing ? "A drawing" : "No drawing yet",
           e.fit.label,
           if (e.tint != null) "tinted",
-          if (e.edited) "edited",
+          if (editing) controller.vectorTool.label else if (e.edited) "edited",
         ].join(" · "),
         initiallyOpen: true,
+        forceOpen: editing,
         children: [
-          CanvasControlGroup(
-            label: "Drawing",
-            hideCaption: true,
-            rule: false,
-            children: [
-              CanvasIconButton(
-                key: const ValueKey("vectorChoose"),
-                icon: e.hasDrawing ? Icons.draw_outlined : Icons.add,
-                tooltip: e.hasDrawing ? "Change drawing" : "Add drawing",
-                onPressed: () async {
-                  var id = await pickCanvasVector(context);
-                  if (id != null) await use(id);
-                },
-              ),
-              CanvasIconButton(
-                key: const ValueKey("vectorRecent"),
-                icon: Icons.photo_library_outlined,
-                tooltip: "Recent drawings",
-                onPressed: () async {
-                  var id = await showRecentPictures(context, drawings: true);
-                  if (id != null) await use(id);
-                },
-              ),
-              CanvasDropdown<VectorFit>(
-                label: "Fit",
-                value: e.fit,
-                width: 86,
-                options: [for (var f in VectorFit.values) (f, f.label)],
-                onChanged: (v) => now(e.copyWith(fit: v)),
-              ),
-              // One colour over the whole drawing, which keeps it a reference to
-              // its file -- see VectorElement.tint.
-              CanvasColorButton(
-                key: const ValueKey("vectorTint"),
-                label: "Tint",
-                labelWidth: 26,
-                color: e.tint ?? const Color(0x00000000),
-                onChanged: (c) => now(e.copyWith(tint: c)),
-              ),
-              if (e.tint != null)
-                CanvasIconButton(
-                  key: const ValueKey("vectorTintOff"),
-                  icon: Icons.format_color_reset_outlined,
-                  tooltip: "Back to the drawing's own colours",
-                  onPressed: () => now(e.copyWith(clearTint: true)),
-                ),
-              CanvasIconButton(
-                key: const ValueKey("vectorEdit"),
-                icon: Icons.edit_outlined,
-                tooltip: editing ? "Stop editing" : "Edit points",
-                active: editing,
-                onPressed: () => editing
-                    ? controller.editVector(null)
-                    : startVectorEditing(context, controller, e),
-              ),
-              if (e.edited && e.assetId.isNotEmpty)
-                CanvasIconButton(
-                  key: const ValueKey("vectorRevert"),
-                  icon: Icons.restore,
-                  tooltip: "Revert drawing",
-                  onPressed: () async {
-                    var sure = await askToConfirm(context,
-                        title: "Back to the original?",
-                        message:
-                            "Every change made to this drawing's points and "
-                            "colours will be lost.",
-                        confirm: "Put it back");
-                    if (!sure) return;
-                    controller.editVector(null);
-                    now(e.copyWith(viewBox: ui.Rect.zero, clearShapes: true));
-                  },
-                ),
-              CanvasHint(editing
-                  ? _toolHint(controller.vectorTool)
-                  : "Double-click the drawing, or press Edit points, to edit its "
-                      "points, handles and colours -- or, with no drawing in it "
-                      "yet, to draw one with the pen. A drawing from a file is "
-                      "drawn exactly as the file draws it until then."),
-            ],
+          // The tools, as a picture's mask tools are: picking one opens the
+          // drawing to work on with it, and pressing the one in hand again
+          // puts the drawing down.
+          CanvasToolTiles<VectorTool>(
+            key: const ValueKey("vectorTools"),
+            help: editing
+                ? _toolHint(controller.vectorTool)
+                : "Pick a tool to edit the drawing's points, handles and "
+                    "colours -- or, with no drawing in it yet, to draw one. "
+                    "Double-clicking the drawing opens it too. A drawing from "
+                    "a file is drawn exactly as the file draws it until then. "
+                    "Pick the tool in hand again to stop editing.",
+            idle: "Pick a tool to edit the drawing.",
+            tools: tools,
+            active: editing ? controller.vectorTool : null,
+            alsoActive: (tool) => editing && tool == lit,
+            onPick: (tool) async {
+              if (tool == null) {
+                controller.editVector(null);
+                return;
+              }
+              if (!editing) {
+                await startVectorEditing(context, controller, e);
+                if (controller.vectorEditing != e.id) return;
+              }
+              controller.vectorTool = tool;
+            },
+            keyOf: (tool) => "vectorTool-${tool.name}",
+            tooltipOf: (tool) => "${tool.label} (${_toolKey(tool)})",
+            settings: editing
+                ? [
+                    ..._toolSettings(e, controller),
+                    ..._toolMore(controller),
+                  ]
+                : const [],
           ),
-        ]),
-    // The tools, while it is being edited: what a press on it does -- and,
-    // under them, the one in hand's settings.
-    if (editing)
-      section(e, "tools",
-          icon: Icons.handyman_outlined,
-          title: "Tools",
-          summary: controller.vectorTool.label,
-          initiallyOpen: true,
-          forceOpen: true,
-          children: [
-            CanvasToolTiles<VectorTool>(
-              key: const ValueKey("vectorTools"),
-              help: _toolHint(controller.vectorTool),
-              tools: [
-                for (var (tool, icon) in const [
-                  (VectorTool.select, Icons.near_me_outlined),
-                  (VectorTool.selectShapes, Icons.near_me),
-                  (VectorTool.pen, Icons.draw_outlined),
-                  (VectorTool.scale, Icons.open_in_full),
-                  (VectorTool.tint, Icons.brush_outlined),
-                  (VectorTool.boolean, Icons.join_inner),
-                  (VectorTool.align, Icons.align_horizontal_center),
-                  (VectorTool.corner, Icons.rounded_corner),
-                  (VectorTool.pencil, Icons.edit),
-                  (VectorTool.eraser, Icons.cleaning_services_outlined),
-                  (VectorTool.shapes, Icons.category_outlined),
-                  (VectorTool.knife, Icons.content_cut),
-                  (VectorTool.text, Icons.text_fields),
-                ])
-                  (tool, icon, short[tool]!),
-              ],
-              active: controller.vectorTool,
-              alsoActive: (tool) => tool == lit,
-              // Pressed again, the tool in hand stays in hand: there is
-              // always one while a drawing is open, and a press is a pick.
-              onPick: (tool) {
-                if (tool != null) controller.vectorTool = tool;
-              },
-              keyOf: (tool) => "vectorTool-${tool.name}",
-              tooltipOf: (tool) => "${tool.label} (${_toolKey(tool)})",
-            ),
-            if (_toolSettings(e, controller) case var settings
-                when settings.isNotEmpty)
-              CanvasControlGroup(
-                key: const ValueKey("vectorToolSettings"),
-                label: "${controller.vectorTool.label} settings",
-                hideCaption: true,
-                rule: false,
-                children: settings,
-              ),
-            ..._toolMore(controller),
-          ]),
-    if (e.edited && shown != null)
-      section(e, "shape",
-          icon: Icons.format_shapes_outlined,
-          title: one ? "Shape" : "Every shape",
-          summary: one
-              ? "Shape ${picked + 1} of ${shapes.length}"
-              : "${shapes.length} shapes, changed together",
-          children: [
+          // The picked layer's colours -- or every shape's, with none
+          // picked -- with the tools that make and change them.
+          if (e.edited && shown != null)
             _shapeGroup(e, shapes, picked, one, shown, change, commit,
                 points: editing ? controller.vectorPicks : const {},
                 onPoints: (which, edit) {
@@ -332,20 +225,7 @@ List<Widget> vectorSettings(
               }
               now(next);
             }),
-          ]),
-    // Every shape, in order, and when each comes in.
-    if (e.edited && shapes.isNotEmpty)
-      section(e, "playlist",
-          icon: Icons.format_list_numbered,
-          title: "Shapes in order",
-          summary: "${shapes.length} shapes",
-          children: [
-            _VectorPlaylist(
-                key: const ValueKey("vectorPlaylist"),
-                controller: controller,
-                element: e,
-                onChanged: now),
-          ]),
+        ]),
     CanvasSection(
       key: const ValueKey("elementSection-animation"),
       icon: Icons.play_circle_outline,
@@ -355,32 +235,155 @@ List<Widget> vectorSettings(
       children: [
         _animationSection(
             controller, e, one ? picked : -1, write, begin, commit),
+        // When each layer comes in -- the picked one's, and all of them at
+        // once -- as a picture's layers have in theirs.
+        if (e.edited && shapes.isNotEmpty)
+          ..._shapeTiming(controller, e, one ? picked : -1, now),
         if (controller.cues.isNotEmpty) elementCueCard(controller, e),
       ],
     ),
   ];
 }
 
-/// _VectorPlaylist is every shape of the drawing, in order -- the order it
-/// is drawn in, back to front, and the order it comes in -- with what each
-/// is painted in and when it comes in. A row picks its shape for the
-/// settings above; dragging one, or its arrows, moves it.
-///
-/// Nothing in a row opens anything over the page -- no tooltip, no menu:
-/// a row is moved, not rebuilt, as it is dragged, and anything floating
-/// over it comes apart. The cue is a button that steps through the cues.
-class _VectorPlaylist extends StatelessWidget {
-  final CanvasController controller;
-  final VectorElement element;
-  final void Function(VectorElement) onChanged;
+/// vectorDrawingControls is the drawing itself, for the foot of Position:
+/// which drawing it is -- another, or one used before -- how it sits in its
+/// box, the one colour over it before it is edited, and back to the file's.
+Widget vectorDrawingControls(
+    BuildContext context,
+    CanvasController controller,
+    VectorElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(VectorElement next) {
+    begin();
+    write(next);
+    commit();
+  }
 
-  /// _stagger brings [e]'s shapes in one after another, a little
-  /// overlapping, over the drawing's arrival -- giving it one, the same
-  /// change, where it has none to stagger them over. See withStagger.
-  void _stagger(VectorElement e) {
-    var span = vectorArrivalSpan(e)?.$2;
+  /// use puts the drawing [id] in, given the drawing's proportions as a
+  /// picture is -- the box shrunk to them, never grown.
+  Future<void> use(String id) async {
+    var aspect = await _drawingAspect(id);
+    var next =
+        e.copyWith(assetId: id, viewBox: ui.Rect.zero, clearShapes: true);
+    if (aspect != null) {
+      var b = e.bounds;
+      var w = b.width, h = b.height;
+      if (w / h > aspect) {
+        w = h * aspect;
+      } else {
+        h = w / aspect;
+      }
+      next = next.withBase(
+          x: b.center.dx - w / 2,
+          y: b.center.dy - h / 2,
+          width: w,
+          height: h) as VectorElement;
+    }
+    controller.editVector(null);
+    now(next);
+  }
+
+  return CanvasControlGroup(
+    key: const ValueKey("vectorDrawingControls"),
+    label: "Drawing",
+    hideCaption: true,
+    rule: false,
+    children: [
+      CanvasIconButton(
+        key: const ValueKey("vectorChoose"),
+        icon: e.hasDrawing ? Icons.draw_outlined : Icons.add,
+        tooltip: e.hasDrawing ? "Change drawing" : "Add drawing",
+        onPressed: () async {
+          var id = await pickCanvasVector(context);
+          if (id != null) await use(id);
+        },
+      ),
+      CanvasIconButton(
+        key: const ValueKey("vectorRecent"),
+        icon: Icons.photo_library_outlined,
+        tooltip: "Recent drawings",
+        onPressed: () async {
+          var id = await showRecentPictures(context, drawings: true);
+          if (id != null) await use(id);
+        },
+      ),
+      // No heading: its choices say what it is.
+      CanvasDropdown<VectorFit>(
+        key: const ValueKey("vectorFit"),
+        label: "",
+        value: e.fit,
+        width: 86,
+        options: [for (var f in VectorFit.values) (f, f.label)],
+        onChanged: (v) => now(e.copyWith(fit: v)),
+      ),
+      // One colour over the whole drawing, which keeps it a
+      // reference to its file -- see VectorElement.tint. Before the
+      // drawing is taken apart it is the only way to colour it;
+      // after, its shapes' own colours are, so it is offered only
+      // to take off one already on.
+      if (!e.edited || e.tint != null)
+        CanvasColorButton(
+          key: const ValueKey("vectorTint"),
+          label: "Tint",
+          labelWidth: 26,
+          color: e.tint ?? const Color(0x00000000),
+          onChanged: (c) => now(e.copyWith(tint: c)),
+        ),
+      if (e.tint != null)
+        CanvasIconButton(
+          key: const ValueKey("vectorTintOff"),
+          icon: Icons.format_color_reset_outlined,
+          tooltip: "Back to the drawing's own colours",
+          onPressed: () => now(e.copyWith(clearTint: true)),
+        ),
+      if (e.edited && e.assetId.isNotEmpty)
+        CanvasIconButton(
+          key: const ValueKey("vectorRevert"),
+          icon: Icons.restore,
+          tooltip: "Revert drawing",
+          onPressed: () async {
+            var sure = await askToConfirm(context,
+                title: "Back to the original?",
+                message: "Every change made to this drawing's points and "
+                    "colours will be lost.",
+                confirm: "Put it back");
+            if (!sure) return;
+            controller.editVector(null);
+            now(e.copyWith(viewBox: ui.Rect.zero, clearShapes: true));
+          },
+        ),
+      const CanvasHint("Change the drawing for another, or one used "
+          "before; Fit is how it sits in its box. Tint lays one "
+          "colour over a drawing not yet edited. Revert puts the "
+          "file's own drawing back."),
+    ],
+  );
+}
+
+/// _shapeTiming is when the drawing's layers come in: the picked one's cue
+/// against the one under it -- the first comes in as the drawing's arrival
+/// starts, and has none -- and, for every layer at once, one after another
+/// or all back to the drawing's animation.
+List<Widget> _shapeTiming(CanvasController controller, VectorElement e,
+    int picked, void Function(VectorElement) now) {
+  var groups = vectorDrawn(e.shapes ?? const <VectorShape>[]);
+  var starts = groupStarts(e);
+  var span = vectorArrivalSpan(e)?.$2;
+  var length = span == null || !e.animation.on ? null : span;
+  // A change to when a layer comes in: in the timeline's frames, and the
+  // arrival fitted round them all again, where there is one -- see
+  // CanvasController.retimeShapes.
+  void retime(VectorElement Function(VectorElement) edit) =>
+      length == null ? now(edit(e)) : controller.retimeShapes(e, edit);
+
+  /// stagger brings the layers in one after another, a little overlapping,
+  /// over the drawing's arrival -- giving it one, in the same change, where
+  /// it has none to stagger them over. See withStagger.
+  void stagger() {
     if (span != null && e.animation.on) {
-      onChanged(withStagger(e, span));
+      now(withStagger(e, span));
       return;
     }
     controller.beginInteraction();
@@ -393,288 +396,86 @@ class _VectorPlaylist extends StatelessWidget {
     controller.endInteraction();
   }
 
-  const _VectorPlaylist(
-      {required this.controller,
-      required this.element,
-      required this.onChanged,
-      super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    var e = element;
-    var groups = vectorDrawn(e.shapes ?? const <VectorShape>[]);
-    var starts = groupStarts(e);
-    var picked = controller.vectorShape;
-    var theme = Theme.of(context);
-    var muted = theme.colorScheme.onSurfaceVariant;
-    var span = vectorArrivalSpan(e)?.$2;
-    // The drawing's arrival covers every shape's coming in.
-    var length = span == null || !e.animation.on ? null : span;
-    // A change to when a shape comes in: in the timeline's frames, and the
-    // arrival fitted round them all again, where there is one -- see
-    // CanvasController.retimeShapes.
-    void retime(VectorElement Function(VectorElement) edit) =>
-        length == null ? onChanged(edit(e)) : controller.retimeShapes(e, edit);
-    Widget swatch(Color? c) => Container(
-          width: 14,
-          height: 14,
-          margin: const EdgeInsets.only(right: 4),
-          decoration: BoxDecoration(
-            color: c,
-            borderRadius: BorderRadius.circular(3),
-            border: Border.all(color: muted.withValues(alpha: 0.6)),
+  var at = picked < 0 ? -1 : starts.indexOf(groupOf(e, picked));
+  var animated =
+      e.animation.any || groups.any((d) => d.style.animation != null);
+  return [
+    if (at > 0)
+      CanvasControlGroup(
+        key: const ValueKey("vectorShapeTiming"),
+        label: "This shape",
+        help: "When this layer comes in against the one under it.",
+        rule: false,
+        children: [
+          CanvasDropdown<VectorCue>(
+            key: ValueKey("vectorCue-$at"),
+            label: "Comes in",
+            value: groups[at].style.cue,
+            width: 130,
+            options: [for (var c in VectorCue.values) (c, c.label)],
+            onChanged: (v) => retime((b) => withCue(b, at, cue: v)),
           ),
-          child: c == null
-              ? Icon(Icons.block, size: 10, color: muted.withValues(alpha: 0.6))
-              : null,
-        );
-    Widget tap(String key, Widget child, VoidCallback? onTap) => InkWell(
-          key: ValueKey(key),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
-          child: Padding(padding: const EdgeInsets.all(3), child: child),
-        );
-
-    /// remove takes out the shape picked, with whatever is combined into it.
-    void remove() {
-      var at = starts.indexOf(groupOf(e, picked));
-      if (at < 0) return;
-      var from = starts[at];
-      var to = at + 1 < starts.length ? starts[at + 1] : e.shapes!.length;
-      controller.pickVectorShape(-1);
-      onChanged(e.copyWith(shapes: [...e.shapes!]..removeRange(from, to)));
-    }
-
-    // Backspace or Delete takes out the row picked -- here, where the
-    // click that picked it put the keys, rather than on the canvas, where
-    // Delete with the drawing not open would take the whole drawing.
-    return Focus(
-      debugLabel: "vectorPlaylist",
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent || picked < 0) return KeyEventResult.ignored;
-        if (event.logicalKey != LogicalKeyboardKey.backspace &&
-            event.logicalKey != LogicalKeyboardKey.delete) {
-          return KeyEventResult.ignored;
-        }
-        remove();
-        return KeyEventResult.handled;
-      },
-      child: Builder(
-          builder: (context) => _list(context, theme, muted, groups, starts,
-              picked, swatch, tap, retime)),
-    );
-  }
-
-  Widget _list(
-      BuildContext context,
-      ThemeData theme,
-      Color muted,
-      List<VectorDrawn> groups,
-      List<int> starts,
-      int picked,
-      Widget Function(Color?) swatch,
-      Widget Function(String, Widget, VoidCallback?) tap,
-      void Function(VectorElement Function(VectorElement)) retime) {
-    var e = element;
-    return CanvasExpander(
-      label: "Playlist",
-      remember: "vectorPlaylist",
-      action: e.animation.any ||
-              vectorDrawn(e.shapes ?? const [])
-                  .any((d) => d.style.animation != null)
-          ? previewButton(controller, e)
-          : null,
-      trailing: "${groups.length} shape${groups.length == 1 ? "" : "s"}",
-      children: [
-        // Every shape after the one before, a little overlapping: one
-        // press, rather than a cue on every row.
-        if (groups.length > 1)
-          CanvasControlGroup(
-            label: "Stagger",
-            hideCaption: true,
-            rule: false,
-            children: [
-              CanvasIconButton(
-                key: const ValueKey("vectorStagger"),
-                icon: Icons.stacked_line_chart,
-                tooltip: "Stagger",
-                onPressed: () => _stagger(e),
-              ),
-              // Every shape back to the Master animation, at once.
-              CanvasIconButton(
-                key: const ValueKey("vectorResetAllAnimation"),
-                icon: Icons.restore,
-                tooltip: "Reset all",
-                onPressed: (e.shapes ?? const <VectorShape>[])
-                        .any((s) => s.animation != null)
-                    ? () => onChanged(e.copyWith(shapes: [
-                          for (var s in e.shapes!)
-                            s.copyWith(clearAnimation: true),
-                        ]))
-                    : null,
-              ),
-            ],
-          ),
-        // The drawing itself, above its shapes: picked, the animation
-        // below is the one every shape starts with.
-        InkWell(
-          key: const ValueKey("vectorPlaylistMaster"),
-          onTap: () {
-            controller.pickVectorItem(null);
-            controller.pickVectorShape(-1);
-            Focus.of(context).requestFocus();
-          },
-          child: Container(
-            color: picked < 0
-                ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                : null,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 1, right: 6),
-                child: Icon(Icons.layers_outlined, size: 14, color: muted),
-              ),
-              Flexible(
-                child: Text("Master",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall),
-              ),
-              const Spacer(),
-              Flexible(
-                child: Text("Every shape",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted)),
-              ),
-              const SizedBox(width: 6),
-            ]),
-          ),
-        ),
-        ReorderableListView(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          onReorderItem: (from, to) {
-            controller.pickVectorShape(-1);
-            onChanged(withGroupMoved(e, from, to));
-          },
-          children: [
-            for (var (i, d) in groups.indexed)
-              Container(
-                key: ValueKey("vectorPlaylist-$i"),
-                color: starts[i] == picked
-                    ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                    : null,
-                child: InkWell(
-                  onTap: () {
-                    controller.pickVectorShape(starts[i]);
-                    Focus.of(context).requestFocus();
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(children: [
-                      ReorderableDragStartListener(
-                        index: i,
-                        child: Semantics(
-                          label: "Drag to move",
-                          child: Icon(Icons.drag_indicator,
-                              size: 16, color: muted),
-                        ),
-                      ),
-                      SizedBox(
-                          width: 22,
-                          child: Text("${i + 1}",
-                              style: theme.textTheme.bodySmall)),
-                      swatch(d.style.fill),
-                      swatch(d.style.stroke),
-                      // When it comes in: the first comes in as the
-                      // drawing's arrival starts, and has no cue. Given
-                      // what room is left, the words giving way first.
-                      Expanded(
-                        child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (i == 0)
-                                Flexible(
-                                  child: Text("First",
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(color: muted)),
-                                )
-                              else ...[
-                                Flexible(
-                                  child: tap(
-                                      "vectorCue-$i",
-                                      Text(d.style.cue.label,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: theme.textTheme.bodySmall),
-                                      () => retime((b) => withCue(b, i,
-                                          cue: d.style.cue.next))),
-                                ),
-                                // Shrunk to fit rather than overrunning a
-                                // narrow sidebar: the gap is three small
-                                // things that will not wrap.
-                                if (d.style.cue == VectorCue.gap)
-                                  Flexible(
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            tap(
-                                                "vectorGapLess-$i",
-                                                Icon(Icons.remove,
-                                                    size: 14, color: muted),
-                                                // Below nought it overlaps the one
-                                                // before.
-                                                () => retime((b) => withCue(
-                                                    b, i,
-                                                    gap: b.shapes![starts[i]]
-                                                            .cueGap -
-                                                        1))),
-                                            Text("${d.style.cueGap}f",
-                                                key: ValueKey("vectorGap-$i"),
-                                                style:
-                                                    theme.textTheme.bodySmall),
-                                            tap(
-                                                "vectorGapMore-$i",
-                                                Icon(Icons.add,
-                                                    size: 14, color: muted),
-                                                () => retime((b) => withCue(
-                                                    b, i,
-                                                    gap: b.shapes![starts[i]]
-                                                            .cueGap +
-                                                        1))),
-                                          ]),
-                                    ),
-                                  ),
-                              ],
-                            ]),
-                      ),
-                      tap(
-                          "vectorUp-$i",
-                          Icon(Icons.arrow_upward, size: 14, color: muted),
-                          i == 0
-                              ? null
-                              : () => onChanged(withGroupMoved(e, i, i - 1))),
-                      tap(
-                          "vectorDown-$i",
-                          Icon(Icons.arrow_downward, size: 14, color: muted),
-                          i == groups.length - 1
-                              ? null
-                              : () => onChanged(withGroupMoved(e, i, i + 1))),
-                    ]),
-                  ),
-                ),
-              ),
+          if (groups[at].style.cue == VectorCue.gap)
+            CanvasStepper(
+              key: ValueKey("vectorGap-$at"),
+              label: "Gap",
+              value: groups[at].style.cueGap.toDouble(),
+              min: -240,
+              max: 240,
+              suffix: " fr",
+              defaultValue: 12,
+              onChanged: (v) => retime((b) => withCue(b, at, gap: v.round())),
+            ),
+        ],
+      ),
+    if (groups.length > 1 || animated)
+      CanvasControlGroup(
+        key: const ValueKey("vectorEveryShapeTiming"),
+        label: groups.length > 1 ? "Every shape" : "Preview",
+        help: "The timing of all the layers at once: one after another, or "
+            "every one back to the drawing's own animation.",
+        rule: false,
+        children: [
+          if (groups.length > 1) ...[
+            CanvasIconButton(
+              key: const ValueKey("vectorStagger"),
+              icon: Icons.stacked_line_chart,
+              tooltip: "Bring the layers in one after another",
+              onPressed: stagger,
+            ),
+            // Every layer back to the drawing's animation, at once.
+            CanvasIconButton(
+              key: const ValueKey("vectorResetAllAnimation"),
+              icon: Icons.restore,
+              tooltip: "Every layer as the drawing",
+              onPressed: (e.shapes ?? const <VectorShape>[])
+                      .any((s) => s.animation != null)
+                  ? () => now(e.copyWith(shapes: [
+                        for (var s in e.shapes!)
+                          s.copyWith(clearAnimation: true),
+                      ]))
+                  : null,
+            ),
           ],
-        ),
-      ],
-    );
-  }
+          if (animated) previewButton(controller, e),
+        ],
+      ),
+  ];
 }
+
+/// _dormantIf is [settings] as they are, or -- while there is nothing yet
+/// for them to work on, [idle] -- shown faint and out of reach, with [wake]
+/// saying what brings them to life: what a tool can do is seen before it is
+/// used.
+List<Widget> _dormantIf(bool idle, String wake, List<Widget> settings) => idle
+    ? [
+        for (var w in settings)
+          Opacity(
+              opacity: 0.4,
+              child: IgnorePointer(child: ExcludeSemantics(child: w))),
+        CanvasHint(wake),
+      ]
+    : settings;
 
 /// _toolSettings is the settings of the tool in hand, for the row under
 /// the tools -- empty for a tool with none just now.
@@ -684,9 +485,10 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
     // The handles of the points picked: how the pair move together, what a
     // drag of one may change, and two quick fixes.
     case VectorTool.select || VectorTool.pen:
-      if (picks.isEmpty) return const [];
-      var first = vectorNodeAt(e, picks.first);
-      return [
+      var idle = picks.isEmpty;
+      var first = idle ? null : vectorNodeAt(e, picks.first);
+      return _dormantIf(
+          idle, "Pick points on the drawing to set their handles.", [
         CanvasDropdown<VectorHandles>(
           key: const ValueKey("vectorHandles"),
           label: "Handles",
@@ -716,7 +518,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
           tooltip: "Even handles",
           onPressed: () => controller.editPickedPoints(withEvenHandles),
         ),
-      ];
+      ]);
     case VectorTool.selectShapes:
       return const [];
     case VectorTool.align:
@@ -1025,11 +827,12 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
     // The picked points' own thickness, to type: a share of the shape's
     // stroke width -- 1 as set, 2 twice as thick.
     case VectorTool.scale:
-      if (picks.isEmpty) return const [];
-      var width = vectorNodeAt(e, picks.first)?.width ?? 1;
+      var idle = picks.isEmpty;
+      var width = idle ? 1.0 : vectorNodeAt(e, picks.first)?.width ?? 1;
       VectorElement thick(VectorElement e, Set<VectorPick> picks, double v) =>
           withWidths(e, {for (var p in joinedTo(e, picks)) p: 1}, v);
-      return [
+      return _dormantIf(
+          idle, "Pick points on the drawing to set how thick they are.", [
         CanvasNumberField(
           key: const ValueKey("vectorPointWidth"),
           label: "Thickness",
@@ -1050,7 +853,7 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
               : () =>
                   controller.editPickedPoints((e, picks) => thick(e, picks, 1)),
         ),
-      ];
+      ]);
   }
 }
 
@@ -1518,22 +1321,18 @@ Widget _shapeGroup(
       .any((p) => p.shape < shapes.length && shapes[p.shape].stroke != null);
   var mine = points.isNotEmpty && onPoints != null;
   var several = points.length > 1;
+  var layer = groupStarts(e).indexOf(groupOf(e, picked)) + 1;
   return CanvasMoreGroup(
     key: const ValueKey("vectorShapeGroup"),
-    label: one ? "Shape ${picked + 1} of ${shapes.length}" : "All shapes",
+    label: one ? "Colour · shape $layer" : "Colour · every shape",
     remember: "vectorShapeMore",
     tooltip: "Ends & corners",
     rule: false,
+    // A row for each paint: its colour and what goes with it, and a button
+    // to take it off -- or, off, one to put it on. A switch beside each was
+    // a row of its own in a card, the colour on the next.
     row: [
-      CanvasToggle(
-        key: const ValueKey("vectorFillOn"),
-        label: "Fill",
-        value: shown.fill != null,
-        onChanged: (on) => change((s) => on
-            ? s.copyWith(fill: s.fill ?? const Color(0xFF888888))
-            : s.copyWith(clearFill: true)),
-      ),
-      if (shown.fill != null)
+      if (shown.fill != null) ...[
         CanvasColorButton(
           key: const ValueKey("vectorFill"),
           label: "Fill",
@@ -1543,20 +1342,25 @@ Widget _shapeGroup(
           onGradientChanged: (g) => change((s) =>
               g == null ? s.copyWith(flatFill: true) : s.copyWith(fillFade: g)),
         ),
-      CanvasToggle(
-        key: const ValueKey("vectorStrokeOn"),
-        label: "Stroke",
-        value: shown.stroke != null,
-        onChanged: (on) => change((s) => on
-            ? s.copyWith(
-                stroke: s.stroke ?? const Color(0xFF000000),
-                strokeWidth: s.strokeWidth > 0 ? s.strokeWidth : 1)
-            : s.copyWith(clearStroke: true)),
-      ),
+        CanvasIconButton(
+          key: const ValueKey("vectorFillOn"),
+          icon: Icons.format_color_reset_outlined,
+          tooltip: "No fill",
+          onPressed: () => change((s) => s.copyWith(clearFill: true)),
+        ),
+      ] else
+        CanvasTextButton(
+          key: const ValueKey("vectorFillOn"),
+          icon: Icons.format_color_fill,
+          label: "Add fill",
+          onPressed: () => change(
+              (s) => s.copyWith(fill: s.fill ?? const Color(0xFF888888))),
+        ),
+      const CanvasLineBreak(),
       if (shown.stroke != null) ...[
         CanvasColorButton(
           key: const ValueKey("vectorStroke"),
-          label: "Stroke",
+          label: "Line",
           color: shown.stroke!,
           gradient: shown.strokeFade,
           onChanged: (c) => change((s) => s.copyWith(stroke: c)),
@@ -1576,7 +1380,21 @@ Widget _shapeGroup(
               change((s) => s.copyWith(strokeWidth: v), live: true),
           onCommit: commit,
         ),
-      ],
+        CanvasIconButton(
+          key: const ValueKey("vectorStrokeOn"),
+          icon: Icons.format_color_reset_outlined,
+          tooltip: "No line",
+          onPressed: () => change((s) => s.copyWith(clearStroke: true)),
+        ),
+      ] else
+        CanvasTextButton(
+          key: const ValueKey("vectorStrokeOn"),
+          icon: Icons.border_color_outlined,
+          label: "Add line",
+          onPressed: () => change((s) => s.copyWith(
+              stroke: s.stroke ?? const Color(0xFF000000),
+              strokeWidth: s.strokeWidth > 0 ? s.strokeWidth : 1)),
+        ),
     ],
     more: [
       if (mine && pointLined && ends.isNotEmpty)
@@ -1740,7 +1558,7 @@ class _PenMeterState extends State<_PenMeter> {
 Widget _animationSection(CanvasController controller, VectorElement e,
     int picked, SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   if (!e.edited || picked < 0) {
-    // Its Preview is in the playlist's heading, where it has one.
+    // Its Preview is in the timing card under it: see _shapeTiming.
     return elementAnimationSection(
       controller,
       e,

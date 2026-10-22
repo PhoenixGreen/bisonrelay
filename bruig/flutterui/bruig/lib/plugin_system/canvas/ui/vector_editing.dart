@@ -131,12 +131,13 @@ VectorHit? hitVector(VectorElement e, Offset canvasPoint, double reach,
   }
   // Then any point picked, whichever shape it is on.
   for (var pick in picks) {
+    if (shapeHeld(e, pick.shape)) continue;
     var node = _nodeAt(e, pick);
     if (node != null && near(node.point)) {
       return VectorHit(pick, VectorPart.point);
     }
   }
-  if (shape < 0 || shape >= shapes.length) return null;
+  if (shape < 0 || shape >= shapes.length || shapeHeld(e, shape)) return null;
   var paths = shapes[shape].paths;
   for (var p = 0; p < paths.length; p++) {
     for (var n = 0; n < paths[p].nodes.length; n++) {
@@ -148,8 +149,29 @@ VectorHit? hitVector(VectorElement e, Offset canvasPoint, double reach,
   return null;
 }
 
+/// vectorSoloOf is, while a drawing's layers are soloed, the first shape of
+/// the one layer of [e] that can be worked on -- or null, with nothing
+/// soloed. Set by the controller only while Solo is on: see
+/// CanvasController.vectorSolo.
+int? Function(VectorElement e)? vectorSoloOf;
+
+/// shapeHeld is whether the shape [index] of [e] is out of reach on the
+/// canvas: its layer hidden or locked -- see VectorShape.hidden -- or held
+/// by another being soloed. A combined shape goes by the first of its run,
+/// as its layer does.
+bool shapeHeld(VectorElement e, int index) {
+  var shapes = e.shapes;
+  if (shapes == null || index < 0 || index >= shapes.length) return false;
+  var group = groupOf(e, index);
+  var base = shapes[group];
+  if (base.hidden || base.locked) return true;
+  var solo = vectorSoloOf?.call(e);
+  return solo != null && solo != group;
+}
+
 /// shapeAt is the topmost shape of [e] under [canvasPoint] -- inside its
-/// fill, or within [reach] of its stroke -- or -1.
+/// fill, or within [reach] of its stroke -- or -1. A hidden or locked shape
+/// is passed over, for whatever is under it.
 int shapeAt(VectorElement e, Offset canvasPoint, double reach) {
   var shapes = e.shapes;
   if (shapes == null) return -1;
@@ -157,6 +179,7 @@ int shapeAt(VectorElement e, Offset canvasPoint, double reach) {
   var at = space.toDrawing(canvasPoint);
   var slack = reach * space.unitsPer;
   for (var i = shapes.length - 1; i >= 0; i--) {
+    if (shapeHeld(e, i)) continue;
     var shape = shapes[i];
     var path = vectorShapePath(shape);
     if (shape.fill != null && path.contains(at)) return i;
@@ -739,10 +762,11 @@ Set<VectorPick> picksIn(VectorElement e, Rect canvasRect) {
   var space = VectorSpace(e);
   return {
     for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
-      for (var (p, path) in shape.paths.indexed)
-        for (var (n, node) in path.nodes.indexed)
-          if (canvasRect.contains(space.toCanvas(node.point)))
-            VectorPick(s, p, n),
+      if (!shapeHeld(e, s))
+        for (var (p, path) in shape.paths.indexed)
+          for (var (n, node) in path.nodes.indexed)
+            if (canvasRect.contains(space.toCanvas(node.point)))
+              VectorPick(s, p, n),
   };
 }
 
@@ -957,8 +981,9 @@ List<VectorShape> copiedShapes(VectorElement e, Set<VectorPick> picks) {
 /// allPicks is every point of [e].
 Set<VectorPick> allPicks(VectorElement e) => {
       for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
-        for (var (p, run) in shape.paths.indexed)
-          for (var n = 0; n < run.nodes.length; n++) VectorPick(s, p, n),
+        if (!shapeHeld(e, s))
+          for (var (p, run) in shape.paths.indexed)
+            for (var n = 0; n < run.nodes.length; n++) VectorPick(s, p, n),
     };
 
 /// pencilShape is a stroke of the pencil as a shape: the pen's [samples],
@@ -1602,6 +1627,10 @@ Set<int> shapesUnder(VectorElement e, Offset at, double radius) {
   var i = 0;
   for (var d in vectorDrawn(shapes)) {
     var s = d.style;
+    if (s.hidden || s.locked) {
+      i += d.members.length;
+      continue;
+    }
     var reach = radius + (s.stroke == null ? 0 : s.strokeWidth / 2);
     var outline = d.outline;
     if (outline.getBounds().inflate(reach).contains(at) &&
@@ -1682,10 +1711,11 @@ Set<VectorPick> pointsNear(VectorElement e, Offset canvasPoint, double reach) {
   var space = VectorSpace(e);
   return {
     for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed)
-      for (var (p, path) in shape.paths.indexed)
-        for (var (n, node) in path.nodes.indexed)
-          if ((space.toCanvas(node.point) - canvasPoint).distance <= reach)
-            VectorPick(s, p, n),
+      if (!shapeHeld(e, s))
+        for (var (p, path) in shape.paths.indexed)
+          for (var (n, node) in path.nodes.indexed)
+            if ((space.toCanvas(node.point) - canvasPoint).distance <= reach)
+              VectorPick(s, p, n),
   };
 }
 
@@ -1696,6 +1726,7 @@ VectorPick? anyPointAt(VectorElement e, Offset canvasPoint, double reach) {
   VectorPick? best;
   var nearest = reach;
   for (var (s, shape) in (e.shapes ?? const <VectorShape>[]).indexed) {
+    if (shapeHeld(e, s)) continue;
     for (var (p, path) in shape.paths.indexed) {
       for (var (n, node) in path.nodes.indexed) {
         var d = (space.toCanvas(node.point) - canvasPoint).distance;

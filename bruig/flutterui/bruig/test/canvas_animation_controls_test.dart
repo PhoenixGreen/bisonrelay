@@ -372,7 +372,7 @@ void main() {
       var stagger = find.byKey(const ValueKey("vectorStagger"));
       if (stagger.evaluate().isEmpty) {
         var heading = find.byWidgetPredicate(
-            (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
+            (w) => w is Text && (w.data ?? "").toLowerCase() == "animation");
         await tester.ensureVisible(heading.first);
         await tester.tap(heading.first);
         await tester.pumpAndSettle();
@@ -390,8 +390,7 @@ void main() {
     });
   });
 
-  testWidgets("a playlist row picked is taken out with Backspace",
-      (tester) async {
+  testWidgets("a layer picked is taken out with Backspace", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(const CanvasDocument()
         .copyWith(frames: 120)
@@ -404,16 +403,10 @@ void main() {
     await tester.pumpWidget(panel(c));
     await tester.pumpAndSettle();
     VectorElement now() => c.document.elementById("v") as VectorElement;
-    var row = find.byKey(const ValueKey("vectorPlaylist-1"));
-    if (row.evaluate().isEmpty) {
-      var heading = find.byWidgetPredicate(
-          (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
-      await tester.ensureVisible(heading.first);
-      await tester.tap(heading.first);
-      await tester.pumpAndSettle();
-    }
+    // The layer picked in the Layers strip, as a picture's is.
+    var row = find.byKey(const ValueKey("vectorLayer-1"));
     await tester.ensureVisible(row);
-    await tester.tap(find.descendant(of: row, matching: find.text("2")));
+    await tester.tap(row);
     await tester.pumpAndSettle();
     var middle = now().shapes![1];
     await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
@@ -426,7 +419,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets("the playlist: Preview level with its words; Master, Reset",
+  testWidgets("a layer's own animation: Reset, and let go for the drawing's",
       (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(const CanvasDocument()
@@ -444,19 +437,6 @@ void main() {
     await tester.pumpAndSettle();
     VectorElement now() => c.document.elementById("v") as VectorElement;
 
-    var words = find.byWidgetPredicate(
-        (w) => w is Text && (w.data ?? "").toLowerCase() == "playlist");
-    var preview = find.byKey(const ValueKey("elementAnimationPreview"));
-    expect(
-        (tester.getCenter(preview).dy - tester.getCenter(words.first).dy).abs(),
-        lessThan(2),
-        reason: "the button in line with the heading");
-
-    var master = find.byKey(const ValueKey("vectorPlaylistMaster"));
-    if (master.evaluate().isEmpty) {
-      await tester.tap(words.first);
-      await tester.pumpAndSettle();
-    }
     // A shape picked, and given its own loop.
     c.editVector("v");
     c.pickVectorShape(1);
@@ -491,7 +471,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(now().shapes![1].animation, isNull, reason: "back to the drawing's");
 
-    // Master: the drawing's own animation, no shape picked.
+    // The picked layer pressed again: the drawing's own animation, no shape
+    // picked.
+    var master = find.byKey(const ValueKey("vectorLayer-1"));
     await tester.ensureVisible(master);
     await tester.tap(master);
     await tester.pumpAndSettle();

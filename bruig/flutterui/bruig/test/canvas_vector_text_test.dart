@@ -210,7 +210,8 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await settle();
     expect(state(), "focus=canvas stage typing=-1 texts=[One]");
-    await pickTool();
+    // Still in hand: pressed again it would put the drawing down.
+    expect(c.vectorTool, VectorTool.text);
     await click(150, 180);
     tester.testTextInput.enterText("Two");
     await settle();

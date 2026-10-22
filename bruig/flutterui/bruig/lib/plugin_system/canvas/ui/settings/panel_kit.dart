@@ -1510,6 +1510,58 @@ class _CanvasSectionState extends State<CanvasSection> {
   }
 }
 
+/// _ToolRow is a line of tools that scrolls sideways, with the one at
+/// [active] brought into view whenever it changes -- only as far as it
+/// takes, so a tool already in view stays where it is.
+class _ToolRow extends StatefulWidget {
+  final int active;
+  final double step;
+  final double each;
+  final Widget Function(ScrollController) builder;
+  const _ToolRow(
+      {required this.active,
+      required this.step,
+      required this.each,
+      required this.builder});
+
+  @override
+  State<_ToolRow> createState() => _ToolRowState();
+}
+
+class _ToolRowState extends State<_ToolRow> {
+  final ScrollController _scroll = ScrollController();
+  int _shown = -1;
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var at = widget.active;
+    if (at >= 0 && at != _shown) {
+      _shown = at;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scroll.hasClients) return;
+        var p = _scroll.position;
+        var left = at * widget.step, right = left + widget.each;
+        var now = _scroll.offset, width = p.viewportDimension;
+        var target = left < now
+            ? left
+            : right > now + width
+                ? right - width
+                : now;
+        _scroll.jumpTo(target.clamp(0.0, p.maxScrollExtent).toDouble());
+      });
+    } else if (at < 0) {
+      _shown = -1;
+    }
+    return widget.builder(_scroll);
+  }
+}
+
 /// CanvasToolTiles is a section's tools, as tiles with their names under
 /// them, and -- on a line of their own below -- the settings of the one in
 /// hand. Pressing the tool in hand puts it down again.
@@ -1586,65 +1638,78 @@ class CanvasToolTiles<T> extends StatelessWidget {
             var n = tools.length;
             var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
             var each = math.max(64.0, (width - gap * (n - 1)) / n);
-            return SizedBox(
-                height: card ? 56 : 46,
-                child: SingleChildScrollView(
-                    key: const ValueKey("toolsRow"),
-                    scrollDirection: Axis.horizontal,
-                    child: Row(children: [
-                      for (var (i, (tool, icon, short)) in tools.indexed)
-                        Padding(
-                            padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
-                            child: SizedBox(
-                              width: each,
-                              child: Tooltip(
-                                message: tooltipOf(tool),
-                                child: Material(
-                                  type: MaterialType.transparency,
-                                  child: InkWell(
-                                    key: ValueKey(keyOf(tool)),
-                                    borderRadius: BorderRadius.circular(10),
-                                    onTap: () =>
-                                        onPick(tool == active ? null : tool),
-                                    child: Container(
-                                      height: card ? 56 : 46,
-                                      decoration: BoxDecoration(
+            // The tool in hand kept in view: picked from elsewhere -- a
+            // layers strip's Add, a key -- one off the end of the line
+            // looked like nothing picked at all.
+            return _ToolRow(
+                active: tools.indexWhere((t) => t.$1 == active),
+                step: each + gap,
+                each: each,
+                builder: (scroll) => SizedBox(
+                    height: card ? 56 : 46,
+                    child: SingleChildScrollView(
+                        key: const ValueKey("toolsRow"),
+                        controller: scroll,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          for (var (i, (tool, icon, short)) in tools.indexed)
+                            Padding(
+                                padding:
+                                    EdgeInsets.only(left: i == 0 ? 0 : gap),
+                                child: SizedBox(
+                                  width: each,
+                                  child: Tooltip(
+                                    message: tooltipOf(tool),
+                                    child: Material(
+                                      type: MaterialType.transparency,
+                                      child: InkWell(
+                                        key: ValueKey(keyOf(tool)),
                                         borderRadius: BorderRadius.circular(10),
-                                        color: lit(tool)
-                                            ? accent.withValues(alpha: 0.16)
-                                            : null,
-                                        border: Border.all(
+                                        onTap: () => onPick(
+                                            tool == active ? null : tool),
+                                        child: Container(
+                                          height: card ? 56 : 46,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
                                             color: lit(tool)
-                                                ? accent
-                                                : theme.colors.outlineVariant,
-                                            width: lit(tool) ? 1.5 : 1),
-                                      ),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(icon,
-                                              size: card ? 20 : 18,
-                                              color: lit(tool)
-                                                  ? accent
-                                                  : theme
-                                                      .colors.onSurfaceVariant),
-                                          const SizedBox(height: 4),
-                                          Text(short,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                  fontSize: card ? 10.5 : 9.5,
-                                                  color:
-                                                      theme.colors.onSurface)),
-                                        ],
+                                                ? accent.withValues(alpha: 0.16)
+                                                : null,
+                                            border: Border.all(
+                                                color: lit(tool)
+                                                    ? accent
+                                                    : theme
+                                                        .colors.outlineVariant,
+                                                width: lit(tool) ? 1.5 : 1),
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(icon,
+                                                  size: card ? 20 : 18,
+                                                  color: lit(tool)
+                                                      ? accent
+                                                      : theme.colors
+                                                          .onSurfaceVariant),
+                                              const SizedBox(height: 4),
+                                              Text(short,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                      fontSize:
+                                                          card ? 10.5 : 9.5,
+                                                      color: theme
+                                                          .colors.onSurface)),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            )),
-                    ])));
+                                )),
+                        ]))));
           }),
         ),
         if (held == null)
