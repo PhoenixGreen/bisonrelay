@@ -541,7 +541,8 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasSettingsPanel(controller: controller));
 
-      await enterValue(tester, find.byKey(const ValueKey("canvasWidth")), "2560");
+      await enterValue(
+          tester, find.byKey(const ValueKey("canvasWidth")), "2560");
       await tester.pump();
       expect(controller.document.size.width, 1280,
           reason: "a resolution: the design is where it was");
@@ -883,8 +884,8 @@ void main() {
       // The panel header names the element now, so the first group no longer
       // captions itself with the same word.
       expect(find.text("TEAM SETTINGS"), findsOneWidget);
-      expect(find.byKey(const ValueKey("elementSection-players")),
-          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-players")), findsOneWidget);
     });
 
     testWidgets("choosing a formation moves everybody", (tester) async {
@@ -1002,7 +1003,8 @@ void main() {
       var controller = await panel(tester);
       expect(teamIn(controller).lockDotAspect, isTrue);
 
-      await enterValue(tester, find.byKey(const ValueKey("teamDotWidth")), "60");
+      await enterValue(
+          tester, find.byKey(const ValueKey("teamDotWidth")), "60");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60);
       expect(teamIn(controller).dotHeight, 60);
@@ -1014,7 +1016,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(lock);
       await tester.pumpAndSettle();
-      await enterValue(tester, find.byKey(const ValueKey("teamDotHeight")), "20");
+      await enterValue(
+          tester, find.byKey(const ValueKey("teamDotHeight")), "20");
       await tester.pump();
       expect(teamIn(controller).dotWidth, 60, reason: "now independent");
       expect(teamIn(controller).dotHeight, 20);
@@ -1025,8 +1028,8 @@ void main() {
       // They were two identical panels, and the two drifted -- a team's names
       // ended up in a different face from its numbers.
       var controller = await panel(tester);
-      expect(find.byKey(const ValueKey("elementSection-labels")),
-          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-labels")), findsOneWidget);
       expect(teamIn(controller).labelSpec.fontSize, isNotNull);
     });
   });
@@ -1116,13 +1119,14 @@ void main() {
 
       expect(find.text("Still"), findsOneWidget);
 
-      await enterValue(tester, find.byKey(const ValueKey("canvasFrames")), "24");
+      await enterValue(
+          tester, find.byKey(const ValueKey("canvasFrames")), "24");
       await tester.pump();
       expect(controller.document.frames, 24);
       expect(find.text("Still"), findsNothing);
 
-      await enterValue(tester, 
-          find.byKey(const ValueKey("canvasFrameRate")), "30");
+      await enterValue(
+          tester, find.byKey(const ValueKey("canvasFrameRate")), "30");
       await tester.pump();
       expect(controller.document.frameRate, 30);
       expect(find.text("0.8s"), findsOneWidget);
@@ -1410,8 +1414,7 @@ void main() {
       expect(later.timeline, isFalse, reason: "until it has read the disk");
     });
 
-    test("the timeline's rows are all shown, then as they were left",
-        () async {
+    test("the timeline's rows are all shown, then as they were left", () async {
       SharedPreferences.setMockInitialValues({});
       var prefs = CanvasPreferences();
       addTearDown(prefs.dispose);
@@ -1435,8 +1438,8 @@ void main() {
           keyframes: back.keyframesShown,
           scenes: back.scenesShown,
           cues: back.cuesShown);
-      expect([c.keyframesShown, c.scenesShown, c.cuesShown],
-          [false, false, true]);
+      expect(
+          [c.keyframesShown, c.scenesShown, c.cuesShown], [false, false, true]);
       expect(told, 0);
     });
   });
@@ -2378,7 +2381,8 @@ void main() {
       // with nothing written in it offered none of them -- which is exactly
       // the state a bubble is in when it has just been added.
       await panel(tester, shapeOf(ShapeKind.speechBubble));
-      expect(find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
       expect(find.text("Body"), findsOneWidget);
       expect(find.text("Tail"), findsOneWidget);
       // Where the tail points is a measurement, so it is behind the button
@@ -2389,7 +2393,8 @@ void main() {
 
     testWidgets("and still shows them once it has one", (tester) async {
       await panel(tester, shapeOf(ShapeKind.speechBubble), text: "Hello");
-      expect(find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-bubble")), findsOneWidget);
       expect(find.text("Label type"), findsWidgets);
     });
 
@@ -2425,8 +2430,8 @@ void main() {
     testWidgets("the tail angle can be typed", (tester) async {
       var controller = await panel(tester, shapeOf(ShapeKind.speechBubble));
       await tail(tester);
-      await enterValue(tester, 
-          find.byKey(const ValueKey("bubbleTailAngle")), "270");
+      await enterValue(
+          tester, find.byKey(const ValueKey("bubbleTailAngle")), "270");
       await tester.pump();
       expect(
           (controller.document.elements.single as ShapeElement)
@@ -2805,7 +2810,8 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasTimeline(controller: controller));
 
-      await enterValue(tester, find.byKey(const ValueKey("canvasFrames")), "125");
+      await enterValue(
+          tester, find.byKey(const ValueKey("canvasFrames")), "125");
       await tester.pump();
       expect(controller.document.frames, 125);
     });
@@ -2878,8 +2884,8 @@ void main() {
     }
 
     // The card a group is drawn as, found by its name.
-    Finder group(String label) => find.byWidgetPredicate(
-        (w) => w is CanvasControlGroup && w.label == label);
+    Finder group(String label) => find
+        .byWidgetPredicate((w) => w is CanvasControlGroup && w.label == label);
 
     ImageElement empty() =>
         const ImageElement(ElementBase(id: "i", width: 200, height: 200));
@@ -2912,6 +2918,11 @@ void main() {
       // writes the element, and the element is what the painter places --
       // see placeImage, which is tested against the pixels next door.
       var controller = await panel(tester, filled());
+      // Framing is in the Fit tool on the Position shelf.
+      var tool = find.byKey(const ValueKey("positionTool-fit"));
+      await tester.ensureVisible(tool);
+      await tester.tap(tool);
+      await tester.pumpAndSettle();
       var zoom = find.ancestor(
           of: find.text("Zoom"), matching: find.byType(CanvasNumberField));
       expect(zoom, findsOneWidget, reason: "offered for a picture that fills");
@@ -2925,13 +2936,15 @@ void main() {
       // Contained or stretched there is no slack to spend and no window to
       // shrink, so the three numbers would be three dead controls.
       await panel(tester, filled().copyWith(fit: ImageFit.contain));
+      var tool = find.byKey(const ValueKey("positionTool-fit"));
+      await tester.ensureVisible(tool);
+      await tester.tap(tool);
+      await tester.pumpAndSettle();
       expect(group("Framing"), findsNothing);
-      // What framing needs is behind the Picture card's "?".
+      // What framing needs is said in the Fit tool -- its hint.
       expect(
-          find.byWidgetPredicate((w) =>
-              w is CanvasControlGroup &&
-              w.label == "Picture" &&
-              (w.help ?? "").contains("Cover")),
+          find.byWidgetPredicate(
+              (w) => w is CanvasHint && w.message.contains("With Cover")),
           findsOneWidget,
           reason: "and it says where they went");
     });
@@ -2943,11 +2956,14 @@ void main() {
       expect(group("Overlay"), findsNothing);
 
       await panel(tester, filled());
-      expect(group("Crop"), findsOneWidget);
+      // The crop is a tool in Mask's shelf now, its numbers with it
+      // in hand -- see canvas_panel_kit_test.
+      expect(group("Crop"), findsNothing);
       expect(group("Overlay"), findsOneWidget);
       // The base picture's shape cuts the whole of it, so it is the frame's:
-      // in Frame, picture or not, and not a second time with the picture.
-      expect(group("Frame shape"), findsOneWidget);
+      // a tool on Frame's shelf, picture or not, and not a second time with
+      // the picture.
+      expect(find.byKey(const ValueKey("frameTool-shape")), findsOneWidget);
       expect(group("Shape"), findsNothing);
     });
 
@@ -2997,8 +3013,7 @@ void main() {
       expect(controller.document.elements.single.opacity, closeTo(0.4, 0.001));
     });
 
-    testWidgets("dragging the number scrubs a percent a pixel",
-        (tester) async {
+    testWidgets("dragging the number scrubs a percent a pixel", (tester) async {
       var document = const CanvasDocument();
       var element = newElement(ElementKind.shape, document);
       var controller = CanvasController(document.addElement(element));
@@ -3529,12 +3544,14 @@ void main() {
               "so without it this test is testing nothing");
       expect(tester.takeException(), isNull);
 
-      await press(tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
+      await press(
+          tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
       expect(tester.takeException(), isNull);
 
       // Shut again: a fold remembers whether it is open in a static map that
       // outlives one test.
-      await press(tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
+      await press(
+          tester, find.byKey(const ValueKey("expander-tableSourceColumns")));
     });
 
     testWidgets("a table is refreshed and reordered from the headings",
@@ -4059,8 +4076,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(counterIn(controller).to, 250);
 
-      await enterValue(tester, 
-          find.byKey(const ValueKey("counterDecimals")), "2");
+      await enterValue(
+          tester, find.byKey(const ValueKey("counterDecimals")), "2");
       await tester.pumpAndSettle();
       expect(counterIn(controller).decimals, 2);
       expect(counterIn(controller).format(1234.5), "1234.50");
@@ -4069,7 +4086,8 @@ void main() {
     testWidgets("the words either side are the counter's, not the number's",
         (tester) async {
       var controller = await panel(tester);
-      await enterValue(tester, find.byKey(const ValueKey("counterBefore")), "£");
+      await enterValue(
+          tester, find.byKey(const ValueKey("counterBefore")), "£");
       await tester.pumpAndSettle();
       expect(counterIn(controller).before, "£");
       expect(counterIn(controller).textFor(12), "£12");
@@ -4107,8 +4125,8 @@ void main() {
 
       controller.frame = 10;
       await tester.pumpAndSettle();
-      await enterValue(tester, 
-          find.byKey(const ValueKey("counterPointValue")), "140");
+      await enterValue(
+          tester, find.byKey(const ValueKey("counterPointValue")), "140");
       await tester.pumpAndSettle();
 
       expect(counterIn(controller).track?.keyAt(10), isNotNull);
@@ -4226,8 +4244,8 @@ void main() {
         expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
       }
 
-      await enterValue(tester, 
-          find.byKey(const ValueKey("counterAfterAtY")), "0.3");
+      await enterValue(
+          tester, find.byKey(const ValueKey("counterAfterAtY")), "0.3");
       await tester.pumpAndSettle();
       expect(counterIn(controller).afterAt.dy, 0.3);
       expect(counterIn(controller).beforeAt.dy, 0,
@@ -4368,7 +4386,8 @@ void main() {
       expect(hints(), isEmpty, reason: "with two series it has its answer");
     });
 
-    testWidgets("the grid card carries the switches, the lines and their colour",
+    testWidgets(
+        "the grid card carries the switches, the lines and their colour",
         (tester) async {
       // In a card, everything at once: the Grid section already folds, and
       // a button inside it hiding the rest was a setting found twice over.
@@ -4766,8 +4785,8 @@ void main() {
       // By name rather than by counting: there are four Size fields in this
       // section -- the title's, the description's, and one per axis -- and
       // counting finds a different one every time a field is added.
-      await enterValue(tester, 
-          find.byKey(const ValueKey("chartDescriptionSize")), "44");
+      await enterValue(
+          tester, find.byKey(const ValueKey("chartDescriptionSize")), "44");
       await tester.pump();
 
       var after = chartIn(controller);
@@ -4785,11 +4804,8 @@ void main() {
       var controller = await panel(tester);
       expect(chartIn(controller).data.series.length, 1);
       expect(
-          tester
-              .getTopLeft(find.text("Series"))
-              .dy
-              .compareTo(
-                  tester.getTopLeft(find.byType(ChartDataEditor).first).dy),
+          tester.getTopLeft(find.text("Series")).dy.compareTo(
+              tester.getTopLeft(find.byType(ChartDataEditor).first).dy),
           1,
           reason: "directly under the numbers it names");
 
@@ -5217,7 +5233,8 @@ void main() {
       // columns, with what they are drawn as above them and how that drawing
       // looks below.
       await panel(tester);
-      expect(find.byKey(const ValueKey("elementSection-chart")), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-chart")), findsOneWidget);
       expect(find.textContaining("2 rows, 1 series"), findsOneWidget);
     });
 
@@ -5237,7 +5254,8 @@ void main() {
       expect(find.byTooltip("Raw table"), findsOneWidget);
 
       // The first row's category, then its value.
-      await enterValue(tester, 
+      await enterValue(
+          tester,
           find
               .descendant(
                   of: find.byType(ChartDataEditor).first,
@@ -5347,8 +5365,8 @@ void main() {
     // Within the logos-and-scans group: the mask tools beside it have a
     // Brush and an Invert of their own.
     Finder text(String words) => find.descendant(
-        of: find.byWidgetPredicate((w) =>
-            w is CanvasControlGroup && w.label == "Logos and scans"),
+        of: find.byWidgetPredicate(
+            (w) => w is CanvasControlGroup && w.label == "Logos and scans"),
         matching: find.text(words));
 
     Future<CanvasController> panel(WidgetTester tester,
@@ -5375,7 +5393,8 @@ void main() {
       // layer away.
       var controller = await panel(tester);
       expect(find.byTooltip("Rub the background out by hand"), findsNothing);
-      expect(find.byTooltip("Put back what was taken by mistake"), findsNothing);
+      expect(
+          find.byTooltip("Put back what was taken by mistake"), findsNothing);
 
       controller.editImage("i");
       await tester.pumpAndSettle();
@@ -5632,6 +5651,8 @@ void main() {
       var controller = await panel(tester);
       expect(find.byIcon(Icons.link_off), findsOneWidget);
 
+      await tester.ensureVisible(find.byIcon(Icons.link_off));
+      await tester.pumpAndSettle();
       await tester.tap(find.byIcon(Icons.link_off));
       await tester.pumpAndSettle();
       expect(baseIn(controller).lockAspect, isTrue);
@@ -5694,7 +5715,8 @@ void main() {
       controller.selectOnly(element.id);
       await pump(tester, CanvasDesignPanel(controller: controller));
 
-      var before = tester.widget<CanvasStepper>(find.byType(CanvasStepper).first);
+      var before =
+          tester.widget<CanvasStepper>(find.byType(CanvasStepper).first);
       controller.zoom = 2.5;
       controller.pan = const Offset2(30, 30);
       await tester.pumpAndSettle();
@@ -6076,8 +6098,8 @@ void main() {
       // the numbers themselves -- and two of them on one panel is a panel
       // nobody can navigate.
       await panel(tester);
-      expect(find.byKey(const ValueKey("elementSection-source")),
-          findsOneWidget);
+      expect(
+          find.byKey(const ValueKey("elementSection-source")), findsOneWidget);
       expect(find.byKey(const ValueKey("elementSection-chart")), findsOneWidget,
           reason: "the numbers themselves are still a section of their own");
     });
@@ -7024,8 +7046,7 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.whereType<TextElement>().single;
 
-    testWidgets("are sections, in the order the work happens",
-        (tester) async {
+    testWidgets("are sections, in the order the work happens", (tester) async {
       // Where it is, what it says, how it is set, its box, the line it
       // follows, which words are different, how it arrives -- and the
       // designs saved of its kind, as every element's panel ends.
@@ -7037,7 +7058,9 @@ void main() {
             (element.widget as CanvasSection).title,
           ),
       ]..sort((a, b) => a.$1.compareTo(b.$1));
-      expect([for (var (_, title) in found) title], [
+      expect([
+        for (var (_, title) in found) title
+      ], [
         "Position",
         "Words",
         "Type",
@@ -7314,8 +7337,8 @@ void main() {
               of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
           matching: find.byType(CanvasDropdown<String>)));
       var add = tester.getRect(find.byKey(const ValueKey("textAddItem")));
-      var box = tester
-          .getRect(find.byKey(const ValueKey("elementSection-box")));
+      var box =
+          tester.getRect(find.byKey(const ValueKey("elementSection-box")));
 
       var ownFont = tester.getRect(find.byWidgetPredicate(
           (w) => w is CanvasDropdown<String> && w.label == "Font"));

@@ -57,7 +57,8 @@ void main() {
                     return r.endRecording().toImage(16, 9);
                   }))),
     ));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)));
     await tester.pumpAndSettle();
     expect(find.text("Intro  ·  0:00"), findsOneWidget);
     expect(find.byType(RawImage), findsNWidgets(3 * storyboardShots));

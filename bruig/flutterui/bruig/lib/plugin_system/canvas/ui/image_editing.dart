@@ -4,11 +4,47 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
+import 'package:flutter/material.dart' show Icons, IconData;
 
 // image_editing.dart is the editing of a picture made of layers: the tools,
 // and the changes to the stack they make. The stack's own model is in
 // model/elements/image_layers.dart; this is what a press or a button does
 // to it.
+
+/// PositionTool is one of the Position section's tools: a tile on its shelf
+/// that opens its own settings -- where the picture is and how big, its
+/// mirror, how it fills its box, the shape it is cut to, its warp.
+enum PositionTool {
+  place("Place", Icons.open_with),
+  flip("Flip", Icons.flip),
+  fit("Fit", Icons.fit_screen_outlined),
+  shape("Shape", Icons.category_outlined),
+  warp("Warp", Icons.grid_4x4);
+
+  final String label;
+  final IconData icon;
+  const PositionTool(this.label, this.icon);
+}
+
+/// FrameTool is one of the Frame section's tools: the whole image's place
+/// and size; how what is in it behaves when it is resized or runs past it;
+/// the shape it is cut to; its background and border.
+enum FrameTool {
+  image("Image", "Where the whole image is, and how big", Icons.open_with),
+  content(
+      "Content",
+      "Content: when the frame is resized, and what runs past it",
+      Icons.fit_screen_outlined),
+  shape("Shape", "Frame shape", Icons.category_outlined),
+  box("Background", "Background and border", Icons.format_color_fill);
+
+  final String label;
+
+  /// about is its name in full, for its tooltip and over its settings.
+  final String about;
+  final IconData icon;
+  const FrameTool(this.label, this.about, this.icon);
+}
 
 /// ImageTool is what a press on a picture being edited does.
 enum ImageTool {
@@ -19,6 +55,15 @@ enum ImageTool {
   /// subject finds the subject of the picked layer's picture: a click picks
   /// the one there, Shift adds it, Option takes it away.
   subject("Select subject", "W"),
+
+  /// crop trims the picked picture's edges; its settings are the amounts
+  /// taken off each.
+  crop("Crop", "C"),
+
+  /// edge shapes the mask's edge -- softened, moved out or in, smoothed,
+  /// hardened, its old background's tint taken out. Its settings are the
+  /// whole of it: a press on the picture moves it, as Crop's does.
+  edge("Edge", "K"),
 
   /// quick grows what is brushed over out to the edges near it: a stroke
   /// over a shirt takes in the shirt.
@@ -70,7 +115,7 @@ enum ImageTool {
 
   /// paints is whether the tool lays strokes: paint on a paint layer, or
   /// retouching on a picture.
-  bool get paints => !masks && this != move;
+  bool get paints => !masks && this != move && this != crop && this != edge;
 
   /// retouches is whether the tool works on a picture rather than a paint
   /// layer.

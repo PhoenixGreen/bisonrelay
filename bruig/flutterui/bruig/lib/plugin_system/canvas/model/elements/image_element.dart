@@ -4,6 +4,9 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_warp.dart';
+
+export 'package:bruig/plugin_system/canvas/model/elements/image_warp.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
@@ -661,6 +664,9 @@ class ImageElement extends CanvasElement {
   /// [ImageFraming].
   final ImageFraming framing;
 
+  /// warp bends the picture by a grid of points over it. See ImageWarp.
+  final ImageWarp warp;
+
   /// frame is a shape the picture is cut to -- a circle, a star, a speech
   /// bubble. Null leaves it rectangular.
   ///
@@ -721,6 +727,7 @@ class ImageElement extends CanvasElement {
     this.brightness = 1,
     this.crop = const ImageCrop(),
     this.framing = const ImageFraming(),
+    this.warp = const ImageWarp(),
     this.frame,
     this.filter = ImageFilterPreset.none,
     this.outline = const ImageOutline(),
@@ -853,6 +860,19 @@ class ImageElement extends CanvasElement {
     ) as ImageElement;
   }
 
+  /// withProportionsKept is this picture with its proportions held as it is
+  /// resized, or let go. Let go, a picture that covered its box is
+  /// stretched to it instead, so pulling a side squashes it rather than
+  /// trimming it. Held again, its fit is left as it is: a stretched picture
+  /// in a box of its own proportions is drawn the same either way.
+  ImageElement withProportionsKept(bool keep) {
+    var next = withBase(lockAspect: keep) as ImageElement;
+    if (!keep && fit == ImageFit.cover) {
+      return next.copyWith(fit: ImageFit.stretch);
+    }
+    return next;
+  }
+
   /// hasImage is whether there is anything to draw. An element with no
   /// picture yet is drawn as a placeholder rather than as nothing, so it can
   /// still be selected and given one.
@@ -874,6 +894,7 @@ class ImageElement extends CanvasElement {
       brightness: brightness,
       crop: crop,
       framing: framing,
+      warp: warp,
       frame: frame,
       filter: filter,
       outline: outline,
@@ -896,6 +917,7 @@ class ImageElement extends CanvasElement {
     double? brightness,
     ImageCrop? crop,
     ImageFraming? framing,
+    ImageWarp? warp,
     ShapeKind? frame,
     bool clearFrame = false,
     ImageFilterPreset? filter,
@@ -919,6 +941,7 @@ class ImageElement extends CanvasElement {
           brightness: brightness ?? this.brightness,
           crop: crop ?? this.crop,
           framing: framing ?? this.framing,
+          warp: warp ?? this.warp,
           frame: clearFrame ? null : (frame ?? this.frame),
           filter: filter ?? this.filter,
           outline: outline ?? this.outline,
@@ -942,6 +965,8 @@ class ImageElement extends CanvasElement {
         if (brightness != 1) "bri": brightness,
         if (!crop.isWhole) "crop": crop.toJson(),
         if (!framing.isDefault) "framing": framing.toJson(),
+        if (warp.active || warp.cols != 4 || warp.rows != 4)
+          "warp": warp.toJson(),
         if (frame != null) "frame": frame!.name,
         if (filter != ImageFilterPreset.none) "filter": filter.name,
         if (outline.on) "outline": outline.toJson(),
@@ -979,6 +1004,7 @@ class ImageElement extends CanvasElement {
           crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
           framing: jsonSpec(
               json["framing"], ImageFraming.fromJson, const ImageFraming()),
+          warp: jsonSpec(json["warp"], ImageWarp.fromJson, const ImageWarp()),
           frame: json["frame"] is String
               ? ShapeKind.fromName(json["frame"] as String?)
               : null,

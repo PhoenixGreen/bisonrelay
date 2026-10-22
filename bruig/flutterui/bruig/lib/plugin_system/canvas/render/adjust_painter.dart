@@ -253,6 +253,28 @@ void paintAdjusted(
       Paint()..filterQuality = FilterQuality.medium);
 }
 
+/// paintAdjustedLive draws what [body] draws through [adjust], over [room]:
+/// as a filter where the engine can, and otherwise drawn into a picture of
+/// its own first, kept for nothing -- for a layer that moves, whose picture
+/// changes from frame to frame anyway.
+void paintAdjustedLive(ui.Canvas canvas, Rect room, ImageAdjustment adjust,
+    void Function(ui.Canvas) body) {
+  var program = AdjustShader._program;
+  if (program != null) {
+    if (_adjustFilter(program, adjust) case var filter?) {
+      canvas.saveLayer(room, Paint()..imageFilter = filter);
+      body(canvas);
+      canvas.restore();
+      return;
+    }
+  }
+  var recorder = ui.PictureRecorder();
+  body(ui.Canvas(recorder));
+  var picture = recorder.endRecording();
+  paintAdjusted(canvas, room, adjust, picture);
+  picture.dispose();
+}
+
 /// _filters is the adjustment filters made, the last few, by the adjustment
 /// they are for: a filter is made once for each, not on every frame.
 final List<(ImageAdjustment, ui.ImageFilter)> _filters = [];
@@ -260,6 +282,19 @@ final List<(ImageAdjustment, ui.ImageFilter)> _filters = [];
 /// adjustsByFilter is whether adjustments are being drawn as image filters
 /// -- nothing rasterised, nothing kept -- rather than into kept pictures.
 bool get adjustsByFilter => _filtering == true;
+
+/// adjustSteadily is set while a picture is drawn moving under the canvas --
+/// drifting closer or across -- for its adjustments to be worked into
+/// pixels of the picture's own, and those moved, rather than applied as a
+/// filter where it is drawn.
+///
+/// A filter is worked at whole pixels of the screen, over a patch the
+/// engine rounds out to them; under a zoom that changes a little every
+/// frame, the patch rounded differently from one frame to the next, and
+/// everything under an adjustment shook by a pixel as it drifted. Worked
+/// into pixels of its own, the adjusted picture is drawn moved as any
+/// picture is, smoothly -- and kept, so a drift costs less, not more.
+bool adjustSteadily = false;
 
 /// _filtering is whether the engine draws a shader as an image filter --
 /// Impeller does, the others do not -- found out the first time it is
@@ -270,7 +305,7 @@ bool? _filtering;
 /// cannot draw one and the adjustment is drawn into a picture instead.
 ui.ImageFilter? _adjustFilter(
     ui.FragmentProgram program, ImageAdjustment adjust) {
-  if (_filtering == false) return null;
+  if (_filtering == false || adjustSteadily) return null;
   for (var (a, f) in _filters) {
     if (identical(a, adjust)) return f;
   }

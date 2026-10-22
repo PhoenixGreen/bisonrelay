@@ -18,13 +18,12 @@ import 'package:provider/provider.dart';
 // canvas_reuse_test.dart is one design used in many places: a named text
 // style, linked copies of an element, and several elements arriving in turn.
 
-TextElement _text(String id, {double x = 0}) => TextElement(
-    ElementBase(id: id, x: x, width: 300, height: 60),
-    text: id,
-    textSpec: const TextSpec(fontSize: 30));
+TextElement _text(String id, {double x = 0}) =>
+    TextElement(ElementBase(id: id, x: x, width: 300, height: 60),
+        text: id, textSpec: const TextSpec(fontSize: 30));
 
-ShapeElement _shape(String id, double x, int arrives) => ShapeElement(
-    ElementBase(
+ShapeElement _shape(String id, double x, int arrives) =>
+    ShapeElement(ElementBase(
         id: id,
         x: x,
         track: ElementTrack([
@@ -138,20 +137,21 @@ void main() {
         .addElement(_shape("middle", 300, 0)));
     addTearDown(c.dispose);
     c.staggerArrivals(["right", "left", "middle"], 8);
-    int at(String id) => c.document.elementById(id)!.base.track!.keys.first.frame;
+    int at(String id) =>
+        c.document.elementById(id)!.base.track!.keys.first.frame;
     expect(at("left"), 10);
     expect(at("middle"), 18);
     expect(at("right"), 26);
   });
 
   group("the panel", () {
-    testWidgets("a text's Style row saves and updates a style",
-        (tester) async {
-      var c = CanvasController(
-          const CanvasDocument().addElement(_text("t")));
+    testWidgets("a text's Style row saves and updates a style", (tester) async {
+      var c = CanvasController(const CanvasDocument().addElement(_text("t")));
       addTearDown(c.dispose);
       c.selectOnly("t");
       await _panel(tester, c);
+      await tester.ensureVisible(find.byKey(const ValueKey("textStyleSave")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("textStyleSave")));
       await tester.pumpAndSettle();
       expect(c.textStyles, hasLength(1));

@@ -90,8 +90,8 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-        _stack(["a", "b", "c", "d", "e", "f"], bodyHeight: 200));
+    await tester
+        .pumpWidget(_stack(["a", "b", "c", "d", "e", "f"], bodyHeight: 200));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull, reason: "nothing overflowed");

@@ -20,8 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TextElement headline(Size on) => TextElement(
-        ElementBase(
-            id: "t", x: 100, y: 50, width: on.width / 2, height: 120),
+        ElementBase(id: "t", x: 100, y: 50, width: on.width / 2, height: 120),
         text: "Spend or burn",
         textSpec: const TextSpec(fontSize: 60),
       );
@@ -96,8 +95,7 @@ void main() {
     expect(text.textSpec.fontSize, 30);
   });
 
-  test("a saved canvas is sized by its own page when its scenes are added",
-      () {
+  test("a saved canvas is sized by its own page when its scenes are added", () {
     // A canvas preset carries its page in its own JSON, so that is what its
     // scenes are scaled from -- it needs no madeOn of its own.
     var document = CanvasDocument(

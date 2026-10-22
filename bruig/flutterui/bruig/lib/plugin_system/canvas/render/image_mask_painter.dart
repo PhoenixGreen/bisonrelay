@@ -78,8 +78,12 @@ ui.Picture maskPicture(ImageMask mask, Size size, ui.Image? subject) {
 class _Rastered {
   final ui.Image? subject;
   final Size size;
+  final Rect area;
   final ui.Image image;
-  _Rastered(this.subject, this.size, this.image);
+
+  /// over is the part of the picture, in its own pixels, [image] covers.
+  final Rect over;
+  _Rastered(this.subject, this.size, this.area, this.image, this.over);
 }
 
 /// _rastered is the masks last drawn, as pixels, the most recently drawn
@@ -92,35 +96,65 @@ const double _maskSide = 2048;
 
 /// maskImage is [mask] for a picture of [size] pixels as pixels, white what
 /// is kept, at most [_maskSide] across -- drawn once, then kept with the
-/// mask.
+/// mask -- cut to [area] of the picture (the part of it drawn: its crop) and
+/// refined, with [over] the part of the picture, in its own pixels, the
+/// image covers: the area and as far as the refining spreads past it.
 ///
 /// Drawn as its recording on every frame instead, a mask was its every mark
 /// again: a brush stroke is a soft dab at every step along it, each blurred
 /// on its own, and a picture of six masked photographs was thousands of
 /// them -- a second of the graphics card's time whenever it was drawn
 /// anywhere but straight to the screen.
-ui.Image maskImage(ImageMask mask, Size size, ui.Image? subject) {
+///
+/// And refined here, in the picture's own pixels, not as a filter where it
+/// is drawn: under a picture turned and drifting closer, the engine works a
+/// filter at whole pixels of a place that moves a little every frame, and a
+/// feathered or grown mask -- the picture it cuts out with it -- shook by a
+/// pixel or two from frame to frame instead of gliding.
+({ui.Image image, Rect over}) maskImage(
+    ImageMask mask, Size size, ui.Image? subject,
+    {Rect? area}) {
+  area ??= Offset.zero & size;
   var kept = _rastered.remove(mask);
-  if (kept != null && kept.size == size && identical(kept.subject, subject)) {
+  if (kept != null &&
+      kept.size == size &&
+      kept.area == area &&
+      identical(kept.subject, subject)) {
     _rastered[mask] = kept;
-    return kept.image;
+    return (image: kept.image, over: kept.over);
   }
   kept?.image.dispose();
+  var r = mask.refine;
+  var over = area.inflate(r.feather * 1.5 + r.smooth + r.shift.abs() + 2);
   var k = math.min(1.0, _maskSide / math.max(size.width, size.height));
-  var w = math.max(1, (size.width * k).round());
-  var h = math.max(1, (size.height * k).round());
+  var w = math.max(1, (over.width * k).ceil());
+  var h = math.max(1, (over.height * k).ceil());
   var recorder = ui.PictureRecorder();
   var canvas = ui.Canvas(recorder);
-  canvas.scale(w / size.width, h / size.height);
+  // The refining in the raster's own pixels, k of the picture's.
+  var refine = refineFilter(r, k);
+  if (refine != null) {
+    canvas.saveLayer(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+        Paint()..imageFilter = refine);
+  }
+  canvas.scale(w / over.width, h / over.height);
+  canvas.translate(-over.left, -over.top);
+  // Nothing of the mask past the part of the picture that is drawn -- a
+  // crop's mask must not reach out over the frame. A hard clip: a smoothed
+  // one does not soften the mask along its edge, it softens how much of the
+  // mask is applied there -- so the pixel the edge crossed kept part of the
+  // picture whatever the mask said, a hairline round every faded picture.
+  canvas.clipRect(area, doAntiAlias: false);
   canvas.drawPicture(maskPicture(mask, size, subject));
+  if (refine != null) canvas.restore();
   var picture = recorder.endRecording();
   var image = picture.toImageSync(w, h);
   picture.dispose();
-  _rastered[mask] = _Rastered(subject, size, image);
+  _rastered[mask] = _Rastered(subject, size, area, image, over);
   while (_rastered.length > _recordedMost) {
     _rastered.remove(_rastered.keys.first)!.image.dispose();
   }
-  return image;
+  return (image: image, over: over);
 }
 
 /// paintMaskMarks draws [mask]'s subject and marks, as alpha, into a picture
@@ -303,26 +337,16 @@ void paintMaskLayer(ui.Canvas canvas, ImageMask mask, Size picture,
   var r = mask.refine;
   var reach = (r.feather * 1.5 + r.smooth + r.shift.abs()) * scale + 2;
   canvas.saveLayer(
-      bounds ?? placement.dst.inflate(reach),
-      Paint()
-        ..blendMode = blend
-        ..imageFilter = refineFilter(mask.refine, scale));
-  canvas.save();
-  // Nothing of the mask past the part of the picture that is drawn -- a
-  // crop's mask must not reach out over the frame. A hard clip: a smoothed
-  // one does not soften the mask along its edge, it softens how much of the
-  // mask is applied there -- so the pixel the edge crossed kept part of the
-  // picture whatever the mask said, a hairline round every faded picture.
-  canvas.clipRect(placement.dst, doAntiAlias: false);
+      bounds ?? placement.dst.inflate(reach), Paint()..blendMode = blend);
   canvas.translate(m.dx, m.dy);
   canvas.scale(m.sx, m.sy);
-  // As pixels, drawn once and kept: see maskImage.
-  var image = maskImage(mask, picture, subject);
+  // As pixels, cut to what is drawn and refined, once and kept: see
+  // maskImage.
+  var (:image, :over) = maskImage(mask, picture, subject, area: placement.src);
   canvas.drawImageRect(
       image,
       Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Offset.zero & picture,
+      over,
       Paint()..filterQuality = FilterQuality.medium);
-  canvas.restore();
   canvas.restore();
 }

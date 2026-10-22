@@ -109,6 +109,13 @@ class ElementBase {
   /// rather than radians because it is a number the user types.
   final double rotation;
 
+  /// skewX and skewY slant the element about its centre, in degrees, after
+  /// its rotation: skewX leans its sides left and right -- the top edge one
+  /// way, the bottom the other -- and skewY its top and bottom up and down.
+  /// See BoxFrame.
+  final double skewX;
+  final double skewY;
+
   /// opacity multiplies the whole element, on top of whatever its own colours
   /// say.
   final double opacity;
@@ -224,6 +231,8 @@ class ElementBase {
     this.width = 200,
     this.height = 100,
     this.rotation = 0,
+    this.skewX = 0,
+    this.skewY = 0,
     this.opacity = 1,
     this.visible = true,
     this.locked = false,
@@ -249,6 +258,8 @@ class ElementBase {
     double? width,
     double? height,
     double? rotation,
+    double? skewX,
+    double? skewY,
     double? opacity,
     bool? visible,
     bool? locked,
@@ -275,6 +286,8 @@ class ElementBase {
         width: width ?? this.width,
         height: height ?? this.height,
         rotation: rotation ?? this.rotation,
+        skewX: (skewX ?? this.skewX).clamp(-maxSkew, maxSkew),
+        skewY: (skewY ?? this.skewY).clamp(-maxSkew, maxSkew),
         opacity: opacity ?? this.opacity,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
@@ -302,6 +315,8 @@ class ElementBase {
       width: _d(json["w"], 200),
       height: _d(json["h"], 100),
       rotation: _d(json["rot"], 0),
+      skewX: _d(json["skx"], 0).clamp(-maxSkew, maxSkew),
+      skewY: _d(json["sky"], 0).clamp(-maxSkew, maxSkew),
       opacity: _d(json["opacity"], 1).clamp(0.0, 1.0),
       visible: _b(json["visible"], true),
       locked: _b(json["locked"], false),
@@ -338,6 +353,8 @@ class ElementBase {
         "w": width,
         "h": height,
         if (rotation != 0) "rot": rotation,
+        if (skewX != 0) "skx": skewX,
+        if (skewY != 0) "sky": skewY,
         if (opacity != 1) "opacity": opacity,
         if (!visible) "visible": false,
         if (locked) "locked": true,
@@ -589,6 +606,11 @@ abstract class CanvasElement {
   double get width => base.width;
   double get height => base.height;
   double get rotation => base.rotation;
+
+  /// frameAt is how this element's own box is laid on the page about its
+  /// middle on [frame]: turned, then slanted. See BoxFrame.
+  BoxFrame frameAt(int frame) =>
+      BoxFrame(rotationAt(frame), base.skewX, base.skewY);
   double get opacity => base.opacity;
   bool get visible => base.visible;
   bool get locked => base.locked;
@@ -752,6 +774,8 @@ abstract class CanvasElement {
     double? width,
     double? height,
     double? rotation,
+    double? skewX,
+    double? skewY,
     double? opacity,
     bool? visible,
     bool? locked,
@@ -777,6 +801,8 @@ abstract class CanvasElement {
         width: width,
         height: height,
         rotation: rotation,
+        skewX: skewX,
+        skewY: skewY,
         opacity: opacity,
         visible: visible,
         locked: locked,
@@ -818,4 +844,78 @@ String newElementId() {
   var n = _idCounter++;
   var salt = _idRandom.nextInt(1 << 20);
   return "e${n.toRadixString(36)}_${salt.toRadixString(36)}";
+}
+
+/// maxSkew is the most an element is slanted, in degrees: past it, the box
+/// is a line.
+const double maxSkew = 80;
+
+/// BoxFrame is how an element's own box is laid on the page about its
+/// middle: turned by [rotation], then slanted by [skewX] and [skewY], all in
+/// degrees. A point a box's own way across from its middle is [apply]'d
+/// to where it is on the page from the middle, and [invert] goes back --
+/// the same mapping the renderer draws with (Canvas.rotate, then
+/// Canvas.skew), so a click, a handle and an outline land where the element
+/// is drawn.
+class BoxFrame {
+  final double rotation;
+  final double skewX;
+  final double skewY;
+
+  // x' = a x + b y, y' = c x + d y.
+  final double a, b, c, d;
+
+  factory BoxFrame(double rotation, double skewX, double skewY) {
+    var r = rotation * math.pi / 180;
+    var cos = math.cos(r), sin = math.sin(r);
+    var sx = math.tan(skewX * math.pi / 180);
+    var sy = math.tan(skewY * math.pi / 180);
+    // Rotation after skew: R * S, S = [[1, sx], [sy, 1]].
+    return BoxFrame._(rotation, skewX, skewY, cos - sin * sy, cos * sx - sin,
+        sin + cos * sy, sin * sx + cos);
+  }
+
+  const BoxFrame._(
+      this.rotation, this.skewX, this.skewY, this.a, this.b, this.c, this.d);
+
+  /// upright is whether it neither turns nor slants.
+  bool get upright => rotation == 0 && skewX == 0 && skewY == 0;
+
+  /// slanted is whether it slants at all.
+  bool get slanted => skewX != 0 || skewY != 0;
+
+  Offset apply(Offset p) => Offset(a * p.dx + b * p.dy, c * p.dx + d * p.dy);
+
+  Offset invert(Offset p) {
+    var det = a * d - b * c;
+    if (det.abs() < 1e-12) return p;
+    return Offset((d * p.dx - b * p.dy) / det, (-c * p.dx + a * p.dy) / det);
+  }
+
+  /// applyTo lays [canvas] out the box's way about [centre]: what is drawn
+  /// next in the box's own space lands where the element is.
+  void applyTo(Canvas canvas, Offset centre) {
+    if (upright) return;
+    canvas.translate(centre.dx, centre.dy);
+    if (rotation != 0) canvas.rotate(rotation * math.pi / 180);
+    if (slanted) {
+      canvas.skew(
+          math.tan(skewX * math.pi / 180), math.tan(skewY * math.pi / 180));
+    }
+    canvas.translate(-centre.dx, -centre.dy);
+  }
+
+  /// corners is [box] laid out this way about its own middle.
+  List<Offset> corners(Rect box) {
+    var c0 = box.center;
+    return [
+      for (var p in [
+        box.topLeft,
+        box.topRight,
+        box.bottomRight,
+        box.bottomLeft
+      ])
+        c0 + apply(p - c0)
+    ];
+  }
 }

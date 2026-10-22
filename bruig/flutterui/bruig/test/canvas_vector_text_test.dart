@@ -117,8 +117,8 @@ void main() {
       await tester.pump();
     }
     expect(c.vectorTyping, 0, reason: "new text, being typed");
-    await enterValue(tester, 
-        find.byKey(const ValueKey("vectorTypingField")), "Go");
+    await enterValue(
+        tester, find.byKey(const ValueKey("vectorTypingField")), "Go");
     await tester.pump();
     VectorShape shape() =>
         (c.document.elementById("v") as VectorElement).shapes!.single;

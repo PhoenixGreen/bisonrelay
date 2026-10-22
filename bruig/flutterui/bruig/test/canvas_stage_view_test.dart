@@ -2341,7 +2341,10 @@ void main() {
       var document = three();
       expect([
         for (var e in chosenOutlines(document, {"a", "c"}, 0)) e.id,
-      ], ["a", "c"]);
+      ], [
+        "a",
+        "c"
+      ]);
     });
 
     test("and one on its own is not: it has a box already", () {
@@ -2351,11 +2354,13 @@ void main() {
 
     test("nor is one that is not being drawn", () {
       var document = three();
-      document = document.withElement(
-          document.elementById("a")!.withBase(visible: false));
+      document = document
+          .withElement(document.elementById("a")!.withBase(visible: false));
       expect([
         for (var e in chosenOutlines(document, {"a", "b"}, 0)) e.id,
-      ], ["b"]);
+      ], [
+        "b"
+      ]);
     });
   });
 
@@ -2387,8 +2392,7 @@ void main() {
       // Four screen pixels inside the bottom-right corner: a miss, but the
       // kind anybody makes.
       var corner = stage.pageRect.topLeft + element.bounds.bottomRight * scale;
-      await tester.dragFrom(
-          corner - const Offset(4, 4), const Offset(-40, 0));
+      await tester.dragFrom(corner - const Offset(4, 4), const Offset(-40, 0));
       await tester.pumpAndSettle();
 
       var after = controller.document.elementById("s")!;
@@ -2451,8 +2455,7 @@ void main() {
       var scale = stage.pageRect.width / document.size.width;
 
       await tester.dragFrom(
-          stage.pageRect.topLeft + element.center * scale,
-          const Offset(2, 2));
+          stage.pageRect.topLeft + element.center * scale, const Offset(2, 2));
       await tester.pumpAndSettle();
 
       expect(controller.selection, {"s"}, reason: "chosen");

@@ -557,7 +557,8 @@ void main() {
       var stage = await pump(tester, controller);
       expect(controller.selection, isEmpty, reason: "nothing chosen yet");
 
-      var at = stage.toStagePoint(textItemRects(card, card.bounds).single.center);
+      var at =
+          stage.toStagePoint(textItemRects(card, card.bounds).single.center);
       await tester.tapAt(at);
       await tester.pumpAndSettle();
       expect(controller.selection, {"c"},

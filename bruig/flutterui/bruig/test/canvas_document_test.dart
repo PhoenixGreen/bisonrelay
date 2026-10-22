@@ -314,8 +314,8 @@ void main() {
     // background along the bottom edge of every export.
     expect(const CanvasSize(ratio: CanvasRatio.wide, width: 1281).height, 721);
     // The tallest a feed will show without cropping: 1080 across, 1350 down.
-    expect(const CanvasSize(ratio: CanvasRatio.feedAd, width: 1080).height,
-        1350);
+    expect(
+        const CanvasSize(ratio: CanvasRatio.feedAd, width: 1080).height, 1350);
   });
 
   test("a shape saved by name comes back as itself", () {

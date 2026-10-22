@@ -1714,6 +1714,112 @@ class CanvasController extends ChangeNotifier {
           if (l.kind == LayerKind.picture && l.visible && !layerLocked(l)) l
       ];
 
+  /// frameTool is the Frame section's tool open on its shelf, Image until
+  /// another is picked; null with all of them shut.
+  FrameTool? get frameTool => _frameTool;
+  FrameTool? _frameTool = FrameTool.image;
+  set frameTool(FrameTool? v) {
+    _frameTool = v;
+    notifyListeners();
+  }
+
+  /// _shutCards are the settings cards under a row of kinds -- an
+  /// arrival's, an exit's, a loop's -- shut by pressing the kind chosen
+  /// again. For this run of the app; picking another kind opens its card.
+  final Set<String> _shutCards = {};
+
+  /// cardShut is whether the card [key] has been shut -- see _shutCards.
+  bool cardShut(String key) => _shutCards.contains(key);
+
+  /// toggleCard shuts the card [key] if it is open, and opens it if shut.
+  void toggleCard(String key) {
+    if (!_shutCards.remove(key)) _shutCards.add(key);
+    notifyListeners();
+  }
+
+  /// openCard opens the card [key], without a redraw of its own: it goes
+  /// with the change that is about to be made.
+  void openCard(String key) => _shutCards.remove(key);
+
+  /// positionTool is the Position section's tool open on its shelf, Place
+  /// until another is picked; null with all of them shut. The Warp tool
+  /// shows the picked picture's grid on the canvas while it is open.
+  PositionTool? get positionTool => _positionTool;
+  PositionTool? _positionTool = PositionTool.place;
+  set positionTool(PositionTool? v) {
+    _positionTool = v;
+    notifyListeners();
+  }
+
+  /// warpLayer is the layer of the picture being edited whose warp grid is
+  /// shown to be worked on -- see ImageWarp -- or null for none. Only while
+  /// that layer is the one picked: picking another puts the grid away.
+  String? get warpLayer {
+    var e = editingImage, id = _warpLayer;
+    if (e == null || id == null || id != _imageLayerId) return null;
+    return e.layerById(id) == null ? null : id;
+  }
+
+  String? _warpLayer;
+
+  /// warpPicks is the points of the warp grid picked, by their place in it.
+  Set<int> get warpPicks => _warpPicks;
+  Set<int> _warpPicks = const {};
+  set warpPicks(Set<int> v) {
+    _warpPicks = Set.unmodifiable(v);
+    notifyListeners();
+  }
+
+  /// warpOf is the warp of the picture [layerId] of [e] shows.
+  ImageWarp warpOf(ImageElement e, String layerId) =>
+      lookOf(e, layerId)?.warp ?? const ImageWarp();
+
+  /// editWarp shows the picked layer's warp grid to be worked on, opening
+  /// the picture's layers on [layerId] where they are not open -- or, with
+  /// [on] false, puts it away.
+  void editWarp(String elementId, String layerId, {bool on = true}) {
+    if (!on) {
+      _warpLayer = null;
+      _warpPicks = const {};
+      // The Warp tool has nothing to show without its grid.
+      if (_positionTool == PositionTool.warp) {
+        _positionTool = PositionTool.place;
+      }
+      notifyListeners();
+      return;
+    }
+    if (imageEditing != elementId || _imageLayerId != layerId) {
+      editImage(elementId, layer: layerId);
+    }
+    _warpLayer = layerId;
+    _warpPicks = const {};
+    _positionTool = PositionTool.warp;
+    imageTool = ImageTool.move;
+    notifyListeners();
+  }
+
+  /// changeWarp changes the warp of the layer being warped.
+  void changeWarp(ImageWarp Function(ImageWarp) edit,
+      {bool transient = false}) {
+    var e = editingImage, id = warpLayer;
+    if (e == null || id == null) return;
+    var look = lookOf(e, id);
+    if (look == null) return;
+    replaceElement(withLook(e, id, look.copyWith(warp: edit(look.warp))),
+        transient: transient);
+  }
+
+  /// skewHandles is whether an element's side handles slant it rather than
+  /// size it, without a key held -- for a touch screen, or a pen. A way of
+  /// working, not part of the design: it is not saved.
+  bool get skewHandles => _skewHandles;
+  bool _skewHandles = false;
+  set skewHandles(bool v) {
+    if (v == _skewHandles) return;
+    _skewHandles = v;
+    notifyListeners();
+  }
+
   /// imageSolo is whether only the picked layer of the picture being edited
   /// can be worked on, every other one held as if locked -- following the
   /// pick, so picking another layer in the list solos that one. A way of
@@ -1802,10 +1908,11 @@ class CanvasController extends ChangeNotifier {
       replaceElement(next, transient: transient);
 
   /// addImageLayer puts [layer] in just above the one picked, and picks it.
-  void addImageLayer(ImageLayer layer) {
+  void addImageLayer(ImageLayer layer, {bool onTop = false}) {
     var e = editingImage;
     if (e == null) return;
-    replaceElement(withLayerAdded(e, layer, above: _imageLayer));
+    replaceElement(
+        withLayerAdded(e, layer, above: onTop ? e.stack.last.id : _imageLayer));
     _imageLayer = layer.id;
     _retouch = RetouchBrush.off;
     notifyListeners();
@@ -2186,6 +2293,23 @@ class CanvasController extends ChangeNotifier {
     _retouchWholeFrame = v;
     // Where to copy from was a fraction of one picture or of the frame.
     cloneFrom = null;
+  }
+
+  /// retouchLayerForFrame picks the layer whole-frame retouching goes on:
+  /// a paint layer already picked, or the Retouch layer at the top of the
+  /// picture -- made there if there is not one. On top, because it works on
+  /// what is under it: put over the picture picked, under the layers over
+  /// that, it copied from the picture alone and was hidden by the rest -- a
+  /// clone from somewhere else entirely, or from nowhere.
+  void retouchLayerForFrame() {
+    var e = editingImage, picked = pickedLayer;
+    if (e == null || picked?.kind == LayerKind.paint) return;
+    var top = e.stack.last;
+    if (top.kind == LayerKind.paint && top.name == "Retouch") {
+      pickImageLayer(top.id);
+      return;
+    }
+    addImageLayer(ImageLayer.painting().copyWith(name: "Retouch"), onTop: true);
   }
 
   /// retouchesFrame is whether a retouching stroke now works on the whole
@@ -4349,6 +4473,7 @@ class CanvasController extends ChangeNotifier {
             (500000 / _document.frameRate).round().clamp(4000, 500000));
     _clockFrames = 0;
     _clockShift = 0;
+    _playWatch = Stopwatch()..start();
     // A periodic timer's tick counts the intervals that have passed, not the
     // callbacks that ran: a late callback sees every interval it missed. So
     // tick times interval is the time since Play, by the same clock a test's
@@ -4386,6 +4511,36 @@ class CanvasController extends ChangeNotifier {
       _step();
     }
     if (_playback != null) _followSound(now - _clockFrames);
+  }
+
+  /// _playWatch is the time since Play, read between ticks: see
+  /// betweenFrames.
+  Stopwatch _playWatch = Stopwatch();
+
+  /// betweenFrames is how far past the frame it is on the playhead has
+  /// really got, nought to just under one -- nought when it is not playing.
+  /// The playhead moves a whole frame at a time; this is for what is drawn
+  /// smoothly between them (see scene_renderer's betweenFrames).
+  double get betweenFrames {
+    if (_playback == null || clockForTest != null) return 0;
+    var rate = math.max(1, _document.frameRate);
+    var now = (_playWatch.elapsedMicroseconds / 1000000 + _clockShift) * rate;
+    return (now - _clockFrames).clamp(0.0, 0.999);
+  }
+
+  /// playsDrift is whether the scene on the stage has a drift in it --
+  /// a picture's, or one of its layers' -- and so wants drawing on every
+  /// screen refresh while it plays, not only on each new frame.
+  bool get playsDrift {
+    for (var e in _document.elements) {
+      if (e is! ImageElement) continue;
+      var loop = e.animation.loop;
+      if (loop.on && loop.preset.drifts) return true;
+      for (var l in e.layers) {
+        if (l.loop.on && l.loop.preset.drifts) return true;
+      }
+    }
+    return false;
   }
 
   /// _clockShift is how far, in seconds, the playhead's clock has been moved

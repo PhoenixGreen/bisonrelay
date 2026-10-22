@@ -10,8 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// _disc is a [size] square picture of [inside] in a disc of [radius] in the
 /// middle, on [outside], with a little noise so no colour is exact.
-(Uint8List, Uint8List) _disc(int size, double radius, List<int> inside,
-    List<int> outside,
+(Uint8List, Uint8List) _disc(
+    int size, double radius, List<int> inside, List<int> outside,
     {int noise = 12, int seed = 1}) {
   var random = math.Random(seed);
   var rgba = Uint8List(size * size * 4);
@@ -20,8 +20,8 @@ import 'package:flutter_test/flutter_test.dart';
   for (var y = 0; y < size; y++) {
     for (var x = 0; x < size; x++) {
       var i = y * size + x;
-      var inDisc = math.pow(x + 0.5 - c, 2) + math.pow(y + 0.5 - c, 2) <
-          radius * radius;
+      var inDisc =
+          math.pow(x + 0.5 - c, 2) + math.pow(y + 0.5 - c, 2) < radius * radius;
       truth[i] = inDisc ? 255 : 0;
       var colour = inDisc ? inside : outside;
       for (var ch = 0; ch < 3; ch++) {

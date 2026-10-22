@@ -46,8 +46,7 @@ void main() {
     });
 
     test("the arrival is fitted round the layers again", () {
-      var e = withLayerSpanFitted(
-          withLayerStartAt(_picture(), 1, 10, 10));
+      var e = withLayerSpanFitted(withLayerStartAt(_picture(), 1, 10, 10));
       expect(imageArrivalSpan(e), (0, 20),
           reason: "ten for the base, then ten for the layer");
     });

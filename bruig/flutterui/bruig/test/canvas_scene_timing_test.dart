@@ -33,8 +33,10 @@ void main() {
   group("start times", () {
     test("a longer transition is taken from the scene before it", () {
       var d = _four();
-      var longer = d.withScene(1,
-          d.allScenes[1].copyWith(transition: _fade.copyWith(frames: 30, overlap: 30)));
+      var longer = d.withScene(
+          1,
+          d.allScenes[1]
+              .copyWith(transition: _fade.copyWith(frames: 30, overlap: 30)));
       expect(_starts(longer), isNot(_starts(d)),
           reason: "left alone, everything after it moves");
       var kept = longer.keepingStarts(d);
@@ -62,8 +64,7 @@ void main() {
   });
 
   group("stepping with every scene playing", () {
-    test("goes through a join in the run's time, and shows the transition",
-        () {
+    test("goes through a join in the run's time, and shows the transition", () {
       var c = CanvasController(_four());
       addTearDown(c.dispose);
       c.playAll = true;
@@ -79,7 +80,8 @@ void main() {
         expect(runs[i], runs[i - 1] + 1, reason: "never back: $runs");
       }
       c.goToRunFrame(join + 4);
-      expect(c.previewAt, join + 4, reason: "inside the transition, it is shown");
+      expect(c.previewAt, join + 4,
+          reason: "inside the transition, it is shown");
       c.goToRunFrame(join + 40);
       expect(c.previewAt, isNull, reason: "and outside it, the scene is");
     });
@@ -127,7 +129,8 @@ void main() {
           home: Scaffold(
             body: Align(
               alignment: Alignment.bottomCenter,
-              child: CanvasTimeline(controller: c, height: timelineHeight + 120),
+              child:
+                  CanvasTimeline(controller: c, height: timelineHeight + 120),
             ),
           ),
         ),

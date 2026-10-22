@@ -2173,6 +2173,31 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     return rows;
   }
 
+  /// _menuWidth is how wide the open list needs to be to show every name
+  /// in full -- its picture beside it, where it has one, and a marked
+  /// option's buttons -- never narrower than [width], nor wider than a
+  /// sidebar.
+  double _menuWidth(BuildContext context) {
+    var widest = 0.0;
+    for (var (_, text, heading) in _rows()) {
+      var painter = TextPainter(
+          text: TextSpan(
+              text: heading ? text.toUpperCase() : text,
+              style: TextStyle(
+                  fontSize: heading ? 10 : 12,
+                  letterSpacing: heading ? 0.8 : null)),
+          textDirection: TextDirection.ltr,
+          maxLines: 1)
+        ..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    var extra = 40.0 + // the item's own padding and the scroll bar's room
+        (leading != null ? 42 : 0) +
+        (marked.isNotEmpty ? 56 : 0);
+    return (widest + extra).clamp(width, math.max(width, 420.0));
+  }
+
   /// _named is an option's name, with its leading drawing where it has one.
   Widget _named(T v, String text) {
     var name = Text(text, overflow: TextOverflow.ellipsis);
@@ -2258,6 +2283,10 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
         value: options.any((o) => o.$1 == value) ? value : null,
         isDense: true,
         isExpanded: true,
+        // The open list as wide as its longest name: as wide as the button,
+        // a name longer than the button was cut short while it was being
+        // chosen.
+        menuWidth: _menuWidth(context),
         underline: const SizedBox.shrink(),
         style: TextStyle(fontSize: 12, color: theme.colors.onSurface),
         iconSize: card ? 0 : 16,

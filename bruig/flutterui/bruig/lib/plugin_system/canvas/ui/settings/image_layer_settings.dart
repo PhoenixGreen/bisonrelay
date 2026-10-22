@@ -12,7 +12,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
-import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -784,6 +783,8 @@ class _AddButton extends StatelessWidget {
 IconData toolIcon(ImageTool tool) => switch (tool) {
       ImageTool.move => Icons.open_with,
       ImageTool.subject => Icons.person_search_outlined,
+      ImageTool.crop => Icons.crop,
+      ImageTool.edge => Icons.deblur,
       ImageTool.quick => Icons.auto_fix_normal_outlined,
       ImageTool.refine => Icons.blur_on,
       ImageTool.brush => Icons.brush_outlined,
@@ -804,6 +805,8 @@ IconData toolIcon(ImageTool tool) => switch (tool) {
 String toolShort(ImageTool tool) => switch (tool) {
       ImageTool.move => "Move",
       ImageTool.subject => "Subject",
+      ImageTool.crop => "Crop",
+      ImageTool.edge => "Edge",
       ImageTool.quick => "Quick",
       ImageTool.refine => "Refine",
       ImageTool.brush => "Brush",
@@ -822,6 +825,8 @@ String toolShort(ImageTool tool) => switch (tool) {
 /// maskTools, retouchTools and paintTools are which tools each section
 /// holds.
 const maskTools = [
+  ImageTool.crop,
+  ImageTool.edge,
   ImageTool.subject,
   ImageTool.quick,
   ImageTool.refine,
@@ -829,7 +834,12 @@ const maskTools = [
   ImageTool.lasso,
   ImageTool.fade,
 ];
-const framedMaskTools = [ImageTool.brush, ImageTool.lasso, ImageTool.fade];
+const framedMaskTools = [
+  ImageTool.edge,
+  ImageTool.brush,
+  ImageTool.lasso,
+  ImageTool.fade,
+];
 const retouchTools = [
   ImageTool.clone,
   ImageTool.heal,
@@ -997,18 +1007,16 @@ enum QuickMove {
   const QuickMove(this.label, this.icon, this.key);
 }
 
-/// quickMoveTiles is the quick moves for [picked], as tiles -- the same
-/// row the mask and retouch tools are -- with a flip lit while the picture
-/// is flipped. [placing] off is a picture alone in its frame, which is
-/// placed as an element is: the flips and nothing else.
-Widget quickMoveTiles(
+/// quickMover is what each quick move does to [picked]: a flip, sized to
+/// cover the frame or sit inside it, put in the middle, or given back the
+/// picture's own proportions -- each one step.
+void Function(QuickMove) quickMover(
     CanvasController controller,
     ImageElement e,
     ImageLayer picked,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit,
-    {bool placing = true}) {
+    VoidCallback commit) {
   var inner = e.box.inner(e.bounds);
   void now(ImageLayer next) {
     begin();
@@ -1040,61 +1048,86 @@ Widget quickMoveTiles(
         inner, Rect.fromCenter(center: inner.center, width: w, height: h));
   }
 
-  var moves = [
-    QuickMove.flipX,
-    QuickMove.flipY,
-    if (placing) ...[
+  return (m) {
+    switch (m) {
+      case QuickMove.flipX:
+        now(picked.copyWith(flipX: !picked.flipX));
+      case QuickMove.flipY:
+        now(picked.copyWith(flipY: !picked.flipY));
+      case QuickMove.fill:
+        now(picked.placed(fitted(cover: true), turn: 0));
+      case QuickMove.fit:
+        now(picked.placed(fitted(cover: false), turn: 0));
+      case QuickMove.centre:
+        now(picked.placed(
+            Rect.fromCenter(
+                center: const Offset(layerUnits / 2, layerUnits / 2),
+                width: place.width,
+                height: place.height),
+            turn: picked.turn));
+      case QuickMove.shape:
+        if (image == null) return;
+        now(picked.isBase
+            ? picked.placed(fitted(cover: false))
+            : picked.copyWith(
+                look: withPictureProportions(picked.look!, inner,
+                    Size(image.width.toDouble(), image.height.toDouble()))));
+    }
+  };
+}
+
+/// flipControls are the Flip tool's settings: a switch each way, on while
+/// the picture is mirrored that way.
+List<Widget> flipControls(
+    CanvasController controller,
+    ImageElement e,
+    ImageLayer picked,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var move = quickMover(controller, e, picked, write, begin, commit);
+  return [
+    CanvasToggle(
+      key: const ValueKey("imageLayerFlipX"),
+      label: "Flip across",
+      value: picked.flipX,
+      onChanged: (_) => move(QuickMove.flipX),
+    ),
+    CanvasToggle(
+      key: const ValueKey("imageLayerFlipY"),
+      label: "Flip down",
+      value: picked.flipY,
+      onChanged: (_) => move(QuickMove.flipY),
+    ),
+  ];
+}
+
+/// fitButtons are the Fit tool's one-press moves: sized to cover the frame
+/// or to sit inside it, put in the middle, or given back the picture's own
+/// proportions -- for a picture with a place of its own in the frame.
+List<Widget> fitButtons(
+    CanvasController controller,
+    ImageElement e,
+    ImageLayer picked,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  var move = quickMover(controller, e, picked, write, begin, commit);
+  var image = controller.images.original((picked.look ?? e).assetId);
+  return [
+    for (var m in [
       QuickMove.fill,
       QuickMove.fit,
       QuickMove.centre,
       if (image != null) QuickMove.shape,
-    ],
+    ])
+      CanvasTextButton(
+        key: ValueKey(m.key),
+        icon: m.icon,
+        label: m.label,
+        onPressed: () => move(m),
+      ),
   ];
-  return CanvasToolTiles<QuickMove>(
-    key: const ValueKey("imageQuickMoves"),
-    tools: [for (var m in moves) (m, m.icon, m.label)],
-    active: null,
-    alsoActive: (m) =>
-        m == QuickMove.flipX && picked.flipX ||
-        m == QuickMove.flipY && picked.flipY,
-    keyOf: (m) => m.key,
-    tooltipOf: (m) => m.label,
-    help: placing
-        ? "One press each: flip it, size it to cover the frame or to sit "
-            "inside it, put it in the middle, or give it back the picture's "
-            "own proportions. A flip is lit while it is flipped; press it again "
-            "to put it back."
-        : "Mirror the picture across, or upside down. A flip is lit while "
-            "it is flipped; press it again to put it back.",
-    onPick: (m) {
-      switch (m) {
-        case QuickMove.flipX:
-          now(picked.copyWith(flipX: !picked.flipX));
-        case QuickMove.flipY:
-          now(picked.copyWith(flipY: !picked.flipY));
-        case QuickMove.fill:
-          now(picked.placed(fitted(cover: true), turn: 0));
-        case QuickMove.fit:
-          now(picked.placed(fitted(cover: false), turn: 0));
-        case QuickMove.centre:
-          now(picked.placed(
-              Rect.fromCenter(
-                  center: const Offset(layerUnits / 2, layerUnits / 2),
-                  width: place.width,
-                  height: place.height),
-              turn: picked.turn));
-        case QuickMove.shape:
-          if (image == null) return;
-          now(picked.isBase
-              ? picked.placed(fitted(cover: false))
-              : picked.copyWith(
-                  look: withPictureProportions(picked.look!, inner,
-                      Size(image.width.toDouble(), image.height.toDouble()))));
-        case null:
-          break;
-      }
-    },
-  );
 }
 
 /// fillLayerSettings is a colour layer's colour, or its fade.
@@ -1231,10 +1264,9 @@ Widget layerPositionGroup(
         onChanged: (v) {
           if (layer.isBase) {
             begin();
-            write(e.withBase(lockAspect: v));
+            write(e.withProportionsKept(v));
           } else {
-            live(layer.copyWith(
-                look: look.withBase(lockAspect: v) as ImageElement));
+            live(layer.copyWith(look: look.withProportionsKept(v)));
           }
           commit();
         },
@@ -1415,7 +1447,8 @@ class _SubjectButton extends StatelessWidget {
 }
 
 /// maskGroupsFor is the mask groups for any [mask], written by [put] --
-/// a picture's, or a frame-masked layer's.
+/// a picture's, or a frame-masked layer's. Its edge is the Edge tool's:
+/// see maskEdgeControls.
 List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
     VoidCallback begin, VoidCallback commit,
     {bool framed = false, CanvasController? controller}) {
@@ -1425,6 +1458,69 @@ List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
     commit();
   }
 
+  return [
+    CanvasControlGroup(
+      key: const ValueKey("maskGroup"),
+      label: "Mask",
+      help: mask.empty
+          ? framed
+              ? "Showing everywhere. Paint, lasso or fade it away with the "
+                  "mask tools to have it only where it is wanted."
+              : "Nothing hidden yet. Use Select subject, the mask brush, the "
+                  "lasso or a gradient from the tools."
+          : "What the tools have marked. Switch it off to see the whole "
+              "layer again -- nothing is lost. The arrow takes back the last "
+              "mark; the bin clears the mask.",
+      rule: false,
+      children: [
+        CanvasToggle(
+          key: const ValueKey("maskOn"),
+          label: "Use the mask",
+          value: mask.on,
+          onChanged: (v) => now(mask.copyWith(on: v)),
+        ),
+        CanvasToggle(
+          key: const ValueKey("maskInvert"),
+          label: "Swap what shows",
+          value: mask.invert,
+          onChanged: (v) => now(mask.copyWith(invert: v)),
+        ),
+        const CanvasLineBreak(),
+        if (controller != null)
+          CanvasDropdown<MaskView>(
+            key: const ValueKey("maskView"),
+            label: "Show the mask as",
+            value: controller.maskView,
+            width: 132,
+            options: [for (var v in MaskView.values) (v, v.short)],
+            onChanged: (v) => controller.maskView = v,
+          ),
+        CanvasIconButton(
+          key: const ValueKey("maskUndoMark"),
+          icon: Icons.undo,
+          tooltip: "Undo the last mark",
+          onPressed: mask.marks.isEmpty
+              ? null
+              : () => now(mask.copyWith(
+                  marks: mask.marks.sublist(0, mask.marks.length - 1))),
+        ),
+        CanvasIconButton(
+          key: const ValueKey("maskClear"),
+          icon: Icons.delete_sweep_outlined,
+          tooltip: "Clear the mask",
+          onPressed: mask.empty ? null : () => now(const ImageMask()),
+        ),
+      ],
+    ),
+  ];
+}
+
+/// maskEdgeControls is the Edge tool's settings for any [mask], written by
+/// [put]: how its edge is softened, moved, smoothed and hardened, and --
+/// on a picture's own mask -- the old background's tint taken out of it.
+List<Widget> maskEdgeControls(ImageMask mask, void Function(ImageMask) put,
+    VoidCallback begin, VoidCallback commit,
+    {bool framed = false}) {
   void live(ImageMask next) {
     begin();
     put(next);
@@ -1449,84 +1545,24 @@ List<Widget> maskGroupsFor(ImageMask mask, void Function(ImageMask) put,
       );
 
   return [
-    CanvasControlGroup(
-      key: const ValueKey("maskGroup"),
-      label: "Mask",
-      help: mask.empty
-          ? framed
-              ? "Showing everywhere. Paint, lasso or fade it away with the "
-                  "mask tools to have it only where it is wanted."
-              : "Nothing hidden yet. Use Select subject, the mask brush, the "
-                  "lasso or a gradient from the tools."
-          : "What the tools have marked. Switch it off to see the whole "
-              "layer again -- nothing is lost.",
-      rule: false,
-      children: [
-        CanvasToggle(
-          key: const ValueKey("maskOn"),
-          label: "Use the mask",
-          value: mask.on,
-          onChanged: (v) => now(mask.copyWith(on: v)),
-        ),
-        CanvasToggle(
-          key: const ValueKey("maskInvert"),
-          label: "Swap what shows",
-          value: mask.invert,
-          onChanged: (v) => now(mask.copyWith(invert: v)),
-        ),
-        if (controller != null)
-          CanvasSegmented<MaskView>(
-            key: const ValueKey("maskView"),
-            label: "Show the mask as",
-            options: [
-              for (var v in MaskView.values) (v, v.short),
-            ],
-            value: controller.maskView,
-            onChanged: (v) => controller.maskView = v,
-          ),
-        CanvasTextButton(
-          key: const ValueKey("maskUndoMark"),
-          icon: Icons.undo,
-          label: "Undo mark",
-          onPressed: mask.marks.isEmpty
-              ? null
-              : () => now(mask.copyWith(
-                  marks: mask.marks.sublist(0, mask.marks.length - 1))),
-        ),
-        CanvasTextButton(
-          key: const ValueKey("maskClear"),
-          label: "Clear mask",
-          onPressed: mask.empty ? null : () => now(const ImageMask()),
-        ),
-      ],
-    ),
-    // Always there, mask or not, so its settings can be found before they
-    // are needed -- hidden until there was a mask, nobody found Clean colour.
-    CanvasControlGroup(
-      key: const ValueKey("maskRefineGroup"),
-      label: "Edge",
-      help: "In the picture's own pixels: Feather softens the edge, Shift "
-          "moves it out or in, Smooth rounds off jags and Contrast hardens "
-          "it. Clean colour takes the old background's tint out of the edge "
-          "-- the green on hair cut from a pitch.",
-      rule: false,
-      children: [
-        refine("maskFeather", "Feather", mask.refine.feather, 0, 100,
-            (v) => mask.refine.copyWith(feather: v)),
-        refine("maskShift", "Shift", mask.refine.shift, -50, 50,
-            (v) => mask.refine.copyWith(shift: v)),
-        // Cleaning colours is a picture's: a layer with none has none.
-        if (!framed)
-          refine("maskDecontaminate", "Clean colour", mask.refine.decontaminate,
-              0, 100, (v) => mask.refine.copyWith(decontaminate: v),
-              decimals: 0, factor: 100),
-        refine("maskSmooth", "Smooth", mask.refine.smooth, 0, 50,
-            (v) => mask.refine.copyWith(smooth: v)),
-        refine("maskContrast", "Contrast", mask.refine.contrast, 0, 100,
-            (v) => mask.refine.copyWith(contrast: v),
-            decimals: 0, factor: 100),
-      ],
-    ),
+    refine("maskFeather", "Feather", mask.refine.feather, 0, 100,
+        (v) => mask.refine.copyWith(feather: v)),
+    refine("maskShift", "Shift", mask.refine.shift, -50, 50,
+        (v) => mask.refine.copyWith(shift: v)),
+    // Cleaning colours is a picture's: a layer with none has none.
+    if (!framed)
+      refine("maskDecontaminate", "Clean colour", mask.refine.decontaminate, 0,
+          100, (v) => mask.refine.copyWith(decontaminate: v),
+          decimals: 0, factor: 100),
+    refine("maskSmooth", "Smooth", mask.refine.smooth, 0, 50,
+        (v) => mask.refine.copyWith(smooth: v)),
+    refine("maskContrast", "Contrast", mask.refine.contrast, 0, 100,
+        (v) => mask.refine.copyWith(contrast: v),
+        decimals: 0, factor: 100),
+    const CanvasHint("In the picture's own pixels: Feather softens the edge, "
+        "Shift moves it out or in, Smooth rounds off jags and Contrast "
+        "hardens it. Clean colour takes the old background's tint out of the "
+        "edge -- the green on hair cut from a pitch."),
   ];
 }
 
@@ -1549,14 +1585,14 @@ List<Widget> brushToolSettings(CanvasController controller, ImageLayer picked) {
       if (controller.retouchWholeFrame)
         const CanvasHint("Works on everything in the frame as it looks, "
             "anywhere in the frame. The strokes go on a Retouch layer of "
-            "their own, over this one."),
+            "their own, at the top of the picture."),
     ],
     if (tool.retouches && !picture)
       CanvasHint(picked.kind == LayerKind.paint
           ? "Works on everything under this layer, anywhere in the frame."
           : "Works on everything under this layer, anywhere in the frame. "
-              "The strokes go on a Retouch layer of their own, over this "
-              "one."),
+              "The strokes go on a Retouch layer of their own, at the top "
+              "of the picture."),
   ];
   Widget percent(String key, String label, double value, double min, double max,
           ValueChanged<double> set,
@@ -1655,109 +1691,50 @@ Widget strokesGroup(String label, List<StrokeMark> strokes,
   );
 }
 
-/// ImageLooks keeps looks -- a picture's adjustments, textures, colour
-/// layers and the base picture's blend and effects -- to put on other
-/// pictures: the grade without the photograph. See lookData.
-class ImageLooks extends StatefulWidget {
-  final CanvasController controller;
-  final ImageElement element;
-  const ImageLooks(
-      {required this.controller, required this.element, super.key});
-
-  @override
-  State<ImageLooks> createState() => _ImageLooksState();
-}
-
-class _ImageLooksState extends State<ImageLooks> {
-  final store = SavedPresetStore.looks;
-  String? _name;
-
-  /// _worn is the look last put on this picture, which can be deleted.
-  String? _worn;
-
-  @override
-  void initState() {
-    super.initState();
-    store.load();
-  }
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: store,
-        builder: (context, _) {
-          var e = widget.element;
-          var saved = store.presets;
-          var name = _name ?? "Look ${saved.length + 1}";
-          var hasLook = e.stack.any((l) => lookKinds.contains(l.kind));
-          return CanvasControlGroup(
-            key: const ValueKey("imageLooks"),
-            label: "Looks",
-            rule: false,
-            children: [
-              CanvasDropdown<String>(
-                key: const ValueKey("imageLookPick"),
-                label: "Wear a look",
-                value: saved.any((p) => p.id == _worn) ? _worn! : "",
-                width: 150,
-                options: [
-                  if (!saved.any((p) => p.id == _worn))
-                    ("", saved.isEmpty ? "None saved yet" : "Choose…"),
-                  for (var p in saved) (p.id, p.name),
-                ],
-                // Each look tried on as the pointer passes over it.
-                onPreview: (id) {
-                  var p = saved.where((p) => p.id == id).firstOrNull;
-                  widget.controller.tryElement(
-                      p == null ? null : withLookApplied(e, p.data));
-                },
-                onChanged: (id) {
-                  var p = saved.where((p) => p.id == id).firstOrNull;
-                  if (p == null) return;
-                  setState(() => _worn = p.id);
-                  widget.controller.changeImage(withLookApplied(e, p.data));
-                },
-              ),
-              CanvasTextField(
-                key: const ValueKey("imageLookName"),
-                label: "Name",
-                value: name,
-                width: 110,
-                grow: false,
-                onChanged: (v) => setState(() => _name = v),
-              ),
-              CanvasIconButton(
-                key: const ValueKey("imageLookSave"),
-                icon: Icons.bookmark_add_outlined,
-                tooltip: "Keep this picture's look",
-                onPressed: name.trim().isEmpty || !hasLook
-                    ? null
-                    : () async {
-                        // The same name again is the same look, changed.
-                        for (var p
-                            in saved.where((p) => p.name == name.trim())) {
-                          await store.remove(p);
-                        }
-                        await store.save(name, lookData(e));
-                        if (mounted) setState(() => _name = null);
-                      },
-              ),
-              if (saved.where((p) => p.id == _worn).firstOrNull case var worn?)
-                CanvasIconButton(
-                  key: const ValueKey("imageLookDelete"),
-                  icon: Icons.delete_outline,
-                  tooltip: "Delete the look ${worn.name}",
-                  onPressed: () async {
-                    await store.remove(worn);
-                    if (mounted) setState(() => _worn = null);
-                  },
-                ),
-              CanvasHint(hasLook
-                  ? "A look is the adjustments, textures and colour layers -- "
-                      "never the pictures -- to put on another picture."
-                  : "Add adjustments or textures, then keep them as a look "
-                      "for other pictures."),
-            ],
-          );
+/// warpControls are the Warp tool's settings: how many cells the grid has
+/// across and down -- the shape already made kept -- and the button that
+/// flattens it again. The grid is on the canvas while the tool is open.
+/// See ImageWarp.
+List<Widget> warpControls(
+    CanvasController controller, ImageElement e, ImageLayer picked) {
+  var warp = controller.warpOf(e, picked.id);
+  return [
+    for (var (key, label, value, across) in [
+      ("imageWarpCols", "Columns", warp.cols, true),
+      ("imageWarpRows", "Rows", warp.rows, false),
+    ])
+      CanvasStepper(
+        key: ValueKey(key),
+        label: label,
+        value: value.toDouble(),
+        min: 1,
+        max: mostWarpCells.toDouble(),
+        step: 1,
+        dragStep: 1,
+        defaultValue: 4,
+        width: 96,
+        onChanged: (v) {
+          controller.warpPicks = const {};
+          controller.changeWarp((w) => across
+              ? w.regridded(v.round(), w.rows)
+              : w.regridded(w.cols, v.round()));
         },
-      );
+      ),
+    CanvasTextButton(
+      key: const ValueKey("imageWarpReset"),
+      icon: Icons.grid_on,
+      label: "Flatten",
+      onPressed: warp.active
+          ? () {
+              controller.warpPicks = const {};
+              controller.changeWarp((w) => w.reset);
+            }
+          : null,
+    ),
+    const CanvasHint("Drag a point on the canvas to bend the picture. Click "
+        "points or drag a box round them to pick them, Shift to add more. "
+        "With two or more picked, the box's corners size them and its knob "
+        "turns them; the arrow keys nudge them. More cells bend it more "
+        "finely, keeping the shape already made."),
+  ];
 }

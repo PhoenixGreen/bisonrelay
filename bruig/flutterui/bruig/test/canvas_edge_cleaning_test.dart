@@ -40,14 +40,11 @@ void main() {
     store.putForTest("cleancleanclean1", picture);
     var look = ImageElement(const ElementBase(id: ""),
         assetId: "cleancleanclean1",
-        mask: const ImageMask(
-            marks: [
-              MaskMark(
-                  kind: MaskMarkKind.fade,
-                  points: [Offset(0.375, 0.5), Offset(0.625, 0.5)])
-            ],
-            invert: true,
-            refine: MaskRefine(decontaminate: 1)));
+        mask: const ImageMask(marks: [
+          MaskMark(
+              kind: MaskMarkKind.fade,
+              points: [Offset(0.375, 0.5), Offset(0.625, 0.5)])
+        ], invert: true, refine: MaskRefine(decontaminate: 1)));
     // Inverted, the fade keeps the left: hidden on the right, as the green.
     look = look.copyWith(
         mask: look.mask.copyWith(invert: false, marks: [

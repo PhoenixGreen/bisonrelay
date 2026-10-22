@@ -28,8 +28,7 @@ const _base = ProceduralSpec(
 
 Future<List<int>> _pixels(ProceduralSpec spec, {double time = 0}) async {
   var recorder = ui.PictureRecorder();
-  paintProcedural(ui.Canvas(recorder), _page, spec,
-      time: time, frameRate: 30);
+  paintProcedural(ui.Canvas(recorder), _page, spec, time: time, frameRate: 30);
   var picture = recorder.endRecording();
   var image = await picture.toImage(_w, _h);
   var bytes = (await image.toByteData())!;
@@ -42,7 +41,8 @@ Future<List<int>> _pixels(ProceduralSpec spec, {double time = 0}) async {
 }
 
 /// _lit is how many pixels are not the black base.
-int _lit(List<int> px) => px.where((p) => (p >> 8) & 0xFFFFFF > 0x080808).length;
+int _lit(List<int> px) =>
+    px.where((p) => (p >> 8) & 0xFFFFFF > 0x080808).length;
 
 void main() {
   group("each way of drawing it", () {
@@ -55,9 +55,8 @@ void main() {
     ]) {
       testWidgets("the $name draws something, and moves when animated",
           (tester) async {
-        var spec = _base
-            .withParam("mode", mode.toDouble())
-            .copyWith(animated: true);
+        var spec =
+            _base.withParam("mode", mode.toDouble()).copyWith(animated: true);
         late List<int> a, b, again;
         await tester.runAsync(() async {
           a = await _pixels(spec, time: 1);
@@ -106,9 +105,8 @@ void main() {
     });
 
     test("left over from another style are not saved", () {
-      var spec = _base
-          .withParam("hubs", 0.4)
-          .copyWith(style: ProceduralStyle.circuit);
+      var spec =
+          _base.withParam("hubs", 0.4).copyWith(style: ProceduralStyle.circuit);
       expect(spec.toJson().containsKey("params"), isFalse);
     });
 
@@ -202,7 +200,8 @@ void main() {
 
     testWidgets("its looks cover every way of drawing it", (tester) async {
       var modes = {
-        for (var l in looksFor(ProceduralStyle.blockchain)) l.spec.choice("mode")
+        for (var l in looksFor(ProceduralStyle.blockchain))
+          l.spec.choice("mode")
       };
       expect(modes, {0, 1, 2, 3, 4, 5});
     });

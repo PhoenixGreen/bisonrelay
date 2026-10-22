@@ -27,10 +27,10 @@ const _teal = Color(0xFF2ED6A1);
 /// _square is a black square in the left half of a 100x100 drawing, the
 /// right half left empty.
 VectorElement _square({Color? tint}) {
-  var svg = importSvg('<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
-      '<rect x="0" y="0" width="50" height="100" fill="#000000"/></svg>')!;
-  return VectorElement(
-      const ElementBase(id: "v", width: 100, height: 100),
+  var svg =
+      importSvg('<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
+          '<rect x="0" y="0" width="50" height="100" fill="#000000"/></svg>')!;
+  return VectorElement(const ElementBase(id: "v", width: 100, height: 100),
       assetId: "icon.svg",
       viewBox: svg.viewBox,
       shapes: svg.shapes,

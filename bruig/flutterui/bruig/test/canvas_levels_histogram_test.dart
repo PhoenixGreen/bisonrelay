@@ -66,12 +66,12 @@ ImageElement _levelled(ImageLayer levels) => ImageElement(
 void main() {
   test("the count is of what is under the layer", () async {
     var levels = ImageLayer.adjusting(AdjustKind.levels);
-    var bins = await histogramOf(_levelled(levels), levels.id,
-        _Pictures({"halves": await _halves()}));
+    var bins = await histogramOf(
+        _levelled(levels), levels.id, _Pictures({"halves": await _halves()}));
     expect(bins, isNotNull);
     var total = bins!.reduce((a, b) => a + b);
-    int near(int v) => [for (var i = v - 2; i <= v + 2; i++) bins[i]]
-        .reduce((a, b) => a + b);
+    int near(int v) =>
+        [for (var i = v - 2; i <= v + 2; i++) bins[i]].reduce((a, b) => a + b);
     // Two greys, and nothing much between but the line where they meet.
     expect(near(40) + near(200), greaterThan(total * 0.85));
     expect(near(40), closeTo(near(200), total * 0.08));
@@ -80,7 +80,8 @@ void main() {
   testWidgets("the handles set the levels", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var levels = ImageLayer.adjusting(AdjustKind.levels);
-    var c = CanvasController(const CanvasDocument().addElement(_levelled(levels)));
+    var c =
+        CanvasController(const CanvasDocument().addElement(_levelled(levels)));
     addTearDown(c.dispose);
     await tester.runAsync(() async {
       c.images.putForTest("halves", await _halves());
@@ -126,7 +127,8 @@ void main() {
 
     // The middle, towards the black: the midtones lighter -- gamma over one.
     var mid = box.left + box.width * 0.5;
-    await tester.dragFrom(Offset(mid, box.bottom - 4), Offset(-box.width * 0.15, 0));
+    await tester.dragFrom(
+        Offset(mid, box.bottom - 4), Offset(-box.width * 0.15, 0));
     await tester.pumpAndSettle();
     expect(now().value("gamma"), greaterThan(1.1));
 

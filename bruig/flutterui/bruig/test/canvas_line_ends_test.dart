@@ -37,7 +37,8 @@ void main() {
           end: LineEnd.arrow);
       expect(l.start, const Offset(100, 300));
       expect(l.end, const Offset(500, 100));
-      expect(l.startEnd, LineEnd.arrow, reason: "the arrow is still at (100, 300)");
+      expect(l.startEnd, LineEnd.arrow,
+          reason: "the arrow is still at (100, 300)");
       expect(l.endEnd, LineEnd.none);
     });
 
@@ -55,8 +56,8 @@ void main() {
       const fixed = Offset(0, 0);
       expect(snapLineAngle(fixed, const Offset(400, 10)).dy, 0,
           reason: "1.4 degrees off level");
-      expect(snapLineAngle(fixed, const Offset(400, 80)),
-          const Offset(400, 80), reason: "11 degrees is meant");
+      expect(snapLineAngle(fixed, const Offset(400, 80)), const Offset(400, 80),
+          reason: "11 degrees is meant");
       var forced = snapLineAngle(fixed, const Offset(400, 80), always: true);
       expect(forced.dy, 0);
       var diagonal = snapLineAngle(fixed, const Offset(300, 310));
@@ -66,7 +67,8 @@ void main() {
     });
 
     test("a new line is level", () {
-      var l = newElement(ElementKind.line, const CanvasDocument()) as LineElement;
+      var l =
+          newElement(ElementKind.line, const CanvasDocument()) as LineElement;
       expect(l.angle.abs(), lessThan(0.01));
     });
   });
@@ -120,7 +122,8 @@ void main() {
       await tester.pump();
       // In steps, as a hand does, so the drag is recognised before it ends.
       for (var i = 1; i <= 4; i++) {
-        await gesture.moveTo(screen(stage, c, box.bottomRight) + by * scale * (i / 4));
+        await gesture
+            .moveTo(screen(stage, c, box.bottomRight) + by * scale * (i / 4));
         await tester.pump();
       }
       await gesture.up();
@@ -129,19 +132,20 @@ void main() {
 
     testWidgets("an end dragged nearly level lands exactly level",
         (tester) async {
-      var (stage, c) =
-          await pump(tester, _line(const Offset(200, 300), const Offset(600, 300)));
+      var (stage, c) = await pump(
+          tester, _line(const Offset(200, 300), const Offset(600, 300)));
       await dragEnd(tester, stage, c, const Offset(80, 12));
       var l = c.document.elements.single as LineElement;
       expect(l.angle.abs(), lessThan(0.01), reason: "1.4 degrees, snapped");
       expect(l.start, const Offset(200, 300), reason: "the other end stays");
-      expect(l.length, greaterThan(400), reason: "the end went where it was taken");
+      expect(l.length, greaterThan(400),
+          reason: "the end went where it was taken");
     });
 
     testWidgets("an end dragged well off level stays where it was put",
         (tester) async {
-      var (stage, c) =
-          await pump(tester, _line(const Offset(200, 300), const Offset(600, 300)));
+      var (stage, c) = await pump(
+          tester, _line(const Offset(200, 300), const Offset(600, 300)));
       await dragEnd(tester, stage, c, const Offset(0, 120));
       var l = c.document.elements.single as LineElement;
       expect(l.angle, greaterThan(10));

@@ -4,7 +4,9 @@ import 'dart:ui' as ui;
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
@@ -273,12 +275,15 @@ void main() {
               ElementBase(id: "i", width: 200, height: 200),
               assetId: "abcdefghij123456"));
       ImageElement now() => c.document.elementById("i")! as ImageElement;
+      await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipX");
       expect(now().stack.single.flipX, isTrue);
-      expect(find.byKey(const ValueKey("imageQuickMoves")), findsOneWidget,
+      expect(find.byKey(const ValueKey("imagePositionTools")), findsOneWidget,
           reason: "still the element's own placing, flips and all");
+      await tapKey(tester, "positionTool-fit");
       expect(find.byKey(const ValueKey("imageLayerFill")), findsNothing,
           reason: "alone in its frame, there is no frame to fill");
+      await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipY");
       expect(now().stack.single.flipY, isTrue);
       await tapKey(tester, "imageLayerFlipX");
@@ -287,9 +292,10 @@ void main() {
     });
 
     testWidgets(
-        "with layers over it, the base picture flips from its quick "
-        "moves", (tester) async {
+        "with layers over it, the base picture flips from the Flip tool",
+        (tester) async {
       var c = await pumpPanel(tester);
+      await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipX");
       var e = c.document.elementById("i")! as ImageElement;
       expect(e.stack.first.flipX, isTrue);
@@ -304,13 +310,169 @@ void main() {
           picture: const ImageElement(
               ElementBase(id: "i", width: 200, height: 200),
               assetId: "abcdefghij123456"));
-      expect(find.byKey(const ValueKey("imageFrameShape")), findsOneWidget);
+      // A picture with no layers has no frame of its own to place: Frame's
+      // shelf opens on Shape.
+      expect(find.byKey(const ValueKey("frameTool-image")), findsNothing);
+      expect(find.byKey(const ValueKey("frameTool-shape")), findsOneWidget);
       expect(find.text("Cut to"), findsOneWidget,
-          reason: "once, in Frame -- not again on the base picture");
+          reason: "in Frame; the Shape tool's is shut");
+      await tapKey(tester, "positionTool-shape");
+      expect(find.text("Cut to"), findsNWidgets(2),
+          reason: "and in the Shape tool: the same setting");
+      await tapKey(tester, "positionTool-fit");
       expect(find.text("Fills its box"), findsOneWidget);
       expect(find.text("Wrap frame to content"), findsNothing,
           reason: "a picture with no layers is its frame");
       expect(c.document.elementById("i"), isA<ImageElement>());
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Crop and Edge are the first mask tools, with their settings",
+        (tester) async {
+      var c = await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456"));
+      await openSection(tester, "image.picture.mask");
+      double leftOf(String key) =>
+          tester.getTopLeft(find.byKey(ValueKey(key))).dx;
+      expect(leftOf("imageTool-crop"), lessThan(leftOf("imageTool-edge")));
+      expect(leftOf("imageTool-edge"), lessThan(leftOf("imageTool-subject")));
+      expect(find.byKey(const ValueKey("cropLeft")), findsNothing,
+          reason: "its settings only with it in hand");
+      await tapKey(tester, "imageTool-crop");
+      expect(c.imageTool, ImageTool.crop);
+      expect(find.byKey(const ValueKey("cropLeft")), findsOneWidget);
+      await typeInto(tester, find.byKey(const ValueKey("cropLeft")), "0.25");
+      expect((c.document.elementById("i")! as ImageElement).crop.left,
+          closeTo(0.25, 1e-9));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a picked layer loops on its own, beside the picture",
+        (tester) async {
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = await pumpPanel(tester);
+      var layer = (c.document.elementById("i")! as ImageElement).stack[1];
+      c.editImage("i", layer: layer.id);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("elementLoopKinds")), findsOneWidget,
+          reason: "the whole picture's loop");
+      expect(find.byKey(const ValueKey("imageLayerLoopKinds")), findsOneWidget,
+          reason: "and this layer's");
+      await tapKey(tester, "imageLayerLoop-drift");
+      var e = c.document.elementById("i")! as ImageElement;
+      expect(e.layerById(layer.id)!.loop.preset.drifts, isTrue);
+      expect(e.animation.loop.on, isFalse, reason: "the picture's own left");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the kind chosen, pressed again, shuts its card and no more",
+        (tester) async {
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456",
+              animation: ElementAnimation(
+                  loop: ElementLoop(preset: LoopPreset.driftLeft))));
+      LoopPreset preset() =>
+          (c.document.elementById("i")! as ImageElement).animation.loop.preset;
+      expect(find.byKey(const ValueKey("elementLoopHow")), findsOneWidget);
+      await tapKey(tester, "elementLoop-drift");
+      expect(find.byKey(const ValueKey("elementLoopHow")), findsNothing);
+      expect(preset(), LoopPreset.driftLeft,
+          reason: "the loop as it was, not the first of its kind");
+      await tapKey(tester, "elementLoop-drift");
+      expect(find.byKey(const ValueKey("elementLoopHow")), findsOneWidget);
+      expect(preset(), LoopPreset.driftLeft);
+      // Another kind opens its card again.
+      await tapKey(tester, "elementLoop-drift");
+      await tapKey(tester, "elementLoop-none");
+      expect(preset(), LoopPreset.none);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the kind chosen is in view when the panel opens",
+        (tester) async {
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456",
+              animation: ElementAnimation(
+                  loop: ElementLoop(preset: LoopPreset.driftIn))));
+      await tester.pumpAndSettle();
+      var tile = find.byKey(const ValueKey("elementLoop-drift"));
+      var row = find
+          .ancestor(of: tile, matching: find.byType(SingleChildScrollView))
+          .first;
+      var shown = tester.getRect(row), at = tester.getRect(tile);
+      expect(at.left, greaterThanOrEqualTo(shown.left - 0.5));
+      expect(at.right, lessThanOrEqualTo(shown.right + 0.5),
+          reason: "Drift, last in its line, scrolled into view");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Frame is a shelf of tools, Image open first", (tester) async {
+      var c = await pumpPanel(tester);
+      await openSection(tester, "image.frame");
+      expect(c.frameTool, FrameTool.image);
+      expect(find.byKey(const ValueKey("elementX")), findsOneWidget);
+      await tapKey(tester, "frameTool-box");
+      expect(find.byKey(const ValueKey("elementX")), findsNothing);
+      expect(find.textContaining("Background"), findsWidgets);
+      await tapKey(tester, "frameTool-shape");
+      expect(find.text("Cut to"), findsOneWidget);
+      await tapKey(tester, "frameTool-shape");
+      expect(c.frameTool, isNull, reason: "picked again, put away");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Background and border is said once", (tester) async {
+      var c = await pumpPanel(tester);
+      await openSection(tester, "image.frame");
+      await tapKey(tester, "frameTool-box");
+      expect(c.frameTool, FrameTool.box);
+      expect(find.text("Background and border"), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("looks and designs are kept in Colour, not Frame",
+        (tester) async {
+      await pumpPanel(tester);
+      await openSection(tester, "image.frame");
+      expect(find.byKey(const ValueKey("imageSaved")), findsNothing);
+      expect(find.byKey(const ValueKey("elementPresets")), findsNothing);
+      await openSection(tester, "image.picture.colour");
+      expect(find.byKey(const ValueKey("imageSaved")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageLookSave")), findsOneWidget);
+      await tapKey(tester, "imageSavedDesigns");
+      expect(find.byKey(const ValueKey("elementPresets")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageLookSave")), findsNothing);
+      await tapKey(tester, "imageSavedLooks");
+      expect(find.byKey(const ValueKey("imageLookSave")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the mask's view and a logo's method are dropdowns",
+        (tester) async {
+      await pumpPanel(tester,
+          picture: const ImageElement(
+              ElementBase(id: "i", width: 200, height: 200),
+              assetId: "abcdefghij123456"));
+      await openSection(tester, "image.picture.mask");
+      expect(tester.widget(find.byKey(const ValueKey("maskView"))),
+          isA<CanvasDropdown<MaskView>>());
+      expect(tester.widget(find.byKey(const ValueKey("removalMethod"))),
+          isA<CanvasDropdown<RemovalMode>>());
+      expect(tester.widget(find.byKey(const ValueKey("maskUndoMark"))),
+          isA<CanvasIconButton>());
+      expect(tester.widget(find.byKey(const ValueKey("maskClear"))),
+          isA<CanvasIconButton>());
       expect(tester.takeException(), isNull);
     });
 
@@ -539,6 +701,7 @@ void main() {
       var c = await pumpPanel(tester);
       await tester.pumpAndSettle();
       await openSection(tester, "image.picture.position");
+      await tapKey(tester, "positionTool-fit");
       ImageElement now() => c.document.elementById("i")! as ImageElement;
       var fit = find.ancestor(
           of: find.text("Fills its box"),

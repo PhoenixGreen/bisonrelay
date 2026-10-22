@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 // stage_painter.dart is everything the stage draws: the document itself, the
@@ -96,6 +96,11 @@ class StagePainter extends CustomPainter {
   final CanvasDocument document;
   final int frame;
 
+  /// between is how far past [frame] the playhead has got while it plays,
+  /// redrawing the stage as it changes -- see scene_renderer's
+  /// betweenFrames. Null when nothing is drawn between frames.
+  final ValueListenable<double>? between;
+
   /// previewAt is a frame of the whole run, when a transition is being
   /// watched. The canvas then draws the sequence rather than the scene being
   /// edited -- the same function the export uses, so what is watched is what
@@ -126,6 +131,10 @@ class StagePainter extends CustomPainter {
   final Set<String> selection;
   final Rect? selectionBounds;
   final double selectionRotation;
+
+  /// selectionSkew is the single selected element's slant, in degrees,
+  /// across and down -- see ElementBase.skewX.
+  final Offset selectionSkew;
   final Offset Function(StageHandle, Rect) handleFor;
   final Rect? marquee;
 
@@ -322,6 +331,7 @@ class StagePainter extends CustomPainter {
   final bool drafting;
 
   StagePainter({
+    this.between,
     this.drafting = false,
     this.backgrounds,
     required this.page,
@@ -373,6 +383,7 @@ class StagePainter extends CustomPainter {
     required this.selection,
     required this.selectionBounds,
     required this.selectionRotation,
+    this.selectionSkew = Offset.zero,
     required this.handleFor,
     required this.marquee,
   }) : super(
@@ -381,6 +392,7 @@ class StagePainter extends CustomPainter {
           // The background arrives after the frame that asked for it, the
           // same way a picture does, and nothing else changes when it does.
           if (backgrounds != null) backgrounds,
+          if (between != null) between,
         ]));
 
   @override
@@ -389,10 +401,12 @@ class StagePainter extends CustomPainter {
 
   void _paintStage(Canvas canvas, Size size) {
     RasterCache.drafting = drafting;
+    betweenFrames = between?.value ?? 0;
     try {
       _paint(canvas, size);
     } finally {
       RasterCache.drafting = false;
+      betweenFrames = 0;
     }
   }
 
@@ -867,7 +881,11 @@ class StagePainter extends CustomPainter {
 
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
-    if (selectionRotation != 0) canvas.rotate(selectionRotation);
+    // Turned and slanted as the selection is -- the handles are where its
+    // corners and sides are drawn.
+    BoxFrame(selectionRotation * 180 / math.pi, selectionSkew.dx,
+            selectionSkew.dy)
+        .applyTo(canvas, Offset.zero);
     var box = Rect.fromCenter(
         center: Offset.zero, width: half.dx * 2, height: half.dy * 2);
     canvas.drawRect(
@@ -926,21 +944,14 @@ class StagePainter extends CustomPainter {
       ..color = const Color(0x993D7EFF);
 
     for (var element in chosenOutlines(document, selection, frame)) {
+      // Its box as it is laid on the page, turned and slanted.
       var box = element.boundsAt(frame);
-      var at = Rect.fromLTWH(box.left * scale + origin.dx,
-          box.top * scale + origin.dy, box.width * scale, box.height * scale);
-      if (element.rotationRadians == 0) {
-        canvas.drawRect(at, paint);
-        continue;
-      }
-      canvas.save();
-      canvas.translate(at.center.dx, at.center.dy);
-      canvas.rotate(element.rotationRadians);
-      canvas.drawRect(
-          Rect.fromCenter(
-              center: Offset.zero, width: at.width, height: at.height),
+      var corners =
+          BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
+              .corners(box);
+      canvas.drawPath(
+          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
           paint);
-      canvas.restore();
     }
   }
 
@@ -961,21 +972,79 @@ class StagePainter extends CustomPainter {
       if (!element.visible) continue;
       if (selection.contains(element.id)) continue;
 
+      // Its box as it is laid on the page, turned and slanted.
       var box = element.boundsAt(frame);
-      var at = Rect.fromLTWH(box.left * scale + origin.dx,
-          box.top * scale + origin.dy, box.width * scale, box.height * scale);
-      if (element.rotationRadians == 0) {
-        canvas.drawRect(at, paint);
-        continue;
-      }
-      canvas.save();
-      canvas.translate(at.center.dx, at.center.dy);
-      canvas.rotate(element.rotationRadians);
-      canvas.drawRect(
-          Rect.fromCenter(
-              center: Offset.zero, width: at.width, height: at.height),
+      var corners =
+          BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
+              .corners(box);
+      canvas.drawPath(
+          Path()..addPolygon([for (var p in corners) p * scale + origin], true),
           paint);
-      canvas.restore();
+    }
+  }
+
+  /// _paintWarp draws a warp grid being worked on: its lines dark under
+  /// light, so they show over any picture; its points as small squares,
+  /// the picked ones filled; and the box round the picked ones, with its
+  /// corners and turning knob.
+  void _paintWarp(Canvas canvas, StageWarp w, Offset Function(Offset) screen) {
+    for (var (width, colour) in const [
+      (2.6, Color(0x88000000)),
+      (1.0, Color(0xCCFFFFFF)),
+    ]) {
+      var paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..color = colour;
+      for (var line in w.lines) {
+        canvas.drawPath(
+            Path()..addPolygon([for (var p in line) screen(p)], false), paint);
+      }
+    }
+    const accent = Color(0xFF3D7EFF);
+    for (var (k, p) in w.points.indexed) {
+      var at = screen(p);
+      var square = Rect.fromCenter(center: at, width: 8, height: 8);
+      var picked = w.picks.contains(k);
+      canvas.drawRect(
+          square, Paint()..color = picked ? accent : const Color(0xFFFFFFFF));
+      canvas.drawRect(
+          square,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = picked ? const Color(0xFFFFFFFF) : accent);
+    }
+    if (w.box case var corners?) {
+      var at = [for (var p in corners) screen(p)];
+      canvas.drawPath(
+          Path()..addPolygon(at, true),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = accent);
+      for (var c in at) {
+        var square = Rect.fromCenter(center: c, width: 9, height: 9);
+        canvas.drawRect(square, Paint()..color = const Color(0xFFFFFFFF));
+        canvas.drawRect(
+            square,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = accent);
+      }
+      if (w.knob case var k?) {
+        var top = (at[0] + at[1]) / 2, knob = screen(k);
+        canvas.drawLine(top, knob, Paint()..color = accent);
+        canvas.drawCircle(knob, 5.5, Paint()..color = const Color(0xFFFFFFFF));
+        canvas.drawCircle(
+            knob,
+            5.5,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5
+              ..color = accent);
+      }
     }
   }
 
@@ -1138,6 +1207,26 @@ class StagePainter extends CustomPainter {
         canvas.drawPath(Path()..addPolygon(at, false), paint);
       }
     }
+    // The lasso's outline, closed back to where it began, as it is drawn:
+    // dark under light so it shows over any picture, and the inside faintly
+    // tinted, the area it will take.
+    if (layers.lasso case var points? when points.length >= 2) {
+      var path = Path()..addPolygon([for (var p in points) screen(p)], true);
+      canvas.drawPath(path, Paint()..color = const Color(0x2230A0FF));
+      for (var (width, colour) in const [
+        (3.0, Color(0xAA000000)),
+        (1.2, Color(0xFFFFFFFF)),
+      ]) {
+        canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = width
+              ..strokeJoin = StrokeJoin.round
+              ..color = colour);
+      }
+    }
+    if (layers.warp case var w?) _paintWarp(canvas, w, screen);
     if (layers.marker case var m?) {
       var at = screen(m);
       for (var (width, colour) in const [
@@ -1732,7 +1821,23 @@ class StagePainter extends CustomPainter {
       old.audioRevision != audioRevision ||
       old.selection != selection ||
       old.selectionBounds != selectionBounds ||
+      old.selectionSkew != selectionSkew ||
       old.marquee != marquee;
+}
+
+/// StageWarp is a warp grid as the stage draws it -- see StageLayers.warp.
+class StageWarp {
+  final List<List<Offset>> lines;
+  final List<Offset> points;
+  final Set<int> picks;
+  final List<Offset>? box;
+  final Offset? knob;
+  const StageWarp(
+      {required this.lines,
+      required this.points,
+      required this.picks,
+      this.box,
+      this.knob});
 }
 
 /// StageLayers is what the stage draws over a picture whose layers are being
@@ -1762,6 +1867,16 @@ class StageLayers {
   /// marker is where the clone tool copies from.
   final Offset? marker;
 
+  /// lasso is the outline of a lasso being drawn, in document units: the
+  /// shape it will close on, shown as it is drawn.
+  final List<Offset>? lasso;
+
+  /// warp is a picture's warp grid being worked on, in document units: its
+  /// lines, curved as the picture bends; its points and which are picked;
+  /// and, with two or more picked, the box round them -- four corners to
+  /// size them by, and a knob to turn them by. See ImageWarp.
+  final StageWarp? warp;
+
   const StageLayers(
       {this.others = const [],
       this.picked,
@@ -1771,5 +1886,7 @@ class StageLayers {
       this.masking,
       this.ring,
       this.trail,
-      this.marker});
+      this.marker,
+      this.lasso,
+      this.warp});
 }

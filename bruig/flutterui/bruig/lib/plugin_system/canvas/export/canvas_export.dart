@@ -146,6 +146,7 @@ Future<ui.Image> renderFrame(
   await AdjustShader.load();
   await TextureShader.load();
   await SharpenShader.load();
+  await HealShader.load();
   // The caller's own multiplier is what maxExportScale bounds; the design's
   // scale is not a request for a bigger file but the arithmetic that makes
   // the file the size it is already declared to be, and clamping it would

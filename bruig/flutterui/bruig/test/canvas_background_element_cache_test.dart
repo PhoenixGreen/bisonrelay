@@ -35,9 +35,10 @@ void main() {
     addTearDown(cache.dispose);
     // Animated, as a style switched from a moving one is left -- but metal
     // does not move, so it is still a still.
-    var doc = withPanel(const ProceduralSpec(
-        style: ProceduralStyle.metal, animated: true));
-    expect(ProceduralCache.moves((doc.elements.single as BackgroundElement).spec),
+    var doc = withPanel(
+        const ProceduralSpec(style: ProceduralStyle.metal, animated: true));
+    expect(
+        ProceduralCache.moves((doc.elements.single as BackgroundElement).spec),
         isFalse);
 
     var live = 0;
@@ -45,7 +46,8 @@ void main() {
       live += paint(doc, null, frame: f);
     }
     paint(doc, cache); // asks for it to be made
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)));
     var cached = 0;
     for (var f = 0; f < 10; f++) {
       cached += paint(doc, cache, frame: f);

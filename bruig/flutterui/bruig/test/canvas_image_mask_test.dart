@@ -81,7 +81,11 @@ void main() {
               radial: true,
               points: [Offset(0.5, 0.5), Offset(1, 0.5)]),
         ],
-        refine: MaskRefine(shift: -2, smooth: 3, feather: 4, contrast: 0.5,
+        refine: MaskRefine(
+            shift: -2,
+            smooth: 3,
+            feather: 4,
+            contrast: 0.5,
             decontaminate: 0.8),
         invert: true,
         on: false,
@@ -121,7 +125,9 @@ void main() {
       halfMask = await _picture(
           20, 20, (x, y) => x < 10 ? [255, 255, 255, 255] : [0, 0, 0, 255]);
       // A white square in the middle.
-      middleMask = await _picture(20, 20,
+      middleMask = await _picture(
+          20,
+          20,
           (x, y) => x >= 6 && x < 14 && y >= 6 && y < 14
               ? [255, 255, 255, 255]
               : [0, 0, 0, 255]);
@@ -174,9 +180,12 @@ void main() {
 
     test("a lasso takes away what it goes round", () async {
       var e = masked(const ImageMask(marks: [
-        MaskMark(
-            kind: MaskMarkKind.lasso,
-            points: [Offset(0, 0), Offset(0.5, 0), Offset(0.5, 1), Offset(0, 1)])
+        MaskMark(kind: MaskMarkKind.lasso, points: [
+          Offset(0, 0),
+          Offset(0.5, 0),
+          Offset(0.5, 1),
+          Offset(0, 1)
+        ])
       ]));
       expect(isPage(await pixel(e, 25, 50)), isTrue);
       expect(isRed(await pixel(e, 75, 50)), isTrue);
@@ -259,13 +268,13 @@ void main() {
       var e = masked(const ImageMask(
           subject: "middle.mask", refine: MaskRefine(feather: 4)));
       var edge = await pixel(e, 30, 50);
-      expect(edge[0], inInclusiveRange(60, 220), reason: "half-way at the edge");
+      expect(edge[0], inInclusiveRange(60, 220),
+          reason: "half-way at the edge");
     });
 
     test("the outline traces what the mask leaves", () async {
       var e = masked(const ImageMask(subject: "half.mask")).copyWith(
-          outline: const ImageOutline(
-              width: 6, color: ui.Color(0xFF00FF00)));
+          outline: const ImageOutline(width: 6, color: ui.Color(0xFF00FF00)));
       var beside = await pixel(e, 53, 50);
       expect(beside[1], greaterThan(200), reason: "green just past the mask");
       expect(isPage(await pixel(e, 80, 50)), isTrue);
@@ -292,7 +301,8 @@ void main() {
       var layer =
           ImageLayer.picture("red", const Rect.fromLTWH(0, 0, 1000, 1000));
       layer = layer.copyWith(
-          look: layer.look!.copyWith(mask: const ImageMask(subject: "half.mask")));
+          look: layer.look!
+              .copyWith(mask: const ImageMask(subject: "half.mask")));
       var e = ImageElement(_box, layers: [ImageLayer.base, layer]);
       expect(isRed(await pixel(e, 25, 50)), isTrue);
       expect(isPage(await pixel(e, 75, 50)), isTrue);
@@ -360,4 +370,3 @@ Future<int> _maskAt(Uint8List png, double x, double y) async {
   var py = (y * image.height).floor().clamp(0, image.height - 1);
   return raw!.getUint8((py * image.width + px) * 4);
 }
-

@@ -1,4 +1,3 @@
-
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
@@ -39,8 +38,9 @@ void main() {
     });
 
     test("uncropped, it is where it always was", () {
-      var p = placeImage(size, const Rect.fromLTWH(0, 0, 300, 300),
-          ImageFit.cover, framing: const ImageFraming(x: 0.2));
+      var p = placeImage(
+          size, const Rect.fromLTWH(0, 0, 300, 300), ImageFit.cover,
+          framing: const ImageFraming(x: 0.2));
       expect(p.wholeDst.left, closeTo(-p.src.left * 0.5, 1e-9));
       expect(p.wholeDst.width, closeTo(500, 1e-9));
     });
@@ -117,13 +117,12 @@ void main() {
   });
 
   test("and zoom works with a crop set as well", () {
-    var one = placeImage(picture, const Rect.fromLTWH(0, 0, 400, 150),
-        ImageFit.cover,
+    var one = placeImage(
+        picture, const Rect.fromLTWH(0, 0, 400, 150), ImageFit.cover,
         crop: const ImageCrop(top: 0.25));
-    var two = placeImage(picture, const Rect.fromLTWH(0, 0, 400, 150),
-        ImageFit.cover,
-        crop: const ImageCrop(top: 0.25),
-        framing: const ImageFraming(zoom: 2));
+    var two = placeImage(
+        picture, const Rect.fromLTWH(0, 0, 400, 150), ImageFit.cover,
+        crop: const ImageCrop(top: 0.25), framing: const ImageFraming(zoom: 2));
     expect(two.src.width, closeTo(one.src.width / 2, 0.5));
   });
 

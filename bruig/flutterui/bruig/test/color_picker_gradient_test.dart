@@ -408,8 +408,7 @@ void main() {
     expect(said!.gradient!.end, 1.0);
   });
 
-  testWidgets("a point can still be picked up on a tight fade",
-      (tester) async {
+  testWidgets("a point can still be picked up on a tight fade", (tester) async {
     // The thin handles sit midway along the spans either side of the point
     // that is selected, so on a fade between two colours close together they
     // are a few pixels from the point itself -- and while any touch within

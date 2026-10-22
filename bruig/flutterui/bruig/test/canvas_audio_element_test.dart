@@ -585,7 +585,8 @@ void main() {
       await show(tester, settingsOf(c));
 
       var before = c.document.elements.single.width;
-      await tester.ensureVisible(find.byKey(const ValueKey("audioControlvolume")));
+      await tester
+          .ensureVisible(find.byKey(const ValueKey("audioControlvolume")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("audioControlvolume")));
       await tester.pumpAndSettle();

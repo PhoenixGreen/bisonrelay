@@ -259,8 +259,10 @@ Widget pictureRemovalGroup(CanvasController controller, ImageElement e,
             ),
           ],
         ],
-        CanvasSegmented<RemovalMode>(
+        CanvasDropdown<RemovalMode>(
           key: const ValueKey("removalMethod"),
+          label: "Take out",
+          width: 120,
           options: [
             (RemovalMode.none, "Off"),
             (RemovalMode.chromaKey, "A colour"),
@@ -566,11 +568,14 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
       CanvasControlGroup(label: "Shape", rule: false, children: [
         CanvasDropdown<String>(
           label: "Cut to",
-          value: e.frame?.name ?? "",
+          value: e.frame == ShapeKind.rectangle ? "" : e.frame?.name ?? "",
           width: 128,
           options: [
             ("", "Rectangle"),
-            for (var k in ShapeKind.values) (k.name, k.label),
+            // "Rectangle" above is no cut at all; the rectangle shape again
+            // would be the same thing twice.
+            for (var k in ShapeKind.values)
+              if (k != ShapeKind.rectangle) (k.name, k.label),
           ],
           // Cut to a shape, it clips to it: a circle with a stroke running
           // out of it is not a circle.
@@ -624,37 +629,11 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
         ),
       ]),
     if (shown && crop)
-      CanvasControlGroup(label: "Crop", rule: false, children: [
-        for (var (label, value, apply)
-            in <(String, double, ImageCrop Function(double))>[
-          ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
-          ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
-          ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
-          ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
-        ])
-          CanvasNumberField(
-            label: label,
-            min: 0,
-            max: 1,
-            decimals: 2,
-            width: 62,
-            value: value,
-            onChanged: (v) {
-              begin();
-              // The frame is trimmed with the crop, so the picture that is
-              // left stays where it is instead of being re-fitted into the
-              // same box -- see ImageElement.croppedTo.
-              write(e.croppedTo(apply(v), flipX: flipX, flipY: flipY));
-            },
-            onCommit: commit,
-          ),
-        CanvasIconButton(
-          icon: Icons.crop_free,
-          tooltip: "Show the whole picture again",
-          onPressed: () =>
-              now(e.croppedTo(const ImageCrop(), flipX: flipX, flipY: flipY)),
-        ),
-      ]),
+      CanvasControlGroup(
+          label: "Crop",
+          rule: false,
+          children: cropControls(e, write, begin, commit,
+              flipX: flipX, flipY: flipY)),
     if (shown && (filter || overlay))
       CanvasControlGroup(
           label: filter ? "Look" : "Overlay",
@@ -740,5 +719,49 @@ List<Widget> pictureLookGroups(ImageElement e, SettingsWrite write,
           ),
         ],
       ]),
+  ];
+}
+
+/// cropControls are how much is trimmed off each edge of [e], and the
+/// button that shows the whole picture again: the Crop tool's settings.
+/// [flipX] and [flipY] are a picture layer's mirror -- see croppedTo.
+List<Widget> cropControls(ImageElement e, SettingsWrite write,
+    VoidCallback begin, VoidCallback commit,
+    {bool flipX = false, bool flipY = false}) {
+  return [
+    for (var (label, value, apply)
+        in <(String, double, ImageCrop Function(double))>[
+      ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
+      ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
+      ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
+      ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
+    ])
+      CanvasNumberField(
+        key: ValueKey("crop$label"),
+        label: label,
+        min: 0,
+        max: 1,
+        decimals: 2,
+        width: 62,
+        value: value,
+        onChanged: (v) {
+          begin();
+          // The frame is trimmed with the crop, so the picture that is left
+          // stays where it is instead of being re-fitted into the same box
+          // -- see ImageElement.croppedTo.
+          write(e.croppedTo(apply(v), flipX: flipX, flipY: flipY));
+        },
+        onCommit: commit,
+      ),
+    CanvasIconButton(
+      key: const ValueKey("cropShowWhole"),
+      icon: Icons.crop_free,
+      tooltip: "Show the whole picture again",
+      onPressed: () {
+        begin();
+        write(e.croppedTo(const ImageCrop(), flipX: flipX, flipY: flipY));
+        commit();
+      },
+    ),
   ];
 }

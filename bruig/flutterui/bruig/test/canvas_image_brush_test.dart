@@ -123,6 +123,18 @@ void main() {
           var v = (60 + (x - 18) / 4 * 140).clamp(60, 200).round();
           return [v, v, v, 255];
         }),
+        // Grey with a wide black square in the middle: wider than a brush.
+        "patch": await _picture(40, 40, (x, y) {
+          var inside = x >= 12 && x < 28 && y >= 12 && y < 28;
+          return inside ? [0, 0, 0, 255] : [120, 120, 120, 255];
+        }),
+        // Stripes two pixels wide, with a black spot in the middle.
+        "stripes": await _picture(40, 40, (x, y) {
+          var d = (Offset(x + 0.5, y + 0.5) - const Offset(20, 20)).distance;
+          if (d < 3) return [0, 0, 0, 255];
+          var v = x % 4 < 2 ? 70 : 170;
+          return [v, v, v, 255];
+        }),
         "spot": await _picture(40, 40, (x, y) {
           var d = (Offset(x + 0.5, y + 0.5) - const Offset(20, 20)).distance;
           return d < 3 ? [0, 0, 0, 255] : [100, 160, 100, 255];
@@ -419,6 +431,38 @@ void main() {
       expect(back.animation.loop.strength, closeTo(2, 1e-9));
     });
 
+    test("a spot retouched away stays away when gone over again", () async {
+      // Grey, with a dark band across the middle: the thing taken out.
+      var picture = await _picture(40, 40,
+          (x, y) => y >= 18 && y < 22 ? [0, 0, 0, 255] : [100, 100, 100, 255]);
+      const size = Size(40, 40);
+      // Cloned over from below, then blurred: the blur works on the grey the
+      // clone left, not on the band that was there before it.
+      var cover = _across(StrokeKind.clone, source: const Offset(0, 0.3));
+      var blur = _across(StrokeKind.blur);
+      var elsewhere = _across(StrokeKind.blur, y: 0.05);
+      for (var marks in [
+        [cover, blur],
+        [cover, blur, elsewhere],
+      ]) {
+        var recorder = ui.PictureRecorder();
+        var canvas = Canvas(recorder);
+        canvas.drawImage(picture, Offset.zero, Paint());
+        paintRetouchKept(canvas, picture, size, marks, null);
+        var image = await recorder.endRecording().toImage(40, 40);
+        var raw = (await image.toByteData(
+                format: ui.ImageByteFormat.rawStraightRgba))!
+            .buffer
+            .asUint8List();
+        image.dispose();
+        for (var y = 18; y < 22; y++) {
+          expect(raw[(y * 40 + 20) * 4], greaterThan(90),
+              reason: "row $y, ${marks.length} strokes: the band came back");
+        }
+      }
+      picture.dispose();
+    });
+
     test("strokes kept as pixels draw what drawing them all afresh does",
         () async {
       var picture = images.images["halves"]!;
@@ -445,8 +489,10 @@ void main() {
         }
       }
 
-      var fresh =
-          await draw((c) => paintRetouch(c, picture, size, marks, null));
+      // Each stroke worked on what the strokes before it left.
+      var all = retouchedPicture(picture, marks);
+      var fresh = await draw((c) => c.drawImage(all, Offset.zero, Paint()));
+      all.dispose();
       var drawn = RasterCache.instance.drawn;
       var kept =
           await draw((c) => paintRetouchKept(c, picture, size, marks, null));
@@ -520,6 +566,66 @@ void main() {
       var healed = at(p, 50, 50);
       expect(healed[1], closeTo(160, 25), reason: "$healed");
       expect(healed[0], closeTo(100, 25));
+    });
+
+    test("a heal brings back the texture round the spot, not a smudge",
+        () async {
+      ImageElement healed({required bool texture}) => retouched("stripes", [
+            StrokeMark(
+                kind: StrokeKind.heal,
+                points: const [Offset(0.5, 0.5)],
+                radius: 0.12,
+                hardness: 0.8,
+                source: texture
+                    ? healSource(
+                        const Offset(0.5, 0.5), 0.12, const Size(40, 40))
+                    : Offset.zero),
+          ]);
+      // Across the middle row, where the spot was.
+      Future<List<int>> row(ImageElement e) async {
+        var p = await render(e);
+        return [for (var x = 44; x <= 56; x++) at(p, x, 50)[0]];
+      }
+
+      double spread(List<int> v) =>
+          (v.reduce(math.max) - v.reduce(math.min)).toDouble();
+      double mean(List<int> v) => v.reduce((a, b) => a + b) / v.length;
+
+      var smudge = await row(healed(texture: false));
+      expect(spread(smudge), lessThan(40), reason: "the old heal: flat");
+      var textured = await row(healed(texture: true));
+      expect(spread(textured), greaterThan(60),
+          reason: "the stripes carried in: $textured");
+      expect(mean(textured), closeTo(120, 30),
+          reason: "at the light of what is round it: $textured");
+      expect(textured.reduce(math.min), greaterThan(30),
+          reason: "no black spot left: $textured");
+    });
+
+    test("a heal across a wide area leaves no hole in the middle", () async {
+      // A narrow brush scribbled back and forth over the whole square.
+      var points = [
+        for (var row = 0; row <= 10; row++) ...[
+          Offset(0.28, 0.28 + row * 0.044),
+          Offset(0.72, 0.28 + row * 0.044),
+        ]
+      ];
+      for (var texture in [false, true]) {
+        var p = await render(retouched("patch", [
+          StrokeMark(
+              kind: StrokeKind.heal,
+              points: points,
+              radius: 0.05,
+              hardness: 0.9,
+              source: texture
+                  ? healSource(const Offset(0.5, 0.5), 0.05, const Size(40, 40))
+                  : Offset.zero),
+        ]));
+        var middle = at(p, 50, 50);
+        expect(middle[0], greaterThan(80),
+            reason: "filled from round it, not black: $middle "
+                "(${texture ? "textured" : "plain"})");
+      }
     });
 
     test("dodge lightens and burn darkens", () async {
@@ -757,6 +863,34 @@ void main() {
           reason: "where the pointer is, not where the stroke began");
       await g.up();
       await tester.pumpAndSettle();
+    });
+
+    testWidgets("a lasso shows its outline as it is drawn", (tester) async {
+      var (c, screen) = await open(tester, ImageTool.lasso);
+      List<Offset>? outline() {
+        for (var w
+            in tester.widgetList<CustomPaint>(find.byType(CustomPaint))) {
+          if (w.painter case StagePainter p) {
+            if (p.editingLayers?.lasso case var l?) return l;
+          }
+        }
+        return null;
+      }
+
+      var g = await tester.startGesture(screen(const Offset(150, 150)));
+      await tester.pump();
+      for (var p in const [Offset(250, 150), Offset(250, 250)]) {
+        await g.moveTo(screen(p));
+        await tester.pump();
+      }
+      var drawn = outline();
+      expect(drawn, isNotNull, reason: "shown while it is drawn");
+      expect(drawn!.length, greaterThanOrEqualTo(3));
+      expect((drawn.last - const Offset(250, 250)).distance, lessThan(2),
+          reason: "running to the pointer");
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(outline(), isNull, reason: "gone once it is closed");
     });
 
     testWidgets("Option turns dodging into burning", (tester) async {

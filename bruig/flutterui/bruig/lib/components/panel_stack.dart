@@ -58,6 +58,11 @@ class StackPanel {
   final String label;
   final IconData icon;
 
+  /// onIcon makes the icon a button of its own, with [iconTooltip]: the
+  /// settings panel's switches how the settings are laid out.
+  final VoidCallback? onIcon;
+  final String? iconTooltip;
+
   /// hint is the question mark beside the name, for a panel that needs one.
   final String? hint;
 
@@ -91,6 +96,8 @@ class StackPanel {
     this.hint,
     this.trailing,
     this.startsOpen = true,
+    this.onIcon,
+    this.iconTooltip,
   });
 }
 
@@ -556,8 +563,8 @@ class _PanelStackState extends State<PanelStack> {
       for (var place in places)
         for (var panel in place) panel.id: place.first.id,
     };
-    double wanted(StackPanel panel) => math.max(
-        _minBody, _heights[placeOf[panel.id] ?? panel.id] ?? share);
+    double wanted(StackPanel panel) =>
+        math.max(_minBody, _heights[placeOf[panel.id] ?? panel.id] ?? share);
 
     var least = open.length * _minBody;
     if (least > room) {
@@ -710,7 +717,8 @@ class _PanelStackState extends State<PanelStack> {
         onTap: () => _toggle(panel.id),
         child: Row(children: [
           const SizedBox(width: 10),
-          Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant),
+          _icon(theme, panel,
+              Icon(panel.icon, size: 14, color: theme.colors.onSurfaceVariant)),
           const SizedBox(width: 7),
           // One Expanded holding the whole name, rather than a Flexible
           // label and a Spacer beside it.
@@ -808,10 +816,13 @@ class _PanelStackState extends State<PanelStack> {
         ),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(panel.icon,
-            size: 13,
-            color: theme.colors.onSurfaceVariant
-                .withValues(alpha: lit ? 0.95 : 0.5)),
+        _icon(
+            theme,
+            panel,
+            Icon(panel.icon,
+                size: 13,
+                color: theme.colors.onSurfaceVariant
+                    .withValues(alpha: lit ? 0.95 : 0.5))),
         const SizedBox(width: 5),
         Flexible(
           child: Text(
@@ -893,6 +904,29 @@ class _PanelStackState extends State<PanelStack> {
               style: const TextStyle(fontSize: 10, letterSpacing: 0.8)),
         ),
       );
+
+  /// _icon is [drawn], a button of its own where the panel's icon does
+  /// something -- pressing it does not also open or shut the panel.
+  Widget _icon(ThemeNotifier theme, StackPanel panel, Widget drawn) {
+    var tap = panel.onIcon;
+    if (tap == null) return drawn;
+    return Tooltip(
+      message: panel.iconTooltip ?? "",
+      child: InkWell(
+        key: ValueKey("panelIcon:${panel.id}"),
+        borderRadius: BorderRadius.circular(5),
+        onTap: tap,
+        child: Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: theme.colors.outlineVariant),
+          ),
+          child: drawn,
+        ),
+      ),
+    );
+  }
 
   /// _handle is what a panel is carried by.
   Widget _handle(ThemeNotifier theme, StackPanel panel) {

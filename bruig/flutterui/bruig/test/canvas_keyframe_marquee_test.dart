@@ -66,7 +66,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets("a box dragged over the keyframes picks them, and they move as one",
+  testWidgets(
+      "a box dragged over the keyframes picks them, and they move as one",
       (tester) async {
     var (c, paint, id) = await strip(tester, [10, 20, 30, 50]);
     // Under the ruler, from before the first to past the third.
@@ -84,7 +85,8 @@ void main() {
     expect(keys(c, id), [10, 20]);
   });
 
-  testWidgets("pressed and held first, the picked keyframes still move as one, "
+  testWidgets(
+      "pressed and held first, the picked keyframes still move as one, "
       "and undo takes the whole move back in one step", (tester) async {
     var (c, paint, id) = await strip(tester, [10, 20, 30, 50]);
     await drag(tester, at(paint, 6, 38), at(paint, 34, 38));

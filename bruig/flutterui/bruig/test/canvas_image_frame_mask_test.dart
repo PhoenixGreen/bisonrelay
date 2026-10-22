@@ -64,7 +64,8 @@ const _box = ElementBase(id: "i", x: 0, y: 0, width: 100, height: 100);
 
 void main() {
   test("a layer's mask is saved with it", () {
-    var layer = ImageLayer.adjusting(AdjustKind.invert).copyWith(mask: _leftHalf);
+    var layer =
+        ImageLayer.adjusting(AdjustKind.invert).copyWith(mask: _leftHalf);
     var back = ImageLayer.fromJson(layer.toJson())!;
     expect(back.mask.marks.single.kind, MaskMarkKind.lasso);
     expect(back.framed, isTrue);
@@ -74,7 +75,9 @@ void main() {
   group("drawing", () {
     late _Pictures images;
     setUpAll(() async {
-      images = _Pictures({"red": await _solid([255, 0, 0, 255])});
+      images = _Pictures({
+        "red": await _solid([255, 0, 0, 255])
+      });
     });
 
     Future<List<int>> pixel(ImageElement e, int x, int y) async {
@@ -95,7 +98,9 @@ void main() {
     }
 
     ImageElement over(ImageLayer layer) => ImageElement(_box,
-        assetId: "red", fit: ImageFit.stretch, layers: [ImageLayer.base, layer]);
+        assetId: "red",
+        fit: ImageFit.stretch,
+        layers: [ImageLayer.base, layer]);
 
     test("a masked adjustment adjusts only where its mask shows", () async {
       var e = over(
@@ -112,8 +117,8 @@ void main() {
     });
 
     test("a fade on a texture's mask fades it in across the frame", () async {
-      var e = over(ImageLayer.solid(const PaintSpec(ui.Color(0xFF0000FF)))
-          .copyWith(
+      var e =
+          over(ImageLayer.solid(const PaintSpec(ui.Color(0xFF0000FF))).copyWith(
               mask: const ImageMask(marks: [
         MaskMark(kind: MaskMarkKind.fade, points: [Offset(0, 0), Offset(1, 0)])
       ])));
@@ -160,13 +165,17 @@ void main() {
     var scale = stage.pageRect.width / c.document.size.width;
     Offset screen(Offset p) => stage.pageRect.topLeft + p * scale;
     var g = await tester.startGesture(screen(const Offset(100, 100)));
-    for (var p in const [Offset(200, 100), Offset(200, 300), Offset(100, 300)]) {
+    for (var p in const [
+      Offset(200, 100),
+      Offset(200, 300),
+      Offset(100, 300)
+    ]) {
       await g.moveTo(screen(p));
     }
     await g.up();
     await tester.pumpAndSettle();
-    var layer = (c.document.elementById("i")! as ImageElement)
-        .layerById(adjust.id)!;
+    var layer =
+        (c.document.elementById("i")! as ImageElement).layerById(adjust.id)!;
     var mark = layer.mask.marks.single;
     expect(mark.points.first.dx, closeTo(0, 0.02));
     expect(mark.points[1].dx, closeTo(0.5, 0.02),

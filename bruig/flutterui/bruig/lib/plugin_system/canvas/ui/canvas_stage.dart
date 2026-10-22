@@ -63,6 +63,7 @@ import 'package:bruig/plugin_system/canvas/ui/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_parts.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart';
 
 // canvas_stage.dart is the canvas you can touch: the document drawn, with
@@ -91,6 +92,17 @@ import 'package:flutter/services.dart';
 /// _DragMode is what the pointer is currently doing.
 enum _DragMode {
   none,
+
+  /// skew is a side handle dragged to slant the element. See _applySkew.
+  skew,
+
+  /// warpMove, warpScale and warpTurn carry a warp grid's picked points:
+  /// dragged, sized about the middle of their box, or turned about it.
+  /// warpMarquee is a box dragged out to pick the points in it.
+  warpMove,
+  warpScale,
+  warpTurn,
+  warpMarquee,
 
   /// anchor is an element's anchor point being dragged. See
   /// ElementBase.anchorX.
@@ -216,7 +228,8 @@ class CanvasStage extends StatefulWidget {
 /// canvas from the sidebar needs to know where, in document coordinates, the
 /// pointer let go. Only the stage knows the transform, so the screen holds a
 /// key to it and asks. Everything else here is private.
-class CanvasStageState extends State<CanvasStage> {
+class CanvasStageState extends State<CanvasStage>
+    with SingleTickerProviderStateMixin {
   CanvasController get controller => widget.controller;
   CanvasDocument get document => controller.document;
 
@@ -574,6 +587,7 @@ class CanvasStageState extends State<CanvasStage> {
     unawaited(AdjustShader.load());
     unawaited(TextureShader.load());
     unawaited(SharpenShader.load());
+    unawaited(HealShader.load());
   }
 
   @override
@@ -589,6 +603,8 @@ class CanvasStageState extends State<CanvasStage> {
 
   @override
   void dispose() {
+    _betweenTicker?.dispose();
+    _between.dispose();
     _typing.dispose();
     _typingFocus.dispose();
     _previewDebounce?.cancel();
@@ -605,6 +621,27 @@ class CanvasStageState extends State<CanvasStage> {
     super.dispose();
   }
 
+  /// _between is how far past its frame the playhead has got, kept by
+  /// _betweenTicker on every screen refresh while a drift plays, so the
+  /// stage redraws it smoothly rather than a whole frame at a time. See
+  /// scene_renderer's betweenFrames.
+  final ValueNotifier<double> _between = ValueNotifier(0);
+  Ticker? _betweenTicker;
+
+  /// _followPlayback starts the refresh-by-refresh redraw when a drift
+  /// starts playing, and stops it when playing stops.
+  void _followPlayback() {
+    var want = controller.playing && controller.playsDrift;
+    var ticker = _betweenTicker ??=
+        createTicker((_) => _between.value = controller.betweenFrames);
+    if (want && !ticker.isActive) {
+      ticker.start();
+    } else if (!want && ticker.isActive) {
+      ticker.stop();
+      _between.value = 0;
+    }
+  }
+
   void _onChanged() {
     // Reframing follows the selection. Selecting something else -- from the
     // layers list, from a keyboard shortcut, by undoing back past the picture
@@ -612,7 +649,9 @@ class CanvasStageState extends State<CanvasStage> {
     // any more stays on the canvas over whatever is selected now.
     // Reframing follows the selection by way of the controller, which closes
     // a picture's layers when it stops being the one thing selected.
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _followPlayback();
+    setState(() {});
   }
 
   // ------------------------------------------------------------------------
@@ -886,6 +925,14 @@ class CanvasStageState extends State<CanvasStage> {
   @visibleForTesting
   Offset toStagePoint(Offset doc) => _toStage(doc);
 
+  /// handleAt is where the selection's [handle] is on screen, for the tests
+  /// that drag one: turned and slanted, it is not at the box's corner.
+  @visibleForTesting
+  Offset handleAt(StageHandle handle) {
+    var bounds = _selectionBounds;
+    return bounds == null ? Offset.zero : _handlePosition(handle, bounds);
+  }
+
   /// _selectionBounds is the axis-aligned box around everything selected, in
   /// document space.
   ///
@@ -949,6 +996,19 @@ class CanvasStageState extends State<CanvasStage> {
   double get _rotationOfSelection => _chosen.length == 1
       ? _chosen.first.rotationAt(controller.frame) * math.pi / 180
       : 0;
+
+  /// _skewOfSelection is the single selected element's slant, in degrees,
+  /// across and down, or nothing when several are chosen.
+  Offset get _skewOfSelection => _chosen.length == 1
+      ? Offset(_chosen.first.base.skewX, _chosen.first.base.skewY)
+      : Offset.zero;
+
+  /// _frameOfSelection is how the selection's box is laid on the page:
+  /// turned and slanted, for one element; upright for several.
+  BoxFrame get _frameOfSelection => BoxFrame(
+      _rotationOfSelection * 180 / math.pi,
+      _skewOfSelection.dx,
+      _skewOfSelection.dy);
 
   // ------------------------------------------------------------------------
   // Hit testing
@@ -1027,16 +1087,11 @@ class CanvasStageState extends State<CanvasStage> {
     // is: an animated element clicked at frame 20 has to be hit where it is
     // drawn, not where it started.
     var box = e.boundsAt(controller.frame);
-    var rotation = e.rotationAt(controller.frame);
+    // Back into its own upright box: turned and slanted, it is hit where it
+    // is drawn. See BoxFrame.
+    var shape = e.frameAt(controller.frame);
     var local = point;
-    if (rotation != 0) {
-      var c = box.center;
-      var d = point - c;
-      var a = -rotation * math.pi / 180;
-      local = c +
-          Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
-              d.dx * math.sin(a) + d.dy * math.cos(a));
-    }
+    if (!shape.upright) local = box.center + shape.invert(point - box.center);
     if (!box.contains(local)) return false;
 
     // A line is a stroke, not a rectangle: a diagonal line's bounding box is
@@ -1126,11 +1181,7 @@ class CanvasStageState extends State<CanvasStage> {
 
     // In the selection's own frame, so a rotated box keeps its middle too.
     var d = stage - _toStage(bounds.center);
-    var a = -_rotationOfSelection;
-    var local = a == 0
-        ? d
-        : Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
-            d.dx * math.sin(a) + d.dy * math.cos(a));
+    var local = _frameOfSelection.invert(d);
     return local.dx.abs() < on.dx / 2 - keepX &&
         local.dy.abs() < on.dy / 2 - keepY;
   }
@@ -1230,11 +1281,7 @@ class CanvasStageState extends State<CanvasStage> {
     var half = Offset(bounds.width, bounds.height) * _scale / 2;
     var local =
         top ? Offset(-half.dx, -half.dy / 2) : Offset(half.dx, half.dy / 2);
-    var a = _rotationOfSelection;
-    if (a == 0) return centre + local;
-    return centre +
-        Offset(local.dx * math.cos(a) - local.dy * math.sin(a),
-            local.dx * math.sin(a) + local.dy * math.cos(a));
+    return centre + _frameOfSelection.apply(local);
   }
 
   /// _textPieceOwner is the text element with a piece under the pointer,
@@ -1660,12 +1707,8 @@ class CanvasStageState extends State<CanvasStage> {
       StageHandle.bottomRight => Offset(half.dx, half.dy),
       StageHandle.rotate => Offset(0, -half.dy - rotateHandleGap),
     };
-
-    var a = _rotationOfSelection;
-    if (a == 0) return centre + local;
-    return centre +
-        Offset(local.dx * math.cos(a) - local.dy * math.sin(a),
-            local.dx * math.sin(a) + local.dy * math.cos(a));
+    // Where the box is drawn: turned and slanted. See BoxFrame.
+    return centre + _frameOfSelection.apply(local);
   }
 
   // ------------------------------------------------------------------------
@@ -1856,8 +1899,21 @@ class CanvasStageState extends State<CanvasStage> {
 
       var handle = nearest?.$1;
       if (handle != null) {
+        // A side handle slants the element instead, with Command held or
+        // the Skew switch on -- one element at a time.
+        var side = handle == StageHandle.topCenter ||
+            handle == StageHandle.bottomCenter ||
+            handle == StageHandle.centerLeft ||
+            handle == StageHandle.centerRight;
+        var skewing = side &&
+            _chosen.length == 1 &&
+            (controller.skewHandles || HardwareKeyboard.instance.isMetaPressed);
         _beginTransform(
-            handle == StageHandle.rotate ? _DragMode.rotate : _DragMode.resize,
+            handle == StageHandle.rotate
+                ? _DragMode.rotate
+                : skewing
+                    ? _DragMode.skew
+                    : _DragMode.resize,
             handle);
         return;
       }
@@ -3540,6 +3596,7 @@ class CanvasStageState extends State<CanvasStage> {
   StageLayers? _layerBoxes() {
     var e = controller.editingImage;
     if (e == null) return null;
+    if (controller.warpLayer case var id?) return _warpView(e, id);
     var picked = controller.pickedLayer;
     // With a brush in hand, its ring -- and, cloning, where it copies from.
     if (controller.imageTool.paints && picked != null) {
@@ -3578,7 +3635,19 @@ class CanvasStageState extends State<CanvasStage> {
       var brushes = controller.imageTool == ImageTool.brush ||
           controller.imageTool == ImageTool.quick ||
           controller.imageTool == ImageTool.refine;
+      // A lasso being drawn: its outline, from the mark being made.
+      List<Offset>? lasso;
+      if (_mode == _DragMode.imageMask &&
+          controller.imageTool == ImageTool.lasso &&
+          on != null) {
+        var mask = picked.framed ? picked.mask : lookOf(e, picked.id)?.mask;
+        var last = mask?.marks.lastOrNull;
+        if (last != null && last.kind == MaskMarkKind.lasso) {
+          lasso = [for (var f in last.points) on.fromPicture(f)];
+        }
+      }
       return StageLayers(
+        lasso: lasso,
         masking: (
           element: e,
           layer: picked.id,
@@ -3645,11 +3714,246 @@ class CanvasStageState extends State<CanvasStage> {
     );
   }
 
+  // ---- warp grid ------------------------------------------------------
+
+  /// _warpSpace is how the warp grid of the layer [id] of [e] lies on the
+  /// canvas: a fraction of the picture's box to a point on the canvas, and
+  /// back -- through the element's turn and slant, the layer's turn, and its
+  /// mirror.
+  (Offset Function(Offset), Offset Function(Offset)) _warpSpace(
+      ImageElement e, String id) {
+    var layer = e.layerById(id) ?? ImageLayer.base;
+    var space = LayerSpace(e, layer);
+    var r = space.rect;
+    Offset mirror(Offset f) =>
+        Offset(layer.flipX ? 1 - f.dx : f.dx, layer.flipY ? 1 - f.dy : f.dy);
+    Offset toDoc(Offset f) {
+      var m = mirror(f);
+      return space
+          .fromLayer(r.topLeft + Offset(m.dx * r.width, m.dy * r.height));
+    }
+
+    Offset toFrac(Offset doc) {
+      var l = space.toLayer(doc) - r.topLeft;
+      return mirror(Offset(
+          l.dx / math.max(1e-9, r.width), l.dy / math.max(1e-9, r.height)));
+    }
+
+    return (toDoc, toFrac);
+  }
+
+  /// _warpPoints is the warp grid's points on the canvas.
+  List<Offset> _warpPoints(ImageElement e, String id) {
+    var (toDoc, _) = _warpSpace(e, id);
+    return [for (var f in controller.warpOf(e, id).grid) toDoc(f)];
+  }
+
+  /// _warpBox is the box round the picked points, on the canvas, with its
+  /// knob -- for two or more picked.
+  (Rect, Offset)? _warpBox(List<Offset> points) {
+    var picks = controller.warpPicks;
+    if (picks.length < 2) return null;
+    var picked = [
+      for (var k in picks)
+        if (k < points.length) points[k]
+    ];
+    if (picked.length < 2) return null;
+    var box = Rect.fromLTRB(
+        picked.map((p) => p.dx).reduce(math.min),
+        picked.map((p) => p.dy).reduce(math.min),
+        picked.map((p) => p.dx).reduce(math.max),
+        picked.map((p) => p.dy).reduce(math.max));
+    // Room round points in a line, so the box has corners to hold.
+    var least = 12 / _scale;
+    if (box.width < least || box.height < least) {
+      box = Rect.fromCenter(
+          center: box.center,
+          width: math.max(box.width, least),
+          height: math.max(box.height, least));
+    }
+    return (box, box.topCenter - Offset(0, 24 / _scale));
+  }
+
+  /// _warpView is the warp grid as the stage draws it.
+  StageLayers _warpView(ImageElement e, String id) {
+    var warp = controller.warpOf(e, id);
+    var (toDoc, _) = _warpSpace(e, id);
+    var g = warp.grid;
+    var points = [for (var f in g) toDoc(f)];
+    const fine = 12;
+    var lines = <List<Offset>>[
+      for (var i = 0; i <= warp.rows; i++)
+        [
+          for (var k = 0; k <= warp.cols * fine; k++)
+            toDoc(warp.sample(k / (warp.cols * fine), i / warp.rows, g))
+        ],
+      for (var j = 0; j <= warp.cols; j++)
+        [
+          for (var k = 0; k <= warp.rows * fine; k++)
+            toDoc(warp.sample(j / warp.cols, k / (warp.rows * fine), g))
+        ],
+    ];
+    var box = _warpBox(points);
+    return StageLayers(
+        warp: StageWarp(
+            lines: lines,
+            points: points,
+            picks: controller.warpPicks,
+            box: box == null
+                ? null
+                : [
+                    box.$1.topLeft,
+                    box.$1.topRight,
+                    box.$1.bottomRight,
+                    box.$1.bottomLeft
+                  ],
+            knob: box?.$2));
+  }
+
+  List<Offset> _warpStartPoints = const [];
+  Offset _warpPivot = Offset.zero;
+  Offset _warpGrab = Offset.zero;
+
+  /// _pressWarp is a press while a warp grid is shown: on the box's knob
+  /// or a corner, to turn or size the points picked; on a point, to pick it
+  /// (Shift adds it or takes it away) and drag; inside the box, to drag the
+  /// lot; anywhere else, a box dragged out to pick points with.
+  bool _pressWarp(ImageElement e, String id, Offset doc) {
+    var points = _warpPoints(e, id);
+    var reach = 10 / _scale;
+    var shift = _shiftHeld;
+    void hold(_DragMode mode) {
+      _mode = mode;
+      _warpStartPoints = [...controller.warpOf(e, id).grid];
+      _warpGrab = doc;
+      controller.beginInteraction();
+    }
+
+    if (_warpBox(points) case (var box, var knob)) {
+      if ((doc - knob).distance <= reach) {
+        _warpPivot = box.center;
+        hold(_DragMode.warpTurn);
+        return true;
+      }
+      for (var c in [
+        box.topLeft,
+        box.topRight,
+        box.bottomLeft,
+        box.bottomRight
+      ]) {
+        if ((doc - c).distance <= reach) {
+          _warpPivot = box.center;
+          hold(_DragMode.warpScale);
+          return true;
+        }
+      }
+    }
+    var nearest = -1;
+    var best = reach;
+    for (var (k, p) in points.indexed) {
+      var d = (p - doc).distance;
+      if (d <= best) {
+        best = d;
+        nearest = k;
+      }
+    }
+    if (nearest >= 0) {
+      var picks = {...controller.warpPicks};
+      if (shift) {
+        picks.contains(nearest) ? picks.remove(nearest) : picks.add(nearest);
+        controller.warpPicks = picks;
+        _mode = _DragMode.none;
+        return true;
+      }
+      if (!picks.contains(nearest)) controller.warpPicks = {nearest};
+      hold(_DragMode.warpMove);
+      return true;
+    }
+    if (_warpBox(points) case (var box, _) when box.contains(doc)) {
+      hold(_DragMode.warpMove);
+      return true;
+    }
+    if (!shift) controller.warpPicks = const {};
+    _mode = _DragMode.warpMarquee;
+    _warpGrab = doc;
+    setState(() => _marquee = Rect.fromPoints(doc, doc));
+    return true;
+  }
+
+  /// _dragWarp carries the picked points to [doc]: moved by the drag, sized
+  /// about the middle of their box by how much further from it the pointer
+  /// is, or turned about it.
+  void _dragWarp(Offset doc) {
+    var e = controller.editingImage, id = controller.warpLayer;
+    if (e == null || id == null) return;
+    if (_mode == _DragMode.warpMarquee) {
+      setState(() => _marquee = Rect.fromPoints(_warpGrab, doc));
+      return;
+    }
+    var (toDoc, toFrac) = _warpSpace(e, id);
+    var start = [for (var f in _warpStartPoints) toDoc(f)];
+    Offset carried(Offset p) {
+      switch (_mode) {
+        case _DragMode.warpMove:
+          return p + (doc - _warpGrab);
+        case _DragMode.warpScale:
+          var from = (_warpGrab - _warpPivot).distance;
+          var k = from < 1e-9 ? 1.0 : (doc - _warpPivot).distance / from;
+          return _warpPivot + (p - _warpPivot) * k;
+        case _DragMode.warpTurn:
+          var a =
+              (doc - _warpPivot).direction - (_warpGrab - _warpPivot).direction;
+          if (_shiftHeld) a = (a / (math.pi / 12)).round() * (math.pi / 12);
+          var d = p - _warpPivot;
+          return _warpPivot +
+              Offset(d.dx * math.cos(a) - d.dy * math.sin(a),
+                  d.dx * math.sin(a) + d.dy * math.cos(a));
+        default:
+          return p;
+      }
+    }
+
+    var picks = controller.warpPicks;
+    controller.changeWarp(
+        (w) => w.withPoints([
+              for (var (k, f) in _warpStartPoints.indexed)
+                picks.contains(k) ? toFrac(carried(start[k])) : f
+            ]),
+        transient: true);
+  }
+
+  /// _finishWarpMarquee picks the points inside the box dragged out.
+  void _finishWarpMarquee() {
+    var box = _marquee;
+    var e = controller.editingImage, id = controller.warpLayer;
+    setState(() => _marquee = null);
+    if (box == null || e == null || id == null) return;
+    var picks = {...controller.warpPicks};
+    for (var (k, p) in _warpPoints(e, id).indexed) {
+      if (box.contains(p)) picks.add(k);
+    }
+    controller.warpPicks = picks;
+  }
+
+  /// nudgeWarp moves the picked points by [by], in canvas units.
+  bool _nudgeWarp(Offset by) {
+    var e = controller.editingImage, id = controller.warpLayer;
+    if (e == null || id == null || controller.warpPicks.isEmpty) return false;
+    var (toDoc, toFrac) = _warpSpace(e, id);
+    var picks = controller.warpPicks;
+    controller.changeWarp((w) => w.withPoints([
+          for (var (k, f) in w.grid.indexed)
+            picks.contains(k) ? toFrac(toDoc(f) + by) : f
+        ]));
+    return true;
+  }
+
   /// _pressLayers is a press at [doc] on [e] while its layers are open: the
   /// picked layer's knob or handles, then whichever picture layer is on top
   /// under the press, then the base picture. False when the press missed the
   /// picture altogether, which closes it.
   bool _pressLayers(ImageElement e, Offset doc) {
+    if (controller.warpLayer case var id?) return _pressWarp(e, id, doc);
     var picked = controller.pickedLayer;
     // A locked layer is not drawn on, masked or moved here. The press is
     // still the picture's, so it stays open.
@@ -3912,6 +4216,11 @@ class CanvasStageState extends State<CanvasStage> {
       }
       source = controller.cloneOffset ??= from - f;
     }
+    // A heal takes its texture from beside where it starts -- see
+    // healSource.
+    if (tool == ImageTool.heal) {
+      source = healSource(f, controller.paintSize, on.size);
+    }
     var mark = StrokeMark(
         kind: switch (tool) {
           ImageTool.clone => StrokeKind.clone,
@@ -3930,12 +4239,10 @@ class CanvasStageState extends State<CanvasStage> {
         source: source);
     controller.beginInteraction();
     if (whole) {
-      // A layer of its own, over the one picked, in the same step as the
-      // stroke -- unless the one picked is a paint layer already.
-      if (controller.pickedLayer?.kind != LayerKind.paint) {
-        controller
-            .addImageLayer(ImageLayer.painting().copyWith(name: "Retouch"));
-      }
+      // A layer of its own, at the top of the picture, in the same step as
+      // the stroke -- unless a paint layer is picked already. See
+      // CanvasController.retouchLayerForFrame.
+      controller.retouchLayerForFrame();
       controller.changePaint((s) => [...s, mark], transient: true);
     } else {
       controller.changeRetouch((s) => [...s, mark], transient: true);
@@ -4023,9 +4330,10 @@ class CanvasStageState extends State<CanvasStage> {
                   other.placed(layerPlace(space.inner, at), turn: other.turn));
         }
       case _DragMode.imageLayerSize:
-        // The corners keep the picture's proportions, as every editor's do
-        // now; Shift lets them go.
-        var even = _layerHandle < 4 && !_shiftHeld;
+        // The corners keep the picture's proportions where it holds them --
+        // Keep its proportions -- and Shift does the other.
+        var holds = (was.look ?? e).base.lockAspect;
+        var even = _layerHandle < 4 && (holds ? !_shiftHeld : _shiftHeld);
         var rect = space.resized(doc, _layerHandle,
             (r, h, p) => boxResized(r, h, p, even: even, least: 4));
         next = was.placed(layerPlace(space.inner, rect), turn: was.turn);
@@ -4665,6 +4973,13 @@ class CanvasStageState extends State<CanvasStage> {
         _applyMove(delta);
       case _DragMode.resize:
         _applyResize(delta);
+      case _DragMode.skew:
+        _applySkew(delta);
+      case _DragMode.warpMove ||
+            _DragMode.warpScale ||
+            _DragMode.warpTurn ||
+            _DragMode.warpMarquee:
+        _dragWarp(doc);
       case _DragMode.rotate:
         _applyRotate(doc);
       case _DragMode.anchor:
@@ -4847,7 +5162,7 @@ class CanvasStageState extends State<CanvasStage> {
   /// onto the nearest level, upright or diagonal when it comes within a few
   /// degrees of one -- always, with Shift held. Alt lets it go anywhere.
   bool _applyLineEnd(StageHandle handle, Offset delta) {
-    if (_startVisual.length != 1 || _rotationOfSelection != 0) return false;
+    if (_startVisual.length != 1 || !_frameOfSelection.upright) return false;
     // The line as it was when the drag began: every frame of the drag is
     // worked from it, since a frame that crosses one end past the other has
     // already swapped the ends and their arrows.
@@ -4881,6 +5196,54 @@ class CanvasStageState extends State<CanvasStage> {
     return true;
   }
 
+  /// _applySkew slants the one selected element by a side handle dragged
+  /// [delta]: the top or bottom handle across, the left or right one up and
+  /// down. The side held moves with the pointer and the side opposite stays
+  /// where it is, as in any editor -- so the element is slanted about its
+  /// middle and moved by half as much.
+  void _applySkew(Offset delta) {
+    var handle = _handle;
+    if (handle == null || _startElements.length != 1) return;
+    var start = _startElements.values.first;
+    if (start.locked) return;
+    var box = start.bounds;
+    // The drag in the element's own turned frame, but not its slanted one:
+    // the slant is what is being changed.
+    var a = -start.rotation * math.pi / 180;
+    var d = Offset(delta.dx * math.cos(a) - delta.dy * math.sin(a),
+        delta.dx * math.sin(a) + delta.dy * math.cos(a));
+    double tanOf(double deg) => math.tan(deg * math.pi / 180);
+    double degOf(double t) =>
+        (math.atan(t) * 180 / math.pi).clamp(-maxSkew, maxSkew);
+    var skewX = start.base.skewX, skewY = start.base.skewY;
+    Offset shift;
+    switch (handle) {
+      case StageHandle.topCenter || StageHandle.bottomCenter:
+        if (box.height <= 0) return;
+        var sign = handle == StageHandle.topCenter ? -1 : 1;
+        skewX = degOf(tanOf(skewX) + sign * d.dx / box.height);
+        shift = Offset(d.dx / 2, 0);
+      case StageHandle.centerLeft || StageHandle.centerRight:
+        if (box.width <= 0) return;
+        var sign = handle == StageHandle.centerLeft ? -1 : 1;
+        skewY = degOf(tanOf(skewY) + sign * d.dy / box.width);
+        shift = Offset(0, d.dy / 2);
+      default:
+        return;
+    }
+    // The half-move back onto the page, turned as the element is.
+    var r = start.rotation * math.pi / 180;
+    var page = Offset(shift.dx * math.cos(r) - shift.dy * math.sin(r),
+        shift.dx * math.sin(r) + shift.dy * math.cos(r));
+    controller.replaceElement(
+        start.withBase(
+            skewX: skewX,
+            skewY: skewY,
+            x: start.x + page.dx,
+            y: start.y + page.dy),
+        transient: true);
+  }
+
   void _applyResize(Offset delta) {
     var handle = _handle;
     if (handle == null) return;
@@ -4891,7 +5254,7 @@ class CanvasStageState extends State<CanvasStage> {
     // Only for an upright box: an edge of a tilted element is not a level or
     // an upright line and has nothing on the grid to land on. Alt turns it
     // off for the length of the drag, exactly as it does for a move.
-    if (_rotationOfSelection == 0 && !HardwareKeyboard.instance.isAltPressed) {
+    if (_frameOfSelection.upright && !HardwareKeyboard.instance.isAltPressed) {
       delta = _snapResize(handle, delta);
     } else {
       _snappedTo = null;
@@ -4899,11 +5262,7 @@ class CanvasStageState extends State<CanvasStage> {
 
     // The drag is rotated into the element's own frame, so pulling the right
     // edge of a tilted element makes it wider rather than moving it sideways.
-    var a = -_rotationOfSelection;
-    if (a != 0) {
-      delta = Offset(delta.dx * math.cos(a) - delta.dy * math.sin(a),
-          delta.dx * math.sin(a) + delta.dy * math.cos(a));
-    }
+    delta = _frameOfSelection.invert(delta);
 
     // One box for the whole drag: the selection's own, and every element
     // mapped through it.
@@ -5262,6 +5621,7 @@ class CanvasStageState extends State<CanvasStage> {
         controller.editVector(null);
       }
     }
+    if (_mode == _DragMode.warpMarquee) _finishWarpMarquee();
     if (_mode == _DragMode.marquee) {
       var box = _marquee;
       if (box != null && box.width > 3 && box.height > 3) {
@@ -5303,6 +5663,10 @@ class CanvasStageState extends State<CanvasStage> {
     if (_mode == _DragMode.move ||
         _mode == _DragMode.anchor ||
         _mode == _DragMode.resize ||
+        _mode == _DragMode.skew ||
+        _mode == _DragMode.warpMove ||
+        _mode == _DragMode.warpScale ||
+        _mode == _DragMode.warpTurn ||
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.tableColumn ||
@@ -5509,6 +5873,17 @@ class CanvasStageState extends State<CanvasStage> {
       return KeyEventResult.handled;
     }
 
+    // A warp grid's picked points, while it is shown, before anything else
+    // the arrows do.
+    var arrow = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowLeft => Offset(-step, 0),
+      LogicalKeyboardKey.arrowRight => Offset(step, 0),
+      LogicalKeyboardKey.arrowUp => Offset(0, -step),
+      LogicalKeyboardKey.arrowDown => Offset(0, step),
+      _ => null,
+    };
+    if (arrow != null && _nudgeWarp(arrow)) return KeyEventResult.handled;
+
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
         controller.togglePlay();
@@ -5542,6 +5917,10 @@ class CanvasStageState extends State<CanvasStage> {
       // A picture's mask tools, while its layers are open.
       case LogicalKeyboardKey.keyW when controller.editingImage != null:
         controller.imageTool = ImageTool.subject;
+      case LogicalKeyboardKey.keyC when controller.editingImage != null:
+        controller.imageTool = ImageTool.crop;
+      case LogicalKeyboardKey.keyK when controller.editingImage != null:
+        controller.imageTool = ImageTool.edge;
       case LogicalKeyboardKey.keyB when controller.editingImage != null:
         controller.imageTool = ImageTool.brush;
       case LogicalKeyboardKey.keyQ when controller.editingImage != null:
@@ -5634,6 +6013,12 @@ class CanvasStageState extends State<CanvasStage> {
       case LogicalKeyboardKey.escape:
         // One thing at a time: the first Escape leaves the picture's frame,
         // and only then does the next one drop the selection.
+        // A warp grid's picked points are let go first, then the grid.
+        if (controller.warpLayer != null && controller.warpPicks.isNotEmpty) {
+          controller.warpPicks = const {};
+        } else if (controller.warpLayer != null) {
+          controller.editWarp("", "", on: false);
+        } else
         // A clone's point is let go before the picture is.
         if (controller.editingImage != null &&
             controller.imageTool == ImageTool.clone &&
@@ -5710,6 +6095,7 @@ class CanvasStageState extends State<CanvasStage> {
                   child: ClipRect(
                     child: CustomPaint(
                       painter: StagePainter(
+                        between: _between,
                         // A tile tried on as the pointer passes over it is a glimpse too:
                         // drawn as a gesture is, then properly when it is
                         // picked or let go of.
@@ -5828,6 +6214,7 @@ class CanvasStageState extends State<CanvasStage> {
                         snapped: _snappedTo,
                         showHandles: _selectionHasOwnGeometry,
                         selectionRotation: _rotationOfSelection,
+                        selectionSkew: _skewOfSelection,
                         handleFor: _handlePosition,
                         flowGrips: _flowGrips(),
                         flowLines: _flowLines(),

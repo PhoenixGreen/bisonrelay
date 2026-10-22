@@ -108,8 +108,11 @@ void main() {
 
     test("has colours for a chart, a counter, a table and a tinted drawing",
         () {
-      expect(slots(const ChartElement(ElementBase(id: "x"),
-              data: ChartData(categories: ["a"], series: [
+      expect(
+          slots(const ChartElement(ElementBase(id: "x"),
+              data: ChartData(categories: [
+                "a"
+              ], series: [
                 ChartSeries(name: "one", color: _teal, values: [1]),
                 ChartSeries(name: "two", color: _pink, values: [2]),
               ]))),
@@ -117,7 +120,11 @@ void main() {
       expect(
           slots(const ChartElement(ElementBase(id: "x"),
               type: ChartType.pie,
-              data: ChartData(categories: ["a", "b", "c"], series: [
+              data: ChartData(categories: [
+                "a",
+                "b",
+                "c"
+              ], series: [
                 ChartSeries(name: "s", color: _teal, values: [1, 2, 3]),
               ]))),
           ["slice0", "slice1", "slice2"]);
@@ -133,14 +140,17 @@ void main() {
 
     test("a chart's series slot sets that series", () {
       var e = const ChartElement(ElementBase(id: "x"),
-          data: ChartData(categories: ["a"], series: [
+          data: ChartData(categories: [
+            "a"
+          ], series: [
             ChartSeries(name: "one", color: _teal, values: [1]),
           ]));
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
       c.selectOnly("x");
       colourSlotsFor(c).single.setColour(_pink, transient: false);
-      expect((c.document.elements.single as ChartElement).data.series.single.color,
+      expect(
+          (c.document.elements.single as ChartElement).data.series.single.color,
           _pink);
     });
   });
@@ -184,9 +194,11 @@ void main() {
           ));
       await tester.tap(find.byKey(const ValueKey("replaceColor")));
       await tester.pumpAndSettle();
-      await tester.tap(find.descendant(
-          of: find.byKey(const ValueKey("savedSwatches")),
-          matching: find.byTooltip("#ff2ed6a1")).first);
+      await tester.tap(find
+          .descendant(
+              of: find.byKey(const ValueKey("savedSwatches")),
+              matching: find.byTooltip("#ff2ed6a1"))
+          .first);
       await tester.pumpAndSettle();
       expect(asked, (_teal, _pink));
       expect(SavedColors.instance.has(_pink), isTrue,
@@ -208,12 +220,12 @@ void main() {
 
   testWidgets("the master's music picked from a scene shows its settings",
       (tester) async {
-    AudioElement clip(String id, String channel) => AudioElement(
-        ElementBase(id: id, name: id, visible: false),
-        clip: MediaClip(
-            timed: true,
-            channel: channel,
-            playlist: const [MediaSource(assetId: "a.mp3", length: 30)]));
+    AudioElement clip(String id, String channel) =>
+        AudioElement(ElementBase(id: id, name: id, visible: false),
+            clip: MediaClip(
+                timed: true,
+                channel: channel,
+                playlist: const [MediaSource(assetId: "a.mp3", length: 30)]));
     var c = CanvasController(CanvasDocument(
         masterOn: true,
         master: CanvasScene(

@@ -4,7 +4,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -680,32 +682,7 @@ class CanvasTiles<T> extends StatelessWidget {
       );
     });
     if (card && foldAs != null) return _FoldingTiles<T>(tiles: this);
-    if (card && scrolls) {
-      return canvasCard(context,
-          title: label == null ? null : canvasCardTitle(context, label!),
-          help: help,
-          body: Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: SizedBox(
-              height: previewHeight + 30,
-              // Every tile built, not only those in view: a handful, and a
-              // tile scrolled out of view is still one to reach.
-              child: SingleChildScrollView(
-                key: ValueKey("tilesRow-$label"),
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                  for (var (i, t) in tiles.indexed)
-                    Padding(
-                      padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
-                      child: SizedBox(
-                          width: tileWidth,
-                          child: _tile(context, theme, t, hover: false)),
-                    ),
-                ]),
-              ),
-            ),
-          ));
-    }
+    if (card && scrolls) return _ScrollingTiles<T>(tiles: this);
     // In a section, a card of its own, named, with the "?" beside the name.
     if (card) {
       return canvasCard(context,
@@ -843,16 +820,374 @@ class CanvasTiles<T> extends StatelessWidget {
 }
 
 /// CanvasSections is a run of [CanvasSection]s, down the panel.
-class CanvasSections extends StatelessWidget {
+class CanvasSections extends StatefulWidget {
   final List<Widget> children;
-  const CanvasSections({required this.children, super.key});
+
+  /// parts is what the element is made of -- a picture's layers -- shown
+  /// over the sections, and over the menu's bar: not a section, so not one
+  /// of its names.
+  final Widget? parts;
+
+  const CanvasSections({
+    required this.children,
+    this.parts,
+    super.key,
+  });
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: children,
+  State<CanvasSections> createState() => _CanvasSectionsState();
+}
+
+/// settingsAsMenu is whether element settings are laid out as a menu -- the
+/// sections' names in a bar across the top, one section shown at a time --
+/// rather than as sections down the panel that fold. Switched by the
+/// settings panel's icon, and kept: see toggleSettingsLayout.
+final ValueNotifier<bool> settingsAsMenu = ValueNotifier(false);
+
+bool _layoutRead = false;
+
+/// readSettingsLayout reads the layout kept from last time, once.
+void readSettingsLayout() {
+  if (_layoutRead) return;
+  _layoutRead = true;
+  StorageManager.readData("canvasSettingsMenu").then((v) {
+    if (v is bool) settingsAsMenu.value = v;
+  });
+  StorageManager.readData("canvasSettingsMenuTab").then((v) {
+    if (v is String && _menuChosen == null) _menuChosen = v;
+  });
+}
+
+/// toggleSettingsLayout swaps the layout, and keeps it.
+void toggleSettingsLayout() {
+  settingsAsMenu.value = !settingsAsMenu.value;
+  StorageManager.saveData("canvasSettingsMenu", settingsAsMenu.value);
+}
+
+/// _menuChosen is the section last chosen in the menu, as "remember|title":
+/// the same section if it is there, else one of the same name -- Animation
+/// on a text and then on a picture -- else the first.
+String? _menuChosen;
+
+/// _MenuItem is one section as the menu names it: its name, and -- for the
+/// end of the bar, where they go in the menu -- its "?" and whether it has
+/// a reset to offer. [state] is the section, for its reset and action.
+class _MenuItem {
+  final String remember;
+  final String title;
+  final IconData icon;
+  final bool changed;
+  final String help;
+  final bool resets;
+  final Widget? action;
+  final _CanvasSectionState? state;
+  const _MenuItem(this.remember, this.title, this.icon, this.changed,
+      {this.help = "", this.resets = false, this.action, this.state});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MenuItem &&
+      other.remember == remember &&
+      other.title == title &&
+      other.icon == icon &&
+      other.changed == changed &&
+      other.help == help &&
+      other.resets == resets &&
+      other.action == action;
+
+  @override
+  int get hashCode =>
+      Object.hash(remember, title, icon, changed, help, resets, action);
+}
+
+/// _MenuScope tells the sections under a menu which of them is chosen.
+/// [owner] null is no menu: a section inside a chosen section's body is
+/// drawn as a section again.
+class _MenuScope extends InheritedWidget {
+  final _CanvasSectionsState? owner;
+  final String? active;
+  const _MenuScope(
+      {required this.owner, required this.active, required super.child});
+
+  static _MenuScope? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_MenuScope>();
+
+  @override
+  bool updateShouldNotify(_MenuScope old) =>
+      old.active != active || old.owner != owner;
+}
+
+class _CanvasSectionsState extends State<CanvasSections> {
+  /// _items is the sections found under the menu, in order. Found by
+  /// looking, after a frame, rather than read off [CanvasSections.children]:
+  /// a background's sections are built deep inside its own settings.
+  List<_MenuItem> _items = const [];
+  bool _looking = false;
+  final ScrollController _bar = ScrollController();
+  final Map<String, GlobalKey> _tabKeys = {};
+  final GlobalKey _barView = GlobalKey();
+  String? _shown;
+
+  /// _scroll is the panel's scroll, followed so the bar stays at its top --
+  /// see _follow.
+  ScrollPosition? _scroll;
+
+  /// _stick is how far down its place the bar is drawn, to be at the top of
+  /// the panel while the sections under it are scrolled past.
+  double _stick = 0;
+  final GlobalKey _under = GlobalKey();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    var next = Scrollable.maybeOf(context, axis: Axis.vertical)?.position;
+    if (next != _scroll) {
+      _scroll?.removeListener(_follow);
+      _scroll = next;
+      _scroll?.addListener(_follow);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll?.removeListener(_follow);
+    _bar.dispose();
+    super.dispose();
+  }
+
+  /// _barRoom is the bar's height and the room round it.
+  static const double _barRoom = 38 + 2 + 6;
+
+  /// _follow keeps the bar at the top of the panel: scrolled past its own
+  /// place, it is drawn that much further down, as far as the end of the
+  /// sections under it.
+  void _follow() {
+    var place = _under.currentContext?.findRenderObject();
+    var view = Scrollable.maybeOf(context, axis: Axis.vertical)
+        ?.context
+        .findRenderObject();
+    if (place is! RenderBox || view is! RenderBox || !place.attached) return;
+    var top = place.localToGlobal(Offset.zero, ancestor: view).dy;
+    var most = math.max(0.0, place.size.height - _barRoom);
+    var stick = (-top).clamp(0.0, most).toDouble();
+    if ((stick - _stick).abs() > 0.25 && mounted) {
+      setState(() => _stick = stick);
+    }
+  }
+
+  /// _look finds the sections, after this frame.
+  void _look() {
+    if (_looking) return;
+    _looking = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _looking = false;
+      if (!mounted) return;
+      var found = <_MenuItem>[];
+      void visit(Element e) {
+        if (e is StatefulElement && e.state is _CanvasSectionState) {
+          var state = e.state as _CanvasSectionState;
+          var w = state.widget;
+          found.add(_MenuItem(w.remember, w.title, w.icon, w.changes > 0,
+              help: state._help,
+              resets: w.onReset != null,
+              action: w.action,
+              state: state));
+          return;
+        }
+        e.visitChildren(visit);
+      }
+
+      context.visitChildElements(visit);
+      if (!listEquals(found, _items)) setState(() => _items = found);
+    });
+  }
+
+  /// _active is the section to show among [_items].
+  String? get _active {
+    if (_items.isEmpty) return null;
+    var chosen = _menuChosen;
+    if (chosen != null) {
+      var bar = chosen.indexOf("|");
+      var remember = bar < 0 ? chosen : chosen.substring(0, bar);
+      var title = bar < 0 ? "" : chosen.substring(bar + 1);
+      for (var i in _items) {
+        if (i.remember == remember) return i.remember;
+      }
+      for (var i in _items) {
+        if (i.title == title) return i.remember;
+      }
+    }
+    return _items.first.remember;
+  }
+
+  void _choose(_MenuItem item) {
+    _menuChosen = "${item.remember}|${item.title}";
+    StorageManager.saveData("canvasSettingsMenuTab", _menuChosen);
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+      valueListenable: settingsAsMenu,
+      builder: (context, menu, _) {
+        if (!menu) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.parts != null) widget.parts!,
+              ...widget.children,
+            ],
+          );
+        }
+        _look();
+        var active = _active;
+        // Where the section is once laid out, the bar is put back where it
+        // belongs.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _follow();
+        });
+        // The bar over the sections, drawn after them so what scrolls under
+        // it goes under it; moved down to stay at the top of the panel.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.parts != null) widget.parts!,
+            Stack(key: _under, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: _barRoom),
+                child: _MenuScope(
+                  owner: this,
+                  active: active,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: widget.children,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: _stick,
+                left: 0,
+                right: 0,
+                child: _menuBar(context, active),
+              ),
+            ]),
+          ],
+        );
+      });
+
+  /// _menuBar is the menu: a name for each section, in a line that scrolls
+  /// sideways, the one chosen bold and underlined -- and at its end, kept in
+  /// view, the chosen section's "?", action and reset.
+  Widget _menuBar(BuildContext context, String? active) {
+    var theme = ThemeNotifier.of(context);
+    var accent = theme.colors.primary;
+    var muted = theme.colors.onSurfaceVariant;
+    // The one chosen brought into view, once each time it changes.
+    if (active != null && active != _shown) {
+      _shown = active;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Sideways only: ensureVisible would scroll the panel too, up or
+        // down to the bar.
+        var tab = _tabKeys[active]?.currentContext?.findRenderObject();
+        var view = _barView.currentContext?.findRenderObject();
+        if (tab is! RenderBox || view is! RenderBox || !_bar.hasClients) {
+          return;
+        }
+        var left = tab.localToGlobal(Offset.zero, ancestor: view).dx;
+        var right = left + tab.size.width;
+        var width = view.size.width, now = _bar.offset;
+        var target = left < 0
+            ? now + left
+            : right > width
+                ? now + right - width
+                : now;
+        _bar.jumpTo(target.clamp(0.0, _bar.position.maxScrollExtent));
+      });
+    }
+    Widget tab(_MenuItem item) {
+      var on = item.remember == active;
+      return InkWell(
+        key: _tabKeys.putIfAbsent(item.remember, () => GlobalKey()),
+        onTap: () => _choose(item),
+        child: Container(
+          key: ValueKey("menuTab-${item.remember}"),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            border: Border(
+                bottom: BorderSide(
+                    color: on ? accent : Colors.transparent, width: 2)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(item.title,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                    color: on ? theme.colors.onSurface : muted)),
+            if (item.changed)
+              Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(left: 5, bottom: 6),
+                decoration:
+                    BoxDecoration(color: accent, shape: BoxShape.circle),
+              ),
+          ]),
+        ),
       );
+    }
+
+    var chosen = _items.where((i) => i.remember == active).firstOrNull;
+    var section = chosen?.state;
+    var trailing = <Widget>[
+      if (chosen != null && chosen.help.isNotEmpty)
+        CanvasHint(chosen.help, round: true),
+      if (chosen?.action case var action?) action,
+      if (chosen != null && chosen.changed && chosen.resets)
+        CanvasIconButton(
+          key: ValueKey("sectionReset-${chosen.remember}"),
+          tight: true,
+          icon: Icons.restart_alt,
+          tooltip: "Reset ${chosen.title}",
+          onPressed: () => section?.widget.onReset?.call(),
+        ),
+    ];
+    return Container(
+      key: const ValueKey("settingsMenu"),
+      height: 38,
+      // Close over the first setting: the bar names the section, so there
+      // is no heading between them.
+      margin: const EdgeInsets.only(top: 2, bottom: 6),
+      decoration: BoxDecoration(
+        color: theme.colors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colors.outlineVariant),
+      ),
+      child: Row(children: [
+        Expanded(
+            child: ClipRRect(
+          key: _barView,
+          borderRadius: BorderRadius.circular(10),
+          child: SingleChildScrollView(
+            controller: _bar,
+            scrollDirection: Axis.horizontal,
+            child:
+                Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (var item in _items)
+                Material(
+                  type: MaterialType.transparency,
+                  child: tab(item),
+                ),
+            ]),
+          ),
+        )),
+        for (var t in trailing)
+          Padding(padding: const EdgeInsets.only(right: 6), child: t),
+      ]),
+    );
+  }
 }
 
 /// CanvasSection is one subject of an element's settings -- where it is, its
@@ -936,6 +1271,17 @@ class _CanvasSectionState extends State<CanvasSection> {
     if (widget.forceOpen && !old.forceOpen && !_open) {
       _open = true;
       keepSection(widget.remember, true);
+    }
+    // In the menu, a tool taken up shows its section, as it opens it here.
+    if (widget.forceOpen && !old.forceOpen) {
+      var owner = _MenuScope.of(context)?.owner;
+      if (owner != null) {
+        var item = _MenuItem(
+            widget.remember, widget.title, widget.icon, widget.changes > 0);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (owner.mounted) owner._choose(item);
+        });
+      }
     }
   }
 
@@ -1067,9 +1413,42 @@ class _CanvasSectionState extends State<CanvasSection> {
     ]);
   }
 
+  /// _menuBody is the section as the menu shows it, chosen: everything in
+  /// it and nothing over it -- its name is in the bar, and its "?", action
+  /// and reset at the bar's end.
+  Widget _menuBody() => RepaintBoundary(
+        // A section inside this one is a section again, not a menu item.
+        child: _MenuScope(
+          owner: null,
+          active: null,
+          child: CanvasCards(
+            title: widget.title,
+            child: Padding(
+              key: ValueKey("sectionBody-${widget.remember}"),
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var c in widget.children)
+                    if (c is! CanvasHint) c
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    // Under a menu, only the section chosen is drawn, and drawn open.
+    var menu = _MenuScope.of(context);
+    if (menu?.owner case var owner?) {
+      owner._look();
+      if (menu!.active != widget.remember) return const SizedBox.shrink();
+      return _menuBody();
+    }
     var open = _open;
     var changed = widget.changes > 0;
     // Painted on its own: one section changed is that section painted
@@ -1154,7 +1533,15 @@ class CanvasToolTiles<T> extends StatelessWidget {
   /// lit is whether [tool] is drawn as in hand.
   bool lit(T tool) => tool == active || (alsoActive?.call(tool) ?? false);
 
+  /// idle is what is said under the tiles with none of them picked.
+  final String idle;
+
+  /// title is the card's name.
+  final String title;
+
   const CanvasToolTiles({
+    this.idle = "Pick a tool to work on the canvas.",
+    this.title = "Tools",
     this.help = "",
     this.alsoActive,
     required this.tools,
@@ -1263,7 +1650,7 @@ class CanvasToolTiles<T> extends StatelessWidget {
         if (held == null)
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: Text("Pick a tool to work on the canvas.",
+            child: Text(idle,
                 style: TextStyle(
                     fontSize: card ? 12 : 10.5,
                     color: theme.colors.onSurfaceVariant)),
@@ -1285,7 +1672,7 @@ class CanvasToolTiles<T> extends StatelessWidget {
     );
     if (card) {
       return canvasCard(context,
-          title: canvasCardTitle(context, "Tools"), help: about, body: body);
+          title: canvasCardTitle(context, title), help: about, body: body);
     }
     return Padding(
         padding: const EdgeInsets.only(bottom: canvasGroupGap / 2),
@@ -1294,6 +1681,88 @@ class CanvasToolTiles<T> extends StatelessWidget {
 }
 
 /// _FoldingTiles is a card of tiles that folds -- see CanvasTiles.foldAs.
+/// _ScrollingTiles is a card of tiles in one line that scrolls sideways,
+/// with the one chosen brought into view -- so a kind chosen at the far end
+/// of the line, a picture's Drift, is seen on coming back to the panel
+/// rather than found by scrolling.
+class _ScrollingTiles<T> extends StatefulWidget {
+  final CanvasTiles<T> tiles;
+  const _ScrollingTiles({required this.tiles, super.key});
+
+  @override
+  State<_ScrollingTiles<T>> createState() => _ScrollingTilesState<T>();
+}
+
+class _ScrollingTilesState<T> extends State<_ScrollingTiles<T>> {
+  final ScrollController _strip = ScrollController();
+
+  /// _shown is the tile last brought into view: brought there once when it
+  /// is chosen, not on every rebuild, which would snap the line back under
+  /// somebody scrolling it.
+  int _shown = -1;
+
+  @override
+  void dispose() {
+    _strip.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    var t = widget.tiles;
+    const gap = 8.0;
+    var at = t.tiles.indexWhere((tile) => t.selected(tile.value));
+    return canvasCard(context,
+        title: t.label == null ? null : canvasCardTitle(context, t.label!),
+        help: t.help,
+        body: Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: LayoutBuilder(builder: (context, box) {
+            var width = box.maxWidth.isFinite ? box.maxWidth : 300.0;
+            if (at >= 0 && at != _shown) {
+              _shown = at;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!_strip.hasClients) return;
+                // Only as far as it takes to be in view: one already in
+                // view stays where it is.
+                var left = at * (t.tileWidth + gap);
+                var right = left + t.tileWidth;
+                var now = _strip.offset;
+                var target = left < now
+                    ? left
+                    : right > now + width
+                        ? right - width
+                        : now;
+                _strip.jumpTo(target
+                    .clamp(0.0, _strip.position.maxScrollExtent)
+                    .toDouble());
+              });
+            }
+            return SizedBox(
+              height: t.previewHeight + 30,
+              // Every tile built, not only those in view: a handful, and a
+              // tile scrolled out of view is still one to reach.
+              child: SingleChildScrollView(
+                key: ValueKey("tilesRow-${t.label}"),
+                controller: _strip,
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  for (var (i, tile) in t.tiles.indexed)
+                    Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : gap),
+                      child: SizedBox(
+                          width: t.tileWidth,
+                          child: t._tile(context, theme, tile, hover: false)),
+                    ),
+                ]),
+              ),
+            );
+          }),
+        ));
+  }
+}
+
 class _FoldingTiles<T> extends StatefulWidget {
   final CanvasTiles<T> tiles;
   const _FoldingTiles({required this.tiles, super.key});

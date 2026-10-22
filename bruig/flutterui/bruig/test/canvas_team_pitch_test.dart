@@ -678,8 +678,8 @@ void _photoEditorTests() {
     // The default size moves every circle nobody has sized, and not the
     // one that has been.
     var own = team.players[0].crop!.radius!;
-    await enterValue(tester, 
-        find.byKey(const ValueKey("teamPhotoDefaultSize")), "4");
+    await enterValue(
+        tester, find.byKey(const ValueKey("teamPhotoDefaultSize")), "4");
     await tester.pumpAndSettle();
     expect(team.photoCropSize, closeTo(0.04, 1e-9));
     expect(team.cropOf(3, 1.5).size, closeTo(0.04, 1e-9));

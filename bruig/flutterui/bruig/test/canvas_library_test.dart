@@ -69,7 +69,9 @@ void main() {
   test("what is stored joins the library the first time, named", () async {
     var (badge, poster) = await storeSome();
     var all = await CanvasLibrary.list();
-    expect({for (var a in all) a.id: a.name}, {
+    expect({
+      for (var a in all) a.id: a.name
+    }, {
       badge: "Club badge",
       song: song,
       film: "Goal",
@@ -92,8 +94,8 @@ void main() {
     expect(await CanvasAssets.exists(stray), isFalse);
     expect(await CanvasMedia.existingPath(MediaKind.audio, song), isNotNull);
     expect(await CanvasMedia.existingPath(MediaKind.video, film), isNotNull);
-    expect(await CanvasMedia.existingPath(MediaKind.audio, filmSound),
-        isNotNull,
+    expect(
+        await CanvasMedia.existingPath(MediaKind.audio, filmSound), isNotNull,
         reason: "a video's sound stays with the video");
   });
 
@@ -103,7 +105,8 @@ void main() {
     expect(await CanvasLibrary.usedBy(song), isEmpty);
 
     await CanvasLibrary.remove(film);
-    expect((await CanvasLibrary.list()).map((a) => a.id), isNot(contains(film)));
+    expect(
+        (await CanvasLibrary.list()).map((a) => a.id), isNot(contains(film)));
     expect(await CanvasMedia.existingPath(MediaKind.video, film), isNull);
     expect(await CanvasMedia.existingPath(MediaKind.audio, filmSound), isNull);
     expect(await CanvasAssets.exists(poster), isFalse);

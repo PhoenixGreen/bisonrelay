@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart';
@@ -56,6 +57,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   @override
   void initState() {
     super.initState();
+    readSettingsLayout();
     _makeBodies();
   }
 
@@ -86,7 +88,8 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
         // The headings, and only the headings: two of the three say something
         // about the document. A panel whose name is out of date is worse than
         // one with no name.
-        listenable: controller,
+        // And the settings' layout, which its heading's icon shows.
+        listenable: Listenable.merge([controller, settingsAsMenu]),
         builder: (context, _) => _stack(context),
       );
 
@@ -166,7 +169,13 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
             // being edited -- and "Image settings" is a more useful heading
             // than a phrase that is true of everything.
             label: elementSettingsTitle(controller),
-            icon: Icons.tune,
+            // The icon switches the layout: sections down the panel, or a
+            // menu of them across the top with one shown at a time.
+            icon: settingsAsMenu.value ? Icons.view_week_outlined : Icons.tune,
+            onIcon: toggleSettingsLayout,
+            iconTooltip: settingsAsMenu.value
+                ? "Show the settings as sections"
+                : "Show the settings as a menu",
             hint: elementSettingsHint,
             body: _settings,
           ),
@@ -278,8 +287,10 @@ class _SettingsBodyState extends State<_SettingsBody> {
             // with captions a third the height of the header's own words --
             // close up they read as the header's second line rather than as
             // the first setting.
-            padding: const EdgeInsets.fromLTRB(
-                8, canvasGroupGap + canvasRowGap, 8, canvasGroupGap - 4),
+            // Half that again since: with the settings as a menu, the bar
+            // under the header said the rest.
+            padding: EdgeInsets.fromLTRB(
+                8, (canvasGroupGap + canvasRowGap) / 2, 8, canvasGroupGap - 4),
             child: CanvasControlScope(
               maxWidth: 240,
               child: elementSettingsBody(context, controller),

@@ -29,7 +29,8 @@ Future<ui.Image> _solid(Color c) async {
   return r.endRecording().toImage(4, 4);
 }
 
-Future<Color> _pixel(void Function(ui.Canvas) paint, int w, int h, int x, int y) async {
+Future<Color> _pixel(
+    void Function(ui.Canvas) paint, int w, int h, int x, int y) async {
   var r = ui.PictureRecorder();
   paint(ui.Canvas(r));
   var image = await r.endRecording().toImage(w, h);
@@ -41,16 +42,14 @@ Future<Color> _pixel(void Function(ui.Canvas) paint, int w, int h, int x, int y)
 
 void main() {
   group("a video's blend", () {
-    test("screen brightens what is under it rather than covering it",
-        () async {
+    test("screen brightens what is under it rather than covering it", () async {
       var frame = await _solid(const Color(0xFF800000)); // half red
       Future<Color> over(LayerBlend blend) => _pixel((canvas) {
             canvas.drawRect(const Rect.fromLTWH(0, 0, 40, 40),
                 Paint()..color = const Color(0xFF008000)); // half green
             paintElement(
                 canvas,
-                VideoElement(
-                    const ElementBase(id: "v", width: 40, height: 40),
+                VideoElement(const ElementBase(id: "v", width: 40, height: 40),
                     clip: const MediaClip(
                         timed: true,
                         playlist: [MediaSource(assetId: "v.mp4", length: 1)]),
@@ -68,7 +67,8 @@ void main() {
 
     test("is saved", () {
       var v = const VideoElement(ElementBase(id: "v"), blend: LayerBlend.add);
-      expect(VideoElement.fromJson(v.toJson(), const ElementBase(id: "v")).blend,
+      expect(
+          VideoElement.fromJson(v.toJson(), const ElementBase(id: "v")).blend,
           LayerBlend.add);
     });
   });
@@ -81,7 +81,8 @@ void main() {
           .at(0, page);
       expect(zoom, 2);
       expect(focus, const Offset(25, 12.5), reason: "held a quarter in");
-      var (still, _) = const SceneCamera(fromZoom: 0.5, toZoom: 0.5).at(0, page);
+      var (still, _) =
+          const SceneCamera(fromZoom: 0.5, toZoom: 0.5).at(0, page);
       expect(still, 1, reason: "never smaller than the page");
     });
 
@@ -120,9 +121,11 @@ void main() {
       var w = size.width.round(), h = size.height.round();
       Future<Color> at(CanvasDocument d, int x, int y) =>
           _pixel((c) => paintSequenceFrame(c, d, 0), w, h, x, y);
-      var still = scene(null), pushed = scene(const SceneCamera(fromZoom: 2, toZoom: 2));
+      var still = scene(null),
+          pushed = scene(const SceneCamera(fromZoom: 2, toZoom: 2));
       var x = (w * 0.05).round(), y = h ~/ 2;
-      expect((await at(still, x, y)).r, lessThan(0.1), reason: "the black edge");
+      expect((await at(still, x, y)).r, lessThan(0.1),
+          reason: "the black edge");
       expect((await at(pushed, x, y)).r, greaterThan(0.9),
           reason: "zoomed in two times, the edge is off the picture");
       expect((await at(pushed, w - 10, h - 10)).r, lessThan(0.1),

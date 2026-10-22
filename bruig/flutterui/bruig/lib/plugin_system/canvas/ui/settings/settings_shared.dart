@@ -276,7 +276,11 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
           active: e.base.lockAspect,
           onPressed: () {
             begin();
-            write(e.withBase(lockAspect: !e.base.lockAspect));
+            // A picture let go of squashes rather than trims -- see
+            // ImageElement.withProportionsKept.
+            write(e is ImageElement
+                ? e.withProportionsKept(!e.base.lockAspect)
+                : e.withBase(lockAspect: !e.base.lockAspect));
             commit();
           },
         ),
@@ -345,6 +349,39 @@ Widget positionGroup(CanvasController controller, CanvasElement e,
         ),
         anchorButtons(controller, e, write, begin, commit),
         poseDot,
+        // How it is slanted, after how it is turned -- and the switch that
+        // makes the side handles slant it, for a screen with no keys to hold.
+        const CanvasLineBreak(),
+        for (var (key, label, value, across) in [
+          ("elementSkewX", "Skew X", e.base.skewX, true),
+          ("elementSkewY", "Skew Y", e.base.skewY, false),
+        ])
+          CanvasStepper(
+            key: ValueKey(key),
+            label: label,
+            value: value,
+            min: -maxSkew,
+            max: maxSkew,
+            width: 104,
+            step: 5,
+            dragStep: 1,
+            defaultValue: 0,
+            suffix: "°",
+            onChanged: (v) {
+              begin();
+              write(across ? e.withBase(skewX: v) : e.withBase(skewY: v));
+            },
+            onCommit: commit,
+          ),
+        CanvasToggle(
+          key: const ValueKey("elementSkewHandles"),
+          label: "Skew",
+          value: controller.skewHandles,
+          onChanged: (v) => controller.skewHandles = v,
+        ),
+        const CanvasHint("Skew X leans the sides, Skew Y the top and bottom. "
+            "On the canvas, hold Command and drag a side handle -- or switch "
+            "Skew on and drag one without a key."),
         // A counter on a document of pages can be the page number, and this
         // is where it is said. Beside what the element *is* on this page
         // rather than three controls into the counter's own settings, which
@@ -1578,7 +1615,8 @@ Widget _animationCards(
         key: const ValueKey("elementArriveKinds"),
         label: "Comes in",
         help: "How it arrives. Pick a kind; which way, how far, when and how "
-            "long are in the card under it.",
+            "long are in the card under it. Press the kind chosen again to "
+            "shut that card or open it.",
         scrolls: true,
         tileWidth: 72,
         previewHeight: 30,
@@ -1586,14 +1624,25 @@ Widget _animationCards(
         selected: (f) =>
             animation.on ? animation.preset.family == f : f == null,
         keyOf: (f) => "elementArrive-${f?.name ?? "none"}",
-        onPick: (f) => arriveWith(f == null
-            ? ElementAnimationPreset.none
-            : ElementAnimationPreset.inFamily(f).first),
+        onPick: (f) {
+          // The kind chosen, pressed again: its card shut or opened, the
+          // arrival left as it is.
+          if (f != null && animation.on && animation.preset.family == f) {
+            controller.toggleCard("arrive");
+            return;
+          }
+          controller.openCard("arrive");
+          arriveWith(f == null
+              ? ElementAnimationPreset.none
+              : ElementAnimationPreset.inFamily(f).first);
+        },
       ),
-      if (animation.on)
+      if (animation.on && !controller.cardShut("arrive"))
         CanvasControlGroup(
           key: const ValueKey("elementArriveHow"),
-          label: "${presetName(animation.preset)} in",
+          // Under "Comes in", its name says the rest: "Fade in", not
+          // "Fade in in".
+          label: presetName(animation.preset),
           help: "The arrival's own settings: which of its kind, which way it "
               "comes and how far, and when it starts, how long it takes and "
               "how it eases.",
@@ -1696,7 +1745,8 @@ Widget _animationCards(
         key: const ValueKey("elementLeaveKinds"),
         label: "Goes out",
         help: "How it leaves, at the end of its time on the canvas: an "
-            "arrival played backwards.",
+            "arrival played backwards. Press the kind chosen again to shut "
+            "its card or open it.",
         scrolls: true,
         tileWidth: 72,
         previewHeight: 30,
@@ -1704,17 +1754,25 @@ Widget _animationCards(
         selected: (f) =>
             animation.closes ? animation.exit.family == f : f == null,
         keyOf: (f) => "elementLeave-${f?.name ?? "none"}",
-        onPick: (f) => leaveWith(f == null
-            ? ElementAnimationPreset.none
-            : ElementAnimationPreset.inFamily(f).first),
+        onPick: (f) {
+          if (f != null && animation.closes && animation.exit.family == f) {
+            controller.toggleCard("leave");
+            return;
+          }
+          controller.openCard("leave");
+          leaveWith(f == null
+              ? ElementAnimationPreset.none
+              : ElementAnimationPreset.inFamily(f).first);
+        },
       ),
       if (animation.closes &&
+          !controller.cardShut("leave") &&
           (!oneOfAKind(animation.exit) ||
               animation.exitDirected ||
               animation.exitStrengthens))
         CanvasControlGroup(
           key: const ValueKey("elementLeaveHow"),
-          label: "${presetName(animation.exit)} out",
+          label: leavingName(animation.exit),
           help: "Which of its kind, and which way it goes and how far.",
           rule: false,
           children: [
@@ -1741,7 +1799,13 @@ Widget _animationCards(
           (loop) => now(animation.copyWith(loop: loop)), (loop) {
         begin();
         write(animation.copyWith(loop: loop));
-      }, commit, drifts: element is ImageElement),
+      }, commit,
+          drifts: element is ImageElement,
+          // A picture's own loop moves every layer in it as one; each layer
+          // can loop on its own as well -- see the picture's Animation.
+          label: element is ImageElement && element.layered
+              ? "Whole picture loops"
+              : "Looping"),
       if (animation.cuts)
         ...effectBits(
             animation.effect,
@@ -1768,6 +1832,16 @@ Widget _animationCards(
 /// is one choice now, its way round being the Direction's.
 String presetName(ElementAnimationPreset p) =>
     p.family == ElementAnimationFamily.slide ? "Slide" : p.label;
+
+/// leavingName is [p]'s name as a way of going out, under "Goes out":
+/// "Fade in" played backwards is "Fade out"; a name with no "in" in it --
+/// "Pop", "Wipe across" -- needs nothing more.
+String leavingName(ElementAnimationPreset p) {
+  var name = presetName(p);
+  return name.endsWith(" in")
+      ? "${name.substring(0, name.length - 3)} out"
+      : name;
+}
 
 /// oneOfAKind is whether [p]'s family is one choice, with nothing to pick
 /// between -- the slides, which differ only in their direction.
@@ -2039,7 +2113,8 @@ Widget loopGroup(
             help: "What it goes on doing once it has arrived -- or from a "
                 "frame of its own -- until the scene ends, or for so many "
                 "times. Pick a kind; which, how long and how strong are in "
-                "the card under it.",
+                "the card under it. Press the kind chosen again to shut its "
+                "card or open it.",
             scrolls: true,
             tileWidth: 72,
             previewHeight: 30,
@@ -2049,12 +2124,19 @@ Widget loopGroup(
             ],
             selected: (f) => loop.on ? loop.preset.family == f : f == null,
             keyOf: (f) => "${keys}Loop-${f?.name ?? "none"}",
-            onPick: (f) => now(loop.copyWith(
-                preset: f == null
-                    ? LoopPreset.none
-                    : LoopPreset.inFamily(f).first)),
+            onPick: (f) {
+              if (f != null && loop.on && loop.preset.family == f) {
+                controller.toggleCard("${keys}Loop");
+                return;
+              }
+              controller.openCard("${keys}Loop");
+              now(loop.copyWith(
+                  preset: f == null
+                      ? LoopPreset.none
+                      : LoopPreset.inFamily(f).first));
+            },
           ),
-          if (loop.on)
+          if (loop.on && !controller.cardShut("${keys}Loop"))
             CanvasControlGroup(
               key: ValueKey("${keys}LoopHow"),
               label: "${loop.preset.label} loop",

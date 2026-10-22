@@ -52,8 +52,8 @@ void main() {
         maxFrameRate);
     expect(const CanvasDocument().copyWith(frameRate: 400).frameRate,
         maxFrameRate);
-    expect(const CanvasDocument().copyWith(frameRate: 0).frameRate,
-        minFrameRate);
+    expect(
+        const CanvasDocument().copyWith(frameRate: 0).frameRate, minFrameRate);
   });
 
   // And it survives being written down and read back, which is the half a

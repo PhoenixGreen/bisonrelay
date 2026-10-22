@@ -258,7 +258,9 @@ class ElementLoop {
   /// it starts, 1 once it has ended, where it stays -- or null for a loop
   /// that is not one. Once across the whole span: its cycle, rest and
   /// repeats are a going-round's, and a drift does not go round.
-  double? driftAt(int frame, {int? arrived, required int last}) {
+  /// [frame] may fall between frames, for a drift drawn smoothly while the
+  /// editor plays -- see betweenFrames.
+  double? driftAt(num frame, {int? arrived, required int last}) {
     if (!on || !preset.drifts) return null;
     var start = from ?? arrived ?? 0;
     var end = math.max(start, to ?? last);

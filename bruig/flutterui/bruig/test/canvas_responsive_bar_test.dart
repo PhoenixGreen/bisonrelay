@@ -212,7 +212,9 @@ void main() {
       (tester) async {
     var controller = CanvasController(CanvasDocument(
       size: const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000),
-      elements: [ImageElement(const ElementBase(id: "i", width: 400, height: 300))],
+      elements: [
+        ImageElement(const ElementBase(id: "i", width: 400, height: 300))
+      ],
     ));
     addTearDown(controller.dispose);
     controller.selectOnly("i");

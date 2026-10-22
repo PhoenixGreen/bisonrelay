@@ -23,7 +23,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart
 import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/paint_brushes.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/presets_section.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/image_saved.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -69,10 +69,13 @@ List<Widget> imagePanel(
       ],
   };
   return [
-    ImageLayersList(
-        key: const ValueKey("imageLayers"), controller: controller, element: e),
     CanvasSections(
       key: const ValueKey("imageSections"),
+      // The layers, over the sections -- and over the menu's bar.
+      parts: ImageLayersList(
+          key: const ValueKey("imageLayers"),
+          controller: controller,
+          element: e),
       children: [if (together) s.arrange(), ...sections],
     ),
   ];
@@ -188,6 +191,29 @@ class _Sections {
 
   // ---- Position ---------------------------------------------------------
 
+  /// _frameShapeDropdown is the shape the whole picture is cut to -- every
+  /// layer and the paint on it -- which turns Clip to frame on.
+  Widget _frameShapeDropdown() => CanvasDropdown<String>(
+        key: const ValueKey("imageFrameShapeKind"),
+        label: "Cut to",
+        value: e.frame == ShapeKind.rectangle ? "" : e.frame?.name ?? "",
+        width: 128,
+        options: [
+          ("", "Rectangle"),
+          // "Rectangle" above is no cut at all; the rectangle shape again
+          // would be the same thing twice.
+          for (var k in ShapeKind.values)
+            if (k != ShapeKind.rectangle) (k.name, k.label),
+        ],
+        onChanged: (v) {
+          begin();
+          write(v.isEmpty
+              ? e.copyWith(clearFrame: true)
+              : e.copyWith(frame: ShapeKind.fromName(v), clip: true));
+          commit();
+        },
+      );
+
   Widget position() {
     var look = _look;
     String summary;
@@ -207,6 +233,79 @@ class _Sections {
           "${r.width.round()} × ${r.height.round()}"
           "${picked.turn != 0 ? " · ${picked.turn.round()}°" : ""}";
     }
+    var picture = picked.kind == LayerKind.picture || picked.isBase;
+    var tools = [
+      PositionTool.place,
+      if (picture) ...[
+        PositionTool.flip,
+        PositionTool.fit,
+        PositionTool.shape,
+        PositionTool.warp,
+      ],
+    ];
+    // The Warp tool open on this picture shows its grid; another tool, or
+    // none, puts it away.
+    var open = controller.positionTool;
+    if (!tools.contains(open)) open = null;
+    var warping = controller.warpLayer == picked.id;
+    var settings = switch (open) {
+      PositionTool.place => [
+          framed
+              ? positionGroup(controller, e, write, begin, commit)
+              : layerPositionGroup(controller, e, picked, write, begin, commit),
+        ],
+      PositionTool.flip =>
+        flipControls(controller, e, picked, write, begin, commit),
+      PositionTool.fit => [
+          CanvasDropdown<ImageFit>(
+            label: "Fills its box",
+            value: look.fit,
+            width: 106,
+            options: [for (var f in ImageFit.values) (f, f.label)],
+            onChanged: (v) {
+              begin();
+              _writeLook(look.copyWith(fit: v));
+              commit();
+            },
+          ),
+          if (!framed) ...[
+            const CanvasLineBreak(),
+            ...fitButtons(controller, e, picked, write, begin, commit),
+          ],
+          ...pictureLookGroups(look, _writeLook, begin, commit,
+              shown: look.hasImage,
+              tryLook: _tryLook,
+              framing: look.fit == ImageFit.cover,
+              shape: false,
+              crop: false,
+              filter: false,
+              overlay: false,
+              outline: false),
+          const CanvasHint("Fills its box is how the picture fills the box it "
+              "is in: Cover fills it and trims what runs over, Show whole "
+              "shows all of it inside, Stretch pulls it to the box. Cover "
+              "frame and Inside frame size the picture's box to the frame. "
+              "With Cover, double-click the picture to move it about inside "
+              "its box and scroll to zoom."),
+        ],
+      PositionTool.shape => picked.isBase
+          ? [
+              _frameShapeDropdown(),
+              const CanvasHint("The base picture's shape cuts the whole "
+                  "picture -- every layer and the paint on it -- and turns "
+                  "Clip to frame on."),
+            ]
+          : pictureLookGroups(look, _writeLook, begin, commit,
+              shown: look.hasImage,
+              framing: false,
+              crop: false,
+              filter: false,
+              overlay: false,
+              outline: false),
+      PositionTool.warp =>
+        warping ? warpControls(controller, e, picked) : const <Widget>[],
+      null => const <Widget>[],
+    };
     return CanvasSection(
       key: const ValueKey("imageSection-position"),
       icon: Icons.open_with,
@@ -215,58 +314,36 @@ class _Sections {
       remember: _remember("position"),
       initiallyOpen: true,
       children: [
-        if (framed) ...[
-          positionGroup(controller, e, write, begin, commit),
-          quickMoveTiles(controller, e, picked, write, begin, commit,
-              placing: false),
-        ] else ...[
-          layerPositionGroup(controller, e, picked, write, begin, commit),
-          quickMoveTiles(controller, e, picked, write, begin, commit),
-        ],
+        CanvasToolTiles<PositionTool>(
+          key: const ValueKey("imagePositionTools"),
+          tools: [for (var t in tools) (t, t.icon, t.label)],
+          active: open,
+          keyOf: (t) => "positionTool-${t.name}",
+          tooltipOf: (t) => t.label,
+          help: "Where the picture is and how big; its mirror; how it fills "
+              "its box; the shape it is cut to; and its warp. Pick one to see "
+              "its settings; pick it again to put it away.",
+          onPick: (t) {
+            controller.positionTool = t;
+            if (t == PositionTool.warp) {
+              controller.editWarp(e.id, picked.id);
+            } else if (controller.warpLayer != null) {
+              controller.editWarp(e.id, picked.id, on: false);
+            }
+          },
+          settings: settings,
+        ),
         CanvasControlGroup(
           label: "Picture",
           help: "Put a picture in or replace it -- from a file or from the "
               "pictures already added -- change its size and quality, or "
-              "take it out. Fills its box is how the picture fills the box "
-              "it is in: Cover fills it and trims what runs over, Show whole "
-              "shows all of it inside, Stretch pulls it to the box. With "
-              "Cover, double-click the picture to move it about inside its "
-              "box and scroll to zoom.",
+              "take it out.",
           rule: false,
           children: [
             ...pictureSourceButtons(context, look, _writeLook, begin, commit,
                 layerFrame: _layerFrame),
-            CanvasDropdown<ImageFit>(
-              label: "Fills its box",
-              value: look.fit,
-              width: 106,
-              options: [for (var f in ImageFit.values) (f, f.label)],
-              onChanged: (v) {
-                begin();
-                _writeLook(look.copyWith(fit: v));
-                commit();
-              },
-            ),
           ],
         ),
-        ...pictureLookGroups(look, _writeLook, begin, commit,
-            shown: look.hasImage,
-            tryLook: _tryLook,
-            // Framing only where there is slack to frame with -- the note
-            // saying so is in the Picture card's "?".
-            framing: look.fit == ImageFit.cover,
-            // The base picture's shape cuts the whole element -- it is the
-            // frame's, in the Frame section. A layer's cuts only the layer.
-            shape: !picked.isBase,
-            // A layer's mirror, which the crop has to know: its left is on
-            // the right. The base picture's is read off its own layer.
-            flipX: !picked.isBase && picked.flipX,
-            flipY: !picked.isBase && picked.flipY,
-            // The crop is with the mask: see mask().
-            crop: false,
-            filter: false,
-            overlay: false,
-            outline: false),
       ],
     );
   }
@@ -277,9 +354,28 @@ class _Sections {
     var framed = !_picture;
     var mask = framed ? picked.mask : _look.mask;
     var tools = framed ? framedMaskTools : maskTools;
-    var settings = _holds(tools)
-        ? maskToolSettings(controller, e, picked)
-        : const <Widget>[];
+    // The Crop tool's settings are the amounts trimmed off; every other
+    // tool's are its brush's or its own.
+    void put(ImageMask next) {
+      if (framed) {
+        write(e.withLayer(picked.id, (l) => l.copyWith(mask: next)));
+      } else {
+        _writeLook(_look.copyWith(mask: next));
+      }
+    }
+
+    // Crop's settings are the amounts trimmed off, Edge's the mask's edge;
+    // every other tool's are its brush's or its own.
+    var settings = !_holds(tools)
+        ? const <Widget>[]
+        : switch (controller.imageTool) {
+            ImageTool.crop => cropControls(_look, _writeLook, begin, commit,
+                flipX: !picked.isBase && picked.flipX,
+                flipY: !picked.isBase && picked.flipY),
+            ImageTool.edge =>
+              maskEdgeControls(mask, put, begin, commit, framed: framed),
+            _ => maskToolSettings(controller, e, picked),
+          };
     var feather = mask.refine.feather;
     var summary = mask.empty
         ? framed
@@ -302,20 +398,13 @@ class _Sections {
     }
     if (_picture && !_look.crop.isWhole) summary += " · cropped";
     var changes = (mask.empty ? 0 : 1) + (mask.refine.any ? 1 : 0);
-    void put(ImageMask next) {
-      if (framed) {
-        write(e.withLayer(picked.id, (l) => l.copyWith(mask: next)));
-      } else {
-        _writeLook(_look.copyWith(mask: next));
-      }
-    }
 
     return CanvasSection(
       key: const ValueKey("imageSection-mask"),
       icon: Icons.content_cut,
       // How much of the picture shows: what is painted away, and what is
       // trimmed off its edges.
-      title: _picture ? "Mask & crop" : "Mask",
+      title: "Mask",
       summary: summary,
       remember: _remember("mask"),
       forceOpen: _holds(tools),
@@ -329,28 +418,18 @@ class _Sections {
         imageToolTiles(controller, e, picked, tools, settings,
             help: framed
                 ? "Hide parts of this layer: brush it away, draw round it, or "
-                    "fade it across. Every mark can be taken back."
-                : "Hide the background, or anything else: let Select subject "
-                    "find the person, brush over what to keep, refine the "
-                    "hair, or mark by hand. Every mark can be taken back."),
+                    "fade it across, and soften its edge with Edge. Every "
+                    "mark can be taken back."
+                : "Trim the picture with Crop and soften the mask's edge "
+                    "with Edge. Hide the background, or anything else: let "
+                    "Select subject find the person, brush over what to "
+                    "keep, refine the hair, or mark by hand. Every mark can "
+                    "be taken back."),
         ...maskGroupsFor(mask, put, begin, commit,
             framed: framed, controller: controller),
         if (_picture)
           pictureRemovalGroup(controller, _look, _writeLook, begin, commit,
               layer: !picked.isBase),
-        // The crop: the picture's edges trimmed off by numbers, beside the
-        // mask that paints parts of it away.
-        if (_picture)
-          ...pictureLookGroups(_look, _writeLook, begin, commit,
-              shown: _look.hasImage,
-              shape: false,
-              framing: false,
-              crop: true,
-              filter: false,
-              overlay: false,
-              outline: false,
-              flipX: !picked.isBase && picked.flipX,
-              flipY: !picked.isBase && picked.flipY),
       ],
     );
   }
@@ -502,6 +581,8 @@ class _Sections {
             crop: false,
             filter: false,
             outline: false),
+        // Looks and designs kept to wear again: a look is a colour grade.
+        ImageSaved(controller: controller, element: e),
       ],
     );
   }
@@ -606,6 +687,8 @@ class _Sections {
         ),
         ...adjustmentSettings(controller, e, picked, write, begin, commit,
             kindPicker: false),
+        // The grades kept, where the grading is: see ImageSaved.
+        ImageSaved(controller: controller, element: e),
       ],
     );
   }
@@ -654,6 +737,7 @@ class _Sections {
         ),
         ...textureSettings(controller, e, picked, write, begin, commit,
             kindPicker: false),
+        ImageSaved(controller: controller, element: e),
       ],
     );
   }
@@ -705,7 +789,10 @@ class _Sections {
         summary: picked.fill.fades ? "A fade" : "One colour",
         remember: _remember("own"),
         initiallyOpen: true,
-        children: fillLayerSettings(e, picked, write, begin, commit),
+        children: [
+          ...fillLayerSettings(e, picked, write, begin, commit),
+          ImageSaved(controller: controller, element: e),
+        ],
       );
 
   // ---- Blend, for a layer that is not a picture -------------------------
@@ -755,6 +842,18 @@ class _Sections {
       children: [
         elementAnimationSection(controller, e, a,
             (next) => write(e.copyWith(animation: next)), begin, commit),
+        // The picked layer's own loop, beside the picture's: the picture's
+        // moves every layer as one, a layer's moves it alone.
+        if (controller.imageEditing == e.id)
+          loopGroup(controller, picked.loop, (l) {
+            begin();
+            write(e.withLayer(picked.id, (x) => x.copyWith(loop: l)));
+            commit();
+          }, (l) {
+            begin();
+            write(e.withLayer(picked.id, (x) => x.copyWith(loop: l)));
+          }, commit,
+              keys: "imageLayer", label: "This layer loops", drifts: true),
         if (controller.cues.isNotEmpty) elementCueGroup(controller, e),
         if (index > 0 && a.on)
           CanvasControlGroup(
@@ -819,107 +918,73 @@ class _Sections {
 
   // ---- Frame: the whole image -------------------------------------------
 
-  Widget frame() => CanvasSection(
-        key: const ValueKey("imageSection-frame"),
-        icon: Icons.crop_square,
-        title: "Frame",
-        scope: "Whole image",
-        summary: e.layered
-            ? "${e.width.round()} × ${e.height.round()} · "
-                "${e.scaleContent ? "content scales" : "content stays put"}"
-            : "Background, border, saved designs and looks",
-        remember: "image.frame",
-        children: [
-          // The frame round the layers: where it is and how big, and whether
-          // sizing it sizes them. A plain picture's is in Position.
-          if (e.layered) ...[
-            positionGroup(controller, e, write, begin, commit),
-            CanvasControlGroup(
-              key: const ValueKey("imageFrameScaling"),
-              label: "When the frame is resized",
-              help: "Off, the frame is resized round the layers: each stays "
-                  "its size, where it is on the page -- so a layer can run "
-                  "past the base picture, and the base picture can be sized "
-                  "on its own in Position. On, everything in the frame is "
-                  "scaled with it.",
-              rule: false,
-              children: [
-                CanvasToggle(
-                  key: const ValueKey("imageScaleContent"),
-                  label: "Scale content",
-                  value: e.scaleContent,
-                  onChanged: (v) {
-                    begin();
-                    write(e.copyWith(scaleContent: v));
-                    commit();
-                  },
-                ),
-              ],
-            ),
-            CanvasControlGroup(
-              key: const ValueKey("imageFrameClip"),
-              label: "What runs past the frame",
-              help: "Off, nothing is cut: paint a stroke past the frame or "
-                  "drag a layer out of it and the frame grows to take it in, "
-                  "and a shadow or a glow is drawn where it falls. On, "
-                  "everything is cut to the frame -- for a picture cut to a "
-                  "shape, or with rounded corners. Wrap frame to content "
-                  "makes the frame exactly round what is in it, smaller as "
-                  "well as larger.",
-              rule: false,
-              children: [
-                CanvasToggle(
-                  key: const ValueKey("imageClip"),
-                  label: "Clip to frame",
-                  value: e.clip,
-                  onChanged: (v) {
-                    begin();
-                    write(e.copyWith(clip: v));
-                    commit();
-                  },
-                ),
-                CanvasTextButton(
-                  key: const ValueKey("imageFitFrame"),
-                  icon: Icons.fit_screen_outlined,
-                  label: "Wrap frame to content",
-                  onPressed: () {
-                    begin();
-                    write(e.fittedToContent());
-                    commit();
-                  },
-                ),
-              ],
-            ),
-          ],
-          CanvasControlGroup(
-            key: const ValueKey("imageFrameShape"),
-            label: "Frame shape",
-            help: "Cut the whole picture -- every layer and the paint on it "
-                "-- to a shape. Choosing one turns Clip to frame on.",
-            rule: false,
-            children: [
-              CanvasDropdown<String>(
-                key: const ValueKey("imageFrameShapeKind"),
-                label: "Cut to",
-                value: e.frame?.name ?? "",
-                width: 128,
-                options: [
-                  ("", "Rectangle"),
-                  for (var k in ShapeKind.values) (k.name, k.label),
-                ],
-                onChanged: (v) {
-                  begin();
-                  write(v.isEmpty
-                      ? e.copyWith(clearFrame: true)
-                      : e.copyWith(frame: ShapeKind.fromName(v), clip: true));
-                  commit();
-                },
-              ),
-            ],
+  Widget frame() {
+    // The frame round the layers -- where it is, how big, and what happens
+    // to what is in it -- is a picture of layers' alone: a plain picture is
+    // its frame, placed in Position.
+    var tools = [
+      if (e.layered) ...[FrameTool.image, FrameTool.content],
+      FrameTool.shape,
+      FrameTool.box,
+    ];
+    var open = controller.frameTool;
+    if (open != null && !tools.contains(open)) open = tools.first;
+    var settings = switch (open) {
+      FrameTool.image => [positionGroup(controller, e, write, begin, commit)],
+      FrameTool.content => [
+          CanvasToggle(
+            key: const ValueKey("imageScaleContent"),
+            label: "Scale content",
+            value: e.scaleContent,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(scaleContent: v));
+              commit();
+            },
           ),
-          presetsSection(context, controller, e),
-          // Rounding the corners cuts to them: corners round a picture that
-          // spills past them are not corners.
+          CanvasToggle(
+            key: const ValueKey("imageClip"),
+            label: "Clip to frame",
+            value: e.clip,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(clip: v));
+              commit();
+            },
+          ),
+          const CanvasLineBreak(),
+          CanvasTextButton(
+            key: const ValueKey("imageFitFrame"),
+            icon: Icons.fit_screen_outlined,
+            label: "Wrap frame to content",
+            onPressed: () {
+              begin();
+              write(e.fittedToContent());
+              commit();
+            },
+          ),
+          const CanvasHint("Scale content: on, everything in the frame is "
+              "scaled with it when it is resized; off, the frame is resized "
+              "round the layers, each staying its size where it is on the "
+              "page -- so a layer can run past the base picture, and the base "
+              "picture can be sized on its own in Position."),
+          const CanvasHint("Clip to frame: off, nothing is cut -- paint a "
+              "stroke past the frame or drag a layer out of it and the frame "
+              "grows to take it in, and a shadow or a glow is drawn where it "
+              "falls. On, everything is cut to the frame, as a picture cut to "
+              "a shape or with rounded corners needs. Wrap frame to content "
+              "makes the frame exactly round what is in it, smaller as well "
+              "as larger."),
+        ],
+      FrameTool.shape => [
+          _frameShapeDropdown(),
+          const CanvasHint("Cut the whole picture -- every layer and the "
+              "paint on it -- to a shape. Choosing one turns Clip to frame "
+              "on."),
+        ],
+      // Rounding the corners cuts to them: corners round a picture that
+      // spills past them are not corners.
+      FrameTool.box => [
           boxGroup(
               e.box,
               (box) => write(e.copyWith(
@@ -928,13 +993,48 @@ class _Sections {
               begin,
               commit,
               remember: "image",
-              label: "Background and border",
+              // Unnamed: the shelf says "Background and border" over it
+              // already, and the card said it a second time.
+              label: "",
               fillLabel: "Background",
               rule: false,
               onPadding: (box) => write(grownForPadding(e, box))),
-          ImageLooks(controller: controller, element: e),
         ],
-      );
+      null => const <Widget>[],
+    };
+    return CanvasSection(
+      key: const ValueKey("imageSection-frame"),
+      icon: Icons.crop_square,
+      title: "Frame",
+      scope: "Whole image",
+      summary: e.layered
+          ? "${e.width.round()} × ${e.height.round()} · "
+              "${e.scaleContent ? "content scales" : "content stays put"}"
+          : "Shape, background and border",
+      remember: "image.frame",
+      children: [
+        CanvasToolTiles<FrameTool>(
+          key: const ValueKey("imageFrameTools"),
+          title: "Frame",
+          idle: "Pick one to see its settings.",
+          tools: [for (var t in tools) (t, t.icon, t.label)],
+          active: open,
+          keyOf: (t) => "frameTool-${t.name}",
+          tooltipOf: (t) => t.about,
+          help: e.layered
+              ? "The whole image: where it is and how big; what happens to "
+                  "what is in it when it is resized or runs past it; the "
+                  "shape it is cut to; its background and border. Pick one "
+                  "to see its settings; pick it again to put it away."
+              : "The whole image: the shape it is cut to, and its "
+                  "background and border. Pick one to see its settings; "
+                  "pick it again to put it away.",
+          onPick: (t) => controller.frameTool = t,
+          settings: settings,
+        ),
+      ],
+    );
+  }
 }
 
 IconData _effectIcon(EffectKind k) => switch (k) {

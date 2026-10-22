@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 String toolHint(CanvasController controller, ImageTool tool) => switch (tool) {
       ImageTool.move => "",
       ImageTool.subject => "Click a person or thing to keep only it",
+      ImageTool.crop => "Set how much is trimmed off each edge in Crop",
+      ImageTool.edge => "Soften, move or harden the mask's edge in Edge",
       ImageTool.quick => "Brush over what to keep · Option takes away",
       ImageTool.refine => "Brush along hair and soft edges",
       ImageTool.brush => "Paint to hide · X swaps to show",

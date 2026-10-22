@@ -106,8 +106,8 @@ void main() {
             effects: const EffectsSpec(
                 clear: ClearArea.left, clearSize: 0.4, clearSoftness: 0)));
       });
-      expect(_differs(px, const Rect.fromLTWH(0, 0, 50, 90), _busy.background),
-          0);
+      expect(
+          _differs(px, const Rect.fromLTWH(0, 0, 50, 90), _busy.background), 0);
       expect(
           _differs(px, const Rect.fromLTWH(110, 0, 50, 90), _busy.background),
           greaterThan(50));
@@ -125,8 +125,7 @@ void main() {
       expect(_differs(px, const Rect.fromLTWH(0, 0, 30, 20), _busy.background),
           greaterThan(20));
       expect(
-          _differs(
-              px, const Rect.fromLTWH(140, 70, 20, 20), _busy.background),
+          _differs(px, const Rect.fromLTWH(140, 70, 20, 20), _busy.background),
           0);
     });
 
@@ -257,8 +256,7 @@ void main() {
       return () => current;
     }
 
-    testWidgets("choosing a style starts from its first look",
-        (tester) async {
+    testWidgets("choosing a style starts from its first look", (tester) async {
       var spec = await pump(tester, const ProceduralSpec());
       await tester.tap(find.byKey(const ValueKey("backgroundStyle")));
       await tester.pumpAndSettle();
@@ -277,8 +275,7 @@ void main() {
       expect(lookMatching(spec()), same(other));
     });
 
-    testWidgets("a palette recolours the background in one go",
-        (tester) async {
+    testWidgets("a palette recolours the background in one go", (tester) async {
       var spec = await pump(tester, const ProceduralSpec());
       await tester.tap(find.byKey(const ValueKey("backgroundPalette")));
       await tester.pumpAndSettle();

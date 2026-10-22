@@ -99,13 +99,14 @@ void main() {
       expect(times.last.$1 + times.last.$2, closeTo(30, 1e-9),
           reason: "the last finishes as the arrival does");
       expect(times[1].$1, lessThan(times[0].$2), reason: "overlapping");
-      expect(withLayersTogether(e).stack.any((l) => l.cue != VectorCue.together),
+      expect(
+          withLayersTogether(e).stack.any((l) => l.cue != VectorCue.together),
           isFalse);
     });
 
     test("cues come back as they were saved", () {
-      var layer = _picture("a")
-          .copyWith(cue: VectorCue.gap, cueGap: -4, cueLength: 12);
+      var layer =
+          _picture("a").copyWith(cue: VectorCue.gap, cueGap: -4, cueLength: 12);
       var back = ImageLayer.fromJson(layer.toJson())!;
       expect(back.cue, VectorCue.gap);
       expect(back.cueGap, -4);
@@ -125,11 +126,9 @@ void main() {
 
     Future<List<int>> pixelAt(ImageElement e, int frame) async {
       var document = CanvasDocument(
-              size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
-              elements: [e])
-          .copyWith(frames: 40);
-      var image =
-          await renderFrame(document, images: images, frame: frame);
+          size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
+          elements: [e]).copyWith(frames: 40);
+      var image = await renderFrame(document, images: images, frame: frame);
       try {
         var raw =
             await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
@@ -184,17 +183,16 @@ void main() {
   });
 
   group("looks", () {
-    var graded = ImageElement(const ElementBase(id: "g"),
-        assetId: "red",
-        layers: [
-          ImageLayer.solid(const PaintSpec(ui.Color(0xFF101010))),
-          ImageLayer.base.copyWith(
-              opacity: 0.8,
-              effects: [const LayerEffect(kind: EffectKind.dropShadow)]),
-          _picture("blue"),
-          ImageLayer.adjusting(AdjustKind.keepColour),
-          ImageLayer.texturing(TextureKind.grain),
-        ]);
+    var graded =
+        ImageElement(const ElementBase(id: "g"), assetId: "red", layers: [
+      ImageLayer.solid(const PaintSpec(ui.Color(0xFF101010))),
+      ImageLayer.base.copyWith(
+          opacity: 0.8,
+          effects: [const LayerEffect(kind: EffectKind.dropShadow)]),
+      _picture("blue"),
+      ImageLayer.adjusting(AdjustKind.keepColour),
+      ImageLayer.texturing(TextureKind.grain),
+    ]);
 
     test("a look keeps the grade and none of the pictures", () {
       var data = lookData(graded);
@@ -207,16 +205,17 @@ void main() {
     });
 
     test("worn, it replaces the grade and keeps the pictures", () {
-      var target = ImageElement(const ElementBase(id: "t"),
-          assetId: "photo",
-          layers: [
-            ImageLayer.base,
-            _picture("player"),
-            ImageLayer.adjusting(AdjustKind.invert),
-          ]);
+      var target =
+          ImageElement(const ElementBase(id: "t"), assetId: "photo", layers: [
+        ImageLayer.base,
+        _picture("player"),
+        ImageLayer.adjusting(AdjustKind.invert),
+      ]);
       var worn = withLookApplied(target, lookData(graded));
       var stack = worn.stack;
-      expect([for (var l in stack) l.kind], [
+      expect([
+        for (var l in stack) l.kind
+      ], [
         LayerKind.fill,
         LayerKind.base,
         LayerKind.picture,
@@ -234,7 +233,8 @@ void main() {
   });
 
   group("in the panel", () {
-    Future<CanvasController> pumpPanel(WidgetTester tester, ImageElement e) async {
+    Future<CanvasController> pumpPanel(
+        WidgetTester tester, ImageElement e) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(const CanvasDocument().addElement(e));
       addTearDown(c.dispose);
@@ -246,8 +246,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
           ChangeNotifierProvider<CanvasPreferences>(
               create: (c) => CanvasPreferences()),
         ],
@@ -290,8 +289,8 @@ void main() {
       expect(e.animation.on, isTrue, reason: "an arrival to stagger over");
       expect(layersSequenced(e.stack), isTrue);
       c.undo();
-      expect((c.document.elementById("i")! as ImageElement).animation.on,
-          isFalse,
+      expect(
+          (c.document.elementById("i")! as ImageElement).animation.on, isFalse,
           reason: "one step");
 
       // And the picked layer's cue is chosen in its Animation.
@@ -302,14 +301,12 @@ void main() {
       await tapKey(tester, "imageLayerCue-${top.id}");
       await tester.tap(find.text(top.cue.next.label).last);
       await tester.pumpAndSettle();
-      expect(
-          (c.document.elementById("i")! as ImageElement).stack.last.cue,
+      expect((c.document.elementById("i")! as ImageElement).stack.last.cue,
           top.cue.next);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a look is kept, and worn by another picture",
-        (tester) async {
+    testWidgets("a look is kept, and worn by another picture", (tester) async {
       var root = Directory.systemTemp.createTempSync("looks");
       addTearDown(() => root.deleteSync(recursive: true));
       CanvasStorage.rootOverride = root.path;
@@ -326,7 +323,8 @@ void main() {
                 ImageLayer.adjusting(AdjustKind.keepColour),
               ]));
       await idle(tester);
-      await openSection(tester, "image.frame");
+      // Kept in Colour, with the picture's other saved things.
+      await openSection(tester, "image.picture.colour");
       await tapKey(tester, "imageLookSave");
       await idle(tester);
       expect(SavedPresetStore.looks.presets, hasLength(1));
@@ -336,10 +334,10 @@ void main() {
           ElementBase(id: "t", x: 0, y: 0, width: 100, height: 100),
           assetId: "photo"));
       await tester.pumpAndSettle();
-      await openSection(tester, "image.frame");
-      await tapKey(tester, "imageLookPick");
-      await tester.tap(find.text(SavedPresetStore.looks.presets.single.name).last);
-      await tester.pumpAndSettle();
+      await openSection(tester, "image.picture.colour");
+      // Worn by clicking its tile, a picture of this picture wearing it.
+      await tapKey(
+          tester, "imageLook-${SavedPresetStore.looks.presets.single.id}");
       var t = c.document.elementById("t")! as ImageElement;
       expect(t.stack.last.adjust.kind, AdjustKind.keepColour);
       expect(t.assetId, "photo");

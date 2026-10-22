@@ -67,8 +67,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -124,7 +123,8 @@ void main() {
         (tester) async {
       var (c, screen) = await open(tester, _picture(), tool: ImageTool.brush);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-      await tester.dragFrom(screen(const Offset(150, 150)), const Offset(60, 0));
+      await tester.dragFrom(
+          screen(const Offset(150, 150)), const Offset(60, 0));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       await tester.pumpAndSettle();
       expect(now(c).mask.marks.single.hide, isFalse, reason: "put back");
@@ -152,7 +152,8 @@ void main() {
         (tester) async {
       var (c, screen) = await open(tester, _picture(), tool: ImageTool.fade);
       c.maskRadial = true;
-      await tester.dragFrom(screen(const Offset(200, 200)), const Offset(80, 0));
+      await tester.dragFrom(
+          screen(const Offset(200, 200)), const Offset(80, 0));
       await tester.pumpAndSettle();
       var mark = now(c).mask.marks.single;
       expect(mark.kind, MaskMarkKind.fade);
@@ -169,11 +170,16 @@ void main() {
       var layer =
           ImageLayer.picture(_asset, const Rect.fromLTWH(0, 0, 500, 1000))
               .copyWith(flipX: true);
-      var (c, screen) = await open(tester, _picture(layers: [ImageLayer.base, layer]),
+      var (c, screen) = await open(
+          tester, _picture(layers: [ImageLayer.base, layer]),
           layer: layer.id, tool: ImageTool.lasso);
       // Round the left quarter of the picture element.
       var g = await tester.startGesture(screen(const Offset(102, 110)));
-      for (var p in const [Offset(140, 110), Offset(140, 290), Offset(102, 290)]) {
+      for (var p in const [
+        Offset(140, 110),
+        Offset(140, 290),
+        Offset(102, 290)
+      ]) {
         await g.moveTo(screen(p));
       }
       await g.up();
@@ -205,8 +211,8 @@ void main() {
       CanvasStorage.rootOverride = root.path;
       addTearDown(() => CanvasStorage.rootOverride = null);
       // The picture's file, for the finder to be pointed at.
-      var pictures =
-          Directory(path.join(root.path, "Canvas", "Pictures"))..createSync(recursive: true);
+      var pictures = Directory(path.join(root.path, "Canvas", "Pictures"))
+        ..createSync(recursive: true);
       File(path.join(pictures.path, _asset)).writeAsBytesSync([1, 2, 3]);
 
       late Uint8List found;
@@ -226,8 +232,7 @@ void main() {
       addTearDown(() => tester.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel("bruig/vision"), null));
 
-      var (c, screen) =
-          await open(tester, _picture(), tool: ImageTool.subject);
+      var (c, screen) = await open(tester, _picture(), tool: ImageTool.subject);
       await tester.tapAt(screen(const Offset(150, 250)));
       // Real files on the way: each step of the chain needs the real loop
       // turned and the fake one drained.
@@ -264,8 +269,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -283,9 +287,8 @@ void main() {
         for (var y = 0; y < 80; y++) {
           for (var x = 0; x < 80; x++) {
             var i = (y * 80 + x) * 4;
-            var inDisc = (Offset(x + 0.5, y + 0.5) - const Offset(40, 40))
-                    .distance <
-                20;
+            var inDisc =
+                (Offset(x + 0.5, y + 0.5) - const Offset(40, 40)).distance < 20;
             pixels[i] = inDisc ? 210 : 30;
             pixels[i + 1] = 40;
             pixels[i + 2] = inDisc ? 40 : 200;
@@ -323,7 +326,8 @@ void main() {
 
     testWidgets("a quick-select stroke keeps the subject it went over",
         (tester) async {
-      var (c, screen) = await openWithFiles(tester, _picture(), ImageTool.quick);
+      var (c, screen) =
+          await openWithFiles(tester, _picture(), ImageTool.quick);
       await tester.dragFrom(
           screen(const Offset(190, 200)), const Offset(20, 0));
       await settle(tester, c);
@@ -349,11 +353,14 @@ void main() {
     testWidgets("the refining brush works an existing mask's edge",
         (tester) async {
       var mask = const ImageMask(marks: [
+        MaskMark(kind: MaskMarkKind.lasso, hide: false, points: [
+          Offset(0.3, 0.3),
+          Offset(0.7, 0.3),
+          Offset(0.7, 0.7),
+          Offset(0.3, 0.7)
+        ]),
         MaskMark(
-            kind: MaskMarkKind.lasso,
-            hide: false,
-            points: [Offset(0.3, 0.3), Offset(0.7, 0.3), Offset(0.7, 0.7), Offset(0.3, 0.7)]),
-        MaskMark(kind: MaskMarkKind.fade, points: [Offset(0, 0), Offset(0, 0.0001)]),
+            kind: MaskMarkKind.fade, points: [Offset(0, 0), Offset(0, 0.0001)]),
       ]);
       var (c, screen) = await openWithFiles(
           tester, _picture().copyWith(mask: mask), ImageTool.refine);
@@ -370,8 +377,8 @@ void main() {
     Future<CanvasController> pumpPanel(WidgetTester tester, ImageMask mask,
         {ImageTool tool = ImageTool.brush}) async {
       SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(const CanvasDocument()
-          .addElement(_picture().copyWith(mask: mask)));
+      var c = CanvasController(
+          const CanvasDocument().addElement(_picture().copyWith(mask: mask)));
       addTearDown(c.dispose);
       c.selectOnly("i");
       c.editImage("i");
@@ -383,8 +390,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
           ChangeNotifierProvider<CanvasPreferences>(
               create: (c) => CanvasPreferences()),
         ],
@@ -420,17 +426,23 @@ void main() {
       await tapKey(tester, "imageTool-fade");
       expect(find.byKey(const ValueKey("maskBrushSize")), findsNothing);
       expect(find.byKey(const ValueKey("maskRadial")), findsOneWidget);
-      // Refine edge, Clean colour among it, is there before any mask is.
+      // The edge is a tool of its own, there before any mask is.
+      expect(find.byKey(const ValueKey("maskDecontaminate")), findsNothing);
+      await tapKey(tester, "imageTool-edge");
       expect(find.byKey(const ValueKey("maskDecontaminate")), findsOneWidget);
+      expect(find.byKey(const ValueKey("maskRadial")), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("Clean colour is there with the layers shut", (tester) async {
+    testWidgets("Clean colour is in the Edge tool, from the layers shut",
+        (tester) async {
       var c = await pumpPanel(tester, const ImageMask(marks: [mark]));
       c.editImage(null);
       await tester.pumpAndSettle();
       expect(c.imageEditing, isNull);
       await openSection(tester, "image.picture.mask");
+      await tapKey(tester, "imageTool-edge");
+      expect(c.imageTool, ImageTool.edge);
       var field = find.byKey(const ValueKey("maskDecontaminate"));
       expect(field, findsOneWidget);
       var clean = tester.widget<CanvasStepper>(field);
@@ -448,8 +460,9 @@ void main() {
       await tapKey(tester, "maskInvert");
       expect(now(c).invert, isTrue);
 
-      var feather = tester.widget<CanvasStepper>(
-          find.byKey(const ValueKey("maskFeather")));
+      await tapKey(tester, "imageTool-edge");
+      var feather = tester
+          .widget<CanvasStepper>(find.byKey(const ValueKey("maskFeather")));
       feather.onChanged(6);
       feather.onCommit?.call();
       await tester.pumpAndSettle();

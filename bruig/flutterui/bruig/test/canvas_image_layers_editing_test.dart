@@ -65,8 +65,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<ThemeNotifier>(
               create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(
-              create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -127,8 +126,8 @@ void main() {
       var screen = await open(tester, c, stage, const Offset(150, 150));
 
       var scale = stage.pageRect.width / c.document.size.width;
-      await tester.dragFrom(screen(const Offset(150, 150)),
-          Offset(50 * scale, 20 * scale));
+      await tester.dragFrom(
+          screen(const Offset(150, 150)), Offset(50 * scale, 20 * scale));
       await tester.pumpAndSettle();
 
       var e = now(c);
@@ -154,7 +153,8 @@ void main() {
       var screen = await open(tester, c, stage, const Offset(150, 150));
 
       // The bottom-right corner of the layer is the middle of the picture.
-      await tester.dragFrom(screen(const Offset(200, 200)), const Offset(60, 20));
+      await tester.dragFrom(
+          screen(const Offset(200, 200)), const Offset(60, 20));
       await tester.pumpAndSettle();
 
       var place = now(c).layerById(_layer.id)!.place;
@@ -172,8 +172,8 @@ void main() {
       var screen = await open(tester, c, stage, const Offset(150, 150));
 
       // Above the middle of the layer's top, as far as the knob stands.
-      var knob = screen(const Offset(150, 100)) -
-          const Offset(0, shapeTurnReach);
+      var knob =
+          screen(const Offset(150, 100)) - const Offset(0, shapeTurnReach);
       // Round to level with the layer's middle, on its right.
       var to = screen(const Offset(260, 150));
       await tester.dragFrom(knob, to - knob);
@@ -282,15 +282,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets("a picture layer's place is in its Position",
-        (tester) async {
+    testWidgets("a picture layer's place is in its Position", (tester) async {
       var c = await pumpPanel(tester);
       await tapKey(tester, "imageLayer-${_layer.id}");
       expect(find.byKey(const ValueKey("elementX")), findsNothing);
-      var x = tester.widget<CanvasStepper>(
-          find.byKey(const ValueKey("layerX")));
-      var w = tester.widget<CanvasStepper>(
-          find.byKey(const ValueKey("layerW")));
+      var x =
+          tester.widget<CanvasStepper>(find.byKey(const ValueKey("layerX")));
+      var w =
+          tester.widget<CanvasStepper>(find.byKey(const ValueKey("layerW")));
       // The top-left quarter of a picture at (100, 100), 200 across.
       expect(x.value, 100);
       expect(w.value, 100);
@@ -300,8 +299,7 @@ void main() {
       expect(now(c).layerById(_layer.id)!.place.left, closeTo(150, 1e-9));
 
       // Proportions held: a new width brings the height with it.
-      w = tester.widget<CanvasStepper>(
-          find.byKey(const ValueKey("layerW")));
+      w = tester.widget<CanvasStepper>(find.byKey(const ValueKey("layerW")));
       w.onChanged(150);
       w.onCommit?.call();
       await tester.pumpAndSettle();
@@ -313,8 +311,12 @@ void main() {
       expect(find.byKey(const ValueKey("layerX")), findsOneWidget);
       expect(find.byKey(const ValueKey("elementX")), findsNothing);
       await openSection(tester, "image.frame");
+      // Frame's Image tool, open from the start.
       expect(find.byKey(const ValueKey("elementX")), findsOneWidget);
+      expect(find.byKey(const ValueKey("imageScaleContent")), findsNothing);
+      await tapKey(tester, "frameTool-content");
       expect(find.byKey(const ValueKey("imageScaleContent")), findsOneWidget);
+      expect(find.byKey(const ValueKey("elementX")), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -408,15 +410,20 @@ void main() {
       await tapKey(tester, "imageLayerClip");
       expect(now(c).layerById(_layer.id)!.clip, isTrue);
 
+      // Each from its tool on the Position shelf.
+      await openSection(tester, "image.picture.position");
+      await tapKey(tester, "positionTool-flip");
       await tapKey(tester, "imageLayerFlipX");
       expect(now(c).layerById(_layer.id)!.flipX, isTrue);
 
+      await tapKey(tester, "positionTool-fit");
       await tapKey(tester, "imageLayerFill");
       var place = now(c).layerById(_layer.id)!.place;
       expect(place, const Rect.fromLTWH(0, 0, layerUnits, layerUnits),
           reason: "a square picture filling a square frame");
 
       // Its own place, and none of the brushes that paint on the base.
+      await tapKey(tester, "positionTool-place");
       expect(find.byKey(const ValueKey("layerX")), findsOneWidget);
       expect(find.byIcon(Icons.auto_fix_high), findsNothing);
       expect(tester.takeException(), isNull);
@@ -445,8 +452,7 @@ void main() {
       await addLayer(tester, "imageAddFill");
       expect(c.imageEditing, "i");
       expect(now(c).stack.length, 2);
-      expect(
-          now(c).stack.last.fill, const PaintSpec(ui.Color(0xFF1E2A38)));
+      expect(now(c).stack.last.fill, const PaintSpec(ui.Color(0xFF1E2A38)));
     });
   });
 }

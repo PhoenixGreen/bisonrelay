@@ -35,8 +35,8 @@ void main() {
         ChangeNotifierProvider<CanvasPreferences>(
             create: (c) => CanvasPreferences()),
       ],
-      child: MaterialApp(
-          home: Scaffold(body: CanvasDesignPanel(controller: c))),
+      child:
+          MaterialApp(home: Scaffold(body: CanvasDesignPanel(controller: c))),
     ));
     await tester.pumpAndSettle();
   }

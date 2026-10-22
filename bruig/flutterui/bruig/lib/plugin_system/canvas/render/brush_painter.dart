@@ -312,6 +312,70 @@ class SharpenShader {
       }();
 }
 
+/// _healFill draws a heal stroke's fill: what is round the spot, blurred
+/// across it, with the spot itself cut out first so none of it is averaged
+/// in -- the light and colour the healed spot should have.
+///
+/// In passes, the widest first: a blur as wide as the brush cannot reach the
+/// middle of a stroke wider than it, where there is nothing round to average
+/// -- and what little reached it, made whole, was a black hole with coloured
+/// edges. Each narrower pass is laid over the wider ones only as much as it
+/// reached, so near the edge the detail is close by and in the middle it
+/// comes from further off; every spot is filled, however wide.
+void _healFill(ui.Canvas canvas, ui.Image image, Paint picturePaint,
+    List<Offset> points, StrokeMark s, double radius, Rect reach) {
+  var stroke = _strokeBounds(points, radius * 1.1);
+  var widest = math.max(stroke.width, stroke.height);
+  var sigmas = <double>[];
+  for (var sigma = math.max(1.0, radius * 0.9);; sigma *= 2) {
+    sigmas.add(sigma);
+    if (sigma >= widest || sigmas.length >= 8) break;
+  }
+  canvas.saveLayer(reach, Paint()..colorFilter = _alphaToOne);
+  for (var sigma in sigmas.reversed) {
+    // Room for the blur to reach in from outside the stroke.
+    var room = reach.inflate(sigma * 3);
+    canvas.saveLayer(
+        room,
+        Paint()
+          ..imageFilter = ui.ImageFilter.blur(
+              sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.decal));
+    canvas.drawImage(image, Offset.zero, picturePaint);
+    // The spot itself cut out first, so none of it is averaged in.
+    canvas.saveLayer(room, Paint()..blendMode = BlendMode.dstOut);
+    paintDabs(canvas, points, s.pressure, radius * 1.1, 1,
+        Paint()..color = const Color(0xFFFFFFFF));
+    canvas.restore();
+    canvas.restore();
+  }
+  canvas.restore();
+}
+
+/// HealShader is the healing brush's shader, loaded once -- see heal.frag.
+class HealShader {
+  static ui.FragmentProgram? _program;
+  static Future<void>? _loading;
+
+  static Future<void> load() => _loading ??= () async {
+        try {
+          _program = await ui.FragmentProgram.fromAsset("shaders/heal.frag");
+        } catch (exception) {
+          debugPrint("The healing shader did not load: $exception");
+        }
+      }();
+}
+
+/// healSource is where a heal stroke started at [f] -- a fraction of a
+/// picture of [size] -- takes its texture from, as a distance across the
+/// picture: a couple of brush widths to the side, towards the picture's
+/// middle so it stays inside it.
+Offset healSource(Offset f, double radius, Size size) {
+  var short = math.min(size.width, size.height);
+  var reach = 2.4 * radius * short;
+  var sideways = f.dx > 0.5 ? -1.0 : 1.0;
+  return Offset(sideways * reach / size.width, 0);
+}
+
 /// _blurred is [image] blurred by [sigma] of its own pixels, made once and
 /// kept with it: what sharpening pushes the picture away from.
 ///
@@ -478,10 +542,9 @@ void paintRetouchUnder(
 /// Every stroke drawn afresh on every frame was every blur, every heal, every
 /// clone redone each time the pointer moved -- a picture slower with each
 /// stroke put on it. The strokes before the last change only when a stroke
-/// is taken back, so they are drawn once, as what they put down over a clear
-/// picture, and kept; the last is the one being drawn. Each stroke samples
-/// the picture itself, not the strokes before it, so the two together are
-/// what drawing them all would be.
+/// is taken back, so they are drawn once, with the picture under them, and
+/// kept; the last is the one being drawn, and works on that -- the picture
+/// as the strokes before it left it. See retouchedPicture.
 void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
     List<StrokeMark> marks, ColorFilter? colour) {
   var strokes = [
@@ -511,17 +574,23 @@ void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
   var h = math.max(1, (size.height * most).ceil());
   var kept = RasterCache.instance.sized(key, from, w, h);
   if (kept == null) {
-    var recorder = ui.PictureRecorder();
-    var c = ui.Canvas(recorder);
-    c.scale(w / size.width, h / size.height);
-    // Without the picture's colours: they are put on as it is drawn, as
-    // they are on the picture under it.
-    paintRetouch(c, image, size, settled, null);
-    var picture = recorder.endRecording();
-    kept = picture.toImageSync(w, h);
-    picture.dispose();
+    // A stroke just added: the strokes before it are most likely still kept
+    // under the same name, and only it need be worked on to them.
+    var before = RasterCache.instance.sized(
+        key, [image, size, ...settled.sublist(0, settled.length - 1)], w, h);
+    kept = before != null && before.width == w && before.height == h
+        ? retouchedPicture(before, [settled.last])
+        : retouchedPicture(image, settled, width: w, height: h);
     RasterCache.instance.putSized(key, from, kept);
   }
+  // What the kept strokes changed, and only that: the rest of the picture
+  // is as it was drawn, at its own sharpness.
+  var touched = Path();
+  for (var s in settled) {
+    touched.addRect(_reachOf(s, size));
+  }
+  canvas.save();
+  canvas.clipPath(touched);
   canvas.drawImageRect(
       kept,
       Rect.fromLTWH(0, 0, kept.width.toDouble(), kept.height.toDouble()),
@@ -529,7 +598,97 @@ void paintRetouchKept(ui.Canvas canvas, ui.Image image, Size size,
       Paint()
         ..filterQuality = FilterQuality.medium
         ..colorFilter = colour);
-  paintRetouch(canvas, image, size, [strokes.last], colour);
+  canvas.restore();
+  // The last stroke works on the picture as the ones before left it --
+  // unless it is nowhere near them, when the picture itself is as good and
+  // sharper.
+  var last = strokes.last;
+  var near = settled.any(
+      (s) => _reachOf(s, size).overlaps(_reachOf(last, size, sampling: true)));
+  if (!near) {
+    paintRetouch(canvas, image, size, [last], colour);
+    return;
+  }
+  canvas.save();
+  canvas.scale(size.width / kept.width, size.height / kept.height);
+  paintRetouch(canvas, kept,
+      Size(kept.width.toDouble(), kept.height.toDouble()), [last], colour);
+  canvas.restore();
+}
+
+/// _reachOf is the part of a picture of [size] that [s] changes -- or, with
+/// [sampling], the part it reads from: where it clones or heals from too.
+Rect _reachOf(StrokeMark s, Size size, {bool sampling = false}) {
+  var short = math.min(size.width, size.height);
+  var radius = s.radius * short;
+  var points = [
+    for (var p in s.points) Offset(p.dx * size.width, p.dy * size.height)
+  ];
+  var bounds = _strokeBounds(points, radius);
+  if (!sampling) return bounds;
+  // A blur or heal reads round the spot as far as its widest blur reaches.
+  var reach = bounds.inflate(math.max(bounds.width, bounds.height) * 3);
+  // A clone or a heal reads the patch its source puts it beside, too.
+  if (s.source != Offset.zero &&
+      (s.kind == StrokeKind.clone || s.kind == StrokeKind.heal)) {
+    reach = reach.expandToInclude(bounds
+        .shift(Offset(s.source.dx * size.width, s.source.dy * size.height))
+        .inflate(radius * 2));
+  }
+  return reach;
+}
+
+/// retouchedPicture is [image] with [strokes] worked on it in turn, each on the
+/// picture as the strokes before it left it -- so a spot healed away stays
+/// away when it is gone over again, rather than being healed back from the
+/// picture as it first was. [width] by [height] pixels, or [image]'s own
+/// size. Strokes that read nothing another of their run changed are worked
+/// together, in one pass.
+ui.Image retouchedPicture(ui.Image image, List<StrokeMark> strokes,
+    {int? width, int? height}) {
+  var w = width ?? image.width, h = height ?? image.height;
+  var size = Size(w.toDouble(), h.toDouble());
+  var current = image;
+  var start = 0;
+  while (start < strokes.length) {
+    // A run: strokes that read nothing a stroke earlier in it changes.
+    var end = start + 1;
+    while (end < strokes.length) {
+      var reads = _reachOf(strokes[end], size, sampling: true);
+      if (strokes
+          .sublist(start, end)
+          .any((s) => _reachOf(s, size).overlaps(reads))) {
+        break;
+      }
+      end++;
+    }
+    var recorder = ui.PictureRecorder();
+    var c = ui.Canvas(recorder);
+    var drawn = current;
+    if (drawn.width != w || drawn.height != h) {
+      // The picture first, at the size the strokes are worked at.
+      var r = ui.PictureRecorder();
+      ui.Canvas(r).drawImageRect(
+          drawn,
+          Rect.fromLTWH(0, 0, drawn.width.toDouble(), drawn.height.toDouble()),
+          Offset.zero & size,
+          Paint()..filterQuality = FilterQuality.medium);
+      var p = r.endRecording();
+      drawn = p.toImageSync(w, h);
+      p.dispose();
+      if (!identical(current, image)) current.dispose();
+      current = drawn;
+    }
+    c.drawImage(drawn, Offset.zero, Paint());
+    paintRetouch(c, drawn, size, strokes.sublist(start, end), null);
+    var picture = recorder.endRecording();
+    var next = picture.toImageSync(w, h);
+    picture.dispose();
+    if (!identical(current, image)) current.dispose();
+    current = next;
+    start = end;
+  }
+  return current;
 }
 
 /// paintRetouch draws [marks] -- retouching, in fractions of the picture --
@@ -560,22 +719,47 @@ void paintRetouch(ui.Canvas canvas, ui.Image image, Size size,
         canvas.drawImage(image, Offset.zero, picturePaint);
         canvas.restore();
       case StrokeKind.heal:
-        canvas.saveLayer(reach, Paint()..colorFilter = _alphaToOne);
-        canvas.saveLayer(
-            reach,
+        var program = HealShader._program;
+        if (s.source == Offset.zero || program == null) {
+          // A spot filled with a blur of what is round it: a heal from
+          // before heals took texture, or with no shader to take it.
+          _healFill(canvas, image, picturePaint, points, s, radius, reach);
+          break;
+        }
+        // The fill, drawn into pixels of its own: the light and colour the
+        // spot should have.
+        var area = reach.intersect(Offset.zero & size);
+        if (area.isEmpty) break;
+        var fw = math.max(1, area.width.ceil()),
+            fh = math.max(1, area.height.ceil());
+        var recorder = ui.PictureRecorder();
+        var fc = ui.Canvas(recorder);
+        fc.translate(-area.left, -area.top);
+        _healFill(fc, image, picturePaint, points, s, radius, reach);
+        var drawn = recorder.endRecording();
+        var fill = drawn.toImageSync(fw, fh);
+        drawn.dispose();
+        // And the texture of the patch beside it laid over that: its fine
+        // detail, without its own colour. See heal.frag.
+        var shader = program.fragmentShader()
+          ..setFloat(0, size.width)
+          ..setFloat(1, size.height)
+          ..setFloat(2, s.source.dx * size.width)
+          ..setFloat(3, s.source.dy * size.height)
+          ..setFloat(4, area.left)
+          ..setFloat(5, area.top)
+          ..setFloat(6, fw.toDouble())
+          ..setFloat(7, fh.toDouble())
+          ..setImageSampler(0, image)
+          ..setImageSampler(1, _blurred(image, math.max(1.2, radius * 0.45)))
+          ..setImageSampler(2, fill);
+        canvas.drawRect(
+            area,
             Paint()
-              ..imageFilter = ui.ImageFilter.blur(
-                  sigmaX: radius * 0.9,
-                  sigmaY: radius * 0.9,
-                  tileMode: TileMode.decal));
-        canvas.drawImage(image, Offset.zero, picturePaint);
-        // The spot itself cut out first, so none of it is averaged in.
-        canvas.saveLayer(reach, Paint()..blendMode = BlendMode.dstOut);
-        paintDabs(canvas, points, s.pressure, radius * 1.1, 1,
-            Paint()..color = const Color(0xFFFFFFFF));
-        canvas.restore();
-        canvas.restore();
-        canvas.restore();
+              ..shader = shader
+              ..colorFilter = colour);
+        shader.dispose();
+        fill.dispose();
       case StrokeKind.dodge || StrokeKind.burn:
         var k = s.kind == StrokeKind.dodge ? 1 + 0.8 : 1 - 0.6;
         var lift = s.kind == StrokeKind.dodge ? 12.0 : 0.0;

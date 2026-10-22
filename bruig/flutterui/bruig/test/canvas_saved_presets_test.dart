@@ -74,7 +74,8 @@ void main() {
     await SavedPresetStore.scenes.load();
     var built = SavedPresetStore.scenes.presets.single.buildScene()!;
     expect(built.name, "Opening");
-    expect(built.elements.length, 1, reason: "what was saved is what was there");
+    expect(built.elements.length, 1,
+        reason: "what was saved is what was there");
   });
 
   test("what it builds is new: fresh ids for the scene and its elements",
@@ -90,8 +91,7 @@ void main() {
     expect(one.elements.single.id, isNot(two.elements.single.id));
   });
 
-  test("a canvas preset holds every scene, and can start a document",
-      () async {
+  test("a canvas preset holds every scene, and can start a document", () async {
     var document = const CanvasDocument().withScenes([
       const CanvasScene(id: "a", name: "One"),
       const CanvasScene(id: "b", name: "Two"),

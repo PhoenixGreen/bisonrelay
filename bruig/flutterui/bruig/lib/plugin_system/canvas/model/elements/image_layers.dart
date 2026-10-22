@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_adjustment.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_strokes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_mask.dart';
@@ -82,6 +83,11 @@ class ImageLayer {
   /// be picked, moved, sized or painted on on the canvas -- though it is
   /// still drawn, and still set from the panel.
   final bool locked;
+
+  /// loop is the layer's own loop -- moving, lit, or drifting -- on top of
+  /// whatever the picture as a whole does. See ElementLoop; a drift moves
+  /// the layer's box, not the picture inside it.
+  final ElementLoop loop;
   final double opacity;
   final LayerBlend blend;
 
@@ -160,6 +166,7 @@ class ImageLayer {
     this.name = "",
     this.visible = true,
     this.locked = false,
+    this.loop = const ElementLoop(),
     this.opacity = 1,
     this.blend = LayerBlend.normal,
     this.clip = false,
@@ -195,6 +202,7 @@ class ImageLayer {
       cueLength == null &&
       visible &&
       !locked &&
+      !loop.on &&
       opacity == 1 &&
       blend == LayerBlend.normal &&
       !clip &&
@@ -254,6 +262,7 @@ class ImageLayer {
     String? name,
     bool? visible,
     bool? locked,
+    ElementLoop? loop,
     double? opacity,
     LayerBlend? blend,
     bool? clip,
@@ -279,6 +288,7 @@ class ImageLayer {
         name: name ?? this.name,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
+        loop: loop ?? this.loop,
         opacity: (opacity ?? this.opacity).clamp(0.0, 1.0),
         blend: blend ?? this.blend,
         clip: clip ?? this.clip,
@@ -321,6 +331,7 @@ class ImageLayer {
         if (name.isNotEmpty) "name": name,
         if (!visible) "hide": true,
         if (locked) "lock": true,
+        if (loop.on) "loop": loop.toJson(),
         if (opacity != 1) "op": opacity,
         if (blend != LayerBlend.normal) "blend": blend.name,
         if (clip) "clip": true,
@@ -359,6 +370,7 @@ class ImageLayer {
       name: jsonString(json["name"], ""),
       visible: !jsonBool(json["hide"], false),
       locked: jsonBool(json["lock"], false),
+      loop: jsonSpec(json["loop"], ElementLoop.fromJson, const ElementLoop()),
       opacity: jsonDouble(json["op"], 1).clamp(0.0, 1.0),
       blend: LayerBlend.fromName(json["blend"] as String?),
       clip: jsonBool(json["clip"], false),
@@ -434,14 +446,17 @@ class LayerSpace {
   final Rect inner;
   final Rect rect;
   final Offset _elementCentre;
-  final double _elementTurn;
+
+  /// _elementFrame is how the element is turned and slanted -- see BoxFrame
+  /// -- so a press on a slanted picture lands where it is drawn.
+  final BoxFrame _elementFrame;
   final double _layerTurn;
 
   LayerSpace(ImageElement e, ImageLayer layer)
       : inner = e.box.inner(e.bounds),
         rect = layerRect(e.box.inner(e.bounds), layer.place),
         _elementCentre = e.bounds.center,
-        _elementTurn = e.rotation * math.pi / 180,
+        _elementFrame = BoxFrame(e.rotation, e.base.skewX, e.base.skewY),
         _layerTurn = layer.turn * math.pi / 180;
 
   static Offset _turned(Offset p, Offset about, double a) {
@@ -453,10 +468,11 @@ class LayerSpace {
   /// toFrame is a canvas point in the element's own unturned space -- where
   /// [inner] and [rect] are.
   Offset toFrame(Offset canvasPoint) =>
-      _turned(canvasPoint, _elementCentre, -_elementTurn);
+      _elementCentre + _elementFrame.invert(canvasPoint - _elementCentre);
 
   /// fromFrame is a point of the element's unturned space on the canvas.
-  Offset fromFrame(Offset p) => _turned(p, _elementCentre, _elementTurn);
+  Offset fromFrame(Offset p) =>
+      _elementCentre + _elementFrame.apply(p - _elementCentre);
 
   /// toLayer is a canvas point in the layer's own unturned space.
   Offset toLayer(Offset canvasPoint) =>
@@ -789,16 +805,19 @@ Rect? contentRectOf(ImageElement e, Rect inner) {
   for (var l in e.stack) {
     switch (l.kind) {
       case LayerKind.base:
-        if (e.hasImage) add(layerRect(inner, l.place));
+        // As far as its warp bends it -- see ImageWarp.
+        if (e.hasImage) add(warpBounds(e.warp, layerRect(inner, l.place)));
       case LayerKind.picture:
         if (!(l.look?.hasImage ?? false)) continue;
-        var r = layerRect(inner, l.place);
+        var place = layerRect(inner, l.place);
+        var r = warpBounds(l.look!.warp, place);
         if (l.turn == 0) {
           add(r);
           continue;
         }
+        // Turned about its place's middle, as it is drawn.
         var t = l.turn * math.pi / 180;
-        var c = r.center;
+        var c = place.center;
         Offset turned(Offset p) {
           var d = p - c;
           return c +

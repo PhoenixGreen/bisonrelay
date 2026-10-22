@@ -135,8 +135,7 @@ void main() {
     return most;
   }
 
-  testWidgets("a fade is not dimmed by the colour it replaced",
-      (tester) async {
+  testWidgets("a fade is not dimmed by the colour it replaced", (tester) async {
     // A paint's own alpha multiplies whatever its shader draws, so the flat
     // colour left on the paint was knocking the whole fade back by it: the
     // transparency set on the sliders tab was being applied on top of a

@@ -682,8 +682,8 @@ void main() {
       expect(find.byKey(const ValueKey("videoKey")), findsNothing);
       expect(find.byKey(const ValueKey("videoLoop")), findsNothing);
       expect(
-          find.byWidgetPredicate((w) =>
-              w is CanvasHint && w.message.contains("YouTube link")),
+          find.byWidgetPredicate(
+              (w) => w is CanvasHint && w.message.contains("YouTube link")),
           findsOneWidget,
           reason: "the hint says why a link cannot be keyed or trimmed");
     });

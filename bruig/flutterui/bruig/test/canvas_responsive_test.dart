@@ -26,19 +26,17 @@ extension _Let<T> on T {
 }
 
 void main() {
-  CanvasSize sizeOf(CanvasRatio ratio) =>
-      CanvasSize(ratio: ratio, width: 1000);
+  CanvasSize sizeOf(CanvasRatio ratio) => CanvasSize(ratio: ratio, width: 1000);
 
   CanvasDocument documentAt(CanvasRatio ratio) => CanvasDocument(
         size: sizeOf(ratio),
         elements: [
-          ShapeElement(
-              const ElementBase(id: "s", x: 100, y: 50, width: 400, height: 200)),
+          ShapeElement(const ElementBase(
+              id: "s", x: 100, y: 50, width: 400, height: 200)),
         ],
       );
 
-  ShapeElement shapeIn(CanvasDocument d) =>
-      d.elements.single as ShapeElement;
+  ShapeElement shapeIn(CanvasDocument d) => d.elements.single as ShapeElement;
 
   group("switching shape", () {
     test("keeps the shape being left, and seeds the one being opened", () {
@@ -48,16 +46,16 @@ void main() {
       // laid out for.
       var tall = documentAt(CanvasRatio.feedAd);
       var wide = tall.forShape(sizeOf(CanvasRatio.wide));
-      var by = sizeOf(CanvasRatio.wide).height /
-          sizeOf(CanvasRatio.feedAd).height;
+      var by =
+          sizeOf(CanvasRatio.wide).height / sizeOf(CanvasRatio.feedAd).height;
 
       expect(shapeIn(wide).width, closeTo(400 * by, 1));
       expect(shapeIn(wide).height, closeTo(200 * by, 1));
       // And where it sat: its middle was a fifth of the way down the tall
       // page, so it is a fifth of the way down the wide one.
       var middle = shapeIn(wide).y + shapeIn(wide).height / 2;
-      expect(middle / sizeOf(CanvasRatio.wide).height,
-          closeTo(150 / 1250, 0.02));
+      expect(
+          middle / sizeOf(CanvasRatio.wide).height, closeTo(150 / 1250, 0.02));
       expect(shapeIn(wide).base.layouts.keys, contains("feedAd"),
           reason: "and the 4:5 is put away, not thrown away");
     });
@@ -71,8 +69,8 @@ void main() {
               id: "s", x: 0, y: 0, width: 1900, height: 1000)),
         ],
       );
-      var tall = doc.forShape(
-          const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000));
+      var tall = doc
+          .forShape(const CanvasSize(ratio: CanvasRatio.feedAd, width: 1000));
 
       expect(shapeIn(tall).width, lessThanOrEqualTo(1000));
       expect(shapeIn(tall).height, lessThanOrEqualTo(1250));
@@ -82,8 +80,8 @@ void main() {
       var doc = CanvasDocument(
         size: const CanvasSize(ratio: CanvasRatio.wide, width: 500),
         elements: [
-          ShapeElement(const ElementBase(
-              id: "s", x: 10, y: 10, width: 100, height: 50)),
+          ShapeElement(
+              const ElementBase(id: "s", x: 10, y: 10, width: 100, height: 50)),
         ],
       );
       var big = doc
@@ -118,8 +116,8 @@ void main() {
       // And the card is not shrunk to the page's ratio because the backdrop
       // is large: the backdrop is left out of the design's own block.
       var card = wide.elementById("card")!;
-      var by = sizeOf(CanvasRatio.wide).height /
-          sizeOf(CanvasRatio.feedAd).height;
+      var by =
+          sizeOf(CanvasRatio.wide).height / sizeOf(CanvasRatio.feedAd).height;
       expect(card.width, closeTo(800 * by, 1),
           reason: "carried at the share the page changed by");
       // It sat near the bottom of the tall page and sits near the bottom of
@@ -146,15 +144,16 @@ void main() {
     });
 
     test("a third shape is seeded from the one being left, not the first", () {
-      var doc = documentAt(CanvasRatio.feedAd)
-          .forShape(sizeOf(CanvasRatio.wide));
+      var doc =
+          documentAt(CanvasRatio.feedAd).forShape(sizeOf(CanvasRatio.wide));
       doc = doc.withElement(shapeIn(doc).withBase(x: 10, y: 10, width: 100));
 
       var square = doc.forShape(sizeOf(CanvasRatio.square));
-      var by = canvasScale(sizeOf(CanvasRatio.wide), sizeOf(CanvasRatio.square));
+      var by =
+          canvasScale(sizeOf(CanvasRatio.wide), sizeOf(CanvasRatio.square));
       expect(shapeIn(square).width, closeTo(100 * by, 0.5));
-      expect(shapeIn(square).base.layouts.keys,
-          containsAll(["feedAd", "wide"]));
+      expect(
+          shapeIn(square).base.layouts.keys, containsAll(["feedAd", "wide"]));
     });
 
     test("what an element *is* is one thing across every shape", () {
@@ -227,7 +226,8 @@ void main() {
       var made = controller.document.elements.last;
       expect(made.base.layouts.keys, contains("feedAd"),
           reason: "added on the 16:9, it is on the 4:5 too");
-      var by = canvasScale(sizeOf(CanvasRatio.wide), sizeOf(CanvasRatio.feedAd));
+      var by =
+          canvasScale(sizeOf(CanvasRatio.wide), sizeOf(CanvasRatio.feedAd));
       expect(made.base.layouts["feedAd"]!.width, closeTo(200 * by, 0.5));
     });
 
@@ -300,8 +300,8 @@ void main() {
       // before and runs out of its frame.
       var doc = headline(CanvasRatio.feedAd);
       var wide = doc.forShape(sizeOf(CanvasRatio.wide));
-      var by = sizeOf(CanvasRatio.wide).height /
-          sizeOf(CanvasRatio.feedAd).height;
+      var by =
+          sizeOf(CanvasRatio.wide).height / sizeOf(CanvasRatio.feedAd).height;
 
       expect(wordsIn(wide).textSpec.fontSize, closeTo(60 * by, 0.5));
       expect(wordsIn(wide).base.typeScale, closeTo(by, 0.01));
@@ -309,8 +309,8 @@ void main() {
 
     test("and is left alone where the page kept its shape", () {
       var doc = headline(CanvasRatio.feedAd);
-      var same = doc.forShape(
-          const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000));
+      var same = doc
+          .forShape(const CanvasSize(ratio: CanvasRatio.feedAd, width: 2000));
       expect(wordsIn(same).textSpec.fontSize, 60,
           reason: "a width is a resolution, not a shape");
     });
@@ -349,8 +349,8 @@ void main() {
         );
 
     test("are shared until a shape is given its own", () {
-      var doc = headline("The long headline")
-          .forShape(sizeOf(CanvasRatio.wide));
+      var doc =
+          headline("The long headline").forShape(sizeOf(CanvasRatio.wide));
       expect(wordsIn(doc).text, "The long headline");
 
       // Typed on the 16:9, where this element has no words of its own: every
@@ -361,8 +361,8 @@ void main() {
     });
 
     test("and a shape with its own keeps them, and leaves the rest alone", () {
-      var doc = headline("The long headline")
-          .forShape(sizeOf(CanvasRatio.wide));
+      var doc =
+          headline("The long headline").forShape(sizeOf(CanvasRatio.wide));
 
       // Own words on the 16:9.
       doc = doc.withElement(wordsIn(doc)
@@ -384,14 +384,13 @@ void main() {
           .let((d) => d.withElement(wordsIn(d).copyWith(text: "Longer still")))
           .forShape(sizeOf(CanvasRatio.wide));
       expect(wordsIn(edited).text, "Short");
-      expect(
-          wordsIn(edited.forShape(sizeOf(CanvasRatio.feedAd))).text,
+      expect(wordsIn(edited.forShape(sizeOf(CanvasRatio.feedAd))).text,
           "Longer still");
     });
 
     test("a new shape follows the shared words, not one shape's own", () {
-      var doc = headline("The long headline")
-          .forShape(sizeOf(CanvasRatio.wide));
+      var doc =
+          headline("The long headline").forShape(sizeOf(CanvasRatio.wide));
       doc = doc.withElement(wordsIn(doc)
           .withBase(ownText: true)
           .let((e) => (e as TextElement).copyWith(text: "Short")));
@@ -473,9 +472,9 @@ void main() {
       // Both scaled by the same amount on the wide shape.
       for (var id in ["a", "b"]) {
         var e = doc.elementById(id)! as TextElement;
-        doc = doc.withElement(
-            e.scaledBy(1.5).withBase(typeScale: e.base.typeScale * 1.5)
-                as TextElement);
+        doc = doc.withElement(e
+            .scaledBy(1.5)
+            .withBase(typeScale: e.base.typeScale * 1.5) as TextElement);
       }
       var sizes = [
         for (var e in doc.elements) (e as TextElement).textSpec.fontSize,

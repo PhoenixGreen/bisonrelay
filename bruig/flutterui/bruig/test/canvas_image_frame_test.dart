@@ -88,9 +88,7 @@ void main() {
         ImageLayer.base,
         const ImageLayer(id: "paint", kind: LayerKind.paint, strokes: [
           StrokeMark(
-              kind: StrokeKind.paint,
-              points: [Offset(0.5, 0.5)],
-              radius: 0.05),
+              kind: StrokeKind.paint, points: [Offset(0.5, 0.5)], radius: 0.05),
         ]),
       ]);
       var wider = e.withBase(width: 400) as ImageElement;
@@ -152,7 +150,8 @@ void main() {
             ImageLayer.picture("blue", const Rect.fromLTWH(500, 500, 500, 500))
                 .copyWith(
                     look: const ImageElement(
-                        ElementBase(id: "b", x: 500, y: 500, width: 500, height: 500),
+                        ElementBase(
+                            id: "b", x: 500, y: 500, width: 500, height: 500),
                         assetId: "blue",
                         fit: ImageFit.stretch)),
           ]);
@@ -160,10 +159,10 @@ void main() {
           size: const CanvasSize(width: 100, ratio: CanvasRatio.square),
           elements: [e]);
       var image = await renderFrame(document, images: images);
-      var raw = (await image.toByteData(
-              format: ui.ImageByteFormat.rawStraightRgba))!
-          .buffer
-          .asUint8List();
+      var raw =
+          (await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!
+              .buffer
+              .asUint8List();
       List<int> at(int x, int y) {
         var i = (y * image.width + x) * 4;
         return [raw[i], raw[i + 1], raw[i + 2]];

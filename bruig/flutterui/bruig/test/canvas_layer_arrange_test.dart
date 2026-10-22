@@ -10,7 +10,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
-import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -259,6 +258,43 @@ void main() {
       expect(_now(c).layerById(_a.id)!.place, isNot(_a.place));
     });
 
+    testWidgets("a corner keeps proportions only where the picture does",
+        (tester) async {
+      Future<Rect> afterCornerDrag(bool keep) async {
+        var a = _a.copyWith(look: _a.look!.withProportionsKept(keep));
+        var c = CanvasController(const CanvasDocument()
+            .addElement(_element(layers: [ImageLayer.base, a, _b])));
+        addTearDown(c.dispose);
+        c.selectOnly("i");
+        var screen = await pump(tester, c);
+        c.editImage("i", layer: _a.id);
+        await tester.pumpAndSettle();
+        var scale = (screen(const Offset(1, 0)) - screen(Offset.zero)).dx;
+        // _a's bottom-right corner, at (200, 200), pulled wide and short.
+        await tester.dragFrom(
+            screen(const Offset(200, 200)), Offset(40 * scale, 5 * scale));
+        await tester.pumpAndSettle();
+        return _now(c).layerById(_a.id)!.place;
+      }
+
+      var held = await afterCornerDrag(true);
+      expect(held.width / held.height, closeTo(1, 0.02), reason: "held");
+      var free = await afterCornerDrag(false);
+      expect(free.width / free.height, greaterThan(1.2),
+          reason: "let go: pulled out of shape");
+    });
+
+    test("letting proportions go stretches a covering picture", () {
+      var covering = const ImageElement(ElementBase(id: "x", lockAspect: true),
+          fit: ImageFit.cover);
+      var free = covering.withProportionsKept(false);
+      expect(free.base.lockAspect, isFalse);
+      expect(free.fit, ImageFit.stretch, reason: "squashed, not trimmed");
+      var held = free.withProportionsKept(true);
+      expect(held.base.lockAspect, isTrue);
+      expect(held.fit, ImageFit.stretch, reason: "left as it is");
+    });
+
     testWidgets("Shift-click picks a second layer, and a drag moves both",
         (tester) async {
       var c = CanvasController(const CanvasDocument().addElement(_element()));
@@ -480,19 +516,21 @@ void main() {
       var c = await pumpPanel(tester);
       c.editImage("i", layer: _a.id);
       await tester.pumpAndSettle();
-      // The crop is with the mask now: how much of the picture shows.
+      // The crop is a mask tool now: its numbers come with it in hand.
       await openSection(tester, "image.picture.mask");
-      var crop = find.byWidgetPredicate(
-          (w) => w is CanvasControlGroup && w.label == "Crop");
-      expect(find.descendant(of: crop, matching: find.byType(CanvasStepper)),
-          findsNWidgets(4));
-      expect(find.descendant(of: crop, matching: find.byType(TextField)),
-          findsNothing);
+      await tapKey(tester, "imageTool-crop");
+      var sides = [
+        for (var side in ["Left", "Top", "Right", "Bottom"])
+          find.byKey(ValueKey("crop$side"))
+      ];
+      for (var side in sides) {
+        expect(find.descendant(of: side, matching: find.byType(CanvasStepper)),
+            findsOneWidget);
+        expect(find.descendant(of: side, matching: find.byType(TextField)),
+            findsNothing);
+      }
       // And it writes the crop.
-      await typeInto(
-          tester,
-          find.descendant(of: crop, matching: find.byType(CanvasStepper)).first,
-          "0.25");
+      await typeInto(tester, sides.first, "0.25");
       expect(_now(c).layerById(_a.id)!.look!.crop.left, closeTo(0.25, 1e-6));
     });
   });

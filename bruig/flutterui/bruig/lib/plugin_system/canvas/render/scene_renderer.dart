@@ -647,13 +647,9 @@ void paintElement(
   // Its own angle about its centre, as it rests; then a keyframe's turn
   // and size about its anchor -- the same thing while the anchor is in the
   // middle. See ElementBase.anchorX.
-  var spin = element.rotationRadians;
-  if (spin != 0) {
-    var c = bounds.center;
-    canvas.translate(c.dx, c.dy);
-    canvas.rotate(spin);
-    canvas.translate(-c.dx, -c.dy);
-  }
+  // Turned and slanted about its centre -- see BoxFrame.
+  BoxFrame(element.rotation, element.base.skewX, element.base.skewY)
+      .applyTo(canvas, bounds.center);
   if (outer.rotate != 0 || outer.scale != 1) {
     var a = element.anchorIn(bounds);
     canvas.translate(a.dx, a.dy);
@@ -717,23 +713,24 @@ void paintElement(
         arriving(canvas, bounds, e.animation, pose,
             () => _paintLine(canvas, _bowed(e, pose)));
       case ImageElement e:
-        // A drift -- one of the Drift loops -- moves the picture inside its
-        // frame across the loop's span, the frame staying put.
-        if (_wholeLoop(e) case var loop? when loop.preset.drifts) {
-          var t = loop.driftAt(frame,
-              arrived: arrivalEnd(e),
-              last: (document?.frames ?? (1 << 30)) - 1);
-          if (t != null) {
-            e = e.copyWith(
-                framing: driftedFraming(e.framing, loop.preset,
-                    driftPerStrength * loop.strength, t));
+        // The time its own drift and its layers' loops go by -- see
+        // _imageClock.
+        var was = _imageClock;
+        _imageClock = (
+          frame: frame,
+          at: frame + betweenFrames,
+          last: (document?.frames ?? (1 << 30)) - 1,
+          arrived: arrivalEnd(e),
+        );
+        try {
+          if (_layerByLayer(e, pose) case var arrive?) {
+            _paintImage(canvas, bounds, e, images, arrive: arrive);
+          } else {
+            arriving(canvas, bounds, e.animation, pose,
+                () => _paintImage(canvas, bounds, e, images));
           }
-        }
-        if (_layerByLayer(e, pose) case var arrive?) {
-          _paintImage(canvas, bounds, e, images, arrive: arrive);
-        } else {
-          arriving(canvas, bounds, e.animation, pose,
-              () => _paintImage(canvas, bounds, e, images));
+        } finally {
+          _imageClock = was;
         }
       case VectorElement e:
         if (_shapeByShape(e, pose)) {
@@ -1647,8 +1644,153 @@ void _paintImage(
   // covered its own border, and the border only showed with padding added
   // to make room round the picture for it.
   paintBoxFill(canvas, bounds, e.box, images);
-  _paintImageInside(canvas, bounds, e, images, arrive: arrive);
+  // A drift on the picture as a whole -- see ElementLoop.driftAt -- zooms
+  // or pans everything in it as one: a picture alone inside its frame, as a
+  // documentary's camera does; a picture of layers past its frame, where it
+  // does not cut them.
+  var drift = _drifting(e.animation.loop);
+  var steady = adjustSteadily;
+  if (drift != null) {
+    var inner = e.box.inner(bounds);
+    canvas.save();
+    if (!e.layered || e.clip) canvas.clipRect(inner);
+    _applyDrift(canvas, inner, e.animation.loop, drift);
+    // Its adjustments moved with it as pixels, not filtered where they
+    // land: see adjustSteadily.
+    adjustSteadily = true;
+  }
+  try {
+    _paintImageInside(canvas, bounds, e, images, arrive: arrive);
+  } finally {
+    adjustSteadily = steady;
+  }
+  if (drift != null) canvas.restore();
   paintBoxBorder(canvas, bounds, e.box);
+}
+
+/// _imageClock is the frame a picture is being drawn on, its scene's last
+/// frame and where its arrival ends -- set round the drawing of an image
+/// element, for the drift and the loops of what is in it. [at] is the frame
+/// with how far past it the playhead has got: see betweenFrames.
+({int frame, double at, int last, int? arrived})? _imageClock;
+
+/// betweenFrames is how far past the frame being drawn the editor's playhead
+/// has really got, nought to one, while it plays -- and nought otherwise,
+/// and always in an export, whose frames are whole.
+///
+/// A drift moves a little every frame, and at 24 frames a second on a screen
+/// that redraws 60 or 120 times, a slow zoom or pan drawn only on whole
+/// frames went in visible steps. Drifts are drawn at the playhead's exact
+/// time instead, and the stage redraws on every refresh while one plays.
+/// Set round the stage's drawing, the way RasterCache.drafting is.
+double betweenFrames = 0;
+
+/// _drifting is how far through [loop]'s drift the picture being drawn is,
+/// or null for a loop that is not a drift, or no picture being drawn.
+double? _drifting(ElementLoop loop) {
+  var clock = _imageClock;
+  if (clock == null || !loop.preset.drifts) return null;
+  return loop.driftAt(clock.at, arrived: clock.arrived, last: clock.last);
+}
+
+/// _applyDrift sets [canvas] to draw [box] [t] of the way through [loop]'s
+/// drift: closer about its middle, or held closer and panned across. The
+/// box itself grows and moves -- what is in it is not cut to it.
+void _applyDrift(ui.Canvas canvas, Rect box, ElementLoop loop, double t) {
+  var a = (driftPerStrength * loop.strength).clamp(0.0, 1.0);
+  double s;
+  var shift = Offset.zero;
+  switch (loop.preset) {
+    case LoopPreset.driftIn:
+      s = 1 + a * t;
+    case LoopPreset.driftOut:
+      s = 1 + a * (1 - t);
+    // The camera moves left: the picture slides right under it.
+    case LoopPreset.driftLeft:
+      s = 1 + a;
+      shift = Offset((0.5 - t) * a * box.width, 0);
+    case LoopPreset.driftRight:
+      s = 1 + a;
+      shift = Offset((t - 0.5) * -a * box.width, 0);
+    case LoopPreset.driftUp:
+      s = 1 + a;
+      shift = Offset(0, (0.5 - t) * a * box.height);
+    case LoopPreset.driftDown:
+      s = 1 + a;
+      shift = Offset(0, (t - 0.5) * -a * box.height);
+    default:
+      return;
+  }
+  var c = box.center;
+  canvas.translate(c.dx + shift.dx, c.dy + shift.dy);
+  canvas.scale(s);
+  canvas.translate(-c.dx, -c.dy);
+}
+
+/// _layerLooped draws a layer of a picture -- [draw] -- by its own loop:
+/// drifted, moved, or lit, about [box], its place.
+void _layerLooped(ui.Canvas canvas, ImageLayer layer, Rect box, int seed,
+    void Function() draw) {
+  var clock = _imageClock, loop = layer.loop;
+  if (clock == null || !loop.on || !layer.visible) return draw();
+  if (loop.preset.drifts) {
+    var t = _drifting(loop);
+    if (t == null) return draw();
+    canvas.save();
+    _applyDrift(canvas, box, loop, t);
+    var steady = adjustSteadily;
+    adjustSteadily = true;
+    try {
+      draw();
+    } finally {
+      adjustSteadily = steady;
+    }
+    canvas.restore();
+    return;
+  }
+  if (loop.preset.moves) {
+    var swing =
+        loop.poseAt(clock.frame, arrived: clock.arrived, last: clock.last);
+    if (swing == null) return draw();
+    canvas.save();
+    _applyLoopPose(canvas, box, swing);
+    var faded = swing.opacity < 0.999;
+    if (faded) {
+      canvas.saveLayer(box.inflate(box.longestSide),
+          Paint()..color = Color.fromRGBO(0, 0, 0, swing.opacity));
+    }
+    draw();
+    if (faded) canvas.restore();
+    canvas.restore();
+    return;
+  }
+  var phase =
+      loop.phaseAt(clock.frame, arrived: clock.arrived, last: clock.last);
+  if (phase == null) return draw();
+  paintLoopEffect(
+      canvas, box, loop, phase.$1, phase.$2, seed, Path()..addRect(box), draw);
+}
+
+/// _throughAdjustments draws [draw] through [adjustments] -- the nearest
+/// first -- each at its own strength, blend and mask: the adjustments over
+/// a layer worked into that layer, for a picture whose layers move on their
+/// own, so each comes in or loops already adjusted.
+void _throughAdjustments(ui.Canvas canvas, Rect inner, Rect room,
+    List<ImageLayer> adjustments, void Function(ui.Canvas) draw) {
+  void through(ui.Canvas c, int k) {
+    if (k < 0) return draw(c);
+    var adj = adjustments[k];
+    var covers =
+        adj.opacity >= 1 && adj.blend == LayerBlend.normal && !adj.mask.active;
+    // What shows through it, as it is.
+    if (!covers) through(c, k - 1);
+    c.saveLayer(room, _over(adj));
+    paintAdjustedLive(c, room, adj.adjust, (a) => through(a, k - 1));
+    _frameMasked(c, inner, adj);
+    c.restore();
+  }
+
+  through(canvas, adjustments.length - 1);
 }
 
 void _paintImageInside(
@@ -1697,6 +1839,70 @@ void _paintImageInside(
 /// by it.
 void _paintPicture(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
     CanvasImageSource? images) {
+  if (e.warp.active) {
+    _paintWarped(canvas, inner, e, image, images);
+    return;
+  }
+  _paintPictureFlat(canvas, inner, e, image, images);
+}
+
+/// _paintWarped draws the picture [e] -- as _paintPictureFlat would, mask,
+/// retouching, outline and all -- bent by its warp. The picture is drawn
+/// once into pixels, kept while nothing about how it looks changes, and
+/// drawn through the warp's mesh on every frame: moving a point of the grid
+/// is one mesh drawn, not the picture drawn again.
+void _paintWarped(ui.Canvas canvas, Rect inner, ImageElement e, ui.Image image,
+    CanvasImageSource? images) {
+  var room = inner.inflate(_outlineRoom(e));
+  if (room.isEmpty) return;
+  var most = math.min(4096 / math.max(room.width, room.height),
+      math.sqrt(16e6 / (room.width * room.height)));
+  if (RasterCache.drafting) {
+    most = math.min(
+        most, RasterCache.draftSide / math.max(room.width, room.height));
+  }
+  var scale = math.max(0.05, math.min(deviceScaleOf(canvas), most));
+  var w = math.max(1, (room.width * scale).ceil());
+  var h = math.max(1, (room.height * scale).ceil());
+  // Kept against everything the picture is drawn from but the warp; and
+  // not kept while anything it draws is still loading.
+  var key = "warp|${identityHashCode(image)}|${room.size}";
+  var from = [room.size, image, ...pictureLookFrom(e)];
+  var keep = !(images?.loading ?? false);
+  var flat = keep ? RasterCache.instance.sized(key, from, w, h) : null;
+  var kept = flat != null;
+  if (flat == null) {
+    var recorder = ui.PictureRecorder();
+    var c = ui.Canvas(recorder);
+    c.scale(w / room.width, h / room.height);
+    c.translate(-room.left, -room.top);
+    _paintPictureFlat(c, inner, e, image, images);
+    var picture = recorder.endRecording();
+    flat = picture.toImageSync(w, h);
+    picture.dispose();
+    if (keep) {
+      RasterCache.instance.putSized(key, from, flat);
+      kept = true;
+    }
+  }
+  var k = flat.width / room.width;
+  canvas.drawVertices(
+      warpMesh(e.warp, inner, room, k),
+      BlendMode.srcOver,
+      Paint()
+        ..filterQuality = FilterQuality.medium
+        ..shader = ui.ImageShader(
+            flat,
+            TileMode.decal,
+            TileMode.decal,
+            Float64List.fromList(
+                const [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+            filterQuality: FilterQuality.medium));
+  if (!kept) flat.dispose();
+}
+
+void _paintPictureFlat(ui.Canvas canvas, Rect inner, ImageElement e,
+    ui.Image image, CanvasImageSource? images) {
   var overlaid = e.blend != OverlayBlend.none && e.overlay.a > 0;
 
   // The mask, where there is one, over everything the picture draws -- its
@@ -1857,6 +2063,15 @@ ui.Picture _record(void Function(ui.Canvas) draw) {
 /// under may hold adjustments of its own, and is drawn the same way.
 void _paintStack(ui.Canvas canvas, Rect inner, ImageElement e,
     List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive) {
+  // Layers coming in one after another, or looping on their own: each is
+  // drawn with the adjustments over it worked in, so it arrives -- or
+  // moves -- already adjusted, rather than the adjustment turning up after
+  // it or staying where the layer was.
+  if (arrive != null || stack.any((l) => l.visible && l.loop.on)) {
+    _paintGroups(canvas, inner, e, stack, images, room, arrive,
+        adjustEach: true);
+    return;
+  }
   var at = -1;
   for (var i = stack.length - 1; i >= 0; i--) {
     var l = stack[i];
@@ -1971,11 +2186,9 @@ void _paintFrameMaskView(ui.Canvas canvas, ImageElement e, ImageLayer layer,
     {required bool overlay}) {
   canvas.save();
   var bounds = e.bounds;
-  if (e.rotation != 0) {
-    canvas.translate(bounds.center.dx, bounds.center.dy);
-    canvas.rotate(e.rotation * math.pi / 180);
-    canvas.translate(-bounds.center.dx, -bounds.center.dy);
-  }
+  // Turned and slanted as the picture is drawn -- see BoxFrame.
+  BoxFrame(e.rotation, e.base.skewX, e.base.skewY)
+      .applyTo(canvas, bounds.center);
   var inner = e.box.inner(bounds);
   var size = Size(inner.width, inner.height);
   var placement = placeImage(size, inner, ImageFit.stretch);
@@ -2018,10 +2231,29 @@ Rect _layerBox(Rect inner, ImageLayer layer) =>
 /// _paintGroups draws [stack], which holds no adjustment over everything
 /// under it, a layer and the layers clipped to it at a time.
 void _paintGroups(ui.Canvas canvas, Rect inner, ImageElement e,
-    List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive) {
+    List<ImageLayer> stack, _Watched images, Rect room, _LayerArrive? arrive,
+    {bool adjustEach = false}) {
   var i = 0;
   while (i < stack.length) {
     var layer = stack[i];
+    // Worked into each layer instead, an adjustment over everything under
+    // it draws nothing of its own -- see _paintStack.
+    if (adjustEach &&
+        layer.kind == LayerKind.adjustment &&
+        !(layer.clip && i > 0)) {
+      i++;
+      continue;
+    }
+    var over = !adjustEach
+        ? const <ImageLayer>[]
+        : [
+            for (var (k, l) in stack.indexed)
+              if (k > i &&
+                  l.visible &&
+                  l.kind == LayerKind.adjustment &&
+                  !l.clip)
+                l
+          ];
     // The layers clipped to this one, which go wherever it goes.
     var j = i + 1;
     while (j < stack.length && stack[j].clip) {
@@ -2035,9 +2267,20 @@ void _paintGroups(ui.Canvas canvas, Rect inner, ImageElement e,
     // drawn as an ordinary one.
     if (layer.visible) {
       canvas.saveLayer(room, _over(layer));
-      _arriving(canvas, arrive, layer, _layerBox(inner, layer), () {
-        _paintDressed(canvas, inner, e, layer, images, room);
-        _frameMasked(canvas, inner, layer);
+      var box = _layerBox(inner, layer);
+      _arriving(canvas, arrive, layer, box, () {
+        _layerLooped(canvas, layer, box, Object.hash(e.id, layer.id), () {
+          void dressed(ui.Canvas c) {
+            _paintDressed(c, inner, e, layer, images, room);
+            _frameMasked(c, inner, layer);
+          }
+
+          if (over.isEmpty) {
+            dressed(canvas);
+          } else {
+            _throughAdjustments(canvas, inner, room, over, dressed);
+          }
+        });
       });
       for (var c in clipped) {
         canvas.saveLayer(room, _over(c));
@@ -2166,11 +2409,9 @@ void paintMaskView(
 
   canvas.save();
   var bounds = e.bounds;
-  if (e.rotation != 0) {
-    canvas.translate(bounds.center.dx, bounds.center.dy);
-    canvas.rotate(e.rotation * math.pi / 180);
-    canvas.translate(-bounds.center.dx, -bounds.center.dy);
-  }
+  // Turned and slanted as the picture is drawn -- see BoxFrame.
+  BoxFrame(e.rotation, e.base.skewX, e.base.skewY)
+      .applyTo(canvas, bounds.center);
   var inner = e.box.inner(bounds);
   var rect = layerRect(inner, layer.place);
   if (!layer.isBase || layer.flipX || layer.flipY) {

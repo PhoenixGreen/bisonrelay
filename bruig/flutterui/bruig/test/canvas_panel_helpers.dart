@@ -81,8 +81,8 @@ Future<void> openTiles(WidgetTester tester, String name) async {
 /// into a text field, or -- a number in a card, drawn as a stepper -- the
 /// way typeInto does.
 Future<void> enterValue(WidgetTester tester, Finder field, String text) async {
-  var editable =
-      find.descendant(of: field, matching: find.byType(EditableText), matchRoot: true);
+  var editable = find.descendant(
+      of: field, matching: find.byType(EditableText), matchRoot: true);
   if (editable.evaluate().isNotEmpty) {
     await tester.enterText(field, text);
     return;
