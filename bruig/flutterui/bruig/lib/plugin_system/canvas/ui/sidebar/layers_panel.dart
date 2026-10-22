@@ -354,6 +354,19 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
               "Duplicate",
               () => controller.duplicateElement(element.id),
             ),
+            // On the selected row: a tablet has no Delete key, and the row
+            // is where the eye is. One row's worth, not every row's, as a
+            // picture's layers keep theirs to the one picked.
+            if (selected)
+              _rowButton(
+                theme,
+                Icons.delete_outline,
+                "Delete",
+                element.locked
+                    ? null
+                    : () => controller.deleteElement(element.id),
+                tapKey: "layerDelete-${element.id}",
+              ),
           ]),
         ),
       ),
@@ -516,10 +529,11 @@ class _CanvasLayerRowState extends State<CanvasLayerRow> {
 
   Widget _rowButton(ThemeNotifier theme, IconData icon, String tooltip,
           VoidCallback? onTap,
-          {bool active = false}) =>
+          {bool active = false, String? tapKey}) =>
       Tooltip(
         message: tooltip,
         child: InkWell(
+          key: tapKey == null ? null : ValueKey(tapKey),
           onTap: onTap,
           borderRadius: BorderRadius.circular(4),
           child: Padding(

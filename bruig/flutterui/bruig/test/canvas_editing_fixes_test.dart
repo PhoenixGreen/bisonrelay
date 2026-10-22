@@ -86,6 +86,22 @@ void main() {
       expect(c.selection, {"c"});
     });
 
+    testWidgets("the selected row deletes its layer, for a tablet",
+        (tester) async {
+      var c = four();
+      await _show(tester, CanvasLayersPanel(controller: c));
+      expect(find.byKey(const ValueKey("layerDelete-b")), findsNothing,
+          reason: "only the selected row has one");
+      await tester.tap(find.text("b"));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("layerDelete-b")));
+      await tester.pumpAndSettle();
+      expect(c.document.elementById("b"), isNull);
+      expect(c.selection, isEmpty);
+      c.undo();
+      expect(c.document.elementById("b"), isNotNull, reason: "undone");
+    });
+
     testWidgets("Shift-click picks the run between", (tester) async {
       var c = four();
       await _show(tester, CanvasLayersPanel(controller: c));

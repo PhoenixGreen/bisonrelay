@@ -1112,6 +1112,16 @@ class CanvasController extends ChangeNotifier {
     apply(next);
   }
 
+  /// deleteElement takes out the element [id] -- a layers row's delete, for
+  /// screens with no Delete key. Being edited, its editing is put down first.
+  void deleteElement(String id) {
+    if (_document.elementById(id) == null) return;
+    if (_vectorEditing == id) editVector(null);
+    if (editingImage?.id == id) editImage(null);
+    _selection = {..._selection}..remove(id);
+    apply(_document.removeElement(id));
+  }
+
   /// duplicateSelected copies the chosen elements, offset a little so the copy
   /// is visibly a second thing rather than sitting exactly on the original.
   void duplicateSelected() {

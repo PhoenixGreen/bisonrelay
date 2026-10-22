@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_guides.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -508,6 +509,25 @@ void main() {
       expect(c.imageSolo, isTrue);
       expect(_now(c).layerById(_b.id)!.locked, isFalse,
           reason: "solo holds it without locking it for good");
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("the heading's delete takes out the picked layer, strip too",
+        (tester) async {
+      var c = await pumpPanel(tester);
+      VoidCallback? press() => tester
+          .widget<CanvasIconButton>(
+              find.byKey(const ValueKey("imageLayersDelete")))
+          .onPressed;
+      expect(press(), isNull, reason: "nothing picked");
+      c.editImage("i", layer: baseLayerId);
+      await tester.pumpAndSettle();
+      expect(press(), isNull, reason: "the base picture stays");
+      c.editImage("i", layer: _a.id);
+      await tester.pumpAndSettle();
+      await tapKey(tester, "imageLayersDelete");
+      expect(_now(c).layerById(_a.id), isNull);
+      expect(_now(c).layerById(_b.id), isNotNull);
       expect(tester.takeException(), isNull);
     });
 

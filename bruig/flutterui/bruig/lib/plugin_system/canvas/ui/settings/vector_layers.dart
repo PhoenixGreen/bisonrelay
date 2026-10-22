@@ -194,11 +194,17 @@ class _VectorLayersListState extends State<VectorLayersList> {
                                       size: 18, color: muted),
                                 ),
                                 const SizedBox(width: 4),
-                                Text("Layers",
-                                    style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: theme.colors.onSurface)),
+                                // Giving way before the buttons beside it,
+                                // in the narrowest sidebar.
+                                Flexible(
+                                  child: Text("Layers",
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: theme.colors.onSurface)),
+                                ),
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
@@ -230,6 +236,17 @@ class _VectorLayersListState extends State<VectorLayersList> {
                           }
                           controller.vectorSolo = !controller.vectorSolo;
                         },
+                      ),
+                      // The picked layer taken out, from the strip as well
+                      // as the list: a tablet has no Delete key.
+                      CanvasIconButton(
+                        key: const ValueKey("vectorLayersDelete"),
+                        tight: true,
+                        icon: Icons.delete_outline,
+                        tooltip: "Delete the picked layer",
+                        onPressed: picked < 0 || e.shapes![picked].locked
+                            ? null
+                            : () => _remove(picked),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(right: 6),

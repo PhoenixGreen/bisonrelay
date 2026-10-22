@@ -514,6 +514,21 @@ void main() {
       await tapKey("vectorLayerAll");
       expect(c.vectorShape, -1);
 
+      // Delete beside Add takes out the picked layer, strip or list.
+      expect(
+          tester
+              .widget<CanvasIconButton>(
+                  find.byKey(const ValueKey("vectorLayersDelete")))
+              .onPressed,
+          isNull,
+          reason: "nothing picked");
+      await tapKey("vectorLayer-1");
+      var before = now().shapes!.length;
+      await tapKey("vectorLayersDelete");
+      expect(now().shapes!.length, before - 1);
+      c.undo();
+      await tester.pumpAndSettle();
+
       // Solo holds every layer but the one picked.
       await tapKey("vectorLayer-1");
       await tapKey("vectorLayersSolo");
