@@ -470,9 +470,18 @@ class PageBrowserBar extends StatelessWidget {
     required this.onHome,
   });
 
+  /// narrowBelow is the window width under which the bar keeps only what
+  /// moves through pages -- back, forward, reload -- and the address. At a
+  /// phone's width its eight buttons left the address twelve pixels; the
+  /// sections are in the sidebar's drawer there, and the front page a tap
+  /// on the site's name away.
+  static const double narrowBelow = 600;
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
+    var narrow = MediaQuery.sizeOf(context).width < narrowBelow;
+    var onSection = narrow ? null : this.onSection;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(children: [
@@ -499,7 +508,7 @@ class PageBrowserBar extends StatelessWidget {
               tooltip: pagesTabLabels[i],
               isSelected: section == i,
               color: section == i ? theme.colors.primary : null,
-              onPressed: () => onSection!(i),
+              onPressed: () => onSection(i),
             ),
         if (onSection != null) const SizedBox(width: 4),
         // The navigation buttons stay in place with nothing open rather
@@ -533,7 +542,7 @@ class PageBrowserBar extends StatelessWidget {
                       height: 12,
                       child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
-              if (session == null && sectionIcon(section) != null)
+              if (session == null && sectionIcon(section) != null && !narrow)
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: Icon(sectionIcon(section), size: 14),
@@ -553,11 +562,12 @@ class PageBrowserBar extends StatelessWidget {
         // than on where you are: go to its front page, fetch it again, or
         // go and find another one.
         const SizedBox(width: 4),
-        IconButton(
-          icon: const Icon(Icons.home_outlined, size: 18),
-          tooltip: "Front page",
-          onPressed: session == null ? null : onHome,
-        ),
+        if (!narrow)
+          IconButton(
+            icon: const Icon(Icons.home_outlined, size: 18),
+            tooltip: "Front page",
+            onPressed: session == null ? null : onHome,
+          ),
         IconButton(
           icon: const Icon(Icons.refresh, size: 18),
           tooltip: "Reload",
@@ -569,7 +579,7 @@ class PageBrowserBar extends StatelessWidget {
             tooltip: pagesTabLabels[pagesTabVisit],
             isSelected: section == pagesTabVisit,
             color: section == pagesTabVisit ? theme.colors.primary : null,
-            onPressed: () => onSection!(pagesTabVisit),
+            onPressed: () => onSection(pagesTabVisit),
           ),
       ]),
     );

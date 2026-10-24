@@ -32,6 +32,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/files_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/presets_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -542,212 +543,236 @@ class _CanvasScreenState extends State<CanvasScreen> {
     );
   }
 
-  /// _top is the band and the strip under it -- see _content -- measured,
-  /// and _topSeen its height when last laid out.
-  final GlobalKey _top = GlobalKey();
+  /// _topSeen and _pageSeen are the heights of the band with the strip under
+  /// it, and of the whole page, when last laid out -- for the timeline to fit
+  /// between. See _Measured.
+  ///
+  /// Reported by the page as it is laid out, not asked of a LayoutBuilder or
+  /// read through GlobalKeys: the sidebar's own LayoutBuilder moves this
+  /// page about, and a page rebuilt, or keyed and woken, in the middle of
+  /// that took its tooltips with it -- which is not allowed there, and the
+  /// page went red.
   double _topSeen = 48;
+  double _pageSeen = double.infinity;
+
+  void _measured({double? top, double? page}) {
+    if (!mounted) return;
+    var t = top ?? _topSeen, p = page ?? _pageSeen;
+    if ((t - _topSeen).abs() > 0.5 || (p - _pageSeen).abs() > 0.5) {
+      setState(() {
+        _topSeen = t;
+        _pageSeen = p;
+      });
+    }
+  }
 
   Widget _content(ThemeNotifier theme) => ListenableBuilder(
         listenable: _controller,
-        builder: (context, _) => LayoutBuilder(builder: (context, box) {
-          // Measured after it is laid out: opened, the strip under the band
-          // takes room the timeline gives back.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            var h = _top.currentContext?.size?.height;
-            if (mounted && h != null && (h - _topSeen).abs() > 0.5) {
-              setState(() => _topSeen = h);
-            }
-          });
+        builder: (context, _) {
           var timelineShown =
-              timelineShownIn(box.maxHeight, _topSeen, _timelineHeight);
-          return Column(children: [
-            Column(key: _top, mainAxisSize: MainAxisSize.min, children: [
-              CanvasSettingsBar(
-                controller: _controller,
-                onPublish: _publish,
-                canvasSettingsOpen: _canvasSettingsOpen,
-                onToggleCanvasSettings: () => setState(() {
-                  _canvasSettingsOpen = !_canvasSettingsOpen;
-                  if (_canvasSettingsOpen) _guidesOpen = false;
-                }),
-                guidesOpen: _guidesOpen,
-                onToggleGuides: () => setState(() {
-                  _guidesOpen = !_guidesOpen;
-                  if (_guidesOpen) _canvasSettingsOpen = false;
-                }),
-                timelineOpen: _timelineOpen,
-                onToggleTimeline: () => setState(() {
-                  _timelineOpen = !_timelineOpen;
-                  Provider.of<CanvasPreferences>(context, listen: false)
-                      .timeline = _timelineOpen;
-                }),
-                // Only while the sidebar is away. The band is where every other
-                // control on this page lives, so the one that brings the sidebar
-                // back belongs in it rather than floating on the page behind it.
-                onShowSidebar: _sidebarVisible
-                    ? null
-                    : () => setState(() => _sidebarVisible = true),
-              ),
-              ...canvasSecondLine(
-                settings: _canvasSettingsOpen
-                    ? CanvasSettingsPanel(controller: _controller)
-                    : null,
-                guides: _guidesOpen
-                    ? CanvasGuidesPanel(controller: _controller)
-                    : null,
-              ),
-            ]),
-            Expanded(
-              child: Stack(children: [
-                Positioned.fill(
-                  // The whole canvas area is a drop target, so an element
-                  // dragged out of the sidebar lands where it was let go rather
-                  // than in the middle of the page.
-                  child: DragTarget<ElementKind>(
-                    onAcceptWithDetails: (details) {
-                      var stage = _stageKey.currentState;
-                      var box = _stageKey.currentContext?.findRenderObject();
-                      if (stage == null || box is! RenderBox) return;
-                      var local = box.globalToLocal(details.offset);
-                      _controller.addElement(newElement(
-                        details.data,
-                        _controller.document,
-                        center: stage.toDocumentPoint(local),
-                      ));
-                    },
-                    builder: (context, candidate, rejected) =>
-                        // And an asset from the Assets sidebar, which becomes the
-                        // element that shows it, where it was let go.
-                        // Or a stock result, fetched when it lands.
-                        DragTarget<Object>(
-                      onWillAcceptWithDetails: (d) =>
-                          droppedKind(d.data) != null,
-                      onAcceptWithDetails: (details) async {
-                        var stage = _stageKey.currentState;
-                        var box = _stageKey.currentContext?.findRenderObject();
-                        if (stage == null || box is! RenderBox) return;
-                        var local = box.globalToLocal(details.offset);
-                        var center = stage.toDocumentPoint(local);
-                        var asset = await droppedAsset(details.data);
-                        if (asset == null || !mounted) return;
-                        _controller.addElement(elementForAsset(
-                          asset,
-                          _controller.document,
-                          center: center,
-                        ));
-                      },
-                      builder: (context, assets, _) => Container(
-                        color: candidate.isEmpty && assets.isEmpty
+              timelineShownIn(_pageSeen, _topSeen, _timelineHeight);
+          return _Measured(
+              onHeight: (h) => _measured(page: h),
+              child: Column(children: [
+                _Measured(
+                    onHeight: (h) => _measured(top: h),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      CanvasSettingsBar(
+                        controller: _controller,
+                        onPublish: _publish,
+                        canvasSettingsOpen: _canvasSettingsOpen,
+                        onToggleCanvasSettings: () => setState(() {
+                          _canvasSettingsOpen = !_canvasSettingsOpen;
+                          if (_canvasSettingsOpen) _guidesOpen = false;
+                        }),
+                        guidesOpen: _guidesOpen,
+                        onToggleGuides: () => setState(() {
+                          _guidesOpen = !_guidesOpen;
+                          if (_guidesOpen) _canvasSettingsOpen = false;
+                        }),
+                        timelineOpen: _timelineOpen,
+                        onToggleTimeline: () => setState(() {
+                          _timelineOpen = !_timelineOpen;
+                          Provider.of<CanvasPreferences>(context, listen: false)
+                              .timeline = _timelineOpen;
+                        }),
+                        // Only while the sidebar is away. The band is where every other
+                        // control on this page lives, so the one that brings the sidebar
+                        // back belongs in it rather than floating on the page behind it.
+                        onShowSidebar: _sidebarVisible
                             ? null
-                            : theme.colors.primary.withValues(alpha: 0.06),
-                        child: CanvasStage(
-                          key: _stageKey,
-                          controller: _controller,
-                          onButtonLink: _openLink,
+                            : () => setState(() => _sidebarVisible = true),
+                      ),
+                      ...canvasSecondLine(
+                        settings: _canvasSettingsOpen
+                            ? CanvasSettingsPanel(controller: _controller)
+                            : null,
+                        guides: _guidesOpen
+                            ? CanvasGuidesPanel(controller: _controller)
+                            : null,
+                      ),
+                    ])),
+                Expanded(
+                  child: Stack(children: [
+                    Positioned.fill(
+                      // The whole canvas area is a drop target, so an element
+                      // dragged out of the sidebar lands where it was let go rather
+                      // than in the middle of the page.
+                      child: DragTarget<ElementKind>(
+                        onAcceptWithDetails: (details) {
+                          var stage = _stageKey.currentState;
+                          var box =
+                              _stageKey.currentContext?.findRenderObject();
+                          if (stage == null || box is! RenderBox) return;
+                          var local = box.globalToLocal(details.offset);
+                          _controller.addElement(newElement(
+                            details.data,
+                            _controller.document,
+                            center: stage.toDocumentPoint(local),
+                          ));
+                        },
+                        builder: (context, candidate, rejected) =>
+                            // And an asset from the Assets sidebar, which becomes the
+                            // element that shows it, where it was let go.
+                            // Or a stock result, fetched when it lands.
+                            DragTarget<Object>(
+                          onWillAcceptWithDetails: (d) =>
+                              droppedKind(d.data) != null,
+                          onAcceptWithDetails: (details) async {
+                            var stage = _stageKey.currentState;
+                            var box =
+                                _stageKey.currentContext?.findRenderObject();
+                            if (stage == null || box is! RenderBox) return;
+                            var local = box.globalToLocal(details.offset);
+                            var center = stage.toDocumentPoint(local);
+                            var asset = await droppedAsset(details.data);
+                            if (asset == null || !mounted) return;
+                            _controller.addElement(elementForAsset(
+                              asset,
+                              _controller.document,
+                              center: center,
+                            ));
+                          },
+                          builder: (context, assets, _) => Container(
+                            color: candidate.isEmpty && assets.isEmpty
+                                ? null
+                                : theme.colors.primary.withValues(alpha: 0.06),
+                            child: CanvasStage(
+                              key: _stageKey,
+                              controller: _controller,
+                              onButtonLink: _openLink,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-                // The tool in hand on a picture, and what to do with it, over
-                // the top of the canvas where the eye is -- see
-                // image_tool_hint.dart.
-                Positioned(
-                  top: 10,
-                  left: 16,
-                  right: 16,
-                  // A drawing's as well: only one is ever being edited.
-                  child: Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    ImageToolHint(controller: _controller),
-                    VectorToolHint(controller: _controller),
-                  ])),
-                ),
-                // The pose bar still sits over the design rather than pushing
-                // it: it is opened while watching an animation, where a shift
-                // in the middle of playback is exactly what nobody wants, and
-                // it hangs off the bottom edge rather than the top -- which is
-                // not the edge anybody is working against.
-                if (_keyframesOpen && !_controller.playing)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: CanvasKeyframeBar(controller: _controller),
-                  ),
-                // Above the pose bar when both are out, and up while playing,
-                // unlike the pose bar: watching the clips go by under the
-                // playhead is half of what it is for.
-                // The mixer at the bottom, the channels over it, so the strips
-                // and the clips they belong to are both in view.
-                if (_controller.mixerOpen)
-                  Positioned(
-                    bottom: _keyframesOpen && !_controller.playing
-                        ? keyframeBarHeight
-                        : 0,
-                    left: 0,
-                    right: 0,
-                    child: LayoutBuilder(
-                      builder: (context, box) => CanvasMixer(
-                        controller: _controller,
-                        height: _mixerHeight,
-                        onResize: (h) => setState(() => _mixerHeight = h.clamp(
-                            mixerMinHeight,
-                            math.max(mixerMinHeight,
-                                MediaQuery.sizeOf(context).height * 0.7))),
-                        onClose: () => _controller.mixerOpen = false,
+                    // The tool in hand on a picture, and what to do with it, over
+                    // the top of the canvas where the eye is -- see
+                    // image_tool_hint.dart.
+                    Positioned(
+                      top: 10,
+                      left: 16,
+                      right: 16,
+                      // A drawing's as well: only one is ever being edited.
+                      child: Center(
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                        ImageToolHint(controller: _controller),
+                        VectorToolHint(controller: _controller),
+                      ])),
+                    ),
+                    // The pose bar still sits over the design rather than pushing
+                    // it: it is opened while watching an animation, where a shift
+                    // in the middle of playback is exactly what nobody wants, and
+                    // it hangs off the bottom edge rather than the top -- which is
+                    // not the edge anybody is working against.
+                    if (_keyframesOpen && !_controller.playing)
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: CanvasKeyframeBar(controller: _controller),
                       ),
-                    ),
-                  ),
-                // The effects of one strip, a panel of its own over the mixer
-                // -- or at the bottom, with the mixer shut.
-                if (_controller.effectsOpen)
-                  Positioned(
-                    bottom: (_keyframesOpen && !_controller.playing
+                    // Above the pose bar when both are out, and up while playing,
+                    // unlike the pose bar: watching the clips go by under the
+                    // playhead is half of what it is for.
+                    // The mixer at the bottom, the channels over it, so the strips
+                    // and the clips they belong to are both in view.
+                    if (_controller.mixerOpen)
+                      Positioned(
+                        bottom: _keyframesOpen && !_controller.playing
                             ? keyframeBarHeight
-                            : 0) +
-                        (_controller.mixerOpen ? _mixerHeight : 0),
-                    left: 0,
-                    right: 0,
-                    child: CanvasMixer.effects(
-                      controller: _controller,
-                      height: _effectsHeight,
-                      onResize: (h) => setState(() => _effectsHeight = h.clamp(
-                          effectsMinHeight,
-                          math.max(effectsMinHeight,
-                              MediaQuery.sizeOf(context).height * 0.6))),
-                      onClose: () => _controller.effectsOpen = false,
-                    ),
+                            : 0,
+                        left: 0,
+                        right: 0,
+                        child: LayoutBuilder(
+                          builder: (context, box) => CanvasMixer(
+                            controller: _controller,
+                            height: _mixerHeight,
+                            onResize: (h) => setState(() => _mixerHeight =
+                                h.clamp(
+                                    mixerMinHeight,
+                                    math.max(
+                                        mixerMinHeight,
+                                        MediaQuery.sizeOf(context).height *
+                                            0.7))),
+                            onClose: () => _controller.mixerOpen = false,
+                          ),
+                        ),
+                      ),
+                    // The effects of one strip, a panel of its own over the mixer
+                    // -- or at the bottom, with the mixer shut.
+                    if (_controller.effectsOpen)
+                      Positioned(
+                        bottom: (_keyframesOpen && !_controller.playing
+                                ? keyframeBarHeight
+                                : 0) +
+                            (_controller.mixerOpen ? _mixerHeight : 0),
+                        left: 0,
+                        right: 0,
+                        child: CanvasMixer.effects(
+                          controller: _controller,
+                          height: _effectsHeight,
+                          onResize: (h) => setState(() => _effectsHeight =
+                              h.clamp(
+                                  effectsMinHeight,
+                                  math.max(
+                                      effectsMinHeight,
+                                      MediaQuery.sizeOf(context).height *
+                                          0.6))),
+                          onClose: () => _controller.effectsOpen = false,
+                        ),
+                      ),
+                  ]),
+                ),
+                // Hidden by taking it out rather than by shrinking it to nothing:
+                // the transport holds a focus node and a ticker, and a strip of no
+                // height that still answers the keyboard is worse than no strip.
+                if (_timelineOpen)
+                  CanvasTimeline(
+                    controller: _controller,
+                    keyframesOpen: _keyframesOpen,
+                    onToggleKeyframes: () =>
+                        setState(() => _keyframesOpen = !_keyframesOpen),
+                    height: timelineShown,
+                    onResize: (h) {
+                      var most = math.max(timelineHeight,
+                          MediaQuery.sizeOf(context).height * 0.6);
+                      // Down to the play bar alone: below half way to the strip it
+                      // snaps shut to the bar, and above, it is at least the strip.
+                      var shut =
+                          h < (timelineCollapsedHeight + timelineHeight) / 2;
+                      setState(() => _timelineHeight = shut
+                          ? timelineCollapsedHeight
+                          : h.clamp(timelineHeight, most).toDouble());
+                      Provider.of<CanvasPreferences>(context, listen: false)
+                          .timelineHeight = _timelineHeight;
+                    },
+                    // One line at a time: two strips over the same corner of the
+                    // canvas would be one on top of the other.
                   ),
-              ]),
-            ),
-            // Hidden by taking it out rather than by shrinking it to nothing:
-            // the transport holds a focus node and a ticker, and a strip of no
-            // height that still answers the keyboard is worse than no strip.
-            if (_timelineOpen)
-              CanvasTimeline(
-                controller: _controller,
-                keyframesOpen: _keyframesOpen,
-                onToggleKeyframes: () =>
-                    setState(() => _keyframesOpen = !_keyframesOpen),
-                height: timelineShown,
-                onResize: (h) {
-                  var most = math.max(
-                      timelineHeight, MediaQuery.sizeOf(context).height * 0.6);
-                  // Down to the play bar alone: below half way to the strip it
-                  // snaps shut to the bar, and above, it is at least the strip.
-                  var shut = h < (timelineCollapsedHeight + timelineHeight) / 2;
-                  setState(() => _timelineHeight = shut
-                      ? timelineCollapsedHeight
-                      : h.clamp(timelineHeight, most).toDouble());
-                  Provider.of<CanvasPreferences>(context, listen: false)
-                      .timelineHeight = _timelineHeight;
-                },
-                // One line at a time: two strips over the same corner of the
-                // canvas would be one on top of the other.
-              ),
-          ]);
-        }),
+              ]));
+        },
       );
 
   /// _seen is which panels have been looked at, and so which of them are
@@ -814,3 +839,34 @@ List<Widget> canvasSecondLine({Widget? settings, Widget? guides}) => [
       // through, the settings win rather than two strips stacking.
       if (settings == null && guides != null) guides,
     ];
+
+/// _Measured tells [onHeight] its child's height whenever layout changes it
+/// -- after the frame, so the change is a build of its own, not one in the
+/// middle of layout.
+class _Measured extends SingleChildRenderObjectWidget {
+  final ValueChanged<double> onHeight;
+  const _Measured({required this.onHeight, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderMeasured(onHeight);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderMeasured renderObject) =>
+      renderObject.onHeight = onHeight;
+}
+
+class _RenderMeasured extends RenderProxyBox {
+  ValueChanged<double> onHeight;
+  double? _told;
+  _RenderMeasured(this.onHeight);
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    var h = size.height;
+    if (_told != null && (h - _told!).abs() <= 0.5) return;
+    _told = h;
+    WidgetsBinding.instance.addPostFrameCallback((_) => onHeight(h));
+  }
+}

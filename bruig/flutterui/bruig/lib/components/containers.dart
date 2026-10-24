@@ -717,6 +717,12 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
   // storageKey doc above). Null until loaded/dragged, meaning "use the
   // caller's declared default width".
   double? _resizableWidth;
+
+  /// _resizing is whether the edge is being dragged: the resize cursor is
+  /// held over everything until it is let go. On the eight-pixel handle
+  /// alone it flickered off whenever the pointer got a little ahead of the
+  /// edge, or carried on past the narrowest or widest it goes.
+  bool _resizing = false;
   static const _resizableMinWidth = 180.0;
   static const _resizableMaxWidth = 560.0;
 
@@ -874,39 +880,56 @@ class _SecondarySideMenuLayoutState extends State<SecondarySideMenuLayout> {
           var defaultWidth = sidebarWidth(menuWidth);
           var currentWidth = (_resizableWidth ?? defaultWidth)
               .clamp(_resizableMinWidth, _resizableMaxWidth);
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              sidebarSlot(currentWidth),
-              if (widget.collapseSidebar)
-                const SizedBox.shrink()
-              else
-                MouseRegion(
-                  cursor: SystemMouseCursors.resizeLeftRight,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onHorizontalDragUpdate: (d) => _setResizableWidth(
-                        (currentWidth + d.delta.dx)
-                            .clamp(_resizableMinWidth, _resizableMaxWidth)),
-                    onHorizontalDragEnd: (_) => _saveResizableWidth(),
-                    onDoubleTap: () {
-                      _setResizableWidth(defaultWidth);
-                      _saveResizableWidth();
-                    },
-                    child: SizedBox(
-                      width: 8,
-                      child: Center(
+          // Always there, so the content keeps its place in the tree; it
+          // only holds a cursor while the edge is dragged.
+          return MouseRegion(
+              cursor: _resizing
+                  ? SystemMouseCursors.resizeLeftRight
+                  : MouseCursor.defer,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  sidebarSlot(currentWidth),
+                  if (widget.collapseSidebar)
+                    const SizedBox.shrink()
+                  else
+                    MouseRegion(
+                      cursor: SystemMouseCursors.resizeLeftRight,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        // From the width as it is now, not as this build saw it:
+                        // two moves before the next frame added the second to a
+                        // width the first had already changed, and the edge
+                        // fell behind the pointer.
+                        onHorizontalDragStart: (_) =>
+                            setState(() => _resizing = true),
+                        onHorizontalDragUpdate: (d) => _setResizableWidth(
+                            ((_resizableWidth ?? currentWidth) + d.delta.dx)
+                                .clamp(_resizableMinWidth, _resizableMaxWidth)),
+                        onHorizontalDragEnd: (_) {
+                          setState(() => _resizing = false);
+                          _saveResizableWidth();
+                        },
+                        onHorizontalDragCancel: () =>
+                            setState(() => _resizing = false),
+                        onDoubleTap: () {
+                          _setResizableWidth(defaultWidth);
+                          _saveResizableWidth();
+                        },
                         child: SizedBox(
-                          width: sidebarEdgeWidth(theme),
-                          child: ColoredBox(color: sidebarEdgeColor(theme)),
+                          width: 8,
+                          child: Center(
+                            child: SizedBox(
+                              width: sidebarEdgeWidth(theme),
+                              child: ColoredBox(color: sidebarEdgeColor(theme)),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              Expanded(child: contentAreaFrame(theme, widget.content)),
-            ],
-          );
+                  Expanded(child: contentAreaFrame(theme, widget.content)),
+                ],
+              ));
         }
 
         // alwaysVisible (default).
@@ -983,6 +1006,10 @@ class ResizableSidebar extends StatefulWidget {
 class _ResizableSidebarState extends State<ResizableSidebar> {
   double? _width;
 
+  /// _resizing holds the resize cursor while the edge is dragged: see
+  /// SecondarySideMenuLayout's.
+  bool _resizing = false;
+
   String get _storeKey => "sidebarWidth_${widget.storageKey}";
 
   @override
@@ -1026,9 +1053,15 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
         cursor: SystemMouseCursors.resizeLeftRight,
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragUpdate: (d) => _set(
-              (width + d.delta.dx).clamp(kSidebarResizeMin, kSidebarResizeMax)),
-          onHorizontalDragEnd: (_) => _save(),
+          // From the width as it is now: see SecondarySideMenuLayout's.
+          onHorizontalDragUpdate: (d) => _set(((_width ?? width) + d.delta.dx)
+              .clamp(kSidebarResizeMin, kSidebarResizeMax)),
+          onHorizontalDragStart: (_) => setState(() => _resizing = true),
+          onHorizontalDragEnd: (_) {
+            setState(() => _resizing = false);
+            _save();
+          },
+          onHorizontalDragCancel: () => setState(() => _resizing = false),
           onDoubleTap: () {
             _set(widget.defaultWidth);
             _save();
@@ -1044,7 +1077,11 @@ class _ResizableSidebarState extends State<ResizableSidebar> {
           ),
         ),
       );
-      return widget.builder(context, width, handle);
+      return MouseRegion(
+        cursor:
+            _resizing ? SystemMouseCursors.resizeLeftRight : MouseCursor.defer,
+        child: widget.builder(context, width, handle),
+      );
     });
   }
 }

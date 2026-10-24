@@ -13,6 +13,11 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
+    // No shorter than the app can be laid out in: shrunk past this, the main
+    // navigation and the canvas's timeline ran out of room. As narrow as a
+    // phone, though: narrow windows have a layout of their own, and the app
+    // is tried out at a phone's width.
+    self.contentMinSize = NSSize(width: 360, height: 560)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

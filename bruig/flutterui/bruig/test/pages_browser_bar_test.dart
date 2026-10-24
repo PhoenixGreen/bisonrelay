@@ -153,4 +153,27 @@ void main() {
     await pumpBar(tester, sidebarOpen: false);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('at a phone width the address keeps room, the sections go',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    // No page open, a section showing, the sidebar in the drawer: what the
+    // log overflowed on.
+    await pumpBar(tester,
+        sidebarOpen: false,
+        toggleable: false,
+        withPage: false,
+        section: 0,
+        onSection: (_) {});
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip("Front page"), findsNothing,
+        reason: "the front page is a tap on the site away");
+    expect(find.byTooltip("Back"), findsOneWidget);
+    expect(find.byTooltip("Reload"), findsOneWidget);
+    var address = tester.getSize(find.text("Site Settings"));
+    expect(address.width, greaterThan(40), reason: "readable, not 12 px");
+  });
 }
