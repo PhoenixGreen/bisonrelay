@@ -1161,12 +1161,35 @@ class CanvasController extends ChangeNotifier {
 
   bool get canPaste => _clipboard.isNotEmpty;
 
-  /// copySelected puts the selection on the clipboard.
+  /// copySelected puts the selection on the clipboard -- and the clips
+  /// picked on the timeline from another canvas with it: the master's music,
+  /// clicked from a scene, is not in the selection, and copying it copied
+  /// nothing.
   void copySelected() {
-    var chosen = selectedElements;
+    var chosen = [...selectedElements];
+    if (_offCanvas.isNotEmpty) {
+      _everyElement(_document, (e, _) {
+        if (_offCanvas.contains(e.id)) chosen.add(e);
+        return e;
+      });
+    }
     if (chosen.isEmpty) return;
     _clipboard = List.unmodifiable(chosen);
     notifyListeners();
+  }
+
+  /// _canvasStart is where the canvas holding element [id] starts on the
+  /// run's clock -- 0 for the master, which runs on it -- or null when it is
+  /// not on one: copied from somewhere since taken out.
+  int? _canvasStart(String id) {
+    var master = _document.master;
+    if (master != null && master.elements.any((e) => e.id == id)) return 0;
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((e) => e.id == id)) {
+        return _document.startOfScene(i);
+      }
+    }
+    return null;
   }
 
   /// cutSelected copies and then deletes.
@@ -1185,24 +1208,41 @@ class CanvasController extends ChangeNotifier {
     if (_clipboard.isEmpty) return;
     var next = _document;
     var made = <String>{};
+    var elsewhere = <String>{};
     for (var element in _clipboard) {
       CanvasElement copy;
+      var timed = (element is AudioElement && element.clip.timed) ||
+          (element is VideoElement && element.clip.timed);
+      // A clip from another canvas -- the master's, from a scene -- goes back
+      // onto that canvas, beside the one copied, at the playhead on its
+      // clock: the master runs on the whole run's.
+      var away = timed && !_onCanvas(element.id)
+          ? _canvasStart(element.id)
+          : null;
+      var at = away == null ? _frame : math.max(0, runFrame - away);
       if (element is AudioElement && element.clip.timed) {
         // A sound on the timeline goes where the playhead is, on the channel
         // it was copied from -- which is how one channel comes to hold two.
         copy = element
-            .copyWith(clip: element.clip.copyWith(at: _frame))
+            .copyWith(clip: element.clip.copyWith(at: at))
             .withId(newElementId());
       } else if (element is VideoElement && element.clip.timed) {
         // And a video on the timeline the same: at the playhead, in the same
         // place on the canvas -- the same shot, later.
         copy = element
-            .copyWith(clip: element.clip.copyWith(at: _frame))
+            .copyWith(clip: element.clip.copyWith(at: at))
             .withId(newElementId());
       } else {
         copy = element
             .withId(newElementId())
             .withBase(x: element.x + _pasteOffset, y: element.y + _pasteOffset);
+      }
+      if (away != null) {
+        if (_addedBeside(next, element.id, copy) case var added?) {
+          next = added;
+          elsewhere.add(copy.id);
+          continue;
+        }
       }
       made.add(copy.id);
       next = next.addElement(copy);
@@ -1211,6 +1251,8 @@ class CanvasController extends ChangeNotifier {
     _backgroundSelected = false;
     _focusedPlayer = null;
     _selection = made;
+    // Picked where they went, as a click on them would pick them.
+    _offCanvas = elsewhere;
     notifyListeners();
   }
 

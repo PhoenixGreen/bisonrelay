@@ -1988,7 +1988,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     // them: otherwise the keys go on to the page, which copies and pastes
     // what is selected -- a sound clicked on the timeline, say.
     var clipChosen = controller.selectedElements
-        .any((e) => e is AudioElement && e.clip.timed);
+            .any((e) => e is AudioElement && e.clip.timed) ||
+        // A clip picked on another canvas -- the master's, from a scene.
+        controller.clipSelection.length > controller.selection.length;
     if (meta &&
         event.logicalKey == LogicalKeyboardKey.keyC &&
         _selectedKeys.isNotEmpty) {

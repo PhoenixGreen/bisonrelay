@@ -653,6 +653,42 @@ void main() {
       expect(sounds.last.clip.channel, "1");
     });
 
+    test("a master's sound, copied from a scene, pastes onto the master",
+        () {
+      var c = CanvasController(
+          CanvasDocument(
+            frameRate: 10,
+            scenes: const [
+              CanvasScene(id: "one", frames: 100),
+              CanvasScene(id: "two", frames: 100),
+            ],
+            master: CanvasScene(id: "m", elements: [
+              onChannel("music", "1", at: 20),
+            ]),
+            masterOn: true,
+          ),
+          audioEngine: FakeEngine(const {song: 10}));
+      addTearDown(c.dispose);
+      c.goToScene(1);
+      // Picked on the timeline from the scene: not in its selection.
+      c.pickClip("music");
+      expect(c.selection, isEmpty);
+      c.copySelected();
+      expect(c.canPaste, isTrue, reason: "the master's sound was copied");
+      c.frame = 30;
+      c.paste();
+      var master = c.document.master!.elements.cast<AudioElement>().toList();
+      expect(master, hasLength(2), reason: "pasted back onto the master");
+      var copy = master.last;
+      expect(copy.clip.channel, "1", reason: "on the channel it came from");
+      expect(copy.clip.at, c.document.startOfScene(1) + 30,
+          reason: "at the playhead, on the run's clock");
+      expect(c.document.elements, isEmpty, reason: "not onto the scene");
+      expect(c.clipSelection, contains(copy.id), reason: "the copy picked");
+      c.undo();
+      expect(c.document.master!.elements, hasLength(1), reason: "one step");
+    });
+
     test("the empty channels Add audio used to leave are cleared on opening",
         () {
       var c = made(const []);
@@ -692,6 +728,32 @@ void main() {
       await tester.pumpAndSettle();
       return c;
     }
+
+    testWidgets("a sound clicked, Cmd-C, Cmd-V: a copy at the playhead",
+        (tester) async {
+      var c = await show(tester, [onChannel("a", "1", at: 20, seconds: 4)]);
+      var lane = tester.getRect(find.byKey(const ValueKey("lane-1")));
+      // Along the lane until the sound is under the click.
+      for (var x = 10.0; x < lane.width && c.selection.isEmpty; x += 25) {
+        await tester.tapAt(lane.centerLeft + Offset(x, 0));
+        await tester.pumpAndSettle();
+      }
+      expect(c.selection, {"a"}, reason: "the sound picked by a click");
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      c.frame = 90;
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pumpAndSettle();
+      var sounds = c.document.elements.cast<AudioElement>().toList();
+      expect(sounds, hasLength(2));
+      expect(sounds.last.clip.at, 90);
+      expect(sounds.last.clip.channel, "1");
+      expect(tester.takeException(), isNull);
+    });
 
     // Two fingers on a trackpad scroll the channels. A drag recognizer takes
     // a trackpad's pan as a drag, so a swipe over the strip scrubbed the
