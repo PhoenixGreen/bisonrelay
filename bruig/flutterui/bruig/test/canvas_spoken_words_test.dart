@@ -67,6 +67,11 @@ void main() {
     expect(saidBetween(said, 200, 1000), "It costs \$300.");
     expect(saidBetween(said, 100, 200, most: 14), "First, we need…");
     expect(saidBetween(said, 0, 90), "", reason: "nothing said there");
+    // A cue found at a pause lands just after the voice starts again; the
+    // word it lands a moment late for is still its first.
+    expect(saidBetween(said, 205, 1000, lead: 8), "It costs \$300.");
+    expect(saidBetween(said, 106, 205, lead: 8), "First, we need the hardware.",
+        reason: "and the next line's first word is not this one's last");
   });
 
   test("the words are kept with the document", () {

@@ -84,12 +84,17 @@ class SpokenWord {
 /// saidBetween is what [words] say from frame [from] up to [to], cut to
 /// about [most] characters at a word's end -- a cue's name, read off the
 /// voice. Empty where nothing is said there.
+///
+/// A word starting up to [lead] frames before a cue is that cue's: a cue
+/// found at a pause lands a moment after the voice has started again, and
+/// read from the cue itself every name lost its first word -- "it
+/// actually cost to secure" for "What does it actually cost".
 String saidBetween(List<SpokenWord> words, int from, int to,
-    {int most = 34}) {
+    {int most = 34, int lead = 2}) {
   var out = StringBuffer();
   for (var w in words) {
-    if (w.frame < from - 2) continue;
-    if (w.frame >= to - 2) break;
+    if (w.frame < from - lead) continue;
+    if (w.frame >= to - lead) break;
     var next = out.isEmpty ? w.text : "${out.toString()} ${w.text}";
     if (out.isNotEmpty && next.length > most) {
       out.write("…");

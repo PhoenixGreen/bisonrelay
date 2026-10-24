@@ -3887,7 +3887,8 @@ class CanvasController extends ChangeNotifier {
     var named = <String, String>{};
     for (var (i, c) in mine.indexed) {
       var until = i + 1 < mine.length ? mine[i + 1].frame : 1 << 30;
-      var name = saidBetween(said, c.frame, until);
+      // A third of a second's lead: see saidBetween.
+      var name = saidBetween(said, c.frame, until, lead: (rate / 3).round());
       if (name.isNotEmpty) named[c.id] = name;
     }
     apply(_document.copyWith(words: all, cues: [
