@@ -151,6 +151,12 @@ class Keyframe {
   bool get posesElement =>
       dx != 0 || dy != 0 || scale != 1 || rotate != 0 || opacity != 1;
 
+  /// movesElement is whether this keyframe puts the element somewhere else
+  /// -- moved, resized or turned. Not faded: a fade is not a place, and an
+  /// element that only fades is still where it was put. See
+  /// ElementTrack.posesAnything.
+  bool get movesElement => dx != 0 || dy != 0 || scale != 1 || rotate != 0;
+
   /// rest is the pose that changes nothing, which is what a track with no
   /// keyframes evaluates to and what a new keyframe starts from.
   static const Keyframe rest = Keyframe(frame: 0);
@@ -284,21 +290,27 @@ class ElementTrack {
 
   bool get isEmpty => keys.isEmpty;
 
-  /// posesAnything is whether this track is about where the element is, as
-  /// opposed to being nothing but channels.
+  /// posesAnything is whether this track is about where the element is --
+  /// whether a drag of it is a movement being animated, recorded as a pose,
+  /// rather than the element being put somewhere else.
   ///
-  /// True if any keyframe either poses the element or pins nothing at all. The
-  /// second half matters: a keyframe deliberately laid to hold something where
-  /// it is has a rest pose and no channels, and it is the clearest possible
-  /// statement that this element's position is being animated -- pinning the
-  /// start and then moving at a later frame is the ordinary way to make an
-  /// animation by hand.
+  /// True if any keyframe moves, sizes or turns the element. Movement on the
+  /// timeline is its own kind of animation, and only it: an arrival, an
+  /// exit, a loop, a count, a fade or a dim all play wherever the element is
+  /// put, which is what makes them worth having -- the element can be moved
+  /// or replaced and they come with it. Counted as posing, a fade laid by
+  /// "Dim the others" made every later drag write a keyframe nobody had
+  /// asked for, and the element crept away from where it had been put.
   ///
-  /// So what this excludes is only a track whose every keyframe exists to
-  /// carry a channel: a chart told how to arrive, a caption told how far along
-  /// its line to sit. Those say nothing about position, and treating them as
-  /// though they did turned every later drag into a keyframe nobody asked for.
-  bool get posesAnything => keys.any((k) => k.posesElement || k.values.isEmpty);
+  /// And true of a track that is nothing but resting keyframes -- pinned by
+  /// hand with Add Keyframe, before anything has moved. That is the ordinary
+  /// way to start a movement: pin the start, then pose at a later frame. A
+  /// resting keyframe beside channels or fades is not that; it is the start
+  /// of the fade, or the frame an arrival was laid on.
+  bool get posesAnything =>
+      keys.any((k) => k.movesElement) ||
+      (keys.isNotEmpty &&
+          keys.every((k) => k.values.isEmpty && !k.posesElement));
 
   /// at returns the pose for [frame].
   ///
