@@ -217,7 +217,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     if (!_canEdit(lane)) return;
     _grip = grip;
     _was = lane.clip;
+    _wasRun = controller.clipRunStart(lane.element.id);
   }
+
+  /// _wasRun is where the held clip started on the run's clock when it was
+  /// taken hold of: what a move is measured from, so it can cross into
+  /// another scene. Null for one on the backdrop, which moves as it did.
+  int? _wasRun;
 
   /// _cursors is the pointer each lane shows, from what is under it.
   final Map<String, MouseCursor> _cursors = {};
@@ -368,7 +374,11 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                 if (picked.contains(l.element.id) &&
                     l.element.id != lane.element.id &&
                     _canEdit(l))
-                  l.element.id: (l.element, l.clip),
+                  l.element.id: (
+                    l.element,
+                    l.clip,
+                    controller.clipRunStart(l.element.id)
+                  ),
             }
           : const {};
       if (_group.isEmpty) {
@@ -395,25 +405,26 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           frames = byEnd;
         }
         next = was.copyWith(at: math.max(0, was.at + frames.round()));
-        for (var (e, clip) in _group.values) {
-          controller.setTimedClip(
-              e, clip.copyWith(at: math.max(0, clip.at + frames.round())),
+        // Measured on the run's clock, so a clip goes on into the next scene
+        // rather than stopping at the end of its own -- see placeTimedClip.
+        for (var (e, clip, run) in _group.values) {
+          if (run == null) {
+            controller.setTimedClip(
+                e, clip.copyWith(at: math.max(0, clip.at + frames.round())),
+                transient: true);
+          } else {
+            controller.placeTimedClip(e, clip, run + frames.round(),
+                transient: true);
+          }
+        }
+        if (_wasRun case var run?) {
+          controller.placeTimedClip(lane.element, was, run + frames.round(),
               transient: true);
+          if (_group.isEmpty) _trackOver(lane, global);
+          setState(() {});
+          return;
         }
-        // And onto another lane, where it is let go over one -- one clip,
-        // not several. A video's soundtrack goes with it, so a channel can
-        // hold sounds and videos one after another.
-        if (_group.isEmpty) {
-          var over = _laneUnder(global);
-          var own = lane.channelKey;
-          // Only onto a channel of the same canvas -- see moveClipToChannel.
-          var to = controller.timelineChannels
-              .where((c) => c.key == over)
-              .firstOrNull;
-          _over = over == own || (to != null && to.first.scene != lane.scene)
-              ? null
-              : over;
-        }
+        if (_group.isEmpty) _trackOver(lane, global);
       case _Grip.start:
         // Trimming the front moves the start of the first file's range and
         // the clip with it, so what is left stays where it was on the
@@ -471,9 +482,24 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     return least;
   }
 
-  /// _group is the other sounds picked, as they were, while one of them is
-  /// dragged along -- see _drag.
-  Map<String, (CanvasElement, MediaClip)> _group = const {};
+  /// _group is the other sounds picked, as they were and where each started
+  /// on the run's clock, while one of them is dragged along -- see _drag.
+  Map<String, (CanvasElement, MediaClip, int?)> _group = const {};
+
+  /// _trackOver notes the lane [lane]'s clip would be let go onto, for a
+  /// move onto another channel -- one clip, not several. A video's
+  /// soundtrack goes with it, so a channel can hold sounds and videos one
+  /// after another.
+  void _trackOver(TimedLane lane, Offset global) {
+    var over = _laneUnder(global);
+    var own = lane.channelKey;
+    // Only onto a channel of the same canvas -- see moveClipToChannel.
+    var to =
+        controller.timelineChannels.where((c) => c.key == over).firstOrNull;
+    _over = over == own || (to != null && to.first.scene != lane.scene)
+        ? null
+        : over;
+  }
 
   void _release() {
     if (_boxFrom != null) {
@@ -487,6 +513,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     var over = _over;
     _held = null;
     _was = null;
+    _wasRun = null;
     _over = null;
     if (held != null && _dragging) {
       if (over != null) {

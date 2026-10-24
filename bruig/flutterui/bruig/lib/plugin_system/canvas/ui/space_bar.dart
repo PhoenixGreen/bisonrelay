@@ -80,7 +80,9 @@ class _CanvasSpaceBarState extends State<CanvasSpaceBar> {
     if (keys.isAltPressed) return KeyEventResult.ignored;
     switch (key) {
       case LogicalKeyboardKey.delete || LogicalKeyboardKey.backspace:
-        if (c.selection.isEmpty) return KeyEventResult.ignored;
+        // What is picked anywhere on the timeline, another scene's clips
+        // included -- see CanvasController.clipSelection.
+        if (c.clipSelection.isEmpty) return KeyEventResult.ignored;
         c.deleteSelected();
       // A cut on the selected channel where the playhead is -- K, the
       // knife's letter, or T. The knife itself is on the timeline's tools,

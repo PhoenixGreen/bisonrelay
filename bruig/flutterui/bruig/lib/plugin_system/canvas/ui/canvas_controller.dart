@@ -1107,13 +1107,121 @@ class CanvasController extends ChangeNotifier {
       deleteVectorPoint();
       return;
     }
-    if (_selection.isEmpty) return;
+    if (_selection.isEmpty && _offCanvas.isEmpty) return;
     var next = _document;
     for (var id in _selection) {
       next = next.removeElement(id);
     }
+    // And the clips picked on the timeline from another canvas -- another
+    // scene's, or the master's -- which are as much on the timeline as this
+    // scene's and were left behind, so a clip could be seen and picked and
+    // not deleted until somebody worked out which scene it was on.
+    for (var id in _offCanvas) {
+      next = _removedAnywhere(next, id);
+    }
     _selection = {};
+    _offCanvas = const {};
     apply(next);
+  }
+
+  /// _removedAnywhere is [doc] without element [id], wherever it is.
+  CanvasDocument _removedAnywhere(CanvasDocument doc, String id) {
+    if (doc.elements.any((e) => e.id == id)) return doc.removeElement(id);
+    var master = doc.master;
+    if (master != null && master.elements.any((e) => e.id == id)) {
+      return doc.copyWith(
+          master: master.copyWith(elements: [
+        for (var e in master.elements)
+          if (e.id != id) e,
+      ]));
+    }
+    for (var (i, scene) in doc.allScenes.indexed) {
+      if (!scene.elements.any((e) => e.id == id)) continue;
+      return doc.withScene(
+          i,
+          scene.copyWith(elements: [
+            for (var e in scene.elements)
+              if (e.id != id) e,
+          ]));
+    }
+    return doc;
+  }
+
+  /// clipRunStart is where element [id]'s clip starts on the run's clock --
+  /// its canvas's start and its own -- or null for one not on a canvas.
+  int? clipRunStart(String id) {
+    var start = _canvasStart(id);
+    if (start == null) return null;
+    CanvasElement? found;
+    _everyElement(_document, (e, _) {
+      if (e.id == id) found = e;
+      return e;
+    });
+    var clip = switch (found) {
+      AudioElement a => a.clip,
+      VideoElement v => v.clip,
+      _ => null,
+    };
+    return clip == null ? null : start + clip.at;
+  }
+
+  /// placeTimedClip puts [e]'s [clip] at frame [run] of the whole run.
+  ///
+  /// A clip on a scene goes to the scene [run] falls in: dragged past the
+  /// end of its own, it is now the next one's, rather than stopping at the
+  /// edge of a scene the reader may not know it was on. A clip on the master
+  /// goes where it is put; one on the backdrop as it always was.
+  void placeTimedClip(CanvasElement e, MediaClip clip, int run,
+      {bool transient = false}) {
+    run = math.max(0, run);
+    var master = _document.master;
+    var onMaster = master != null && master.elements.any((x) => x.id == e.id);
+    int? from;
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((x) => x.id == e.id)) from = i;
+    }
+    // The master and a document of one scene run on the run's own clock.
+    if (onMaster || from == null || !_document.hasScenes) {
+      setTimedClip(e, clip.copyWith(at: run), transient: transient);
+      return;
+    }
+    var scenes = _document.allScenes;
+    var to = scenes.length - 1;
+    for (var i = 0; i < scenes.length; i++) {
+      if (run < _document.startOfScene(i) + scenes[i].frames) {
+        to = i;
+        break;
+      }
+    }
+    var at = run - _document.startOfScene(to);
+    if (to == from) {
+      setTimedClip(e, clip.copyWith(at: at), transient: transient);
+      return;
+    }
+    var placed = switch (e) {
+      VideoElement v => v.copyWith(clip: clip.copyWith(at: at)),
+      AudioElement a => a.copyWith(clip: clip.copyWith(at: at)),
+      _ => null,
+    };
+    if (placed == null) return;
+    var next = _removedAnywhere(_document, e.id);
+    var scene = next.allScenes[to];
+    next = next.withScene(
+        to, scene.copyWith(elements: [...scene.elements, placed]));
+    // Still picked, wherever it has gone: on this canvas it is part of the
+    // selection, and off it one of the clips picked elsewhere.
+    var picked = clipSelection.contains(e.id);
+    apply(next, transient: transient);
+    if (picked) {
+      _selection = {..._selection}..remove(e.id);
+      _offCanvas = {..._offCanvas}..remove(e.id);
+      if (_onCanvas(e.id)) {
+        _selection = {..._selection, e.id};
+      } else {
+        _offCanvas = {..._offCanvas, e.id};
+      }
+      notifyListeners();
+    }
   }
 
   /// deleteElement takes out the element [id] -- a layers row's delete, for
@@ -1198,7 +1306,7 @@ class CanvasController extends ChangeNotifier {
 
   /// cutSelected copies and then deletes.
   void cutSelected() {
-    if (_selection.isEmpty) return;
+    if (_selection.isEmpty && _offCanvas.isEmpty) return;
     copySelected();
     deleteSelected();
   }
@@ -1217,11 +1325,16 @@ class CanvasController extends ChangeNotifier {
       CanvasElement copy;
       var timed = (element is AudioElement && element.clip.timed) ||
           (element is VideoElement && element.clip.timed);
-      // A clip from another canvas -- the master's, from a scene -- goes back
-      // onto that canvas, beside the one copied, at the playhead on its
-      // clock: the master runs on the whole run's.
-      var away = timed && !_onCanvas(element.id)
-          ? _canvasStart(element.id)
+      // A clip from the master, copied from a scene, goes back onto the
+      // master beside the one copied, at the playhead on its clock: the
+      // master runs on the whole run's. One from another scene comes here,
+      // to the scene the playhead is in -- sent back to its own, at a frame
+      // past that scene's end, it was a copy that never played.
+      var away = timed &&
+              !_onCanvas(element.id) &&
+              (_document.master?.elements.any((e) => e.id == element.id) ??
+                  false)
+          ? 0
           : null;
       var at = away == null ? _frame : math.max(0, runFrame - away);
       if (element is AudioElement && element.clip.timed) {
