@@ -262,8 +262,25 @@ void paintCanvasDocument(
   // Not while the master is the canvas being edited, or it would be drawn
   // twice: once as itself and once as the thing behind itself.
   var master = doc.masterScene;
+  // The master runs on the whole run's clock, not the scene's: a line that
+  // creeps along under twenty scenes is at frame 4000 of its track in the
+  // last of them, not back at nought. Its timed sounds already played that
+  // way; its keyframes were read on the scene's frame, so every master
+  // animation started again at every scene. See CanvasDocument.offTimeline.
+  var onMaster = master != null && !doc.editingMaster
+      ? {for (var e in master.elements) e.id}
+      : const <String>{};
+  //
+  // Not a book's. Its pages are read one at a time, in any order and for as
+  // long as the reader likes, and what is on its master -- a page number, a
+  // running head -- belongs to the page it is printed on.
+  var runFrame = doc.hasScenes && !doc.isPages && onMaster.isNotEmpty
+      ? doc.startOfScene(doc.at) + frame
+      : frame;
   void scene(List<CanvasElement> elements) =>
       _paintScene(canvas, doc, elements, frame,
+          onMaster: onMaster,
+          runFrame: runFrame,
           images: images,
           editing: editing,
           hoveredButton: hoveredButton,
@@ -292,6 +309,8 @@ void paintCanvasDocument(
           ? stackedWithMaster(master.elements, doc.elements)
           : doc.elements,
       frame,
+      onMaster: onMaster,
+      runFrame: runFrame,
       images: images,
       editing: editing,
       hoveredButton: hoveredButton,
@@ -316,6 +335,10 @@ void _paintScene(
   CanvasDocument doc,
   List<CanvasElement> elements,
   int frame, {
+  /// onMaster are the elements of the shared canvas, drawn at [runFrame] --
+  /// the frame of the whole run -- rather than at the scene's [frame].
+  Set<String> onMaster = const {},
+  int? runFrame,
   CanvasImageSource? images,
   bool editing = false,
   String? hoveredButton,
@@ -349,8 +372,14 @@ void _paintScene(
         hidden.contains(element.id)) {
       continue;
     }
-    paintElement(canvas, element,
-        element.id == previewing?.id ? previewing!.frame : frame,
+    paintElement(
+        canvas,
+        element,
+        element.id == previewing?.id
+            ? previewing!.frame
+            : onMaster.contains(element.id)
+                ? runFrame ?? frame
+                : frame,
         frameRate: doc.frameRate,
         images: images,
         editing: editing,
@@ -595,11 +624,14 @@ void paintElement(
   // editor: from where it starts to where it ends. Its poster before and
   // after was a second picture over the first wherever a clip had been cut
   // in two, the later half's still covering the earlier half as it played.
+  //
+  // A master's video in a run of scenes has been handed the run's frame
+  // already -- see paintCanvasDocument -- and a book's has its page's.
   if (element is VideoElement &&
       document != null &&
       document.offTimeline(element.clip, frame,
-          onMaster:
-              document.masterScene?.elements.contains(element) ?? false)) {
+          onMaster: document.isPages &&
+              (document.masterScene?.elements.contains(element) ?? false))) {
     return;
   }
 
