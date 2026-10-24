@@ -381,16 +381,21 @@ void _paintDocumentBackground(
   // ExportBackdrop. Generating the same still picture for every frame of an
   // export is the most expensive thing an export does.
   if (backdrop != null) {
+    // On the export's own pixels it is one pixel to one pixel, and wants no
+    // filtering: any filter at all resamples it -- which is both slower and,
+    // pixel for pixel, not the picture the slow road would have drawn. Under
+    // a scene's camera it is drawn larger or smaller than that, and is
+    // filtered like any picture that is.
+    var m = canvas.getTransform();
+    var across = rect.width * math.sqrt(m[0] * m[0] + m[1] * m[1]);
+    var exact = (across - backdrop.width).abs() < 0.5;
     canvas.drawImageRect(
         backdrop,
         Rect.fromLTWH(
             0, 0, backdrop.width.toDouble(), backdrop.height.toDouble()),
         rect,
-        // No filtering: the backdrop was rasterised at exactly the size this
-        // export writes, so the draw is one pixel to one pixel. Any filter at
-        // all resamples it -- which is both slower and, pixel for pixel, not
-        // the picture the slow road would have drawn.
-        Paint()..filterQuality = FilterQuality.none);
+        Paint()
+          ..filterQuality = exact ? FilterQuality.none : FilterQuality.medium);
     return;
   }
   // The master's own where the shared canvas is switched on and has one.
@@ -502,6 +507,24 @@ List<double>? chartSeriesReveal(ChartElement e, int frame, int frameRate) {
 }
 
 /// paintElement draws one element, with its animation pose applied.
+/// leavesByItself is whether [element] has a way out of its own to play
+/// over its closing keyframes -- an exit chosen -- or is a kind that has no
+/// exits at all. Where neither is true, paintElement fades it instead.
+bool leavesByItself(CanvasElement element) => switch (element) {
+      TextElement e => e.animation.closes,
+      ChartElement e => e.animation.closes,
+      ShapeElement e => e.animation.closes,
+      ImageElement e => e.animation.closes,
+      VectorElement e => e.animation.closes,
+      LineElement e => e.animation.closes,
+      PathElement e => e.animation.closes,
+      TableElement e => e.animation.closes,
+      CounterElement e => e.animation.closes,
+      ButtonElement e => e.animation.closes,
+      VideoElement e => e.animation.closes,
+      _ => true,
+    };
+
 void paintElement(
   ui.Canvas canvas,
   CanvasElement element,
@@ -557,6 +580,15 @@ void paintElement(
   var pose = element.track?.at(frame) ?? Keyframe.rest;
   var outer = poseOutside ? Keyframe.rest : pose;
   var alpha = (element.opacity * outer.opacity).clamp(0.0, 1.0);
+  // A way out with no exit chosen fades rather than doing nothing. The
+  // editor never leaves one like that -- choosing None takes the keyframes
+  // too -- but a preset, a paste or a document written by a script can, and
+  // an element that stays on screen through its own leaving band reads as a
+  // broken timeline rather than as a missing setting.
+  var close = pose.values[KeyframeChannel.close] ?? 0;
+  if (!poseOutside && close > 0 && !leavesByItself(element)) {
+    alpha *= (1 - close).clamp(0.0, 1.0);
+  }
   if (alpha <= 0.002) return;
 
   // A video on the timeline is on screen while its clip is, as in an

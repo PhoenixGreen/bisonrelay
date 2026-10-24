@@ -114,6 +114,8 @@ List<Widget> elementSettings(
               if (element is VectorElement)
                 vectorDrawingControls(
                     context, controller, element, write, begin, commit),
+              if (element is VectorElement && element.hasDrawing)
+                vectorCropControls(controller, element, write, begin, commit),
             ]),
         ...switch (element) {
           TextElement e =>

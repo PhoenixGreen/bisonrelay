@@ -77,22 +77,46 @@ class ChartNumbers {
   /// scaled styles too, since a chart in thousands can still reach 1,000K.
   final bool separators;
 
+  /// before and after are written either side of every number -- a
+  /// currency's sign, a unit: "\$300", "11.11 DCR", "40%". Part of how a
+  /// number is written rather than of the data, so the bars, the legend and
+  /// the axis all say it, and the figures stay figures that can be added up.
+  final String before;
+  final String after;
+
   const ChartNumbers({
     this.style = NumberStyle.automatic,
     this.decimals = 1,
     this.separators = true,
+    this.before = "",
+    this.after = "",
   });
 
   ChartNumbers copyWith(
-          {NumberStyle? style, int? decimals, bool? separators}) =>
+          {NumberStyle? style,
+          int? decimals,
+          bool? separators,
+          String? before,
+          String? after}) =>
       ChartNumbers(
         style: style ?? this.style,
         decimals: decimals ?? this.decimals,
         separators: separators ?? this.separators,
+        before: before ?? this.before,
+        after: after ?? this.after,
       );
 
-  /// format writes [v] out.
+  /// format writes [v] out, with whatever goes either side of it. A minus
+  /// sign goes before the currency's: -\$5, not \$-5.
   String format(double v) {
+    var figures = _figures(v);
+    if (figures.isEmpty || (before.isEmpty && after.isEmpty)) return figures;
+    var negative = figures.startsWith("-");
+    if (negative) figures = figures.substring(1);
+    return "${negative ? "-" : ""}$before$figures$after";
+  }
+
+  String _figures(double v) {
     if (!v.isFinite) return "";
     if (style == NumberStyle.automatic) return automaticNumber(v);
 
@@ -130,12 +154,16 @@ class ChartNumbers {
         if (style != NumberStyle.automatic) "style": style.name,
         if (decimals != 1) "decimals": decimals,
         if (!separators) "plain": true,
+        if (before.isNotEmpty) "pre": before,
+        if (after.isNotEmpty) "post": after,
       };
 
   factory ChartNumbers.fromJson(Map<String, dynamic> json) => ChartNumbers(
         style: NumberStyle.fromName(json["style"] as String?),
         decimals: jsonInt(json["decimals"], 1).clamp(0, 6),
         separators: !jsonBool(json["plain"], false),
+        before: jsonString(json["pre"], ""),
+        after: jsonString(json["post"], ""),
       );
 }
 

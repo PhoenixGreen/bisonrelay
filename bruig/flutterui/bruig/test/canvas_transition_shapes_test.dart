@@ -209,4 +209,14 @@ void main() {
     expect(touches, isTrue,
         reason: "the strokes have started somewhere inside the picture");
   });
+
+  test("every shape comes back from a save as itself", () {
+    // The circle is the default and so is not written down; read back, it
+    // used to fall to ShapeKind's own default and open as a square.
+    for (var shape in ShapeKind.values) {
+      var saved = _over(SceneTransitionKind.shapeWipe, shape: shape).toJson();
+      expect(SceneTransition.fromJson(saved).shape, shape,
+          reason: "${shape.name} saved as $saved");
+    }
+  });
 }

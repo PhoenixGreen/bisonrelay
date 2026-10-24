@@ -129,6 +129,10 @@ void paintSequenceFrame(
   /// posters. Null in an export. See paintCanvasDocument.
   AudioState Function(AudioElement)? audioState,
   VideoShow Function(VideoElement)? videoShow,
+
+  /// backdrop is the background every scene shares, already rasterised for
+  /// an export -- see ExportBackdrop. Null draws each scene's own.
+  ui.Image? backdrop,
 }) {
   var place = placeInSequence(doc, at);
   var scenes = doc.allScenes;
@@ -158,6 +162,7 @@ void paintSequenceFrame(
         backgrounds: backgrounds,
         audioState: audioState,
         videoShow: videoShow,
+        backdrop: backdrop,
         camera: camera?.at(frame / length, doc.size.rect));
   }
 

@@ -567,7 +567,7 @@ List<Widget> textSettings(
                 if (e.animation.loop.on) "Loops",
               ].join(" · "),
         extra: [
-          if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+          ...elementTimingCards(controller, e),
         ]),
   ];
 }

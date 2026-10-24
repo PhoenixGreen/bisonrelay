@@ -537,4 +537,31 @@ void main() {
       expect(own.copyWith(writtenLikeChart: true).numbers, isNull);
     });
   });
+
+  group("what goes either side", () {
+    test("a currency before and a unit after, in every style", () {
+      const dollars = ChartNumbers(before: "\$", style: NumberStyle.plain,
+          decimals: 0);
+      expect(at(dollars, 1200), "\$1,200");
+      expect(
+          at(
+              const ChartNumbers(
+                  after: " DCR", style: NumberStyle.plain, decimals: 2),
+              11.11),
+          "11.11 DCR");
+      expect(at(const ChartNumbers(before: "\$"), 1200000), "\$1.2M");
+    });
+
+    test("a minus sign goes before the currency's", () {
+      expect(at(const ChartNumbers(before: "\$"), -5), "-\$5");
+    });
+
+    test("nothing is written either side unless asked", () {
+      expect(const ChartNumbers().toJson().containsKey("pre"), isFalse);
+      var back = ChartNumbers.fromJson(
+          const ChartNumbers(before: "\$", after: "/mo").toJson());
+      expect(back.before, "\$");
+      expect(back.after, "/mo");
+    });
+  });
 }

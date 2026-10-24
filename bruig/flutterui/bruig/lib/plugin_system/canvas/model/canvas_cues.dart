@@ -41,6 +41,67 @@ class TimelineCue {
   }
 }
 
+/// SpokenWord is one word of a voice-over, where it is said: what a
+/// transcription heard, in frames of the whole run like a cue.
+///
+/// Kept so a cue can be named by what is said there -- "First, we need the
+/// hardware" rather than "Line 9" -- and so an element can be put on the word
+/// it belongs to: the price arriving as the price is spoken. [from] is the
+/// clip it was heard on, `voice:<id>` as the cues found there are tagged, so
+/// hearing that clip again replaces its words and leaves any other's alone.
+class SpokenWord {
+  final String text;
+  final int frame;
+  final int end;
+  final String from;
+
+  const SpokenWord(
+      {required this.text,
+      required this.frame,
+      required this.end,
+      this.from = ""});
+
+  Map<String, dynamic> toJson() => {
+        "t": text,
+        "f": frame,
+        "e": end,
+        if (from.isNotEmpty) "of": from,
+      };
+
+  static SpokenWord? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    var text = jsonString(json["t"], "");
+    if (text.isEmpty) return null;
+    var frame = math.max(0, jsonInt(json["f"], 0));
+    return SpokenWord(
+        text: text,
+        frame: frame,
+        end: math.max(frame, jsonInt(json["e"], frame)),
+        from: jsonString(json["of"], ""));
+  }
+}
+
+/// saidBetween is what [words] say from frame [from] up to [to], cut to
+/// about [most] characters at a word's end -- a cue's name, read off the
+/// voice. Empty where nothing is said there.
+String saidBetween(List<SpokenWord> words, int from, int to,
+    {int most = 34}) {
+  var out = StringBuffer();
+  for (var w in words) {
+    if (w.frame < from - 2) continue;
+    if (w.frame >= to - 2) break;
+    var next = out.isEmpty ? w.text : "${out.toString()} ${w.text}";
+    if (out.isNotEmpty && next.length > most) {
+      out.write("…");
+      return out.toString();
+    }
+    out
+      ..clear()
+      ..write(next);
+  }
+  return out.toString();
+}
+
 int _cueCounter = 0;
 
 /// newCueId is an id unique within a session, and in practice across them.

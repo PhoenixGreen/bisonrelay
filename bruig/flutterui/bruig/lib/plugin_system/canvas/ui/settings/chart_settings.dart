@@ -375,19 +375,28 @@ List<Widget> chartSettings(
           // grid, the axes and the scale are one question -- how is this chart
           // measured -- and they were down the middle of a group called "Axes and
           // values" with the axis titles above them and the legend below.,
-          if (e.type.isCircular && e.data.categories.isNotEmpty)
+          // And a bar chart of one series, whose bars are its values just as
+          // a pie's slices are -- see barsTakeColours.
+          if ((e.type.isCircular || barsTakeColours(e)) &&
+              e.data.categories.isNotEmpty)
             CanvasControlGroup(
-                label: "Slices",
+                label: e.type.isCircular ? "Slices" : "Bars",
                 key: const ValueKey("chartSliceColours"),
                 children: [
                   for (var (i, name) in e.data.categories.indexed)
                     CanvasColorButton(
                       key: ValueKey("chartSlice$i"),
                       label: name.isEmpty ? "${i + 1}" : name,
-                      color: sliceColour(e, i),
+                      color: e.type.isCircular
+                          ? sliceColour(e, i)
+                          : barColour(e, i),
                       onChanged: (c) => now(e.copyWith(sliceColors: [
                         for (var j = 0; j < e.data.categories.length; j++)
-                          j == i ? c : sliceColour(e, j),
+                          j == i
+                              ? c
+                              : e.type.isCircular
+                                  ? sliceColour(e, j)
+                                  : barColour(e, j),
                       ])),
                     ),
                 ]),
@@ -814,6 +823,38 @@ List<Widget> chartSettings(
                         : null,
                   ))),
                 ),
+                // What goes either side: a currency, a unit. Offered whatever
+                // the style, because "\$" means as much on 1.2K as on 1,200.
+                CanvasTextField(
+                  key: const ValueKey("chartNumbersBefore"),
+                  label: "Before",
+                  hint: "\$",
+                  value: e.numbers.before,
+                  width: 56,
+                  grow: false,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(
+                        numbers: e.numbers.copyWith(before: v),
+                        axisNumbers: e.axisNumbers?.copyWith(before: v)));
+                  },
+                  onCommit: commit,
+                ),
+                CanvasTextField(
+                  key: const ValueKey("chartNumbersAfter"),
+                  label: "After",
+                  hint: " DCR",
+                  value: e.numbers.after,
+                  width: 64,
+                  grow: false,
+                  onChanged: (v) {
+                    begin();
+                    write(e.copyWith(
+                        numbers: e.numbers.copyWith(after: v),
+                        axisNumbers: e.axisNumbers?.copyWith(after: v)));
+                  },
+                  onCommit: commit,
+                ),
                 // Automatic decides its own, so a box saying "1" under it would
                 // be a control that does nothing.
                 if (e.numbers.style != NumberStyle.automatic) ...[
@@ -1239,7 +1280,7 @@ List<Widget> chartSettings(
             ],
           ),
         ),
-        if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+        ...elementTimingCards(controller, e),
       ],
     ),
   ];

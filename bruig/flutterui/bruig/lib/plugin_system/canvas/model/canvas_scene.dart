@@ -551,7 +551,12 @@ class SceneTransition {
         color: colorFromJson(json["color"], const Color(0xFF000000)),
         ease: SceneTransitionEase.fromName(json["ease"] as String?),
         way: SceneTransitionWay.fromName(json["way"] as String?),
-        shape: ShapeKind.fromName(json["shape"] as String?),
+        // Absent means the default, which is a circle -- toJson leaves the
+        // circle out. ShapeKind's own fallback is a rectangle, so asking it
+        // turned every circle into a square on the next load.
+        shape: json["shape"] == null
+            ? ShapeKind.circle
+            : ShapeKind.fromName(json["shape"] as String?),
         count: jsonInt(json["count"], 6).clamp(1, 40),
         spacing: jsonDouble(json["spacing"], 0.15).clamp(0.0, 2.0),
         angle: jsonDouble(json["angle"], 0).clamp(-180.0, 180.0),

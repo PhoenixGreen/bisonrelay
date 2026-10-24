@@ -5,6 +5,8 @@ import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
+    show ImageCrop;
 
 // vector_element.dart is a drawing: an .svg, placed on the canvas and kept a
 // drawing all the way to the screen and the export, so it is sharp at any
@@ -768,6 +770,16 @@ class VectorElement extends CanvasElement {
   /// Only the colour is taken: what was transparent stays transparent.
   final Color? tint;
 
+  /// crop is which part of the drawing is shown, in fractions of the whole
+  /// of it -- a picture's crop, and the same numbers.
+  ///
+  /// Kept apart from [viewBox] on purpose. The view box is the drawing's own
+  /// coordinate space, read from the file and rewritten whenever the drawing
+  /// is taken apart or reverted; a crop is a decision about how much of it
+  /// to show, and has to survive both. It is what lets a logo's mark be used
+  /// without its wordmark while the drawing stays a reference to its file.
+  final ImageCrop crop;
+
   final ElementAnimation animation;
 
   const VectorElement(
@@ -779,6 +791,7 @@ class VectorElement extends CanvasElement {
     this.handleColor = defaultHandleColor,
     this.handleSize = 8,
     this.tint,
+    this.crop = const ImageCrop(),
     this.animation = const ElementAnimation(),
   });
 
@@ -795,8 +808,11 @@ class VectorElement extends CanvasElement {
   ///
   /// Returned as a scale for each axis and an offset, which is all a fitted
   /// drawing ever needs.
+  ///
+  /// [view] is the whole drawing; what is fitted is the part [crop] leaves.
   ({double sx, double sy, double dx, double dy}) placement(
       Rect box, Rect view) {
+    view = croppedView(view);
     if (view.width <= 0 || view.height <= 0) {
       return (sx: 1, sy: 1, dx: box.left, dy: box.top);
     }
@@ -813,6 +829,51 @@ class VectorElement extends CanvasElement {
     return (sx: sx, sy: sy, dx: dx, dy: dy);
   }
 
+  /// croppedView is the part of [whole] -- the drawing's own space -- that
+  /// [crop] shows.
+  Rect croppedView(Rect whole) => crop.isWhole
+      ? whole
+      : Rect.fromLTRB(
+          whole.left + whole.width * crop.left,
+          whole.top + whole.height * crop.top,
+          whole.left + whole.width * crop.right,
+          whole.top + whole.height * crop.bottom);
+
+  /// shownIn is where the cropped drawing lands in [box], on the canvas:
+  /// what a painter clips to, so the parts cropped away stay away. Null
+  /// where nothing is cropped and there is nothing to clip.
+  Rect? shownIn(Rect box, Rect whole) {
+    if (crop.isWhole || whole.width <= 0 || whole.height <= 0) return null;
+    var p = placement(box, whole);
+    var v = croppedView(whole);
+    return Rect.fromLTWH(v.left * p.sx + p.dx, v.top * p.sy + p.dy,
+        v.width * p.sx, v.height * p.sy);
+  }
+
+  /// croppedTo is this drawing with [next] as its crop and its box trimmed
+  /// to what is left, so the drawing stays exactly where it was on the
+  /// canvas -- see ImageElement.croppedTo, which is the same promise.
+  ///
+  /// Worked from where the drawing actually lands rather than from the box:
+  /// a drawing is fitted inside its box, with room to spare on one side, so
+  /// a strip of it is not a strip of the box. [whole] is the drawing's own
+  /// space -- its file's size, or its view box once taken apart.
+  VectorElement croppedTo(ImageCrop next, Rect whole) {
+    if (whole.width <= 0 || whole.height <= 0) return copyWith(crop: next);
+    var p = placement(bounds, whole);
+    var v = Rect.fromLTRB(
+        whole.left + whole.width * next.left,
+        whole.top + whole.height * next.top,
+        whole.left + whole.width * next.right,
+        whole.top + whole.height * next.bottom);
+    var left = v.left * p.sx + p.dx, top = v.top * p.sy + p.dy;
+    var w = v.width * p.sx, h = v.height * p.sy;
+    // Never so small it cannot be grabbed again.
+    if (w < 8 || h < 8) return copyWith(crop: next);
+    return copyWith(crop: next)
+        .withBase(x: left, y: top, width: w, height: h) as VectorElement;
+  }
+
   @override
   VectorElement rebase(ElementBase base) => VectorElement(base,
       assetId: assetId,
@@ -822,6 +883,7 @@ class VectorElement extends CanvasElement {
       handleColor: handleColor,
       handleSize: handleSize,
       tint: tint,
+      crop: crop,
       animation: animation);
 
   VectorElement copyWith({
@@ -834,6 +896,7 @@ class VectorElement extends CanvasElement {
     double? handleSize,
     Color? tint,
     bool clearTint = false,
+    ImageCrop? crop,
     ElementAnimation? animation,
   }) =>
       VectorElement(base,
@@ -844,6 +907,7 @@ class VectorElement extends CanvasElement {
           handleColor: handleColor ?? this.handleColor,
           handleSize: handleSize ?? this.handleSize,
           tint: clearTint ? null : tint ?? this.tint,
+          crop: crop ?? this.crop,
           animation: animation ?? this.animation);
 
   /// withShape is this drawing with shape [index] replaced.
@@ -875,6 +939,7 @@ class VectorElement extends CanvasElement {
           "handle": colorToJson(handleColor),
         if (handleSize != 8) "handleSize": handleSize,
         if (tint != null) "tint": colorToJson(tint!),
+        if (!crop.isWhole) "crop": crop.toJson(),
         if (animation.any) "anim": animation.toJson(),
       };
 
@@ -901,6 +966,7 @@ class VectorElement extends CanvasElement {
         handleColor: colorFromJson(json["handle"], defaultHandleColor),
         handleSize: jsonDouble(json["handleSize"], 8),
         tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
+        crop: jsonSpec(json["crop"], ImageCrop.fromJson, const ImageCrop()),
         animation: jsonSpec(
             json["anim"], ElementAnimation.fromJson, const ElementAnimation()));
   }

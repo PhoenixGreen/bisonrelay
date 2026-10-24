@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -76,9 +77,14 @@ class CanvasExport {
 /// well over a minute of the run spent drawing a picture that never changed.
 ///
 /// Only where it *is* still. A background told to animate is a different
-/// picture every frame and there is nothing to keep; so is a document of
-/// several scenes, where each scene brings its own. Both fall back to
+/// picture every frame and there is nothing to keep, and that falls back to
 /// generating, which is what every export did before this existed.
+///
+/// A document of several scenes keeps one too, where every scene shows the
+/// same still background -- which is what a video made on one backdrop is,
+/// scene after scene. Kept from them for a long time on the grounds that
+/// each scene brings its own; most of them do not, and a twenty-scene video
+/// on the Metal texture generated it for each of nearly six thousand frames.
 class ExportBackdrop {
   final ui.Image image;
   ExportBackdrop._(this.image);
@@ -95,21 +101,41 @@ class ExportBackdrop {
     double scale = 1,
     CanvasImageSource? images,
   }) async {
-    if (document.hasScenes) return null;
-    var background = document.drawnBackground;
+    // The canvas whose background is drawn: a scene, never the master that
+    // happened to be open when the document was saved.
+    var drawn = document.hasScenes
+        ? document.goToScene(0).copyWith(onMaster: false)
+        : document;
+    var background = drawn.drawnBackground;
+    // A zooming camera blows the backdrop up with the scene, so it is drawn
+    // larger by the most any scene zooms -- see SceneCamera -- and sharp
+    // under the closest of them.
+    var zoom = 1.0;
+    if (document.hasScenes) {
+      var shared = jsonEncode(background.toJson());
+      for (var (i, scene) in document.allScenes.indexed) {
+        if (scene.backgroundOff) return null;
+        if (jsonEncode(document.backgroundOf(i).toJson()) != shared) {
+          return null;
+        }
+        if (scene.camera case var c?) {
+          zoom = math.max(zoom, math.max(c.fromZoom, c.toZoom));
+        }
+      }
+    }
     if (background.spec.animated) return null;
     // A video on the timeline behind everything is a different picture every
     // frame, like a moving pattern.
     if (background.video?.clip.timed == true) return null;
 
-    var asked = scale.clamp(0.05, maxExportScale);
+    var asked = scale.clamp(0.05, maxExportScale) * zoom;
     var s = asked * document.size.exportScale;
     var width = math.max(1, (document.size.exportSize.width * asked).round());
     var height = math.max(1, (document.size.exportSize.height * asked).round());
 
     void draw(ui.Canvas canvas) {
       canvas.scale(s);
-      paintDocumentBackdrop(canvas, document, images: images);
+      paintDocumentBackdrop(canvas, drawn, images: images);
     }
 
     await drawWhenLoaded(images, draw);
@@ -164,7 +190,7 @@ Future<ui.Image> renderFrame(
     // so what was watched is what comes out.
     if (document.hasScenes) {
       paintSequenceFrame(canvas, document, frame,
-          images: images, videoShow: videoShow);
+          images: images, videoShow: videoShow, backdrop: backdrop?.image);
     } else {
       paintCanvasDocument(canvas, document,
           frame: frame,

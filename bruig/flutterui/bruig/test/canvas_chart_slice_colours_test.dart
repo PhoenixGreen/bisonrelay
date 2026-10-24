@@ -115,8 +115,49 @@ void main() {
         reason: "one undo step");
   });
 
-  testWidgets("bars have no slices to colour", (tester) async {
-    await panel(tester, _pie().copyWith(type: ChartType.bar));
+  test("one series of bars is painted a colour a bar", () async {
+    // Two bars, left and right, the right one amber; the left keeps the
+    // series' blue. No dummy series stacked under them to borrow from.
+    var bars = _pie(slices: const [Color(0x00000000), _amber]).copyWith(
+        type: ChartType.bar, showAxes: false, showGrid: false);
+    expect(barsTakeColours(bars), isTrue);
+    var left = await _at(bars.copyWith(sliceColors: const []), 80, 150);
+    expect(left, const Color(0xFF3D7EFF), reason: "the series' own");
+    var coloured = bars.copyWith(sliceColors: const [_teal, _amber]);
+    expect(await _at(coloured, 80, 150), _teal);
+    expect(await _at(coloured, 160, 150), _amber);
+  });
+
+  testWidgets("a bar chart of one series has a colour button per bar",
+      (tester) async {
+    var controller = await panel(tester, _pie().copyWith(type: ChartType.bar));
+    var row = find.byKey(const ValueKey("chartSliceColours"));
+    expect(row, findsOneWidget);
+    expect(tester.widget<CanvasControlGroup>(row).label, "Bars");
+    var first = tester
+        .widget<CanvasColorButton>(find.byKey(const ValueKey("chartSlice0")));
+    expect(first.color, const Color(0xFF3D7EFF),
+        reason: "shows the colour the bar is drawn in, the series'");
+    tester
+        .widget<CanvasColorButton>(find.byKey(const ValueKey("chartSlice1")))
+        .onChanged(_teal);
+    await tester.pumpAndSettle();
+    var e = controller.document.elements.single as ChartElement;
+    expect(e.sliceColors, [const Color(0xFF3D7EFF), _teal]);
+  });
+
+  testWidgets("but bars of several series are coloured by series",
+      (tester) async {
+    var two = _pie().copyWith(
+        type: ChartType.groupedBar,
+        data: const ChartData(categories: [
+          "a",
+          "b"
+        ], series: [
+          ChartSeries(name: "x", color: Color(0xFF3D7EFF), values: [1, 2]),
+          ChartSeries(name: "y", color: _amber, values: [2, 1]),
+        ]));
+    await panel(tester, two);
     expect(find.byKey(const ValueKey("chartSliceColours")), findsNothing);
   });
 }

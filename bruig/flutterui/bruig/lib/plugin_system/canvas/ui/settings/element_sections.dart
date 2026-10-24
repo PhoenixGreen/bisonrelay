@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/edge_mask.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
@@ -97,10 +100,41 @@ Widget animationPanelSection(
       children: [
         elementAnimationSection(controller, e, animation, write, begin, commit,
             arrive: arrive, leave: leave, heading: heading, timing: timing),
-        if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+        ...elementTimingCards(controller, e),
         ...extra,
       ],
     );
+
+/// elementTimingCards are what [e]'s arrival is timed against and does to
+/// the rest: the cue it waits for, where there are cues or words to wait
+/// on, and dimming what is already there, where it has an arrival.
+List<Widget> elementTimingCards(CanvasController controller, CanvasElement e) =>
+    [
+      if (controller.cues.isNotEmpty || controller.words.isNotEmpty)
+        elementCueCard(controller, e),
+      if (bandsIn(e.base.track)
+          .any((b) => b.channel == KeyframeChannel.reveal))
+        elementDimCard(controller, e),
+    ];
+
+/// elementDimCard fades everything already on the canvas as [e] arrives.
+Widget elementDimCard(CanvasController controller, CanvasElement e) =>
+    CanvasControlGroup(
+        key: const ValueKey("elementDim"),
+        label: "The rest",
+        help: "Fades everything already on the canvas to 30% as this "
+            "arrives, and keeps it there -- the next point of an argument "
+            "taking the light while the last stays readable.",
+        rule: false,
+        children: [
+          CanvasTextButton(
+            key: const ValueKey("elementDimOthers"),
+            label: "Dim the others",
+            icon: Icons.brightness_medium_outlined,
+            grow: false,
+            onPressed: () => controller.dimOthers(e.id),
+          ),
+        ]);
 
 /// elementCueCard is which cue [e] arrives on.
 Widget elementCueCard(CanvasController controller, CanvasElement e) =>
@@ -123,6 +157,31 @@ Widget elementCueCard(CanvasController controller, CanvasElement e) =>
             ],
             onChanged: (v) => controller.cueTo(e.id, v.isEmpty ? null : v),
           ),
+          // Or straight onto a word, where the voice has been heard: a cue
+          // is made where the word is said, named by it.
+          if (controller.words.isNotEmpty) ...[
+            const CanvasLineBreak(),
+            CanvasTextField(
+              key: const ValueKey("elementCueWord"),
+              label: "On a word",
+              hint: "\$300, hardware…",
+              value: controller.wordQuery,
+              width: 150,
+              onChanged: (v) => controller.wordQuery = v,
+            ),
+            for (var w in controller.wordsMatching(controller.wordQuery))
+              CanvasTextButton(
+                key: ValueKey("elementCueWord-${w.frame}"),
+                label: "${controller.wordInContext(w)} · "
+                    "${(w.frame / math.max(1, controller.document.frameRate)).toStringAsFixed(1)}s",
+                tooltip: "Arrive as \"${w.text}\" is said",
+                grow: false,
+                onPressed: () {
+                  controller.cueOnWord(e.id, w);
+                  controller.wordQuery = "";
+                },
+              ),
+          ],
         ]);
 
 /// section is one of an element's own sections: [icon], [title], a line

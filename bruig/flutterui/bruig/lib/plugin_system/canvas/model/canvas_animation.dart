@@ -369,6 +369,33 @@ class ElementTrack {
   ElementTrack seededFor(int frame) =>
       keys.isEmpty && frame > 0 ? withKey(const Keyframe(frame: 0)) : this;
 
+  /// restingAt is a new keyframe for [frame] that changes nothing: the pose
+  /// the track already gives there, with no channels of its own.
+  ///
+  /// What a keyframe laid down for some other reason -- the two ends of an
+  /// arrival or an exit -- has to start from. A pose is not held from one key
+  /// to the next the way a channel is: a key that says nothing about where
+  /// the element is means its resting place. Started from rest, the ends of
+  /// an exit laid after a hand-made move dragged the element back to where
+  /// it began before it left. Inside a stretch it keeps that stretch's
+  /// easing, so the stretch it splits travels as it did.
+  Keyframe restingAt(int frame) {
+    var pose = _poseAt(frame);
+    var easing = KeyframeEasing.linear;
+    for (var k in keys) {
+      if (k.frame > frame) break;
+      easing = k.easing;
+    }
+    return Keyframe(
+        frame: frame,
+        dx: pose.dx,
+        dy: pose.dy,
+        scale: pose.scale,
+        rotate: pose.rotate,
+        opacity: pose.opacity,
+        easing: easing);
+  }
+
   /// withKey adds or replaces the keyframe at its own frame.
   ElementTrack withKey(Keyframe key) =>
       ElementTrack([...keys.where((k) => k.frame != key.frame), key]);

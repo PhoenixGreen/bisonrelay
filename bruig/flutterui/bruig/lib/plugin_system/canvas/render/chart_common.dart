@@ -63,6 +63,22 @@ Color sliceColour(ChartElement e, int i) {
   return chartPalette[i % chartPalette.length];
 }
 
+/// barsTakeColours is whether [e] is bars of one series, whose bars can each
+/// be given a colour of their own -- the slice colours, which are the colours
+/// of one series' values whatever shape they are drawn in. A pie had them;
+/// a bar chart of three machines in their three colours needed two series of
+/// noughts stacked under the real one to say the same thing.
+bool barsTakeColours(ChartElement e) =>
+    (e.type == ChartType.bar || e.type == ChartType.horizontalBar) &&
+    e.data.series.length == 1;
+
+/// barColour is what the bar for category [i] is drawn in, on a chart whose
+/// bars take colours: its own where it has one, and the series' otherwise.
+Color barColour(ChartElement e, int i) =>
+    i >= 0 && i < e.sliceColors.length && barsTakeColours(e)
+        ? e.sliceColors[i]
+        : e.data.series.first.color;
+
 /// seriesShader is the gradient a series is drawn with across [area], or null
 /// where it is one colour.
 ///

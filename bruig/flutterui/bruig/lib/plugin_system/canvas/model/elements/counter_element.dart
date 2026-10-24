@@ -157,6 +157,13 @@ class CounterElement extends CanvasElement {
   final TextSpec numberSpec;
   final TextSpec affixSpec;
 
+  /// numberStyle and wordStyle are the document's named text styles the
+  /// number and the words are set in, or empty for their own type -- see
+  /// CanvasDocument.textStyles. A video's figures are all one face at one
+  /// size; set in a style, they change together when it does.
+  final String numberStyle;
+  final String wordStyle;
+
   /// box is the background, border, radius and padding round the whole thing.
   final BoxSpec box;
 
@@ -250,6 +257,8 @@ class CounterElement extends CanvasElement {
         const TextSpec(fontSize: 64, weight: 700, align: TextAlignSpec.center),
     this.affixSpec =
         const TextSpec(fontSize: 28, weight: 400, align: TextAlignSpec.center),
+    this.numberStyle = "",
+    this.wordStyle = "",
     this.box = const BoxSpec(padding: 16),
     this.fit = true,
     this.keyed = true,
@@ -330,6 +339,8 @@ class CounterElement extends CanvasElement {
       afterAt: afterAt,
       numberSpec: numberSpec,
       affixSpec: affixSpec,
+      numberStyle: numberStyle,
+      wordStyle: wordStyle,
       box: box,
       fit: fit,
       keyed: keyed,
@@ -362,6 +373,8 @@ class CounterElement extends CanvasElement {
     Offset? afterAt,
     TextSpec? numberSpec,
     TextSpec? affixSpec,
+    String? numberStyle,
+    String? wordStyle,
     BoxSpec? box,
     bool? fit,
     bool? keyed,
@@ -391,6 +404,8 @@ class CounterElement extends CanvasElement {
           afterAt: afterAt ?? this.afterAt,
           numberSpec: numberSpec ?? this.numberSpec,
           affixSpec: affixSpec ?? this.affixSpec,
+          numberStyle: numberStyle ?? this.numberStyle,
+          wordStyle: wordStyle ?? this.wordStyle,
           box: box ?? this.box,
           fit: fit ?? this.fit,
           keyed: keyed ?? this.keyed,
@@ -421,6 +436,8 @@ class CounterElement extends CanvasElement {
         if (loose) "afterAt": [afterAt.dx, afterAt.dy],
         "numberSpec": numberSpec.toJson(),
         "affixSpec": affixSpec.toJson(),
+        if (numberStyle.isNotEmpty) "numberStyle": numberStyle,
+        if (wordStyle.isNotEmpty) "wordStyle": wordStyle,
         "box": box.toJson(),
         if (!fit) "noFit": true,
         if (!keyed) "live": true,
@@ -464,6 +481,8 @@ class CounterElement extends CanvasElement {
             TextSpec.fromJson,
             const TextSpec(
                 fontSize: 28, weight: 400, align: TextAlignSpec.center)),
+        numberStyle: jsonString(json["numberStyle"], ""),
+        wordStyle: jsonString(json["wordStyle"], ""),
         box:
             jsonSpec(json["box"], BoxSpec.fromJson, const BoxSpec(padding: 16)),
         fit: !jsonBool(json["noFit"], false),

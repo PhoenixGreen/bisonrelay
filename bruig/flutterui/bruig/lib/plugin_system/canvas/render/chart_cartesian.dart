@@ -784,7 +784,11 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // Where this bar has got to. Staggered by category rather than by
       // series, which is what "one bar after another, left to right" means --
       // grouped bars in the same slot arrive together, as a group.
-      var colour = series.color;
+      // A bar of its own colour, where the bars take them -- see
+      // barsTakeColours -- and is then drawn flat: the series' gradient is a
+      // ramp of the series' colour, not of this one.
+      var ownColour = barsTakeColours(e) && i < e.sliceColors.length;
+      var colour = ownColour ? barColour(e, i) : series.color;
       var arrived = 1.0;
       if (e.animation.on && (reveal < 1 || seriesReveal != null)) {
         // This series' own place in the animation, which is the whole of it
@@ -837,8 +841,10 @@ void _bars(ui.Canvas canvas, Rect plot, _ValueRange range, ChartElement e,
       // series is a gradient on each of its bars, which is what a chart of
       // bars fading into the background looks like. Across the plot they
       // would each be a different flat colour.
-      var barShader = seriesShader(series, bar,
-          alpha: series.color.a == 0 ? 1 : colour.a / series.color.a);
+      var barShader = ownColour
+          ? null
+          : seriesShader(series, bar,
+              alpha: series.color.a == 0 ? 1 : colour.a / series.color.a);
       canvas.drawRRect(
           RRect.fromRectAndRadius(bar, Radius.circular(math.max(0, r))),
           Paint()

@@ -303,8 +303,11 @@ void _paintVector(
       _placeholder(canvas, box);
       return;
     }
-    var p = e.placement(box, Offset.zero & drawn.size);
+    var whole = Offset.zero & drawn.size;
+    var p = e.placement(box, whole);
     canvas.save();
+    // A cropped drawing shows only its window -- see VectorElement.crop.
+    if (e.shownIn(box, whole) case var shown?) canvas.clipRect(shown);
     canvas.translate(p.dx, p.dy);
     canvas.scale(p.sx, p.sy);
     canvas.drawPicture(drawn.picture);
@@ -314,6 +317,7 @@ void _paintVector(
 
   var p = e.placement(box, e.viewBox);
   canvas.save();
+  if (e.shownIn(box, e.viewBox) case var shown?) canvas.clipRect(shown);
   canvas.translate(p.dx, p.dy);
   canvas.scale(p.sx, p.sy);
   // Tinted, the drawing is drawn into a layer of its own for the tint to be
@@ -446,6 +450,7 @@ void paintVectorGroup(
     ui.Canvas canvas, Rect box, VectorElement e, VectorDrawn d) {
   var p = e.placement(box, e.viewBox);
   canvas.save();
+  if (e.shownIn(box, e.viewBox) case var shown?) canvas.clipRect(shown);
   canvas.translate(p.dx, p.dy);
   canvas.scale(p.sx, p.sy);
   _paintGroup(canvas, d);

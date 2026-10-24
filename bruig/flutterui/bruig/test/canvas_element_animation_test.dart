@@ -295,6 +295,51 @@ void main() {
       expect(leave.from, greaterThan(arrive.to),
           reason: "it never starts before the arrival has finished");
     });
+
+    test("a way out keeps a move made by hand", () {
+      // Moved right and faded at frame 12; the exit's two ends land after
+      // it, on frames with no keyframe, and used to be written at rest --
+      // so the element slid back and brightened before it left.
+      var moved = _shape(const ElementAnimation()).withBase(
+          track: ElementTrack([
+        const Keyframe(frame: 0),
+        const Keyframe(frame: 12, dx: 200, opacity: 0.4),
+      ])) as ShapeElement;
+      var controller = controllerWith(moved);
+      addTearDown(controller.dispose);
+
+      controller.applyElementExit(
+          shapeIn(controller), ElementAnimationPreset.fadeIn);
+
+      var track = shapeIn(controller).track!;
+      var leave =
+          bandsIn(track).firstWhere((b) => b.channel == KeyframeChannel.close);
+      expect(leave.from, greaterThan(12));
+      for (var f = 12; f <= leave.to; f++) {
+        expect(track.at(f).dx, 200, reason: "still moved at frame $f");
+        expect(track.at(f).opacity, 0.4, reason: "still faded at frame $f");
+      }
+    });
+
+    test("and an arrival laid inside a move keeps its path", () {
+      var moved = _shape(const ElementAnimation()).withBase(
+          track: ElementTrack([
+        const Keyframe(frame: 0),
+        const Keyframe(frame: 40, dx: 400),
+      ])) as ShapeElement;
+      var before = moved.track!;
+      var controller = controllerWith(moved);
+      addTearDown(controller.dispose);
+
+      controller.applyElementAnimation(
+          shapeIn(controller), ElementAnimationPreset.fadeIn);
+
+      var track = shapeIn(controller).track!;
+      for (var f = 0; f <= 40; f += 4) {
+        expect(track.at(f).dx, closeTo(before.at(f).dx, 0.001),
+            reason: "on the same path at frame $f");
+      }
+    });
   });
 
   group("the curves", () {

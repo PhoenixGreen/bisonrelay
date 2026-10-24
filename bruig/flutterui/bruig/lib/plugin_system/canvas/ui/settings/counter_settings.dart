@@ -141,6 +141,7 @@ List<Widget> counterSettings(
               remember: "counterNumberType",
               trailing: "${e.numberSpec.fontSize.round()}",
               children: [
+                _styleRow(controller, e, words: false),
                 ...typeGroups(
                     e.numberSpec,
                     (spec) => write(e.copyWith(numberSpec: spec)),
@@ -180,6 +181,7 @@ List<Widget> counterSettings(
               remember: "counterAffixType",
               trailing: "${e.affixSpec.fontSize.round()}",
               children: [
+                _styleRow(controller, e, words: true),
                 ...typeGroups(e.affixSpec,
                     (spec) => write(e.copyWith(affixSpec: spec)), begin, commit,
                     label: "Words type",
@@ -639,3 +641,50 @@ Widget _buttonsSection(
         ],
       ],
     );
+
+/// _styleRow sets the number -- or the [words] -- in one of the document's
+/// text styles, makes its type one, or changes the style it is in: the text
+/// panel's Style row, for a counter's two kinds of type. See
+/// CanvasDocument.textStyles.
+Widget _styleRow(CanvasController controller, CounterElement e,
+    {required bool words}) {
+  var styles = controller.textStyles;
+  var linked = words ? e.wordStyle : e.numberStyle;
+  var styled = styles.any((t) => t.name == linked);
+  var which = words ? "Words" : "Number";
+  return CanvasControlGroup(
+    key: ValueKey("counter${which}Style"),
+    label: "Style",
+    hideCaption: true,
+    rule: false,
+    children: [
+      if (styles.isNotEmpty)
+        CanvasDropdown<String>(
+          key: ValueKey("counter${which}StylePick"),
+          label: "Style",
+          value: styled ? linked : "",
+          width: 120,
+          options: [
+            ("", "Its own"),
+            for (var t in styles) (t.name, t.name),
+          ],
+          onChanged: (v) => controller.useCounterStyle(e.id, v, words: words),
+        ),
+      CanvasIconButton(
+        key: ValueKey("counter${which}StyleSave"),
+        icon: Icons.bookmark_add_outlined,
+        tooltip: "Make this type a style",
+        onPressed: () => controller.saveCounterStyle(e, words: words),
+      ),
+      if (styled)
+        CanvasIconButton(
+          key: ValueKey("counter${which}StyleUpdate"),
+          icon: Icons.sync,
+          tooltip: "Change the style to this type -- everything in "
+              "\"$linked\" changes with it",
+          onPressed: () => controller.updateTextStyle(
+              linked, words ? e.affixSpec : e.numberSpec),
+        ),
+    ],
+  );
+}

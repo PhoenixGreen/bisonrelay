@@ -52,8 +52,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
-    show ffmpegPath;
+    show ffmpegHelp, ffmpegPath;
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
+import 'package:bruig/plugin_system/canvas/media/speech.dart';
 import 'package:bruig/plugin_system/canvas/media/video_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -62,6 +63,7 @@ import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -240,10 +242,12 @@ ElementTrack _withClosingBand(ElementTrack track, int from, int to) {
 /// an animation down writes one key at each end of it. Written as a fresh
 /// keyframe, those two ends flattened any pose that happened to be standing
 /// on the same frame -- so animating an element that had been moved by hand
-/// at the frame the playhead was on silently threw the move away.
+/// at the frame the playhead was on silently threw the move away. And a frame
+/// with no keyframe on it starts from where the element is there, not from
+/// rest -- see ElementTrack.restingAt.
 ElementTrack _pinning(
         ElementTrack track, int frame, String channel, double value) =>
-    track.withKey((track.keyAt(frame) ?? Keyframe(frame: frame))
+    track.withKey((track.keyAt(frame) ?? track.restingAt(frame))
         .withValue(channel, value));
 
 /// FetchedRows is what one element's last refresh in this sitting returned.
@@ -3823,6 +3827,189 @@ class CanvasController extends ChangeNotifier {
     return found.length;
   }
 
+  /// words are what the voice-over says, where -- see SpokenWord.
+  List<SpokenWord> get words => _document.words;
+
+  /// hearWords listens to the voice on [clip] and keeps what it says, word
+  /// by word, then names the clip's cues by the words they start on -- and
+  /// finds those cues first if it has none. Null when it worked; otherwise
+  /// what stopped it, said for the reader.
+  ///
+  /// [model] is where the speech model is, when the caller has just fetched
+  /// it somewhere other than its usual place.
+  Future<String?> hearWords(AudioElement clip, {String? model}) async {
+    var source = clip.clip.playlist.firstOrNull;
+    if (source == null) return "That sound has nothing in it to hear.";
+    var whisper = await whisperPath();
+    if (whisper == null) return speechHelp;
+    var ffmpeg = await ffmpegPath();
+    if (ffmpeg == null) return ffmpegHelp;
+    model ??= await speechModelPath();
+    if (!await File(model).exists()) return speechModelMissing;
+    var file = await CanvasMedia.existingPath(MediaKind.audio, source.assetId);
+    if (file == null) return "The recording is missing from the library.";
+
+    var rate = math.max(1, _document.frameRate);
+    var length = source.length > 0 ? source.length : 0.0;
+    var from = source.start, to = source.end > 0 ? source.end : length;
+    var heard = await listenTo(
+        whisper: whisper,
+        ffmpeg: ffmpeg,
+        model: model,
+        audio: file,
+        from: from,
+        to: to > from ? to : null);
+    if (heard == null) return "whisper could not hear that recording.";
+    if (heard.isEmpty) return "No words were heard in that recording.";
+
+    var offset = _clipOffset(clip);
+    var tag = "voice:${clip.id}";
+    var said = [
+      for (var w in heard)
+        SpokenWord(
+            text: w.text,
+            frame: offset + clip.clip.at + (w.start * rate).round(),
+            end: offset + clip.clip.at + (w.end * rate).round(),
+            from: tag),
+    ];
+    if (!cues.any((c) => c.id.startsWith("$tag:"))) await findCues(clip);
+    var all = [
+      for (var w in words)
+        if (w.from != tag) w,
+      ...said,
+    ]..sort((a, b) => a.frame.compareTo(b.frame));
+
+    // Each of this clip's cues is named by what is said from it to the next.
+    var mine = [
+      for (var c in cues)
+        if (c.id.startsWith("$tag:")) c,
+    ];
+    var named = <String, String>{};
+    for (var (i, c) in mine.indexed) {
+      var until = i + 1 < mine.length ? mine[i + 1].frame : 1 << 30;
+      var name = saidBetween(said, c.frame, until);
+      if (name.isNotEmpty) named[c.id] = name;
+    }
+    apply(_document.copyWith(words: all, cues: [
+      for (var c in cues)
+        named[c.id] == null ? c : c.copyWith(name: named[c.id]),
+    ]));
+    return null;
+  }
+
+  /// _clipOffset is where [clip]'s own time starts in the run: on the master
+  /// its frames are the run's; on a scene, they count from that scene's
+  /// start.
+  int _clipOffset(AudioElement clip) {
+    for (var (i, scene) in _document.allScenes.indexed) {
+      if (scene.elements.any((e) => e.id == clip.id)) {
+        return _document.startOfScene(i);
+      }
+    }
+    return 0;
+  }
+
+  /// dimOthers fades everything already on the canvas down to [to] of
+  /// itself as element [id] arrives, over [over] frames, and leaves it
+  /// there: the next beat of an argument taking the light while the last
+  /// one stays readable. Says how many it dimmed. One step to undo.
+  ///
+  /// "Down to", not "by": an element dimmed for the last beat is already
+  /// there, and fading it again for this one would sink it out of sight
+  /// two beats on. What has not arrived yet, or has gone, is left alone,
+  /// and so are the things that are not drawn -- a sound, the backdrop.
+  int dimOthers(String id, {double to = 0.3, int over = 12}) {
+    var me = _document.elements.where((e) => e.id == id).firstOrNull;
+    if (me == null) return 0;
+    var arrival = bandsIn(me.base.track)
+        .where((b) => b.channel == KeyframeChannel.reveal)
+        .firstOrNull;
+    var at = arrival?.from ?? me.base.track?.keys.firstOrNull?.frame ?? _frame;
+
+    var dimmed = 0;
+    CanvasElement dim(CanvasElement e) {
+      if (e.id == id || !e.base.visible) return e;
+      if (e is AudioElement || e is BackgroundElement) return e;
+      var track = e.base.track ?? ElementTrack.empty;
+      var bands = bandsIn(track);
+      var comes =
+          bands.where((b) => b.channel == KeyframeChannel.reveal).firstOrNull;
+      if (comes != null && comes.from >= at) return e;
+      var goes =
+          bands.where((b) => b.channel == KeyframeChannel.close).firstOrNull;
+      if (goes != null && goes.to <= at) return e;
+      if (track.at(at).opacity <= to) return e;
+
+      var start = track.keyAt(at) ??
+          track.restingAt(at).copyWith(easing: KeyframeEasing.easeInOut);
+      var end = track.keyAt(at + over) ?? track.restingAt(at + over);
+      var keys = <Keyframe>[
+        for (var k in track.keys)
+          if (k.frame < at) k,
+        start,
+        for (var k in track.keys)
+          if (k.frame > at && k.frame != at + over)
+            k.copyWith(opacity: math.min(k.opacity, to)),
+        end.copyWith(opacity: math.min(end.opacity, to)),
+      ];
+      dimmed++;
+      return e.withBase(track: ElementTrack(keys));
+    }
+
+    var next = _document;
+    for (var e in _document.elements) {
+      var changed = dim(e);
+      if (!identical(changed, e)) next = next.withElement(changed);
+    }
+    if (dimmed > 0) apply(next);
+    return dimmed;
+  }
+
+  /// wordQuery is what is being looked for among the words, from an
+  /// element's cue card -- this sitting's, never the document's.
+  String _wordQuery = "";
+  String get wordQuery => _wordQuery;
+  set wordQuery(String v) {
+    if (v == _wordQuery) return;
+    _wordQuery = v;
+    notifyListeners();
+  }
+
+  /// wordsMatching are the words that [query] is found in, ignoring case
+  /// and punctuation, in the order they are said: at most [most].
+  List<SpokenWord> wordsMatching(String query, {int most = 6}) {
+    String plain(String s) =>
+        s.toLowerCase().replaceAll(RegExp(r"[^a-z0-9$.]+"), "");
+    var q = plain(query);
+    if (q.isEmpty) return const [];
+    return [
+      for (var w in words)
+        if (plain(w.text).contains(q)) w,
+    ].take(most).toList();
+  }
+
+  /// wordInContext is [word] with the words either side of it, which is
+  /// what tells one "the" from the forty others.
+  String wordInContext(SpokenWord word) {
+    var i = words.indexOf(word);
+    if (i < 0) return word.text;
+    return [
+      if (i > 0) words[i - 1].text,
+      word.text,
+      if (i + 1 < words.length) words[i + 1].text,
+    ].join(" ");
+  }
+
+  /// cueOnWord ties element [id] to the moment [word] is said: to a cue
+  /// already there, or to a new one named by the word. One step to undo.
+  void cueOnWord(String id, SpokenWord word) {
+    beginInteraction();
+    var cue = cues.where((c) => c.frame == word.frame).firstOrNull ??
+        addCue(name: word.text, frame: word.frame);
+    cueTo(id, cue.id);
+    endInteraction();
+  }
+
   List<TimelineCue> _sortedCues(List<TimelineCue> list) =>
       [...list]..sort((a, b) => a.frame.compareTo(b.frame));
 
@@ -5479,9 +5666,47 @@ class CanvasController extends ChangeNotifier {
       for (var t in textStyles) t.name == name ? NamedTextStyle(name, spec) : t,
     ]);
     apply(_everyElement(next, (e, _) {
+      if (e is CounterElement) {
+        return e.copyWith(
+            numberSpec: e.numberStyle == name ? spec : null,
+            affixSpec: e.wordStyle == name ? spec : null);
+      }
       if (e is! TextElement || e.style != name) return e;
       return e.copyWith(textSpec: spec);
     }));
+  }
+
+  /// useCounterStyle sets counter [id]'s number -- or its [words] -- in
+  /// style [name], or lets it keep its own type with an empty name.
+  void useCounterStyle(String id, String name, {bool words = false}) {
+    var style = textStyles.where((t) => t.name == name).firstOrNull;
+    apply(_everyElement(_document, (e, _) {
+      if (e.id != id || e is! CounterElement) return e;
+      var link = style == null ? "" : name;
+      return words
+          ? e.copyWith(wordStyle: link, affixSpec: style?.spec)
+          : e.copyWith(numberStyle: link, numberSpec: style?.spec);
+    }));
+  }
+
+  /// saveCounterStyle makes counter [e]'s number type -- or its [words]'
+  /// -- a named style, the next "Style N", and sets it in it.
+  String saveCounterStyle(CounterElement e, {bool words = false}) {
+    var taken = {for (var t in textStyles) t.name};
+    var name = "";
+    for (var n = textStyles.length + 1;; n++) {
+      if (!taken.contains("Style $n")) {
+        name = "Style $n";
+        break;
+      }
+    }
+    var spec = words ? e.affixSpec : e.numberSpec;
+    var next = _document
+        .copyWith(textStyles: [...textStyles, NamedTextStyle(name, spec)]);
+    var linked =
+        words ? e.copyWith(wordStyle: name) : e.copyWith(numberStyle: name);
+    apply(_replacedAnywhere(next, linked) ?? next);
+    return name;
   }
 
   /// renameTextStyle renames a style, and every text set in it with it.
@@ -5492,6 +5717,11 @@ class CanvasController extends ChangeNotifier {
     ]);
     apply(
         _everyElement(next, (e, _) {
+          if (e is CounterElement) {
+            return e.copyWith(
+                numberStyle: e.numberStyle == from ? to : null,
+                wordStyle: e.wordStyle == from ? to : null);
+          }
           if (e is! TextElement || e.style != from) return e;
           return e.copyWith(style: to);
         }),
@@ -5506,6 +5736,11 @@ class CanvasController extends ChangeNotifier {
         if (t.name != name) t,
     ]);
     apply(_everyElement(next, (e, _) {
+      if (e is CounterElement) {
+        return e.copyWith(
+            numberStyle: e.numberStyle == name ? "" : null,
+            wordStyle: e.wordStyle == name ? "" : null);
+      }
       if (e is! TextElement || e.style != name) return e;
       return e.copyWith(style: "");
     }));

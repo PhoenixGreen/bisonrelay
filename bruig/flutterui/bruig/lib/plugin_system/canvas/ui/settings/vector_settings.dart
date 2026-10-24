@@ -7,6 +7,8 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
+    show ImageCrop;
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
@@ -239,7 +241,7 @@ List<Widget> vectorSettings(
         // once -- as a picture's layers have in theirs.
         if (e.edited && shapes.isNotEmpty)
           ..._shapeTiming(controller, e, one ? picked : -1, now),
-        if (controller.cues.isNotEmpty) elementCueCard(controller, e),
+        ...elementTimingCards(controller, e),
       ],
     ),
   ];
@@ -358,6 +360,66 @@ Widget vectorDrawingControls(
           "before; Fit is how it sits in its box. Tint lays one "
           "colour over a drawing not yet edited. Revert puts the "
           "file's own drawing back."),
+    ],
+  );
+}
+
+/// vectorWhole is [e]'s whole drawing in its own units -- the space a crop
+/// is a share of: the view box once it has been taken apart, and the file's
+/// own size before. Empty while the file has not been read yet.
+ui.Rect vectorWhole(CanvasController controller, VectorElement e) {
+  if (e.edited) return e.viewBox;
+  var drawn = controller.images.resolveVector(e.assetId);
+  return drawn == null ? ui.Rect.zero : ui.Offset.zero & drawn.size;
+}
+
+/// vectorCropControls are how much is trimmed off each edge of the drawing
+/// and the button that shows all of it again: a picture's Crop, for a
+/// drawing. The box is trimmed with it, so what is left stays where it is --
+/// see VectorElement.croppedTo.
+Widget vectorCropControls(CanvasController controller, VectorElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var whole = vectorWhole(controller, e);
+  void crop(ImageCrop next) => write(e.croppedTo(next, whole));
+  return CanvasControlGroup(
+    key: const ValueKey("vectorCropControls"),
+    label: "Crop",
+    rule: false,
+    children: [
+      for (var (label, value, apply)
+          in <(String, double, ImageCrop Function(double))>[
+        ("Left", e.crop.left, (v) => e.crop.copyWith(left: v)),
+        ("Top", e.crop.top, (v) => e.crop.copyWith(top: v)),
+        ("Right", e.crop.right, (v) => e.crop.copyWith(right: v)),
+        ("Bottom", e.crop.bottom, (v) => e.crop.copyWith(bottom: v)),
+      ])
+        CanvasNumberField(
+          key: ValueKey("vectorCrop$label"),
+          label: label,
+          min: 0,
+          max: 1,
+          decimals: 2,
+          width: 62,
+          value: value,
+          onChanged: (v) {
+            begin();
+            crop(apply(v));
+          },
+          onCommit: commit,
+        ),
+      CanvasIconButton(
+        key: const ValueKey("vectorCropWhole"),
+        icon: Icons.crop_free,
+        tooltip: "Show the whole drawing again",
+        onPressed: () {
+          begin();
+          crop(const ImageCrop());
+          commit();
+        },
+      ),
+      const CanvasHint("Trims the drawing's edges, as a picture's crop does "
+          "-- a logo's mark without its name, say. The drawing stays a "
+          "reference to its file."),
     ],
   );
 }

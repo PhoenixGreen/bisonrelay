@@ -314,6 +314,11 @@ class CanvasDocument {
   /// canvas_cues.dart.
   final List<TimelineCue> cues;
 
+  /// words are what the voice-over says and when, in frames of the whole
+  /// run, as a transcription heard them -- see SpokenWord. What cues are
+  /// named from, and what an element can be put on.
+  final List<SpokenWord> words;
+
   /// textStyles are the document's named text styles, in the order they
   /// were made: a heading, a label, a caption. A text set in one names it --
   /// see TextElement.style -- and changing the style changes every text that
@@ -379,6 +384,7 @@ class CanvasDocument {
     this.onMaster = false,
     this.targets = const [],
     this.cues = const [],
+    this.words = const [],
     this.textStyles = const [],
   })  : _elements = elements,
         _frames = frames,
@@ -961,6 +967,7 @@ class CanvasDocument {
     bool? onMaster,
     List<String>? targets,
     List<TimelineCue>? cues,
+    List<SpokenWord>? words,
     List<NamedTextStyle>? textStyles,
   }) {
     var list = scenes ?? this.scenes;
@@ -1025,6 +1032,7 @@ class CanvasDocument {
       onMaster: onIt,
       targets: targets ?? this.targets,
       cues: cues ?? this.cues,
+      words: words ?? this.words,
       textStyles: textStyles ?? this.textStyles,
     );
   }
@@ -1055,6 +1063,7 @@ class CanvasDocument {
       onMaster: onMaster,
       targets: targets,
       cues: cues,
+      words: words,
       textStyles: textStyles,
     );
   }
@@ -1286,6 +1295,7 @@ class CanvasDocument {
       "elements": elements.map((e) => e.toJson()).toList(),
       if (targets.isNotEmpty) "targets": targets,
       if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
+      if (words.isNotEmpty) "words": [for (var w in words) w.toJson()],
       if (textStyles.isNotEmpty)
         "textStyles": [for (var t in textStyles) t.toJson()],
 
@@ -1411,6 +1421,11 @@ class CanvasDocument {
         if (json["cues"] is List)
           for (var c in json["cues"] as List)
             if (TimelineCue.fromJson(c) case var cue?) cue,
+      ]..sort((a, b) => a.frame.compareTo(b.frame)),
+      words: [
+        if (json["words"] is List)
+          for (var w in json["words"] as List)
+            if (SpokenWord.fromJson(w) case var word?) word,
       ]..sort((a, b) => a.frame.compareTo(b.frame)),
       textStyles: [
         if (json["textStyles"] is List)

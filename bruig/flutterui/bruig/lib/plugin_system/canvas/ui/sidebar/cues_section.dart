@@ -1,7 +1,14 @@
+import 'dart:io';
+
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/media/speech.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
+import 'package:bruig/plugin_system/canvas/storage/stock/stock_client.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // cues_section.dart is the list of the run's cues: the named moments a
 // voice-over's lines start on, that elements are timed against. See
@@ -24,6 +31,10 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
   String? _voice;
   bool _finding = false;
   String _said = "";
+
+  /// _needsModel is whether the last listen stopped for want of the speech
+  /// model, which is the one thing here that can be fetched.
+  bool _needsModel = false;
 
   /// _voices are the timed sounds a voice-over could be, longest first --
   /// the voice is nearly always the longest thing on the timeline.
@@ -53,6 +64,55 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
           ? "No pauses found -- is the sound still being read?"
           : "$n cues, one at each line.";
     });
+  }
+
+  /// _hear listens to [voice] for its words and names its cues by them.
+  Future<void> _hear(AudioElement voice) async {
+    setState(() {
+      _finding = true;
+      _needsModel = false;
+      _said = "Listening -- a minute or so for a few minutes of voice.";
+    });
+    var problem = await controller.hearWords(voice);
+    if (!mounted) return;
+    setState(() {
+      _finding = false;
+      _needsModel = problem == speechModelMissing;
+      _said = problem ??
+          "${controller.words.length} words heard; the cues are named "
+              "by what is said at them.";
+    });
+  }
+
+  /// _fetchModel downloads the speech model beside the library, then
+  /// listens. Only with fetching allowed, and never through a proxy -- the
+  /// same rules the stock sites keep.
+  Future<void> _fetchModel(AudioElement voice) async {
+    var allowed = context.read<CanvasPreferences>().allowFetching;
+    var proxied = await networkIsProxied();
+    var refused =
+        StockClient.refusal(allowFetching: allowed, proxied: proxied);
+    if (refused != null) {
+      setState(() => _said = refused);
+      return;
+    }
+    setState(() {
+      _finding = true;
+      _said = "Fetching the speech model (about 150 MB)…";
+    });
+    var to = File(await speechModelPath());
+    await to.parent.create(recursive: true);
+    var got = await StockClient.instance.download(speechModelUrl, to,
+        maxBytes: speechModelBytes, allowFetching: allowed, proxied: proxied);
+    if (!mounted) return;
+    if (!got) {
+      setState(() {
+        _finding = false;
+        _said = "The speech model could not be fetched.";
+      });
+      return;
+    }
+    await _hear(voice);
   }
 
   @override
@@ -86,6 +146,21 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
             tooltip: "Put a cue where each line of this voice starts",
             onPressed: _finding ? null : () => _find(picked),
           ),
+          CanvasIconButton(
+            key: const ValueKey("cueHear"),
+            icon: Icons.subtitles_outlined,
+            tooltip: "Hear the words, and name the cues by what is said",
+            onPressed: _finding ? null : () => _hear(picked),
+          ),
+          if (_needsModel)
+            CanvasTextButton(
+              key: const ValueKey("cueFetchModel"),
+              label: "Fetch",
+              icon: Icons.download_outlined,
+              tooltip: "Fetch the speech model, about 150 MB, then listen",
+              grow: false,
+              onPressed: _finding ? null : () => _fetchModel(picked),
+            ),
         ],
         // At the end of the line: whether the cues are marked on the
         // timeline's ruler.
