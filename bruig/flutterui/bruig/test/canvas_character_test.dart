@@ -120,7 +120,9 @@ void main() {
     const box = Rect.fromLTWH(0, 0, 200, 400);
 
     test("stands in its box: crown at the top, soles at the bottom", () {
-      for (var who in characterCast) {
+      // On two legs: a four-legged creature's head is carried lower.
+      for (var who in characterCast
+          .where((c) => !c.dna.fourLegs && !c.dna.species.legless)) {
         var rig = CharacterRig.of(who.dna, CharacterPose.rest, box);
         expect(rig.headCentre.dy - rig.headRadii.height, closeTo(0, 0.001),
             reason: who.name);
@@ -880,6 +882,150 @@ ${rows.join("\n")}
     });
   });
 
+  group("styles", () {
+    test("every style draws, each its own way, the same every time",
+        () async {
+      var drawn = <String, List<int>>{};
+      for (var st in CharacterStyle.values) {
+        var e = juno().copyWith(style: st);
+        var a = await _draw0(e);
+        expect(a, await _draw0(e), reason: "${st.name} is the same twice");
+        drawn[st.name] = a;
+      }
+      expect(drawn.values.map((d) => d.toString().hashCode).toSet().length,
+          CharacterStyle.values.length,
+          reason: "no two styles draw alike");
+      var back = elementFromJson(juno().copyWith(style: CharacterStyle.comic).toJson())
+          as CharacterElement;
+      expect(back.style, CharacterStyle.comic);
+    });
+
+    test("chibi shortens the body, clay moves on twos", () {
+      expect(CharacterStyle.chibi.dnaOf(const CharacterDna()).headsTall, 2.6);
+      expect(CharacterStyle.anime.dnaOf(const CharacterDna()).headsTall, 5.5);
+      expect(CharacterStyle.clay.frameOf(7), 6);
+      expect(CharacterStyle.clay.frameOf(8), 8);
+      expect(CharacterStyle.anime.frameOf(7), 7);
+    });
+
+    test("on a chibi the pins are where it is drawn", () {
+      var e = juno().copyWith(style: CharacterStyle.chibi);
+      var at = CharacterPlacement.of(e, 0);
+      var styled = CharacterRig.of(
+          CharacterStyle.chibi.dnaOf(e.dna), e.pose, e.bounds);
+      expectNear(at.pin(CharacterPin.handR), styled.wristR);
+    });
+  });
+
+  group("the spine and four legs", () {
+    const box = Rect.fromLTWH(0, 0, 200, 400);
+
+    test("a forward lean goes the way the body faces", () {
+      var lean = CharacterRig.of(const CharacterDna(),
+          CharacterPose.rest.withTurn(90).withSwing(CharacterBone.spine, 30), box);
+      expect(lean.chest.dx, lessThan(lean.hips.dx - 10),
+          reason: "turned to the left, forwards is to the left");
+      var rig = CharacterRig.of(
+          const CharacterDna(), CharacterPose.rest.withTurn(90), box);
+      var leaned = rig.solveLean(CharacterPose.rest.withTurn(90),
+          rig.hips + const Offset(-60, -100));
+      expect(leaned.swing(CharacterBone.spine), greaterThan(0),
+          reason: "the lean pin drawn forwards leans forwards");
+    });
+
+    test("on four legs the body is level and stands on all four", () {
+      var dna = const CharacterDna(fourLegs: true, species: Species.dog);
+      var rig = CharacterRig.of(dna, CharacterPose.rest.withTurn(90), box);
+      expect((rig.chest.dy - rig.hips.dy).abs(), lessThan(rig.torsoLength * 0.3),
+          reason: "level");
+      expect(rig.chest.dx, lessThan(rig.hips.dx - rig.torsoLength * 0.8),
+          reason: "the shoulders ahead of the hips");
+      for (var front in [rig.wristL, rig.wristR]) {
+        expect(front.dy, closeTo(rig.ankleL.dy, rig.unit * 0.6),
+            reason: "front feet on the ground with the back ones");
+      }
+      expect(rig.headScale, lessThan(1));
+    });
+
+    test("on four legs a pin still lands the foot where it is dragged", () {
+      var e = juno().copyWith(
+          dna: const CharacterDna(fourLegs: true, species: Species.dog),
+          pose: CharacterPose.rest.withTurn(90));
+      var at = CharacterPlacement.of(e, 0);
+      var to = at.pin(CharacterPin.handL) + const Offset(-20, -15);
+      var posed = e.copyWith(pose: at.posedBy(CharacterPin.handL, to));
+      expectNear(CharacterPlacement.of(posed, 0).pin(CharacterPin.handL), to, 1);
+    });
+
+    test("a creature is saved whole", () {
+      var dna = characterCast.firstWhere((c) => c.name == "Ember").dna;
+      var back = CharacterDna.fromJson(dna.toJson());
+      expect(back.toJson(), dna.toJson());
+      expect(back.wings, WingKind.bat);
+      expect(back.fourLegs, isTrue);
+      expect(back.eyeCount, 2);
+      var grub = characterCast.firstWhere((c) => c.name == "Grub").dna;
+      expect(CharacterDna.fromJson(grub.toJson()).eyeCount, 1);
+    });
+  });
+
+  group("birds, fish and flying", () {
+    const box = Rect.fromLTWH(0, 0, 200, 400);
+    CharacterDna who(String name) =>
+        characterCast.firstWhere((c) => c.name == name).dna;
+
+    test("a bird's arms are its wings, and rise as they flap", () {
+      var folded = CharacterRig.of(who("Ollie"), CharacterPose.rest, box);
+      var raised = CharacterRig.of(who("Ollie"),
+          CharacterPose.rest.withAngle(CharacterBone.wings, 60), box);
+      expect(raised.wristL.dy, lessThan(folded.wristL.dy - 10));
+      expect(raised.wristR.dy, lessThan(folded.wristR.dy - 10));
+      expect(raised.wingFlap, 60);
+    });
+
+    test("flying lifts and flaps; swimming floats", () {
+      var (fly, _) = withMotions(
+          CharacterPose.rest,
+          CharacterFace.rest,
+          const [
+            MotionClip(
+                id: "f",
+                kind: MotionKind.fly,
+                layer: MotionLayer.added,
+                start: 0,
+                length: 99,
+                blend: 0)
+          ],
+          3,
+          24);
+      expect(fly.lift, greaterThan(0.4));
+      expect(fly[CharacterBone.wings], greaterThan(0));
+      var rig = CharacterRig.of(who("Finn"), CharacterPose.rest, box);
+      expect(rig.hips.dy, lessThan(box.height * 0.75), reason: "a fish floats");
+    });
+
+    test("a fish has no feet to take hold of", () {
+      var e = juno().copyWith(dna: who("Finn"));
+      var pins = CharacterPlacement.of(e, 0).pins;
+      expect(pins, isNot(contains(CharacterPin.footL)));
+      expect(pins, contains(CharacterPin.handL));
+    });
+
+    test("every creature draws, dressed on four legs too", () async {
+      for (var c in characterCast.skip(1)) {
+        var e = juno().copyWith(dna: c.dna);
+        expect(await _draw0(e), isNot(await _draw0(juno())), reason: c.name);
+      }
+      var dog = juno().copyWith(
+          dna: who("Biscuit").copyWith(wardrobe: [
+        const Garment(GarmentKind.hoodie, color: Color(0xFFE05A47)),
+        const Garment(GarmentKind.trousers, color: Color(0xFF2F3E5C)),
+      ]));
+      expect(await _draw0(dog),
+          isNot(await _draw0(juno().copyWith(dna: who("Biscuit")))));
+    });
+  });
+
   group("the drawing", () {
     Future<List<int>> draw(CanvasElement e) async {
       var rec = PictureRecorder();
@@ -991,6 +1137,15 @@ ${rows.join("\n")}
 
       await tap(tester, "characterHeads-more");
       expect(get(c).dna.headsTall, 6);
+
+      await tap(tester, "characterStyle-anime");
+      expect(get(c).style, CharacterStyle.anime);
+      await tap(tester, "characterSpecies-cat");
+      expect(get(c).dna.species, Species.cat);
+      expect(get(c).dna.hairStyle, HairStyle.bald, reason: "fur, not hair");
+      await tap(tester, "characterFourLegs");
+      expect(get(c).dna.fourLegs, isTrue);
+      await tap(tester, "characterFourLegs");
 
       await tap(tester, "characterFeeling-Angry");
       expect(get(c).face[FaceControl.browSqueeze], 1);

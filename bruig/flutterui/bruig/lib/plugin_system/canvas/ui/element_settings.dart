@@ -1,5 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -198,6 +200,8 @@ List<Widget> elementSettings(
             pathSettings(context, controller, e, write, begin, commit),
           CharacterElement e =>
             characterSettings(context, controller, e, write, begin, commit),
+          StageElement e =>
+            stageSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
         presetsPanelSection(context, controller, element, extra: [

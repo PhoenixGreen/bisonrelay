@@ -44,7 +44,10 @@ enum ElementKind {
   vector("Vector"),
   // A person, an animal or a monster, drawn on a skeleton and posed. See
   // CharacterElement.
-  character("Character");
+  character("Character"),
+  // A 3D set -- a floor and a wall seen through a camera -- that characters
+  // stand on. See StageElement.
+  stage("3D stage");
 
   final String label;
   const ElementKind(this.label);

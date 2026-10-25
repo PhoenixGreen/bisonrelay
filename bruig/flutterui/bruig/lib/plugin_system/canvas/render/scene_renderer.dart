@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
@@ -368,7 +370,8 @@ void _paintScene(
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
   };
 
-  for (var element in elements) {
+  // Characters standing on a stage are drawn with it, nearest last.
+  for (var element in inStageOrder(elements, frame)) {
     if (!element.visible ||
         element.id == skipElement ||
         hidden.contains(element.id)) {
@@ -640,6 +643,25 @@ void paintElement(
 
   var bounds = element.bounds;
 
+  // A character standing on a stage is where the stage's camera sees it,
+  // not where its own box is: placed, sized and turned by the camera, and
+  // lit by the stage.
+  if (element is CharacterElement &&
+      element.onStage != null &&
+      document != null) {
+    var at = staging(element, document.elements, frame);
+    if (at != null) {
+      if (alpha < 0.999) {
+        canvas.saveLayer(null,
+            Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
+      }
+      paintCharacter(canvas, at.box, element, frame,
+          frameRate: frameRate, editing: editing, staged: at);
+      if (alpha < 0.999) canvas.restore();
+      return;
+    }
+  }
+
   // A page number that sits on the outside edge of the leaf. Mirrored about
   // the middle of the page rather than nudged by a figure somebody types, so
   // that the two sides of a spread match however it is placed -- and so that
@@ -895,6 +917,8 @@ void paintElement(
             () => _paintPath(canvas, bounds, e, editing));
       case TeamElement e:
         paintTeam(canvas, bounds, e, frame, document: document, images: images);
+      case StageElement e:
+        paintStage(canvas, bounds, e, frame);
       case CharacterElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => paintCharacter(canvas, bounds, e, frame,
@@ -1234,6 +1258,11 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 /// this, because a box drawn somewhere other than the thing it belongs to is
 /// worse than no box: it invites dragging empty space.
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
+  // Where the stage's camera puts a character standing on it.
+  if (element is CharacterElement && element.onStage != null && doc != null) {
+    var at = staging(element, doc.elements, frame);
+    if (at != null) return at.box;
+  }
   if (element is TextElement) {
     var curve = _curveFor(element, doc, frame);
     if (curve != null) {
@@ -1291,7 +1320,13 @@ Rect? _boundsOfPoints(List<Offset>? points) {
 /// the line's, so resize handles and a rotate ring on it would be controls
 /// that appear to do nothing.
 bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
-    !(element is TextElement && _curveFor(element, doc, frame) != null);
+    !(element is TextElement && _curveFor(element, doc, frame) != null) &&
+    // A character on a stage is sized and turned by the camera: its height
+    // is in metres, in its settings.
+    !(element is CharacterElement &&
+        element.onStage != null &&
+        doc != null &&
+        staging(element, doc.elements, frame) != null);
 
 /// curveOfElement is [element]'s own line as a polyline in document space, or
 /// null when it has none.

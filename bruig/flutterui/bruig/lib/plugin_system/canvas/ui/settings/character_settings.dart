@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -40,10 +41,11 @@ List<Widget> characterSettings(
   }
 
   var dna = e.dna;
+  var style = e.style;
   void dnaNow(CharacterDna next) => now(e.copyWith(dna: next));
   // What every tile of this character is drawn from, so a tile changes
   // when the character does and not otherwise. See TileSnapshot.
-  var drawn = dna.toJson().toString();
+  var drawn = "${dna.toJson()}|${style.name}";
   var pose = e.poseAtFrame(controller.frame);
   var animated = controller.document.isAnimated;
   var keyed = controller.hasCharacterPoseKey(e);
@@ -54,7 +56,7 @@ List<Widget> characterSettings(
     section(e, "character",
         icon: Icons.person_outline,
         title: "Character",
-        summary: "${e.style.label} · ${shortNumber(dna.headsTall)} heads tall",
+        summary: "${style.label} · ${shortNumber(dna.headsTall)} heads tall",
         initiallyOpen: true,
         children: [
           CanvasTiles<int>(
@@ -67,12 +69,13 @@ List<Widget> characterSettings(
             tiles: [
               for (var (i, who) in characterCast.indexed)
                 CanvasTile(i, who.name,
-                    drawnFrom: who.dna.toJson().toString(),
+                    drawnFrom: "${who.dna.toJson()}|${style.name}",
                     paint: (canvas, size) => _figureTile(
-                        canvas, size, who.dna, CharacterElement.restPose)),
+                        canvas, size, who.dna, CharacterElement.restPose, style)),
             ],
             selected: (i) =>
-                characterCast[i].dna.toJson().toString() == drawn,
+                characterCast[i].dna.toJson().toString() ==
+                dna.toJson().toString(),
             keyOf: (i) => "characterCast-${characterCast[i].name}",
             onPick: (i) {
               var who = characterCast[i];
@@ -84,6 +87,24 @@ List<Widget> characterSettings(
                   ? next.withBase(name: who.name) as CharacterElement
                   : next);
             },
+          ),
+          CanvasTiles<CharacterStyle>(
+            label: "Style",
+            help: "How the character is drawn. A style changes the look and "
+                "nothing else: the same person, the same clothes and the "
+                "same moves, drawn another way.",
+            columns: 4,
+            previewHeight: 64,
+            tiles: [
+              for (var st in CharacterStyle.values)
+                CanvasTile(st, st.label,
+                    drawnFrom: "${dna.toJson()}|${st.name}",
+                    paint: (canvas, size) => _figureTile(
+                        canvas, size, dna, CharacterElement.restPose, st)),
+            ],
+            selected: (st) => st == style,
+            keyOf: (st) => "characterStyle-${st.name}",
+            onPick: (st) => now(e.copyWith(style: st)),
           ),
           CanvasControlGroup(
               label: "Body",
@@ -154,12 +175,120 @@ List<Widget> characterSettings(
                 CanvasTile(h, h.label,
                     drawnFrom: drawn,
                     paint: (canvas, size) => _headTile(
-                        canvas, size, dna.copyWith(hairStyle: h))),
+                        canvas, size, dna.copyWith(hairStyle: h), style)),
             ],
             selected: (h) => dna.hairStyle == h,
             keyOf: (h) => "characterHair-${h.name}",
             onPick: (h) => dnaNow(dna.copyWith(hairStyle: h)),
           ),
+        ]),
+    section(e, "creature",
+        icon: Icons.pets_outlined,
+        title: "Creature",
+        summary: [
+          dna.species.label,
+          if (dna.fourLegs) "four legs",
+          if (dna.tail != TailKind.none) "${dna.tail.label.toLowerCase()} tail",
+          if (dna.wings != WingKind.none) "wings",
+        ].join(" · "),
+        children: [
+          CanvasTiles<Species>(
+            label: "Species",
+            help: "What kind of creature: its ears, muzzle and nose. Skin is "
+                "its fur, under Look; the second colour is the lighter fur "
+                "of its muzzle and belly.",
+            columns: 5,
+            previewHeight: 48,
+            tiles: [
+              for (var sp in Species.values)
+                CanvasTile(sp, sp.label,
+                    drawnFrom: "$drawn|${sp.name}",
+                    paint: (canvas, size) => _headTile(
+                        canvas,
+                        size,
+                        dna.copyWith(
+                            species: sp,
+                            hairStyle: sp == Species.human
+                                ? dna.hairStyle
+                                : HairStyle.bald),
+                        style)),
+            ],
+            selected: (sp) => dna.species == sp,
+            keyOf: (sp) => "characterSpecies-${sp.name}",
+            onPick: (sp) => dnaNow(dna.copyWith(
+                species: sp,
+                // An animal's fur is its hair: a head of hair on a fox is a
+                // wig.
+                hairStyle: sp.animal ? HairStyle.bald : dna.hairStyle)),
+          ),
+          CanvasControlGroup(
+              label: "Body",
+              help: "Four legs stands it like an animal: its body level, its "
+                  "arms its front legs. Every motion and pin works the same "
+                  "way -- a walk is a four-legged walk.",
+              children: [
+                CanvasToggle(
+                  key: const ValueKey("characterFourLegs"),
+                  label: "Four legs",
+                  value: dna.fourLegs,
+                  onChanged: (v) => dnaNow(dna.copyWith(fourLegs: v)),
+                ),
+                CanvasStepper(
+                  key: const ValueKey("characterEyeCount"),
+                  label: "Eyes",
+                  value: dna.eyeCount.toDouble(),
+                  min: 1,
+                  max: 3,
+                  defaultValue: 2,
+                  onChanged: (v) =>
+                      write(e.copyWith(dna: dna.copyWith(eyeCount: v.round()))),
+                  onCommit: commit,
+                ),
+                CanvasToggle(
+                  key: const ValueKey("characterFangs"),
+                  label: "Fangs",
+                  value: dna.fangs,
+                  onChanged: (v) => dnaNow(dna.copyWith(fangs: v)),
+                ),
+                CanvasToggle(
+                  key: const ValueKey("characterSpikes"),
+                  label: "Spikes",
+                  value: dna.spikes,
+                  onChanged: (v) => dnaNow(dna.copyWith(spikes: v)),
+                ),
+                CanvasColorButton(
+                  label: "Second fur",
+                  color: dna.fur2,
+                  onChanged: (c) => dnaNow(dna.copyWith(fur2: c)),
+                ),
+              ]),
+          CanvasControlGroup(
+              label: "Tail, wings and horns",
+              help: "What grows from the back and the head. The horns and "
+                  "spikes are in the second fur colour.",
+              children: [
+                CanvasDropdown<TailKind>(
+                  key: const ValueKey("characterTail"),
+                  label: "Tail",
+                  value: dna.tail,
+                  options: [for (var t in TailKind.values) (t, t.label)],
+                  onChanged: (t) => dnaNow(dna.copyWith(tail: t)),
+                ),
+                CanvasDropdown<WingKind>(
+                  key: const ValueKey("characterWings"),
+                  label: "Wings",
+                  value: dna.wings,
+                  options: [for (var w in WingKind.values) (w, w.label)],
+                  onChanged: (w) => dnaNow(dna.copyWith(wings: w)),
+                ),
+                CanvasDropdown<HornKind>(
+                  key: const ValueKey("characterHorns"),
+                  label: "Horns",
+                  value: dna.horns,
+                  options: [for (var h in HornKind.values) (h, h.label)],
+                  onChanged: (h) => dnaNow(dna.copyWith(horns: h)),
+                ),
+              ]),
         ]),
     section(e, "wardrobe",
         icon: Icons.checkroom_outlined,
@@ -196,7 +325,7 @@ List<Widget> characterSettings(
                 CanvasTile(i, p.name,
                     drawnFrom: drawn,
                     paint: (canvas, size) =>
-                        _figureTile(canvas, size, dna, p.pose)),
+                        _figureTile(canvas, size, dna, p.pose, style)),
             ],
             selected: (i) => _samePose(posePresets[i].pose, pose),
             keyOf: (i) => "characterPose-${posePresets[i].name}",
@@ -286,7 +415,7 @@ List<Widget> characterSettings(
               for (var k in MotionKind.values)
                 CanvasTile(k, k.label,
                     drawnFrom: drawn,
-                    paint: (canvas, size) => _motionTile(canvas, size, dna, k)),
+                    paint: (canvas, size) => _motionTile(canvas, size, dna, k, style)),
             ],
             selected: (_) => false,
             keyOf: (k) => "characterMotion-${k.name}",
@@ -320,7 +449,7 @@ List<Widget> characterSettings(
                 CanvasTile(i, x.name,
                     drawnFrom: drawn,
                     paint: (canvas, size) =>
-                        _faceTile(canvas, size, dna, x.face)),
+                        _faceTile(canvas, size, dna, x.face, style)),
             ],
             selected: (i) => _sameFeeling(expressionPresets[i].face, face),
             keyOf: (i) => "characterFeeling-${expressionPresets[i].name}",
@@ -342,7 +471,7 @@ List<Widget> characterSettings(
                 CanvasTile(m, "${m.letter} · ${m.sounds}",
                     drawnFrom: drawn,
                     paint: (canvas, size) => _mouthTile(
-                        canvas, size, dna, CharacterFace.rest.withMouth(m))),
+                        canvas, size, dna, CharacterFace.rest.withMouth(m), style)),
             ],
             selected: (m) => face.mouth == m,
             keyOf: (m) => "characterMouth-${m.name}",
@@ -394,6 +523,7 @@ List<Widget> characterSettings(
                 ),
               ]),
         ]),
+    _stageSection(controller, e, write, commit, now),
     section(e, "lipSync",
         icon: Icons.record_voice_over_outlined,
         title: "Lip sync",
@@ -425,18 +555,20 @@ bool _samePose(CharacterPose a, CharacterPose b) {
 
 /// _figureTile draws the whole character, standing in the tile.
 void _figureTile(
-    ui.Canvas canvas, Size size, CharacterDna dna, CharacterPose pose) {
+    ui.Canvas canvas, Size size, CharacterDna dna, CharacterPose pose,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var h = size.height * 0.92;
   paintCharacterFigure(
       canvas,
       Rect.fromCenter(
           center: size.center(Offset.zero), width: h * 0.45, height: h),
       dna,
-      pose);
+      pose, style: style);
 }
 
 /// _headTile draws the character's head, filling the tile.
-void _headTile(ui.Canvas canvas, Size size, CharacterDna dna) {
+void _headTile(ui.Canvas canvas, Size size, CharacterDna dna,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   // A head is one of headsTall lengths of the body: drawn at a height that
   // makes one head about the tile, with the top of the head near its top.
   var h = size.height * 0.8 * dna.headsTall;
@@ -444,21 +576,23 @@ void _headTile(ui.Canvas canvas, Size size, CharacterDna dna) {
       canvas,
       Rect.fromLTWH(size.width / 2 - h / 4, size.height * 0.18, h / 2, h),
       dna,
-      CharacterElement.restPose);
+      CharacterElement.restPose, style: style);
 }
 
 /// _bodyTile draws the character from the chin to the hips.
-void _bodyTile(ui.Canvas canvas, Size size, CharacterDna dna) =>
-    _cropTile(canvas, size, dna, 0.85, 0.42);
+void _bodyTile(ui.Canvas canvas, Size size, CharacterDna dna,
+        [CharacterStyle style = CharacterStyle.featureCartoon]) =>
+    _cropTile(canvas, size, dna, 0.85, 0.42, style);
 
 /// _legsTile draws the character from the hips down.
-void _legsTile(ui.Canvas canvas, Size size, CharacterDna dna) =>
-    _cropTile(canvas, size, dna, 0.47, 0.5);
+void _legsTile(ui.Canvas canvas, Size size, CharacterDna dna,
+        [CharacterStyle style = CharacterStyle.featureCartoon]) =>
+    _cropTile(canvas, size, dna, 0.47, 0.5, style);
 
 /// _cropTile draws the part of the character [from] (a share of its height
 /// above the bottom) for [span] of its height, filling the tile.
 void _cropTile(ui.Canvas canvas, Size size, CharacterDna dna, double from,
-    double span) {
+    double span, [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var h = size.height / span;
   var top = -(1 - from) * h;
   canvas.save();
@@ -467,7 +601,7 @@ void _cropTile(ui.Canvas canvas, Size size, CharacterDna dna, double from,
       canvas,
       Rect.fromLTWH(size.width / 2 - h * 0.25, top, h * 0.5, h),
       dna,
-      CharacterElement.restPose);
+      CharacterElement.restPose, style: style);
   canvas.restore();
 }
 
@@ -531,7 +665,7 @@ bool _sameFeeling(CharacterFace a, CharacterFace b) {
 
 /// _faceTile draws the character's head with [face], filling the tile.
 void _faceTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    CharacterFace face) {
+    CharacterFace face, [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var h = size.height * 0.86 * dna.headsTall;
   canvas.save();
   canvas.clipRect(Offset.zero & size);
@@ -540,13 +674,13 @@ void _faceTile(ui.Canvas canvas, Size size, CharacterDna dna,
       Rect.fromLTWH(size.width / 2 - h / 4, size.height * 0.08, h / 2, h),
       dna,
       CharacterElement.restPose,
-      face: face);
+      face: face, style: style);
   canvas.restore();
 }
 
 /// _mouthTile draws the lower half of the character's face, close up.
 void _mouthTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    CharacterFace face) {
+    CharacterFace face, [CharacterStyle style = CharacterStyle.featureCartoon]) {
   // A head's mouth is about three tenths of a head below its middle; drawn
   // at this size the mouth fills the middle of the tile.
   var head = size.height * 2.2;
@@ -559,7 +693,7 @@ void _mouthTile(ui.Canvas canvas, Size size, CharacterDna dna,
           size.height / 2 - head * 0.5 - head * 0.3, h / 2, h),
       dna,
       CharacterElement.restPose,
-      face: face);
+      face: face, style: style);
   canvas.restore();
 }
 
@@ -753,7 +887,8 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
 
 /// _motionTile draws the character part way through [kind]: side on for a
 /// walk or a run, which only read from the side.
-void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna, MotionKind kind) {
+void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna,
+    MotionKind kind, [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var side = kind == MotionKind.walk || kind == MotionKind.run;
   var base = CharacterElement.restPose.withTurn(side ? 90 : 0);
   var t = kind.seconds * (kind.loops ? 0.25 : 0.5);
@@ -776,7 +911,7 @@ void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna, MotionKind kind)
           height: h),
       dna,
       pose,
-      face: face);
+      face: face, style: style);
 }
 
 /// _clipGroup is one motion clip's settings: when, how fast, how much, on
@@ -1014,18 +1149,19 @@ class _ImportGroupState extends State<_ImportGroup> {
 /// _garmentTile draws [dna] wearing what it wears, cropped to where a
 /// garment of [slot] goes: the head for a hat, the feet for shoes.
 void _garmentTile(
-    ui.Canvas canvas, Size size, CharacterDna dna, GarmentSlot slot) {
+    ui.Canvas canvas, Size size, CharacterDna dna, GarmentSlot slot,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   switch (slot) {
     case GarmentSlot.head || GarmentSlot.face:
-      _headTile(canvas, size, dna);
+      _headTile(canvas, size, dna, style);
     case GarmentSlot.neck || GarmentSlot.top || GarmentSlot.outer:
-      _bodyTile(canvas, size, dna);
+      _bodyTile(canvas, size, dna, style);
     case GarmentSlot.bottom:
-      _legsTile(canvas, size, dna);
+      _legsTile(canvas, size, dna, style);
     case GarmentSlot.feet:
-      _cropTile(canvas, size, dna, 0.2, 0.25);
+      _cropTile(canvas, size, dna, 0.2, 0.25, style);
     case GarmentSlot.base || GarmentSlot.full:
-      _figureTile(canvas, size, dna, CharacterElement.restPose);
+      _figureTile(canvas, size, dna, CharacterElement.restPose, style);
   }
 }
 
@@ -1067,6 +1203,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
 
   CharacterElement get e => widget.character;
   CharacterDna get dna => e.dna;
+  CharacterStyle get style => e.style;
 
   void _now(CharacterElement next) {
     widget.controller.beginInteraction();
@@ -1093,7 +1230,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
 
   @override
   Widget build(BuildContext context) {
-    var drawn = dna.toJson().toString();
+    var drawn = "${dna.toJson()}|${style.name}";
     var wardrobe = dna.wardrobe;
     if (_picked >= wardrobe.length) _picked = -1;
     var picked = _picked >= 0 ? wardrobe[_picked] : null;
@@ -1128,7 +1265,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
             CanvasTile(i, c.name,
                 drawnFrom: drawn,
                 paint: (canvas, size) => _figureTile(canvas, size,
-                    dna.copyWith(wardrobe: c.wardrobe), CharacterElement.restPose)),
+                    dna.copyWith(wardrobe: c.wardrobe), CharacterElement.restPose, style)),
         ],
         selected: (_) => false,
         keyOf: (i) => "characterCostume-${costumes[i].name}",
@@ -1317,7 +1454,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
                   var worn = [...dna.wardrobe];
                   worn[_picked] = g.copyWith(condition: p.$2);
                   _garmentTile(canvas, size, dna.copyWith(wardrobe: worn),
-                      g.kind.slot);
+                      g.kind.slot, style);
                 }),
         ],
         selected: (i) => _sameCondition(conditionPresets[i].$2, g.condition),
@@ -1362,3 +1499,118 @@ bool _sameCondition(GarmentCondition a, GarmentCondition b) =>
     a.rips == b.rips &&
     a.frays == b.frays &&
     a.patches == b.patches;
+
+/// _stageSection is where the character stands: on a 3D stage -- which
+/// one, the spot on its floor, how tall, which way round -- or on the page,
+/// with its shadow and how much it shrinks going up the page.
+Widget _stageSection(CanvasController controller, CharacterElement e,
+    SettingsWrite write, VoidCallback commit, void Function(CharacterElement) now) {
+  var stages = controller.document.elements.whereType<StageElement>().toList();
+  var on = e.onStage;
+  void place(OnStage next, {bool live = false}) {
+    controller.beginInteraction();
+    write(e.copyWith(onStage: next));
+    if (!live) commit();
+  }
+
+  return section(e, "stage",
+      icon: Icons.view_in_ar_outlined,
+      title: "Where it stands",
+      summary: on == null
+          ? "On the page"
+          : "On ${stages.where((s) => s.id == on.stage).firstOrNull?.name ?? "a stage"}",
+      children: [
+        CanvasControlGroup(
+            label: "Stands on",
+            help: "On a 3D stage the character stands at a spot on its "
+                "floor, and the stage's camera decides where on the page "
+                "that is, how big it looks and which way round. Drag it to "
+                "move it across the floor. Add a 3D stage from Add to have "
+                "one to stand on.",
+            children: [
+              CanvasDropdown<String>(
+                key: const ValueKey("characterStage"),
+                label: "Stage",
+                value: on?.stage ?? "",
+                width: 170,
+                options: [
+                  ("", "The page"),
+                  for (var s in stages) (s.id, s.name),
+                ],
+                onChanged: (id) => now(id.isEmpty
+                    ? e.copyWith(offStage: true)
+                    : e.copyWith(
+                        onStage: OnStage(id,
+                            height: e.dna.fourLegs ? 0.9 : 1.7)))),
+            ]),
+        if (on != null)
+          CanvasControlGroup(
+              label: "On the floor",
+              help: "Where it stands, in metres across the floor and towards "
+                  "the camera's start; how tall it is; and which way round "
+                  "it faces, before the camera is taken into account.",
+              children: [
+                for (var (key, label, value, min, max, step, suffix, set) in <(
+                  String,
+                  String,
+                  double,
+                  double,
+                  double,
+                  double,
+                  String,
+                  OnStage Function(double)
+                )>[
+                  ("characterStageX", "Across", on.x, -50, 50, 0.5, " m",
+                      (v) => on.copyWith(x: v)),
+                  ("characterStageZ", "Forward", on.z, -50, 50, 0.5, " m",
+                      (v) => on.copyWith(z: v)),
+                  ("characterStageHeight", "Height", on.height, 0.1, 30, 0.1,
+                      " m", (v) => on.copyWith(height: v)),
+                  ("characterStageFacing", "Facing", on.facing, -180, 180, 15,
+                      "°", (v) => on.copyWith(facing: v)),
+                ])
+                  CanvasStepper(
+                    key: ValueKey(key),
+                    label: label,
+                    value: value,
+                    min: min,
+                    max: max,
+                    step: step,
+                    decimals: step < 1 ? 1 : 0,
+                    suffix: suffix,
+                    onChanged: (v) => place(set(v), live: true),
+                    onCommit: commit,
+                  ),
+              ]),
+        CanvasControlGroup(
+            label: "Ground",
+            help: "The shadow under the character. On the page, Depth makes "
+                "it smaller as it moves up the page and bigger as it comes "
+                "down, as though walking into the picture and out of it.",
+            children: [
+              CanvasDropdown<CharacterShadow>(
+                key: const ValueKey("characterShadow"),
+                label: "Shadow",
+                value: e.shadow,
+                options: [for (var s in CharacterShadow.values) (s, s.label)],
+                onChanged: (s) => now(e.copyWith(shadow: s)),
+              ),
+              if (on == null)
+                CanvasStepper(
+                  key: const ValueKey("characterDepth"),
+                  label: "Depth",
+                  value: e.depth * 100,
+                  min: 0,
+                  max: 200,
+                  step: 10,
+                  suffix: "%",
+                  defaultValue: 0,
+                  onChanged: (v) {
+                    controller.beginInteraction();
+                    write(e.copyWith(depth: v / 100));
+                  },
+                  onCommit: commit,
+                ),
+            ]),
+      ]);
+}

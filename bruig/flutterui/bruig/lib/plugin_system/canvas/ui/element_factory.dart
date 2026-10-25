@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -77,6 +78,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // Standing, most of the page's height, about as wide as a person with
     // their arms a little out is for their height.
     ElementKind.character => Size(short * 0.34, short * 0.7),
+    // The whole page: a stage is the set the scene is played on.
+    ElementKind.stage => Size(wide, short),
   };
 }
 
@@ -277,12 +280,27 @@ CanvasElement newElement(
       return team.linkedTo(p.link,
           pitch: p.sport, reference: p.reference, area: p.area);
 
+    case ElementKind.stage:
+      return StageElement(base.copyWith(
+          name: "3D stage", x: 0, y: 0, width: size.width, height: size.height));
+
     case ElementKind.character:
       // The first of the cast, named for who they are rather than what they
       // are: a scene with three characters in it is three names in the
       // layer list, not "Character" three times.
       var who = characterCast.first;
-      return CharacterElement(base.copyWith(name: who.name, lockAspect: true),
+      var character = CharacterElement(
+          base.copyWith(name: who.name, lockAspect: true),
           dna: who.dna);
+      // On the stage, where there is one: a scene with a set is played on
+      // it. Each new one a step along from the last, not on top of it.
+      var stage = document.elements.whereType<StageElement>().firstOrNull;
+      if (stage == null) return character;
+      var already = document.elements
+          .whereType<CharacterElement>()
+          .where((c) => c.onStage?.stage == stage.id)
+          .length;
+      var x = (already.isEven ? 1 : -1) * (already + 1) ~/ 2 * 1.2;
+      return character.copyWith(onStage: OnStage(stage.id, x: x.toDouble()));
   }
 }

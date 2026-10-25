@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -41,7 +42,11 @@ enum CharacterBone {
   thighL("Left thigh"),
   shinL("Left shin"),
   thighR("Right thigh"),
-  shinR("Right shin");
+  shinR("Right shin"),
+
+  /// wings is how far wings are raised from folded, in degrees: what a
+  /// flap moves. A bird's arms are its wings, and rise with it.
+  wings("Wing flap");
 
   final String label;
   const CharacterBone(this.label);
@@ -421,13 +426,41 @@ class CharacterLife {
 enum CharacterStyle {
   /// featureCartoon is soft shapes, a big readable face and a coloured
   /// outline a shade darker than what it goes round.
-  featureCartoon("Feature cartoon");
+  featureCartoon("Feature cartoon", "Soft shapes, readable faces, a shaded line"),
+  anime("Anime", "Big bright eyes and a cel shadow"),
+  manga("Manga ink", "Black ink and screentone, no colour"),
+  chibi("Chibi", "A big head on a small body"),
+  tvFlat("TV flat", "Flat colour and a thick even line"),
+  rubberHose("Rubber hose", "1930s bendy limbs, gloves and pie eyes"),
+  comic("Comic", "Bold ink with halftone shadows"),
+  storybook("Storybook", "Soft washed colour and a pencil line"),
+  clay("Clay", "Rounded and unlined, moving on twos"),
+  paperCutout("Paper cut-out", "Flat pieces with a shadow behind"),
+  pixel("Pixel", "Drawn small and scaled up crisply"),
+  noir("Noir", "A silhouette with a rim of light");
 
   final String label;
-  const CharacterStyle(this.label);
+
+  /// about is what it looks like, under its tile.
+  final String about;
+  const CharacterStyle(this.label, this.about);
 
   static CharacterStyle fromName(String? name) => values
       .firstWhere((s) => s.name == name, orElse: () => featureCartoon);
+
+  /// onTwos is whether it moves on every second frame only, as stop-motion
+  /// and much hand-drawn animation does.
+  bool get onTwos => this == clay;
+
+  /// frameOf is [frame] as this style moves: the even frame before it, for
+  /// a style on twos.
+  int frameOf(int frame) => onTwos ? frame - frame % 2 : frame;
+
+  /// dnaOf is [dna] as this style draws it: a chibi is at most two and a
+  /// half heads tall whatever its own proportions say.
+  CharacterDna dnaOf(CharacterDna dna) => this == chibi && dna.headsTall > 2.6
+      ? dna.copyWith(headsTall: 2.6, build: math.min(1.0, dna.build + 0.15))
+      : dna;
 }
 
 enum HairStyle {
@@ -442,6 +475,73 @@ enum HairStyle {
 
   static HairStyle fromName(String? name) =>
       values.firstWhere((s) => s.name == name, orElse: () => short);
+}
+
+/// Species is what kind of creature a character is: its ears, its muzzle,
+/// its nose and whiskers. A person is one too.
+enum Species {
+  human("Person"),
+  cat("Cat"),
+  dog("Dog"),
+  fox("Fox"),
+  bear("Bear"),
+  rabbit("Rabbit"),
+  mouse("Mouse"),
+  pig("Pig"),
+  bird("Bird"),
+  fish("Fish"),
+  monster("Monster");
+
+  final String label;
+  const Species(this.label);
+
+  static Species fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => human);
+
+  bool get animal => this != human && this != monster;
+
+  /// legless is whether it has no legs to stand on: a fish swims.
+  bool get legless => this == fish;
+}
+
+enum TailKind {
+  none("None"),
+  long("Long"),
+  bushy("Bushy"),
+  curly("Curly"),
+  stub("Stub"),
+  dragon("Dragon");
+
+  final String label;
+  const TailKind(this.label);
+
+  static TailKind fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => none);
+}
+
+enum WingKind {
+  none("None"),
+  feathered("Feathered"),
+  bat("Bat");
+
+  final String label;
+  const WingKind(this.label);
+
+  static WingKind fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => none);
+}
+
+enum HornKind {
+  none("None"),
+  small("Small"),
+  ram("Ram"),
+  antlers("Antlers");
+
+  final String label;
+  const HornKind(this.label);
+
+  static HornKind fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => none);
 }
 
 /// CharacterDna is everything a character looks like, with no style in it.
@@ -467,6 +567,26 @@ class CharacterDna {
   /// drawn. On, taking off a character's clothes never leaves it bare.
   final bool baseLayer;
 
+  final Species species;
+
+  /// fourLegs stands the character on four legs: the body pitched forward,
+  /// the arms its front legs, the head brought up to look ahead.
+  final bool fourLegs;
+
+  final TailKind tail;
+  final WingKind wings;
+  final HornKind horns;
+
+  /// eyeCount is how many eyes: 1 for a cyclops, 2, or 3.
+  final int eyeCount;
+
+  final bool fangs;
+  final bool spikes;
+
+  /// fur2 is the lighter fur of a muzzle, a belly, the inside of an ear --
+  /// and a monster's spikes and horns.
+  final Color fur2;
+
   const CharacterDna({
     this.headsTall = 5.5,
     this.build = 0.4,
@@ -476,6 +596,15 @@ class CharacterDna {
     this.eyes = const Color(0xFF5A3B28),
     this.wardrobe = defaultWardrobe,
     this.baseLayer = true,
+    this.species = Species.human,
+    this.fourLegs = false,
+    this.tail = TailKind.none,
+    this.wings = WingKind.none,
+    this.horns = HornKind.none,
+    this.eyeCount = 2,
+    this.fangs = false,
+    this.spikes = false,
+    this.fur2 = const Color(0xFFF6EBDD),
   });
 
   /// defaultWardrobe is a new character's clothes: a hoodie and trousers
@@ -505,6 +634,15 @@ class CharacterDna {
     Color? eyes,
     List<Garment>? wardrobe,
     bool? baseLayer,
+    Species? species,
+    bool? fourLegs,
+    TailKind? tail,
+    WingKind? wings,
+    HornKind? horns,
+    int? eyeCount,
+    bool? fangs,
+    bool? spikes,
+    Color? fur2,
   }) =>
       CharacterDna(
         headsTall: (headsTall ?? this.headsTall).clamp(minHeads, maxHeads),
@@ -515,6 +653,15 @@ class CharacterDna {
         eyes: eyes ?? this.eyes,
         wardrobe: wardrobe ?? this.wardrobe,
         baseLayer: baseLayer ?? this.baseLayer,
+        species: species ?? this.species,
+        fourLegs: fourLegs ?? this.fourLegs,
+        tail: tail ?? this.tail,
+        wings: wings ?? this.wings,
+        horns: horns ?? this.horns,
+        eyeCount: (eyeCount ?? this.eyeCount).clamp(1, 3),
+        fangs: fangs ?? this.fangs,
+        spikes: spikes ?? this.spikes,
+        fur2: fur2 ?? this.fur2,
       );
 
   Map<String, dynamic> toJson() => {
@@ -526,6 +673,15 @@ class CharacterDna {
         "eyes": colorToJson(eyes),
         "wardrobe": [for (var g in wardrobe) g.toJson()],
         if (!baseLayer) "baseLayer": false,
+        if (species != Species.human) "species": species.name,
+        if (fourLegs) "fourLegs": true,
+        if (tail != TailKind.none) "tail": tail.name,
+        if (wings != WingKind.none) "wings": wings.name,
+        if (horns != HornKind.none) "horns": horns.name,
+        if (eyeCount != 2) "eyeCount": eyeCount,
+        if (fangs) "fangs": true,
+        if (spikes) "spikes": true,
+        "fur2": colorToJson(fur2),
       };
 
   factory CharacterDna.fromJson(Map<String, dynamic> json) {
@@ -545,6 +701,15 @@ class CharacterDna {
             ]
           : _olderClothes(json),
       baseLayer: jsonBool(json["baseLayer"], true),
+      species: Species.fromName(json["species"] as String?),
+      fourLegs: jsonBool(json["fourLegs"], false),
+      tail: TailKind.fromName(json["tail"] as String?),
+      wings: WingKind.fromName(json["wings"] as String?),
+      horns: HornKind.fromName(json["horns"] as String?),
+      eyeCount: jsonInt(json["eyeCount"], 2).clamp(1, 3),
+      fangs: jsonBool(json["fangs"], false),
+      spikes: jsonBool(json["spikes"], false),
+      fur2: colorFromJson(json["fur2"], d.fur2),
     );
   }
 
@@ -575,6 +740,61 @@ class CharacterDna {
   }
 }
 
+/// CharacterShadow is the shadow a character casts on the ground it
+/// stands on.
+enum CharacterShadow {
+  none("None"),
+  soft("Soft"),
+  hard("Hard");
+
+  final String label;
+  const CharacterShadow(this.label);
+
+  static CharacterShadow fromName(String? name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => soft);
+}
+
+/// OnStage is where a character stands on a 3D stage: which stage, the spot
+/// on its floor in metres, how tall it is, and which way it faces on it.
+class OnStage {
+  /// stage is the StageElement's id.
+  final String stage;
+  final double x;
+  final double z;
+
+  /// height is how tall the character stands, in metres.
+  final double height;
+
+  /// facing is which way round it stands on the floor, in degrees, before
+  /// the camera is taken into account.
+  final double facing;
+
+  const OnStage(this.stage,
+      {this.x = 0, this.z = 0, this.height = 1.7, this.facing = 0});
+
+  OnStage copyWith(
+          {double? x, double? z, double? height, double? facing}) =>
+      OnStage(stage,
+          x: x ?? this.x,
+          z: z ?? this.z,
+          height: (height ?? this.height).clamp(0.1, 30.0),
+          facing: facing ?? this.facing);
+
+  Map<String, dynamic> toJson() =>
+      {"stage": stage, "x": x, "z": z, "height": height, "facing": facing};
+
+  static OnStage? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var id = jsonString(json["stage"], "");
+    if (id.isEmpty) return null;
+    return OnStage(id,
+        x: jsonDouble(json["x"], 0),
+        z: jsonDouble(json["z"], 0),
+        height: jsonDouble(json["height"], 1.7).clamp(0.1, 30.0),
+        facing: jsonDouble(json["facing"], 0));
+  }
+}
+
 class CharacterElement extends CanvasElement {
   final CharacterDna dna;
   final CharacterStyle style;
@@ -598,6 +818,18 @@ class CharacterElement extends CanvasElement {
   /// canvas is dressed, whatever this says.
   final bool bareView;
 
+  /// onStage is where it stands on a 3D stage, or null when it is drawn
+  /// on the page like any other element.
+  final OnStage? onStage;
+
+  final CharacterShadow shadow;
+
+  /// depth is how much nearer and bigger the character looks for being
+  /// lower on the page, and further and smaller for being higher: nought
+  /// is not at all. What makes a walk into a picture go into it. Not on a
+  /// stage, where the camera does this.
+  final double depth;
+
   final ElementAnimation animation;
 
   const CharacterElement(
@@ -609,6 +841,9 @@ class CharacterElement extends CanvasElement {
     this.life = const CharacterLife(),
     this.motions = const [],
     this.bareView = false,
+    this.onStage,
+    this.shadow = CharacterShadow.soft,
+    this.depth = 0,
     this.animation = const ElementAnimation(),
   });
 
@@ -707,6 +942,9 @@ class CharacterElement extends CanvasElement {
       life: life,
       motions: motions,
       bareView: bareView,
+      onStage: onStage,
+      shadow: shadow,
+      depth: depth,
       animation: animation);
 
   CharacterElement copyWith({
@@ -717,6 +955,10 @@ class CharacterElement extends CanvasElement {
     CharacterLife? life,
     List<MotionClip>? motions,
     bool? bareView,
+    OnStage? onStage,
+    bool offStage = false,
+    CharacterShadow? shadow,
+    double? depth,
     ElementAnimation? animation,
   }) =>
       CharacterElement(base,
@@ -727,6 +969,9 @@ class CharacterElement extends CanvasElement {
           life: life ?? this.life,
           motions: motions ?? this.motions,
           bareView: bareView ?? this.bareView,
+          onStage: offStage ? null : (onStage ?? this.onStage),
+          shadow: shadow ?? this.shadow,
+          depth: (depth ?? this.depth).clamp(0.0, 2.0),
           animation: animation ?? this.animation);
 
   @override
@@ -738,6 +983,9 @@ class CharacterElement extends CanvasElement {
         "life": life.toJson(),
         if (motions.isNotEmpty) "motions": [for (var m in motions) m.toJson()],
         if (bareView) "bareView": true,
+        if (onStage != null) "onStage": onStage!.toJson(),
+        if (shadow != CharacterShadow.soft) "shadow": shadow.name,
+        if (depth != 0) "depth": depth,
         if (animation.any) "anim": animation.toJson(),
       };
 
@@ -756,6 +1004,9 @@ class CharacterElement extends CanvasElement {
           face: CharacterFace.fromJson(json["face"]),
           life: CharacterLife.fromJson(json["life"]),
           bareView: jsonBool(json["bareView"], false),
+          onStage: OnStage.fromJson(json["onStage"]),
+          shadow: CharacterShadow.fromName(json["shadow"] as String?),
+          depth: jsonDouble(json["depth"], 0).clamp(0.0, 2.0),
           motions: [
             if (json["motions"] case List raw)
               for (var m in raw)

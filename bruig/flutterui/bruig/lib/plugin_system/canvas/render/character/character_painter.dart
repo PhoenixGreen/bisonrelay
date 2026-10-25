@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
 // character_painter.dart draws a character: its rig, dressed and given a
 // face, in its style.
@@ -20,12 +21,62 @@ import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 /// blinking and breathing at [frameRate].
 /// [editing] is the stage, where a character can be shown bare while it is
 /// designed; never in anything made from the canvas.
+/// [staged] is where it stands on a 3D stage, when it does: its box is the
+/// camera's, it is turned as the camera sees it, and lit by the stage.
 void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
-    {int frameRate = 12, bool editing = false}) {
+    {int frameRate = 12, bool editing = false, Staging? staged}) {
+  // A style on twos holds each drawing for two frames, as stop motion does.
+  frame = e.style.frameOf(frame);
   var life = lifeAt(e, frame, frameRate);
   var (pose, face) = e.performanceAt(frame, frameRate);
+  if (staged != null) {
+    pose = pose.withTurn(pose.turn + staged.turn);
+    if (staged.shadow case var shadow?) {
+      canvas.drawPath(shadow, _shadowPaint(e.shadow, box.height));
+    }
+  } else {
+    box = characterBox(e, frame, box);
+    if (e.shadow != CharacterShadow.none) {
+      // A contact shadow on the ground under the feet, smaller and fainter
+      // the higher it jumps.
+      var up = 1 / (1 + pose.lift.abs() * 0.8);
+      canvas.drawOval(
+          Rect.fromCenter(
+              center: box.bottomCenter,
+              width: box.width * 0.8 * up,
+              height: box.height * 0.05 * up),
+          _shadowPaint(e.shadow, box.height, strength: up));
+    }
+  }
+  var light = staged == null ? null : lightFilter(staged.light);
+  if (light != null) {
+    canvas.saveLayer(box.inflate(box.height), Paint()..colorFilter = light);
+  }
   paintCharacterFigure(canvas, box, e.dna, pose,
-      face: face, life: life, bare: editing && e.bareView);
+      face: face, life: life, bare: editing && e.bareView, style: e.style);
+  if (light != null) canvas.restore();
+}
+
+Paint _shadowPaint(CharacterShadow kind, double size, {double strength = 1}) {
+  var p = Paint()
+    ..color = const Color(0xFF000000)
+        .withValues(alpha: (kind == CharacterShadow.hard ? 0.32 : 0.24) * strength);
+  if (kind == CharacterShadow.soft) {
+    p.maskFilter = MaskFilter.blur(BlurStyle.normal, math.max(0.5, size * 0.012));
+  }
+  return p;
+}
+
+/// characterBox is where [e] is drawn in its own [box] on [frame]: as it
+/// is, or -- with depth -- nearer and bigger for having moved down the
+/// page, further and smaller for having moved up it, about its feet.
+Rect characterBox(CharacterElement e, int frame, Rect box) {
+  if (e.depth == 0) return box;
+  var dy = e.poseAt(frame).dy;
+  var f = (1 + e.depth * dy / math.max(1.0, e.height)).clamp(0.25, 4.0);
+  if (f == 1) return box;
+  return Rect.fromLTWH(box.center.dx - box.width * f / 2,
+      box.bottom - box.height * f, box.width * f, box.height * f);
 }
 
 /// paintCharacterFigure draws [dna] in [pose], filling the height of [box].
@@ -34,10 +85,161 @@ void paintCharacterFigure(
     Canvas canvas, Rect box, CharacterDna dna, CharacterPose pose,
     {CharacterFace face = CharacterFace.rest,
     LifeAt life = LifeAt.none,
-    bool bare = false}) {
+    bool bare = false,
+    CharacterStyle style = CharacterStyle.featureCartoon}) {
   if (box.height <= 0) return;
+  dna = style.dnaOf(dna);
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
-  _Drawing(canvas, rig, dna, face, life, bare: bare).draw();
+  var look = _Look.of(style);
+  void draw(Canvas onto) =>
+      _Drawing(onto, rig, dna, face, life, bare: bare, look: look).draw();
+  // The room the figure is drawn in, arms out and hat on included.
+  var room = box.inflate(box.height * 0.35);
+  switch (style) {
+    case CharacterStyle.noir:
+      // A silhouette, lit from behind on one side: the figure in light,
+      // moved a little towards the light, and the figure in near-black
+      // over it.
+      var unit = box.height / dna.headsTall;
+      canvas.saveLayer(
+          room,
+          Paint()
+            ..colorFilter = const ColorFilter.mode(
+                Color(0xFFF2EEE4), BlendMode.srcIn));
+      canvas.translate(-unit * 0.07, -unit * 0.045);
+      draw(canvas);
+      canvas.restore();
+      canvas.saveLayer(
+          room,
+          Paint()
+            ..colorFilter = const ColorFilter.mode(
+                Color(0xFF141414), BlendMode.srcIn));
+      draw(canvas);
+      canvas.restore();
+    case CharacterStyle.paperCutout:
+      // Pieces of paper laid on the page cast a shadow on it.
+      var unit = box.height / dna.headsTall;
+      canvas.saveLayer(
+          room,
+          Paint()
+            ..colorFilter = const ColorFilter.mode(
+                Color(0x55000000), BlendMode.srcIn));
+      canvas.translate(unit * 0.05, unit * 0.06);
+      draw(canvas);
+      canvas.restore();
+      draw(canvas);
+    case CharacterStyle.manga:
+      canvas.saveLayer(room, Paint()..colorFilter = _greyscale);
+      draw(canvas);
+      canvas.restore();
+    case CharacterStyle.storybook:
+      canvas.saveLayer(room, Paint()..colorFilter = _wash);
+      draw(canvas);
+      canvas.restore();
+    case CharacterStyle.pixel:
+      // Drawn at a small size and scaled up without smoothing: every pixel
+      // of the small drawing a square block.
+      var block = math.max(2.0, box.height / 90);
+      var w = (room.width / block).ceil(), h = (room.height / block).ceil();
+      var recorder = PictureRecorder();
+      var small = Canvas(recorder)
+        ..scale(1 / block)
+        ..translate(-room.left, -room.top);
+      draw(small);
+      var image = recorder.endRecording().toImageSync(math.max(1, w), math.max(1, h));
+      canvas.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+          Rect.fromLTWH(room.left, room.top, w * block, h * block),
+          Paint()..filterQuality = FilterQuality.none);
+      image.dispose();
+    default:
+      draw(canvas);
+  }
+}
+
+/// _greyscale takes the colour out, leaving how light each thing is, a
+/// little harder: ink on paper.
+const ColorFilter _greyscale = ColorFilter.matrix([
+  0.36, 0.71, 0.12, 0, -20, //
+  0.36, 0.71, 0.12, 0, -20, //
+  0.36, 0.71, 0.12, 0, -20, //
+  0, 0, 0, 1, 0,
+]);
+
+/// _wash is colour softened and lightened, as watercolour on paper is.
+const ColorFilter _wash = ColorFilter.matrix([
+  0.72, 0.18, 0.05, 0, 30, //
+  0.1, 0.78, 0.07, 0, 30, //
+  0.1, 0.15, 0.7, 0, 28, //
+  0, 0, 0, 1, 0,
+]);
+
+/// _Shading is how a style shades a shape: not at all, with a band of
+/// shadow, or with the shadow printed as dots.
+enum _Shading { flat, cel, halftone, screentone }
+
+enum _Eyes { round, anime, pie }
+
+/// _Look is how a style draws: its line, its shading, its eyes, its limbs.
+class _Look {
+  /// line is how thick the outline is, against the usual; nought is none.
+  final double line;
+
+  /// ink is the outline's colour, or null for a shade of what it goes
+  /// round.
+  final Color? ink;
+  final _Shading shading;
+  final _Eyes eyes;
+
+  /// limbs is how thick arms and legs are, against the usual.
+  final double limbs;
+
+  /// hose is limbs drawn as one bending curve each, with no elbow or knee.
+  final bool hose;
+
+  /// gloves is white cartoon gloves on the hands.
+  final bool gloves;
+
+  const _Look(
+      {this.line = 1,
+      this.ink,
+      this.shading = _Shading.flat,
+      this.eyes = _Eyes.round,
+      this.limbs = 1,
+      this.hose = false,
+      this.gloves = false});
+
+  static const _black = Color(0xFF151515);
+
+  static _Look of(CharacterStyle style) => switch (style) {
+        CharacterStyle.featureCartoon => const _Look(),
+        CharacterStyle.anime =>
+          const _Look(line: 0.8, shading: _Shading.cel, eyes: _Eyes.anime),
+        CharacterStyle.manga => const _Look(
+            line: 1.3,
+            ink: _black,
+            shading: _Shading.screentone,
+            eyes: _Eyes.anime),
+        CharacterStyle.chibi =>
+          const _Look(shading: _Shading.cel, eyes: _Eyes.anime),
+        CharacterStyle.tvFlat => const _Look(line: 2.2, ink: _black),
+        CharacterStyle.rubberHose => const _Look(
+            line: 2,
+            ink: _black,
+            eyes: _Eyes.pie,
+            limbs: 0.5,
+            hose: true,
+            gloves: true),
+        CharacterStyle.comic => const _Look(
+            line: 1.8, ink: _black, shading: _Shading.halftone),
+        CharacterStyle.storybook =>
+          const _Look(line: 0.7, ink: Color(0xFF6B5B4B)),
+        CharacterStyle.clay => const _Look(line: 0, shading: _Shading.cel),
+        CharacterStyle.paperCutout => const _Look(line: 0.5),
+        CharacterStyle.pixel => const _Look(line: 1.2, ink: _black),
+        CharacterStyle.noir => const _Look(line: 0),
+      };
 }
 
 class _Drawing {
@@ -50,13 +252,81 @@ class _Drawing {
   /// bare is the body without its clothes -- the editor's bare view.
   final bool bare;
 
+  final _Look look;
+
   _Drawing(this.canvas, this.rig, this.dna, this.face, this.life,
-      {this.bare = false});
+      {this.bare = false, this.look = const _Look()});
 
   double get u => rig.unit;
 
   /// edge is how thick every outline is.
-  double get edge => math.max(0.6, u * 0.022);
+  double get edge => math.max(0.6, u * 0.022) * look.line;
+
+  /// lined is whether outlines are drawn at all.
+  bool get lined => look.line > 0;
+
+  /// armWidth and legWidth are how thick the limbs are drawn, in this style.
+  double get armWidth => rig.limbWidth * look.limbs;
+  double get legWidth => rig.legWidth * look.limbs;
+
+  /// _inkFor is the outline round [colour].
+  Color _inkFor(Color colour) => look.ink ?? _shade(colour);
+
+  /// _solid draws something in [colour] by way of [draw], shaded as the
+  /// style shades: a shadow on the side away from the light, which is above
+  /// and to the left -- a band of darker colour, or dots.
+  void _solid(Rect bounds, Color colour, void Function(Paint) draw) {
+    var base = Paint()..color = colour;
+    if (look.shading == _Shading.flat) {
+      draw(base);
+      return;
+    }
+    var room = bounds.inflate(u * 0.3);
+    canvas.saveLayer(room, Paint());
+    draw(base);
+    var shadow = Color.lerp(colour, const Color(0xFF000000), 0.24)!;
+    switch (look.shading) {
+      case _Shading.cel:
+        canvas.drawRect(room,
+            Paint()
+              ..color = shadow
+              ..blendMode = BlendMode.srcATop);
+      case _Shading.halftone || _Shading.screentone:
+        var tone = look.shading == _Shading.screentone;
+        var dot = Paint()
+          ..color = tone ? const Color(0x99000000) : const Color(0xCC151515)
+          ..blendMode = BlendMode.srcATop;
+        var step = u * (tone ? 0.045 : 0.07);
+        var r = step * (tone ? 0.22 : 0.3);
+        var row = 0;
+        for (var y = room.top; y < room.bottom; y += step, row++) {
+          for (var x = room.left + (row.isOdd ? step / 2 : 0);
+              x < room.right;
+              x += step) {
+            canvas.drawCircle(Offset(x, y), r, dot);
+          }
+        }
+      case _Shading.flat:
+        break;
+    }
+    // The lit part: the same thing again, moved towards the light, in its
+    // own colour -- what is left showing of the shadow is a crescent on the
+    // far side.
+    canvas.save();
+    var d = u * 0.07;
+    canvas.translate(-d, -d * 0.6);
+    draw(Paint()
+      ..color = colour
+      ..blendMode = BlendMode.srcATop);
+    canvas.restore();
+    canvas.restore();
+  }
+
+  /// _outline edges [path] as the style edges things.
+  void _outline(Path path, Color colour) {
+    if (!lined) return;
+    canvas.drawPath(path, _edgePaint(colour));
+  }
 
   /// garments is what is drawn on the body, innermost first: nothing in
   /// the bare view.
@@ -78,6 +348,12 @@ class _Drawing {
     // A cape hangs behind the body, until the body turns away from the
     // reader and it is the thing in front.
     if (bodyFacing >= -0.2) _capes();
+    // A tail and wings grow from the back: behind the body, until the body
+    // turns away from the reader.
+    if (bodyFacing >= -0.2) {
+      _wings();
+      _tail();
+    }
     _legs();
     _skirts();
     // An arm turned away goes behind the body, an arm towards the reader in
@@ -88,7 +364,11 @@ class _Drawing {
     _torso();
     _neckwear();
     _arms(far: false, near: near);
-    if (bodyFacing < -0.2) _capes();
+    if (bodyFacing < -0.2) {
+      _capes();
+      _wings();
+      _tail();
+    }
     _inHead(_head);
   }
 
@@ -118,22 +398,31 @@ class _Drawing {
   }
 
   void _legs() {
+    if (dna.species.legless) return;
     // The far leg first, so the near one crosses in front of it.
     var legs = [CharacterLimb.legL, CharacterLimb.legR]
       ..sort((a, b) => rig.depths[a]!.compareTo(rig.depths[b]!));
     var seated = <(int, Garment)>[];
     for (var limb in legs) {
-      _stroke(_along(limb, 0, 1), rig.legWidth, dna.skin);
+      if (dna.species == Species.bird) {
+        // Thin legs and three toes, in the beak's colour.
+        _stroke(_along(limb, 0.45, 1), legWidth * 0.32, dna.fur2);
+        _toes(limb);
+        continue;
+      }
+      _stroke(_along(limb, 0, 1), legWidth, dna.skin);
       _foot(limb, dna.skin, bareFoot: true);
       for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
         var from = g.kind.from, to = math.max(from + 0.02, g.lengthOr);
         _cloth(null, g, i,
             line: _along(limb, from, math.min(1, to)),
-            width: rig.legWidth * 1.12 * g.fitOr,
+            width: legWidth * 1.12 * g.fitOr,
             part: limb.index,
             hem: true);
         if (g.kind == GarmentKind.socks) _foot(limb, g.color);
-        if (from == 0 && !seated.any((s) => s.$1 == i)) seated.add((i, g));
+        if (from == 0 && !dna.fourLegs && !seated.any((s) => s.$1 == i)) {
+          seated.add((i, g));
+        }
       }
       for (var (i, g) in _wearing((g) => g.kind.shape == GarmentShape.shoes)) {
         _shoe(limb, g, i);
@@ -155,6 +444,8 @@ class _Drawing {
   }
 
   void _skirts() {
+    // Nothing hangs from the waist of a body carried level.
+    if (dna.fourLegs || dna.species.legless) return;
     for (var (i, g) in _wearing((g) =>
         g.kind.shape == GarmentShape.skirt ||
         g.kind.shape == GarmentShape.dress)) {
@@ -225,7 +516,7 @@ class _Drawing {
       // A boot comes up the shin as far as its length says.
       _cloth(null, g, i,
           line: _along(limb, 1 - g.lengthOr * 0.5, 1),
-          width: rig.legWidth * 1.2,
+          width: legWidth * 1.2,
           part: 20 + limb.index);
     }
     canvas.save();
@@ -270,7 +561,7 @@ class _Drawing {
               Rect.fromLTWH(-length, drop * 0.22, length * 2, drop),
               Paint()..color = g.color2);
           canvas.restore();
-          canvas.drawPath(shoe, _edgePaint(colour));
+          _outline(shoe, colour);
         }
     }
     canvas.restore();
@@ -330,7 +621,56 @@ class _Drawing {
   }
 
   void _torso() {
-    _fill(_torsoPath(), dna.skin);
+    if (dna.species.legless) {
+      _fishBody();
+      return;
+    }
+    if (dna.species == Species.bird && !dna.fourLegs) {
+      // A round body, lighter down the front.
+      var egg = Path()
+        ..addOval(Rect.fromCenter(
+            center: Offset.lerp(rig.chest, rig.hips, 0.55)!,
+            width: rig.shoulderHalf * 2.3,
+            height: (rig.hips - rig.chest).distance * 1.5));
+      _fill(egg, dna.skin);
+      canvas.save();
+      canvas.clipPath(egg);
+      canvas.drawOval(
+          Rect.fromCenter(
+              center: Offset.lerp(rig.chest, rig.hips, 0.65)! +
+                  Offset(-math.sin(rig.yaw * math.pi / 180) * rig.shoulderHalf * 0.4, 0),
+              width: rig.shoulderHalf * 1.3 * (0.4 + 0.6 * bodyFacing.abs()),
+              height: (rig.hips - rig.chest).distance * 1.1),
+          Paint()..color = Color.lerp(dna.skin, const Color(0xFFFFFFFF), 0.55)!);
+      canvas.restore();
+      return;
+    }
+    if (dna.fourLegs) {
+      // A body carried level: a thick band from the hips to the shoulders,
+      // with the lighter fur of the belly along its underside.
+      var thick = rig.hipHalf * 2.1;
+      _stroke([rig.hips, rig.chest], thick, dna.skin);
+      // A top on a body carried level is a coat along it, from the
+      // shoulders back as far as it is long.
+      for (var (i, g) in _wearing((g) =>
+          g.kind.shape == GarmentShape.torso ||
+          g.kind.shape == GarmentShape.dress ||
+          g.kind.shape == GarmentShape.cape)) {
+        var back = Offset.lerp(rig.chest, rig.hips, math.min(1, g.lengthOr))!;
+        _cloth(null, g, i,
+            line: [rig.chest, back], width: thick * 1.06 * g.fitOr, part: 30);
+      }
+      if (bodyFacing.abs() < 0.8 && garments.every((g) => g.kind.shape != GarmentShape.torso)) {
+        var belly = Offset(0, thick * 0.22);
+        canvas.save();
+        canvas.clipPath(_capsule([rig.hips, rig.chest], thick));
+        _stroke([rig.hips + belly * 1.6, rig.chest + belly * 1.6], thick * 0.5,
+            dna.fur2);
+        canvas.restore();
+      }
+    } else {
+      _fill(_torsoPath(), dna.skin);
+    }
     for (var (i, g) in garments.indexed) {
       switch (g.kind.shape) {
         case GarmentShape.torso:
@@ -493,7 +833,9 @@ class _Drawing {
     var side = math.sin(rig.yaw * math.pi / 180);
     canvas.save();
     canvas.translate(-side * half * 0.4, 0);
-    var collar = rig.chest + up * (u * 0.02);
+    var collar = dna.fourLegs
+        ? Offset.lerp(rig.neck, rig.chest, 0.4)!
+        : rig.chest + up * (u * 0.02);
     for (var (i, g) in _wearing((g) => g.kind.shape == GarmentShape.neck)) {
       var colour = faded(g.color, g.condition.fade);
       switch (g.kind) {
@@ -569,20 +911,50 @@ class _Drawing {
       if ((rig.depths[limb]! < near) != far) continue;
       var shoulder = rig.root(limb), elbow = rig.middle(limb);
       var wrist = rig.end(limb);
-      _stroke([shoulder, elbow, wrist], rig.limbWidth, dna.skin);
+      if (dna.species == Species.bird) {
+        _birdWing(shoulder, elbow, wrist, limb.onLeft ? -1 : 1);
+        continue;
+      }
+      if (dna.species.legless) {
+        _fin(shoulder, elbow);
+        continue;
+      }
+      _stroke([shoulder, elbow, wrist], armWidth, dna.skin);
+      if (dna.fourLegs) {
+        // Front legs: whatever is worn on the legs is worn on these too.
+        for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
+          var from = g.kind.from, to = math.max(from + 0.02, g.lengthOr);
+          _cloth(null, g, i,
+              line: _along(limb, from, math.min(1, to)),
+              width: armWidth * 1.12 * g.fitOr,
+              part: 70 + limb.index,
+              hem: true);
+        }
+      }
       var forward = wrist - elbow;
       var hand = wrist +
           (forward.distance == 0
               ? Offset.zero
               : forward / forward.distance * rig.handRadius * 0.5);
-      _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius)),
-          dna.skin);
+      if (look.gloves) {
+        // A white cartoon glove, a size up, with a cuff.
+        var cuff = wrist - (forward.distance == 0
+            ? Offset.zero
+            : forward / forward.distance * rig.handRadius * 0.2);
+        _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius * 1.35)),
+            const Color(0xFFFAFAFA));
+        _fill(Path()..addOval(Rect.fromCircle(center: cuff, radius: rig.handRadius * 0.75)),
+            const Color(0xFFFAFAFA));
+      } else {
+        _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius)),
+            dna.skin);
+      }
       for (var (i, g) in _wearing((g) => g.kind.hasSleeves)) {
         var sleeve = g.sleeveOr;
         if (sleeve <= 0) continue;
         _cloth(null, g, i,
             line: _along(limb, 0, math.min(0.97, sleeve)),
-            width: rig.limbWidth * 1.14 * g.fitOr,
+            width: armWidth * 1.14 * g.fitOr,
             part: 60 + limb.index,
             hem: true);
       }
@@ -738,23 +1110,35 @@ class _Drawing {
   /// at every elbow and knee.
   void _stroke(List<Offset> points, double width, Color colour) {
     var path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (var p in points.skip(1)) {
-      path.lineTo(p.dx, p.dy);
+    if (look.hose && points.length == 3) {
+      // A rubber hose limb bends all the way along, with no joint in it.
+      var through = points[1] * 2 - (points[0] + points[2]) / 2;
+      path.quadraticBezierTo(through.dx, through.dy, points[2].dx, points[2].dy);
+    } else {
+      for (var p in points.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
     }
-    var stroke = Paint()
+    Paint stroke() => Paint()
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(
-        path,
-        stroke
-          ..strokeWidth = width + edge * 2
-          ..color = _shade(colour));
-    canvas.drawPath(
-        path,
-        stroke
-          ..strokeWidth = width
-          ..color = colour);
+    if (lined) {
+      canvas.drawPath(
+          path,
+          stroke()
+            ..strokeWidth = width + edge * 2
+            ..color = _inkFor(colour));
+    }
+    var bounds = path.getBounds().inflate(width);
+    _solid(bounds, colour, (p) {
+      canvas.drawPath(
+          path,
+          stroke()
+            ..strokeWidth = width
+            ..color = p.color
+            ..blendMode = p.blendMode);
+    });
   }
 
   /// _cloth draws garment [g] -- the [i]th worn -- as [shape], or as a band
@@ -777,7 +1161,7 @@ class _Drawing {
     var cut = c.rips > 0 || (hem && c.frays > 0);
     if (cut) canvas.saveLayer(bounds.inflate(edge * 3 + width), Paint());
     if (shape != null) {
-      canvas.drawPath(shape, Paint()..color = colour);
+      _solid(bounds, colour, (p) => canvas.drawPath(shape, p));
     } else {
       _stroke(line!, width, colour);
     }
@@ -786,7 +1170,7 @@ class _Drawing {
     _pattern(bounds, g, seed);
     _wear(area, bounds, g, colour, seed);
     canvas.restore();
-    if (shape != null) canvas.drawPath(shape, _edgePaint(colour));
+    if (shape != null) _outline(shape, colour);
     if (cut) {
       canvas.drawPath(_holes(area, bounds, c, seed, hem),
           Paint()..blendMode = BlendMode.clear);
@@ -932,7 +1316,7 @@ class _Drawing {
     ..style = PaintingStyle.stroke
     ..strokeJoin = StrokeJoin.round
     ..strokeWidth = edge
-    ..color = _shade(colour);
+    ..color = _inkFor(colour);
 
   /// _inHead draws [what] in the head's own space: the middle of the head
   /// at the origin, tilted with it.
@@ -940,6 +1324,8 @@ class _Drawing {
     canvas.save();
     canvas.translate(rig.headCentre.dx, rig.headCentre.dy);
     canvas.rotate(rig.headTurn * math.pi / 180);
+    // The whole head together, face and all, so it keeps its proportions.
+    if (rig.headScale != 1) canvas.scale(rig.headScale);
     what();
     canvas.restore();
   }
@@ -989,8 +1375,13 @@ class _Drawing {
               center: Offset(_across(phi, w * 0.98), u * 0.06 - _nodShift * 0.4),
               radius: u * 0.1)),
         dna.skin);
-    for (var phi in ears) {
-      if (_toward(phi) < 0.3) ear(phi);
+    if (dna.spikes) _spikes(w, h);
+    if (dna.species.animal) {
+      _animalEars(w, h);
+    } else {
+      for (var phi in ears) {
+        if (_toward(phi) < 0.3) ear(phi);
+      }
     }
     var head = Path()
       ..addOval(Rect.fromCenter(center: Offset.zero, width: w * 2, height: h * 2));
@@ -1009,11 +1400,14 @@ class _Drawing {
               ..color = _shade(dna.hair));
       }
     }
-    if (facing > -0.2) _nose(w, front: false);
-    for (var phi in ears) {
-      if (_toward(phi) >= 0.3) ear(phi);
+    if (facing > -0.2 && !dna.species.animal) _nose(w, front: false);
+    if (!dna.species.animal) {
+      for (var phi in ears) {
+        if (_toward(phi) >= 0.3) ear(phi);
+      }
     }
     _hair(r);
+    _horns(w, h);
     if (facing > -0.15) {
       _face(w);
       _glasses(w);
@@ -1150,12 +1544,29 @@ class _Drawing {
     var lookY = (face[FaceControl.lookY] + life.lookY).clamp(-1.0, 1.0);
     var open = face[FaceControl.eyesOpen] * (1 - life.blink);
     var squint = face[FaceControl.squint];
-    for (var side in [-1.0, 1.0]) {
+    var eyeSides = switch (dna.eyeCount) {
+      1 => [0.0],
+      3 => [-1.0, 0.0, 1.0],
+      _ => [-1.0, 1.0],
+    };
+    for (var side in eyeSides) {
+      // One eye is in the middle and big; a third sits above the other two.
+      var cyclops = dna.eyeCount == 1;
       var phi = side * 0.42;
       var toward = _toward(phi);
       if (toward < 0.12) continue;
       var c = Offset(_across(phi, w), eyeY);
+      if (side == 0 && !cyclops) c = c + Offset(0, -u * 0.14);
       var ew = u * 0.17 * toward, eh = u * 0.21;
+      if (cyclops) {
+        ew *= 1.8;
+        eh *= 1.6;
+      }
+      if (look.eyes == _Eyes.anime) {
+        ew *= 1.2;
+        eh *= 1.45;
+        c = c + Offset(0, u * 0.03);
+      }
       var height = eh * open * (1 - 0.45 * squint);
       if (height < eh * 0.14) {
         // Shut: a curve where the lid meets.
@@ -1168,24 +1579,44 @@ class _Drawing {
         // A squint pushes up from below, so the eye keeps its top.
         var box = Rect.fromLTWH(c.dx - ew / 2,
             c.dy - eh / 2 + (eh - height) * (squint > 0 ? 0.25 : 0.5), ew, height);
-        canvas.drawOval(box, white);
-        canvas.save();
-        canvas.clipPath(Path()..addOval(box));
-        var iris = c +
-            Offset(lookX * u * 0.04 * toward, -lookY * u * 0.035 + u * 0.015);
-        canvas.drawOval(
-            Rect.fromCenter(
-                center: iris, width: u * 0.124 * toward, height: u * 0.124),
-            Paint()..color = dna.eyes);
-        canvas.drawOval(
-            Rect.fromCenter(
-                center: iris, width: u * 0.068 * toward, height: u * 0.068),
-            Paint()..color = const Color(0xFF1B1512));
-        canvas.drawCircle(iris + Offset(-u * 0.022, -u * 0.035), u * 0.017, white);
-        canvas.restore();
-        canvas.drawOval(box, lid);
+        if (look.eyes == _Eyes.pie) {
+          _pieEye(box, lookX, lookY, toward);
+        } else {
+          var anime = look.eyes == _Eyes.anime;
+          canvas.drawOval(box, white);
+          canvas.save();
+          canvas.clipPath(Path()..addOval(box));
+          var iris = c +
+              Offset(lookX * u * 0.04 * toward, -lookY * u * 0.035 + u * 0.015);
+          var big = anime ? 1.45 : 1.0;
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: iris,
+                  width: u * 0.124 * big * toward,
+                  height: u * 0.124 * big * (anime ? 1.25 : 1)),
+              Paint()..color = dna.eyes);
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: iris,
+                  width: u * 0.068 * big * toward,
+                  height: u * 0.068 * big * (anime ? 1.2 : 1)),
+              Paint()..color = const Color(0xFF1B1512));
+          canvas.drawCircle(iris + Offset(-u * 0.022, -u * 0.035) * big,
+              u * 0.017 * big, white);
+          if (anime) {
+            // A second, smaller highlight low on the other side.
+            canvas.drawCircle(iris + Offset(u * 0.025, u * 0.03), u * 0.012, white);
+          }
+          canvas.restore();
+          canvas.drawOval(box, lid);
+          if (anime) {
+            // A heavy upper lash line.
+            canvas.drawArc(box, math.pi * 1.1, math.pi * 0.8, false,
+                _feature(u * 0.035, const Color(0xFF1B1512)));
+          }
+        }
       }
-      _brow(c, side, toward);
+      if (side != 0) _brow(c, side, toward);
       if (toward > 0.3) {
         canvas.drawOval(
             Rect.fromCenter(
@@ -1197,8 +1628,460 @@ class _Drawing {
                   alpha: (0.22 + 0.2 * face[FaceControl.smile]).clamp(0.0, 0.5)));
       }
     }
-    _nose(w, front: true);
-    _mouth(w);
+    if (dna.species.animal) {
+      _muzzle(w);
+    } else {
+      _nose(w, front: true);
+    }
+    // A beak is a bird's mouth.
+    if (dna.species != Species.bird) _mouth(w);
+    if (dna.fangs) _fangs(w);
+  }
+
+  // ---- what a creature has that a person does not ----
+
+  /// _animalEars are a species' ears, on top of the head, going round with
+  /// it: pointed for a cat or a fox, floppy for a dog, round for a bear or
+  /// a mouse, long for a rabbit.
+  void _animalEars(double w, double h) {
+    for (var side in [-1.0, 1.0]) {
+      var phi = side * 0.6;
+      if (_toward(phi) < -0.5) continue;
+      var x = _across(phi, w * 0.9);
+      var base = Offset(x, -h * 0.72);
+      var ear = Path();
+      var inner = Path();
+      switch (dna.species) {
+        case Species.cat || Species.fox || Species.monster:
+          var tall = dna.species == Species.fox ? 0.75 : 0.6;
+          ear.addPolygon([
+            base + Offset(-w * 0.32, h * 0.15),
+            base + Offset(side * w * 0.12, -h * tall),
+            base + Offset(w * 0.32, h * 0.15),
+          ], true);
+          inner.addPolygon([
+            base + Offset(-w * 0.17, h * 0.08),
+            base + Offset(side * w * 0.08, -h * tall * 0.7),
+            base + Offset(w * 0.17, h * 0.08),
+          ], true);
+        case Species.dog:
+          // Hanging down the side of the head.
+          var at = Offset(_across(side * 1.25, w), -h * 0.35);
+          ear.addOval(Rect.fromCenter(
+              center: at + Offset(0, h * 0.45), width: w * 0.42, height: h * 1.0));
+        case Species.bear || Species.mouse:
+          var r = dna.species == Species.mouse ? w * 0.42 : w * 0.3;
+          ear.addOval(Rect.fromCircle(center: base + Offset(side * w * 0.12, 0), radius: r));
+          inner.addOval(Rect.fromCircle(center: base + Offset(side * w * 0.12, 0), radius: r * 0.55));
+        case Species.rabbit:
+          ear.addOval(Rect.fromCenter(
+              center: base + Offset(side * w * 0.08, -h * 0.75), width: w * 0.42, height: h * 1.5));
+          inner.addOval(Rect.fromCenter(
+              center: base + Offset(side * w * 0.08, -h * 0.7), width: w * 0.2, height: h * 1.1));
+        case Species.pig:
+          ear.addPolygon([
+            base + Offset(-w * 0.28, h * 0.1),
+            base + Offset(side * w * 0.38, -h * 0.4),
+            base + Offset(w * 0.28, h * 0.1),
+          ], true);
+        case Species.human || Species.bird || Species.fish:
+          break;
+      }
+      if (ear.getBounds().isEmpty) continue;
+      _fill(ear, dna.skin);
+      if (!inner.getBounds().isEmpty) {
+        canvas.drawPath(inner, Paint()..color = dna.fur2);
+      }
+    }
+  }
+
+  /// _muzzle is a creature's muzzle -- lighter fur round its nose and mouth,
+  /// longer on a dog or a fox -- its nose, and whiskers where it has them.
+  void _muzzle(double w) {
+    var sp = dna.species;
+    if (sp == Species.fish) return;
+    if (sp == Species.bird) {
+      // A beak, pointing the way the face does.
+      var side = math.sin(yaw);
+      var at = Offset(_across(0, w * 0.92), u * 0.16 + _nodShift);
+      var long = u * (0.14 + 0.16 * side.abs());
+      var beak = Path()
+        ..moveTo(at.dx - u * 0.09 * (1 - 0.5 * side.abs()), at.dy - u * 0.05)
+        ..lineTo(at.dx - side * long, at.dy + u * 0.06)
+        ..lineTo(at.dx + u * 0.09 * (1 - 0.5 * side.abs()), at.dy - u * 0.05)
+        ..quadraticBezierTo(at.dx, at.dy + u * 0.12, at.dx - u * 0.09 * (1 - 0.5 * side.abs()), at.dy - u * 0.05)
+        ..close();
+      _fill(beak, dna.fur2);
+      return;
+    }
+    var cx = _across(0, w * 0.9);
+    var y = u * 0.2 + _nodShift;
+    var long = sp == Species.dog || sp == Species.fox || sp == Species.bear;
+    var mw = u * (long ? 0.42 : 0.32) * (0.6 + 0.4 * facing.abs());
+    var mh = u * (long ? 0.3 : 0.22);
+    // Side on, a long muzzle sticks out past the face.
+    var out = math.sin(yaw) * (long ? -u * 0.18 : -u * 0.08);
+    var at = Offset(cx + out, y);
+    if (sp == Species.pig) {
+      // A snout: a disc with two nostrils.
+      var disc = Rect.fromCenter(center: at, width: u * 0.26, height: u * 0.18);
+      _fill(Path()..addOval(disc), Color.lerp(dna.skin, const Color(0xFFE07A8A), 0.4)!);
+      for (var s in [-1.0, 1.0]) {
+        canvas.drawOval(
+            Rect.fromCenter(center: at + Offset(s * u * 0.05, 0), width: u * 0.04, height: u * 0.07),
+            Paint()..color = const Color(0xFF5A2A2A));
+      }
+      return;
+    }
+    _fill(Path()..addOval(Rect.fromCenter(center: at, width: mw, height: mh)), dna.fur2);
+    var nose = Path()
+      ..moveTo(at.dx - u * 0.06, at.dy - mh * 0.32)
+      ..lineTo(at.dx + u * 0.06, at.dy - mh * 0.32)
+      ..quadraticBezierTo(at.dx, at.dy - mh * 0.02, at.dx - u * 0.06, at.dy - mh * 0.32)
+      ..close();
+    _fill(nose, const Color(0xFF2A1A16));
+    if (sp == Species.cat || sp == Species.mouse || sp == Species.rabbit || sp == Species.fox) {
+      var whisker = _feature(u * 0.012, const Color(0xAA2A1A16));
+      for (var s in [-1.0, 1.0]) {
+        for (var k = 0; k < 2; k++) {
+          var from = at + Offset(s * mw * 0.3, k * u * 0.03);
+          canvas.drawLine(from, from + Offset(s * u * 0.28, (k - 0.5) * u * 0.08), whisker);
+        }
+      }
+    }
+  }
+
+  /// _fangs are two teeth hanging from the top lip at the mouth's corners.
+  void _fangs(double w) {
+    var at = Offset(_across(0, w * 0.88), u * 0.3 + _nodShift);
+    var white = Paint()..color = const Color(0xFFFAFAF2);
+    for (var s in [-1.0, 1.0]) {
+      var x = at.dx + s * u * 0.06 * (0.4 + 0.6 * facing.abs());
+      var fang = Path()
+        ..moveTo(x - u * 0.025, at.dy - u * 0.005)
+        ..lineTo(x + u * 0.025, at.dy - u * 0.005)
+        ..lineTo(x, at.dy + u * 0.07)
+        ..close();
+      canvas.drawPath(fang, white);
+      _outline(fang, const Color(0xFFFAFAF2));
+    }
+  }
+
+  /// _horns are on top of the head, in the lighter colour: two short
+  /// points, a ram's curls, or antlers.
+  void _horns(double w, double h) {
+    if (dna.horns == HornKind.none) return;
+    for (var side in [-1.0, 1.0]) {
+      var phi = side * 0.45;
+      if (_toward(phi) < -0.4) continue;
+      var base = Offset(_across(phi, w * 0.85), -h * 0.78);
+      switch (dna.horns) {
+        case HornKind.small:
+          var horn = Path()
+            ..moveTo(base.dx - w * 0.14, base.dy + h * 0.08)
+            ..quadraticBezierTo(base.dx + side * w * 0.05, base.dy - h * 0.25,
+                base.dx + side * w * 0.2, base.dy - h * 0.48)
+            ..quadraticBezierTo(base.dx + side * w * 0.12, base.dy - h * 0.1,
+                base.dx + w * 0.14, base.dy + h * 0.08)
+            ..close();
+          _fill(horn, dna.fur2);
+        case HornKind.ram:
+          // A curl round the side of the head.
+          var curl = Path()..moveTo(base.dx, base.dy);
+          for (var k = 1; k <= 24; k++) {
+            var a = k / 24 * math.pi * 1.7;
+            var r = w * (0.45 - 0.012 * k);
+            curl.lineTo(base.dx + side * (r * math.sin(a)),
+                base.dy + h * 0.35 - r * math.cos(a));
+          }
+          canvas.drawPath(
+              curl,
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeCap = StrokeCap.round
+                ..strokeWidth = w * 0.2
+                ..color = dna.fur2);
+          canvas.drawPath(curl, _edgePaint(dna.fur2)..strokeWidth = edge);
+        case HornKind.antlers:
+          var stem = [base, base + Offset(side * w * 0.25, -h * 0.7)];
+          _stroke(stem, w * 0.1, dna.fur2);
+          _stroke([base + Offset(side * w * 0.1, -h * 0.3), base + Offset(side * w * 0.45, -h * 0.5)],
+              w * 0.08, dna.fur2);
+          _stroke([base + Offset(side * w * 0.2, -h * 0.55), base + Offset(-side * w * 0.05, -h * 0.85)],
+              w * 0.08, dna.fur2);
+        case HornKind.none:
+          break;
+      }
+    }
+  }
+
+  /// _spikes are a row of points along the top of the head, behind it.
+  void _spikes(double w, double h) {
+    for (var k = 0; k < 5; k++) {
+      var a = math.pi * (1.15 + k * 0.7 / 4);
+      var at = Offset(math.cos(a) * w * 0.95, math.sin(a) * h * 0.95);
+      var dir = Offset(math.cos(a), math.sin(a));
+      var side = Offset(-dir.dy, dir.dx);
+      _fill(
+          Path()
+            ..addPolygon([
+              at + side * (w * 0.13),
+              at + dir * (h * 0.38),
+              at - side * (w * 0.13),
+            ], true),
+          dna.fur2);
+    }
+  }
+
+  /// _tail grows from the back of the hips, out the way the body is not
+  /// facing -- to the side, facing the reader.
+  void _tail() {
+    if (dna.species == Species.bird && dna.tail == TailKind.none) {
+      _tailFeathers();
+      return;
+    }
+    if (dna.tail == TailKind.none) return;
+    var side = math.sin(rig.yaw * math.pi / 180);
+    var back = side.abs() < 0.3 ? 1.0 : side.sign;
+    var root = rig.hips + Offset(back * rig.hipHalf * 0.6, -legWidth * 0.2);
+    var t = u;
+    switch (dna.tail) {
+      case TailKind.long:
+        _strokeCurve(root, root + Offset(back * t * 0.9, -t * 0.2),
+            root + Offset(back * t * 1.3, -t * 0.9), legWidth * 0.32, dna.skin);
+      case TailKind.bushy:
+        var tip = root + Offset(back * t * 1.1, -t * 0.9);
+        var tail = Path()
+          ..moveTo(root.dx, root.dy - t * 0.1)
+          ..quadraticBezierTo(root.dx + back * t * 1.4, root.dy + t * 0.1, tip.dx, tip.dy)
+          ..quadraticBezierTo(root.dx + back * t * 0.4, root.dy - t * 0.5, root.dx, root.dy + t * 0.12)
+          ..close();
+        _fill(tail, dna.skin);
+        canvas.save();
+        canvas.clipPath(tail);
+        canvas.drawCircle(tip, t * 0.3, Paint()..color = dna.fur2);
+        canvas.restore();
+      case TailKind.curly:
+        var curl = Path()..moveTo(root.dx, root.dy);
+        for (var k = 1; k <= 30; k++) {
+          var a = k / 30 * math.pi * 3;
+          var r = t * 0.1 * (1 - k / 40);
+          curl.lineTo(root.dx + back * (t * 0.15 + r * math.cos(a)), root.dy - t * 0.1 - r * math.sin(a));
+        }
+        canvas.drawPath(
+            curl,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeCap = StrokeCap.round
+              ..strokeWidth = t * 0.05
+              ..color = dna.skin);
+      case TailKind.stub:
+        _fill(Path()..addOval(Rect.fromCircle(center: root, radius: t * 0.16)), dna.fur2);
+      case TailKind.dragon:
+        var end = root + Offset(back * t * 1.6, t * 0.1);
+        _strokeCurve(root, root + Offset(back * t * 0.8, t * 0.5), end, legWidth * 0.5, dna.skin);
+        _fill(
+            Path()
+              ..addPolygon([
+                end + Offset(0, -t * 0.14),
+                end + Offset(back * t * 0.3, 0),
+                end + Offset(0, t * 0.14),
+              ], true),
+            dna.fur2);
+      case TailKind.none:
+        break;
+    }
+  }
+
+  /// _wings grow from the shoulders, behind the body: feathers in fans, or
+  /// a bat's stretched between long fingers.
+  void _wings() {
+    if (dna.wings == WingKind.none) return;
+    var side = math.sin(rig.yaw * math.pi / 180);
+    for (var s in [-1.0, 1.0]) {
+      // Side on, only the far wing shows, behind.
+      if (side.abs() > 0.7 && s != side.sign) continue;
+      var root = rig.chest + Offset(s * rig.shoulderHalf * 0.5, 0);
+      var span = rig.shoulderHalf * 2.6;
+      var out = side.abs() > 0.7 ? -side.sign : s;
+      // Raised as far as the flap says, about where it grows from.
+      canvas.save();
+      canvas.translate(root.dx, root.dy);
+      canvas.rotate(-out * rig.wingFlap * 0.8 * math.pi / 180);
+      canvas.translate(-root.dx, -root.dy);
+      if (dna.wings == WingKind.feathered) {
+        for (var k = 0; k < 3; k++) {
+          var a = -0.9 + k * 0.45;
+          var tip = root + Offset(out * span * math.cos(a) * (1 - k * 0.15), span * math.sin(a) * 0.8);
+          _fill(
+              Path()
+                ..addOval(Rect.fromPoints(root, tip).inflate(u * 0.05)),
+              Color.lerp(dna.fur2, dna.skin, k * 0.2)!);
+        }
+      } else {
+        var top = root + Offset(out * span * 0.6, -span * 0.75);
+        var tip = root + Offset(out * span, -span * 0.2);
+        var membrane = Path()
+          ..moveTo(root.dx, root.dy)
+          ..lineTo(top.dx, top.dy)
+          ..lineTo(tip.dx, tip.dy)
+          ..quadraticBezierTo(root.dx + out * span * 0.75, root.dy + span * 0.05,
+              root.dx + out * span * 0.55, root.dy + span * 0.25)
+          ..quadraticBezierTo(root.dx + out * span * 0.35, root.dy + span * 0.05,
+              root.dx + out * span * 0.2, root.dy + span * 0.3)
+          ..close();
+        _fill(membrane, Color.lerp(dna.skin, const Color(0xFF000000), 0.18)!);
+        _stroke([root, top, tip], u * 0.05, dna.skin);
+      }
+      canvas.restore();
+    }
+  }
+
+  /// _birdWing is a bird's arm drawn as a wing: feathers fanned along it,
+  /// longest at the tip, lighter at the edge.
+  void _birdWing(Offset shoulder, Offset elbow, Offset wrist, double side) {
+    var along = wrist - shoulder;
+    if (along.distance < 1e-6) return;
+    var out = Offset(-along.dy, along.dx) / along.distance;
+    // The feathers hang below the arm, whichever way it points.
+    if (out.dy < 0) out = -out;
+    var width = rig.shoulderHalf * 0.9;
+    var wing = Path()
+      ..moveTo(shoulder.dx, shoulder.dy)
+      ..quadraticBezierTo(elbow.dx, elbow.dy, wrist.dx, wrist.dy);
+    for (var k = 4; k >= 0; k--) {
+      var at = Offset.lerp(shoulder, wrist, k / 4)!;
+      var reach = width * (0.6 + 0.5 * k / 4);
+      wing.lineTo(at.dx + out.dx * reach, at.dy + out.dy * reach);
+    }
+    wing.close();
+    _fill(wing, dna.skin);
+    canvas.save();
+    canvas.clipPath(wing);
+    var tips = Paint()..color = Color.lerp(dna.skin, dna.fur2, 0.45)!;
+    for (var k = 0; k <= 4; k++) {
+      var at = Offset.lerp(shoulder, wrist, k / 4)!;
+      var reach = width * (0.6 + 0.5 * k / 4);
+      canvas.drawCircle(at + out * reach, width * 0.28, tips);
+    }
+    canvas.restore();
+  }
+
+  /// _toes are a bird's three toes, spread on the ground.
+  void _toes(CharacterLimb limb) {
+    var ankle = rig.end(limb);
+    var drop = rig.below * CharacterRig.footDrop;
+    var side = math.sin(rig.yaw * math.pi / 180);
+    var forward = side.abs() > 0.5 ? -side.sign : 0.0;
+    var toe = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = legWidth * 0.18
+      ..color = dna.fur2;
+    for (var k = -1; k <= 1; k++) {
+      var dir = Offset(k * 0.6 + forward * 0.8, 1).scale(1, 1);
+      var tip = ankle + Offset(dir.dx * legWidth * 0.9, drop * 0.9);
+      if (lined) {
+        canvas.drawLine(ankle, tip,
+            Paint()
+              ..strokeCap = StrokeCap.round
+              ..strokeWidth = legWidth * 0.18 + edge * 2
+              ..color = _inkFor(dna.fur2));
+      }
+      canvas.drawLine(ankle, tip, toe);
+    }
+  }
+
+  /// _fin is a small fin from a fish's side, pointing as the arm would.
+  void _fin(Offset shoulder, Offset elbow) {
+    var d = elbow - shoulder;
+    if (d.distance < 1e-6) return;
+    var dir = d / d.distance;
+    var across = Offset(-dir.dy, dir.dx);
+    var len = rig.shoulderHalf * 1.1;
+    _fill(
+        Path()
+          ..addPolygon([
+            shoulder + across * (len * 0.25),
+            shoulder + dir * len,
+            shoulder - across * (len * 0.25),
+          ], true),
+        Color.lerp(dna.skin, dna.fur2, 0.5)!);
+  }
+
+  /// _fishBody is a fish: a long rounded body from its tail to its head,
+  /// lighter underneath, and a forked tail fin that flicks as it sways.
+  void _fishBody() {
+    var thick = rig.hipHalf * 3.2;
+    var tail = rig.hips, front = rig.neck;
+    var along = front - tail;
+    var dir = along.distance < 1e-6 ? const Offset(1, 0) : along / along.distance;
+    var across = Offset(-dir.dy, dir.dx);
+    // The tail fin, behind the body.
+    var fin = tail - dir * (thick * 0.25);
+    var flick = across * (thick * 0.2 * math.sin(rig.bodyTurn * math.pi / 30));
+    _fill(
+        Path()
+          ..addPolygon([
+            fin,
+            fin - dir * thick * 0.9 + across * thick * 0.65 + flick,
+            fin - dir * thick * 0.55 + flick,
+            fin - dir * thick * 0.9 - across * thick * 0.65 + flick,
+          ], true),
+        Color.lerp(dna.skin, dna.fur2, 0.35)!);
+    _stroke([tail, front], thick, dna.skin);
+    var belly = Path()
+      ..addOval(Rect.fromCenter(
+          center: Offset.lerp(tail, front, 0.55)! + Offset(0, thick * 0.22),
+          width: along.distance * 0.9,
+          height: thick * 0.4));
+    canvas.save();
+    canvas.clipPath(_capsule([tail, front], thick));
+    canvas.drawPath(belly, Paint()..color = dna.fur2);
+    canvas.restore();
+  }
+
+  /// _tailFeathers are a bird's tail: a short fan from the back of the hips.
+  void _tailFeathers() {
+    var side = math.sin(rig.yaw * math.pi / 180);
+    var back = side.abs() < 0.3 ? 0.0 : side.sign;
+    var root = rig.hips + Offset(back * rig.hipHalf * 0.5, 0);
+    for (var k = -1; k <= 1; k++) {
+      var tip = root + Offset(back * u * 0.55 + k * u * 0.18, u * 0.35 + (back == 0 ? u * 0.15 : 0));
+      _fill(
+          Path()
+            ..addOval(Rect.fromPoints(root, tip).inflate(u * 0.05)),
+          Color.lerp(dna.skin, const Color(0xFF000000), 0.1 + 0.05 * k.abs())!);
+    }
+  }
+
+  /// _strokeCurve is a band [width] wide along a curve from [a] through
+  /// [mid] to [b].
+  void _strokeCurve(Offset a, Offset mid, Offset b, double width, Color colour) {
+    var path = Path()
+      ..moveTo(a.dx, a.dy)
+      ..quadraticBezierTo(mid.dx, mid.dy, b.dx, b.dy);
+    Paint stroke(double w, Color c) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = w
+      ..color = c;
+    if (lined) canvas.drawPath(path, stroke(width + edge * 2, _inkFor(colour)));
+    canvas.drawPath(path, stroke(width, colour));
+  }
+
+  /// _pieEye is a 1930s cartoon eye: a black oval with a slice cut out of
+  /// it for the shine, the slice moving with where it looks.
+  void _pieEye(Rect box, double lookX, double lookY, double toward) {
+    var eye = Rect.fromCenter(
+        center: box.center + Offset(lookX * u * 0.02, -lookY * u * 0.02),
+        width: box.width * 0.75,
+        height: box.height * 1.05);
+    canvas.drawOval(eye, Paint()..color = const Color(0xFF151515));
+    if (toward > 0.4) {
+      canvas.drawArc(eye.deflate(eye.width * 0.08), -math.pi * 0.45,
+          math.pi * 0.28, true, Paint()..color = const Color(0xFFFAFAFA));
+    }
   }
 
   /// _brow is the brow over the eye at [c]: raised, squeezed together and
@@ -1349,14 +2232,8 @@ class _Drawing {
 
   /// _fill fills [path] with [colour] and edges it a shade darker.
   void _fill(Path path, Color colour) {
-    canvas.drawPath(path, Paint()..color = colour);
-    canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeJoin = StrokeJoin.round
-          ..strokeWidth = edge
-          ..color = _shade(colour));
+    _solid(path.getBounds(), colour, (p) => canvas.drawPath(path, p));
+    _outline(path, colour);
   }
 
 }

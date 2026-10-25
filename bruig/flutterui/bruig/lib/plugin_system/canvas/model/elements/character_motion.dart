@@ -45,7 +45,9 @@ enum MotionKind {
   talk("Talk with hands", MotionLayer.upper, 2.4, true),
   idle("Idle sway", MotionLayer.added, 4.0, true),
   nod("Nod", MotionLayer.added, 0.6, true),
-  shake("Shake head", MotionLayer.added, 0.7, true);
+  shake("Shake head", MotionLayer.added, 0.7, true),
+  fly("Fly", MotionLayer.added, 0.5, true),
+  swim("Swim", MotionLayer.added, 1.2, true);
 
   final String label;
 
@@ -273,6 +275,33 @@ MotionMove _motion(MotionKind kind, double t) {
       return (
         pose: CharacterPose.rest,
         face: {FaceControl.turn: 22 * s(p)},
+      );
+    case MotionKind.fly:
+      // Wings beating -- quicker up than down is not needed at this size --
+      // the body lifted off the ground and bobbing with each beat, the legs
+      // tucked up under it.
+      return (
+        pose: CharacterPose({
+          CharacterBone.wings: 55 + 50 * s(p),
+        }, {
+          CharacterBone.thighL: 30,
+          CharacterBone.thighR: 30,
+          CharacterBone.shinL: -60,
+          CharacterBone.shinR: -60,
+        }, 0, 0.6 + 0.06 * s(p + 1)),
+        face: _none,
+      );
+    case MotionKind.swim:
+      // A sway down the body, the fins paddling in turn, floating.
+      return (
+        pose: CharacterPose({
+          CharacterBone.spine: 8 * s(p),
+          CharacterBone.head: -4 * s(p),
+          CharacterBone.upperArmL: 20 * s(p),
+          CharacterBone.upperArmR: -20 * s(p + math.pi),
+          CharacterBone.wings: 20 + 20 * s(p),
+        }, const {}, 0, 0.05 * s(p * 0.5)),
+        face: _none,
       );
   }
 }

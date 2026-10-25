@@ -39,6 +39,7 @@ const List<ElementKind> _addable = [
   ElementKind.player,
   ElementKind.path,
   ElementKind.character,
+  ElementKind.stage,
 ];
 
 IconData iconForKind(ElementKind kind) => switch (kind) {
@@ -57,6 +58,7 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.player => Icons.person_pin_circle_outlined,
       ElementKind.path => Icons.gesture,
       ElementKind.character => Icons.accessibility_new,
+      ElementKind.stage => Icons.view_in_ar_outlined,
     };
 
 class CanvasElementsPanel extends StatelessWidget {

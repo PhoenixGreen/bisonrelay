@@ -38,6 +38,10 @@ class CharacterRig {
   /// unit is one head length on the page.
   final double unit;
 
+  /// headScale is how big the head is drawn against [unit]: smaller on four
+  /// legs, where a head the size a person's is reads as a cub's.
+  final double headScale;
+
   /// below is the length of the body under the chin.
   final double below;
 
@@ -79,8 +83,17 @@ class CharacterRig {
   /// in degrees: what a side view needs to point a foot.
   final Map<CharacterLimb, double> footSwing;
 
+  /// plan is what the body plan adds to each bone's swing before the pose
+  /// is laid on it: on four legs, the body pitched forward and the arms
+  /// brought down to stand on. A pin sets the swing it sees less this.
+  final Map<CharacterBone, double> plan;
+
+  /// wingFlap is how far wings are raised from folded, in degrees.
+  final double wingFlap;
+
   const CharacterRig._({
     required this.unit,
+    this.headScale = 1,
     required this.below,
     required this.shoulderHalf,
     required this.hipHalf,
@@ -113,6 +126,8 @@ class CharacterRig {
     required this.yaw,
     required this.depths,
     required this.footSwing,
+    this.plan = const {},
+    this.wingFlap = 0,
   });
 
   /// footDrop is how far below the ankle the sole is, as a share of the
@@ -128,6 +143,24 @@ class CharacterRig {
   /// breath in does: 0 out, 1 in.
   factory CharacterRig.of(CharacterDna dna, CharacterPose pose, Rect box,
       {double breath = 0}) {
+    var plan = dna.species.legless
+        ? fishPlan
+        : dna.fourLegs
+            ? fourLegPlan
+            : const <CharacterBone, double>{};
+    // A bird's arms are its wings: they rise as the wings do.
+    if (dna.species == Species.bird) {
+      var flap = pose[CharacterBone.wings];
+      pose = pose.withAngles({
+        CharacterBone.upperArmL: pose[CharacterBone.upperArmL] + flap,
+        CharacterBone.upperArmR: pose[CharacterBone.upperArmR] - flap,
+      });
+    }
+    if (plan.isNotEmpty) {
+      pose = pose.withSwings({
+        for (var e in plan.entries) e.key: pose.swing(e.key) + e.value,
+      });
+    }
     var heads = dna.headsTall;
     var unit = box.height / heads;
     var below = (heads - 1) * unit;
@@ -142,12 +175,36 @@ class CharacterRig {
     var arm = torsoLength + thigh * 0.45;
     var upperArm = arm * 0.52;
     var foreArm = arm * 0.48;
-    var limbWidth = shoulderHalf * (0.27 + 0.1 * dna.build);
+    if (dna.fourLegs) {
+      // Front legs as long as back legs, and shoulders as narrow as hips.
+      upperArm = thigh;
+      foreArm = shin;
+      shoulderHalf = hipHalf * 1.1;
+    }
+    var limbWidth = dna.fourLegs
+        ? hipHalf * 0.7
+        : shoulderHalf * (0.27 + 0.1 * dna.build);
     var legWidth = hipHalf * 0.78;
 
     var cx = box.center.dx;
     var hipY =
         box.top + unit + neckLength + torsoLength - pose.lift * unit;
+    // A body carried level is longer than one standing up, and needs more
+    // neck to hold its head up -- worked out after the hips are placed, so
+    // the feet still stand on the bottom of the box.
+    var headScale = 1.0;
+    if (dna.species.legless) {
+      // A fish floats, its middle half way up the box, its head on the
+      // front of its body with no neck between.
+      hipY -= unit * (heads * 0.25);
+      torsoLength *= 1.5;
+      neckLength *= 0.1;
+      headScale = 0.9;
+    } else if (dna.fourLegs) {
+      torsoLength *= 1.4;
+      neckLength *= 2.2;
+      headScale = 0.78;
+    }
     var yawR = pose.turn * math.pi / 180;
     var cosY = math.cos(yawR), sinY = math.sin(yawR);
 
@@ -160,12 +217,22 @@ class CharacterRig {
     double depth(_V3 v) => v.x * sinY + v.z * cosY;
 
     const origin = _V3(0, 0, 0);
-    var spine = bone(CharacterBone.spine);
+    // The spine stands up from the hips rather than hanging from them, so
+    // the same turn that swings a hanging bone's end forwards would lean it
+    // back. Turned over here, a positive swing leans the body forwards --
+    // the way a walk, a run and a four-legged stance all mean it.
+    var spine = _M3.z(pose[CharacterBone.spine]) *
+        _M3.x(-pose.swing(CharacterBone.spine));
     var chest3 =
         origin + spine.on(_V3(0, -(torsoLength + breath * unit * 0.035), 0));
     var neck3 = chest3 + spine.on(_V3(0, -neckLength, 0));
-    var head = spine * _M3.z(pose[CharacterBone.head]);
-    var head3 = neck3 + head.on(_V3(0, -unit * 0.5, 0));
+    var head = spine *
+        _M3.z(pose[CharacterBone.head]) *
+        _M3.x(pose.swing(CharacterBone.head));
+    // A fish's head is the front of its body, not something on a neck.
+    var head3 = dna.species.legless
+        ? neck3
+        : neck3 + head.on(_V3(0, -unit * 0.5 * headScale, 0));
 
     var shoulderL3 = chest3 + spine.on(_V3(-shoulderHalf * 0.86, 0, 0));
     var shoulderR3 = chest3 + spine.on(_V3(shoulderHalf * 0.86, 0, 0));
@@ -202,6 +269,7 @@ class CharacterRig {
 
     return CharacterRig._(
       unit: unit,
+      headScale: headScale,
       below: below,
       shoulderHalf: shoulderHalf,
       hipHalf: hipHalf,
@@ -238,6 +306,8 @@ class CharacterRig {
         CharacterLimb.legL: depth(hipL3) + depth(ankleL3) * 0.01,
         CharacterLimb.legR: depth(hipR3) + depth(ankleR3) * 0.01,
       },
+      plan: plan,
+      wingFlap: pose[CharacterBone.wings],
       footSwing: {
         for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
       },
@@ -292,8 +362,13 @@ class CharacterRig {
   /// parent: its spread facing the reader, its swing side on.
   CharacterPose _set(CharacterPose pose, CharacterBone bone, double degrees) {
     var d = _wrap(degrees);
+    // The spine stands up rather than hanging down, so its forward swing
+    // turns it the other way on the page -- see CharacterRig.of.
+    var up = bone == CharacterBone.spine ? -1 : 1;
     return sideOn > 0.7
-        ? pose.withSwing(bone, d * _facing).withAngle(bone, 0)
+        ? pose
+            .withSwing(bone, _wrap(d * _facing * up - (plan[bone] ?? 0)))
+            .withAngle(bone, 0)
         : pose.withAngle(bone, d).withSwing(bone, 0);
   }
 
@@ -346,6 +421,24 @@ class CharacterRig {
     return _set(pose, CharacterBone.spine, _wrap(turn).clamp(-60.0, 60.0));
   }
 }
+
+/// fourLegPlan is what standing on four legs adds to a pose: the body
+/// pitched forward until it is level, the arms brought down under it to be
+/// front legs, and the head brought back up to look ahead.
+const Map<CharacterBone, double> fourLegPlan = {
+  CharacterBone.spine: 80,
+  CharacterBone.upperArmL: 80,
+  CharacterBone.upperArmR: 80,
+  CharacterBone.head: 72,
+};
+
+/// fishPlan is what swimming adds to a pose: the body level, and the head
+/// turned back upright, so its face reads -- it is centred on the front of
+/// the body rather than on a neck; see CharacterRig.of.
+const Map<CharacterBone, double> fishPlan = {
+  CharacterBone.spine: 90,
+  CharacterBone.head: 90,
+};
 
 /// _V3 is a point or a step in a body's own space.
 class _V3 {

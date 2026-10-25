@@ -25,6 +25,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -1108,7 +1110,12 @@ class CanvasController extends ChangeNotifier {
 
   void addElement(CanvasElement element, {bool select = true}) {
     if (element is CounterElement) element = withCountLaidOut(element);
-    apply(_document.addElement(element));
+    var next = _document.addElement(element);
+    // A stage is the set everything else is played in front of.
+    if (element is StageElement) {
+      next = next.reorder(next.elements.length - 1, 0);
+    }
+    apply(next);
     if (select) selectOnly(element.id);
   }
 
@@ -1584,6 +1591,19 @@ class CanvasController extends ChangeNotifier {
   /// into the keyframe -- a slow drag and a fast one would end up in different
   /// places.
   CanvasElement movedTo(CanvasElement element, Offset topLeft) {
+    // A character standing on a stage is moved across its floor: to the
+    // spot under where its feet have been dragged to.
+    if (element is CharacterElement && element.onStage != null) {
+      var at = staging(element, _document.elements, _frame);
+      var stage = _document.elementById(element.onStage!.stage);
+      if (at != null && stage is StageElement) {
+        var feet = topLeft + Offset(at.box.width / 2, at.box.height);
+        var spot = stageView(stage, _frame).toFloor(feet);
+        if (spot == null) return element;
+        return element.copyWith(
+            onStage: element.onStage!.copyWith(x: spot.dx, z: spot.dy));
+      }
+    }
     if (!posesRatherThanMoves(element)) {
       return element.withBase(x: topLeft.dx, y: topLeft.dy);
     }
@@ -1974,6 +1994,53 @@ class CanvasController extends ChangeNotifier {
     }
     replaceElement(e.withBase(track: track));
     return laid;
+  }
+
+  /// stageFilmed is [stage] with its camera set to [camera]: its own setting
+  /// until the camera has been keyed, and from then on this frame's key --
+  /// the rule a character's pose follows.
+  StageElement stageFilmed(StageElement stage, StageCamera camera) {
+    var keyed = stage.track?.keys.any((k) =>
+            k.values.keys.any((c) => c.startsWith("cam."))) ??
+        false;
+    if (!keyed) return stage.copyWith(camera: camera);
+    return stage.withBase(
+            track: _pinnedAt(stage.track!, _frame, camera.channels))
+        as StageElement;
+  }
+
+  /// keyCamera keys [stage]'s camera as it is on this frame -- and on the
+  /// first frame too, the first time, so the move starts from where the
+  /// camera was.
+  void keyCamera(StageElement stage) {
+    var track = stage.track ?? ElementTrack.empty;
+    var keyed = track.keys.any((k) =>
+        k.values.keys.any((c) => c.startsWith("cam.")));
+    if (!keyed && _frame != 0) {
+      track = _pinnedAt(track, 0, stage.camera.channels);
+    }
+    replaceElement(stage.withBase(
+        track: _pinnedAt(track, _frame, stage.cameraAt(_frame).channels)));
+  }
+
+  /// hasCameraKey is whether the camera is keyed on this frame.
+  bool hasCameraKey(StageElement stage) =>
+      stage.track?.keyAt(_frame)?.values.keys.any((c) => c.startsWith("cam.")) ??
+      false;
+
+  /// clearCameraKey takes the camera off this frame's keyframe.
+  void clearCameraKey(StageElement stage) {
+    var track = stage.track;
+    var at = track?.keyAt(_frame);
+    if (track == null || at == null) return;
+    var without = at.copyWith(values: {
+      for (var v in at.values.entries)
+        if (!v.key.startsWith("cam.")) v.key: v.value,
+    });
+    replaceElement(stage.withBase(
+        track: without.isRest && without.frame != 0
+            ? track.withoutFrame(_frame)
+            : track.withKey(without)));
   }
 
   /// addMotion lays a clip of [kind] on [e] from this frame: a looping

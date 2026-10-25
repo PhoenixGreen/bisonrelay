@@ -311,7 +311,9 @@ List<CharacterPose> bvhPoses(Bvh bvh,
     // where it points.
     var spineDir = body(sub(rig.hips, rig.chest));
     var (ss, sw) = angles([-spineDir[0], -spineDir[1], -spineDir[2]]);
-    pose = pose.withAngle(CharacterBone.spine, ss).withSwing(CharacterBone.spine, sw);
+    // Our spine's swing counts forward lean as positive, the other way
+    // round from a hanging bone's -- see CharacterRig.of.
+    pose = pose.withAngle(CharacterBone.spine, ss).withSwing(CharacterBone.spine, -sw);
     var spine = frame(ss, sw);
 
     void limb(CharacterBone upper, CharacterBone lower, int a, int b, int c,

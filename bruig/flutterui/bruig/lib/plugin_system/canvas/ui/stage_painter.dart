@@ -1532,7 +1532,8 @@ class StagePainter extends CustomPainter {
   void _paintPuppet(Canvas canvas, CharacterElement who) {
     Offset at(Offset doc) => doc * scale + origin;
     var placed =
-        CharacterPlacement.of(who, frame, frameRate: document.frameRate);
+        CharacterPlacement.of(who, frame,
+            frameRate: document.frameRate, document: document);
     var bone = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
@@ -1543,7 +1544,7 @@ class StagePainter extends CustomPainter {
     }
     var fill = Paint()..color = const Color(0xFF3D7EFF);
     var knob = Paint()..color = const Color(0xFFFFFFFF);
-    for (var pin in CharacterPin.values) {
+    for (var pin in placed.pins) {
       var p = at(placed.pin(pin));
       canvas.drawCircle(p, 6, knob);
       canvas.drawCircle(

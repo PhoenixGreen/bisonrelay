@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -1066,6 +1067,12 @@ class CanvasStageState extends State<CanvasStage>
     // A team on a pitch is wherever the pitch puts its players, not in its
     // own box -- and it is only the players that are it.
     if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
+    // A character on a stage is wherever the camera puts it.
+    if (e is CharacterElement && e.onStage != null) {
+      if (staging(e, document.elements, controller.frame) case var at?) {
+        return at.box.contains(point);
+      }
+    }
     // A curve is caught by its stroke, not by its box.
     //
     // A bowed line or a path with its handles pulled out bulges *outside* its
@@ -1835,7 +1842,7 @@ class CanvasStageState extends State<CanvasStage>
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
       var pin =
           CharacterPlacement.of(who, controller.frame,
-              frameRate: document.frameRate).pinUnder(doc, reach);
+              frameRate: document.frameRate, document: document).pinUnder(doc, reach);
       if (pin != null) {
         _characterPin = pin;
         _mode = _DragMode.characterPin;

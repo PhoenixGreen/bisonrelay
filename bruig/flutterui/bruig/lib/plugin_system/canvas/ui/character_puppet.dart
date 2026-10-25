@@ -3,7 +3,10 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 
 // character_puppet.dart is what the stage needs to pose a character by
@@ -50,20 +53,50 @@ class CharacterPlacement {
   final double _turn;
   final double _scale;
 
+  /// turn is what the stage's camera adds to the character's own turn,
+  /// which a pin's pose has to have taken back off.
+  final double turn;
+
   CharacterPlacement._(this.element, this.frame, this.rig, this._box,
-      this._centre, this._shift, this._anchor, this._turn, this._scale);
+      this._centre, this._shift, this._anchor, this._turn, this._scale,
+      {this.turn = 0});
 
   /// of places [e] on [frame], breathing as it does at [frameRate] -- the
   /// pins are on the joints as they are drawn, chest risen or not.
   factory CharacterPlacement.of(CharacterElement e, int frame,
-      {int frameRate = 12}) {
+      {int frameRate = 12, CanvasDocument? document}) {
+    var shown = e.style.frameOf(frame);
+    var (performed, _) = e.performanceAt(shown, frameRate);
+    var breath = lifeAt(e, shown, frameRate).breath;
+    // On a stage, where its camera puts it and turned as it sees it -- and
+    // nothing of its own box: see paintElement.
+    if (document != null && e.onStage != null) {
+      if (staging(e, document.elements, frame) case var at?) {
+        return CharacterPlacement._(
+          e,
+          frame,
+          CharacterRig.of(e.style.dnaOf(e.dna),
+              performed.withTurn(performed.turn + at.turn), at.box,
+              breath: breath),
+          BoxFrame(0, 0, 0),
+          at.box.center,
+          Offset.zero,
+          at.box.center,
+          0,
+          1,
+          turn: at.turn,
+        );
+      }
+    }
     var pose = e.poseAt(frame);
-    var bounds = e.bounds;
+    var bounds = characterBox(e, frame, e.bounds);
     return CharacterPlacement._(
       e,
       frame,
-      CharacterRig.of(e.dna, e.performanceAt(frame, frameRate).$1, bounds,
-          breath: lifeAt(e, frame, frameRate).breath),
+      // As it is drawn: in its style's proportions, and on the frame its
+      // style shows -- see paintCharacter.
+      CharacterRig.of(e.style.dnaOf(e.dna), performed, bounds,
+          breath: breath),
       BoxFrame(e.rotation, e.base.skewX, e.base.skewY),
       bounds.center,
       Offset(pose.dx, pose.dy),
@@ -137,17 +170,31 @@ class CharacterPlacement {
   /// posedBy is the pose that [pin] dragged to [page] asks for.
   CharacterPose posedBy(CharacterPin pin, Offset page) {
     var target = toLocal(page);
+    // Solved as it is seen -- with the camera's turn -- and given back as
+    // the character's own.
     var pose = element.poseAtFrame(frame);
-    if (pin.limb case var limb?) return rig.solveLimb(pose, limb, target);
-    if (pin == CharacterPin.head) return rig.solveHead(pose, target);
-    return rig.solveLean(pose, target);
+    var seen = pose.withTurn(pose.turn + turn);
+    var solved = pin.limb != null
+        ? rig.solveLimb(seen, pin.limb!, target)
+        : pin == CharacterPin.head
+            ? rig.solveHead(seen, target)
+            : rig.solveLean(seen, target);
+    return solved.withTurn(pose.turn);
   }
+
+  /// pins is the pins this character has: no feet on a fish.
+  List<CharacterPin> get pins => [
+        for (var p in CharacterPin.values)
+          if (!(element.dna.species.legless &&
+              (p == CharacterPin.footL || p == CharacterPin.footR)))
+            p,
+      ];
 
   /// pinUnder is the pin within [reach] of [page], nearest first, or null.
   CharacterPin? pinUnder(Offset page, double reach) {
     CharacterPin? best;
     var nearest = reach;
-    for (var p in CharacterPin.values) {
+    for (var p in pins) {
       var d = (pin(p) - page).distance;
       if (d <= nearest) {
         nearest = d;
