@@ -439,7 +439,8 @@ class CanvasLibrary {
       return await CanvasAssets.sweep(keep) +
           await CanvasMedia.sweep(MediaKind.audio, keep) +
           await CanvasMedia.sweep(MediaKind.video, keep) +
-          await CanvasMedia.sweep(MediaKind.vector, keep);
+          await CanvasMedia.sweep(MediaKind.vector, keep) +
+          await CanvasMedia.sweep(MediaKind.model, keep);
     } catch (_) {
       return 0;
     }
@@ -522,6 +523,9 @@ class CanvasLibrary {
       ));
     }
     for (var kind in MediaKind.values) {
+      // 3D characters are chosen from a character's own settings, not
+      // placed from the library.
+      if (kind == MediaKind.model) continue;
       for (var id in await CanvasMedia.stored(kind)) {
         if (extras.contains(id)) continue;
         var source = sources[id] ?? MediaSource(assetId: id);
@@ -529,7 +533,7 @@ class CanvasLibrary {
             switch (kind) {
               MediaKind.video => AssetKind.video,
               MediaKind.audio => AssetKind.audio,
-              MediaKind.vector => AssetKind.vector,
+              MediaKind.vector || MediaKind.model => AssetKind.vector,
             },
             source,
             added: await when(await CanvasMedia.existingPath(kind, id))));

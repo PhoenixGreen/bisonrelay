@@ -32,6 +32,26 @@ enum CharacterLimb {
   double get bend => onLeft ? 1 : -1;
 }
 
+/// RigJoint is a joint of [CharacterRig.joints3].
+enum RigJoint {
+  hips,
+  chest,
+  neck,
+  head,
+  shoulderL,
+  elbowL,
+  wristL,
+  shoulderR,
+  elbowR,
+  wristR,
+  hipL,
+  kneeL,
+  ankleL,
+  hipR,
+  kneeR,
+  ankleR,
+}
+
 /// CharacterRig is a character's joints for one pose, in the box it is drawn
 /// in.
 class CharacterRig {
@@ -91,6 +111,16 @@ class CharacterRig {
   /// wingFlap is how far wings are raised from folded, in degrees.
   final double wingFlap;
 
+  /// joints3 is every joint in the body's own space, before it is turned
+  /// to the page: x across it to the page's right when it faces the
+  /// reader, y down, z towards the reader, from the hips. What a figure
+  /// drawn in 3D -- a mannequin, a model -- is posed from.
+  final Map<RigJoint, List<double>> joints3;
+
+  /// headBasis is how the head is turned in the body's space, as a 3x3
+  /// matrix row by row: its own across, down and forward in its columns.
+  final List<double> headBasis;
+
   const CharacterRig._({
     required this.unit,
     this.headScale = 1,
@@ -128,6 +158,8 @@ class CharacterRig {
     required this.footSwing,
     this.plan = const {},
     this.wingFlap = 0,
+    this.joints3 = const {},
+    this.headBasis = const [1, 0, 0, 0, 1, 0, 0, 0, 1],
   });
 
   /// footDrop is how far below the ankle the sole is, as a share of the
@@ -308,6 +340,28 @@ class CharacterRig {
       },
       plan: plan,
       wingFlap: pose[CharacterBone.wings],
+      joints3: {
+        for (var (j, v) in [
+          (RigJoint.hips, origin),
+          (RigJoint.chest, chest3),
+          (RigJoint.neck, neck3),
+          (RigJoint.head, head3),
+          (RigJoint.shoulderL, shoulderL3),
+          (RigJoint.elbowL, elbowL3),
+          (RigJoint.wristL, wristL3),
+          (RigJoint.shoulderR, shoulderR3),
+          (RigJoint.elbowR, elbowR3),
+          (RigJoint.wristR, wristR3),
+          (RigJoint.hipL, hipL3),
+          (RigJoint.kneeL, kneeL3),
+          (RigJoint.ankleL, ankleL3),
+          (RigJoint.hipR, hipR3),
+          (RigJoint.kneeR, kneeR3),
+          (RigJoint.ankleR, ankleR3),
+        ])
+          j: [v.x, v.y, v.z],
+      },
+      headBasis: head.m,
       footSwing: {
         for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
       },

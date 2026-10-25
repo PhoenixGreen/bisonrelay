@@ -5,6 +5,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
+import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 
 // character_painter.dart draws a character: its rig, dressed and given a
@@ -24,7 +28,10 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 /// [staged] is where it stands on a 3D stage, when it does: its box is the
 /// camera's, it is turned as the camera sees it, and lit by the stage.
 void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
-    {int frameRate = 12, bool editing = false, Staging? staged}) {
+    {int frameRate = 12,
+    bool editing = false,
+    Staging? staged,
+    CanvasImageSource? images}) {
   // A style on twos holds each drawing for two frames, as stop motion does.
   frame = e.style.frameOf(frame);
   var life = lifeAt(e, frame, frameRate);
@@ -53,7 +60,12 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
     canvas.saveLayer(box.inflate(box.height), Paint()..colorFilter = light);
   }
   paintCharacterFigure(canvas, box, e.dna, pose,
-      face: face, life: life, bare: editing && e.bareView, style: e.style);
+      face: face,
+      life: life,
+      bare: editing && e.bareView,
+      style: e.style,
+      body: e.body,
+      images: images);
   if (light != null) canvas.restore();
 }
 
@@ -86,13 +98,16 @@ void paintCharacterFigure(
     {CharacterFace face = CharacterFace.rest,
     LifeAt life = LifeAt.none,
     bool bare = false,
-    CharacterStyle style = CharacterStyle.featureCartoon}) {
+    CharacterStyle style = CharacterStyle.featureCartoon,
+    CharacterBody body = const CharacterBody(),
+    CanvasImageSource? images}) {
   if (box.height <= 0) return;
   dna = style.dnaOf(dna);
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
-  void draw(Canvas onto) =>
-      _Drawing(onto, rig, dna, face, life, bare: bare, look: look).draw();
+  void draw(Canvas onto) => body.inThreeD
+      ? _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images)
+      : _Drawing(onto, rig, dna, face, life, bare: bare, look: look).draw();
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   switch (style) {
@@ -156,6 +171,39 @@ void paintCharacterFigure(
     default:
       draw(canvas);
   }
+}
+
+/// _paintInThreeD draws [dna] as a body in 3D: the model [body] names when
+/// it is loaded, and the mannequin until it is -- or when it is the
+/// mannequin that is asked for.
+void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
+    CharacterPose pose, CharacterFace face, LifeAt life, CharacterBody body,
+    Rect box, CanvasImageSource? images) {
+  // Blinking and glancing about, as the drawn face does.
+  face = face.withControls({
+    if (life.blink > 0)
+      FaceControl.eyesOpen: face[FaceControl.eyesOpen] * (1 - life.blink),
+    if (life.lookX != 0)
+      FaceControl.lookX: face[FaceControl.lookX] + life.lookX,
+    if (life.lookY != 0)
+      FaceControl.lookY: face[FaceControl.lookY] + life.lookY,
+  });
+  var model = body.kind == BodyKind.model && body.modelId.isNotEmpty
+      ? switch (images) {
+          CanvasModelSource source => source.resolveModel(body.modelId),
+          _ => null,
+        }
+      : null;
+  var outline = body.outline ? math.max(1.0, box.height * 0.006) : 0.0;
+  if (model != null) {
+    var (origin, pieces) =
+        model.pieces(rig, face, box, lift: pose.lift * rig.unit);
+    paintMeshes(canvas, origin, pieces,
+        shading: body.shading, outline: outline);
+    return;
+  }
+  paintMeshes(canvas, rig.hips, mannequinPieces(rig, dna, face),
+      shading: body.shading, outline: outline);
 }
 
 /// _greyscale takes the colour out, leaving how light each thing is, a

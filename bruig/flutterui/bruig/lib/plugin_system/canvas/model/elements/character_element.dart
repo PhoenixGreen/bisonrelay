@@ -795,6 +795,110 @@ class OnStage {
   }
 }
 
+/// BodyKind is what a character's body is made of: drawn flat, as every
+/// style draws it, or modelled in 3D.
+enum BodyKind {
+  drawn("Drawn"),
+
+  /// mannequin is the body built in 3D from the character's own
+  /// proportions and colours -- smooth, with no file behind it.
+  mannequin("Mannequin"),
+
+  /// model is a 3D character from a file: a .glb, .gltf or .vrm.
+  model("Model");
+
+  final String label;
+  const BodyKind(this.label);
+
+  static BodyKind fromName(String? name) =>
+      values.firstWhere((k) => k.name == name, orElse: () => drawn);
+}
+
+/// ModelShading is how a body in 3D is lit.
+enum ModelShading {
+  soft("Soft"),
+
+  /// toon is lit in two flat bands, as cel animation is.
+  toon("Toon"),
+
+  /// flat is every face of the mesh one shade, as early 3D was.
+  flat("Faceted");
+
+  final String label;
+  const ModelShading(this.label);
+
+  static ModelShading fromName(String? name) =>
+      values.firstWhere((k) => k.name == name, orElse: () => soft);
+}
+
+/// CharacterBody is a character's body in 3D, when it has one.
+class CharacterBody {
+  final BodyKind kind;
+
+  /// modelId is the stored model file -- see CanvasMedia and MediaKind.model
+  /// -- and modelName what it was called when it was brought in.
+  final String modelId;
+  final String modelName;
+  final ModelShading shading;
+
+  /// outline draws a line round the figure, as ink round a cel.
+  final bool outline;
+
+  const CharacterBody({
+    this.kind = BodyKind.drawn,
+    this.modelId = "",
+    this.modelName = "",
+    this.shading = ModelShading.soft,
+    this.outline = false,
+  });
+
+  bool get inThreeD => kind != BodyKind.drawn;
+
+  CharacterBody copyWith({
+    BodyKind? kind,
+    String? modelId,
+    String? modelName,
+    ModelShading? shading,
+    bool? outline,
+  }) =>
+      CharacterBody(
+          kind: kind ?? this.kind,
+          modelId: modelId ?? this.modelId,
+          modelName: modelName ?? this.modelName,
+          shading: shading ?? this.shading,
+          outline: outline ?? this.outline);
+
+  Map<String, dynamic> toJson() => {
+        "kind": kind.name,
+        if (modelId.isNotEmpty) "model": modelId,
+        if (modelName.isNotEmpty) "modelName": modelName,
+        if (shading != ModelShading.soft) "shading": shading.name,
+        if (outline) "outline": true,
+      };
+
+  static CharacterBody fromJson(Object? json) {
+    if (json is! Map) return const CharacterBody();
+    return CharacterBody(
+        kind: BodyKind.fromName(json["kind"] as String?),
+        modelId: jsonString(json["model"], ""),
+        modelName: jsonString(json["modelName"], ""),
+        shading: ModelShading.fromName(json["shading"] as String?),
+        outline: jsonBool(json["outline"], false));
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is CharacterBody &&
+      other.kind == kind &&
+      other.modelId == modelId &&
+      other.modelName == modelName &&
+      other.shading == shading &&
+      other.outline == outline;
+
+  @override
+  int get hashCode => Object.hash(kind, modelId, modelName, shading, outline);
+}
+
 class CharacterElement extends CanvasElement {
   final CharacterDna dna;
   final CharacterStyle style;
@@ -832,6 +936,9 @@ class CharacterElement extends CanvasElement {
 
   final ElementAnimation animation;
 
+  /// body is whether it is drawn or in 3D, and in 3D what from.
+  final CharacterBody body;
+
   const CharacterElement(
     super.base, {
     this.dna = const CharacterDna(),
@@ -845,6 +952,7 @@ class CharacterElement extends CanvasElement {
     this.shadow = CharacterShadow.soft,
     this.depth = 0,
     this.animation = const ElementAnimation(),
+    this.body = const CharacterBody(),
   });
 
   /// restPose is a new character's stance: arms a little away from the body
@@ -861,6 +969,12 @@ class CharacterElement extends CanvasElement {
 
   @override
   ElementKind get kind => ElementKind.character;
+
+  /// The model a modelled body is made from is a stored file, kept for as
+  /// long as a character uses it.
+  @override
+  Set<String> get mediaIds =>
+      body.modelId.isEmpty ? const {} : {body.modelId};
 
   /// poseAtFrame is how the character stands on [frame].
   CharacterPose poseAtFrame(int frame) => pose.over(poseAt(frame));
@@ -945,7 +1059,8 @@ class CharacterElement extends CanvasElement {
       onStage: onStage,
       shadow: shadow,
       depth: depth,
-      animation: animation);
+      animation: animation,
+      body: body);
 
   CharacterElement copyWith({
     CharacterDna? dna,
@@ -960,6 +1075,7 @@ class CharacterElement extends CanvasElement {
     CharacterShadow? shadow,
     double? depth,
     ElementAnimation? animation,
+    CharacterBody? body,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -972,7 +1088,8 @@ class CharacterElement extends CanvasElement {
           onStage: offStage ? null : (onStage ?? this.onStage),
           shadow: shadow ?? this.shadow,
           depth: (depth ?? this.depth).clamp(0.0, 2.0),
-          animation: animation ?? this.animation);
+          animation: animation ?? this.animation,
+          body: body ?? this.body);
 
   @override
   Map<String, dynamic> props() => {
@@ -987,6 +1104,7 @@ class CharacterElement extends CanvasElement {
         if (shadow != CharacterShadow.soft) "shadow": shadow.name,
         if (depth != 0) "depth": depth,
         if (animation.any) "anim": animation.toJson(),
+        if (body != const CharacterBody()) "body": body.toJson(),
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -1013,5 +1131,6 @@ class CharacterElement extends CanvasElement {
                 if (MotionClip.fromJson(m) case var clip?) clip,
           ],
           animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
-              const ElementAnimation()));
+              const ElementAnimation()),
+          body: CharacterBody.fromJson(json["body"]));
 }

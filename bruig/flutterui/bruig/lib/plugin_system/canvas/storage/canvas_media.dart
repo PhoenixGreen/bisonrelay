@@ -27,7 +27,11 @@ enum MediaKind {
   video(canvasVideoFolder, 4 * 1024 * 1024 * 1024),
 
   /// vector is the drawings: .svg files, bounded as pictures are.
-  vector(canvasVectorFolder, 20 * 1024 * 1024);
+  vector(canvasVectorFolder, 20 * 1024 * 1024),
+
+  /// model is 3D characters: .glb (VRM is one inside) and self-contained
+  /// .gltf files.
+  model(canvasModelFolder, 256 * 1024 * 1024);
 
   final String folder;
 
@@ -185,7 +189,9 @@ class CanvasMedia {
   /// kindOf is which store an id belongs in, from its extension.
   static MediaKind kindOf(String id) => path.extension(id) == ".svg"
       ? MediaKind.vector
-      : _videoExtensions.contains(path.extension(id))
+      : const {".glb", ".gltf", ".vrm"}.contains(path.extension(id))
+          ? MediaKind.model
+          : _videoExtensions.contains(path.extension(id))
           ? MediaKind.video
           : MediaKind.audio;
 
@@ -239,7 +245,8 @@ class CanvasMedia {
       var drawn = {...live, ...await CanvasStorage.liveAssetIds()};
       return await sweep(MediaKind.audio, live) +
           await sweep(MediaKind.video, live) +
-          await sweep(MediaKind.vector, drawn);
+          await sweep(MediaKind.vector, drawn) +
+          await sweep(MediaKind.model, live);
     } catch (_) {
       return 0;
     }
@@ -277,6 +284,19 @@ class CanvasMedia {
       // Opus says so in its first page; anything else in Ogg is Vorbis as far
       // as a player is concerned.
       return at(28, "OpusHead") ? ".opus" : ".ogg";
+    }
+    if (at(0, "glTF")) return ".glb";
+    // A glTF written as text: a JSON object whose first key is the asset or
+    // the scene graph. Anything else that starts with a brace is not taken.
+    if (b.isNotEmpty) {
+      var text = String.fromCharCodes(b.take(64)).trimLeft();
+      if (text.startsWith("{") &&
+          (text.contains('"asset"') ||
+              text.contains('"accessors"') ||
+              text.contains('"buffers"') ||
+              text.contains('"scene'))) {
+        return ".gltf";
+      }
     }
     if (at(0, "ID3")) return ".mp3";
     // An MPEG audio frame with no tag in front of it: eleven set bits.

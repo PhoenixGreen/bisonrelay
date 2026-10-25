@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
+import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -54,7 +55,7 @@ const int _thumbSide = 192;
 
 /// CanvasImageStore holds decoded pictures for a canvas being edited.
 class CanvasImageStore extends ChangeNotifier
-    implements CanvasImageSource, CleansEdges {
+    implements CanvasImageSource, CanvasModelSource, CleansEdges {
   /// _edges makes and keeps pictures with their edges cleaned -- see
   /// edge_cleaning.dart.
   late final EdgeCleaner _edges = EdgeCleaner(
@@ -210,6 +211,45 @@ class CanvasImageStore extends ChangeNotifier
   }
 
   final Map<String, ImageSilhouette> _outlines = {};
+
+  /// _models is the 3D models read, by their stored file. Few and asked
+  /// for by every frame a modelled character is in, so kept until the
+  /// store goes.
+  final Map<String, LoadedModel> _models = {};
+
+  @override
+  LoadedModel? resolveModel(String mediaId) {
+    if (mediaId.isEmpty) return null;
+    if (_models[mediaId] case var m?) return m;
+    var key = "model:$mediaId";
+    if (!_pending.contains(key) && !_failed.contains(key)) {
+      _pending.add(key);
+      _loadModel(mediaId, key);
+    }
+    return null;
+  }
+
+  Future<void> _loadModel(String mediaId, String key) async {
+    try {
+      var bytes = await CanvasMedia.load(MediaKind.model, mediaId);
+      if (bytes == null) {
+        _failed.add(key);
+        return;
+      }
+      var model = await loadModel(Uint8List.fromList(bytes));
+      if (_disposed) {
+        model.dispose();
+        return;
+      }
+      _models[mediaId] = model;
+      notifyListeners();
+    } catch (exception) {
+      debugPrint("Unable to read the canvas model $mediaId: $exception");
+      _failed.add(key);
+    } finally {
+      _pending.remove(key);
+    }
+  }
 
   @override
   ImageSilhouette? resolveOutline(String assetId, BackgroundRemoval removal) {
@@ -373,6 +413,10 @@ class CanvasImageStore extends ChangeNotifier
   void dispose() {
     _disposed = true;
     _edges.dispose();
+    for (var model in _models.values) {
+      model.dispose();
+    }
+    _models.clear();
     for (var vector in _vectors.values) {
       vector.picture.dispose();
     }

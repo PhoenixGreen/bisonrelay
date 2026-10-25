@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_bvh.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
@@ -10,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
@@ -106,6 +109,67 @@ List<Widget> characterSettings(
             keyOf: (st) => "characterStyle-${st.name}",
             onPick: (st) => now(e.copyWith(style: st)),
           ),
+          CanvasTiles<BodyKind>(
+            label: "Made of",
+            help: "Drawn flat, as the style draws it; a smooth mannequin in "
+                "3D, built from this character's proportions and colours; "
+                "or a 3D model brought in from a file. Whatever it is made "
+                "of, it is posed, animated and lip-synced the same way.",
+            columns: 3,
+            previewHeight: 64,
+            tiles: [
+              for (var k in BodyKind.values)
+                CanvasTile(k, k.label,
+                    drawnFrom: "$drawn|${k.name}|${e.body.modelId}|"
+                        "${controller.images.resolveModel(e.body.modelId) != null}",
+                    paint: (canvas, size) => _figureTile(
+                        canvas, size, dna, CharacterElement.restPose, style,
+                        e.body.copyWith(kind: k), controller.images)),
+            ],
+            selected: (k) => k == e.body.kind,
+            keyOf: (k) => "characterBody-${k.name}",
+            onPick: (k) => now(e.copyWith(body: e.body.copyWith(kind: k))),
+          ),
+          if (e.body.inThreeD) ...[
+            CanvasTiles<ModelShading>(
+              label: "Shading",
+              help: "How the body in 3D is lit: softly, in two flat bands as "
+                  "a cel is, or face by face.",
+              columns: 3,
+              previewHeight: 64,
+              tiles: [
+                for (var sh in ModelShading.values)
+                  CanvasTile(sh, sh.label,
+                      drawnFrom: "$drawn|${e.body.kind.name}|${sh.name}|"
+                          "${e.body.outline}|${e.body.modelId}|"
+                          "${controller.images.resolveModel(e.body.modelId) != null}",
+                      paint: (canvas, size) => _figureTile(
+                          canvas, size, dna, CharacterElement.restPose, style,
+                          e.body.copyWith(shading: sh), controller.images)),
+              ],
+              selected: (sh) => sh == e.body.shading,
+              keyOf: (sh) => "characterShading-${sh.name}",
+              onPick: (sh) =>
+                  now(e.copyWith(body: e.body.copyWith(shading: sh))),
+            ),
+            CanvasControlGroup(
+                label: "Outline",
+                help: "A line round the whole figure, as ink round a cel.",
+                children: [
+                  CanvasToggle(
+                    key: const ValueKey("characterOutline"),
+                    label: "Outline",
+                    value: e.body.outline,
+                    onChanged: (v) =>
+                        now(e.copyWith(body: e.body.copyWith(outline: v))),
+                  ),
+                ]),
+          ],
+          if (e.body.kind == BodyKind.model)
+            ModelImportGroup(
+                key: ValueKey("characterModel-${e.id}"),
+                controller: controller,
+                character: e),
           CanvasControlGroup(
               label: "Body",
               help: "How tall the character is in head lengths -- about 2½ "
@@ -556,14 +620,19 @@ bool _samePose(CharacterPose a, CharacterPose b) {
 /// _figureTile draws the whole character, standing in the tile.
 void _figureTile(
     ui.Canvas canvas, Size size, CharacterDna dna, CharacterPose pose,
-    [CharacterStyle style = CharacterStyle.featureCartoon]) {
+    [CharacterStyle style = CharacterStyle.featureCartoon,
+    CharacterBody body = const CharacterBody(),
+    CanvasImageSource? images]) {
   var h = size.height * 0.92;
   paintCharacterFigure(
       canvas,
       Rect.fromCenter(
           center: size.center(Offset.zero), width: h * 0.45, height: h),
       dna,
-      pose, style: style);
+      pose,
+      style: style,
+      body: body,
+      images: images);
 }
 
 /// _headTile draws the character's head, filling the tile.
@@ -1066,6 +1135,116 @@ class _WalkGroupState extends State<_WalkGroup> {
                 onPressed: () => _go(kind, dir),
               ),
           ]);
+}
+
+/// ModelImportGroup brings a 3D model in from a file and makes it the
+/// character's body.
+class ModelImportGroup extends StatefulWidget {
+  final CanvasController controller;
+  final CharacterElement character;
+  const ModelImportGroup(
+      {required this.controller, required this.character, super.key});
+
+  @override
+  State<ModelImportGroup> createState() => ModelImportGroupState();
+}
+
+class ModelImportGroupState extends State<ModelImportGroup> {
+  String _said = "";
+
+  Future<void> _pick() async {
+    var picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ["glb", "gltf", "vrm"],
+      withData: false,
+    );
+    var file = picked?.files.singleOrNull?.path;
+    if (file == null) return;
+    await importFrom(file);
+  }
+
+  /// importFrom stores the model at [file] and makes it the character's
+  /// body -- once it has been read, so a file that is not a model is
+  /// turned away rather than drawn as nothing.
+  Future<void> importFrom(String file) async {
+    String said;
+    try {
+      var gltf = parseGltf(await File(file).readAsBytes());
+      var id = await CanvasMedia.saveFile(MediaKind.model, file);
+      if (id == null) {
+        said = "That model could not be stored: it may be bigger than "
+            "${MediaKind.model.maxBytes >> 20} MB.";
+      } else {
+        var c = widget.controller;
+        var now = c.document.elementById(widget.character.id);
+        if (now is! CharacterElement) return;
+        var name = gltf.title.isNotEmpty
+            ? gltf.title
+            : file.split(Platform.pathSeparator).last;
+        c.beginInteraction();
+        c.replaceElement(now.copyWith(
+            body: now.body.copyWith(
+                kind: BodyKind.model, modelId: id, modelName: name)));
+        c.endInteraction();
+        said = _about(gltf);
+      }
+    } on GltfError catch (error) {
+      said = "That file could not be read: $error";
+    } on FormatException {
+      said = "That file could not be read: it is not a glTF, GLB or VRM file.";
+    } on FileSystemException {
+      said = "That file could not be opened.";
+    }
+    if (mounted) setState(() => _said = said);
+  }
+
+  /// _about is what was found in [gltf], in a sentence.
+  static String _about(Gltf gltf) {
+    var bones = gltf.humanoid.length;
+    var faces = gltf.expressions.length;
+    var kind = gltf.vrm == null ? "glTF" : "VRM ${gltf.vrm}";
+    if (bones < 8) {
+      return "A $kind model, with no human skeleton found in it: it stands "
+          "as it was made, and turns with the character.";
+    }
+    return "A $kind model with a human skeleton: posed by the character's "
+        "pose, motions and pins"
+        "${faces > 0 ? ", with $faces face shapes for its expressions and lip sync" : ""}.";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var body = widget.character.body;
+    var loaded = widget.controller.images.resolveModel(body.modelId);
+    var status = _said.isNotEmpty
+        ? _said
+        : body.modelId.isEmpty
+            ? "No model yet: a mannequin stands in until one is brought in."
+            : loaded == null
+                ? "${body.modelName.isEmpty ? "The model" : body.modelName} -- "
+                    "being read; a mannequin stands in meanwhile."
+                : "${body.modelName.isEmpty ? "The model" : body.modelName}. "
+                    "${_about(loaded.gltf)}";
+    return CanvasControlGroup(
+        label: "Model",
+        help: "A 3D character from a file: .glb, .gltf with everything in "
+            "it, or .vrm -- what VRoid Studio, Ready Player Me, Mixamo "
+            "(through Blender), Blender and most 3D tools export. A human "
+            "skeleton in it is found by its names and posed as this "
+            "character is; VRM and ARKit face shapes give it its "
+            "expressions and lip sync.",
+        children: [
+          CanvasTextButton(
+            key: const ValueKey("characterModelPick"),
+            icon: Icons.view_in_ar_outlined,
+            label: body.modelId.isEmpty
+                ? "Bring in a model…"
+                : "Bring in another model…",
+            onPressed: _pick,
+          ),
+          CanvasStatus(status),
+        ]);
+  }
 }
 
 /// _ImportGroup lays motion capture from a BVH file on the character.

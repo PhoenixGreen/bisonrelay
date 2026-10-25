@@ -656,7 +656,7 @@ void paintElement(
             Paint()..color = const Color(0xFFFFFFFF).withValues(alpha: alpha));
       }
       paintCharacter(canvas, at.box, element, frame,
-          frameRate: frameRate, editing: editing, staged: at);
+          frameRate: frameRate, editing: editing, staged: at, images: images);
       if (alpha < 0.999) canvas.restore();
       return;
     }
@@ -922,7 +922,7 @@ void paintElement(
       case CharacterElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => paintCharacter(canvas, bounds, e, frame,
-                frameRate: frameRate, editing: editing));
+                frameRate: frameRate, editing: editing, images: images));
       default:
         break;
     }

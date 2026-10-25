@@ -43,6 +43,10 @@ const canvasVideoFolder = "Videos";
 /// picture is not. See VectorElement.
 const canvasVectorFolder = "Vectors";
 
+/// canvasModelFolder is where 3D characters live: .glb, .vrm and .gltf
+/// files. See CharacterElement.model.
+const canvasModelFolder = "Models";
+
 /// canvasExtension is what a saved canvas is called on disk.
 ///
 /// A distinct extension rather than ".json" so that the library listing does
