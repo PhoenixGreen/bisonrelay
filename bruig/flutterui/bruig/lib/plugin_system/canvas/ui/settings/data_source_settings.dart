@@ -68,13 +68,14 @@ Widget? sourceRefreshButton(
     CanvasElement e,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit) {
+    VoidCallback commit,
+    {bool whenOff = false}) {
   var target = switch (e) {
     TableElement table => _TableTarget(table, controller, write, begin, commit),
     ChartElement chart => _ChartTarget(chart, controller, write, begin, commit),
     _ => null,
   };
-  if (target == null || !target.source.on) return null;
+  if (target == null || (!target.source.on && !whenOff)) return null;
   return _RefreshButton(target: target, key: ValueKey("refresh-${e.id}"));
 }
 
@@ -99,11 +100,13 @@ class _RefreshButtonState extends State<_RefreshButton> {
       // It hangs off a section's heading, not off a row of controls.
       tight: true,
       icon: _busy ? Icons.hourglass_empty : Icons.refresh,
-      tooltip: source.fetchedAt == null
-          ? "Read the data and put it in the ${widget.target.noun}"
-          : "Read the data again — last updated "
-              "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
-      onPressed: _busy
+      tooltip: !source.on
+          ? "Choose where the data comes from first"
+          : source.fetchedAt == null
+              ? "Read the data and put it in the ${widget.target.noun}"
+              : "Read the data again — last updated "
+                  "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
+      onPressed: _busy || !source.on
           ? null
           : () async {
               var allowed = context.read<CanvasPreferences>().allowFetching;
@@ -1120,20 +1123,9 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
     var allowed = context.watch<CanvasPreferences>().allowFetching;
 
     // In a section of its own -- see element_sections.dart -- laid out
-    // flat, with its refresh at the top: the section is the fold.
+    // flat: the section is the fold, and its refresh is on the section's
+    // heading.
     var flat = CanvasCards.on(context);
-    var refresh = CanvasIconButton(
-      key: const ValueKey("sourceRefresh"),
-      tight: true,
-      icon: _busy ? Icons.hourglass_empty : Icons.refresh,
-      tooltip: !source.on
-          ? "Choose where the data comes from first"
-          : source.fetchedAt == null
-              ? "Read the data and put it in the ${target.noun}"
-              : "Read the data again — last updated "
-                  "${DateFormat("d MMM y, HH:mm").format(source.fetchedAt!.toLocal())}",
-      onPressed: source.on && !_busy ? _refresh : null,
-    );
     var where = boxed(
       context,
       CanvasExpander(
@@ -1158,7 +1150,6 @@ class _DataSourcePanelState extends State<_DataSourcePanel> {
           onPressed: source.on && !_busy ? _refresh : null,
         ),
         children: [
-          if (flat) Align(alignment: Alignment.centerRight, child: refresh),
           ..._sourceControls(context, preset, allowed),
         ],
       ),

@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'canvas_panel_helpers.dart';
 import 'package:provider/provider.dart';
 
 // canvas_reuse_test.dart is one design used in many places: a named text
@@ -150,6 +152,8 @@ void main() {
       addTearDown(c.dispose);
       c.selectOnly("t");
       await _panel(tester, c);
+      // Under the presets, which start shut.
+      await openSection(tester, "text.presets");
       await tester.ensureVisible(find.byKey(const ValueKey("textStyleSave")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("textStyleSave")));

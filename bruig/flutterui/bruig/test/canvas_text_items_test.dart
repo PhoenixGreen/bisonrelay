@@ -373,11 +373,10 @@ void main() {
     });
   });
 
-  testWidgets("a piece's row fits a narrow sidebar", (tester) async {
-    // 300 is about the narrowest anybody leaves the panel. The row is the
-    // element's own row -- face, size, weight, and the button -- so what is
-    // being checked is that a second one of those still fits under the first
-    // rather than wrapping into a column of single controls.
+  testWidgets("a piece's settings fit a narrow sidebar", (tester) async {
+    // 300 is about the narrowest anybody leaves the panel. A piece picked in
+    // the Layers has the element's own type controls -- face, size, weight
+    // -- and none of them may run off the side.
     tester.view.physicalSize = const Size(700, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -385,6 +384,7 @@ void main() {
     var controller = CanvasController(const CanvasDocument().addElement(_card(
         items: const [TextItem(id: "n", text: "01", slot: TextSlot.topLeft)])));
     addTearDown(controller.dispose);
+    controller.pickTextLayer("c", "n");
 
     await tester.pumpWidget(MaterialApp(
       home: ChangeNotifierProvider(
@@ -415,8 +415,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    var group = find.ancestor(
-        of: find.text("01"), matching: find.byType(CanvasMoreGroup));
+    var group = find.byKey(const ValueKey("elementSection-type"));
     var face = tester.getRect(find
         .descendant(of: group, matching: find.byType(CanvasDropdown<String>))
         .first);

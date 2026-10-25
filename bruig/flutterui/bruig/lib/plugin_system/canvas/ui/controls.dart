@@ -767,6 +767,24 @@ class RenderCanvasWrap extends RenderBox
     // button narrow the row the button sits on, because the line it revealed
     // afforded less. Settings already on screen moving when something appears
     // under them is the one thing a reveal must not do.
+    // A line started on purpose -- the first, or one after a break or a
+    // control as wide as the line -- with one control to grow on it fills
+    // the line, and is left out of the sharing: there is no column for it
+    // to keep, and held to what a line of four could afford, a dropdown
+    // alone on its line cut its own words short with the rest of the line
+    // empty beside it. A line that only exists because the one above ran
+    // out of room still shares, so a row of numbers that wraps keeps its
+    // columns -- where the line above has columns to keep.
+    bool full(int i) => widths[i] >= width - 0.5;
+    var alone = <int>{};
+    for (var (at, row) in lines.indexed) {
+      if (row.where((i) => fills[i]).length != 1) continue;
+      var wrapped = at > 0 &&
+          lines[at - 1].where((i) => fills[i]).length > 1 &&
+          !full(lines[at - 1].last) &&
+          !full(row.first);
+      if (!wrapped) alone.add(at);
+    }
     var extras = List<double>.filled(lines.length, 0);
     for (var from = 0; from < lines.length;) {
       var to = from + 1;
@@ -780,7 +798,7 @@ class RenderCanvasWrap extends RenderBox
           for (var i in row)
             if (fills[i]) i
         ];
-        if (marked.isEmpty) continue;
+        if (marked.isEmpty || alone.contains(at)) continue;
         var taken = _spacing * (row.length - 1);
         for (var i in row) {
           taken += widths[i];
@@ -795,6 +813,13 @@ class RenderCanvasWrap extends RenderBox
       if (!extra.isFinite) extra = 0;
       for (var at = from; at < to; at++) {
         extras[at] = extra;
+        if (!alone.contains(at)) continue;
+        var row = lines[at];
+        var taken = _spacing * (row.length - 1);
+        for (var i in row) {
+          taken += widths[i];
+        }
+        extras[at] = math.max(0, width - taken);
       }
       from = to;
     }
@@ -1811,17 +1836,29 @@ class _CanvasTextFieldState extends State<CanvasTextField> {
           height:
               widget.maxLines > 1 ? heightIn(context) * 2 : heightIn(context),
           grow: widget.grow,
-          child: TextField(
-            controller: _text,
-            focusNode: _focus,
-            maxLines: widget.maxLines,
-            style: const TextStyle(fontSize: 12),
-            decoration: canvasFieldDecoration(ThemeNotifier.of(context),
-                hint: widget.hint),
-            onChanged: widget.onChanged,
+          child: _bottomInCard(
+            context,
+            TextField(
+              controller: _text,
+              focusNode: _focus,
+              maxLines: widget.maxLines,
+              style: const TextStyle(fontSize: 12),
+              decoration: canvasFieldDecoration(ThemeNotifier.of(context),
+                  hint: widget.hint),
+              onChanged: widget.onChanged,
+            ),
           ),
         ),
       );
+
+  /// _bottomInCard sits a field's underline on the foot of its box in a
+  /// card, where a button's or a stepper's box ends. Drawn at its own
+  /// height it sat ten pixels higher, so a button beside it hung below the
+  /// line.
+  Widget _bottomInCard(BuildContext context, Widget field) =>
+      CanvasCards.on(context) && widget.maxLines == 1
+          ? Align(alignment: Alignment.bottomLeft, child: field)
+          : field;
 }
 
 /// CanvasMoreGroup is a group of settings with the rest of them behind a
@@ -2198,6 +2235,26 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     return (widest + extra).clamp(width, math.max(width, 420.0));
   }
 
+  /// _cardWidth is how wide a card's dropdown needs to be to show its
+  /// longest name whole between its two arrows -- its picture beside it,
+  /// where it has one -- held to what a sidebar has room for.
+  double _cardWidth() {
+    var widest = 0.0;
+    for (var (_, text, heading) in _rows()) {
+      if (heading) continue;
+      var painter = TextPainter(
+          text: TextSpan(text: text, style: const TextStyle(fontSize: 12)),
+          textDirection: TextDirection.ltr,
+          maxLines: 1)
+        ..layout();
+      widest = math.max(widest, painter.width);
+      painter.dispose();
+    }
+    // Two arrows and their dividers, and the room either side of the name.
+    var chrome = 2 * 33 + 16 + 4 + (leading != null ? 42 : 0);
+    return (widest + chrome).clamp(120.0, 320.0);
+  }
+
   /// _named is an option's name, with its leading drawing where it has one.
   Widget _named(T v, String text) {
     var name = Text(text, overflow: TextOverflow.ellipsis);
@@ -2388,7 +2445,14 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     // them: a type panel's Case at fifty pixels was an arrow, an arrow, and
     // an overflow.
     var least = CanvasControlScope.widthFor(context, width);
-    if (card) least = math.max(least, 120.0);
+    // And never narrower than its longest name between the arrows, so a
+    // line too short for it wraps rather than cutting the name to "Noth…".
+    // Only in a wrap, which can give it a line of its own; in a fixed row
+    // it keeps the width it was given.
+    if (card) {
+      least = math.max(
+          least, grow && _CanvasWrapScope.of(context) ? _cardWidth() : 120.0);
+    }
     return _labelled(
       theme,
       label,
@@ -2444,7 +2508,14 @@ class _PreviewedState<T> extends State<_Previewed<T>> {
 
 /// CanvasSlider is a value with a range -- kept as a name for the places
 /// that ask for one, and drawn as a number to type or scrub, like the rest.
-class CanvasSlider extends StatelessWidget {
+class CanvasSlider extends StatelessWidget implements CanvasGrowable {
+  /// Growable as the number field it is drawn as: a wrap only offers room to
+  /// the controls it can see are growable, and this is the one it sees.
+  @override
+  bool get grow => true;
+  @override
+  double get least => width < 62 ? width : 62;
+
   final String label;
   final double value;
   final double min;

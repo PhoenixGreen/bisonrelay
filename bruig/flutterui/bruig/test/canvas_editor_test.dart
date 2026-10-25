@@ -7046,10 +7046,41 @@ void main() {
     TextElement textIn(CanvasController c) =>
         c.document.elements.whereType<TextElement>().single;
 
+    /// pickLayer picks the layer [id] -- a piece's id, or "body" for the
+    /// element's own words -- in the Layers over the sections.
+    Future<void> pickLayer(WidgetTester tester, String id) async {
+      var layer = find.byKey(ValueKey("textLayer-$id"));
+      await tester.ensureVisible(layer);
+      await tester.pumpAndSettle();
+      await tester.tap(layer);
+      await tester.pumpAndSettle();
+    }
+
+    /// addLayer adds a piece from the Layers' Add: "text" or "picture".
+    Future<void> addTextLayer(WidgetTester tester, String what) async {
+      if (find.byKey(const ValueKey("textAddTiles")).evaluate().isEmpty) {
+        var add = find.byKey(const ValueKey("textLayersAdd"));
+        await tester.ensureVisible(add);
+        await tester.pumpAndSettle();
+        await tester.tap(add);
+        await tester.pumpAndSettle();
+      }
+      var tile = find.byKey(ValueKey("textLayersAdd-$what"));
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+    }
+
+    Finder inType(Finder f) => find.descendant(
+        of: find.byKey(const ValueKey("elementSection-type")), matching: f);
+
     testWidgets("are sections, in the order the work happens", (tester) async {
-      // Where it is, what it says, how it is set, its box, the line it
-      // follows, which words are different, how it arrives -- and the
-      // designs saved of its kind, as every element's panel ends.
+      // Where it is, how it is set, its box, the line it follows, which
+      // words are different, how it arrives -- and the designs saved of its
+      // kind, as every element's panel ends. No Words section: where the
+      // words come from is a card at the foot of Position, and the named
+      // styles a card under the presets.
       await panel(tester);
       var found = [
         for (var element in find.byType(CanvasSection).evaluate())
@@ -7062,7 +7093,6 @@ void main() {
         for (var (_, title) in found) title
       ], [
         "Position",
-        "Words",
         "Type",
         "Box and columns",
         "On a line",
@@ -7070,6 +7100,25 @@ void main() {
         "Animation",
         "Presets",
       ]);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-position")),
+              matching: find.byKey(const ValueKey("textWords"))),
+          findsOneWidget);
+      for (var key in ["textFromDocument", "textWrap"]) {
+        expect(
+            find.descendant(
+                of: find.byKey(const ValueKey("textWords")),
+                matching: find.byKey(ValueKey(key))),
+            findsOneWidget,
+            reason: key);
+      }
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("elementSection-presets")),
+              matching: find.byKey(const ValueKey("textStyleSave"))),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey("elementSection-words")), findsNothing);
     });
 
     testWidgets("the colour settings are in the type card, not behind a button",
@@ -7101,38 +7150,20 @@ void main() {
 
     testWidgets("a piece is added, placed and taken away from the panel",
         (tester) async {
-      // The words are typed on the canvas; everything else about a piece is
-      // here. Its row is the element's own row and nothing more, so where it
-      // sits and the button that takes it away are behind its button.
+      // From the Layers: Add, then Text. The new piece is picked, so the
+      // panel is its settings, where it sits among them.
       var controller = await panel(tester);
       expect(textIn(controller).items, isEmpty);
+      expect(find.byKey(const ValueKey("textLayer-body")), findsOneWidget,
+          reason: "the element's own words are the first layer");
 
-      var add = find.byKey(const ValueKey("textAddItem"));
-      await tester.ensureVisible(add);
-      await tester.pumpAndSettle();
-      await tester.tap(add);
-      await tester.pumpAndSettle();
-
+      await addTextLayer(tester, "text");
       expect(textIn(controller).items.length, 1);
-      expect(textIn(controller).items.first.text, "Text",
+      var first = textIn(controller).items.first;
+      expect(first.text, "Text",
           reason: "something to see and to click on the canvas");
-
-      // Open its button, if an earlier test has not left it open -- a
-      // more-button remembers, and remembers across tests. Done while there
-      // is one piece, because two fresh pieces say the same thing and a
-      // caption is how a row is told from the next. Captions are drawn in
-      // capitals, so that is what to look for.
-      var group = find.ancestor(
-          of: find.text(textIn(controller).items.first.says.toUpperCase()),
-          matching: find.byType(CanvasMoreGroup));
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
+      expect(controller.textLayer(textIn(controller))?.id, first.id,
+          reason: "the piece added is picked");
 
       var slot = find.byKey(const ValueKey("textItemSlot0"));
       await tester.ensureVisible(slot);
@@ -7144,28 +7175,31 @@ void main() {
       expect(textIn(controller).items.first.slot, TextSlot.middleRight);
 
       // A second one goes to a free slot rather than on top of the first.
-      await tester.ensureVisible(add);
-      await tester.pumpAndSettle();
-      await tester.tap(add);
-      await tester.pumpAndSettle();
+      await addTextLayer(tester, "text");
       expect(textIn(controller).items.length, 2);
       expect(textIn(controller).items.last.slot,
           isNot(textIn(controller).items.first.slot));
 
-      var remove = find.byKey(const ValueKey("textItemRemove0"));
-      await tester.ensureVisible(remove);
+      // The first picked again and deleted from the Layers' heading.
+      await pickLayer(tester, first.id);
+      var delete = find.byKey(const ValueKey("textLayersDelete"));
+      await tester.ensureVisible(delete);
       await tester.pumpAndSettle();
-      await tester.tap(remove);
+      await tester.tap(delete);
       await tester.pumpAndSettle();
       expect(textIn(controller).items.length, 1);
       expect(textIn(controller).items.first.slot, isNot(TextSlot.middleRight),
           reason: "the one that was moved is the one that went");
+      expect(controller.textLayer(textIn(controller)), isNull,
+          reason: "back to the element's own words");
+      expect(tester.takeException(), isNull);
     });
 
-    testWidgets("and each piece's row is the same control the words get",
+    testWidgets("and each piece's settings are the same control the words get",
         (tester) async {
-      // Face, size, weight and a button holding the rest -- not a second set
-      // of controls that happen to do the same things.
+      // Face, size, weight and the rest -- not a second set of controls that
+      // happen to do the same things -- shown in Type when the piece is
+      // picked in the Layers.
       var element = TextElement(
         ElementBase(id: newElementId(), width: 400, height: 200),
         text: "Spend or burn",
@@ -7174,38 +7208,86 @@ void main() {
         ],
       );
       var controller = await panel(tester, element: element);
-      expect(find.text("01"), findsOneWidget,
-          reason: "the row is captioned with what the piece says");
-
-      // The piece's own group, and only that: a more-button tapped open in an
-      // earlier test of this file is still open in this one -- which changes
-      // both what the panel holds and what the buttons are called -- so every
-      // finder here is scoped to the piece and the button is opened only if
-      // it is shut.
-      var group = find.ancestor(
-          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
-      expect(group, findsOneWidget, reason: "the piece has a group of its own");
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
-      expect(find.descendant(of: group, matching: find.text("Outline")),
-          findsOneWidget,
-          reason: "the piece has its own colour behind its own button");
+      await pickLayer(tester, "n");
+      expect(inType(find.text("Outline")), findsWidgets,
+          reason: "the piece has its own colour");
 
       // And changing it writes to the piece, not to the element.
-      var size =
-          find.descendant(of: group, matching: find.byType(CanvasNumberField));
+      var size = inType(find.byType(CanvasNumberField));
       await tester.ensureVisible(size.first);
       await tester.pumpAndSettle();
       await enterValue(tester, size.first, "11");
       await tester.pumpAndSettle();
       expect(textIn(controller).items.first.spec.fontSize, 11);
       expect(textIn(controller).textSpec.fontSize, isNot(11));
+    });
+
+    testWidgets("picking a layer shows that layer's settings", (tester) async {
+      // The element's own words have a slot, marks and parts; a piece of
+      // writing has a place in the box; a picture has a picture's settings
+      // and no type at all.
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+          TextItem(id: "p", icon: TextIcon(), slot: TextSlot.bottomRight),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+      expect(find.byKey(const ValueKey("textBodySlot")), findsOneWidget);
+      expect(
+          find.byWidgetPredicate(
+              (w) => w is CanvasSection && w.title == "Parts of the text"),
+          findsOneWidget);
+
+      await pickLayer(tester, "n");
+      expect(find.byKey(const ValueKey("textBodySlot")), findsNothing);
+      expect(find.byKey(const ValueKey("textItemSlot0")), findsOneWidget);
+      expect(
+          find.byWidgetPredicate(
+              (w) => w is CanvasSection && w.title == "Parts of the text"),
+          findsNothing,
+          reason: "a piece has no parts of its own");
+
+      await pickLayer(tester, "p");
+      expect(find.byKey(const ValueKey("elementSection-type")), findsNothing);
+      expect(
+          find.byKey(const ValueKey("elementSection-picture")), findsOneWidget);
+      expect(find.byKey(const ValueKey("textItemPicture1")), findsOneWidget);
+
+      await pickLayer(tester, "body");
+      expect(controller.textLayer(textIn(controller)), isNull);
+      expect(find.byKey(const ValueKey("textBodySlot")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a piece can be hidden and locked from its layer",
+        (tester) async {
+      var element = TextElement(
+        ElementBase(id: newElementId(), width: 400, height: 200),
+        text: "Spend or burn",
+        items: const [
+          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+        ],
+      );
+      var controller = await panel(tester, element: element);
+      if (find.byKey(const ValueKey("textLayersRows")).evaluate().isEmpty) {
+        await tester.tap(find.byKey(const ValueKey("textLayersOpen")));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const ValueKey("textLayerShow-n")));
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.single.hidden, isTrue);
+      await tester.tap(find.byKey(const ValueKey("textLayerLock-n")));
+      await tester.pumpAndSettle();
+      expect(textIn(controller).items.single.locked, isTrue);
+      // Saved and read back as they were.
+      var back = TextItem.fromJson(textIn(controller).items.single.toJson());
+      expect((back.hidden, back.locked), (true, true));
+      // The element's own words have neither: they are the element.
+      expect(find.byKey(const ValueKey("textLayerShow-body")), findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets("a piece is offered where it sits, not an alignment",
@@ -7222,27 +7304,11 @@ void main() {
         ],
       );
       await panel(tester, element: element);
+      await pickLayer(tester, "n");
 
-      var group = find.ancestor(
-          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
-
-      expect(find.descendant(of: group, matching: find.text("Where")),
-          findsOneWidget);
-      expect(find.descendant(of: group, matching: find.text("Align")),
-          findsNothing);
-      expect(find.descendant(of: group, matching: find.text("Vertical")),
-          findsNothing);
-      // The element's own words keep both -- they fill the box rather than
-      // sitting in a corner of it, and Align says Justify as well -- but they
-      // are behind a button of their own, which this test has not opened.
+      expect(inType(find.text("Where")), findsOneWidget);
+      expect(inType(find.text("Align")), findsNothing);
+      expect(inType(find.text("Vertical")), findsNothing);
     });
 
     testWidgets("the element's own words can be given a slot too",
@@ -7291,17 +7357,7 @@ void main() {
         ],
       );
       var controller = await panel(tester, element: element);
-
-      var group = find.ancestor(
-          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
+      await pickLayer(tester, "n");
 
       var gap = find.byKey(const ValueKey("textItemGap0"));
       var side = find.byKey(const ValueKey("textItemSide0"));
@@ -7317,45 +7373,38 @@ void main() {
       expect(textIn(controller).items.first.side, 14);
     });
 
-    testWidgets("a piece's row is directly under the element's own",
+    testWidgets("the layers start with the element's own words",
         (tester) async {
-      // Another piece of writing in the same box belongs with the writing
-      // that is already there, not below the box, the columns and the line.
+      // In the order the pieces stack, the element's own words first and
+      // held there; the pieces after them in the order they were added.
       var element = TextElement(
         ElementBase(id: newElementId(), width: 400, height: 200),
         text: "Spend or burn",
         items: const [
-          TextItem(id: "n", text: "01", slot: TextSlot.topLeft),
+          TextItem(id: "a", text: "01", slot: TextSlot.topLeft),
+          TextItem(id: "b", text: "02", slot: TextSlot.topLeft),
         ],
       );
-      await panel(tester, element: element);
+      var controller = await panel(tester, element: element);
+      double left(String id) =>
+          tester.getRect(find.byKey(ValueKey("textLayer-$id"))).left;
+      double top(String id) =>
+          tester.getRect(find.byKey(ValueKey("textLayer-$id"))).top;
+      if (find.byKey(const ValueKey("textLayersRows")).evaluate().isEmpty) {
+        expect(left("body"), lessThan(left("a")));
+        expect(left("a"), lessThan(left("b")));
+        await tester.tap(find.byKey(const ValueKey("textLayersOpen")));
+        await tester.pumpAndSettle();
+      }
+      expect(top("body"), lessThan(top("a")));
+      expect(top("a"), lessThan(top("b")));
 
-      var faces = find.byType(CanvasDropdown<String>);
-      var own = tester.getRect(faces.first);
-      var piece = tester.getRect(find.descendant(
-          of: find.ancestor(
-              of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
-          matching: find.byType(CanvasDropdown<String>)));
-      var add = tester.getRect(find.byKey(const ValueKey("textAddItem")));
-      var box =
-          tester.getRect(find.byKey(const ValueKey("elementSection-box")));
-
-      var ownFont = tester.getRect(find.byWidgetPredicate(
-          (w) => w is CanvasDropdown<String> && w.label == "Font"));
-      var ownWeight = tester.getRect(find.byWidgetPredicate(
-          (w) => w is CanvasDropdown<int> && w.label == "Weight"));
-      var pieceWeight = tester.getRect(find.descendant(
-          of: find.ancestor(
-              of: find.text("01"), matching: find.byType(CanvasMoreGroup)),
-          matching: find.byType(CanvasDropdown<int>)));
-      // Lined up on the left, each in a card of its own: the piece's card
-      // and the words' are laid out each for itself, so their right-hand
-      // ends are their own.
-      expect(piece.left, ownFont.left);
-      expect(pieceWeight.top, greaterThan(ownWeight.top));
-      expect(piece.top, greaterThan(own.top), reason: "under the words");
-      expect(add.top, greaterThan(piece.top), reason: "and the + under it");
-      expect(box.top, greaterThan(add.top), reason: "the box comes after");
+      // Moved down from its row, the first piece stacks after the second.
+      await pickLayer(tester, "a");
+      await tester.tap(find.byKey(const ValueKey("textLayerDown-a")));
+      await tester.pumpAndSettle();
+      expect([for (var i in textIn(controller).items) i.id], ["b", "a"]);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets("the colour is on the row and the switches are behind it",
@@ -7677,7 +7726,8 @@ void main() {
               id: "n", text: "Master Block Vote", slot: TextSlot.middleLeft),
         ],
       );
-      await panel(tester, element: middle);
+      var controller = await panel(tester, element: middle);
+      await pickLayer(tester, "n");
       // In a card, the piece's settings are all out: no button to open.
       expect(find.byKey(const ValueKey("more-textItemnType")), findsNothing);
       // A hint is a question mark with a tooltip, so it is found by what it
@@ -7686,10 +7736,10 @@ void main() {
 
       // And nothing to say about a slot that holds it to an edge, where the
       // gap means what somebody setting a gap expects.
-      await panel(tester,
-          element: middle.copyWith(items: [
-            middle.items.single.copyWith(slot: TextSlot.topLeft),
-          ]));
+      controller.replaceElement(textIn(controller).copyWith(items: [
+        middle.items.single.copyWith(slot: TextSlot.topLeft),
+      ]));
+      await tester.pumpAndSettle();
       expect(centredHint, findsNothing);
     });
 
@@ -7705,17 +7755,7 @@ void main() {
         ],
       );
       var controller = await panel(tester, element: element);
-
-      var group = find.ancestor(
-          of: find.text("01"), matching: find.byType(CanvasMoreGroup));
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
+      await pickLayer(tester, "n");
 
       expect(find.byKey(const ValueKey("textItemFill0")), findsOneWidget);
       expect(find.byKey(const ValueKey("textItem0Radius")), findsNothing,
@@ -7792,7 +7832,7 @@ void main() {
 
     testWidgets("a piece can be given a name to find it by", (tester) async {
       // Every picture piece said "Picture", so a card with three of them had
-      // three rows called the same thing.
+      // three layers called the same thing.
       var element = TextElement(
         ElementBase(id: newElementId(), width: 400, height: 200),
         text: "Spend or burn",
@@ -7801,20 +7841,12 @@ void main() {
         ],
       );
       var controller = await panel(tester, element: element);
-      expect(find.text("PICTURE"), findsOneWidget,
+      var layer = find.byKey(const ValueKey("textLayer-p"));
+      expect(find.descendant(of: layer, matching: find.text("Picture")),
+          findsOneWidget,
           reason: "before it is named");
 
-      var group = find.ancestor(
-          of: find.text("PICTURE"), matching: find.byType(CanvasMoreGroup));
-      var button =
-          find.descendant(of: group, matching: find.byIcon(Icons.tune));
-      if (button.evaluate().isNotEmpty) {
-        await tester.ensureVisible(button);
-        await tester.pumpAndSettle();
-        await tester.tap(button);
-        await tester.pumpAndSettle();
-      }
-
+      await pickLayer(tester, "p");
       var name = find.byKey(const ValueKey("textItemName0"));
       await tester.ensureVisible(name);
       await tester.pumpAndSettle();
@@ -7822,40 +7854,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(textIn(controller).items.single.name, "Leeds badge");
-      expect(find.text("LEEDS BADGE"), findsOneWidget);
-      expect(find.text("PICTURE"), findsNothing);
-    });
-
-    testWidgets("or renamed by double-clicking the caption itself",
-        (tester) async {
-      // Which is the gesture a file, a scene and a layer are all renamed by,
-      // and the one anybody tries first.
-      var element = TextElement(
-        ElementBase(id: newElementId(), width: 400, height: 200),
-        text: "Spend or burn",
-        items: const [
-          TextItem(id: "p", text: "01", slot: TextSlot.topLeft),
-        ],
-      );
-      var controller = await panel(tester, element: element);
-
-      var caption = find.text("01");
-      await tester.ensureVisible(caption);
-      await tester.pumpAndSettle();
-      await tester.tap(caption);
-      await tester.pump(const Duration(milliseconds: 40));
-      await tester.tap(caption);
-      await tester.pumpAndSettle();
-
-      var field =
-          find.ancestor(of: find.text("01"), matching: find.byType(TextField));
-      expect(field, findsOneWidget, reason: "it opened for typing");
-      await enterValue(tester, field, "The number");
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-
-      expect(textIn(controller).items.single.name, "The number");
-      expect(find.text("THE NUMBER"), findsOneWidget);
+      expect(find.descendant(of: layer, matching: find.text("Leeds badge")),
+          findsOneWidget);
     });
 
     testWidgets("a shape can be painted with a picture or a pattern",

@@ -32,6 +32,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/shape_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/table_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/team_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/text_layers.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/text_settings.dart';
 
 // element_settings.dart is the controls for whichever element is selected.
@@ -89,7 +90,20 @@ List<Widget> elementSettings(
       key: const ValueKey("elementSections"),
       // A drawing's layers over its sections, as a picture's are -- once it
       // has been taken apart into shapes to have any.
-      parts: element is VectorElement &&
+      parts: element is TextElement
+          // A text's layers -- its own words, and every piece of writing or
+          // picture added to its box -- over its sections, as a picture's
+          // are.
+          ? TextLayersList(
+              key: const ValueKey("textLayersList"),
+              controller: controller,
+              element: element,
+              onChanged: (next) {
+                begin();
+                write(next);
+                commit();
+              })
+          : element is VectorElement &&
               element.edited &&
               (element.shapes?.isNotEmpty ?? false)
           ? VectorLayersList(
@@ -116,6 +130,10 @@ List<Widget> elementSettings(
                     context, controller, element, write, begin, commit),
               if (element is VectorElement && element.hasDrawing)
                 vectorCropControls(controller, element, write, begin, commit),
+              // Where a text's words come from and how they sit in its box.
+              if (element is TextElement)
+                textWordsCard(
+                    context, controller, element, write, begin, commit),
             ]),
         ...switch (element) {
           TextElement e =>
@@ -178,7 +196,11 @@ List<Widget> elementSettings(
             pathSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
-        presetsPanelSection(context, controller, element),
+        presetsPanelSection(context, controller, element, extra: [
+          // A text's named styles, under the designs kept of its kind: the
+          // other way its look is kept to use again.
+          if (element is TextElement) textStyleCard(controller, element),
+        ]),
       ],
     ),
   ];

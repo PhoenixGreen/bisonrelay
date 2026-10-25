@@ -99,6 +99,19 @@ same columns — which is why Angle sits under X — and a title field beside a
 number field stays the wider of the two. Give two controls that should line up
 the same minimum width.
 
+Settings fill their row. A line started on purpose — the first, or one after a
+`CanvasLineBreak` or a control as wide as the line (a switch row in a card) —
+with one growable control on it takes the whole line and is left out of the
+sharing: a dropdown alone on its line held to what a line of four could afford
+cut its own name to "Noth…" beside empty space. A line that only exists
+because the one above it ran out of room still shares, where that line has
+columns to keep, so a wrapped row of numbers stays in columns.
+
+In a card a dropdown is never narrower than its longest name between its
+arrows, so a line too short for it wraps instead of cutting the name. Text
+fields grow like the rest; do not give one `grow: false` to keep a row on one
+line — a field too narrow for what is typed in it is the same fault.
+
 `CanvasLineBreak` ends a line deliberately. It costs one row gap, not two.
 
 `CanvasWrap` puts a row gap between its lines by default. Do not pass

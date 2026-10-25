@@ -1065,7 +1065,6 @@ Widget _brushPicker(CanvasController controller) {
           label: "Name",
           value: brush.name,
           width: 110,
-          grow: false,
           onChanged: (v) => controller.vectorBrush = brush.copyWith(name: v),
         ),
         CanvasIconButton(

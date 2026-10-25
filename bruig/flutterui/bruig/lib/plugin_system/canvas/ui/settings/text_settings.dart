@@ -34,317 +34,114 @@ List<Widget> textSettings(
     commit();
   }
 
-  var styles = controller.textStyles;
-  var styled = styles.any((t) => t.name == e.style);
-  var words = e.text.trim().replaceAll(RegExp(r"\s+"), " ");
+  // The layer picked in the Layers over the sections: the element's own
+  // words, a piece of writing, or a picture -- and the panel is that
+  // layer's. See TextLayersList.
+  var layer = controller.textLayer(e);
   return [
-    section(e, "words",
-        icon: Icons.notes,
-        title: "Words",
-        summary: words.isEmpty
-            ? "No words yet"
-            : words.length > 40
-                ? "${words.substring(0, 40)}…"
-                : words,
-        initiallyOpen: true,
-        children: [
-          // The document's named styles: set this text in one, make its type one,
-          // or change the one it is in -- which changes every text set in it.
-          CanvasControlGroup(
-            key: const ValueKey("textStyle"),
-            label: "Style",
-            hideCaption: true,
-            rule: false,
-            children: [
-              if (styles.isNotEmpty)
-                CanvasDropdown<String>(
-                  key: const ValueKey("textStylePick"),
-                  label: "Style",
-                  value: styled ? e.style : "",
-                  width: 120,
-                  options: [
-                    ("", "Its own"),
-                    for (var t in styles) (t.name, t.name),
-                  ],
-                  onChanged: (v) => controller.useTextStyle(e.id, v),
-                ),
-              CanvasIconButton(
-                key: const ValueKey("textStyleSave"),
-                icon: Icons.bookmark_add_outlined,
-                tooltip: "Make this text's type a style",
-                onPressed: () => controller.saveTextStyle(e),
-              ),
-              if (styled) ...[
-                CanvasIconButton(
-                  key: const ValueKey("textStyleUpdate"),
-                  icon: Icons.sync,
-                  tooltip:
-                      "Change the style to this text's type -- every text in "
-                      "\"${e.style}\" changes with it",
-                  onPressed: () =>
-                      controller.updateTextStyle(e.style, e.textSpec),
-                ),
-                CanvasTextField(
-                  key: const ValueKey("textStyleName"),
-                  label: "Name",
-                  value: e.style,
-                  width: 96,
-                  onChanged: (v) {
-                    controller.beginInteraction();
-                    controller.renameTextStyle(e.style, v, transient: true);
-                  },
-                  onCommit: controller.endInteraction,
-                ),
-                CanvasIconButton(
-                  key: const ValueKey("textStyleRemove"),
-                  icon: Icons.bookmark_remove_outlined,
-                  tooltip: "Forget the style; its texts keep their type",
-                  onPressed: () => controller.removeTextStyle(e.style),
-                ),
-              ],
-            ],
-          ),
-          // No section round the type settings. They were behind a heading that was
-          // open every time anybody looked, which is a chevron and a word standing
-          // between the panel and the first thing it is for.
-          //
-          // No Content field either. The words are typed on the canvas, in the box
-          // they will appear in, at the size and face they will appear at -- see
-          // CanvasTextEditor. A two-line box in a settings panel could show
-          // neither, so writing a headline meant typing it here and looking over
-          // there.
-          //
-          // Where the words come from and how they are set: three switches on one
-          // line, with whatever each of them needs underneath. Wrap was a group of
-          // its own with a heading, for one switch and the two questions it brings
-          // with it.
-          CanvasControlGroup(label: "Text", hideCaption: true, children: [
-            CanvasToggle(
-              label: "Fit to box",
-              value: e.autoSize,
-              onChanged: (v) => now(e.copyWith(autoSize: v)),
-            ),
-            // Words of this shape's own, for a document being laid out for several.
-            //
-            // The one thing scaling cannot do: type half the size still wraps where
-            // the page is narrow, so a headline that takes two lines across a
-            // banner takes four down a feed and the answer is fewer words rather
-            // than smaller ones. Off, this element says the same thing everywhere
-            // and a typo is still fixed once.
-            if (controller.document.targets.length > 1)
-              CanvasToggle(
-                key: const ValueKey("textOwnWordsHere"),
-                label: "Own words here",
-                value: e.base.ownText,
-                onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
-              ),
-            // Words from the Writing library rather than typed on the canvas.
-            // Beside Fit to box because it is the same kind of question --
-            // where the words and their size come from -- and because it is
-            // the first thing to decide about a text element that is a
-            // document.
-            //
-            // Not offered at all on a box that is being flowed into: its
-            // words belong to the box in front of it, so a document chosen
-            // here would be read, stored and never seen -- and the most
-            // confusing version of that is a chain that is already carrying a
-            // document, where every box in it looks like somewhere to attach
-            // another one.
-            if (flowSourceOf(e, controller.document) == null)
-              CanvasToggle(
-                key: const ValueKey("textFromDocument"),
-                label: "From document",
-                value: e.document.on,
-                onChanged: (v) async {
-                  if (!v) {
-                    // Back to what was typed here before the document took the
-                    // words over. Left showing the document's words, the switch
-                    // would be off and the element would still say what the
-                    // document says, with no way back to what was there.
-                    now(e.copyWith(
-                        text: e.document.wasText.isEmpty
-                            ? e.text
-                            : e.document.wasText,
-                        document: const TextDocumentRef(),
-                        documentParts: const []));
-                    return;
-                  }
-                  var picked = await pickLibraryDocument(context);
-                  if (picked == null) return;
-                  now(e.copyWith(
-                      document: picked.copyWith(wasText: e.text),
-                      documentParts: const []));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-            if (e.document.on) ...[
-              CanvasIconButton(
-                key: const ValueKey("textDocumentPick"),
-                icon: Icons.description_outlined,
-                tooltip: "Choose another document",
-                onPressed: () async {
-                  var picked = await pickLibraryDocument(context);
-                  if (picked == null) return;
-                  // The remembered words are the element's own, not the last
-                  // document's, so changing which document is read leaves
-                  // them alone.
-                  now(e.copyWith(
-                      document: e.document
-                          .copyWith(folder: picked.folder, name: picked.name),
-                      documentParts: const []));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-              CanvasReadout(label: "Document", value: e.document.says),
-              CanvasToggle(
-                key: const ValueKey("textDocumentMarkdown"),
-                label: "Markdown",
-                value: e.document.markdown,
-                onChanged: (v) async {
-                  now(e.copyWith(document: e.document.copyWith(markdown: v)));
-                  await refreshTextDocuments(controller);
-                },
-              ),
-              const CanvasHint(
-                  "The words come from the library and are read again every "
-                  "few seconds, so editing the document changes the canvas. "
-                  "With Markdown off they arrive as plain text — every mark "
-                  "stripped, all of the styling from the settings here. With "
-                  "it on, only the pieces switched on are honoured; the rest "
-                  "are still stripped, because a headline reading \"## Title\" "
-                  "is not markdown being ignored, it is markdown showing."),
-            ],
-            // Words set around whatever overlaps the box. On the line with the
-            // other two because it is the same kind of question -- how these
-            // words are laid out -- and it brings two of its own with it.
-            CanvasToggle(
-              key: const ValueKey("textWrap"),
-              label: "Wrap text",
-              value: e.wrap.on,
-              onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
-            ),
-            if (e.wrap.on) ...[
-              const CanvasLineBreak(),
-              CanvasNumberField(
-                label: "Space",
-                value: e.wrap.gap,
-                min: 0,
-                max: 400,
-                decimals: 0,
-                width: 62,
-                onChanged: (v) {
-                  begin();
-                  write(e.copyWith(wrap: e.wrap.copyWith(gap: v)));
-                },
-                onCommit: commit,
-              ),
-              CanvasDropdown<WrapSide>(
-                key: const ValueKey("textWrapSide"),
-                label: "Words go",
-                value: e.wrap.side,
-                width: 132,
-                options: [for (var s in WrapSide.values) (s, s.label)],
-                onChanged: (v) =>
-                    now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
-              ),
-              const CanvasHint(
-                  "The words are set line by line around every visible "
-                  "element that overlaps this box, leaving Space between "
-                  "them. Both sides fills the room either side of something "
-                  "narrow; Left or Right keeps the words in one block beside "
-                  "it. Anything that covers the box from top to bottom is "
-                  "left out — that is a background, and a paragraph cannot go "
-                  "around it."),
-            ],
+    if (layer != null && layer.isIcon)
+      section(e, "picture",
+          icon: Icons.image_outlined,
+          title: "Picture",
+          summary: layer.icon!.on ? layer.says : "No picture chosen",
+          initiallyOpen: true,
+          children: [
+            _pictureRow(context, e, e.items.indexOf(layer), layer, write, begin,
+                commit),
+          ])
+    else if (layer != null)
+      section(e, "type",
+          icon: Icons.text_fields,
+          title: "Type",
+          summary: typeSummary(layer.spec),
+          initiallyOpen: true,
+          children: [
+            _itemType(e, e.items.indexOf(layer), layer, write, begin, commit),
+          ])
+    else
+      section(e, "type",
+          icon: Icons.text_fields,
+          title: "Type",
+          summary: typeSummary(e.textSpec),
+          initiallyOpen: true,
+          children: [
+            // The face, the size and the weight on one line; how the words are spaced
+            // and where they sit behind the button, along with the element's own
+            // marks -- a band behind all of the words, a line under all of them. Here
+            // rather than only on a part, because highlighting a whole headline
+            // should not mean first making a part that covers it.
+            ...typeGroups(e.textSpec,
+                (spec) => write(e.copyWith(textSpec: spec)), begin, commit,
+                // No caption: the Layers over the sections say which piece of
+                // writing these settings are for.
+                label: e.name,
+                hideCaption: true,
+                fill: true,
+                context: context,
+                remember: "text",
+                // Everything about one piece of writing on one line and behind one
+                // button, because this is the element that has several pieces of
+                // writing in it -- see its Layers.
+                colourInMore: true,
+                // The words carry a drawn underline of their own -- see the marks
+                // behind this button -- so the face's own underline switch would be
+                // the second one called Underline on this panel.
+                includeUnderline: false,
+                // No lines through this run. The face, the colour, the box, the
+                // columns and the line it rides are all one question -- how do these
+                // words look -- and a rule between each pair of them made five
+                // answers to five different questions out of it.
+                rule: false,
+                extraMore: [
+                  const CanvasLineBreak(),
+                  // Where the element's own words go. "Fills the box" is what a text
+                  // element has always been; a slot makes them a block like a piece,
+                  // which is what lets a title and the paragraph under it stack
+                  // rather than being drawn over each other.
+                  CanvasDropdown<String>(
+                    key: const ValueKey("textBodySlot"),
+                    label: "Where",
+                    value: e.slot?.name ?? "",
+                    width: 116,
+                    options: [
+                      ("", "Fills the box"),
+                      for (var s in TextSlot.values) (s.name, s.label),
+                    ],
+                    onChanged: (v) => now(v.isEmpty
+                        ? e.copyWith(clearSlot: true)
+                        : e.copyWith(slot: TextSlot.fromName(v))),
+                  ),
+                  if (e.slot != null &&
+                      (!e.columns.isSingle || e.flowTo.isNotEmpty))
+                    const CanvasHint(
+                        "Columns and a chain of boxes are arrangements of the whole "
+                        "box, so the words fill it while either is on and the slot "
+                        "waits."),
+                  if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
+                  const CanvasLineBreak(),
+                  ..._markBits(
+                    highlight: e.highlight,
+                    underline: e.underline,
+                    textColor: e.textSpec.color,
+                    keyPrefix: "text",
+                    setHighlight: (h) => now(h == null
+                        ? e.copyWith(clearHighlight: true)
+                        : e.copyWith(highlight: h)),
+                    setUnderline: (u) => now(u == null
+                        ? e.copyWith(clearUnderline: true)
+                        : e.copyWith(underline: u)),
+                    liveHighlight: (h) {
+                      begin();
+                      write(e.copyWith(highlight: h));
+                    },
+                    liveUnderline: (u) {
+                      begin();
+                      write(e.copyWith(underline: u));
+                    },
+                    done: commit,
+                  ),
+                ]),
           ]),
-        ]),
-    section(e, "type",
-        icon: Icons.text_fields,
-        title: "Type",
-        summary: typeSummary(e.textSpec),
-        children: [
-          // The face, the size and the weight on one line; how the words are spaced
-          // and where they sit behind the button, along with the element's own
-          // marks -- a band behind all of the words, a line under all of them. Here
-          // rather than only on a part, because highlighting a whole headline
-          // should not mean first making a part that covers it.
-          ...typeGroups(e.textSpec, (spec) => write(e.copyWith(textSpec: spec)),
-              begin, commit,
-              // Captioned with what the element is called, once it carries pieces:
-              // a run of captioned rows with an uncaptioned one at the top of it
-              // reads as the pieces belonging to something unnamed. On its own the
-              // panel's header has already said it.
-              label: e.name,
-              hideCaption: e.items.isEmpty,
-              // The element's own name, which is what the layer list shows.
-              onRename: (v) => now(e.withBase(name: v) as TextElement),
-              fill: true,
-              context: context,
-              remember: "text",
-              // Everything about one piece of writing on one line and behind one
-              // button, because this is the element that has several pieces of
-              // writing in it -- see the items below.
-              colourInMore: true,
-              // The words carry a drawn underline of their own -- see the marks
-              // behind this button -- so the face's own underline switch would be
-              // the second one called Underline on this panel.
-              includeUnderline: false,
-              // No lines through this run. The face, the colour, the box, the
-              // columns and the line it rides are all one question -- how do these
-              // words look -- and a rule between each pair of them made five
-              // answers to five different questions out of it.
-              rule: false,
-              extraMore: [
-                const CanvasLineBreak(),
-                // Where the element's own words go. "Fills the box" is what a text
-                // element has always been; a slot makes them a block like a piece,
-                // which is what lets a title and the paragraph under it stack
-                // rather than being drawn over each other.
-                CanvasDropdown<String>(
-                  key: const ValueKey("textBodySlot"),
-                  label: "Where",
-                  value: e.slot?.name ?? "",
-                  width: 116,
-                  options: [
-                    ("", "Fills the box"),
-                    for (var s in TextSlot.values) (s.name, s.label),
-                  ],
-                  onChanged: (v) => now(v.isEmpty
-                      ? e.copyWith(clearSlot: true)
-                      : e.copyWith(slot: TextSlot.fromName(v))),
-                ),
-                if (e.slot != null &&
-                    (!e.columns.isSingle || e.flowTo.isNotEmpty))
-                  const CanvasHint(
-                      "Columns and a chain of boxes are arrangements of the whole "
-                      "box, so the words fill it while either is on and the slot "
-                      "waits."),
-                if (e.slot?.down == VerticalAlignSpec.middle) _middleSlotHint,
-                const CanvasLineBreak(),
-                ..._markBits(
-                  highlight: e.highlight,
-                  underline: e.underline,
-                  textColor: e.textSpec.color,
-                  keyPrefix: "text",
-                  setHighlight: (h) => now(h == null
-                      ? e.copyWith(clearHighlight: true)
-                      : e.copyWith(highlight: h)),
-                  setUnderline: (u) => now(u == null
-                      ? e.copyWith(clearUnderline: true)
-                      : e.copyWith(underline: u)),
-                  liveHighlight: (h) {
-                    begin();
-                    write(e.copyWith(highlight: h));
-                  },
-                  liveUnderline: (u) {
-                    begin();
-                    write(e.copyWith(underline: u));
-                  },
-                  done: commit,
-                ),
-              ]),
-          ..._itemRows(context, e, write, begin, commit),
-        ]),
     section(e, "box",
         icon: Icons.crop_square,
         title: "Box and columns",
@@ -549,27 +346,268 @@ List<Widget> textSettings(
             ],
           ),
         ]),
-    if (e.document.on && e.document.markdown)
+    // The markdown and the parts are about the element's own words: a piece
+    // picked in the Layers has none of either.
+    if (layer == null && e.document.on && e.document.markdown)
       expanderSection(
           e, Icons.code, _markdownSection(controller, e, write, begin, commit)),
-    expanderSection(
-        e, Icons.format_paint_outlined, _partsSection(e, write, begin, commit),
-        summary: e.parts.isEmpty
-            ? "Every word alike"
-            : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}"),
-    expanderSection(e, Icons.play_circle_outline,
-        _animationSection(controller, e, write, begin, commit),
-        summary: !e.animation.any
-            ? "Arrives with the scene"
-            : [
-                if (e.animation.on) "In: ${e.animation.preset.label}",
-                if (e.animation.closes) "Out: ${e.animation.exit.label}",
-                if (e.animation.loop.on) "Loops",
-              ].join(" · "),
-        extra: [
-          ...elementTimingCards(controller, e),
-        ]),
+    if (layer == null)
+      expanderSection(e, Icons.format_paint_outlined,
+          _partsSection(e, write, begin, commit),
+          summary: e.parts.isEmpty
+              ? "Every word alike"
+              : "${e.parts.length} part${e.parts.length == 1 ? "" : "s"}"),
+    CanvasSection(
+      key: const ValueKey("elementSection-animation"),
+      icon: Icons.play_circle_outline,
+      title: "Animation",
+      summary: !e.animation.any
+          ? "Arrives with the scene"
+          : [
+              if (e.animation.on) "In: ${e.animation.preset.label}",
+              if (e.animation.closes)
+                "Out: ${_textLeavingName(e.animation.exit)}",
+              if (e.animation.loop.on) "Loops",
+            ].join(" · "),
+      remember: "text.animation",
+      action: e.animation.any ? previewButton(controller, e) : null,
+      children: [
+        _animationCards(controller, e, write, begin, commit),
+        ...elementTimingCards(controller, e),
+      ],
+    ),
   ];
+}
+
+/// textWordsCard is where a text element's words come from and how they sit
+/// in its box -- sized to fit it, read from a document, set around what
+/// overlaps it -- at the foot of its Position section.
+Widget textWordsCard(
+    BuildContext context,
+    CanvasController controller,
+    TextElement e,
+    SettingsWrite write,
+    VoidCallback begin,
+    VoidCallback commit) {
+  void now(TextElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  // Where the words come from and how they are set: three switches, with
+  // whatever each of them needs underneath. No Content field: the words are
+  // typed on the canvas, in the box they will appear in, at the size and
+  // face they will appear at -- see CanvasTextEditor.
+  return CanvasControlGroup(
+      key: const ValueKey("textWords"),
+      label: "Words",
+      help: "Where the words come from and how they sit in the box: sized "
+          "to fill it, read from a document in the library, or set around "
+          "whatever overlaps it.",
+      rule: false,
+      children: [
+        CanvasToggle(
+          label: "Fit to box",
+          value: e.autoSize,
+          onChanged: (v) => now(e.copyWith(autoSize: v)),
+        ),
+        // Words of this shape's own, for a document being laid out for several.
+        //
+        // The one thing scaling cannot do: type half the size still wraps where
+        // the page is narrow, so a headline that takes two lines across a
+        // banner takes four down a feed and the answer is fewer words rather
+        // than smaller ones. Off, this element says the same thing everywhere
+        // and a typo is still fixed once.
+        if (controller.document.targets.length > 1)
+          CanvasToggle(
+            key: const ValueKey("textOwnWordsHere"),
+            label: "Own words here",
+            value: e.base.ownText,
+            onChanged: (v) => now(e.withBase(ownText: v) as TextElement),
+          ),
+        // Words from the Writing library rather than typed on the canvas.
+        // Beside Fit to box because it is the same kind of question --
+        // where the words and their size come from -- and because it is
+        // the first thing to decide about a text element that is a
+        // document.
+        //
+        // Not offered at all on a box that is being flowed into: its
+        // words belong to the box in front of it, so a document chosen
+        // here would be read, stored and never seen -- and the most
+        // confusing version of that is a chain that is already carrying a
+        // document, where every box in it looks like somewhere to attach
+        // another one.
+        if (flowSourceOf(e, controller.document) == null)
+          CanvasToggle(
+            key: const ValueKey("textFromDocument"),
+            label: "From document",
+            value: e.document.on,
+            onChanged: (v) async {
+              if (!v) {
+                // Back to what was typed here before the document took the
+                // words over. Left showing the document's words, the switch
+                // would be off and the element would still say what the
+                // document says, with no way back to what was there.
+                now(e.copyWith(
+                    text: e.document.wasText.isEmpty
+                        ? e.text
+                        : e.document.wasText,
+                    document: const TextDocumentRef(),
+                    documentParts: const []));
+                return;
+              }
+              var picked = await pickLibraryDocument(context);
+              if (picked == null) return;
+              now(e.copyWith(
+                  document: picked.copyWith(wasText: e.text),
+                  documentParts: const []));
+              await refreshTextDocuments(controller);
+            },
+          ),
+        if (e.document.on) ...[
+          CanvasIconButton(
+            key: const ValueKey("textDocumentPick"),
+            icon: Icons.description_outlined,
+            tooltip: "Choose another document",
+            onPressed: () async {
+              var picked = await pickLibraryDocument(context);
+              if (picked == null) return;
+              // The remembered words are the element's own, not the last
+              // document's, so changing which document is read leaves
+              // them alone.
+              now(e.copyWith(
+                  document: e.document
+                      .copyWith(folder: picked.folder, name: picked.name),
+                  documentParts: const []));
+              await refreshTextDocuments(controller);
+            },
+          ),
+          CanvasReadout(label: "Document", value: e.document.says),
+          CanvasToggle(
+            key: const ValueKey("textDocumentMarkdown"),
+            label: "Markdown",
+            value: e.document.markdown,
+            onChanged: (v) async {
+              now(e.copyWith(document: e.document.copyWith(markdown: v)));
+              await refreshTextDocuments(controller);
+            },
+          ),
+          const CanvasHint(
+              "The words come from the library and are read again every "
+              "few seconds, so editing the document changes the canvas. "
+              "With Markdown off they arrive as plain text — every mark "
+              "stripped, all of the styling from the settings here. With "
+              "it on, only the pieces switched on are honoured; the rest "
+              "are still stripped, because a headline reading \"## Title\" "
+              "is not markdown being ignored, it is markdown showing."),
+        ],
+        // Words set around whatever overlaps the box. On the line with the
+        // other two because it is the same kind of question -- how these
+        // words are laid out -- and it brings two of its own with it.
+        CanvasToggle(
+          key: const ValueKey("textWrap"),
+          label: "Wrap text",
+          value: e.wrap.on,
+          onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(on: v))),
+        ),
+        if (e.wrap.on) ...[
+          const CanvasLineBreak(),
+          CanvasNumberField(
+            label: "Space",
+            value: e.wrap.gap,
+            min: 0,
+            max: 400,
+            decimals: 0,
+            width: 62,
+            onChanged: (v) {
+              begin();
+              write(e.copyWith(wrap: e.wrap.copyWith(gap: v)));
+            },
+            onCommit: commit,
+          ),
+          CanvasDropdown<WrapSide>(
+            key: const ValueKey("textWrapSide"),
+            label: "Words go",
+            value: e.wrap.side,
+            width: 132,
+            options: [for (var s in WrapSide.values) (s, s.label)],
+            onChanged: (v) => now(e.copyWith(wrap: e.wrap.copyWith(side: v))),
+          ),
+          const CanvasHint(
+              "The words are set line by line around every visible "
+              "element that overlaps this box, leaving Space between "
+              "them. Both sides fills the room either side of something "
+              "narrow; Left or Right keeps the words in one block beside "
+              "it. Anything that covers the box from top to bottom is "
+              "left out — that is a background, and a paragraph cannot go "
+              "around it."),
+        ],
+      ]);
+}
+
+/// textStyleCard is the document's named text styles, for [e]: set it in
+/// one, make its type one, or change the one it is in. Under its Presets,
+/// being the other way a text's look is kept to use again.
+Widget textStyleCard(CanvasController controller, TextElement e) {
+  var styles = controller.textStyles;
+  var styled = styles.any((t) => t.name == e.style);
+  return CanvasControlGroup(
+    key: const ValueKey("textStyle"),
+    label: "Text style",
+    help: "The document's named styles. Set this text in one, make "
+        "its type a new one, or change the one it is in -- which "
+        "changes every text set in it.",
+    rule: false,
+    children: [
+      if (styles.isNotEmpty)
+        CanvasDropdown<String>(
+          key: const ValueKey("textStylePick"),
+          label: "Style",
+          value: styled ? e.style : "",
+          width: 120,
+          options: [
+            ("", "Its own"),
+            for (var t in styles) (t.name, t.name),
+          ],
+          onChanged: (v) => controller.useTextStyle(e.id, v),
+        ),
+      // In words: under the presets, an icon alone reads as a second way of
+      // saving a preset.
+      CanvasTextButton(
+        key: const ValueKey("textStyleSave"),
+        icon: Icons.bookmark_add_outlined,
+        label: "Make this text's type a style",
+        onPressed: () => controller.saveTextStyle(e),
+      ),
+      if (styled) ...[
+        CanvasIconButton(
+          key: const ValueKey("textStyleUpdate"),
+          icon: Icons.sync,
+          tooltip: "Change the style to this text's type -- every text in "
+              "\"${e.style}\" changes with it",
+          onPressed: () => controller.updateTextStyle(e.style, e.textSpec),
+        ),
+        CanvasTextField(
+          key: const ValueKey("textStyleName"),
+          label: "Name",
+          value: e.style,
+          width: 96,
+          onChanged: (v) {
+            controller.beginInteraction();
+            controller.renameTextStyle(e.style, v, transient: true);
+          },
+          onCommit: controller.endInteraction,
+        ),
+        CanvasIconButton(
+          key: const ValueKey("textStyleRemove"),
+          icon: Icons.bookmark_remove_outlined,
+          tooltip: "Forget the style; its texts keep their type",
+          onPressed: () => controller.removeTextStyle(e.style),
+        ),
+      ],
+    ],
+  );
 }
 
 /// _markdownSection is how each piece of a document's markdown is drawn.
@@ -1055,16 +1093,19 @@ TextPartAnimation _partPreset(
         TextPartAnimation animation, TextAnimationPreset preset) =>
     animation.copyWith(preset: preset, ease: preset.wants);
 
-/// _animationSection is how the words arrive, and how they leave.
+/// _animationCards is a text element's animation laid out as every
+/// element's is -- see elementAnimationSection: how the words come in and
+/// how they go out, each a line of tiles with the chosen kind's own
+/// settings in a card under it, and no card while None is chosen; then the
+/// loop, what a drawn mark, a cut or an echo looks like, and the easing of
+/// the keyframe the playhead is on. Pressing the kind chosen again shuts
+/// its card or opens it.
 ///
-/// Its own section, like a chart's, and for the same reason: it is a handful
-/// of choices made once and then left alone, and open by default it would be
-/// half a screen of names between the type settings and the box.
-///
-/// The presets are grouped by family because the flat list is thirty long.
-/// Grouped, the question is "what kind of arrival" and then "which one",
-/// which is how somebody actually chooses.
-Widget _animationSection(CanvasController controller, TextElement e,
+/// The kinds come first and then which of them, because thirty names in one
+/// list is a wall of text nobody reads to the end of. Choosing a kind
+/// applies the first of its presets rather than waiting for a second
+/// choice, so the canvas shows something straight away.
+Widget _animationCards(CanvasController controller, TextElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   void now(TextElement next) {
     begin();
@@ -1113,104 +1154,178 @@ Widget _animationSection(CanvasController controller, TextElement e,
     ];
   }
 
-  return CanvasExpander(
-    label: "Animation",
-    remember: "textAnimation",
-    action: animation.any ? previewButton(controller, e) : null,
-    trailing: animation.any
-        ? [
-            if (animation.on) animation.preset.label,
-            if (animation.closes) animation.exit.label,
-            if (animation.loop.on) "${animation.loop.preset.label} loop",
-          ].join(" · ")
-        : null,
+  // When it starts, how long it takes, how it eases, and -- where they mean
+  // something -- how far apart the pieces start and what size from. In the
+  // arrival's card, or the exit's where nothing arrives.
+  var span = controller.elementAnimationSpan(e);
+  List<Widget> timing() => [
+        const CanvasLineBreak(),
+        if (span case (var at?, var length?)) ...[
+          CanvasNumberField(
+            key: const ValueKey("textAnimationDelay"),
+            label: "Delay",
+            min: 0,
+            max: 100000,
+            suffix: " fr",
+            value: at.toDouble(),
+            onChanged: (v) {
+              begin();
+              controller.setElementArrivalTiming(
+                  controller.document.elementById(e.id) ?? e,
+                  delay: v.round());
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("textAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 100000,
+            suffix: " fr",
+            value: length.toDouble(),
+            onChanged: (v) {
+              begin();
+              controller.setElementArrivalTiming(
+                  controller.document.elementById(e.id) ?? e,
+                  length: v.round());
+            },
+            onCommit: commit,
+          ),
+        ] else
+          CanvasNumberField(
+            key: const ValueKey("textAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 3600,
+            suffix: " fr",
+            value: (animation.length > 0
+                    ? animation.length
+                    : controller.defaultAnimationFrames)
+                .toDouble(),
+            onChanged: (v) => live(animation.copyWith(length: v.round())),
+            onCommit: commit,
+          ),
+        easeDropdown<ChartEase>(
+          key: const ValueKey("textAnimationEase"),
+          value: animation.ease,
+          values: ChartEase.values,
+          name: (c) => c.label,
+          curve: (c) => c.apply,
+          width: 240,
+          onChanged: (v) =>
+              now(e.copyWith(animation: animation.copyWith(ease: v))),
+        ),
+        if (animation.preset.staggers || animation.exit.staggers)
+          CanvasNumberField(
+            key: const ValueKey("textAnimationGap"),
+            label: "Gap",
+            min: 0,
+            max: 4,
+            decimals: 2,
+            value: animation.gap,
+            onChanged: (v) => live(animation.copyWith(gap: v)),
+            onCommit: commit,
+          ),
+        // Where a scaling preset starts from, and on the way out where it
+        // goes: above 1 it carries the words off the screen, at 0 it
+        // shrinks them to nothing.
+        if (animation.scales)
+          CanvasNumberField(
+            key: const ValueKey("textAnimationScale"),
+            label: "From size",
+            min: 0,
+            max: 8,
+            decimals: 2,
+            value:
+                animation.scale > 0 ? animation.scale : animation.preset.from,
+            onChanged: (v) => live(animation.copyWith(scale: v)),
+            onCommit: commit,
+          ),
+      ];
+
+  var keyed =
+      keyframeEasingControls(controller, e, begin, commit, label: "Keyframe");
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
     children: [
-      // The family first, then the animation. Thirty names in one list is a
-      // wall of text nobody reads to the end of; asked in two steps the
-      // question is "what kind of arrival" and then "which one", which is how
-      // somebody actually chooses.
-      //
-      // Choosing a family applies the first of its presets rather than
-      // waiting for a second choice, so the canvas shows something
-      // immediately and the second box refines it.
-      // In a sectioned panel the kinds are tiles, as every element's are.
       _familyTiles(
           leaving: false,
           chosen: animation.on ? animation.preset.family : null,
-          onPick: (family) => controller.applyTextAnimation(
-              e,
-              family == null
-                  ? TextAnimationPreset.none
-                  : TextAnimationPreset.inFamily(family).first)),
-      CanvasControlGroup(label: "Arriving", children: [
-        notInCards(CanvasDropdown<TextAnimationFamily?>(
-          key: const ValueKey("textAnimationFamily"),
-          label: "Kind",
-          value: animation.on ? animation.preset.family : null,
-          // The same as Which beside it: the two share the line evenly.
-          width: 110,
-          options: [
-            (null, "None"),
-            for (var family in TextAnimationFamily.values)
-              (family, family.label),
+          onPick: (family) {
+            if (family != null &&
+                animation.on &&
+                animation.preset.family == family) {
+              controller.toggleCard("textArrive");
+              return;
+            }
+            controller.openCard("textArrive");
+            controller.applyTextAnimation(
+                e,
+                family == null
+                    ? TextAnimationPreset.none
+                    : TextAnimationPreset.inFamily(family).first);
+          }),
+      if (animation.on && !controller.cardShut("textArrive"))
+        CanvasControlGroup(
+          key: const ValueKey("textArriveHow"),
+          label: _textPresetName(animation.preset),
+          help: "The arrival's own settings: which of its kind, which way "
+              "the words come and how far, and when it starts, how long it "
+              "takes and how it eases.",
+          rule: false,
+          children: [
+            // A slide is one choice: which way round is the Direction's.
+            if (animation.preset.family != TextAnimationFamily.slide)
+              CanvasDropdown<TextAnimationPreset>(
+                key: const ValueKey("textAnimationPreset"),
+                label: "Which",
+                value: animation.preset,
+                width: 240,
+                options: [
+                  for (var preset
+                      in TextAnimationPreset.inFamily(animation.preset.family))
+                    (preset, preset.label),
+                ],
+                onChanged: (v) => controller.applyTextAnimation(e, v),
+              ),
+            ...motion(leaving: false),
+            ...timing(),
           ],
-          onChanged: (family) => controller.applyTextAnimation(
-              e,
-              family == null
-                  ? TextAnimationPreset.none
-                  : TextAnimationPreset.inFamily(family).first),
-        )),
-        // A slide is one choice: which way round is the Direction's.
-        if (animation.on &&
-            animation.preset.family != TextAnimationFamily.slide)
-          CanvasDropdown<TextAnimationPreset>(
-            key: const ValueKey("textAnimationPreset"),
-            label: "Which",
-            value: animation.preset,
-            width: 110,
-            options: [
-              for (var preset
-                  in TextAnimationPreset.inFamily(animation.preset.family))
-                (preset, preset.label),
-            ],
-            onChanged: (v) => controller.applyTextAnimation(e, v),
-          ),
-        if (animation.on) ...motion(leaving: false),
-      ]),
-      if (animation.on || animation.closes)
-        _familyTiles(
-            leaving: true,
-            chosen: animation.closes ? animation.exit.family : null,
-            onPick: (family) => controller.applyTextExit(
+        ),
+      // Always offered, as every element's is: words there from the first
+      // frame that leave at the end are an ordinary thing to want.
+      _familyTiles(
+          leaving: true,
+          chosen: animation.closes ? animation.exit.family : null,
+          onPick: (family) {
+            if (family != null &&
+                animation.closes &&
+                animation.exit.family == family) {
+              controller.toggleCard("textLeave");
+              return;
+            }
+            controller.openCard("textLeave");
+            controller.applyTextExit(
                 e,
                 family == null
                     ? TextAnimationPreset.none
-                    : TextAnimationPreset.inFamily(family).first)),
-      if (animation.on || animation.closes)
-        CanvasControlGroup(label: "Leaving", children: [
-          notInCards(CanvasDropdown<TextAnimationFamily?>(
-            key: const ValueKey("textAnimationExitFamily"),
-            label: "Kind",
-            value: animation.closes ? animation.exit.family : null,
-            width: 110,
-            options: [
-              (null, "None"),
-              for (var family in TextAnimationFamily.values)
-                (family, family.label),
-            ],
-            onChanged: (family) => controller.applyTextExit(
-                e,
-                family == null
-                    ? TextAnimationPreset.none
-                    : TextAnimationPreset.inFamily(family).first),
-          )),
-          if (animation.closes) ...[
+                    : TextAnimationPreset.inFamily(family).first);
+          }),
+      if (animation.closes && !controller.cardShut("textLeave"))
+        CanvasControlGroup(
+          key: const ValueKey("textLeaveHow"),
+          label: _textLeavingName(animation.exit),
+          help: "Which of its kind, which way the words go and how far, and "
+              "whether they leave in the order they came or the reverse.",
+          rule: false,
+          children: [
             if (animation.exit.family != TextAnimationFamily.slide)
               CanvasDropdown<TextAnimationPreset>(
                 key: const ValueKey("textAnimationExit"),
                 label: "Which",
                 value: animation.exit,
-                width: 110,
+                width: 240,
                 options: [
                   for (var preset
                       in TextAnimationPreset.inFamily(animation.exit.family))
@@ -1219,14 +1334,16 @@ Widget _animationSection(CanvasController controller, TextElement e,
                 onChanged: (v) => controller.applyTextExit(e, v),
               ),
             CanvasToggle(
+              key: const ValueKey("textExitInOrder"),
               label: "In the same order",
               value: animation.exitInOrder,
               onChanged: (v) => now(
                   e.copyWith(animation: animation.copyWith(exitInOrder: v))),
             ),
             ...motion(leaving: true),
+            if (!animation.on) ...timing(),
           ],
-        ]),
+        ),
       // What the words go on doing, after they have arrived or instead.
       loopGroup(
           controller,
@@ -1235,73 +1352,39 @@ Widget _animationSection(CanvasController controller, TextElement e,
           (l) => live(animation.copyWith(loop: l)),
           commit,
           keys: "text"),
+      // What a cut, a drawn mark or an echo looks like -- the settings that
+      // belong to the kind chosen, whichever way it runs.
       ..._animationBits(
         animation,
         textColor: e.textSpec.color,
-        live: (next) {
-          begin();
-          write(e.copyWith(animation: next));
-        },
+        live: live,
         done: commit,
-        timingLabel: "Timing / Keyframe",
-        // Where the arrival is on the timeline, typed -- the same two
-        // keyframes dragging moves; before there is one, how long the next
-        // is laid down.
-        timingFirst: [
-          if (controller.elementAnimationSpan(e) case (var at?, var span?)) ...[
-            CanvasNumberField(
-              key: const ValueKey("textAnimationDelay"),
-              label: "Delay",
-              min: 0,
-              max: 100000,
-              decimals: 0,
-              width: 62,
-              value: at.toDouble(),
-              onChanged: (v) {
-                begin();
-                controller.setElementArrivalTiming(
-                    controller.document.elementById(e.id) ?? e,
-                    delay: v.round());
-              },
-              onCommit: commit,
-            ),
-            CanvasNumberField(
-              key: const ValueKey("textAnimationLength"),
-              label: "Length",
-              min: 1,
-              max: 100000,
-              decimals: 0,
-              width: 62,
-              value: span.toDouble(),
-              onChanged: (v) {
-                begin();
-                controller.setElementArrivalTiming(
-                    controller.document.elementById(e.id) ?? e,
-                    length: v.round());
-              },
-              onCommit: commit,
-            ),
-          ] else
-            CanvasNumberField(
-              key: const ValueKey("textAnimationLength"),
-              label: "Length",
-              min: 1,
-              max: 3600,
-              decimals: 0,
-              width: 62,
-              value: (animation.length > 0
-                      ? animation.length
-                      : controller.defaultAnimationFrames)
-                  .toDouble(),
-              onChanged: (v) => live(animation.copyWith(length: v.round())),
-              onCommit: commit,
-            ),
-        ],
-        timingLast: keyframeEasingControls(controller, e, begin, commit,
-            label: "Keyframe"),
+        timing: false,
       ),
+      if (keyed.isNotEmpty)
+        CanvasControlGroup(
+          key: const ValueKey("textKeyframeCard"),
+          label: "This keyframe",
+          help: "How the keyframe under the playhead eases into the next.",
+          rule: false,
+          children: keyed,
+        ),
     ],
   );
+}
+
+/// _textPresetName is what an arrival is called on its card: a slide is one
+/// choice, its way round being the Direction's.
+String _textPresetName(TextAnimationPreset p) =>
+    p.family == TextAnimationFamily.slide ? "Slide" : p.label;
+
+/// _textLeavingName is [p]'s name as a way of going out: "Fade in" played
+/// backwards is "Fade out"; a name with no "in" in it needs nothing more.
+String _textLeavingName(TextAnimationPreset p) {
+  var name = _textPresetName(p);
+  return name.endsWith(" in")
+      ? "${name.substring(0, name.length - 3)} out"
+      : name;
 }
 
 /// valueDot is the diamond beside one animatable property.
@@ -1327,6 +1410,7 @@ List<Widget> _animationBits(
   List<Widget> timingFirst = const [],
   List<Widget> timingLast = const [],
   String timingLabel = "Timing",
+  bool timing = true,
 }) {
   void now(TextAnimation next) {
     live(next);
@@ -1485,7 +1569,7 @@ List<Widget> _animationBits(
           onChanged: (v) => now(a.copyWith(echo: a.echo.copyWith(resolve: v))),
         ),
       ]),
-    if (a.on || a.closes || timingLast.isNotEmpty)
+    if (timing && (a.on || a.closes || timingLast.isNotEmpty))
       CanvasControlGroup(label: timingLabel, children: [
         if (a.on || a.closes) ...[
           // Whatever the caller wants first in here -- the element's own
@@ -1715,110 +1799,37 @@ List<Widget> _markBits({
   ];
 }
 
-/// _itemRows are the element's extra pieces of writing: one row each, in the
-/// same control the element's own words get, with the slot it sits in at the
-/// front of the line and its own button at the end.
-///
-/// The same control on purpose. An item is a piece of writing like any other
-/// -- it has a face, a size, a weight and a colour -- so a second set of
-/// controls that happened to do the same things would be a second set to
-/// learn and a second one to keep in step.
-List<Widget> _itemRows(BuildContext context, TextElement e, SettingsWrite write,
+/// _itemType is the type of the piece of writing at [at], picked in the
+/// Layers: the same control the element's own words have, because a piece
+/// is a piece of writing like any other -- a face, a size, a weight and a
+/// colour -- with where it sits in the box behind its button.
+Widget _itemType(TextElement e, int at, TextItem item, SettingsWrite write,
     VoidCallback begin, VoidCallback commit) {
-  void now(List<TextItem> items) {
-    begin();
-    write(e.copyWith(items: items));
-    commit();
-  }
-
-  List<TextItem> withItem(int at, TextItem next) => [
-        for (var (i, item) in e.items.indexed) i == at ? next : item,
+  List<TextItem> withItem(TextItem next) => [
+        for (var (i, it) in e.items.indexed) i == at ? next : it,
       ];
-
-  return [
-    // The pieces themselves, directly under the element's own row, because
-    // they are the same thing: another piece of writing in the same box.
-    // Same row, same button, and nothing on the line that the element's own
-    // row does not have -- where it sits and the button that takes it away
-    // are behind the button with everything else about it.
-    for (var (i, item) in e.items.indexed)
-      if (item.isIcon)
-        _pictureRow(context, e, i, item, write, begin, commit)
-      else
-        ...typeGroups(
-          item.spec,
-          (spec) =>
-              write(e.copyWith(items: withItem(i, item.copyWith(spec: spec)))),
-          begin,
-          commit,
-          // What it says, so a column of rows says which is which -- and a
-          // name of its own where one has been typed over it.
-          label: item.says,
-          onRename: (v) => now(withItem(i, item.copyWith(name: v))),
-          remember: "textItem${item.id}",
-          colourInMore: true,
-          rule: false,
-          // The captions are written once, over the element's own row above.
-          captions: false,
-          // Its place is its slot's to decide, so the two alignment dropdowns
-          // would be controls that do nothing.
-          includeAlign: false,
-          extraMore: [
-            const CanvasLineBreak(),
-            ..._placeBits(e, i, item, write, begin, commit),
-            const CanvasLineBreak(),
-            CanvasIconButton(
-              key: ValueKey("textItemRemove$i"),
-              icon: Icons.delete_outline,
-              tooltip: "Take this piece away",
-              onPressed: () => now([
-                for (var (n, it) in e.items.indexed)
-                  if (n != i) it,
-              ]),
-            ),
-          ],
-        ),
-    // And the line that adds one, under the pieces it adds to. No caption:
-    // the rows above it are captioned with what each of them says, and a
-    // heading over a line of two buttons is a word doing nothing. The gap
-    // above it is the one every group leaves under itself.
-    CanvasControlGroup(
-        label: "Items",
-        hideCaption: true,
-        rule: false,
-        children: [
-          CanvasIconButton(
-            key: const ValueKey("textAddItem"),
-            icon: Icons.add,
-            tooltip:
-                "Another piece of writing in this box, in a place of its own",
-            onPressed: () => now([
-              ...e.items,
-              TextItem.fresh(_freeSlot(e), e.textSpec),
-            ]),
-          ),
-          // A picture is a piece like any other: the same list, the same slots,
-          // the same row and button. It was a section of its own with a place, an
-          // alignment and a gap that were nobody else's.
-          CanvasIconButton(
-            key: const ValueKey("textAddPicture"),
-            icon: Icons.add_photo_alternate_outlined,
-            tooltip: "A picture in this box, in a place of its own",
-            onPressed: () =>
-                now([...e.items, TextItem.freshIcon(_freeSlot(e))]),
-          ),
-          if (e.items.isEmpty)
-            const CanvasHint(
-                "A card is one element: a number over a title, a line of small "
-                "print under it, a name against the right-hand edge. Each piece "
-                "keeps its own type, and the words are typed on the canvas -- "
-                "click the piece and type.\n\nTwo pieces in different slots are "
-                "held to different corners, so the space between them is the "
-                "box's to decide. Two in the same slot are a stack: one under "
-                "the other, as far apart as their Gap says however big the box "
-                "is."),
-        ]),
-  ];
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: typeGroups(
+      item.spec,
+      (spec) => write(e.copyWith(items: withItem(item.copyWith(spec: spec)))),
+      begin,
+      commit,
+      label: item.says,
+      hideCaption: true,
+      remember: "textItem${item.id}",
+      colourInMore: true,
+      rule: false,
+      // Its place is its slot's to decide, so the two alignment dropdowns
+      // would be controls that do nothing.
+      includeAlign: false,
+      extraMore: [
+        const CanvasLineBreak(),
+        ..._placeBits(e, at, item, write, begin, commit),
+      ],
+    ),
+  );
 }
 
 /// _placeBits are the controls every piece has behind its button, whether it
@@ -2137,42 +2148,8 @@ Widget _pictureRow(BuildContext context, TextElement e, int at, TextItem item,
           onCommit: commit,
         ),
       ],
-      const CanvasLineBreak(),
-      CanvasIconButton(
-        key: ValueKey("textItemRemove$at"),
-        icon: Icons.delete_outline,
-        tooltip: "Take this piece away",
-        onPressed: () {
-          begin();
-          write(e.copyWith(items: [
-            for (var (i, it) in e.items.indexed)
-              if (i != at) it,
-          ]));
-          commit();
-        },
-      ),
     ],
   );
-}
-
-/// _freeSlot is where the next piece goes: the first slot nothing is in, so
-/// two pieces added one after another do not land on top of each other.
-TextSlot _freeSlot(TextElement e) {
-  var taken = {for (var item in e.items) item.slot};
-  for (var slot in const [
-    TextSlot.topLeft,
-    TextSlot.bottomLeft,
-    TextSlot.middleRight,
-    TextSlot.topRight,
-    TextSlot.bottomRight,
-    TextSlot.topCentre,
-    TextSlot.bottomCentre,
-    TextSlot.middleLeft,
-    TextSlot.middleCentre,
-  ]) {
-    if (!taken.contains(slot)) return slot;
-  }
-  return TextSlot.topLeft;
 }
 
 /// _familyTiles is the kinds of arrival -- or of exit -- as a line of tiles,

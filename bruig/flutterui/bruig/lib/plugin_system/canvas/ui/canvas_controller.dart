@@ -49,6 +49,7 @@ import 'package:bruig/plugin_system/canvas/ui/vector_shapes.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/player_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
@@ -1909,6 +1910,34 @@ class CanvasController extends ChangeNotifier {
   /// openCard opens the card [key], without a redraw of its own: it goes
   /// with the change that is about to be made.
   void openCard(String key) => _shutCards.remove(key);
+
+  /// _textLayers is the layer picked in each text element's Layers, by the
+  /// element's id: one of its pieces, by the piece's id. A text element not
+  /// in here has its own words picked. For this run of the app.
+  final Map<String, String> _textLayers = {};
+
+  /// textLayer is the piece of [e] picked in its Layers, or null for its
+  /// own words -- which is also what a piece since taken away comes back as.
+  TextItem? textLayer(TextElement e) {
+    var id = _textLayers[e.id];
+    if (id == null) return null;
+    for (var item in e.items) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  /// pickTextLayer picks the piece [itemId] of the text element [elementId]
+  /// in its Layers, or its own words with null.
+  void pickTextLayer(String elementId, String? itemId) {
+    if (_textLayers[elementId] == itemId) return;
+    if (itemId == null) {
+      _textLayers.remove(elementId);
+    } else {
+      _textLayers[elementId] = itemId;
+    }
+    notifyListeners();
+  }
 
   /// positionTool is the Position section's tool open on its shelf, Place
   /// until another is picked; null with all of them shut. The Warp tool

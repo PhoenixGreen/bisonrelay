@@ -50,7 +50,8 @@ Widget positionSection(CanvasController controller, CanvasElement e,
 /// presetsPanelSection is the designs saved of [e]'s kind, to start from or
 /// to keep this one as.
 Widget presetsPanelSection(
-    BuildContext context, CanvasController controller, CanvasElement e) {
+    BuildContext context, CanvasController controller, CanvasElement e,
+    {List<Widget> extra = const []}) {
   var store = ElementPresetStore.instance;
   var n = store.forKind(e.kind).length;
   return CanvasSection(
@@ -61,7 +62,7 @@ Widget presetsPanelSection(
         ? "Keep this design to use again"
         : "$n design${n == 1 ? "" : "s"} to start from",
     remember: "${elementKindKey(e)}.presets",
-    children: [presetsSection(context, controller, e)],
+    children: [presetsSection(context, controller, e), ...extra],
   );
 }
 
@@ -194,9 +195,11 @@ Widget section(CanvasElement e, String name,
         VoidCallback? onReset,
         bool initiallyOpen = false,
         bool forceOpen = false,
+        Widget? action,
         required List<Widget> children}) =>
     CanvasSection(
       key: ValueKey("elementSection-$name"),
+      action: action,
       icon: icon,
       title: title,
       summary: summary,

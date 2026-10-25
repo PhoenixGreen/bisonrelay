@@ -5,7 +5,7 @@ import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/chart_animation.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
@@ -95,7 +95,7 @@ void main() {
   });
 
   for (var kind in [ElementKind.text, ElementKind.chart]) {
-    testWidgets("${kind.name}: Looping, Timing / Keyframe, no hints",
+    testWidgets("${kind.name}: Looping, timing in the arrival's card",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var doc = const CanvasDocument().copyWith(frames: 120);
@@ -139,14 +139,80 @@ void main() {
       await tester.pumpAndSettle();
       expect(CanvasController.elementLoopOf(c.selected!).on, isTrue);
       if (kind == ElementKind.text) {
-        expect(find.text("Timing / Keyframe"), findsOneWidget);
+        // When and how long, in the card under the kind it arrives as, as
+        // a picture's are -- not a timing group of their own.
+        expect(find.text("Timing / Keyframe"), findsNothing);
         expect(
-            find.byKey(const ValueKey("textAnimationDelay")), findsOneWidget);
+            find.descendant(
+                of: find.byKey(const ValueKey("textArriveHow")),
+                matching: find.byKey(const ValueKey("textAnimationDelay"))),
+            findsOneWidget);
         expect(find.byKey(const ValueKey("textAnimationDirection")),
             findsOneWidget,
             reason: "a slide is one choice with a Direction");
         expect(find.byKey(const ValueKey("textAnimationPreset")), findsNothing);
       }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (var kind in [ElementKind.text, ElementKind.chart]) {
+    testWidgets(
+        "${kind.name}: no card under None, and a way out always offered",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var doc = const CanvasDocument().copyWith(frames: 120);
+      var e = newElement(kind, doc);
+      var c = CanvasController(doc.addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly(e.id);
+      tester.view.physicalSize = const Size(900, 6000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      var keys = kind == ElementKind.text ? "text" : "chart";
+      var leave = find.byKey(ValueKey("${keys}LeaveKinds"));
+      if (leave.evaluate().isEmpty) {
+        var heading = find.text("ANIMATION");
+        await tester.ensureVisible(heading.first);
+        await tester.tap(heading.first);
+        await tester.pumpAndSettle();
+      }
+      // Nothing arrives, and still the way out is there to choose.
+      expect(find.byKey(ValueKey("${keys}ArriveKinds")), findsOneWidget);
+      expect(leave, findsOneWidget);
+      expect(find.byKey(ValueKey("${keys}ArriveHow")), findsNothing);
+      expect(find.byKey(ValueKey("${keys}LeaveHow")), findsNothing);
+
+      // Chosen, its card; pressed again, the card shuts and it stays chosen.
+      var tile = find.byKey(ValueKey(
+          kind == ElementKind.text ? "textLeave-fade" : "chartLeave-fadeIn"));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey("${keys}LeaveHow")), findsOneWidget);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey("${keys}LeaveHow")), findsNothing);
+      var el = c.document.elementById(e.id)!;
+      expect(
+          el is TextElement
+              ? el.animation.closes
+              : (el as ChartElement).animation.closes,
+          isTrue);
       expect(tester.takeException(), isNull);
     });
   }

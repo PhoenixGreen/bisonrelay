@@ -133,7 +133,6 @@ class _ImageSavedState extends State<ImageSaved> {
               label: "Name",
               value: name,
               width: 130,
-              grow: false,
               onChanged: (v) => setState(() => _name = v),
             ),
             CanvasIconButton(

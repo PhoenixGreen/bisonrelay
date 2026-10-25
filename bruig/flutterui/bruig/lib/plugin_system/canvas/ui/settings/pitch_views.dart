@@ -127,7 +127,6 @@ class _PitchSavedViewsState extends State<PitchSavedViews> {
               label: "Name",
               value: name,
               width: 96,
-              grow: false,
               onChanged: (v) => setState(() => _name = v),
             ),
             CanvasIconButton(

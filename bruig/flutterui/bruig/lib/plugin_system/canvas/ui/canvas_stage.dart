@@ -1338,6 +1338,8 @@ class CanvasStageState extends State<CanvasStage>
     // Backwards: the last one drawn is the one on top, and two pieces put in
     // the same slot overlap only where one of them was dragged there.
     for (var i = e.items.length - 1; i >= 0; i--) {
+      // Hidden or locked in the Layers, it is not there to be pressed.
+      if (e.items[i].hidden || e.items[i].locked) continue;
       if (!rects[i].isEmpty && rects[i].inflate(2).contains(doc)) {
         return e.items[i];
       }
@@ -2218,6 +2220,9 @@ class CanvasStageState extends State<CanvasStage>
         // the element's when it landed on neither.
         _editingItem = _textItemAt(element, doc)?.id;
       });
+      // The piece being typed into is the one picked in its Layers, so its
+      // settings are the ones showing.
+      controller.pickTextLayer(element.id, _editingItem);
       _mode = _DragMode.none;
       return;
     }

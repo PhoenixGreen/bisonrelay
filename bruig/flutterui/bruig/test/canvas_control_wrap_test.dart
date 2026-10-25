@@ -190,11 +190,12 @@ void main() {
   });
 
   group("the text element's type card", () {
-    testWidgets("pairs its settings, two to a line, in an ordinary sidebar",
+    testWidgets("gives the face a line to itself rather than cut its name",
         (tester) async {
-      // In a card the controls are a size up, so four to a line no longer
-      // fits a narrow sidebar: the face and the size share one, the weight
-      // and the colour the next.
+      // In a card the controls are a size up, and the face's longest name
+      // between two arrows is wider than half a narrow sidebar: beside the
+      // size it was cut to "Times N…". It takes the line instead, and the
+      // size under it has a line too.
       var document = const CanvasDocument();
       var element = newElement(ElementKind.text, document);
       var controller = CanvasController(document.addElement(element));
@@ -206,8 +207,10 @@ void main() {
           find.ancestor(of: of, matching: find.byType(type)).first;
       var font = tester.getRect(box(find.text("Font"), CanvasDropdown<String>));
       var size = tester.getRect(box(find.text("Size"), CanvasStepper));
-      expect(size.top, closeTo(font.top, 0.5), reason: "Size beside Font");
-      expect(size.right, lessThanOrEqualTo(360 + 0.5));
+      expect(size.top, greaterThan(font.bottom), reason: "Size under Font");
+      expect(size.width, closeTo(font.width, 0.5),
+          reason: "each fills its line");
+      expect(font.right, lessThanOrEqualTo(360 + 0.5));
       expect(tester.takeException(), isNull);
     });
   });
@@ -230,21 +233,22 @@ void main() {
       // plain Wrap -- so where every other line of settings reached the
       // right-hand margin, the list of points stopped a third of the way
       // across and left the rest of every row empty.
-      var id = await path(tester, 300);
-      var narrow = tester.getRect(find.byKey(ValueKey("node-x-0-$id"))).width;
-
-      id = await path(tester, 420);
-      var wide = tester.getRect(find.byKey(ValueKey("node-x-0-$id"))).width;
-      expect(wide, greaterThan(narrow));
-
-      // And the three of them in columns, which is what makes a list of
-      // points readable down the page rather than across it.
+      var id = await path(tester, 420);
       var frame = tester.getRect(find.byKey(ValueKey("node-frame-0-$id")));
-      for (var key in ["node-x-0-$id", "node-y-0-$id"]) {
-        expect(tester.getRect(find.byKey(ValueKey(key))).width,
-            closeTo(frame.width, 0.5),
-            reason: key);
-      }
+      var x = tester.getRect(find.byKey(ValueKey("node-x-0-$id")));
+      var y = tester.getRect(find.byKey(ValueKey("node-y-0-$id")));
+      // The frame and X share a line and reach the card's far side...
+      expect(x.top, closeTo(frame.top, 0.5));
+      expect(x.right, greaterThan(420 - 60), reason: "$x");
+      // ...and Y, wrapped under them, keeps their column rather than
+      // filling a line of its own: a list of points is read down the page.
+      expect(y.left, closeTo(frame.left, 0.5));
+      expect(y.width, closeTo(frame.width, 0.5));
+
+      // Narrower, a number with a line to itself has the whole of it.
+      id = await path(tester, 300);
+      var narrow = tester.getRect(find.byKey(ValueKey("node-x-0-$id")));
+      expect(narrow.right, greaterThan(300 - 60), reason: "$narrow");
     });
 
     testWidgets("keep the two frames on one line", (tester) async {

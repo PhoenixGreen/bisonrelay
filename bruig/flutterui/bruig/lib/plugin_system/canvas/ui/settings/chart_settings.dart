@@ -141,6 +141,9 @@ List<Widget> chartSettings(
         icon: Icons.cloud_download_outlined,
         title: "Data source",
         summary: e.source.kind.label,
+        action: sourceRefreshButton(
+            context, controller, e, write, begin, commit,
+            whenOff: true),
         children: [
           chartSourceSection(context, controller, e, write, begin, commit),
         ]),
@@ -831,7 +834,6 @@ List<Widget> chartSettings(
                   hint: "\$",
                   value: e.numbers.before,
                   width: 56,
-                  grow: false,
                   onChanged: (v) {
                     begin();
                     write(e.copyWith(
@@ -846,7 +848,6 @@ List<Widget> chartSettings(
                   hint: " DCR",
                   value: e.numbers.after,
                   width: 64,
-                  grow: false,
                   onChanged: (v) {
                     begin();
                     write(e.copyWith(
@@ -1072,219 +1073,186 @@ List<Widget> chartSettings(
           ? "Arrives with the scene"
           : [
               if (e.animation.on) "In: ${e.animation.preset.label}",
-              if (e.animation.closes) "Out: ${e.animation.exit.label}",
+              if (e.animation.closes)
+                "Out: ${_chartLeavingName(e.animation.exit)}",
               if (e.animation.loop.on) "Loops",
             ].join(" · "),
       remember: "chart.animation",
+      action: e.animation.any ? previewButton(controller, e) : null,
       children: [
-        boxed(
-          context,
-          CanvasExpander(
-            label: "Animation",
-            remember: "chartAnimation",
-            flat: true,
-            action: e.animation.any ? previewButton(controller, e) : null,
-            trailing: e.animation.any
-                ? [
-                    if (e.animation.on) e.animation.preset.label,
-                    if (e.animation.closes) e.animation.exit.label,
-                    if (e.animation.loop.on)
-                      "${e.animation.loop.preset.label} loop",
-                  ].join(" · ")
-                : null,
-            children: [
-              // A dropdown rather than a row of switches, which is what this was.
-              // Switches say "any number of these", and only one of them can be
-              // on; the one that is on is also the hardest to find, since it
-              // looks like the seven that are not. It is one choice out of a
-              // list, which is what a dropdown is for -- and it now reads the
-              // same as every other element's animation section.
-              onlyInCards(_chartPresetTiles(e,
-                  leaving: false,
-                  chosen: e.animation.preset,
-                  onPick: (p) => controller.applyChartAnimation(e, p))),
-              CanvasControlGroup(label: "Arriving", children: [
-                notInCards(CanvasDropdown<ChartAnimationPreset>(
-                  key: const ValueKey("chartAnimationPreset"),
-                  label: "Draws on",
-                  value: e.animation.preset,
-                  width: 168,
-                  options: [
-                    for (var preset in ChartAnimationPreset.values)
-                      if (preset == ChartAnimationPreset.none ||
-                          (e.type.isCircular
-                              ? preset.suitsCircular
-                              : preset.suitsCartesian))
-                        (
-                          preset,
-                          preset == ChartAnimationPreset.none
-                              ? "None"
-                              : preset.label
-                        ),
-                  ],
-                  // Choosing applies it and lays the keyframes together: a preset
-                  // with nothing pinning the reveal channel draws exactly what a
-                  // still chart draws.
-                  onChanged: (preset) =>
-                      controller.applyChartAnimation(e, preset),
-                )),
-              ]),
-              // The way out, using the same presets played backwards. A second
-              // list of "fade out, shrink away, unwipe" would be this list
-              // reversed and two lists to keep in step.
-              // Always offered, unlike the text element's, which hides this until
-              // something arrives. A chart that is there from the first frame and
-              // leaves at the end is an ordinary thing to want, and it was
-              // possible here before.
-              onlyInCards(_chartPresetTiles(e,
-                  leaving: true,
-                  chosen: e.animation.exit,
-                  onPick: (p) => controller.applyChartExit(e, p))),
-              CanvasControlGroup(label: "Leaving", children: [
-                notInCards(CanvasDropdown<ChartAnimationPreset>(
-                  key: const ValueKey("chartAnimationExit"),
-                  label: "Goes off",
-                  value: e.animation.exit,
-                  width: 168,
-                  options: [
-                    for (var preset in ChartAnimationPreset.values)
-                      if (preset == ChartAnimationPreset.none ||
-                          (e.type.isCircular
-                              ? preset.suitsCircular
-                              : preset.suitsCartesian))
-                        (
-                          preset,
-                          preset == ChartAnimationPreset.none
-                              ? "None"
-                              : "${preset.label}, reversed"
-                        ),
-                  ],
-                  onChanged: (preset) => controller.applyChartExit(e, preset),
-                )),
-                // Which end it starts from, which is a different question from
-                // which preset. Reversed is the entrance run backwards, so the
-                // last bar sinks first and the chart unwinds; in order runs the
-                // same shrinking front to back, so it empties from the left.
-                if (e.animation.closes)
-                  CanvasToggle(
-                    label: "In the same order",
-                    value: e.animation.exitInOrder,
-                    onChanged: (v) => now(e.copyWith(
-                        animation: e.animation.copyWith(exitInOrder: v))),
-                  ),
-              ]),
-              // What the chart goes on doing, after it has arrived or instead.
-              loopGroup(
-                  controller,
-                  e.animation.loop,
-                  (l) =>
-                      now(e.copyWith(animation: e.animation.copyWith(loop: l))),
-                  (l) {
-                begin();
-                write(e.copyWith(animation: e.animation.copyWith(loop: l)));
-              }, commit, keys: "chart"),
-              // When it comes in and how it is paced, and -- on the line below
-              // -- how it travels out of the keyframe the playhead is on.
-              if (e.animation.on ||
-                  e.animation.closes ||
-                  (e.track?.keys.isNotEmpty ?? false))
-                CanvasControlGroup(label: "Timing / Keyframe", children: [
-                  if (e.animation.on || e.animation.closes) ...[
-                    if (controller.elementAnimationSpan(e)
-                        case (var at?, var span?)) ...[
-                      CanvasNumberField(
-                        key: const ValueKey("chartAnimationDelay"),
-                        label: "Delay",
-                        min: 0,
-                        max: 100000,
-                        decimals: 0,
-                        width: 62,
-                        value: at.toDouble(),
-                        onChanged: (v) {
-                          begin();
-                          controller.setElementArrivalTiming(
-                              controller.document.elementById(e.id) ?? e,
-                              delay: v.round());
-                        },
-                        onCommit: commit,
-                      ),
-                      CanvasNumberField(
-                        key: const ValueKey("chartAnimationLength"),
-                        label: "Length",
-                        min: 1,
-                        max: 100000,
-                        decimals: 0,
-                        width: 62,
-                        value: span.toDouble(),
-                        onChanged: (v) {
-                          begin();
-                          controller.setElementArrivalTiming(
-                              controller.document.elementById(e.id) ?? e,
-                              length: v.round());
-                        },
-                        onCommit: commit,
-                      ),
-                    ] else
-                      CanvasNumberField(
-                        key: const ValueKey("chartAnimationLength"),
-                        label: "Length",
-                        min: 1,
-                        max: 3600,
-                        decimals: 0,
-                        width: 62,
-                        value: (e.animation.length > 0
-                                ? e.animation.length
-                                : controller.defaultAnimationFrames)
-                            .toDouble(),
-                        onChanged: (v) {
-                          begin();
-                          write(e.copyWith(
-                              animation:
-                                  e.animation.copyWith(length: v.round())));
-                        },
-                        onCommit: commit,
-                      ),
-                    easeDropdown<ChartEase>(
-                      key: const ValueKey("chartAnimationEase"),
-                      value: e.animation.ease,
-                      values: ChartEase.values,
-                      name: (c) => c.label,
-                      curve: (c) => c.apply,
-                      onChanged: (v) => now(
-                          e.copyWith(animation: e.animation.copyWith(ease: v))),
-                    ),
-                    // Only where there is more than one thing to space out. A
-                    // wipe and a sweep are one edge crossing everything at once.
-                    if (e.animation.preset.staggers ||
-                        e.animation.exit.staggers)
-                      CanvasNumberField(
-                        key: const ValueKey("chartAnimationGap"),
-                        label: "Gap",
-                        min: 0,
-                        max: 4,
-                        decimals: 2,
-                        width: 62,
-                        value: e.animation.gap,
-                        onChanged: (v) {
-                          begin();
-                          write(e.copyWith(
-                              animation: e.animation.copyWith(gap: v)));
-                        },
-                        onCommit: commit,
-                      ),
-                    const CanvasLineBreak(),
-                  ],
-                  ...keyframeEasingControls(controller, e, begin, commit,
-                      label: "Keyframe"),
-                ]),
-            ],
-          ),
-        ),
+        _chartAnimationCards(controller, e, write, begin, commit),
         ...elementTimingCards(controller, e),
       ],
     ),
   ];
 }
+
+/// _chartAnimationCards is a chart's animation laid out as every element's
+/// is -- see elementAnimationSection: how it comes in and how it goes out,
+/// each a line of tiles with the chosen kind's own settings in a card under
+/// it, and no card at all while None is chosen; then its loop, and the
+/// easing of the keyframe the playhead is on. Pressing the kind chosen
+/// again shuts its card or opens it.
+Widget _chartAnimationCards(CanvasController controller, ChartElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var a = e.animation;
+  void now(ChartAnimation next) {
+    begin();
+    write(e.copyWith(animation: next));
+    commit();
+  }
+
+  void live(ChartAnimation next) {
+    begin();
+    write(e.copyWith(animation: next));
+  }
+
+  var span = controller.elementAnimationSpan(e);
+  // When it comes in, how long it takes and how it eases -- in the arrival's
+  // card, or in the exit's where nothing arrives.
+  List<Widget> timing() => [
+        if (span case (var at?, var length?)) ...[
+          CanvasNumberField(
+            key: const ValueKey("chartAnimationDelay"),
+            label: "Delay",
+            min: 0,
+            max: 100000,
+            suffix: " fr",
+            value: at.toDouble(),
+            onChanged: (v) {
+              begin();
+              controller.setElementArrivalTiming(
+                  controller.document.elementById(e.id) ?? e,
+                  delay: v.round());
+            },
+            onCommit: commit,
+          ),
+          CanvasNumberField(
+            key: const ValueKey("chartAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 100000,
+            suffix: " fr",
+            value: length.toDouble(),
+            onChanged: (v) {
+              begin();
+              controller.setElementArrivalTiming(
+                  controller.document.elementById(e.id) ?? e,
+                  length: v.round());
+            },
+            onCommit: commit,
+          ),
+        ] else
+          CanvasNumberField(
+            key: const ValueKey("chartAnimationLength"),
+            label: "Length",
+            min: 1,
+            max: 3600,
+            suffix: " fr",
+            value: (a.length > 0 ? a.length : controller.defaultAnimationFrames)
+                .toDouble(),
+            onChanged: (v) => live(a.copyWith(length: v.round())),
+            onCommit: commit,
+          ),
+        easeDropdown<ChartEase>(
+          key: const ValueKey("chartAnimationEase"),
+          value: a.ease,
+          values: ChartEase.values,
+          name: (c) => c.label,
+          curve: (c) => c.apply,
+          width: 240,
+          onChanged: (v) => now(a.copyWith(ease: v)),
+        ),
+        // Only where there is more than one thing to space out. A wipe and
+        // a sweep are one edge crossing everything at once.
+        if (a.preset.staggers || a.exit.staggers)
+          CanvasNumberField(
+            key: const ValueKey("chartAnimationGap"),
+            label: "Gap",
+            min: 0,
+            max: 4,
+            decimals: 2,
+            value: a.gap,
+            onChanged: (v) => live(a.copyWith(gap: v)),
+            onCommit: commit,
+          ),
+      ];
+  var keyed =
+      keyframeEasingControls(controller, e, begin, commit, label: "Keyframe");
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _chartPresetTiles(e, leaving: false, chosen: a.preset, onPick: (p) {
+        if (p != ChartAnimationPreset.none && a.preset == p) {
+          controller.toggleCard("chartArrive");
+          return;
+        }
+        controller.openCard("chartArrive");
+        controller.applyChartAnimation(e, p);
+      }),
+      if (a.on && !controller.cardShut("chartArrive"))
+        CanvasControlGroup(
+          key: const ValueKey("chartArriveHow"),
+          label: a.preset.label,
+          help: "When the chart starts being drawn on, how long it takes, "
+              "how it eases, and how far apart its bars or points start.",
+          rule: false,
+          children: timing(),
+        ),
+      // The way out, using the same presets played backwards: a second list
+      // of "fade out, shrink away, unwipe" would be this list reversed and
+      // two lists to keep in step. Offered whether or not anything arrives:
+      // a chart there from the first frame that leaves at the end is an
+      // ordinary thing to want.
+      _chartPresetTiles(e, leaving: true, chosen: a.exit, onPick: (p) {
+        if (p != ChartAnimationPreset.none && a.exit == p) {
+          controller.toggleCard("chartLeave");
+          return;
+        }
+        controller.openCard("chartLeave");
+        controller.applyChartExit(e, p);
+      }),
+      if (a.closes && !controller.cardShut("chartLeave"))
+        CanvasControlGroup(
+          key: const ValueKey("chartLeaveHow"),
+          label: _chartLeavingName(a.exit),
+          help: "Which end it empties from. Reversed is the entrance run "
+              "backwards, so the last bar sinks first and the chart unwinds; "
+              "in the same order runs it front to back, so it empties from "
+              "the left.",
+          rule: false,
+          children: [
+            CanvasToggle(
+              key: const ValueKey("chartExitInOrder"),
+              label: "In the same order",
+              value: a.exitInOrder,
+              onChanged: (v) => now(a.copyWith(exitInOrder: v)),
+            ),
+            if (!a.on) ...timing(),
+          ],
+        ),
+      // What the chart goes on doing, after it has arrived or instead.
+      loopGroup(controller, a.loop, (l) => now(a.copyWith(loop: l)),
+          (l) => live(a.copyWith(loop: l)), commit,
+          keys: "chart"),
+      if (keyed.isNotEmpty)
+        CanvasControlGroup(
+          key: const ValueKey("chartKeyframeCard"),
+          label: "This keyframe",
+          help: "How the keyframe under the playhead eases into the next.",
+          rule: false,
+          children: keyed,
+        ),
+    ],
+  );
+}
+
+/// _chartLeavingName is [p]'s name as a way of going out: "Fade in" played
+/// backwards is "Fade out"; a name with no "in" in it needs nothing more.
+String _chartLeavingName(ChartAnimationPreset p) => p.label.endsWith(" in")
+    ? "${p.label.substring(0, p.label.length - 3)} out"
+    : p.label;
 
 /// _chartPresetTiles is a chart's arrivals -- or exits -- as a line of
 /// tiles, in a sectioned panel, as every element's animation is.
@@ -1308,8 +1276,13 @@ Widget _chartPresetTiles(ChartElement e,
               (e.type.isCircular
                   ? preset.suitsCircular
                   : preset.suitsCartesian))
-            CanvasTile(preset,
-                preset == ChartAnimationPreset.none ? "None" : preset.label,
+            CanvasTile(
+                preset,
+                preset == ChartAnimationPreset.none
+                    ? "None"
+                    : leaving
+                        ? _chartLeavingName(preset)
+                        : preset.label,
                 icon: _chartPresetIcon(preset)),
       ],
       selected: (p) => p == chosen,

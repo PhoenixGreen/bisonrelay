@@ -62,6 +62,9 @@ List<Widget> tableSettings(
           icon: Icons.cloud_download_outlined,
           title: "Data source",
           summary: e.source.kind.label,
+          action: sourceRefreshButton(
+              context, controller, e, write, begin, commit,
+              whenOff: true),
           children: [
             dataSourceSection(context, controller, e, write, begin, commit),
           ]),
@@ -79,6 +82,9 @@ List<Widget> tableSettings(
           // without opening anything. It is the only thing this section does
           // that anybody wants without reading it.
           action: CanvasIconButton(
+            key: const ValueKey("tableSortApply"),
+            // On the section's heading, level with its arrow.
+            tight: true,
             icon: Icons.refresh,
             tooltip: e.sort.on
                 ? "Put the rows back in this order"
@@ -92,14 +98,19 @@ List<Widget> tableSettings(
                 : null,
           ),
           children: [
-            CanvasHint("Choose a column to order the rows by. The second and "
-                "third only decide the rows the one before them left equal — "
-                "for a league table that is points, then goal difference, "
-                "then goals scored. Sorting happens when you press Sort, not "
-                "as you type."),
             for (var level = 0; level < 3; level++)
               CanvasControlGroup(
                 label: level == 0 ? "Order by" : "Then by",
+                // Beside the first heading rather than on the section's:
+                // it is about these three, not the numbering under them.
+                help: level == 0
+                    ? "Choose a column to order the rows by. The second and "
+                        "third only decide the rows the one before them left "
+                        "equal — for a league table that is points, then goal "
+                        "difference, then goals scored. The rows are put in "
+                        "order when you press the refresh button on this "
+                        "section's heading, not as you type."
+                    : null,
                 children: [
                   CanvasDropdown<int>(
                     label: "Column",

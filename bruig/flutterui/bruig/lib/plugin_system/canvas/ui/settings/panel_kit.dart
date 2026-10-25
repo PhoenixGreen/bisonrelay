@@ -1376,19 +1376,15 @@ class _CanvasSectionState extends State<CanvasSection> {
                     decoration:
                         BoxDecoration(color: accent, shape: BoxShape.circle),
                   ),
-                const SizedBox(width: 6),
-                AnimatedRotation(
-                  turns: open ? 0.25 : 0,
-                  duration: const Duration(milliseconds: 120),
-                  child: Icon(Icons.chevron_right, size: 20, color: muted),
-                ),
               ]),
             ),
           ),
         ),
       ),
       // Outside the heading's ink, so pressing them does not also fold
-      // the section: what it is for, and what it does shut.
+      // the section: what it is for, and what it does shut. All of them
+      // left of the fold's arrow, which keeps the far right of every
+      // heading in the panel, whatever buttons a section has.
       if (_help.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(right: 6),
@@ -1401,7 +1397,7 @@ class _CanvasSectionState extends State<CanvasSection> {
         ),
       if (open && changed && widget.onReset != null)
         Padding(
-          padding: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.only(right: 6),
           child: CanvasIconButton(
             key: ValueKey("sectionReset-${widget.remember}"),
             tight: true,
@@ -1410,6 +1406,22 @@ class _CanvasSectionState extends State<CanvasSection> {
             onPressed: () => widget.onReset?.call(),
           ),
         ),
+      Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: ValueKey("sectionFold-${widget.remember}"),
+          borderRadius: BorderRadius.circular(8),
+          onTap: _toggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 10, 8),
+            child: AnimatedRotation(
+              turns: open ? 0.25 : 0,
+              duration: const Duration(milliseconds: 120),
+              child: Icon(Icons.chevron_right, size: 20, color: muted),
+            ),
+          ),
+        ),
+      ),
     ]);
   }
 

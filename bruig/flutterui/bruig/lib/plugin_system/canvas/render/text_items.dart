@@ -173,7 +173,7 @@ void paintTextItems(
   var rects = textItemRects(e, bounds);
   for (var (i, item) in e.items.indexed) {
     var rect = rects[i];
-    if (rect.isEmpty || item.id == skip) continue;
+    if (rect.isEmpty || item.id == skip || item.hidden) continue;
 
     // What is behind it, if anything, and then the piece inside that.
     paintBox(canvas, rect, item.box, images);

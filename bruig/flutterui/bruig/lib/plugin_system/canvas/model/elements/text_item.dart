@@ -155,6 +155,15 @@ class TextItem {
   /// them, one per side, was four fields saying what two say.
   final double side;
 
+  /// hidden is a piece left out of the drawing while it stays in its place:
+  /// the eye on its row in the Layers. What is under it in its slot does not
+  /// move up, as a picture's hidden layer moves nothing either.
+  final bool hidden;
+
+  /// locked is a piece the canvas will not open for typing: the lock on its
+  /// row in the Layers, kept as it is while the others are worked on.
+  final bool locked;
+
   const TextItem({
     required this.id,
     this.text = "",
@@ -165,6 +174,8 @@ class TextItem {
     this.box = const BoxSpec(padding: 0),
     this.gap = 0,
     this.side = 0,
+    this.hidden = false,
+    this.locked = false,
   });
 
   /// isIcon is whether this piece is a picture.
@@ -201,6 +212,8 @@ class TextItem {
     BoxSpec? box,
     double? gap,
     double? side,
+    bool? hidden,
+    bool? locked,
   }) =>
       TextItem(
         id: id,
@@ -212,6 +225,8 @@ class TextItem {
         box: box ?? this.box,
         gap: gap ?? this.gap,
         side: side ?? this.side,
+        hidden: hidden ?? this.hidden,
+        locked: locked ?? this.locked,
       );
 
   /// scaledBy is this piece at [by] times the size: its type, the room it
@@ -249,6 +264,8 @@ class TextItem {
         if (box.fill.a > 0 || box.hasBorder || box.padding != 0)
           "box": box.toJson(),
         "spec": spec.toJson(),
+        if (hidden) "hid": true,
+        if (locked) "lock": true,
       };
 
   factory TextItem.fromJson(Map<String, dynamic> json) => TextItem(
@@ -276,6 +293,8 @@ class TextItem {
         spec: json["spec"] is Map<String, dynamic>
             ? TextSpec.fromJson((json["spec"] as Map).cast<String, dynamic>())
             : const TextSpec(),
+        hidden: json["hid"] == true,
+        locked: json["lock"] == true,
       );
 }
 
