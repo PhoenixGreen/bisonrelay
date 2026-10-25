@@ -1,0 +1,404 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+
+// character_rig.dart is where a character's joints are, for a pose: the one
+// answer the painter draws from and the stage puts its pins on.
+//
+// Forward, a pose's angles are walked down the skeleton to points. Backward,
+// a point a hand or a foot is dragged to is turned into the two angles of the
+// arm or leg that reach it (solveLimb). Both are plain arithmetic on the box
+// the character is drawn in, so the stage, the export and the tests agree to
+// the last decimal.
+
+/// CharacterLimb is an arm or a leg: two bones and the joint they end at.
+enum CharacterLimb {
+  armL(CharacterBone.upperArmL, CharacterBone.foreArmL),
+  armR(CharacterBone.upperArmR, CharacterBone.foreArmR),
+  legL(CharacterBone.thighL, CharacterBone.shinL),
+  legR(CharacterBone.thighR, CharacterBone.shinR);
+
+  final CharacterBone upper;
+  final CharacterBone lower;
+  const CharacterLimb(this.upper, this.lower);
+
+  bool get isArm => this == armL || this == armR;
+  bool get onLeft => this == armL || this == legL;
+
+  /// bend is which way the middle joint points: elbows out from the body
+  /// and knees out over the feet, which is how a figure seen from the front
+  /// reads as natural. 1 is towards the page's left.
+  double get bend => onLeft ? 1 : -1;
+}
+
+/// CharacterRig is a character's joints for one pose, in the box it is drawn
+/// in.
+class CharacterRig {
+  /// unit is one head length on the page.
+  final double unit;
+
+  /// below is the length of the body under the chin.
+  final double below;
+
+  final double shoulderHalf;
+  final double hipHalf;
+
+  final double neckLength;
+  final double torsoLength;
+  final double upperArm;
+  final double foreArm;
+  final double thigh;
+  final double shin;
+
+  /// limbWidth is how thick an arm is drawn, and legWidth a leg.
+  final double limbWidth;
+  final double legWidth;
+
+  /// Joints, on the page.
+  final Offset hips;
+  final Offset chest;
+  final Offset neck;
+  final Offset headCentre;
+  /// headTurn and bodyTurn are how far the head and the body lean on the
+  /// page, in degrees: their tilt as drawn, whatever way they are turned.
+  final double headTurn;
+  final double bodyTurn;
+  final Offset shoulderL, shoulderR, elbowL, elbowR, wristL, wristR;
+  final Offset hipL, hipR, kneeL, kneeR, ankleL, ankleR;
+
+  /// yaw is the whole body turned away from the reader, in degrees -- see
+  /// CharacterPose.turn.
+  final double yaw;
+
+  /// depths is how near the reader each limb is, from the middle of the
+  /// body: more is nearer. What decides which arm is drawn in front.
+  final Map<CharacterLimb, double> depths;
+
+  /// swings is how far each limb's two bones are swung forward of the body,
+  /// in degrees: what a side view needs to point a foot.
+  final Map<CharacterLimb, double> footSwing;
+
+  const CharacterRig._({
+    required this.unit,
+    required this.below,
+    required this.shoulderHalf,
+    required this.hipHalf,
+    required this.neckLength,
+    required this.torsoLength,
+    required this.upperArm,
+    required this.foreArm,
+    required this.thigh,
+    required this.shin,
+    required this.limbWidth,
+    required this.legWidth,
+    required this.hips,
+    required this.chest,
+    required this.neck,
+    required this.headCentre,
+    required this.headTurn,
+    required this.bodyTurn,
+    required this.shoulderL,
+    required this.shoulderR,
+    required this.elbowL,
+    required this.elbowR,
+    required this.wristL,
+    required this.wristR,
+    required this.hipL,
+    required this.hipR,
+    required this.kneeL,
+    required this.kneeR,
+    required this.ankleL,
+    required this.ankleR,
+    required this.yaw,
+    required this.depths,
+    required this.footSwing,
+  });
+
+  /// footDrop is how far below the ankle the sole is, as a share of the
+  /// body under the chin; the rest of that body is neck, torso and legs.
+  static const double _neck = 0.06,
+      _torso = 0.36,
+      _thigh = 0.26,
+      _shin = 0.26,
+      footDrop = 0.06;
+
+  /// of lays out [dna] standing in [pose], filling the height of [box].
+  /// [breath] lifts the chest, and the shoulders and head with it, as a
+  /// breath in does: 0 out, 1 in.
+  factory CharacterRig.of(CharacterDna dna, CharacterPose pose, Rect box,
+      {double breath = 0}) {
+    var heads = dna.headsTall;
+    var unit = box.height / heads;
+    var below = (heads - 1) * unit;
+    var broad = 0.85 + 0.3 * dna.build;
+    var shoulderHalf = (0.25 + 0.1 * heads) * unit * broad;
+    var hipHalf = shoulderHalf * 0.62;
+    var neckLength = below * _neck;
+    var torsoLength = below * _torso;
+    var thigh = below * _thigh;
+    var shin = below * _shin;
+    // Arms reach to about the middle of the thigh, at any height.
+    var arm = torsoLength + thigh * 0.45;
+    var upperArm = arm * 0.52;
+    var foreArm = arm * 0.48;
+    var limbWidth = shoulderHalf * (0.27 + 0.1 * dna.build);
+    var legWidth = hipHalf * 0.78;
+
+    var cx = box.center.dx;
+    var hipY =
+        box.top + unit + neckLength + torsoLength - pose.lift * unit;
+    var yawR = pose.turn * math.pi / 180;
+    var cosY = math.cos(yawR), sinY = math.sin(yawR);
+
+    // Worked out in the body's own space -- x across it to the page's
+    // right when it faces the reader, y down, z towards the reader -- from
+    // the hips, then turned with the body and laid flat on the page.
+    _M3 bone(CharacterBone b) =>
+        _M3.z(pose[b]) * _M3.x(pose.swing(b));
+    Offset page(_V3 v) => Offset(cx + v.x * cosY - v.z * sinY, hipY + v.y);
+    double depth(_V3 v) => v.x * sinY + v.z * cosY;
+
+    const origin = _V3(0, 0, 0);
+    var spine = bone(CharacterBone.spine);
+    var chest3 =
+        origin + spine.on(_V3(0, -(torsoLength + breath * unit * 0.035), 0));
+    var neck3 = chest3 + spine.on(_V3(0, -neckLength, 0));
+    var head = spine * _M3.z(pose[CharacterBone.head]);
+    var head3 = neck3 + head.on(_V3(0, -unit * 0.5, 0));
+
+    var shoulderL3 = chest3 + spine.on(_V3(-shoulderHalf * 0.86, 0, 0));
+    var shoulderR3 = chest3 + spine.on(_V3(shoulderHalf * 0.86, 0, 0));
+    var hipL3 = _V3(-hipHalf * 0.55, 0, 0);
+    var hipR3 = _V3(hipHalf * 0.55, 0, 0);
+
+    (_V3, _V3) reach(_V3 from, _M3 parent, CharacterLimb limb, double a,
+        double b) {
+      var upper = parent * bone(limb.upper);
+      var mid = from + upper.on(_V3(0, a, 0));
+      var lower = upper * bone(limb.lower);
+      return (mid, mid + lower.on(_V3(0, b, 0)));
+    }
+
+    var (elbowL3, wristL3) =
+        reach(shoulderL3, spine, CharacterLimb.armL, upperArm, foreArm);
+    var (elbowR3, wristR3) =
+        reach(shoulderR3, spine, CharacterLimb.armR, upperArm, foreArm);
+    // The legs hang from the hips, which the spine turns above: leaning
+    // over does not swing the legs with it.
+    var (kneeL3, ankleL3) =
+        reach(hipL3, _M3.identity, CharacterLimb.legL, thigh, shin);
+    var (kneeR3, ankleR3) =
+        reach(hipR3, _M3.identity, CharacterLimb.legR, thigh, shin);
+
+    var hips = page(origin), chest = page(chest3), neck = page(neck3);
+    var headCentre = page(head3);
+    double tilt(Offset from, Offset to) => from == to
+        ? 0
+        : _wrap(turnOf(to - from) - 180);
+
+    double swingOf(CharacterLimb l) =>
+        pose.swing(l.upper) + pose.swing(l.lower) * 0.5;
+
+    return CharacterRig._(
+      unit: unit,
+      below: below,
+      shoulderHalf: shoulderHalf,
+      hipHalf: hipHalf,
+      neckLength: neckLength,
+      torsoLength: torsoLength,
+      upperArm: upperArm,
+      foreArm: foreArm,
+      thigh: thigh,
+      shin: shin,
+      limbWidth: limbWidth,
+      legWidth: legWidth,
+      hips: hips,
+      chest: chest,
+      neck: neck,
+      headCentre: headCentre,
+      headTurn: tilt(neck, headCentre),
+      bodyTurn: tilt(hips, chest),
+      shoulderL: page(shoulderL3),
+      shoulderR: page(shoulderR3),
+      elbowL: page(elbowL3),
+      elbowR: page(elbowR3),
+      wristL: page(wristL3),
+      wristR: page(wristR3),
+      hipL: page(hipL3),
+      hipR: page(hipR3),
+      kneeL: page(kneeL3),
+      kneeR: page(kneeR3),
+      ankleL: page(ankleL3),
+      ankleR: page(ankleR3),
+      yaw: pose.turn,
+      depths: {
+        CharacterLimb.armL: depth(shoulderL3) + depth(wristL3) * 0.01,
+        CharacterLimb.armR: depth(shoulderR3) + depth(wristR3) * 0.01,
+        CharacterLimb.legL: depth(hipL3) + depth(ankleL3) * 0.01,
+        CharacterLimb.legR: depth(hipR3) + depth(ankleR3) * 0.01,
+      },
+      footSwing: {
+        for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
+      },
+    );
+  }
+
+  /// root, middle and end are a limb's three joints.
+  Offset root(CharacterLimb limb) => switch (limb) {
+        CharacterLimb.armL => shoulderL,
+        CharacterLimb.armR => shoulderR,
+        CharacterLimb.legL => hipL,
+        CharacterLimb.legR => hipR,
+      };
+
+  Offset middle(CharacterLimb limb) => switch (limb) {
+        CharacterLimb.armL => elbowL,
+        CharacterLimb.armR => elbowR,
+        CharacterLimb.legL => kneeL,
+        CharacterLimb.legR => kneeR,
+      };
+
+  Offset end(CharacterLimb limb) => switch (limb) {
+        CharacterLimb.armL => wristL,
+        CharacterLimb.armR => wristR,
+        CharacterLimb.legL => ankleL,
+        CharacterLimb.legR => ankleR,
+      };
+
+  (double, double) lengths(CharacterLimb limb) =>
+      limb.isArm ? (upperArm, foreArm) : (thigh, shin);
+
+  /// parentTurn is the turn a limb's upper bone is measured from: the
+  /// body's for an arm, nothing for a leg.
+  double parentTurn(CharacterLimb limb) => limb.isArm ? bodyTurn : 0;
+
+  /// handRadius is the size a hand is drawn.
+  double get handRadius => limbWidth * 0.62;
+
+  /// headRadii is the head's half width and half height.
+  Size get headRadii => Size(unit * 0.46, unit * 0.5);
+
+  /// sideOn is how far round the body is turned towards side on: 0 facing
+  /// the reader or away, 1 side on. Which of a bone's two angles a drag on
+  /// the page moves: its spread facing the reader, its swing side on.
+  double get sideOn => math.sin(yaw * math.pi / 180).abs();
+
+  /// _facing is which way a forward swing goes on the page side on: to the
+  /// left when the body is turned to the left.
+  double get _facing => math.sin(yaw * math.pi / 180) >= 0 ? 1 : -1;
+
+  /// _set is [pose] with [bone] turned [degrees] on the page from its
+  /// parent: its spread facing the reader, its swing side on.
+  CharacterPose _set(CharacterPose pose, CharacterBone bone, double degrees) {
+    var d = _wrap(degrees);
+    return sideOn > 0.7
+        ? pose.withSwing(bone, d * _facing).withAngle(bone, 0)
+        : pose.withAngle(bone, d).withSwing(bone, 0);
+  }
+
+  /// solveLimb is the pose with [limb] bent to reach [target], or as near it
+  /// as it can get: a two-bone reach, folding the middle joint the limb's own
+  /// way. The other bones are left as they are. Facing the reader the limb
+  /// is spread; side on it is swung, as a leg is in a stride.
+  CharacterPose solveLimb(
+      CharacterPose pose, CharacterLimb limb, Offset target) {
+    var from = root(limb);
+    var (a, b) = lengths(limb);
+    var toTarget = target - from;
+    var d = toTarget.distance
+        .clamp((a - b).abs() + 1e-6, a + b - 1e-6)
+        .toDouble();
+    // The angle at the root between the line to the target and the upper
+    // bone, by the cosine rule; the lower bone then closes the triangle.
+    var cosRoot = ((a * a + d * d - b * b) / (2 * a * d)).clamp(-1.0, 1.0);
+    var atRoot = math.acos(cosRoot) * 180 / math.pi;
+    var cosMid = ((a * a + b * b - d * d) / (2 * a * b)).clamp(-1.0, 1.0);
+    var atMid = math.acos(cosMid) * 180 / math.pi;
+    var toward = turnOf(toTarget);
+    // A turn clockwise swings a hanging bone towards the page's left, so a
+    // left limb opens its middle joint outwards with the upper bone turned
+    // further clockwise than the line to the target, and the lower bone
+    // turned back to meet it. Side on, a knee bends forwards and an elbow
+    // backwards -- the way the face is pointing, or away from it.
+    var bend = sideOn > 0.7
+        ? (limb.isArm ? -_facing : _facing)
+        : limb.bend;
+    var upperTurn = toward + bend * atRoot;
+    var lowerTurn = -bend * (180 - atMid);
+    var posed = _set(pose, limb.upper, upperTurn - parentTurn(limb));
+    return _set(posed, limb.lower, lowerTurn);
+  }
+
+  /// solveHead is the pose with the head tilted to look along the line from
+  /// the neck to [target], as near as a neck allows.
+  CharacterPose solveHead(CharacterPose pose, Offset target) {
+    var turn = turnOf(target - neck) - 180;
+    var tilt = _wrap(turn - bodyTurn).clamp(-50.0, 50.0);
+    return pose.withAngle(CharacterBone.head, tilt);
+  }
+
+  /// solveLean is the pose with the body leaning so its chest is over
+  /// [target], as near as a waist allows: sideways facing the reader,
+  /// forwards and back side on.
+  CharacterPose solveLean(CharacterPose pose, Offset target) {
+    var turn = (turnOf(target - hips) - 180);
+    return _set(pose, CharacterBone.spine, _wrap(turn).clamp(-60.0, 60.0));
+  }
+}
+
+/// _V3 is a point or a step in a body's own space.
+class _V3 {
+  final double x, y, z;
+  const _V3(this.x, this.y, this.z);
+  _V3 operator +(_V3 o) => _V3(x + o.x, y + o.y, z + o.z);
+}
+
+/// _M3 is a turn in a body's own space.
+class _M3 {
+  final List<double> m;
+  const _M3(this.m);
+
+  static const identity = _M3([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+
+  /// z is a turn of [degrees] on the page, clockwise: the way _along turns.
+  factory _M3.z(double degrees) {
+    if (degrees == 0) return identity;
+    var r = degrees * math.pi / 180, c = math.cos(r), s = math.sin(r);
+    return _M3([c, -s, 0, s, c, 0, 0, 0, 1]);
+  }
+
+  /// x is a swing of [degrees] towards the reader: a hanging bone's foot
+  /// coming forwards.
+  factory _M3.x(double degrees) {
+    if (degrees == 0) return identity;
+    var r = degrees * math.pi / 180, c = math.cos(r), s = math.sin(r);
+    return _M3([1, 0, 0, 0, c, -s, 0, s, c]);
+  }
+
+  /// on is [v] turned by this.
+  _V3 on(_V3 v) => _V3(m[0] * v.x + m[1] * v.y + m[2] * v.z,
+      m[3] * v.x + m[4] * v.y + m[5] * v.z, m[6] * v.x + m[7] * v.y + m[8] * v.z);
+
+  _M3 operator *(_M3 o) {
+    var n = o.m;
+    return _M3([
+      for (var r = 0; r < 3; r++)
+        for (var c = 0; c < 3; c++)
+          m[r * 3] * n[c] + m[r * 3 + 1] * n[3 + c] + m[r * 3 + 2] * n[6 + c],
+    ]);
+  }
+}
+
+/// turnOf is the turn a bone pointing along [v] has: nought straight down,
+/// clockwise on the page.
+double turnOf(Offset v) => math.atan2(-v.dx, v.dy) * 180 / math.pi;
+
+/// _wrap is [degrees] brought into -180..180, so a pose never carries an
+/// arm turned round three times on the way to where it is.
+double _wrap(double degrees) {
+  var d = degrees % 360;
+  if (d > 180) d -= 360;
+  if (d <= -180) d += 360;
+  return d;
+}

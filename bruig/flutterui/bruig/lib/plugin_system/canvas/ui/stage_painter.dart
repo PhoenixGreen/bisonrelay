@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -213,6 +215,10 @@ class StagePainter extends CustomPainter {
   /// handles are drawn in place of a selection box.
   final PathElement? selectedPath;
 
+  /// selectedCharacter is the selected element when it is a character,
+  /// whose skeleton and pins are drawn over it.
+  final CharacterElement? selectedCharacter;
+
   /// editingVector is the drawing being edited point by point, the shape of
   /// it picked and the point picked -- drawn in place of a selection box.
   final ({
@@ -351,6 +357,7 @@ class StagePainter extends CustomPainter {
     required this.guides,
     required this.snapped,
     required this.selectedPath,
+    this.selectedCharacter,
     this.editingVector,
     this.editingLayers,
     required this.chartLabels,
@@ -834,6 +841,7 @@ class StagePainter extends CustomPainter {
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
+    if (selectedCharacter case var who?) _paintPuppet(canvas, who);
 
     // A selected path shows its points and handles instead of a box: the box
     // round a curve is a rectangle nobody drew and cannot be usefully dragged,
@@ -1519,6 +1527,36 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintPuppet draws a character's skeleton faintly and its pins on top,
+  /// the same blue as a path's points: they are taken hold of the same way.
+  void _paintPuppet(Canvas canvas, CharacterElement who) {
+    Offset at(Offset doc) => doc * scale + origin;
+    var placed =
+        CharacterPlacement.of(who, frame, frameRate: document.frameRate);
+    var bone = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0x993D7EFF);
+    for (var (a, b) in placed.bones) {
+      canvas.drawLine(at(a), at(b), bone);
+    }
+    var fill = Paint()..color = const Color(0xFF3D7EFF);
+    var knob = Paint()..color = const Color(0xFFFFFFFF);
+    for (var pin in CharacterPin.values) {
+      var p = at(placed.pin(pin));
+      canvas.drawCircle(p, 6, knob);
+      canvas.drawCircle(
+          p,
+          6,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = fill.color);
+      canvas.drawCircle(p, 2.5, fill);
+    }
+  }
+
   /// _paintFraming shows the rest of the picture while it is being moved
   /// about inside its frame.
   ///
@@ -1808,6 +1846,7 @@ class StagePainter extends CustomPainter {
       old.showAllBounds != showAllBounds ||
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
+      !identical(old.selectedCharacter, selectedCharacter) ||
       old.editingVector != editingVector ||
       old.editingLayers != editingLayers ||
       old.editingText != editingText ||

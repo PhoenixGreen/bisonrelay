@@ -176,7 +176,10 @@ class _CanvasCuesSectionState extends State<CanvasCuesSection> {
           active: controller.cuesShown,
           onPressed: () => controller.cuesShown = !controller.cuesShown,
         ),
-        if (_said.isNotEmpty) CanvasHint(_said),
+        if (_said.isNotEmpty) ...[
+          const CanvasLineBreak(),
+          CanvasStatus(_said, key: const ValueKey("cuesSaid")),
+        ],
         if (controller.cues.isEmpty)
           const CanvasHint(
               "A cue is a named moment of the whole run -- a line of the "

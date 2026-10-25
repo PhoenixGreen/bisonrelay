@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -1517,6 +1518,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VideoElement.fromJson(json, base);
     case ElementKind.vector:
       return VectorElement.fromJson(json, base);
+    case ElementKind.character:
+      return CharacterElement.fromJson(json, base);
   }
 }
 

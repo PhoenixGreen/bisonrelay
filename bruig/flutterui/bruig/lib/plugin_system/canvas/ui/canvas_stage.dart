@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -115,6 +117,10 @@ enum _DragMode {
   player,
   node,
   handle,
+
+  /// characterPin is one of a selected character's pins being dragged,
+  /// bending the arm or leg it is on the end of. See character_puppet.dart.
+  characterPin,
 
   /// chartLabel is a chart's title or description being moved or resized
   /// inside the chart. Its own mode because it moves a *part* of an element
@@ -489,6 +495,9 @@ class CanvasStageState extends State<CanvasStage>
   /// Like a player, a path node is not an element: the path stays selected
   /// throughout, and what moves is one entry in its list.
   int _nodeIndex = -1;
+
+  /// _characterPin is the pin a [_DragMode.characterPin] drag has hold of.
+  CharacterPin _characterPin = CharacterPin.head;
   bool _nodeHandleOut = false;
 
   StageHandle? _handle;
@@ -1820,6 +1829,21 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
+    // A selected character's pins, before the character itself: like a
+    // path's points, they are drawn on top and are what is being aimed at.
+    if (_selectedCharacter() case var who? when !who.locked) {
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var pin =
+          CharacterPlacement.of(who, controller.frame,
+              frameRate: document.frameRate).pinUnder(doc, reach);
+      if (pin != null) {
+        _characterPin = pin;
+        _mode = _DragMode.characterPin;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
     // A selected path's points and handles are grabbed before anything
     // else, exactly as a team's players are: they are drawn on top of the
     // curve and are the thing being aimed at.
@@ -2248,6 +2272,14 @@ class CanvasStageState extends State<CanvasStage>
   }
 
   /// _selectedPath is the one selected element, when it is a path.
+  /// _selectedCharacter is the selected element when it is a character
+  /// and the only thing selected, whose pins are shown and can be dragged.
+  CharacterElement? _selectedCharacter() {
+    if (controller.selection.length != 1) return null;
+    var selected = controller.selected;
+    return selected is CharacterElement && selected.visible ? selected : null;
+  }
+
   PathElement? _selectedPath() {
     var selected = controller.selected;
     return selected is PathElement ? selected : null;
@@ -4996,6 +5028,19 @@ class CanvasStageState extends State<CanvasStage>
         setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
         _applyPlayerMove(doc);
+      case _DragMode.characterPin:
+        if (_selectedCharacter() case var who?) {
+          var posed = CharacterPlacement.of(who, controller.frame,
+                  frameRate: document.frameRate)
+              .posedBy(_characterPin, doc);
+          // Recording, the drag is a performance: a key on every frame the
+          // playhead passes while the pin is held.
+          if (controller.playing && controller.recordPins) {
+            controller.recordCharacterPose(who, posed, transient: true);
+          } else {
+            controller.setCharacterPose(who, posed, transient: true);
+          }
+        }
       case _DragMode.vectorPoint:
         _applyVectorMove(doc);
       case _DragMode.vectorPoints:
@@ -5674,6 +5719,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.warpTurn ||
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
+        _mode == _DragMode.characterPin ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
         _mode == _DragMode.imageLayerMove ||
@@ -6144,6 +6190,7 @@ class CanvasStageState extends State<CanvasStage>
                                 document.size.rect)
                             : null,
                         selectedPath: _selectedPath(),
+                        selectedCharacter: _selectedCharacter(),
                         editingLayers: _layerBoxes(),
                         editingVector: switch (controller.editingVector) {
                           var v? => (

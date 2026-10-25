@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
@@ -72,6 +74,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A path is a route across the design rather than an object on it, so it
     // arrives large enough to be worth curving.
     ElementKind.path => Size(wide * 0.5, short * 0.4),
+    // Standing, most of the page's height, about as wide as a person with
+    // their arms a little out is for their height.
+    ElementKind.character => Size(short * 0.34, short * 0.7),
   };
 }
 
@@ -271,5 +276,13 @@ CanvasElement newElement(
       var p = pitches.first;
       return team.linkedTo(p.link,
           pitch: p.sport, reference: p.reference, area: p.area);
+
+    case ElementKind.character:
+      // The first of the cast, named for who they are rather than what they
+      // are: a scene with three characters in it is three names in the
+      // layer list, not "Character" three times.
+      var who = characterCast.first;
+      return CharacterElement(base.copyWith(name: who.name, lockAspect: true),
+          dna: who.dna);
   }
 }

@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
@@ -551,6 +553,7 @@ bool leavesByItself(CanvasElement element) => switch (element) {
       CounterElement e => e.animation.closes,
       ButtonElement e => e.animation.closes,
       VideoElement e => e.animation.closes,
+      CharacterElement e => e.animation.closes,
       _ => true,
     };
 
@@ -892,6 +895,10 @@ void paintElement(
             () => _paintPath(canvas, bounds, e, editing));
       case TeamElement e:
         paintTeam(canvas, bounds, e, frame, document: document, images: images);
+      case CharacterElement e:
+        arriving(canvas, bounds, e.animation, pose,
+            () => paintCharacter(canvas, bounds, e, frame,
+                frameRate: frameRate, editing: editing));
       default:
         break;
     }
@@ -3212,6 +3219,7 @@ ElementAnimation? _animationOf(CanvasElement element) => switch (element) {
       ButtonElement e => e.animation,
       AudioElement e => e.animation,
       VideoElement e => e.animation,
+      CharacterElement e => e.animation,
       _ => null,
     };
 

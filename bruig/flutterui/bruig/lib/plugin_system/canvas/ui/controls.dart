@@ -391,6 +391,27 @@ class _CanvasHintState extends State<CanvasHint> {
   }
 }
 
+/// CanvasStatus is a line of words a panel says back -- what a button just
+/// did, or what stopped it -- shown on its own line where it can be read.
+///
+/// Not a CanvasHint: that is help, a "?" opened on a click, and a result
+/// tucked behind one is a result nobody sees. "12 cues found" and "whisper
+/// is not installed" were both written there.
+class CanvasStatus extends StatelessWidget {
+  final String message;
+  const CanvasStatus(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return SizedBox(
+      width: 260,
+      child: Text(message,
+          style: TextStyle(fontSize: 12, color: theme.colors.onSurfaceVariant)),
+    );
+  }
+}
+
 /// CanvasFill marks a control that should grow to help fill its line.
 ///
 /// Its own width is the least it will ever be. Everything else about it --

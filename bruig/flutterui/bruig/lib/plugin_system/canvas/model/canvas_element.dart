@@ -41,7 +41,10 @@ enum ElementKind {
   // A moving picture, from a file or a link. See VideoElement.
   video("Video"),
   // A drawing -- an .svg -- edited point by point. See VectorElement.
-  vector("Vector");
+  vector("Vector"),
+  // A person, an animal or a monster, drawn on a skeleton and posed. See
+  // CharacterElement.
+  character("Character");
 
   final String label;
   const ElementKind(this.label);

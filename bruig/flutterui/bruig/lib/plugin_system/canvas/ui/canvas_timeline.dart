@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/path_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
@@ -1925,6 +1926,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                   leading: Column(mainAxisSize: MainAxisSize.min, children: [
                     VectorShapeLanes(controller: controller, view: _sceneView),
                     ImageLayerLanes(controller: controller, view: _sceneView),
+                    CharacterMouthLane(
+                        controller: controller, view: _sceneView),
+                    CharacterMotionLanes(
+                        controller: controller, view: _sceneView),
                   ]))),
         // Which stretch of the timeline is on screen, and a handle to move
         // it: under the frames, not the strip column.

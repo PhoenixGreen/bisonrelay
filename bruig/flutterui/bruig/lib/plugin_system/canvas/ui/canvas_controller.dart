@@ -22,6 +22,9 @@ import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/line_element.dart';
@@ -250,6 +253,14 @@ ElementTrack _pinning(
         ElementTrack track, int frame, String channel, double value) =>
     track.withKey((track.keyAt(frame) ?? track.restingAt(frame))
         .withValue(channel, value));
+
+/// _pinnedAt is [track] with [channels] pinned at [frame], keeping
+/// whatever else that frame already holds -- see _pinning.
+ElementTrack _pinnedAt(
+    ElementTrack track, int frame, Map<String, double> channels) {
+  var at = track.keyAt(frame) ?? track.restingAt(frame);
+  return track.withKey(at.copyWith(values: {...at.values, ...channels}));
+}
 
 /// FetchedRows is what one element's last refresh in this sitting returned.
 ///
@@ -1785,6 +1796,280 @@ class CanvasController extends ChangeNotifier {
     // And with it whatever it was half of: an arrival is a pair, and one of
     // them on its own is not half an arrival. See withoutHalfAnimations.
     replaceElement(withoutHalfAnimations(element, next));
+  }
+
+  /// setCharacterPose stands [e] in [pose]: its stance, until any part of
+  /// its performance has been keyed, and from then on this frame's
+  /// keyframe -- the same rule a drag follows, where moving an element is a
+  /// move until it has been animated and a pose after. See
+  /// CharacterElement.posedOnTimeline.
+  void setCharacterPose(CharacterElement e, CharacterPose pose,
+          {bool transient = false}) =>
+      replaceElement(characterPosed(e, pose), transient: transient);
+
+  /// characterPosed is [e] stood in [pose] as setCharacterPose would stand
+  /// it, without applying it -- for the settings panel, which writes its
+  /// own changes.
+  CharacterElement characterPosed(CharacterElement e, CharacterPose pose) =>
+      e.posedOnTimeline
+          ? e.withBase(track: _pinnedAt(e.track!, _frame, pose.channels))
+              as CharacterElement
+          : e.copyWith(pose: pose);
+
+  /// characterFaced is [e] with its face set to [face], by the same rule
+  /// as characterPosed.
+  CharacterElement characterFaced(CharacterElement e, CharacterFace face) =>
+      e.posedOnTimeline
+          ? e.withBase(track: _pinnedAt(e.track!, _frame, face.channels))
+              as CharacterElement
+          : e.copyWith(face: face);
+
+  /// keyCharacterPose keys the character as it is on this frame, pose and
+  /// face, which is how a character starts to move: how it stands is keyed
+  /// at the start as well the first time, so the pose is arrived at rather
+  /// than held from the first frame.
+  void keyCharacterPose(CharacterElement e,
+      [CharacterPose? pose, CharacterFace? face]) {
+    var track = e.track ?? ElementTrack.empty;
+    if (!e.posedOnTimeline && _frame != 0) {
+      track = _pinnedAt(
+          track, 0, {...e.pose.channels, ...e.face.channels});
+    }
+    replaceElement(e.withBase(
+        track: _pinnedAt(track, _frame, {
+      ...(pose ?? e.poseAtFrame(_frame)).channels,
+      ...(face ?? e.faceAtFrame(_frame)).channels,
+    })));
+  }
+
+  /// characterMouthed is [e] with its mouth set to [shape] here: a mouth
+  /// key on this frame once it has any -- lip synced or posed -- and its
+  /// stance otherwise.
+  CharacterElement characterMouthed(CharacterElement e, MouthShape shape) {
+    if (e.mouthKeys.isEmpty && !e.posedOnTimeline) {
+      return e.copyWith(face: e.face.withMouth(shape));
+    }
+    return e.withBase(
+        track: _pinnedAt(e.track ?? ElementTrack.empty, _frame,
+            {mouthChannel: shape.index.toDouble()})) as CharacterElement;
+  }
+
+  /// lipSync gives [e] the mouths for what is said on [voice]: from the
+  /// words, heard first if they have not been, or with [words] off from the
+  /// loudness alone. Mouths it laid before over the same stretch are
+  /// replaced; the rest of the character's keys are left as they are. One
+  /// undo step. Says what stopped it, or how many mouths it laid.
+  Future<({String? problem, int mouths})> lipSync(
+      CharacterElement e, AudioElement voice,
+      {bool words = true, LipSyncFeel feel = const LipSyncFeel()}) async {
+    var source = voice.clip.playlist.firstOrNull;
+    if (source == null) {
+      return (problem: "That sound has nothing in it to hear.", mouths: 0);
+    }
+    var rate = math.max(1, _document.frameRate);
+    var length = source.length > 0 ? source.length : 0.0;
+    var from = source.start, to = source.end > 0 ? source.end : length;
+    // Where the voice starts and stops in the run, and where the
+    // character's own frames start.
+    var voiceAt = _clipOffset(voice) + voice.clip.at;
+    var voiceEnd = voiceAt + ((to - from) * rate).ceil();
+    var mine = _clipOffset(e);
+
+    List<MouthKey> keys;
+    if (words) {
+      var tag = "voice:${voice.id}";
+      var said = [
+        for (var w in this.words)
+          if (w.from == tag) w,
+      ];
+      if (said.isEmpty) {
+        var problem = await hearWords(voice);
+        if (problem != null) return (problem: problem, mouths: 0);
+        said = [
+          for (var w in this.words)
+            if (w.from == tag) w,
+        ];
+      }
+      keys = mouthsFromWords(said, frameRate: rate, feel: feel);
+    } else {
+      if (length <= 0) {
+        return (problem: "That recording's length is not known yet.", mouths: 0);
+      }
+      var file = await CanvasMedia.existingPath(MediaKind.audio, source.assetId);
+      if (file == null) {
+        return (problem: "The recording is missing from the library.", mouths: 0);
+      }
+      // A hundred readings a second: the timeline's own waveform is spread
+      // over the whole file, too thin for a mouth on a long recording.
+      var count = math.max(1, (length * 100).ceil());
+      var peaks = await audio.engine.peaks(file, count);
+      if (peaks == null) {
+        return (problem: "That recording could not be read.", mouths: 0);
+      }
+      var a = (from / length * count).floor().clamp(0, count);
+      var b = (to / length * count).ceil().clamp(a, count);
+      keys = mouthsFromLoudness(Float32List.sublistView(peaks, a, b), to - from,
+          startFrame: voiceAt, frameRate: rate, feel: feel);
+    }
+
+    // Read again: the character may have been changed while listening.
+    var now = _document.elementById(e.id);
+    if (now is! CharacterElement) return (problem: null, mouths: 0);
+    var local = [
+      for (var k in keys)
+        if (k.frame - mine >= 0) (frame: k.frame - mine, shape: k.shape),
+    ];
+    replaceElement(now.withMouths(local,
+        from: math.max(0, voiceAt - mine - feel.lead - 1),
+        to: voiceEnd - mine + 1));
+    return (problem: null, mouths: local.length);
+  }
+
+  /// clearLipSync takes every mouth off [e]'s track.
+  void clearLipSync(CharacterElement e) => replaceElement(e.withMouths(const []));
+
+  /// recordPins is whether dragging a character's pins while the scene
+  /// plays records the movement: a pose keyed on each frame the drag passes
+  /// through. Off, a drag poses the character where the playhead is.
+  bool get recordPins => _recordPins;
+  bool _recordPins = false;
+  set recordPins(bool on) {
+    if (_recordPins == on) return;
+    _recordPins = on;
+    notifyListeners();
+  }
+
+  /// recordCharacterPose keys [pose] on this frame as part of a recording:
+  /// the stance keyed at the start the first time, as keyCharacterPose does,
+  /// and only the bones -- the face is left to its own keys.
+  void recordCharacterPose(CharacterElement e, CharacterPose pose,
+      {bool transient = false}) {
+    var track = e.track ?? ElementTrack.empty;
+    if (!e.posedOnTimeline && _frame != 0) {
+      track = _pinnedAt(track, 0, e.pose.channels);
+    }
+    replaceElement(e.withBase(track: _pinnedAt(track, _frame, pose.channels)),
+        transient: transient);
+  }
+
+  /// importMotion lays [poses] on [e] as keyframes, one a frame from this
+  /// one -- motion capture, read from a BVH file. With [faceReader] the
+  /// whole of it is turned so that it starts facing the reader, whichever
+  /// way the capture was facing. One undo step. Says how many frames it
+  /// laid, which is fewer than it was given where the canvas ends first.
+  int importMotion(CharacterElement e, List<CharacterPose> poses,
+      {bool faceReader = true}) {
+    if (poses.isEmpty) return 0;
+    var by = faceReader ? -poses.first.turn : 0.0;
+    var track = e.track ?? ElementTrack.empty;
+    if (!e.posedOnTimeline && _frame != 0) {
+      track = _pinnedAt(track, 0, e.pose.channels);
+    }
+    var laid = 0;
+    for (var (i, p) in poses.indexed) {
+      var f = _frame + i;
+      if (f >= _document.frames) break;
+      track = _pinnedAt(track, f, p.withTurn(p.turn + by).channels);
+      laid++;
+    }
+    replaceElement(e.withBase(track: track));
+    return laid;
+  }
+
+  /// addMotion lays a clip of [kind] on [e] from this frame: a looping
+  /// motion for two of its cycles or two seconds, whichever is longer, and
+  /// one that plays once for its own length. Says which clip it made.
+  MotionClip addMotion(CharacterElement e, MotionKind kind) {
+    var rate = math.max(1, _document.frameRate);
+    var seconds = kind.loops ? math.max(2.0, kind.seconds * 2) : kind.seconds;
+    var clip = MotionClip(
+        id: newElementId(),
+        kind: kind,
+        layer: kind.layer,
+        start: _frame,
+        length: math.max(2, (seconds * rate).round()));
+    replaceElement(e.copyWith(motions: [...e.motions, clip]));
+    return clip;
+  }
+
+  /// setMotion writes [clip] back over the clip of [e] with its id.
+  void setMotion(CharacterElement e, MotionClip clip,
+          {bool transient = false}) =>
+      replaceElement(
+          e.copyWith(motions: [
+            for (var m in e.motions) m.id == clip.id ? clip : m,
+          ]),
+          transient: transient);
+
+  void removeMotion(CharacterElement e, String id) => replaceElement(
+      e.copyWith(motions: [
+        for (var m in e.motions)
+          if (m.id != id) m,
+      ]));
+
+  /// walkAcross walks or runs [e] across the page for [seconds] from this
+  /// frame, the way [direction] says -- -1 to the left, 1 to the right:
+  /// it turns to face the way it is going, goes the distance its legs would
+  /// take it, and turns back to the reader at the end. One undo step.
+  void walkAcross(CharacterElement e, MotionKind kind, int direction,
+      double seconds) {
+    var rate = math.max(1, _document.frameRate);
+    var frames = math.max(4, (seconds * rate).round());
+    var start = _frame, end = _frame + frames;
+    var turnFrames = math.min(4, frames ~/ 4);
+    var clip = MotionClip(
+        id: newElementId(),
+        kind: kind,
+        layer: MotionLayer.body,
+        start: start,
+        length: frames);
+    var distance = kind.travels * e.height * seconds * direction;
+    var facing = direction < 0 ? 90.0 : -90.0;
+    var turnBack = e.poseAtFrame(start).turn;
+
+    var track = e.track ?? ElementTrack.empty;
+    // Where it is: from here, to the distance away. A key that is already
+    // there keeps whatever else it says.
+    var from = track.keyAt(start) ?? track.restingAt(start);
+    var to = track.keyAt(end) ?? track.restingAt(end);
+    track = track
+        .withKey(from)
+        .withKey(to.copyWith(dx: from.dx + distance, dy: from.dy));
+    // Which way it faces: round to the side over the first few frames and
+    // back to the reader over the last few.
+    var posed = e.withBase(track: track) as CharacterElement;
+    if (!posed.posedOnTimeline) {
+      var stance = {...e.pose.channels, ...e.face.channels}
+        ..remove(mouthChannel);
+      track = _pinnedAt(track, start, stance);
+    }
+    track = _pinnedAt(track, start, {turnChannel: turnBack});
+    track = _pinnedAt(track, start + turnFrames, {turnChannel: facing});
+    track = _pinnedAt(track, end - turnFrames, {turnChannel: facing});
+    track = _pinnedAt(track, end, {turnChannel: turnBack});
+    replaceElement((e.withBase(track: track) as CharacterElement)
+        .copyWith(motions: [...e.motions, clip]));
+  }
+
+  /// hasCharacterPoseKey is whether this frame has a pose or a face keyed
+  /// on it.
+  bool hasCharacterPoseKey(CharacterElement e) =>
+      e.track?.keyAt(_frame)?.values.keys.any(posingChannel) ?? false;
+
+  /// clearCharacterPoseKey takes the pose and the face off this frame's
+  /// keyframe, and the keyframe with it when that was all it held.
+  void clearCharacterPoseKey(CharacterElement e) {
+    var track = e.track;
+    var at = track?.keyAt(_frame);
+    if (track == null || at == null) return;
+    var without = at.copyWith(values: {
+      for (var v in at.values.entries)
+        if (!posingChannel(v.key)) v.key: v.value,
+    });
+    replaceElement(e.withBase(
+        track: without.isRest && without.frame != 0
+            ? track.withoutFrame(_frame)
+            : track.withKey(without)));
   }
 
   /// clearElementKeyframes takes every keyframe off one element.
@@ -4043,7 +4328,7 @@ class CanvasController extends ChangeNotifier {
   /// _clipOffset is where [clip]'s own time starts in the run: on the master
   /// its frames are the run's; on a scene, they count from that scene's
   /// start.
-  int _clipOffset(AudioElement clip) {
+  int _clipOffset(CanvasElement clip) {
     for (var (i, scene) in _document.allScenes.indexed) {
       if (scene.elements.any((e) => e.id == clip.id)) {
         return _document.startOfScene(i);
@@ -6955,6 +7240,7 @@ class CanvasController extends ChangeNotifier {
         ButtonElement e => e.animation,
         AudioElement e => e.animation,
         VideoElement e => e.animation,
+        CharacterElement e => e.animation,
         _ => const ElementAnimation(),
       };
 
@@ -6983,7 +7269,8 @@ class CanvasController extends ChangeNotifier {
       // to it, the other what somebody does to the canvas.
       element is ButtonElement ||
       element is AudioElement ||
-      element is VideoElement;
+      element is VideoElement ||
+      element is CharacterElement;
 
   static CanvasElement _withElementAnimation(
           CanvasElement element, ElementAnimation animation) =>
@@ -6998,6 +7285,7 @@ class CanvasController extends ChangeNotifier {
         ButtonElement e => e.copyWith(animation: animation),
         AudioElement e => e.copyWith(animation: animation),
         VideoElement e => e.copyWith(animation: animation),
+        CharacterElement e => e.copyWith(animation: animation),
         _ => element,
       };
 
