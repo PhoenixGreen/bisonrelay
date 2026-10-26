@@ -525,6 +525,10 @@ class _Look {
   /// gloves is white cartoon gloves on the hands.
   final bool gloves;
 
+  /// heart is a heart-shaped face: a full brow and cheekbones tapering to
+  /// a narrow, softly pointed chin, as a feature film draws its heroines.
+  final bool heart;
+
   const _Look(
       {this.line = 1,
       this.ink,
@@ -536,7 +540,8 @@ class _Look {
       this.hatch = false,
       this.limbs = 1,
       this.hose = false,
-      this.gloves = false});
+      this.gloves = false,
+      this.heart = false});
 
   static const _black = Color(0xFF151515);
 
@@ -548,7 +553,8 @@ class _Look {
             eyes: _Eyes.feature,
             hair: _Hair.flowing,
             nose: _Nose.small,
-            limbs: 0.92),
+            limbs: 0.92,
+            heart: true),
         CharacterStyle.featureCartoon => const _Look(
             shading: _Shading.cel, eyes: _Eyes.feature, hair: _Hair.soft),
         CharacterStyle.anime => const _Look(
@@ -921,14 +927,24 @@ class _Drawing {
       _wings();
       _tail();
     }
-    _legs();
-    _skirts();
     // An arm turned away goes behind the body, an arm towards the reader in
     // front of it. Facing the reader both are a hair in front.
     var near = -u * 0.01;
-    _arms(far: true, near: near);
-    _neck();
-    _torso();
+    if (_oneSkin) {
+      // A person's skin is one shape -- neck, body and legs -- with one
+      // line round it, so nothing joins at a seam.
+      _arms(far: true, near: near);
+      _bodySkin();
+      _legs();
+      _skirts();
+      _torso();
+    } else {
+      _legs();
+      _skirts();
+      _arms(far: true, near: near);
+      _neck();
+      _torso();
+    }
     _neckwear();
     _frontHair();
     _arms(far: false, near: near);
@@ -941,6 +957,24 @@ class _Drawing {
   }
 
   // ---- the body ----
+
+  /// _oneSkin is whether the body is drawn as one skin -- a person's, with
+  /// joints, not a creature's or a rubber hose's.
+  bool get _oneSkin =>
+      !dna.fourLegs &&
+      !dna.species.legless &&
+      dna.species != Species.bird &&
+      !look.hose;
+
+  /// _bodySkin is the neck, the body and both legs as one shape.
+  void _bodySkin() {
+    var skin = Path.combine(PathOperation.union, _torsoPath(skin: true), _neckPath());
+    for (var limb in [CharacterLimb.legL, CharacterLimb.legR]) {
+      skin = Path.combine(PathOperation.union, skin,
+          _limbShape(_along(limb, 0, 1), legWidth, leg: true));
+    }
+    _fill(skin, dna.skin);
+  }
 
   double get _leg => rig.thigh + rig.shin;
 
@@ -978,7 +1012,8 @@ class _Drawing {
         _toes(limb);
         continue;
       }
-      _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true);
+      // The leg's skin is drawn already, with the body's, as one person.
+      if (!_oneSkin) _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true);
       // A bare foot, unless a shoe covers it all.
       if (!_wearing((g) =>
               g.kind.shape == GarmentShape.shoes && g.kind != GarmentKind.sandals)
@@ -1191,12 +1226,14 @@ class _Drawing {
 
   /// _neck is slim under the head and flares into the shoulders, with the
   /// curve of the muscle running down to them.
-  void _neck() {
+  void _neck() => _fill(_neckPath(), dna.skin);
+
+  Path _neckPath() {
     var top = rig.neck + Offset(0, -u * 0.1), base = rig.chest;
     var w = rig.limbWidth * 0.58 * (1 + 0.35 * _a(Look.neckWidth));
     var d = base - top;
     var len = d.distance;
-    if (len < 1e-6) return;
+    if (len < 1e-6) return Path();
     var along = d / len;
     var across = Offset(-along.dy, along.dx);
     var flare = w * 1.9;
@@ -1211,7 +1248,7 @@ class _Drawing {
       ..lineTo(lowL.dx, lowL.dy)
       ..quadraticBezierTo(midL.dx, midL.dy, (top - across * w).dx, (top - across * w).dy)
       ..close();
-    _fill(path, dna.skin);
+    return path;
   }
 
   /// _torsoFrame is the body's own directions on the page: across it, up
@@ -1244,7 +1281,11 @@ class _Drawing {
   /// to either side, so the body turns as a body does: no wider than it is,
   /// its front leading.
   Path _torsoPath(
-      {double fit = 1, double length = 1, double from = 0, double? hang}) {
+      {double fit = 1,
+      double length = 1,
+      double from = 0,
+      double? hang,
+      bool skin = false}) {
     var spine = rig.bodyTurn * math.pi / 180;
     var across = Offset(math.cos(spine), math.sin(spine));
     var top = rig.chest, hips = rig.hips;
@@ -1260,10 +1301,13 @@ class _Drawing {
     // A woman's hips are about as wide as her shoulders, a man's narrower;
     // the waist between them is what makes the shape.
     var female = dna.kind == CharacterType.woman || dna.kind == CharacterType.girl;
-    var hipsWide = math.max(h * 1.12,
-        s * (female ? 0.94 : 0.8) * (1 + 0.28 * _a(Look.hips)));
-    var waistWide =
-        s * (female ? 0.68 : 0.78) * (1 + 0.18 * waist) * (1 + 0.1 * belly);
+    // The hips as wide as the tops of the thighs below them, so the line
+    // runs on down the leg -- a little wider in a woman.
+    var thighSpan = h * 0.55 + legWidth * (female ? 1.34 : 1.2) * 0.55;
+    var hipsWide = thighSpan * (female ? 1.12 : 1.04) * (1 + 0.22 * _a(Look.hips));
+    var waistWide = math.min(s * (female ? 0.68 : 0.78), hipsWide * (female ? 0.8 : 0.92)) *
+        (1 + 0.18 * waist) *
+        (1 + 0.1 * belly);
     // Each oval: how far down (0 the shoulders, 1 the hips), half its width,
     // and how deep it is in front and behind.
     var rings = <(double, double, double, double)>[
@@ -1309,7 +1353,21 @@ class _Drawing {
     if (from > 0) {
       used = [at(from), for (var r in used) if (r.$1 > from) r];
     }
-    used.add(at(hemT));
+    if (skin) {
+      // The skin narrows from the hips into the tops of the thighs, so the
+      // outline runs on down the legs without a ledge.
+      var thighs = h * 0.55 + legWidth * 0.62;
+      var hips = at(hemT);
+      var thighDeep = legWidth * 0.62;
+      used.add((
+        hemT + 0.1,
+        math.min(hips.$2, hips.$2 * 0.45 + thighs * 0.55),
+        math.min(hips.$3, thighDeep * 1.1),
+        math.min(hips.$4, thighDeep * 1.3),
+      ));
+    } else {
+      used.add(at(hemT));
+    }
     // Each oval's furthest left and right, seen as the body is turned:
     // across its width, and its front or back brought round towards the
     // reader's left as it turns.
@@ -1362,8 +1420,12 @@ class _Drawing {
     var path = Path()..moveTo(right.first.dx, right.first.dy);
     through(path, right);
     // Across the bottom: round under the seat, or a hem straight across.
-    var bottom = top + drop * hemT;
-    var dip = hemT <= 1.06 && length >= 1 ? drop.distance * 0.05 : drop.distance * 0.015;
+    var bottom = top + drop * (skin ? hemT + 0.1 : hemT);
+    var dip = skin
+        ? -drop.distance * 0.06
+        : hemT <= 1.06 && length >= 1
+            ? drop.distance * 0.05
+            : drop.distance * 0.015;
     path.quadraticBezierTo(bottom.dx - up.dx * dip, bottom.dy - up.dy * dip,
         left.last.dx, left.last.dy);
     through(path, left.reversed.toList());
@@ -1437,7 +1499,7 @@ class _Drawing {
             dna.fur2);
         canvas.restore();
       }
-    } else {
+    } else if (!_oneSkin) {
       _fill(_torsoPath(), dna.skin);
     }
     for (var (i, g) in garments.indexed) {
@@ -1971,9 +2033,10 @@ class _Drawing {
     // Appearance says.
     var m = _a(Look.muscle);
     var j = leg ? 0.5 : 0.52;
+    var female = dna.kind == CharacterType.woman || dna.kind == CharacterType.girl;
     var profile = leg
         ? [
-            (0.0, 1.2),
+            (0.0, female ? 1.34 : 1.2),
             (0.3 * j, 1.16 + 0.08 * m),
             (j, 0.74),
             (j + 0.32 * (1 - j), 0.84 + 0.08 * m),
@@ -2497,7 +2560,8 @@ class _Drawing {
     var jaw = _a(Look.jaw), chin = _a(Look.chin);
     var chinLong = _a(Look.chinLength), forehead = _a(Look.forehead);
     var bones = _a(Look.cheekbones), cheeks = _a(Look.cheeks);
-    if (jaw == 0 && chin == 0 && chinLong == 0 && forehead == 0 &&
+    var heart = look.heart;
+    if (!heart && jaw == 0 && chin == 0 && chinLong == 0 && forehead == 0 &&
         bones == 0 && cheeks == 0) {
       return Path()
         ..addOval(Rect.fromCenter(center: Offset.zero, width: w * 2, height: h * 2));
@@ -2519,14 +2583,20 @@ class _Drawing {
       var x = math.sin(t), y = -math.cos(t);
       if (y < 0) {
         y *= 1 + 0.12 * forehead;
+        if (heart) x *= 1.03;
       } else {
         var widen = 1 +
             0.07 * bones * bump(y, 0.15, 0.2) +
             0.1 * cheeks * bump(y, 0.45, 0.25) +
             0.2 * jaw * bump(y, 0.78, 0.18);
         widen *= 1 - 0.3 * chin * smooth(0.7, 1, y);
+        if (heart) {
+          // Full at the cheekbones, then a long taper to a narrow chin.
+          widen *= (1 + 0.05 * bump(y, 0.12, 0.18)) * (1 - 0.22 * smooth(0.3, 1.05, y));
+        }
         x *= widen;
         y *= 1 + 0.16 * chinLong * smooth(0.5, 1, y);
+        if (heart) y *= 1 + 0.04 * smooth(0.8, 1, y) * (1 - x.abs());
       }
       pts.add(Offset(x * w, y * h));
     }

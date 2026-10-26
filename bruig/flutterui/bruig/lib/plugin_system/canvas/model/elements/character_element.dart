@@ -548,8 +548,6 @@ enum CharacterStyle {
             Look.noseLength: -0.3,
             Look.noseWidth: -0.3,
             Look.lowerLip: 0.3,
-            Look.chin: -0.2,
-            Look.jaw: -0.3,
             Look.legLength: 0.6,
             Look.neckLength: 0.3,
             Look.waist: -0.35,

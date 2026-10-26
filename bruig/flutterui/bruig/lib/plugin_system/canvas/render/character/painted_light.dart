@@ -73,7 +73,7 @@ class PaintedLook {
     this.sheen = 0.2,
     this.line = 1.4,
     this.ink = const Color(0xFF6B4636),
-    this.skinShade = const Color(0xFFD48A78),
+    this.skinShade = const Color(0xFFE2A592),
     this.hairShade = const Color(0xFFA0703F),
     this.clothShade = const Color(0xFFB4B8CE),
     this.contact = 0.55,
