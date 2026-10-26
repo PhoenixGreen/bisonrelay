@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -117,7 +118,7 @@ void paintCharacterFigure(
   dna = style.dnaOf(dna);
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
-  void draw(Canvas onto) {
+  void drawOn(Canvas onto) {
     if (body.inThreeD) {
       _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images,
           style: style, look: look, modelDna: bodyDna, bodyStyle: bodyStyle);
@@ -155,6 +156,8 @@ void paintCharacterFigure(
     _Drawing(onto, rig, dna, face, life, bare: bare, look: look, images: images)
         .draw();
   }
+
+  void draw(Canvas onto) => CanvasPerf.time("character", () => drawOn(onto));
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   switch (style) {

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:ui' show Color;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/human_targets.dart';
@@ -302,6 +303,7 @@ class HumanBody extends ChangeNotifier {
     // Being changed -- a slider dragged -- the body it was a moment ago
     // stands in while the new one is made away from the screen: making
     // one takes a fifth of a second, too long to hold up every frame.
+    CanvasPerf.count("bodyBuild");
     var standIn = _made[_lastOf[(dna.kind, drawnFace)]];
     if (standIn != null && !buildNow && !_inForeground) {
       _buildAway(key, pack, dna, wearing, drawnFace, images, limbs, gloves);

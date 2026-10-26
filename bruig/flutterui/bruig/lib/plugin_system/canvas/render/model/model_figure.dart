@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/model_math.dart';
@@ -211,7 +212,7 @@ class LoadedModel {
       _drawn[key] = kept;
       return (box.bottomCenter, kept.$2);
     }
-    var made = _pieces(rig, face, box, lift);
+    var made = CanvasPerf.time("character3dPose", () => _pieces(rig, face, box, lift));
     _drawn[key] = made;
     if (_drawn.length > 12) _drawn.remove(_drawn.keys.first);
     return made;

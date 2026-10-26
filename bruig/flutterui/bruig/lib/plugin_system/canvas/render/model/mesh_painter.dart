@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 
 // mesh_painter.dart draws triangles in 3D on a flat canvas: lit, the ones
@@ -436,9 +437,10 @@ bool paintMeshesInked(Canvas canvas, Offset origin, List<MeshPiece> pieces,
         Paint()..filterQuality = FilterQuality.medium);
     return true;
   }
+  CanvasPerf.count("character3dInk");
   var bounds = meshBounds(pieces, origin);
   if (bounds == null) return true;
-  var order = _sorted(pieces);
+  var order = CanvasPerf.time("character3dSort", () => _sorted(pieces));
   if (order.isEmpty) return true;
   bounds = bounds.inflate(look.outline * 2 + 2);
   // Drawn half as large again as it is seen at, for smooth edges; no

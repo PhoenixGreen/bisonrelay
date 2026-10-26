@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
+
 // painted_light.dart lights a drawn character the way an illustrator
 // paints one: every shape of it rounded from its own outline, so the light
 // turns softly across a leg or a lock of hair and the shadow comes in from
@@ -171,6 +173,7 @@ bool paintPainted(Canvas onto, Rect room, PaintedLook look,
   if (longest > 1800) scale *= 1800 / longest;
   var w = math.max(1, (room.width * scale).ceil());
   var h = math.max(1, (room.height * scale).ceil());
+  CanvasPerf.count("paintedLight");
   var flatRecorder = PictureRecorder();
   var flat = Canvas(flatRecorder)
     ..scale(scale)
