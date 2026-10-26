@@ -1160,7 +1160,12 @@ class _Drawing {
         canvas.drawLine(Offset(-length * 0.45, drop * 0.48),
             Offset(length * 0.45, drop * 0.48), strap..strokeWidth = drop * 0.18);
       case GarmentKind.heels:
-        _heel(length, drop, colour);
+        // Where the ankle is in the foot's own frame, and how wide.
+        var d = rig.end(limb) - centre;
+        var c = math.cos(-tip), sn = math.sin(-tip);
+        var ankle = Offset(d.dx * c - d.dy * sn, d.dx * sn + d.dy * c);
+        _heel(length, drop, colour, ankle,
+            legWidth * 0.52 * (1 + 0.45 * _a(Look.ankles)) / 2);
       default:
         var shoe = Path()
           ..addOval(Rect.fromCenter(
@@ -1184,21 +1189,37 @@ class _Drawing {
   /// the front a pointed toe with the top of the foot showing above it,
   /// from the side the heel lifted on a stiletto and the sole sloping down
   /// to the toe.
-  void _heel(double length, double drop, Color colour) {
+  void _heel(double length, double drop, Color colour,
+      [Offset ankle = Offset.zero, double ankleHalf = 0]) {
     var side = math.sin(rig.yaw * math.pi / 180);
     if (side.abs() < 0.5) {
-      var w = length * 0.46;
+      // From the front: the foot pointed down in the shoe, so the instep is
+      // long, the toe a point below it, the vamp curving across, and the
+      // stiletto showing behind on the outer side.
+      var w = length * 0.42;
+      // Under the ankle, the instep running down from it.
+      canvas.translate(ankle.dx, 0);
+      var top = ankle.dy;
+      var half = ankleHalf > 0 ? ankleHalf : w * 0.28;
+      var heel = Paint()
+        ..color = _shade(colour, 0.12)
+        ..strokeWidth = math.max(0.8, w * 0.1)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(w * 0.32, drop * 0.05), Offset(w * 0.3, drop * 1.0), heel);
+      var instep = Path()
+        ..moveTo(-half, top)
+        ..quadraticBezierTo(-half * 1.25, drop * 0.25, -w * 0.18, drop * 0.75)
+        ..lineTo(w * 0.18, drop * 0.75)
+        ..quadraticBezierTo(half * 1.25, drop * 0.25, half, top)
+        ..close();
+      // Skin only: no line where it comes down out of the leg.
+      _solid(instep.getBounds(), dna.skin, (p) => canvas.drawPath(instep, p));
       _fill(
           Path()
-            ..addOval(Rect.fromCenter(
-                center: Offset(0, -drop * 0.05), width: w * 0.5, height: drop * 0.45)),
-          dna.skin);
-      _fill(
-          Path()
-            ..moveTo(-w / 2, -drop * 0.05)
-            ..quadraticBezierTo(-w * 0.55, drop * 0.65, 0, drop * 1.05)
-            ..quadraticBezierTo(w * 0.55, drop * 0.65, w / 2, -drop * 0.05)
-            ..quadraticBezierTo(0, drop * 0.3, -w / 2, -drop * 0.05)
+            ..moveTo(-w * 0.46, drop * 0.05)
+            ..quadraticBezierTo(-w * 0.52, drop * 0.8, 0, drop * 1.12)
+            ..quadraticBezierTo(w * 0.52, drop * 0.8, w * 0.46, drop * 0.05)
+            ..quadraticBezierTo(0, drop * 0.55, -w * 0.46, drop * 0.05)
             ..close(),
           colour);
       return;
@@ -1435,9 +1456,15 @@ class _Drawing {
     // Over the top: the shoulders sloping up to the neck -- or, cut across
     // the chest, a line dipping a little at the middle.
     if (from > 0) {
+      // A sweetheart: up over each side of the bust, dipping between.
       var edge = top + drop * from;
-      path.quadraticBezierTo(edge.dx - up.dx * u * 0.04, edge.dy - up.dy * u * 0.04,
-          right.first.dx, right.first.dy);
+      var dip = edge - up * (u * 0.06);
+      var lp = left.first, rp = right.first;
+      Offset over(Offset side) =>
+          Offset.lerp(side, dip, 0.5)! + up * (u * 0.12);
+      path
+        ..quadraticBezierTo(over(lp).dx, over(lp).dy, dip.dx, dip.dy)
+        ..quadraticBezierTo(over(rp).dx, over(rp).dy, rp.dx, rp.dy);
       return path..close();
     }
     // The shoulders sloping up from where the arms join to the neck.
@@ -2894,7 +2921,7 @@ class _Drawing {
     return Path()
       ..moveTo(far.dx, far.dy)
       // Over the crown, standing up off the head.
-      ..cubicTo(-w * 1.16, -h * 1.42, w * 1.16, -h * 1.42, near.dx, near.dy)
+      ..cubicTo(-w * 1.26, -h * 1.56, w * 1.26, -h * 1.56, near.dx, near.dy)
       // Up the near side to the parting.
       ..cubicTo(w * 0.98, -h * 0.4, p.dx + w * 0.2, p.dy - h * 0.02, p.dx, p.dy)
       // And swept down across the brow, low over the far temple.
