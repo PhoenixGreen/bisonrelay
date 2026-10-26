@@ -29,6 +29,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -885,6 +886,9 @@ ${rows.join("\n")}
   group("styles", () {
     test("every style draws, each its own way, the same every time",
         () async {
+      // Painted light draws flat until its shader is loaded, as the 3D
+      // body's toon light does: loaded first, it is the same every time.
+      await PaintShader.load();
       var drawn = <String, List<int>>{};
       for (var st in CharacterStyle.values) {
         var e = juno().copyWith(style: st);
@@ -1098,16 +1102,23 @@ ${rows.join("\n")}
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
 
+      // A type, and someone ready-made of that type.
+      await tap(tester, "characterType-girl");
+      expect(get(c).dna.kind, CharacterType.girl);
+      expect(get(c).dna.headsTall, CharacterType.girl.dna.headsTall);
       await tap(tester, "characterCast-Mae");
       expect(get(c).dna.hairStyle, HairStyle.bun);
       expect(get(c).name, "Mae", reason: "renamed with them");
       c.undo();
-      expect(get(c).name, "Juno", reason: "one undo step");
+      expect(get(c).name, "Girl", reason: "one undo step");
+      c.undo();
+      expect(get(c).name, "Juno");
 
       await tap(tester, "characterPose-Cheer");
       expect(get(c).pose[CharacterBone.upperArmL],
           posePresets[3].pose[CharacterBone.upperArmL]);
 
+      await tap(tester, "appearanceTab-hair");
       await tap(tester, "characterHair-long");
       expect(get(c).dna.hairStyle, HairStyle.long);
       // Wardrobe: a dress put on in place of the top and the trousers.
@@ -1135,9 +1146,29 @@ ${rows.join("\n")}
       await tap(tester, "characterWornOff-0");
       expect(get(c).dna.wardrobe.first.kind, isNot(GarmentKind.briefs));
 
-      await tap(tester, "characterHeads-more");
+      // Appearance: a body type, the size, and a slider.
+      await tap(tester, "appearanceTab-body");
+      await tap(tester, "appearancePreset-body-Curvy");
+      expect(get(c).dna.look[Look.hips], 0.8);
+      var heads = find.byKey(const ValueKey("characterHeads"));
+      await tester.ensureVisible(heads);
+      tester.widget<CanvasSlider>(heads).onChanged(6);
+      tester.widget<CanvasSlider>(heads).onCommit?.call();
+      await tester.pumpAndSettle();
       expect(get(c).dna.headsTall, 6);
+      await tap(tester, "appearanceTab-eyes");
+      var eyes = find.byKey(const ValueKey("appearance-eyeSize"));
+      await tester.ensureVisible(eyes);
+      tester.widget<CanvasSlider>(eyes).onChanged(40);
+      tester.widget<CanvasSlider>(eyes).onCommit?.call();
+      await tester.pumpAndSettle();
+      expect(get(c).dna.look[Look.eyeSize], closeTo(0.4, 1e-9));
 
+      // A family, then a style within it.
+      await tap(tester, "characterStyleFamily-anime");
+      expect(get(c).style.family, StyleFamily.anime);
+      await tap(tester, "characterStyle-shojo");
+      expect(get(c).style, CharacterStyle.shojo);
       await tap(tester, "characterStyle-anime");
       expect(get(c).style, CharacterStyle.anime);
       await tap(tester, "characterSpecies-cat");

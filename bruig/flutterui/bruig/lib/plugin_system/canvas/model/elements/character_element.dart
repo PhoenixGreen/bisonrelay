@@ -4,8 +4,13 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
+
+export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
 // character_element.dart is a person, an animal or a monster on a canvas: a
 // cast member with a body, a look and a pose.
@@ -34,6 +39,10 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 /// Serialised by name, so the order is free to change and the names are not.
 enum CharacterBone {
   spine("Body lean"),
+
+  /// hips is the hips tilted, one higher than the other: with the body
+  /// leaning the other way, the weight on one leg -- contrapposto.
+  hips("Hip tilt"),
   head("Head tilt"),
   upperArmL("Left upper arm"),
   foreArmL("Left forearm"),
@@ -443,30 +452,84 @@ class CharacterLife {
 }
 
 /// CharacterStyle is how a character's DNA is drawn.
+/// StyleFamily is a kind of drawing, as the Style section groups them: pick
+/// a family, then the style within it closest to the look wanted.
+enum StyleFamily {
+  anime("Anime"),
+  cartoon("Cartoon"),
+  semiReal("Semi-realistic"),
+  ink("Comic & ink"),
+  craft("Craft & retro");
+
+  final String label;
+  const StyleFamily(this.label);
+}
+
 enum CharacterStyle {
+  // Anime.
+  /// anime is today's television anime: large layered eyes, hair in
+  /// pointed clumps with a ring of shine, one hard shadow.
+  anime("TV anime", "Layered eyes, clumped hair, one hard shadow",
+      StyleFamily.anime),
+  shojo("Shōjo", "Huge sparkling eyes, long lashes, soft pastels",
+      StyleFamily.anime),
+  shonen("Shōnen", "Sharp eyes, spiky hair, bold line", StyleFamily.anime),
+  softFilm("Soft film", "Small gentle eyes, round faces, warm brown line",
+      StyleFamily.anime),
+  chibi("Chibi", "A big head on a small body", StyleFamily.anime),
+  webtoon("Webtoon", "Tall and slim, fine eyes, soft shading",
+      StyleFamily.anime),
+  manga("Manga ink", "Black ink and screentone, no colour", StyleFamily.ink),
+
+  // Cartoon.
   /// featureCartoon is soft shapes, a big readable face and a coloured
   /// outline a shade darker than what it goes round.
-  featureCartoon("Feature cartoon", "Soft shapes, readable faces, a shaded line"),
-  anime("Anime", "Big bright eyes and a cel shadow"),
-  manga("Manga ink", "Black ink and screentone, no colour"),
-  chibi("Chibi", "A big head on a small body"),
-  tvFlat("TV flat", "Flat colour and a thick even line"),
-  rubberHose("Rubber hose", "1930s bendy limbs, gloves and pie eyes"),
-  comic("Comic", "Bold ink with halftone shadows"),
-  storybook("Storybook", "Soft washed colour and a pencil line"),
-  clay("Clay", "Rounded and unlined, moving on twos"),
-  paperCutout("Paper cut-out", "Flat pieces with a shadow behind"),
-  pixel("Pixel", "Drawn small and scaled up crisply"),
-  noir("Noir", "A silhouette with a rim of light");
+  featureCartoon("Feature 2D", "Soft shapes, readable faces, a shaded line",
+      StyleFamily.cartoon),
+  feature3d("Feature 3D", "Rounded volumes, glossy eyes, no line",
+      StyleFamily.cartoon),
+
+  /// illustrated is a feature film's character sheet: long elegant lines,
+  /// almond eyes and soft painted light falling across rounded forms.
+  illustrated("Illustrated", "Elegant curves, painted light, long lines",
+      StyleFamily.cartoon),
+  tvFlat("TV flat", "Flat colour and a thick even line", StyleFamily.cartoon),
+  vectorFlat("Flat vector", "No line, flat shapes, simple shadows",
+      StyleFamily.cartoon),
+  kawaii("Kawaii", "Round, tiny features, pastel and blush",
+      StyleFamily.cartoon),
+  indie("Indie comic", "Hand-inked line and flat colour",
+      StyleFamily.cartoon),
+  rubberHose("Rubber hose", "1930s bendy limbs, gloves and pie eyes",
+      StyleFamily.craft),
+
+  // Semi-realistic.
+  painterly("Painterly", "Real proportions, soft light, detailed eyes",
+      StyleFamily.semiReal),
+  comic("Comic book", "Heroic build, bold ink, halftone shadows",
+      StyleFamily.ink),
+
+  // Craft.
+  storybook("Storybook", "Soft washed colour and a pencil line",
+      StyleFamily.craft),
+  clay("Clay", "Rounded and unlined, moving on twos", StyleFamily.craft),
+  paperCutout("Paper cut-out", "Flat pieces with a shadow behind",
+      StyleFamily.craft),
+  pixel("Pixel", "Drawn small and scaled up crisply", StyleFamily.craft),
+  noir("Noir", "A silhouette with a rim of light", StyleFamily.ink);
 
   final String label;
 
   /// about is what it looks like, under its tile.
   final String about;
-  const CharacterStyle(this.label, this.about);
+  final StyleFamily family;
+  const CharacterStyle(this.label, this.about, this.family);
 
   static CharacterStyle fromName(String? name) => values
       .firstWhere((s) => s.name == name, orElse: () => featureCartoon);
+
+  static List<CharacterStyle> inFamily(StyleFamily f) =>
+      [for (var s in values) if (s.family == f) s];
 
   /// onTwos is whether it moves on every second frame only, as stop-motion
   /// and much hand-drawn animation does.
@@ -476,11 +539,76 @@ enum CharacterStyle {
   /// a style on twos.
   int frameOf(int frame) => onTwos ? frame - frame % 2 : frame;
 
+  /// bias is how a style leans a face and body before drawing them: bigger
+  /// eyes in shōjo, a squarer jaw in shōnen. Added to the character's own
+  /// Appearance, so the person is still themselves, drawn the style's way.
+  Appearance get bias => switch (this) {
+        illustrated => const Appearance({
+            Look.eyeSize: 0.45,
+            Look.noseLength: -0.3,
+            Look.noseWidth: -0.3,
+            Look.lowerLip: 0.3,
+            Look.chin: -0.2,
+            Look.jaw: -0.3,
+            Look.legLength: 0.6,
+            Look.neckLength: 0.3,
+            Look.waist: -0.35,
+            Look.wrists: -0.5,
+            Look.ankles: -0.6,
+          }),
+        anime => const Appearance({Look.eyeSize: 0.35, Look.chin: 0.35,
+            Look.noseLength: -0.4, Look.jaw: -0.2}),
+        shojo => const Appearance({Look.eyeSize: 0.7, Look.iris: 0.4,
+            Look.lashes: 0.6, Look.chin: 0.5, Look.jaw: -0.4,
+            Look.noseLength: -0.6, Look.mouthWidth: -0.3, Look.blush: 0.35}),
+        shonen => const Appearance({Look.eyeSize: 0.15, Look.eyeShape: 0.6,
+            Look.eyeTilt: 0.25, Look.jaw: 0.2, Look.browThickness: 0.4,
+            Look.browAngle: 0.4, Look.hairVolume: 0.4}),
+        softFilm => const Appearance({Look.eyeSize: -0.2, Look.cheeks: 0.4,
+            Look.chin: -0.4, Look.noseLength: -0.3}),
+        chibi => const Appearance({Look.eyeSize: 0.9, Look.iris: 0.4,
+            Look.cheeks: 0.5, Look.noseLength: -0.8}),
+        webtoon => const Appearance({Look.eyeSize: -0.15, Look.eyeShape: 0.5,
+            Look.chin: 0.4, Look.jaw: -0.1, Look.neckLength: 0.3,
+            Look.legLength: 0.4, Look.shoulders: 0.1}),
+        feature3d => const Appearance({Look.eyeSize: 0.55, Look.iris: 0.3,
+            Look.cheeks: 0.3, Look.noseTip: 0.5}),
+        kawaii => const Appearance({Look.eyeSize: -0.3, Look.cheeks: 0.8,
+            Look.chin: -0.8, Look.noseLength: -1, Look.mouthWidth: -0.5,
+            Look.blush: 0.7, Look.headWidth: 0.3}),
+        painterly => const Appearance({Look.eyeSize: -0.35, Look.eyeShape: 0.4,
+            Look.noseBridge: 0.3, Look.cheekbones: 0.2}),
+        comic => const Appearance({Look.shoulders: 0.4, Look.muscle: 0.4,
+            Look.jaw: 0.3, Look.eyeSize: -0.25}),
+        _ => Appearance.rest,
+      };
+
   /// dnaOf is [dna] as this style draws it: a chibi is at most two and a
-  /// half heads tall whatever its own proportions say.
-  CharacterDna dnaOf(CharacterDna dna) => this == chibi && dna.headsTall > 2.6
-      ? dna.copyWith(headsTall: 2.6, build: math.min(1.0, dna.build + 0.15))
-      : dna;
+  /// half heads tall whatever its own proportions say, a webtoon lead and a
+  /// comic-book hero taller than life, and every face leant the style's
+  /// way -- see bias.
+  CharacterDna dnaOf(CharacterDna dna) {
+    if (!dna.kind.person && dna.species != Species.monster) {
+      return this == chibi && dna.headsTall > 2.6
+          ? dna.copyWith(headsTall: 2.6)
+          : dna;
+    }
+    var heads = switch (this) {
+      chibi => math.min(dna.headsTall, 2.6),
+      kawaii => math.min(dna.headsTall, 3.4),
+      webtoon || comic =>
+        math.min(CharacterDna.maxHeads, dna.headsTall * 1.12),
+      _ => dna.headsTall,
+    };
+    var look = dna.look;
+    for (var e in bias.values.entries) {
+      look = look.withValue(e.key, look[e.key] + e.value);
+    }
+    return dna.copyWith(
+        headsTall: heads,
+        build: this == chibi ? math.min(1.0, dna.build + 0.15) : null,
+        look: look);
+  }
 }
 
 enum HairStyle {
@@ -508,6 +636,8 @@ enum Species {
   rabbit("Rabbit"),
   mouse("Mouse"),
   pig("Pig"),
+  hedgehog("Hedgehog"),
+  horse("Horse"),
   bird("Bird"),
   fish("Fish"),
   monster("Monster");
@@ -607,6 +737,24 @@ class CharacterDna {
   /// and a monster's spikes and horns.
   final Color fur2;
 
+  /// look is the shape of the body and the face, control by control -- see
+  /// character_appearance.dart.
+  final Appearance look;
+
+  /// hair2 is the colour of highlights in the hair.
+  final Color hair2;
+
+  /// hairModel and browModel are the hair and brows a sculpted body wears
+  /// -- see human_wear.dart -- or empty for those its hairstyle and type
+  /// suggest.
+  final String hairModel;
+  final String browModel;
+
+  /// type is what kind of character this is -- a woman, a boy, a dog --
+  /// which decides what the panel offers it. Null for one saved before
+  /// types, which is told by its species and size; see typeOf.
+  final CharacterType? type;
+
   const CharacterDna({
     this.headsTall = 5.5,
     this.build = 0.4,
@@ -625,7 +773,15 @@ class CharacterDna {
     this.fangs = false,
     this.spikes = false,
     this.fur2 = const Color(0xFFF6EBDD),
+    this.look = Appearance.rest,
+    this.hair2 = const Color(0xFFD9A35B),
+    this.type,
+    this.hairModel = "",
+    this.browModel = "",
   });
+
+  /// kind is [type], or what a character saved before types most likely is.
+  CharacterType get kind => type ?? CharacterType.guess(this);
 
   /// defaultWardrobe is a new character's clothes: a hoodie and trousers
   /// over the base layer, and trainers.
@@ -663,6 +819,11 @@ class CharacterDna {
     bool? fangs,
     bool? spikes,
     Color? fur2,
+    Appearance? look,
+    Color? hair2,
+    CharacterType? type,
+    String? hairModel,
+    String? browModel,
   }) =>
       CharacterDna(
         headsTall: (headsTall ?? this.headsTall).clamp(minHeads, maxHeads),
@@ -682,6 +843,11 @@ class CharacterDna {
         fangs: fangs ?? this.fangs,
         spikes: spikes ?? this.spikes,
         fur2: fur2 ?? this.fur2,
+        look: look ?? this.look,
+        hair2: hair2 ?? this.hair2,
+        type: type ?? this.type,
+        hairModel: hairModel ?? this.hairModel,
+        browModel: browModel ?? this.browModel,
       );
 
   Map<String, dynamic> toJson() => {
@@ -702,6 +868,11 @@ class CharacterDna {
         if (fangs) "fangs": true,
         if (spikes) "spikes": true,
         "fur2": colorToJson(fur2),
+        if (!look.isRest) "look": look.toJson(),
+        if (hair2 != const Color(0xFFD9A35B)) "hair2": colorToJson(hair2),
+        if (type != null) "type": type!.name,
+        if (hairModel.isNotEmpty) "hairModel": hairModel,
+        if (browModel.isNotEmpty) "browModel": browModel,
       };
 
   factory CharacterDna.fromJson(Map<String, dynamic> json) {
@@ -730,6 +901,11 @@ class CharacterDna {
       fangs: jsonBool(json["fangs"], false),
       spikes: jsonBool(json["spikes"], false),
       fur2: colorFromJson(json["fur2"], d.fur2),
+      look: Appearance.fromJson(json["look"]),
+      hair2: colorFromJson(json["hair2"], d.hair2),
+      type: CharacterType.fromName(json["type"] as String?),
+      hairModel: jsonString(json["hairModel"], ""),
+      browModel: jsonString(json["browModel"], ""),
     );
   }
 
@@ -818,11 +994,15 @@ class OnStage {
 /// BodyKind is what a character's body is made of: drawn flat, as every
 /// style draws it, or modelled in 3D.
 enum BodyKind {
-  drawn("Drawn"),
+  /// drawn is the flat drawing: a sketch of the character, each style's
+  /// shapes laid on the page.
+  drawn("Sketch"),
 
-  /// mannequin is the body built in 3D from the character's own
-  /// proportions and colours -- smooth, with no file behind it.
-  mannequin("Mannequin"),
+  /// mannequin is the body sculpted in 3D -- the MakeHuman body made into
+  /// this character, once it is downloaded; until then, and for animals, a
+  /// smooth mannequin built from the character's proportions and colours.
+  /// Called "mannequin" in saved canvases, as it was first.
+  mannequin("Sculpted 3D"),
 
   /// model is a 3D character from a file: a .glb, .gltf or .vrm.
   model("Model");

@@ -100,6 +100,8 @@ enum GarmentKind {
       length: 0.55, sleeve: 0.3, flare: 1.9),
   gown("Gown", GarmentSlot.full, GarmentShape.dress,
       length: 1.0, sleeve: 0, flare: 2.2),
+  tubeDress("Strapless dress", GarmentSlot.full, GarmentShape.dress,
+      length: 0.28, sleeve: 0, flare: 1.06, fit: 0.97),
   overalls("Overalls", GarmentSlot.full, GarmentShape.legs, length: 1.0, fit: 1.08),
   robe("Robe", GarmentSlot.full, GarmentShape.dress,
       length: 0.85, sleeve: 0.9, flare: 1.3),
@@ -192,6 +194,10 @@ enum GarmentKind {
 
   /// coversLegs is whether it is drawn down the legs.
   bool get coversLegs => shape == GarmentShape.legs;
+
+  /// strapless is a top edge straight across the chest under the arms,
+  /// with nothing over the shoulders.
+  bool get strapless => this == tubeDress;
 }
 
 /// GarmentPattern is what is printed on a garment, in its second colour.

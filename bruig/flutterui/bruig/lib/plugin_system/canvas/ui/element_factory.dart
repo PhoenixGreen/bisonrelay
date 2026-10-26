@@ -289,9 +289,13 @@ CanvasElement newElement(
       // are: a scene with three characters in it is three names in the
       // layer list, not "Character" three times.
       var who = characterCast.first;
+      // Sculpted in 3D, cel-shaded and inked, to begin with: the body every
+      // style is drawn on -- a smooth mannequin until it is downloaded.
       var character = CharacterElement(
           base.copyWith(name: who.name, lockAspect: true),
-          dna: who.dna);
+          dna: who.dna,
+          body: const CharacterBody(
+              kind: BodyKind.mannequin, shading: ModelShading.toon, outline: true));
       // On the stage, where there is one: a scene with a set is played on
       // it. Each new one a step along from the last, not on top of it.
       var stage = document.elements.whereType<StageElement>().firstOrNull;

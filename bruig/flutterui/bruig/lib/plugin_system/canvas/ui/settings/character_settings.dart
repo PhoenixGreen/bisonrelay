@@ -23,11 +23,16 @@ import 'package:bruig/plugin_system/canvas/ui/garment_shape_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/storage/human_assets.dart';
+import 'package:bruig/plugin_system/canvas/storage/human_wear_assets.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/human_wear.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
@@ -70,79 +75,115 @@ List<Widget> characterSettings(
   return [
     section(e, "character",
         icon: Icons.person_outline,
-        title: "Character",
-        summary: "${style.label} · ${shortNumber(dna.headsTall)} heads tall",
+        title: "Type",
+        summary: "${dna.kind.label} · ${shortNumber(dna.headsTall)} heads tall",
         initiallyOpen: true,
         children: [
-          CanvasTiles<int>(
-            label: "Start from",
-            help: "Someone from the cast to start from. Their look is copied "
-                "onto this character, and from then on it is this "
-                "character's own to change.",
-            columns: 5,
-            previewHeight: 64,
-            tiles: [
-              for (var (i, who) in characterCast.indexed)
-                CanvasTile(i, who.name,
-                    drawnFrom: "${who.dna.toJson()}|${style.name}",
-                    paint: (canvas, size) => _figureTile(
-                        canvas, size, who.dna, CharacterElement.restPose, style)),
-            ],
-            selected: (i) =>
-                characterCast[i].dna.toJson().toString() ==
-                dna.toJson().toString(),
-            keyOf: (i) => "characterCast-${characterCast[i].name}",
-            onPick: (i) {
-              var who = characterCast[i];
-              var next = e.copyWith(dna: who.dna);
-              // Renamed with them, unless it has a name of its own.
-              var named = e.base.name.isEmpty ||
-                  characterCast.any((c) => c.name == e.base.name);
-              now(named
-                  ? next.withBase(name: who.name) as CharacterElement
-                  : next);
-            },
-          ),
-          CanvasTiles<CharacterStyle>(
-            label: "Style",
-            help: "How the character is drawn. A style changes the look and "
-                "nothing else: the same person, the same clothes and the "
-                "same moves, drawn another way.",
-            columns: 4,
-            previewHeight: 64,
-            tiles: [
-              for (var st in CharacterStyle.values)
-                CanvasTile(st, st.label,
-                    drawnFrom: "${dna.toJson()}|${st.name}",
-                    paint: (canvas, size) => _figureTile(
-                        canvas, size, dna, CharacterElement.restPose, st)),
-            ],
-            selected: (st) => st == style,
-            keyOf: (st) => "characterStyle-${st.name}",
-            onPick: (st) => now(e.copyWith(style: st)),
-          ),
+          for (var family in TypeFamily.values)
+            CanvasTiles<CharacterType>(
+              label: family.label,
+              help: family == TypeFamily.people
+                  ? "What kind of character this is. A type sets the body, "
+                      "the face and the proportions, and what the panel "
+                      "offers below; everything about it is still yours to "
+                      "change in Appearance. Between people, the colours "
+                      "and the clothes are kept."
+                  : "",
+              columns: 6,
+              previewHeight: 60,
+              tiles: [
+                for (var t in CharacterType.values)
+                  if (t.family == family)
+                    CanvasTile(t, t.label,
+                        drawnFrom: "${t.name}|${style.name}",
+                        paint: (canvas, size) =>
+                            _typeTile(canvas, size, t, style)),
+              ],
+              selected: (t) => dna.kind == t,
+              keyOf: (t) => "characterType-${t.name}",
+              onPick: (t) {
+                var next = e.copyWith(dna: t.becomes(dna));
+                // Renamed with it, unless it has a name of its own.
+                var named = e.base.name.isEmpty ||
+                    characterCast.any((c) => c.name == e.base.name) ||
+                    CharacterType.values.any((x) => x.label == e.base.name);
+                now(named
+                    ? next.withBase(name: t.label) as CharacterElement
+                    : next);
+              },
+            ),
+          if (characterCast.any((c) => c.dna.kind == dna.kind))
+            CanvasTiles<int>(
+              label: "Ready-made",
+              help: "Someone of this type to start from. Their look is "
+                  "copied onto this character, and from then on it is this "
+                  "character's own to change.",
+              columns: 5,
+              previewHeight: 64,
+              tiles: [
+                for (var (i, who) in characterCast.indexed)
+                  if (who.dna.kind == dna.kind)
+                    CanvasTile(i, who.name,
+                        drawnFrom: "${who.dna.toJson()}|${style.name}",
+                        paint: (canvas, size) => _figureTile(canvas, size,
+                            who.dna, CharacterElement.restPose, style)),
+              ],
+              selected: (i) =>
+                  characterCast[i].dna.toJson().toString() ==
+                  dna.toJson().toString(),
+              keyOf: (i) => "characterCast-${characterCast[i].name}",
+              onPick: (i) {
+                var who = characterCast[i];
+                var next = e.copyWith(dna: who.dna);
+                var named = e.base.name.isEmpty ||
+                    characterCast.any((c) => c.name == e.base.name) ||
+                    CharacterType.values.any((x) => x.label == e.base.name);
+                now(named
+                    ? next.withBase(name: who.name) as CharacterElement
+                    : next);
+              },
+            ),
+        ]),
+    section(e, "madeOf",
+        icon: Icons.view_in_ar_outlined,
+        title: "Made of",
+        summary: e.body.kind == BodyKind.model && e.body.modelName.isNotEmpty
+            ? e.body.modelName
+            : e.body.kind.label,
+        initiallyOpen: true,
+        children: [
           CanvasTiles<BodyKind>(
             label: "Made of",
-            help: "Drawn flat, as the style draws it; a smooth mannequin in "
-                "3D, built from this character's proportions and colours; "
-                "or a 3D model brought in from a file. Whatever it is made "
-                "of, it is posed, animated and lip-synced the same way.",
+            help: "A flat sketch, as the style draws it, or a body sculpted "
+                "in 3D from this character's type and Appearance -- lit, "
+                "inked and given a face as its style draws them. Either way "
+                "it is posed, animated and lip-synced the same.",
             columns: 3,
             previewHeight: 64,
             tiles: [
+              // A model from a file is no longer offered: kept only for a
+              // character already made of one, so it can be changed.
               for (var k in BodyKind.values)
-                CanvasTile(k, k.label,
-                    drawnFrom: "$drawn|${k.name}|${e.body.modelId}|"
-                        "${controller.images.resolveModel(e.body.modelId) != null}",
-                    paint: (canvas, size) => _figureTile(
-                        canvas, size, dna, CharacterElement.restPose, style,
-                        e.body.copyWith(kind: k), controller.images)),
+                if (k != BodyKind.model || e.body.kind == BodyKind.model)
+                  CanvasTile(k, k.label,
+                      drawnFrom: "$drawn|${k.name}|${e.body.modelId}|"
+                          "${controller.images.resolveModel(e.body.modelId) != null}",
+                      paint: (canvas, size) => _figureTile(
+                          canvas,
+                          size,
+                          dna,
+                          CharacterElement.restPose,
+                          style,
+                          e.body.copyWith(kind: k),
+                          controller.images)),
             ],
             selected: (k) => k == e.body.kind,
             keyOf: (k) => "characterBody-${k.name}",
             onPick: (k) => now(e.copyWith(body: e.body.copyWith(kind: k))),
           ),
-          if (e.body.inThreeD) ...[
+          // A sculpted body is lit and inked as its style draws; a model
+          // brought in is lit as chosen here.
+          if (e.body.kind == BodyKind.model) ...[
             CanvasTiles<ModelShading>(
               label: "Shading",
               help: "How the body in 3D is lit: softly, in two flat bands as "
@@ -156,8 +197,13 @@ List<Widget> characterSettings(
                           "${e.body.outline}|${e.body.modelId}|"
                           "${controller.images.resolveModel(e.body.modelId) != null}",
                       paint: (canvas, size) => _figureTile(
-                          canvas, size, dna, CharacterElement.restPose, style,
-                          e.body.copyWith(shading: sh), controller.images)),
+                          canvas,
+                          size,
+                          dna,
+                          CharacterElement.restPose,
+                          style,
+                          e.body.copyWith(shading: sh),
+                          controller.images)),
               ],
               selected: (sh) => sh == e.body.shading,
               keyOf: (sh) => "characterShading-${sh.name}",
@@ -177,85 +223,84 @@ List<Widget> characterSettings(
                   ),
                 ]),
           ],
+          if (e.body.kind == BodyKind.mannequin)
+            SculptedBodyGroup(
+                key: const ValueKey("characterSculpted"), character: e),
           if (e.body.kind == BodyKind.model)
             ModelImportGroup(
                 key: ValueKey("characterModel-${e.id}"),
                 controller: controller,
                 character: e),
-          CanvasControlGroup(
-              label: "Body",
-              help: "How tall the character is in head lengths -- about 2½ "
-                  "for a chibi, 5½ for a cartoon, 7½ for a real adult -- "
-                  "and how broad.",
-              children: [
-                CanvasStepper(
-                  key: const ValueKey("characterHeads"),
-                  label: "Heads tall",
-                  value: dna.headsTall,
-                  min: CharacterDna.minHeads,
-                  max: CharacterDna.maxHeads,
-                  step: 0.5,
-                  decimals: 1,
-                  defaultValue: 5.5,
-                  onChanged: (v) =>
-                      write(e.copyWith(dna: dna.copyWith(headsTall: v))),
-                  onCommit: commit,
-                ),
-                CanvasStepper(
-                  key: const ValueKey("characterBuild"),
-                  label: "Build",
-                  value: dna.build * 100,
-                  min: 0,
-                  max: 100,
-                  step: 10,
-                  suffix: "%",
-                  defaultValue: 40,
-                  onChanged: (v) =>
-                      write(e.copyWith(dna: dna.copyWith(build: v / 100))),
-                  onCommit: commit,
-                ),
-              ]),
         ]),
-    section(e, "look",
-        icon: Icons.face_outlined,
-        title: "Look",
-        summary: "${dna.hairStyle.label} hair",
+    section(e, "style",
+        icon: Icons.brush_outlined,
+        title: "Style",
+        summary: style.label,
+        initiallyOpen: true,
         children: [
-          CanvasControlGroup(
-              label: "Colours",
-              help: "Skin, hair and eyes.",
-              children: [
-                CanvasColorButton(
-                  label: "Skin",
-                  color: dna.skin,
-                  onChanged: (c) => dnaNow(dna.copyWith(skin: c)),
-                ),
-                CanvasColorButton(
-                  label: "Hair",
-                  color: dna.hair,
-                  onChanged: (c) => dnaNow(dna.copyWith(hair: c)),
-                ),
-                CanvasColorButton(
-                  label: "Eyes",
-                  color: dna.eyes,
-                  onChanged: (c) => dnaNow(dna.copyWith(eyes: c)),
-                ),
-              ]),
-          CanvasTiles<HairStyle>(
-            label: "Hair",
-            help: "How the hair is cut. Its colour is under Colours.",
+          CanvasTiles<StyleFamily>(
+            label: "Family",
+            help: "What kind of drawing: pick one, then the style within it "
+                "nearest the look you want. A style changes the drawing and "
+                "nothing else: the same person, clothes and moves, drawn "
+                "another way.",
             columns: 5,
-            previewHeight: 48,
+            previewHeight: 64,
             tiles: [
-              for (var h in HairStyle.values)
-                CanvasTile(h, h.label,
-                    drawnFrom: drawn,
-                    paint: (canvas, size) => _headTile(
-                        canvas, size, dna.copyWith(hairStyle: h), style)),
+              for (var f in StyleFamily.values)
+                CanvasTile(f, f.label,
+                    drawnFrom: "${_styleTileKey(dna, e.body)}|${f.name}",
+                    paint: (canvas, size) => _figureTile(
+                        canvas,
+                        size,
+                        dna,
+                        CharacterElement.restPose,
+                        CharacterStyle.inFamily(f).first,
+                        _styleTileBody(e.body),
+                        controller.images,
+                        style)),
             ],
-            selected: (h) => dna.hairStyle == h,
-            keyOf: (h) => "characterHair-${h.name}",
-            onPick: (h) => dnaNow(dna.copyWith(hairStyle: h)),
+            selected: (f) => style.family == f,
+            keyOf: (f) => "characterStyleFamily-${f.name}",
+            onPick: (f) =>
+                now(e.copyWith(style: CharacterStyle.inFamily(f).first)),
+          ),
+          CanvasTiles<CharacterStyle>(
+            label: style.family.label,
+            help: [
+              for (var st in CharacterStyle.inFamily(style.family))
+                "${st.label}: ${st.about}",
+            ].join(". "),
+            columns: 4,
+            previewHeight: 76,
+            tiles: [
+              for (var st in CharacterStyle.inFamily(style.family))
+                CanvasTile(st, st.label,
+                    drawnFrom: "${_styleTileKey(dna, e.body)}|${st.name}",
+                    paint: (canvas, size) => _headTile(
+                        canvas, size, dna, st, _styleTileBody(e.body), style)),
+            ],
+            selected: (st) => st == style,
+            keyOf: (st) => "characterStyle-${st.name}",
+            onPick: (st) => now(e.copyWith(style: st)),
+          ),
+        ]),
+    section(e, "appearance",
+        icon: Icons.face_retouching_natural_outlined,
+        title: "Appearance",
+        summary: dna.look.isRest
+            ? "As the type is"
+            : "${dna.look.values.length} change${dna.look.values.length == 1 ? "" : "s"}",
+        changes: dna.look.values.length,
+        onReset: () => dnaNow(dna.copyWith(look: dna.kind.dna.look)),
+        initiallyOpen: true,
+        children: [
+          AppearanceEditor(
+            key: ValueKey("characterAppearance-${e.id}"),
+            controller: controller,
+            character: e,
+            write: write,
+            commit: commit,
           ),
         ]),
     section(e, "creature",
@@ -397,17 +442,29 @@ List<Widget> characterSettings(
             columns: 4,
             previewHeight: 64,
             tiles: [
-              // In 3D when the body is: a pose is seen on what it moves.
+              // On a model brought in, in 3D: a pose is seen on what it
+              // moves. A sculpted body's is the sketch's -- a dozen figures
+              // in 3D are too many to draw again as it changes.
               for (var (i, p) in posePresets.indexed)
                 CanvasTile(i, p.name,
-                    drawnFrom: "$drawn|${e.body.toJson()}|"
+                    drawnFrom:
+                        "$drawn|${e.body.kind == BodyKind.model ? e.body.toJson() : ""}|"
                         "${controller.images.resolveModel(e.body.modelId) != null}",
-                    paint: (canvas, size) => _figureTile(canvas, size, dna,
-                        p.pose, style, e.body, controller.images)),
+                    paint: (canvas, size) => _figureTile(
+                        canvas,
+                        size,
+                        dna,
+                        p.pose,
+                        style,
+                        e.body.kind == BodyKind.model
+                            ? e.body
+                            : const CharacterBody(),
+                        controller.images)),
             ],
             selected: (i) => _samePose(posePresets[i].pose, pose),
             keyOf: (i) => "characterPose-${posePresets[i].name}",
-            onPick: (i) => now(controller.characterPosed(e, posePresets[i].pose)),
+            onPick: (i) =>
+                now(controller.characterPosed(e, posePresets[i].pose)),
           ),
           CanvasControlGroup(
               label: "Body and head",
@@ -424,8 +481,8 @@ List<Widget> characterSettings(
                     step: 5,
                     suffix: "°",
                     defaultValue: 0,
-                    onChanged: (v) => write(controller.characterPosed(
-                        e, pose.withAngle(bone, v))),
+                    onChanged: (v) => write(
+                        controller.characterPosed(e, pose.withAngle(bone, v))),
                     onCommit: commit,
                   ),
               ]),
@@ -493,7 +550,8 @@ List<Widget> characterSettings(
               for (var k in MotionKind.values)
                 CanvasTile(k, k.label,
                     drawnFrom: drawn,
-                    paint: (canvas, size) => _motionTile(canvas, size, dna, k, style)),
+                    paint: (canvas, size) =>
+                        _motionTile(canvas, size, dna, k, style)),
             ],
             selected: (_) => false,
             keyOf: (k) => "characterMotion-${k.name}",
@@ -531,12 +589,9 @@ List<Widget> characterSettings(
             ],
             selected: (i) => _sameFeeling(expressionPresets[i].face, face),
             keyOf: (i) => "characterFeeling-${expressionPresets[i].name}",
-            onPick: (i) =>
-                faceNow(face.feeling(expressionPresets[i].face)),
+            onPick: (i) => faceNow(face.feeling(expressionPresets[i].face)),
           ),
-          _MixGroup(
-              face: face,
-              onMix: (mixed) => faceNow(mixed)),
+          _MixGroup(face: face, onMix: (mixed) => faceNow(mixed)),
           CanvasTiles<MouthShape>(
             label: "Mouth",
             help: "The shapes speech is drawn with, named by the sounds that "
@@ -548,8 +603,8 @@ List<Widget> characterSettings(
               for (var m in MouthShape.values)
                 CanvasTile(m, "${m.letter} · ${m.sounds}",
                     drawnFrom: drawn,
-                    paint: (canvas, size) => _mouthTile(
-                        canvas, size, dna, CharacterFace.rest.withMouth(m), style)),
+                    paint: (canvas, size) => _mouthTile(canvas, size, dna,
+                        CharacterFace.rest.withMouth(m), style)),
             ],
             selected: (m) => face.mouth == m,
             keyOf: (m) => "characterMouth-${m.name}",
@@ -631,12 +686,26 @@ bool _samePose(CharacterPose a, CharacterPose b) {
   return true;
 }
 
+/// _styleTileBody is what a style's tile draws the character as: in 3D
+/// when it is sculpted, as a sketch otherwise.
+CharacterBody _styleTileBody(CharacterBody body) =>
+    body.kind == BodyKind.mannequin ? body : const CharacterBody();
+
+/// _styleTileKey is what a style's tile is drawn from: in 3D, not the fine
+/// shaping of the face and body, which barely shows at a tile's size and
+/// would draw every tile in 3D again for each step of a slider.
+String _styleTileKey(CharacterDna dna, CharacterBody body) {
+  if (body.kind != BodyKind.mannequin) return "${dna.toJson()}";
+  return "${dna.toJson()..remove("look")}|3d";
+}
+
 /// _figureTile draws the whole character, standing in the tile.
 void _figureTile(
     ui.Canvas canvas, Size size, CharacterDna dna, CharacterPose pose,
     [CharacterStyle style = CharacterStyle.featureCartoon,
     CharacterBody body = const CharacterBody(),
-    CanvasImageSource? images]) {
+    CanvasImageSource? images,
+    CharacterStyle? bodyStyle]) {
   var h = size.height * 0.92;
   paintCharacterFigure(
       canvas,
@@ -646,20 +715,48 @@ void _figureTile(
       pose,
       style: style,
       body: body,
-      images: images);
+      images: images,
+      bodyStyle: body.inThreeD ? bodyStyle : null);
+}
+
+/// _typeTile draws a new character of type [t] standing in the tile --
+/// side on when it stands on four legs, which face on is all chest.
+void _typeTile(
+    ui.Canvas canvas, Size size, CharacterType t, CharacterStyle style) {
+  var dna = t.dna;
+  var pose = dna.fourLegs
+      ? CharacterElement.restPose.withTurn(65)
+      : CharacterElement.restPose;
+  var h = size.height * 0.92;
+  var w = dna.fourLegs ? h * 0.9 : h * 0.45;
+  paintCharacterFigure(
+      canvas,
+      Rect.fromCenter(center: size.center(Offset.zero), width: w, height: h),
+      dna,
+      pose,
+      style: style);
 }
 
 /// _headTile draws the character's head, filling the tile.
 void _headTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    [CharacterStyle style = CharacterStyle.featureCartoon]) {
+    [CharacterStyle style = CharacterStyle.featureCartoon,
+    CharacterBody body = const CharacterBody(),
+    CharacterStyle? bodyStyle]) {
   // A head is one of headsTall lengths of the body: drawn at a height that
-  // makes one head about the tile, with the top of the head near its top.
-  var h = size.height * 0.8 * dna.headsTall;
+  // makes one head about the tile, with the top of the head near its top --
+  // in 3D, the body as made, whatever the style's proportions.
+  var threeD = body.inThreeD && bodyStyle != null;
+  var h = size.height *
+      0.8 *
+      (threeD ? bodyStyle.dnaOf(dna).headsTall : style.dnaOf(dna).headsTall);
   paintCharacterFigure(
       canvas,
       Rect.fromLTWH(size.width / 2 - h / 4, size.height * 0.18, h / 2, h),
       dna,
-      CharacterElement.restPose, style: style);
+      CharacterElement.restPose,
+      style: style,
+      body: body,
+      bodyStyle: threeD ? bodyStyle : null);
 }
 
 /// _bodyTile draws the character from the chin to the hips.
@@ -674,8 +771,9 @@ void _legsTile(ui.Canvas canvas, Size size, CharacterDna dna,
 
 /// _cropTile draws the part of the character [from] (a share of its height
 /// above the bottom) for [span] of its height, filling the tile.
-void _cropTile(ui.Canvas canvas, Size size, CharacterDna dna, double from,
-    double span, [CharacterStyle style = CharacterStyle.featureCartoon]) {
+void _cropTile(
+    ui.Canvas canvas, Size size, CharacterDna dna, double from, double span,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var h = size.height / span;
   var top = -(1 - from) * h;
   canvas.save();
@@ -684,7 +782,8 @@ void _cropTile(ui.Canvas canvas, Size size, CharacterDna dna, double from,
       canvas,
       Rect.fromLTWH(size.width / 2 - h * 0.25, top, h * 0.5, h),
       dna,
-      CharacterElement.restPose, style: style);
+      CharacterElement.restPose,
+      style: style);
   canvas.restore();
 }
 
@@ -747,8 +846,9 @@ bool _sameFeeling(CharacterFace a, CharacterFace b) {
 }
 
 /// _faceTile draws the character's head with [face], filling the tile.
-void _faceTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    CharacterFace face, [CharacterStyle style = CharacterStyle.featureCartoon]) {
+void _faceTile(
+    ui.Canvas canvas, Size size, CharacterDna dna, CharacterFace face,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var h = size.height * 0.86 * dna.headsTall;
   canvas.save();
   canvas.clipRect(Offset.zero & size);
@@ -757,13 +857,15 @@ void _faceTile(ui.Canvas canvas, Size size, CharacterDna dna,
       Rect.fromLTWH(size.width / 2 - h / 4, size.height * 0.08, h / 2, h),
       dna,
       CharacterElement.restPose,
-      face: face, style: style);
+      face: face,
+      style: style);
   canvas.restore();
 }
 
 /// _mouthTile draws the lower half of the character's face, close up.
-void _mouthTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    CharacterFace face, [CharacterStyle style = CharacterStyle.featureCartoon]) {
+void _mouthTile(
+    ui.Canvas canvas, Size size, CharacterDna dna, CharacterFace face,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   // A head's mouth is about three tenths of a head below its middle; drawn
   // at this size the mouth fills the middle of the tile.
   var head = size.height * 2.2;
@@ -776,7 +878,8 @@ void _mouthTile(ui.Canvas canvas, Size size, CharacterDna dna,
           size.height / 2 - head * 0.5 - head * 0.3, h / 2, h),
       dna,
       CharacterElement.restPose,
-      face: face, style: style);
+      face: face,
+      style: style);
   canvas.restore();
 }
 
@@ -935,8 +1038,8 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
   @override
   Widget build(BuildContext context) {
     var voices = _voices;
-    var voice = voices.where((v) => v.id == _voice).firstOrNull ??
-        voices.firstOrNull;
+    var voice =
+        voices.where((v) => v.id == _voice).firstOrNull ?? voices.firstOrNull;
     return CanvasControlGroup(
         label: "From the voice-over",
         help: "Hear the words uses the words heard for the Cues -- hearing "
@@ -1036,8 +1139,8 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
 
 /// _motionTile draws the character part way through [kind]: side on for a
 /// walk or a run, which only read from the side.
-void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna,
-    MotionKind kind, [CharacterStyle style = CharacterStyle.featureCartoon]) {
+void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna, MotionKind kind,
+    [CharacterStyle style = CharacterStyle.featureCartoon]) {
   var side = kind == MotionKind.walk || kind == MotionKind.run;
   var base = CharacterElement.restPose.withTurn(side ? 90 : 0);
   var t = kind.seconds * (kind.loops ? 0.25 : 0.5);
@@ -1046,7 +1149,11 @@ void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna,
       CharacterFace.rest,
       [
         MotionClip(
-            id: "", kind: kind, layer: kind.layer, start: 0, length: 1000,
+            id: "",
+            kind: kind,
+            layer: kind.layer,
+            start: 0,
+            length: 1000,
             blend: 0)
       ],
       (t * 24).round(),
@@ -1060,14 +1167,16 @@ void _motionTile(ui.Canvas canvas, Size size, CharacterDna dna,
           height: h),
       dna,
       pose,
-      face: face, style: style);
+      face: face,
+      style: style);
 }
 
 /// _clipGroup is one motion clip's settings: when, how fast, how much, on
 /// which layer, mirrored or not, and a button to take it off.
 Widget _clipGroup(CanvasController controller, CharacterElement e,
     MotionClip clip, SettingsWrite write, VoidCallback commit) {
-  var rate = controller.document.frameRate <= 0 ? 12 : controller.document.frameRate;
+  var rate =
+      controller.document.frameRate <= 0 ? 12 : controller.document.frameRate;
   void set(MotionClip next) {
     controller.beginInteraction();
     write(e.copyWith(motions: [
@@ -1203,10 +1312,20 @@ class _WalkGroupState extends State<_WalkGroup> {
             for (var (kind, dir, label, icon, key) in const [
               (MotionKind.walk, -1, "Walk", Icons.west, "characterWalkLeft"),
               (MotionKind.walk, 1, "Walk", Icons.east, "characterWalkRight"),
-              (MotionKind.run, -1, "Run", Icons.keyboard_double_arrow_left,
-                  "characterRunLeft"),
-              (MotionKind.run, 1, "Run", Icons.keyboard_double_arrow_right,
-                  "characterRunRight"),
+              (
+                MotionKind.run,
+                -1,
+                "Run",
+                Icons.keyboard_double_arrow_left,
+                "characterRunLeft"
+              ),
+              (
+                MotionKind.run,
+                1,
+                "Run",
+                Icons.keyboard_double_arrow_right,
+                "characterRunRight"
+              ),
             ])
               CanvasTextButton(
                 key: ValueKey(key),
@@ -1278,6 +1397,129 @@ Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
           onCommit: commit,
         ),
       ]);
+}
+
+/// SculptedBodyGroup fetches the sculpted body, once, when it is wanted:
+/// what it is, how big, where from, and how far along.
+class SculptedBodyGroup extends StatefulWidget {
+  final CharacterElement character;
+  const SculptedBodyGroup({required this.character, super.key});
+
+  @override
+  State<SculptedBodyGroup> createState() => SculptedBodyGroupState();
+}
+
+class SculptedBodyGroupState extends State<SculptedBodyGroup> {
+  double? _progress;
+  String _said = "";
+
+  HumanBody get _body => HumanBody.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _body.addListener(_changed);
+    _body.load();
+  }
+
+  @override
+  void dispose() {
+    _body.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _download() async {
+    setState(() {
+      _progress = 0;
+      _said = "";
+    });
+    try {
+      await HumanAssets.install(
+          progress: (p) => mounted ? setState(() => _progress = p) : null);
+      await _body.installed();
+      _said = "";
+    } catch (e) {
+      _said = "$e";
+    }
+    if (mounted) setState(() => _progress = null);
+  }
+
+  /// _wearProgress is how far along hair and shoes are, while they come.
+  double? _wearProgress;
+
+  Future<void> _downloadWear() async {
+    setState(() {
+      _wearProgress = 0;
+      _said = "";
+    });
+    try {
+      await HumanWearAssets.install(
+          progress: (p) => mounted ? setState(() => _wearProgress = p) : null);
+      await _body.wearInstalled();
+      _said = "";
+    } catch (e) {
+      _said = "$e";
+    }
+    if (mounted) setState(() => _wearProgress = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var person = widget.character.dna.kind.person;
+    var status = _wearProgress != null
+        ? "Downloading hair and shoes… ${(_wearProgress! * 100).round()}%"
+        : _progress != null
+            ? "Downloading the body… ${(_progress! * 100).round()}%"
+            : _said.isNotEmpty
+                ? _said
+                : _body.ready
+                    ? person
+                        ? "Sculpted from MakeHuman's body, free to use for "
+                            "anything. Shape every part in Appearance."
+                        : "Animals and creatures are a smooth mannequin for "
+                            "now; people are sculpted."
+                    : _body.missing
+                        ? "The detailed body is downloaded once: about "
+                            "${humanDownloadBytes >> 20} MB from MakeHuman on "
+                            "GitHub, free to use for anything. It connects "
+                            "directly, not through this app's proxy. Until "
+                            "then, a smooth mannequin stands in."
+                        : "Looking for the body…";
+    return CanvasControlGroup(
+        label: "Sculpted body",
+        help: "A real body in 3D, sculpted into this character from its "
+            "type and its Appearance: age, build and every part of the "
+            "face. Made from MakeHuman's open body, which is fetched the "
+            "first time it is used.",
+        children: [
+          if (_body.missing && _progress == null)
+            CanvasTextButton(
+              key: const ValueKey("characterSculptedDownload"),
+              icon: Icons.download_outlined,
+              label: "Download the body",
+              primary: true,
+              onPressed: _download,
+            ),
+          CanvasStatus(status),
+          if (_body.ready && _body.wearMissing && _wearProgress == null) ...[
+            CanvasTextButton(
+              key: const ValueKey("characterWearDownload"),
+              icon: Icons.download_outlined,
+              label: "Download hair and shoes",
+              onPressed: _downloadWear,
+            ),
+            CanvasStatus("${wearOfKind(WearKind.hair).length} hairstyles, "
+                "brows, shoes and teeth fitted to the body: about "
+                "${humanWearBytes >> 20} MB from MakeHuman's collections, "
+                "free to use for anything. Until then the hair is grown "
+                "from the scalp."),
+          ],
+        ]);
+  }
 }
 
 /// ModelImportGroup brings a 3D model in from a file and makes it the
@@ -1418,9 +1660,8 @@ class ModelImportGroupState extends State<ModelImportGroup> {
             CanvasDropdown<String>(
               key: const ValueKey("characterModelLibrary"),
               label: "From the library",
-              value: _library.any((a) => a.id == body.modelId)
-                  ? body.modelId
-                  : "",
+              value:
+                  _library.any((a) => a.id == body.modelId) ? body.modelId : "",
               width: 170,
               options: [
                 if (!_library.any((a) => a.id == body.modelId))
@@ -1668,8 +1909,7 @@ class _ImportGroupState extends State<_ImportGroup> {
                       ? "Stop, and use it"
                       : "Record with the camera",
                   primary: now == CaptureKind.camera,
-                  onPressed: _busy ||
-                          (now != null && now != CaptureKind.camera)
+                  onPressed: _busy || (now != null && now != CaptureKind.camera)
                       ? null
                       : _record,
                 ),
@@ -1777,8 +2017,9 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
   /// _change writes the picked garment as [g]: [live] while a number is
   /// being dragged, committed when it is let go.
   /// _pickedGarment is the garment being edited, as it is now.
-  Garment? get _pickedGarment =>
-      _picked >= 0 && _picked < dna.wardrobe.length ? dna.wardrobe[_picked] : null;
+  Garment? get _pickedGarment => _picked >= 0 && _picked < dna.wardrobe.length
+      ? dna.wardrobe[_picked]
+      : null;
 
   void _change(Garment g, {bool live = false}) {
     var wardrobe = [...dna.wardrobe];
@@ -1816,7 +2057,8 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               key: const ValueKey("characterBaseLayer"),
               label: "Base layer",
               value: dna.baseLayer,
-              onChanged: (v) => _now(e.copyWith(dna: dna.copyWith(baseLayer: v))),
+              onChanged: (v) =>
+                  _now(e.copyWith(dna: dna.copyWith(baseLayer: v))),
             ),
           ]),
       CanvasTiles<int>(
@@ -1828,8 +2070,12 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
           for (var (i, c) in costumes.indexed)
             CanvasTile(i, c.name,
                 drawnFrom: drawn,
-                paint: (canvas, size) => _figureTile(canvas, size,
-                    dna.copyWith(wardrobe: c.wardrobe), CharacterElement.restPose, style)),
+                paint: (canvas, size) => _figureTile(
+                    canvas,
+                    size,
+                    dna.copyWith(wardrobe: c.wardrobe),
+                    CharacterElement.restPose,
+                    style)),
         ],
         selected: (_) => false,
         keyOf: (i) => "characterCostume-${costumes[i].name}",
@@ -2083,14 +2329,13 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
         previewHeight: 56,
         tiles: [
           for (var (i, p) in conditionPresets.indexed)
-            CanvasTile(i, p.$1,
-                drawnFrom: "${dna.toJson()}|$_picked",
+            CanvasTile(i, p.$1, drawnFrom: "${dna.toJson()}|$_picked",
                 paint: (canvas, size) {
-                  var worn = [...dna.wardrobe];
-                  worn[_picked] = g.copyWith(condition: p.$2);
-                  _garmentTile(canvas, size, dna.copyWith(wardrobe: worn),
-                      g.kind.slot, style);
-                }),
+              var worn = [...dna.wardrobe];
+              worn[_picked] = g.copyWith(condition: p.$2);
+              _garmentTile(canvas, size, dna.copyWith(wardrobe: worn),
+                  g.kind.slot, style);
+            }),
         ],
         selected: (i) => _sameCondition(conditionPresets[i].$2, g.condition),
         keyOf: (i) => "characterCondition-${conditionPresets[i].$1}",
@@ -2100,15 +2345,21 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
           label: "Wear",
           help: "Each from as new to as bad as it gets.",
           children: [
-            for (var (name, value, set) in <(String, double,
-                GarmentCondition Function(double))>[
+            for (var (name, value, set)
+                in <(String, double, GarmentCondition Function(double))>[
               ("Faded", g.condition.fade, (v) => g.condition.copyWith(fade: v)),
               ("Dirt", g.condition.dirt, (v) => g.condition.copyWith(dirt: v)),
               ("Rips", g.condition.rips, (v) => g.condition.copyWith(rips: v)),
-              ("Frayed", g.condition.frays,
-                  (v) => g.condition.copyWith(frays: v)),
-              ("Patched", g.condition.patches,
-                  (v) => g.condition.copyWith(patches: v)),
+              (
+                "Frayed",
+                g.condition.frays,
+                (v) => g.condition.copyWith(frays: v)
+              ),
+              (
+                "Patched",
+                g.condition.patches,
+                (v) => g.condition.copyWith(patches: v)
+              ),
             ])
               CanvasStepper(
                 key: ValueKey("characterWear-$name"),
@@ -2138,8 +2389,12 @@ bool _sameCondition(GarmentCondition a, GarmentCondition b) =>
 /// _stageSection is where the character stands: on a 3D stage -- which
 /// one, the spot on its floor, how tall, which way round -- or on the page,
 /// with its shadow and how much it shrinks going up the page.
-Widget _stageSection(CanvasController controller, CharacterElement e,
-    SettingsWrite write, VoidCallback commit, void Function(CharacterElement) now) {
+Widget _stageSection(
+    CanvasController controller,
+    CharacterElement e,
+    SettingsWrite write,
+    VoidCallback commit,
+    void Function(CharacterElement) now) {
   var stages = controller.document.elements.whereType<StageElement>().toList();
   var on = e.onStage;
   void place(OnStage next, {bool live = false}) {
@@ -2164,19 +2419,19 @@ Widget _stageSection(CanvasController controller, CharacterElement e,
                 "one to stand on.",
             children: [
               CanvasDropdown<String>(
-                key: const ValueKey("characterStage"),
-                label: "Stage",
-                value: on?.stage ?? "",
-                width: 170,
-                options: [
-                  ("", "The page"),
-                  for (var s in stages) (s.id, s.name),
-                ],
-                onChanged: (id) => now(id.isEmpty
-                    ? e.copyWith(offStage: true)
-                    : e.copyWith(
-                        onStage: OnStage(id,
-                            height: e.dna.fourLegs ? 0.9 : 1.7)))),
+                  key: const ValueKey("characterStage"),
+                  label: "Stage",
+                  value: on?.stage ?? "",
+                  width: 170,
+                  options: [
+                    ("", "The page"),
+                    for (var s in stages) (s.id, s.name),
+                  ],
+                  onChanged: (id) => now(id.isEmpty
+                      ? e.copyWith(offStage: true)
+                      : e.copyWith(
+                          onStage: OnStage(id,
+                              height: e.dna.fourLegs ? 0.9 : 1.7)))),
             ]),
         if (on != null)
           CanvasControlGroup(
@@ -2195,14 +2450,46 @@ Widget _stageSection(CanvasController controller, CharacterElement e,
                   String,
                   OnStage Function(double)
                 )>[
-                  ("characterStageX", "Across", on.x, -50, 50, 0.5, " m",
-                      (v) => on.copyWith(x: v)),
-                  ("characterStageZ", "Forward", on.z, -50, 50, 0.5, " m",
-                      (v) => on.copyWith(z: v)),
-                  ("characterStageHeight", "Height", on.height, 0.1, 30, 0.1,
-                      " m", (v) => on.copyWith(height: v)),
-                  ("characterStageFacing", "Facing", on.facing, -180, 180, 15,
-                      "°", (v) => on.copyWith(facing: v)),
+                  (
+                    "characterStageX",
+                    "Across",
+                    on.x,
+                    -50,
+                    50,
+                    0.5,
+                    " m",
+                    (v) => on.copyWith(x: v)
+                  ),
+                  (
+                    "characterStageZ",
+                    "Forward",
+                    on.z,
+                    -50,
+                    50,
+                    0.5,
+                    " m",
+                    (v) => on.copyWith(z: v)
+                  ),
+                  (
+                    "characterStageHeight",
+                    "Height",
+                    on.height,
+                    0.1,
+                    30,
+                    0.1,
+                    " m",
+                    (v) => on.copyWith(height: v)
+                  ),
+                  (
+                    "characterStageFacing",
+                    "Facing",
+                    on.facing,
+                    -180,
+                    180,
+                    15,
+                    "°",
+                    (v) => on.copyWith(facing: v)
+                  ),
                 ])
                   CanvasStepper(
                     key: ValueKey(key),

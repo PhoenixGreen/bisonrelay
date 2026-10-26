@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/edge_cleaning.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -409,8 +410,19 @@ class CanvasImageStore extends ChangeNotifier
     if (keys.isNotEmpty) notifyListeners();
   }
 
+  CanvasImageStore() {
+    HumanBody.instance.addListener(_onHuman);
+  }
+
+  /// _onHuman is the sculpted body arriving: everything made of it is drawn
+  /// again with it.
+  void _onHuman() {
+    if (!_disposed) notifyListeners();
+  }
+
   @override
   void dispose() {
+    HumanBody.instance.removeListener(_onHuman);
     _disposed = true;
     _edges.dispose();
     for (var model in _models.values) {

@@ -97,6 +97,9 @@ class CanvasStorage {
   @visibleForTesting
   static String? rootOverride;
 
+  /// overridden is whether a test has said where the library is.
+  static bool get overridden => rootOverride != null;
+
   /// liveAssetIds is every stored picture that some saved canvas still uses.
   ///
   /// Every folder and every document, because one picture can be used by more

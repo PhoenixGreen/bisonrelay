@@ -154,6 +154,8 @@ flutter:
     - shaders/texture.frag
     - shaders/sharpen.frag
     - shaders/heal.frag
+    - shaders/character_toon.frag
+    - shaders/character_paint.frag
 
   # To add assets to your application, add an assets section, like this:
   assets:

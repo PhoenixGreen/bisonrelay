@@ -13,6 +13,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/background_element.dar
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -142,7 +143,14 @@ Future<void> drawWhenLoaded(
   if (images == null) return;
   for (var round = 0; round < 3; round++) {
     var recorder = ui.PictureRecorder();
-    paint(ui.Canvas(recorder));
+    // Sculpted bodies made there and then, not stood in for while they are
+    // made: kept, the draw that follows finds them made.
+    HumanBody.instance.buildNow = true;
+    try {
+      paint(ui.Canvas(recorder));
+    } finally {
+      HumanBody.instance.buildNow = false;
+    }
     recorder.endRecording().dispose();
     if (!images.loading) return;
     // Bounded: a picture that never arrives is drawn as missing rather than

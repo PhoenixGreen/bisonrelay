@@ -72,6 +72,11 @@ const Map<HumanBone, List<String>> _boneNames = {
 
 /// GltfNode is one node of the scene: a place, maybe a mesh hung on it,
 /// and its children.
+/// mouthLandmark names a node marking where the mouth is -- with no skin
+/// on it, riding on the head -- for a face drawn over the model. The
+/// sculpted body has one; see buildHuman.
+const String mouthLandmark = "face.mouth";
+
 class GltfNode {
   final String name;
   int parent;
@@ -143,8 +148,48 @@ class GltfMaterial {
   /// material, or VRM's MToon.
   final bool toon;
   final bool transparent;
+
+  /// mtoon is how VRM's toon shader would draw it, when it says.
+  final MToon? mtoon;
+
+  /// cutOut is a picture used only for where it is solid -- a hair card --
+  /// its colour coming from the vertices.
+  final bool cutOut;
   const GltfMaterial(
-      this.color, this.image, this.doubleSided, this.toon, this.transparent);
+      this.color, this.image, this.doubleSided, this.toon, this.transparent,
+      {this.mtoon, this.cutOut = false});
+
+  GltfMaterial withImage(int? image) => GltfMaterial(
+      color, image, doubleSided, toon, transparent,
+      mtoon: mtoon, cutOut: cutOut);
+
+  GltfMaterial withMToon(MToon m) => GltfMaterial(
+      color, image, doubleSided, true, transparent,
+      mtoon: m, cutOut: cutOut);
+}
+
+/// MToon is a material's toon settings, as VRM keeps them: the colour its
+/// shadow is, how hard the line between light and shadow is (toony, from
+/// soft at nought to a hard edge at one) and where it falls (shift, below
+/// nought further round into the light), a rim of light round its edge,
+/// and the width and colour of its outline.
+class MToon {
+  final List<double> shade;
+  final double toony;
+  final double shift;
+  final List<double> rim;
+  final double rimPower;
+  final double outlineWidth;
+  final List<double> outlineColor;
+  const MToon({
+    this.shade = const [0.8, 0.75, 0.85],
+    this.toony = 0.9,
+    this.shift = 0,
+    this.rim = const [0, 0, 0],
+    this.rimPower = 5,
+    this.outlineWidth = 0,
+    this.outlineColor = const [0, 0, 0],
+  });
 }
 
 /// GltfChannel is one property of one node moving: its key times in
@@ -373,15 +418,36 @@ class _Reader {
     // a material carries the image it shows.
     materials = [
       for (var m in materials)
-        GltfMaterial(
-            m.color,
-            m.image == null || m.image! >= textures.length
-                ? null
-                : ((textures[m.image!] as Map)["source"] as num?)?.toInt(),
-            m.doubleSided,
-            m.toon,
-            m.transparent),
+        m.withImage(m.image == null || m.image! >= textures.length
+            ? null
+            : ((textures[m.image!] as Map)["source"] as num?)?.toInt()),
     ];
+    // VRM 0 keeps its toon settings apart from the materials, by name.
+    var props = ((json["extensions"] as Map?)?["VRM"] as Map?)?["materialProperties"];
+    if (props is List) {
+      var names = [for (var m in list("materials")) (m as Map)["name"] as String?];
+      for (var p in props) {
+        if (p is! Map || p["shader"] != "VRM/MToon") continue;
+        var i = names.indexOf(p["name"] as String?);
+        if (i < 0 || i >= materials.length) continue;
+        var vec = (p["vectorProperties"] as Map?) ?? const {};
+        var fl = (p["floatProperties"] as Map?) ?? const {};
+        List<double> rgb(Object? v, List<double> or) => v is List && v.length >= 3
+            ? [for (var k = 0; k < 3; k++) (v[k] as num).toDouble()]
+            : or;
+        double f(String k, double or) => (fl[k] as num?)?.toDouble() ?? or;
+        materials[i] = materials[i].withMToon(MToon(
+          shade: rgb(vec["_ShadeColor"], const [0.8, 0.75, 0.85]),
+          toony: f("_ShadeToony", 0.9),
+          shift: f("_ShadeShift", 0),
+          rim: rgb(vec["_RimColor"], const [0, 0, 0]),
+          rimPower: f("_RimFresnelPower", 5),
+          // VRM 0's outline width is in centimetres.
+          outlineWidth: f("_OutlineWidth", 0) / 100,
+          outlineColor: rgb(vec["_OutlineColor"], const [0, 0, 0]),
+        ));
+      }
+    }
 
     var scene = list("scenes").isEmpty
         ? null
@@ -496,13 +562,29 @@ class _Reader {
         (c as num).toDouble()
     ];
     var ext = m["extensions"] as Map?;
+    MToon? mtoon;
+    if (ext?["VRMC_materials_mtoon"] case Map t) {
+      List<double> rgb(Object? v, List<double> or) => v is List && v.length >= 3
+          ? [for (var k = 0; k < 3; k++) (v[k] as num).toDouble()]
+          : or;
+      double f(String k, double or) => (t[k] as num?)?.toDouble() ?? or;
+      mtoon = MToon(
+        shade: rgb(t["shadeColorFactor"], const [0.8, 0.75, 0.85]),
+        toony: f("shadingToonyFactor", 0.9),
+        shift: f("shadingShiftFactor", 0),
+        rim: rgb(t["parametricRimColorFactor"], const [0, 0, 0]),
+        rimPower: f("parametricRimFresnelPowerFactor", 5),
+        outlineWidth: t["outlineWidthMode"] == "none" ? 0 : f("outlineWidthFactor", 0),
+        outlineColor: rgb(t["outlineColorFactor"], const [0, 0, 0]),
+      );
+    }
     return GltfMaterial(
       color,
       ((pbr?["baseColorTexture"] as Map?)?["index"] as num?)?.toInt(),
       (m["doubleSided"] as bool?) ?? false,
-      ext?.containsKey("KHR_materials_unlit") == true ||
-          ext?.containsKey("VRMC_materials_mtoon") == true,
+      ext?.containsKey("KHR_materials_unlit") == true || mtoon != null,
       m["alphaMode"] == "BLEND",
+      mtoon: mtoon,
     );
   }
 

@@ -23,11 +23,13 @@ class CastMember {
 /// characterCast is who a new character can start as. The first is who
 /// arrives when one is added.
 const List<CastMember> characterCast = [
-  CastMember("Juno", "Hoodie, short hair", CharacterDna()),
+  CastMember("Juno", "Hoodie, short hair",
+      CharacterDna(type: CharacterType.man)),
   CastMember(
       "Rosa",
       "Long hair, T-shirt",
       CharacterDna(
+        type: CharacterType.woman,
         headsTall: 5.5,
         build: 0.35,
         skin: Color(0xFF8D5A3B),
@@ -45,6 +47,7 @@ const List<CastMember> characterCast = [
       "Kenji",
       "Shirt and tie, taller",
       CharacterDna(
+        type: CharacterType.man,
         headsTall: 6.5,
         build: 0.55,
         skin: Color(0xFFF0CDAE),
@@ -64,6 +67,7 @@ const List<CastMember> characterCast = [
       "Mae",
       "Chibi, dress",
       CharacterDna(
+        type: CharacterType.girl,
         headsTall: 3,
         build: 0.3,
         skin: Color(0xFFF6D3B8),
@@ -81,6 +85,7 @@ const List<CastMember> characterCast = [
       "Ade",
       "Curly hair, shorts",
       CharacterDna(
+        type: CharacterType.boy,
         headsTall: 5,
         build: 0.7,
         skin: Color(0xFF6B4029),
@@ -100,6 +105,7 @@ const List<CastMember> characterCast = [
       "Pip",
       "Fox, on two legs",
       CharacterDna(
+        type: CharacterType.fox,
         headsTall: 4,
         build: 0.35,
         skin: Color(0xFFE8762C),
@@ -117,6 +123,7 @@ const List<CastMember> characterCast = [
       "Biscuit",
       "Dog, four legs",
       CharacterDna(
+        type: CharacterType.dog,
         headsTall: 3.2,
         build: 0.6,
         skin: Color(0xFFC98F52),
@@ -133,6 +140,7 @@ const List<CastMember> characterCast = [
       "Grub",
       "Monster, one eye",
       CharacterDna(
+        type: CharacterType.monster,
         headsTall: 2.6,
         build: 1,
         skin: Color(0xFF7BC96F),
@@ -151,6 +159,7 @@ const List<CastMember> characterCast = [
       "Ember",
       "Dragon, wings and tail",
       CharacterDna(
+        type: CharacterType.dragon,
         headsTall: 3.4,
         build: 0.8,
         skin: Color(0xFF8B6CD6),
@@ -170,6 +179,7 @@ const List<CastMember> characterCast = [
       "Ollie",
       "Owl",
       CharacterDna(
+        type: CharacterType.bird,
         headsTall: 2.8,
         build: 0.8,
         skin: Color(0xFF8A623F),
@@ -184,6 +194,7 @@ const List<CastMember> characterCast = [
       "Finn",
       "Fish",
       CharacterDna(
+        type: CharacterType.fish,
         headsTall: 3,
         build: 0.7,
         skin: Color(0xFF3DA5D9),

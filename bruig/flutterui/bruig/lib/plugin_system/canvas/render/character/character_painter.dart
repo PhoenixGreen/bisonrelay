@@ -1,11 +1,14 @@
 import 'dart:math' as math;
 import 'dart:ui';
+import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
@@ -103,16 +106,42 @@ void paintCharacterFigure(
     bool bare = false,
     CharacterStyle style = CharacterStyle.featureCartoon,
     CharacterBody body = const CharacterBody(),
-    CanvasImageSource? images}) {
+    CanvasImageSource? images,
+    CharacterStyle? bodyStyle}) {
   if (box.height <= 0) return;
+  // bodyStyle is the style a sculpted body is made for, in place of this
+  // one -- for a preview of a style drawn on the body already made, rather
+  // than making one of its own.
+  var bodyDna = bodyStyle?.dnaOf(dna);
   dna = style.dnaOf(dna);
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
-  void draw(Canvas onto) => body.inThreeD
-      ? _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images)
-      : _Drawing(onto, rig, dna, face, life,
-              bare: bare, look: look, images: images)
-          .draw();
+  void draw(Canvas onto) {
+    if (body.inThreeD) {
+      _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images,
+          style: style, look: look, modelDna: bodyDna, bodyStyle: bodyStyle);
+      return;
+    }
+    // Painted light: drawn as flat colour and lit -- or, before its shader
+    // is loaded, drawn as it is.
+    if (look.shading == _Shading.painted) {
+      var unit = box.height / dna.headsTall;
+      var lit = paintPainted(
+          onto,
+          box.inflate(box.height * 0.35),
+          PaintedLook(
+            line: unit * 0.024 * look.line,
+            ink: look.ink ?? const Color(0xFF6B4636),
+            reach: unit * 0.09,
+          ),
+          (flat, buffers) => _Drawing(flat, rig, dna, face, life,
+                  bare: bare, look: look, images: images, painted: buffers)
+              .draw());
+      if (lit) return;
+    }
+    _Drawing(onto, rig, dna, face, life, bare: bare, look: look, images: images)
+        .draw();
+  }
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   switch (style) {
@@ -156,6 +185,14 @@ void paintCharacterFigure(
       canvas.saveLayer(room, Paint()..colorFilter = _wash);
       draw(canvas);
       canvas.restore();
+    case CharacterStyle.kawaii || CharacterStyle.shojo:
+      canvas.saveLayer(room, Paint()..colorFilter = _pastel);
+      draw(canvas);
+      canvas.restore();
+    case CharacterStyle.softFilm:
+      canvas.saveLayer(room, Paint()..colorFilter = _film);
+      draw(canvas);
+      canvas.restore();
     case CharacterStyle.pixel:
       // Drawn at a small size and scaled up without smoothing: every pixel
       // of the small drawing a square block.
@@ -181,9 +218,18 @@ void paintCharacterFigure(
 /// _paintInThreeD draws [dna] as a body in 3D: the model [body] names when
 /// it is loaded, and the mannequin until it is -- or when it is the
 /// mannequin that is asked for.
+///
+/// A sculpted body wears its style's face: the eyes, brows and mouth the
+/// style draws, laid on the 3D head as it turns -- all but the painterly
+/// style, whose eyes are the model's own.
 void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
     CharacterPose pose, CharacterFace face, LifeAt life, CharacterBody body,
-    Rect box, CanvasImageSource? images) {
+    Rect box, CanvasImageSource? images,
+    {CharacterStyle style = CharacterStyle.featureCartoon,
+    _Look look = const _Look(),
+    CharacterDna? modelDna,
+    CharacterStyle? bodyStyle}) {
+  var drawnFace = body.kind == BodyKind.mannequin && style != CharacterStyle.painterly;
   // Blinking and glancing about, as the drawn face does.
   face = face.withControls({
     if (life.blink > 0)
@@ -193,22 +239,146 @@ void _paintInThreeD(Canvas canvas, CharacterRig rig, CharacterDna dna,
     if (life.lookY != 0)
       FaceControl.lookY: face[FaceControl.lookY] + life.lookY,
   });
+  // A model brought in, or the sculpted body made into this character --
+  // the mannequin standing in for either until it is here.
   var model = body.kind == BodyKind.model && body.modelId.isNotEmpty
       ? switch (images) {
           CanvasModelSource source => source.resolveModel(body.modelId),
           _ => null,
         }
-      : null;
+      : body.kind == BodyKind.mannequin
+          ? HumanBody.instance.modelFor(modelDna ?? dna,
+              drawnFace: drawnFace,
+              preferHair: _styleHair(bodyStyle ?? style, modelDna ?? dna),
+              limbs: _Look.of(bodyStyle ?? style).limbs,
+              gloves: _Look.of(bodyStyle ?? style).gloves)
+          : null;
   var outline = body.outline ? math.max(1.0, box.height * 0.006) : 0.0;
+  // A sculpted body is lit and inked as its style draws: the style is the
+  // look, as the drawn body's is.
+  if (body.kind == BodyKind.mannequin) {
+    var (ink, shading) = _styleInk(look, box);
+    if (model != null) {
+      var (origin, pieces) =
+          model.pieces(rig, face, box, lift: pose.lift * rig.unit);
+      if (!paintMeshesInked(canvas, origin, pieces, ink, shading: shading)) {
+        paintMeshes(canvas, origin, pieces,
+            shading: shading, outline: ink.outline, outlineColor: ink.ink);
+      }
+      if (drawnFace && dna.kind.person) {
+        if (model.faceFrame(rig, face, box, lift: pose.lift * rig.unit) case var f?) {
+          _Drawing(canvas, rig, dna, face, life, look: look).faceOn(
+              f.eyeL, f.eyeR, f.base, f.top, f.mouth);
+        }
+      }
+      return;
+    }
+    var lumps = mannequinPieces(rig, dna, face);
+    if (!paintMeshesInked(canvas, rig.hips, lumps, ink, shading: shading)) {
+      paintMeshes(canvas, rig.hips, lumps, shading: shading, outline: ink.outline);
+    }
+    return;
+  }
   if (model != null) {
     var (origin, pieces) =
         model.pieces(rig, face, box, lift: pose.lift * rig.unit);
-    paintMeshes(canvas, origin, pieces,
-        shading: body.shading, outline: outline);
+    // A toon model's own outline, at its own width, when it has one.
+    var own = body.shading == ModelShading.toon && model.outlineWidth > 0
+        ? math.max(1.0, model.outlineWidth * box.height / model.height)
+        : 0.0;
+    if (!paintMeshesInked(canvas, origin, pieces,
+        _inkLook(body, box, math.max(outline, own),
+            own > outline ? model.outlineColour : null),
+        shading: body.shading)) {
+      paintMeshes(canvas, origin, pieces,
+          shading: body.shading,
+          outline: math.max(outline, own),
+          outlineColor: own > outline ? model.outlineColour : const Color(0xFF1A1A1A));
+    }
+    if (drawnFace && dna.kind.person) {
+      if (model.faceFrame(rig, face, box, lift: pose.lift * rig.unit) case var f?) {
+        _Drawing(canvas, rig, dna, face, life, look: look).faceOn(
+            f.eyeL, f.eyeR, f.base, f.top, f.mouth);
+      }
+    }
     return;
   }
-  paintMeshes(canvas, rig.hips, mannequinPieces(rig, dna, face),
-      shading: body.shading, outline: outline);
+  var lumps = mannequinPieces(rig, dna, face);
+  if (paintMeshesInked(canvas, rig.hips, lumps, _inkLook(body, box, outline, null),
+      shading: body.shading)) {
+    return;
+  }
+  paintMeshes(canvas, rig.hips, lumps, shading: body.shading, outline: outline);
+}
+
+/// _styleHair is the hair a sculpted body wears in [style] where none is
+/// chosen: the cut that style draws people with.
+String? _styleHair(CharacterStyle style, CharacterDna dna) {
+  var female = dna.kind == CharacterType.woman || dna.kind == CharacterType.girl;
+  var long = dna.hairStyle == HairStyle.long;
+  if (dna.hairStyle == HairStyle.bald || dna.hairStyle == HairStyle.bun ||
+      dna.hairStyle == HairStyle.curly) {
+    return null;
+  }
+  return switch (style) {
+    CharacterStyle.anime || CharacterStyle.chibi || CharacterStyle.shonen =>
+      female ? (long ? "bangs" : "bobcut") : "anime",
+    CharacterStyle.shojo => female ? (long ? "bangs" : "bob2") : "anime",
+    CharacterStyle.webtoon => female ? (long ? "layered" : "bob2") : "swept",
+    CharacterStyle.comic => female ? (long ? "wavy" : "bob1") : "short2",
+    CharacterStyle.kawaii => female ? (long ? "cloud" : "bobcut") : "messy",
+    _ => null,
+  };
+}
+
+/// _styleInk is how a style lights and inks a body in 3D: its line as
+/// thick and in the colour it draws one, cel bands where it shades in
+/// bands -- none at all where it draws flat colour -- soft light where it
+/// shades softly, and its shadows tinted as its drawings' are.
+(InkLook, ModelShading) _styleInk(_Look look, Rect box) {
+  var line = look.line;
+  var soft = look.shading == _Shading.soft;
+  var flat = look.shading == _Shading.flat;
+  return (
+    InkLook(
+      cel: !soft,
+      outline: line > 0 ? math.max(1.0, box.height * 0.0042 * line) : 0,
+      inner: line > 0 ? (0.55 + 0.25 * math.min(line, 1.6)).clamp(0.0, 0.95) : 0,
+      ink: look.ink ?? const Color(0xFF2A2024),
+      // Flat colour: the light falls everywhere, so there is no shadow.
+      shift: flat ? 2 : -0.12,
+      toony: 0.94,
+      rim: soft ? const Color(0x30FFFFFF) : const Color(0x38FFFFFF),
+      shade: look.shadowTint == null
+          ? null
+          : Color.lerp(look.shadowTint, const Color(0xFFFFFFFF), 0.5),
+      pattern: switch (look.shading) {
+        _Shading.halftone => 1,
+        _Shading.screentone => 2,
+        _ => 0,
+      },
+    ),
+    soft ? ModelShading.soft : ModelShading.toon,
+  );
+}
+
+/// _inkLook is how the toon shader draws [body] in [box]: cel bands, an
+/// outline and inked lines inside for toon; soft light, and ink only when
+/// an outline is asked for, otherwise.
+InkLook _inkLook(CharacterBody body, Rect box, double outline, Color? ink) {
+  var toon = body.shading == ModelShading.toon;
+  var line = outline > 0
+      ? outline
+      : toon
+          ? math.max(1.0, box.height * 0.0035)
+          : 0.0;
+  return InkLook(
+    cel: toon,
+    outline: line,
+    inner: toon ? 0.85 : (outline > 0 ? 0.45 : 0.0),
+    ink: ink ?? const Color(0xFF2A2024),
+    rim: toon ? const Color(0x40FFFFFF) : const Color(0x26FFFFFF),
+  );
 }
 
 /// _greyscale takes the colour out, leaving how light each thing is, a
@@ -228,13 +398,88 @@ const ColorFilter _wash = ColorFilter.matrix([
   0, 0, 0, 1, 0,
 ]);
 
+/// _pastel is colour lifted towards white and softened: kawaii and shōjo.
+const ColorFilter _pastel = ColorFilter.matrix([
+  0.82, 0.06, 0.04, 0, 34, //
+  0.05, 0.84, 0.05, 0, 32, //
+  0.06, 0.06, 0.82, 0, 36, //
+  0, 0, 0, 1, 0,
+]);
+
+/// _film is colour warmed and a little muted, as painted film cels are.
+const ColorFilter _film = ColorFilter.matrix([
+  0.9, 0.1, 0.02, 0, 10, //
+  0.06, 0.88, 0.04, 0, 6, //
+  0.04, 0.1, 0.78, 0, 0, //
+  0, 0, 0, 1, 0,
+]);
+
 /// _Shading is how a style shades a shape: not at all, with a band of
-/// shadow, or with the shadow printed as dots.
-enum _Shading { flat, cel, halftone, screentone }
+/// shadow, with the shadow printed as dots, or lit softly as a rounded
+/// thing is.
+/// _Shading is how a style shades: flat colour, a cel band, dots of
+/// halftone or screentone, a soft gradient -- or painted light, every shape
+/// rounded and lit; see painted_light.dart.
+enum _Shading { flat, cel, halftone, screentone, soft, painted }
 
-enum _Eyes { round, anime, pie }
+/// _Eyes is how a style draws an eye.
+enum _Eyes {
+  /// round is the plain cartoon's: white, iris, a highlight, a lid line.
+  round,
 
-/// _Look is how a style draws: its line, its shading, its eyes, its limbs.
+  /// feature is a feature film's: an almond lifted at the outer corner, a
+  /// big layered iris, a heavy upper lid ending in a flick, and a crease.
+  feature,
+
+  /// anime is a tall eye with a heavy upper lash line, a layered iris and
+  /// two highlights.
+  anime,
+
+  /// shojo is bigger, sparkling, with long lashes.
+  shojo,
+
+  /// shonen is narrow and sharp, with a small iris.
+  shonen,
+
+  /// soft is a small eye that is nearly all iris, under a simple lid.
+  soft,
+
+  /// dot is a dark oval with a dot of light.
+  dot,
+
+  /// fine is a slim eye with a crease above it, as a webtoon draws it.
+  fine,
+
+  /// glossy is a big round eye with a deep shiny iris.
+  glossy,
+
+  /// real is an almond eye with a shaded iris, a lid and a crease.
+  real,
+  pie,
+}
+
+/// _Hair is how a style draws hair.
+enum _Hair {
+  plain,
+
+  /// clumps is anime hair: a fringe of pointed locks and a ring of shine.
+  clumps,
+
+  /// spiky is clumps with spikes standing up off the crown.
+  spiky,
+
+  /// soft is smooth hair with one soft band of shine.
+  soft,
+
+  /// strands is smooth hair with fine strands drawn through it.
+  strands,
+}
+
+/// _Nose is how a style draws a nose seen from the front.
+enum _Nose { shaped, tick, none, shaded, small }
+
+/// _Look is how a style draws: its line, its shading, its eyes, its hair,
+/// its nose, its limbs.
 class _Look {
   /// line is how thick the outline is, against the usual; nought is none.
   final double line;
@@ -243,7 +488,15 @@ class _Look {
   /// round.
   final Color? ink;
   final _Shading shading;
+
+  /// shadowTint is the colour shadows lean towards, or null for darker.
+  final Color? shadowTint;
   final _Eyes eyes;
+  final _Hair hair;
+  final _Nose nose;
+
+  /// hatch is blush drawn as short lines across the cheeks, as anime does.
+  final bool hatch;
 
   /// limbs is how thick arms and legs are, against the usual.
   final double limbs;
@@ -258,7 +511,11 @@ class _Look {
       {this.line = 1,
       this.ink,
       this.shading = _Shading.flat,
+      this.shadowTint,
       this.eyes = _Eyes.round,
+      this.hair = _Hair.plain,
+      this.nose = _Nose.shaped,
+      this.hatch = false,
       this.limbs = 1,
       this.hose = false,
       this.gloves = false});
@@ -266,17 +523,98 @@ class _Look {
   static const _black = Color(0xFF151515);
 
   static _Look of(CharacterStyle style) => switch (style) {
-        CharacterStyle.featureCartoon => const _Look(),
-        CharacterStyle.anime =>
-          const _Look(line: 0.8, shading: _Shading.cel, eyes: _Eyes.anime),
+        CharacterStyle.illustrated => const _Look(
+            line: 0.7,
+            ink: Color(0xFF7A5040),
+            shading: _Shading.painted,
+            eyes: _Eyes.feature,
+            hair: _Hair.soft,
+            nose: _Nose.small,
+            limbs: 0.92),
+        CharacterStyle.featureCartoon => const _Look(
+            shading: _Shading.cel, eyes: _Eyes.feature, hair: _Hair.soft),
+        CharacterStyle.anime => const _Look(
+            line: 0.75,
+            shading: _Shading.cel,
+            shadowTint: Color(0xFF6A4A8A),
+            eyes: _Eyes.anime,
+            hair: _Hair.clumps,
+            nose: _Nose.tick,
+            hatch: true),
+        CharacterStyle.shojo => const _Look(
+            line: 0.6,
+            shading: _Shading.cel,
+            shadowTint: Color(0xFFB06A9A),
+            eyes: _Eyes.shojo,
+            hair: _Hair.clumps,
+            nose: _Nose.tick,
+            hatch: true,
+            limbs: 0.85),
+        CharacterStyle.shonen => const _Look(
+            line: 1.3,
+            ink: Color(0xFF1E1A22),
+            shading: _Shading.cel,
+            shadowTint: Color(0xFF3A3A6A),
+            eyes: _Eyes.shonen,
+            hair: _Hair.spiky,
+            nose: _Nose.tick),
+        CharacterStyle.softFilm => const _Look(
+            line: 0.85,
+            ink: Color(0xFF6A4A36),
+            shading: _Shading.cel,
+            shadowTint: Color(0xFF8A6A5A),
+            eyes: _Eyes.soft,
+            hair: _Hair.soft,
+            nose: _Nose.small),
+        CharacterStyle.chibi => const _Look(
+            shading: _Shading.cel,
+            shadowTint: Color(0xFF7A5A9A),
+            eyes: _Eyes.shojo,
+            hair: _Hair.clumps,
+            nose: _Nose.none,
+            hatch: true),
+        CharacterStyle.webtoon => const _Look(
+            line: 0.5,
+            shading: _Shading.soft,
+            eyes: _Eyes.fine,
+            hair: _Hair.strands,
+            nose: _Nose.tick,
+            limbs: 0.9),
         CharacterStyle.manga => const _Look(
             line: 1.3,
             ink: _black,
             shading: _Shading.screentone,
-            eyes: _Eyes.anime),
-        CharacterStyle.chibi =>
-          const _Look(shading: _Shading.cel, eyes: _Eyes.anime),
-        CharacterStyle.tvFlat => const _Look(line: 2.2, ink: _black),
+            eyes: _Eyes.anime,
+            hair: _Hair.clumps,
+            nose: _Nose.tick),
+        CharacterStyle.feature3d => const _Look(
+            line: 0,
+            shading: _Shading.soft,
+            eyes: _Eyes.glossy,
+            hair: _Hair.soft,
+            nose: _Nose.shaded),
+        CharacterStyle.tvFlat =>
+          const _Look(line: 2.2, ink: _black, eyes: _Eyes.dot, nose: _Nose.small),
+        CharacterStyle.vectorFlat => const _Look(
+            line: 0,
+            shading: _Shading.cel,
+            shadowTint: Color(0xFF4A3A7A),
+            eyes: _Eyes.dot,
+            hair: _Hair.soft,
+            nose: _Nose.small),
+        CharacterStyle.kawaii => const _Look(
+            line: 1.1,
+            ink: Color(0xFF5A4448),
+            eyes: _Eyes.dot,
+            hair: _Hair.soft,
+            nose: _Nose.none,
+            hatch: true),
+        CharacterStyle.indie => const _Look(
+            line: 1.5,
+            ink: Color(0xFF221A18),
+            eyes: _Eyes.real,
+            hair: _Hair.strands,
+            nose: _Nose.shaped),
         CharacterStyle.rubberHose => const _Look(
             line: 2,
             ink: _black,
@@ -284,11 +622,22 @@ class _Look {
             limbs: 0.5,
             hose: true,
             gloves: true),
+        CharacterStyle.painterly => const _Look(
+            line: 0.35,
+            shading: _Shading.soft,
+            eyes: _Eyes.real,
+            hair: _Hair.strands,
+            nose: _Nose.shaded),
         CharacterStyle.comic => const _Look(
-            line: 1.8, ink: _black, shading: _Shading.halftone),
+            line: 1.8,
+            ink: _black,
+            shading: _Shading.halftone,
+            eyes: _Eyes.real,
+            hair: _Hair.strands),
         CharacterStyle.storybook =>
-          const _Look(line: 0.7, ink: Color(0xFF6B5B4B)),
-        CharacterStyle.clay => const _Look(line: 0, shading: _Shading.cel),
+          const _Look(line: 0.7, ink: Color(0xFF6B5B4B), hair: _Hair.soft),
+        CharacterStyle.clay =>
+          const _Look(line: 0, shading: _Shading.soft, eyes: _Eyes.dot),
         CharacterStyle.paperCutout => const _Look(line: 0.5),
         CharacterStyle.pixel => const _Look(line: 1.2, ink: _black),
         CharacterStyle.noir => const _Look(line: 0),
@@ -296,7 +645,9 @@ class _Look {
 }
 
 class _Drawing {
-  final Canvas canvas;
+  /// canvas is what is drawn on -- swapped, a shape at a time, for the
+  /// painted light's buffers as it lays shapes into them; see _solid.
+  Canvas canvas;
   final CharacterRig rig;
   final CharacterDna dna;
   final CharacterFace face;
@@ -311,9 +662,113 @@ class _Drawing {
   final CanvasImageSource? images;
 
   _Drawing(this.canvas, this.rig, this.dna, this.face, this.life,
-      {this.bare = false, this.look = const _Look(), this.images});
+      {this.bare = false, this.look = const _Look(), this.images, this.painted});
+
+  /// painted is where, for painted light, each solid shape is laid down as
+  /// well as drawn: drawn then as flat colour, with no line, for the shader
+  /// to light and line.
+  final PaintedBuffers? painted;
+
+  /// _materialOf is what a shape of [colour] is made of.
+  PaintedMaterial _materialOf(Color colour) {
+    if (colour == dna.skin) return PaintedMaterial.skin;
+    if (colour == dna.hair || colour == dna.hair2) return PaintedMaterial.hair;
+    if (colour == dna.eyes) return PaintedMaterial.flat;
+    return PaintedMaterial.cloth;
+  }
+
+  /// _onModel is the turn of a 3D head the face is being drawn on -- see
+  /// faceOn -- whose own pose already nods it. Null for a drawn head.
+  double? _onModel;
+
+  /// _eyesAt and _mouthAt are where a 3D head's eyes and mouth are, across
+  /// the face drawn on it -- see faceOn -- in place of where a ball would
+  /// put them: the far eye on a turned head stays on its face.
+  Map<double, double>? _eyesAt;
+  Offset? _mouthAt;
+
+  /// faceOn draws the face alone on a head in 3D, where the eyes [eyeL]
+  /// and [eyeR], the bottom of the skull [base] and the middle of the head
+  /// [top] are on the page (x, y and nearness, in pixels): the same
+  /// features as on a drawn head, on a ball as big as the eyes are far
+  /// apart, turned, tipped and nodded as that head is -- its eyes and its
+  /// [mouth], where that is known, put where the head's are.
+  void faceOn(List<double> eyeL, List<double> eyeR, List<double> base,
+      List<double> top, List<double>? mouth) {
+    List<double> minus(List<double> a, List<double> b) =>
+        [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    double len(List<double> a) => math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    var across = minus(eyeL, eyeR);
+    var gap = len(across);
+    // Up the face: from the mouth to the eyes, square to the line between
+    // them, where the mouth is known -- the head's bone leans forward of
+    // the face -- and up the head otherwise.
+    var mid3 = [for (var c = 0; c < 3; c++) (eyeL[c] + eyeR[c]) / 2];
+    var up = mouth == null ? minus(top, base) : minus(mid3, mouth);
+    if (gap < 1e-6) return;
+    var along = (up[0] * across[0] + up[1] * across[1] + up[2] * across[2]) / (gap * gap);
+    up = [for (var c = 0; c < 3; c++) up[c] - across[c] * along];
+    var ul = len(up);
+    if (ul < 1e-6) return;
+    up = [for (var c in up) c / ul];
+    // Which way the face looks: square to the eyes and the head's length.
+    var f = [
+      up[1] * across[2] - up[2] * across[1],
+      up[2] * across[0] - up[0] * across[2],
+      up[0] * across[1] - up[1] * across[0],
+    ];
+    var fl = len(f);
+    if (fl < 1e-6) return;
+    f = [for (var c in f) c / fl];
+    _onModel = math.atan2(-f[0], f[2]);
+    if (facing < -0.15) return;
+    // How the head leans on the page, and how far it nods away.
+    var roll = math.atan2(up[0], -up[1]);
+    var nod = math.sqrt(up[0] * up[0] + up[1] * up[1]).clamp(0.25, 1.0);
+    // The drawn head's ball, as big as puts its eyes where these are.
+    var w = rig.headRadii.width;
+    var phi = 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
+    var ball = gap / (2 * math.sin(phi));
+    var k = ball / w;
+    // The drawn eyes' middle, where the model's is.
+    var eyeY = u * 0.06 - _a(Look.eyeHeight) * u * 0.06;
+    var mid = Offset(-w * math.sin(yaw) * math.cos(phi), eyeY);
+    var cr = math.cos(roll), sr = math.sin(roll);
+    var placed = Offset(mid.dx * k, mid.dy * k * nod);
+    var turned = Offset(placed.dx * cr - placed.dy * sr, placed.dx * sr + placed.dy * cr);
+    var centre = Offset((eyeL[0] + eyeR[0]) / 2, (eyeL[1] + eyeR[1]) / 2) - turned;
+    // Where the eyes and the mouth are on the face, back in the drawn
+    // head's own measure: the face keeps its proportions, and its mouth
+    // goes where the head's is.
+    Offset local(List<double> p) {
+      var d = Offset(p[0], p[1]) - centre;
+      return Offset((d.dx * cr + d.dy * sr) / k, (-d.dx * sr + d.dy * cr) / (k * nod));
+    }
+
+    var l = local(eyeL).dx, r = local(eyeR).dx;
+    _eyesAt = {-1.0: math.min(l, r), 1.0: math.max(l, r)};
+    if (mouth != null) _mouthAt = local(mouth);
+    canvas.save();
+    canvas.translate(centre.dx, centre.dy);
+    canvas.rotate(roll);
+    canvas.scale(k, k * nod);
+    _face(w, onModel: true);
+    canvas.restore();
+  }
 
   double get u => rig.unit;
+
+  /// _a is how far the Appearance control [l] is set: nought at rest.
+  double _a(Look l) => rig.look[l];
+
+  /// _seed is a fixed number for [k], so freckles land in the same places
+  /// in every frame and every export.
+  double _seed(int k) {
+    var h = (k * 0x9E3779B1 + 0x632BE5AB) & 0xFFFFFFFF;
+    h = ((h ^ (h >> 15)) * 0x85EBCA6B) & 0xFFFFFFFF;
+    h = ((h ^ (h >> 13)) * 0xC2B2AE35) & 0xFFFFFFFF;
+    return (h ^ (h >> 16)) / 0xFFFFFFFF;
+  }
 
   /// edge is how thick every outline is.
   double get edge => math.max(0.6, u * 0.022) * look.line;
@@ -333,14 +788,51 @@ class _Drawing {
   /// and to the left -- a band of darker colour, or dots.
   void _solid(Rect bounds, Color colour, void Function(Paint) draw) {
     var base = Paint()..color = colour;
-    if (look.shading == _Shading.flat) {
+    if (painted case var buffers?) {
+      // Laid into the light's buffers, drawing on each in turn, and drawn
+      // as flat colour for it to light.
+      var main = canvas;
+      buffers.add(main.getTransform(), bounds, _materialOf(colour), u * 0.11,
+          (onto, p) {
+        canvas = onto;
+        draw(p);
+        canvas = main;
+      });
+      canvas = main;
+      draw(base);
+      return;
+    }
+    if (look.shading == _Shading.flat || look.shading == _Shading.painted) {
       draw(base);
       return;
     }
     var room = bounds.inflate(u * 0.3);
     canvas.saveLayer(room, Paint());
     draw(base);
-    var shadow = Color.lerp(colour, const Color(0xFF000000), 0.24)!;
+    if (look.shading == _Shading.soft) {
+      // Lit from above on the left: lighter there, darker away from it,
+      // and a little light caught on the far edge.
+      var r = math.max(bounds.width, bounds.height);
+      canvas.drawRect(
+          room,
+          Paint()
+            ..blendMode = BlendMode.srcATop
+            ..shader = ui.Gradient.radial(
+                bounds.topLeft + Offset(bounds.width * 0.3, bounds.height * 0.25),
+                r * 1.05,
+                [
+                  const Color(0x33FFFFFF),
+                  const Color(0x00FFFFFF),
+                  Color.lerp(colour, const Color(0xFF1A1030), 0.55)!
+                      .withValues(alpha: 0.42),
+                ],
+                const [0, 0.45, 1]));
+      canvas.restore();
+      return;
+    }
+    var shadow = look.shadowTint == null
+        ? Color.lerp(colour, const Color(0xFF000000), 0.24)!
+        : Color.lerp(colour, look.shadowTint, 0.3)!;
     switch (look.shading) {
       case _Shading.cel:
         canvas.drawRect(room,
@@ -362,7 +854,7 @@ class _Drawing {
             canvas.drawCircle(Offset(x, y), r, dot);
           }
         }
-      case _Shading.flat:
+      case _Shading.flat || _Shading.soft || _Shading.painted:
         break;
     }
     // The lit part: the same thing again, moved towards the light, in its
@@ -380,7 +872,8 @@ class _Drawing {
 
   /// _outline edges [path] as the style edges things.
   void _outline(Path path, Color colour) {
-    if (!lined) return;
+    // Painted light draws its own line.
+    if (!lined || painted != null) return;
     canvas.drawPath(path, _edgePaint(colour));
   }
 
@@ -400,7 +893,7 @@ class _Drawing {
   void draw() {
     // Long hair hangs behind the head, until the head turns away and it is
     // the thing in front -- see _head.
-    if (dna.hairStyle == HairStyle.long && facing >= -0.3) _inHead(_backHair);
+    if (_hangingHair && facing >= -0.3) _inHead(_backHair);
     // A cape hangs behind the body, until the body turns away from the
     // reader and it is the thing in front.
     if (bodyFacing >= -0.2) _capes();
@@ -419,6 +912,7 @@ class _Drawing {
     _neck();
     _torso();
     _neckwear();
+    _frontHair();
     _arms(far: false, near: near);
     if (bodyFacing < -0.2) {
       _capes();
@@ -466,15 +960,22 @@ class _Drawing {
         _toes(limb);
         continue;
       }
-      _stroke(_along(limb, 0, 1), legWidth, dna.skin);
-      _foot(limb, dna.skin, bareFoot: true);
+      _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true);
+      // A bare foot, unless a shoe covers it all.
+      if (!_wearing((g) =>
+              g.kind.shape == GarmentShape.shoes && g.kind != GarmentKind.sandals)
+          .isNotEmpty) {
+        _foot(limb, dna.skin, bareFoot: true);
+      }
       for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
         var from = g.kind.from, to = math.max(from + 0.02, g.lengthOr);
         _cloth(null, g, i,
             line: _along(limb, from, math.min(1, to)),
             width: legWidth * 1.12 * g.fitOr,
             part: limb.index,
-            hem: true);
+            hem: true,
+            span: (from, math.min(1, to)),
+            leg: true);
         if (g.kind == GarmentKind.socks) _foot(limb, g.color);
         if (from == 0 && !dna.fourLegs && !seated.any((s) => s.$1 == i)) {
           seated.add((i, g));
@@ -502,13 +1003,20 @@ class _Drawing {
   void _skirts() {
     // Nothing hangs from the waist of a body carried level.
     if (dna.fourLegs || dna.species.legless) return;
+    // A fitted dress is one piece from the chest to the hem -- see _torso
+    // -- not a top with a skirt under it.
     for (var (i, g) in _wearing((g) =>
         g.kind.shape == GarmentShape.skirt ||
-        g.kind.shape == GarmentShape.dress)) {
+        (g.kind.shape == GarmentShape.dress && !_fitted(g)))) {
       _cloth(_skirt(g.lengthOr * _leg, g.kind.flare, g.fitOr), g, i,
           part: 10, hem: true);
     }
   }
+
+  /// _fitted is whether [g] is a dress cut close, with hardly a flare: one
+  /// shape with the body, rather than a top and a skirt.
+  bool _fitted(Garment g) =>
+      g.kind.shape == GarmentShape.dress && g.kind.flare < 1.2;
 
   /// _skirt is a flared skirt from the waist, [length] long and [flare]
   /// times as wide at the hem as at the waist.
@@ -541,10 +1049,13 @@ class _Drawing {
             drop * 0.45);
     // A foot keeps flat to the floor however the shin is turned, only
     // tipping a little with it, or a kick would point the sole at the sky.
+    // As wide as the ankle makes it from the front, and longer from the
+    // side: a slender ankle stands on a small foot.
+    var slender = 0.75 + 0.25 * (1 + 0.45 * _a(Look.ankles));
     return (
       centre,
       shinTurn * 0.25 * math.pi / 180,
-      rig.legWidth * (1.75 * across + 2.6 * side.abs()),
+      rig.legWidth * (1.45 * across + 2.5 * side.abs()) * slender * (1 + 0.25 * _a(Look.feet)),
       drop
     );
   }
@@ -573,7 +1084,8 @@ class _Drawing {
       _cloth(null, g, i,
           line: _along(limb, 1 - g.lengthOr * 0.5, 1),
           width: legWidth * 1.2,
-          part: 20 + limb.index);
+          part: 20 + limb.index,
+          span: (1 - g.lengthOr * 0.5, 1));
     }
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
@@ -592,18 +1104,7 @@ class _Drawing {
         canvas.drawLine(Offset(-length * 0.45, drop * 0.48),
             Offset(length * 0.45, drop * 0.48), strap..strokeWidth = drop * 0.18);
       case GarmentKind.heels:
-        _fill(
-            Path()
-              ..addOval(Rect.fromCenter(
-                  center: Offset(0, -drop * 0.1),
-                  width: length * 0.85,
-                  height: drop * 0.9)),
-            colour);
-        _fill(
-            Path()
-              ..addRect(Rect.fromLTWH(
-                  -length * 0.08, drop * 0.2, length * 0.16, drop * 0.55)),
-            colour);
+        _heel(length, drop, colour);
       default:
         var shoe = Path()
           ..addOval(Rect.fromCenter(
@@ -623,9 +1124,77 @@ class _Drawing {
     canvas.restore();
   }
 
-  void _neck() =>
-      _stroke([rig.neck + Offset(0, -u * 0.1), rig.chest],
-          rig.limbWidth * 1.15, dna.skin);
+  /// _heel is a court shoe on a raised heel, about the foot's centre: from
+  /// the front a pointed toe with the top of the foot showing above it,
+  /// from the side the heel lifted on a stiletto and the sole sloping down
+  /// to the toe.
+  void _heel(double length, double drop, Color colour) {
+    var side = math.sin(rig.yaw * math.pi / 180);
+    if (side.abs() < 0.5) {
+      var w = length * 0.46;
+      _fill(
+          Path()
+            ..addOval(Rect.fromCenter(
+                center: Offset(0, -drop * 0.05), width: w * 0.5, height: drop * 0.45)),
+          dna.skin);
+      _fill(
+          Path()
+            ..moveTo(-w / 2, -drop * 0.05)
+            ..quadraticBezierTo(-w * 0.55, drop * 0.65, 0, drop * 1.05)
+            ..quadraticBezierTo(w * 0.55, drop * 0.65, w / 2, -drop * 0.05)
+            ..quadraticBezierTo(0, drop * 0.3, -w / 2, -drop * 0.05)
+            ..close(),
+          colour);
+      return;
+    }
+    // The toe the way the body faces: the page's left as it turns.
+    var dir = side > 0 ? -1.0 : 1.0;
+    var l = length;
+    _fill(
+        Path()
+          ..moveTo(-dir * l * 0.36, drop * 0.1)
+          ..lineTo(-dir * l * 0.33, drop * 1.0)
+          ..lineTo(-dir * l * 0.29, drop * 1.0)
+          ..lineTo(-dir * l * 0.27, drop * 0.2)
+          ..close(),
+        colour);
+    _fill(
+        Path()
+          ..moveTo(-dir * l * 0.42, -drop * 0.3)
+          ..quadraticBezierTo(-dir * l * 0.46, drop * 0.15, -dir * l * 0.36, drop * 0.18)
+          ..quadraticBezierTo(dir * l * 0.05, drop * 0.3, dir * l * 0.28, drop * 0.92)
+          ..lineTo(dir * l * 0.56, drop * 0.95)
+          ..quadraticBezierTo(dir * l * 0.6, drop * 0.7, dir * l * 0.45, drop * 0.55)
+          ..quadraticBezierTo(dir * l * 0.15, drop * 0.25, -dir * l * 0.05, drop * 0.05)
+          ..quadraticBezierTo(-dir * l * 0.25, -drop * 0.05, -dir * l * 0.42, -drop * 0.3)
+          ..close(),
+        colour);
+  }
+
+  /// _neck is slim under the head and flares into the shoulders, with the
+  /// curve of the muscle running down to them.
+  void _neck() {
+    var top = rig.neck + Offset(0, -u * 0.1), base = rig.chest;
+    var w = rig.limbWidth * 0.58 * (1 + 0.35 * _a(Look.neckWidth));
+    var d = base - top;
+    var len = d.distance;
+    if (len < 1e-6) return;
+    var along = d / len;
+    var across = Offset(-along.dy, along.dx);
+    var flare = w * 1.9;
+    var path = Path()
+      ..moveTo((top + across * w).dx, (top + across * w).dy);
+    var lowR = base + across * flare + along * (u * 0.02);
+    var lowL = base - across * flare + along * (u * 0.02);
+    var midR = top + d * 0.7 + across * (w * 1.02);
+    var midL = top + d * 0.7 - across * (w * 1.02);
+    path
+      ..quadraticBezierTo(midR.dx, midR.dy, lowR.dx, lowR.dy)
+      ..lineTo(lowL.dx, lowL.dy)
+      ..quadraticBezierTo(midL.dx, midL.dy, (top - across * w).dx, (top - across * w).dy)
+      ..close();
+    _fill(path, dna.skin);
+  }
 
   /// _torsoFrame is the body's own directions on the page: across it, up
   /// it, and how wide it is drawn turned the way it is.
@@ -633,47 +1202,173 @@ class _Drawing {
     var spine = rig.bodyTurn * math.pi / 180;
     var across = Offset(math.cos(spine), math.sin(spine));
     var up = Offset(math.sin(spine), -math.cos(spine));
-    // Turned, the body is as wide as it is deep: about six tenths of its
-    // width, side on.
+    // Turned, the body is an oval seen from round the side: as wide as it
+    // is deep, side on -- about six tenths of its width -- and never wider
+    // than straight on.
     var turned = rig.yaw * math.pi / 180;
-    var front = math.cos(turned).abs(), side = math.sin(turned).abs();
+    double seen(double deep) => math.sqrt(
+        math.pow(math.cos(turned), 2) + math.pow(deep * math.sin(turned), 2));
     return (
       across,
       up,
-      rig.shoulderHalf * (front + 0.6 * side),
-      rig.hipHalf * 1.12 * (front + 0.75 * side)
+      rig.shoulderHalf * seen(0.6),
+      rig.hipHalf * 1.12 * seen(0.75)
     );
   }
 
   /// _torsoPath is the body, or a garment over it [fit] loose and coming
   /// [length] down: 1 is to the hips, more is on down the legs.
-  Path _torsoPath({double fit = 1, double length = 1}) {
-    var (across, up, half0, low0) = _torsoFrame;
-    var half = half0 * fit, low = low0 * fit;
-    var topL = rig.chest + across * half;
-    var topR = rig.chest - across * half;
-    double hemY;
-    double hemHalf;
-    if (length <= 1) {
-      hemY = rig.chest.dy + (rig.hips.dy + rig.legWidth * 0.15 - rig.chest.dy) * length;
-      hemHalf = half + (low - half) * length;
-    } else {
-      hemY = rig.hips.dy + rig.legWidth * 0.15 + (length - 1) * _leg;
-      // Past the hips a garment hangs round both legs, a little wider.
-      hemHalf = low * (1 + 0.35 * math.min(1, length - 1));
+  ///
+  /// The body is a stack of ovals -- the shoulders, the chest, the waist,
+  /// the belly, the hips -- each as wide as it is and as deep in front and
+  /// behind, so a full chest or a round belly stands out in front and
+  /// nowhere else. Turned, the outline is where each oval reaches furthest
+  /// to either side, so the body turns as a body does: no wider than it is,
+  /// its front leading.
+  Path _torsoPath(
+      {double fit = 1, double length = 1, double from = 0, double? hang}) {
+    var spine = rig.bodyTurn * math.pi / 180;
+    var across = Offset(math.cos(spine), math.sin(spine));
+    var top = rig.chest, hips = rig.hips;
+    var drop = hips - top;
+    var turned = rig.yaw * math.pi / 180;
+    var cy = math.cos(turned), sy = math.sin(turned);
+    var chest = _a(Look.chest), waist = _a(Look.waist), belly = _a(Look.belly);
+    var muscle = _a(Look.muscle);
+    var s = rig.shoulderHalf, h = rig.hipHalf;
+    // The shoulders come out to meet the arms, however thick they are.
+    var shoulder = s * 0.86 + armWidth * 0.42;
+    var deep = s * 0.5;
+    // A woman's hips are about as wide as her shoulders, a man's narrower;
+    // the waist between them is what makes the shape.
+    var female = dna.kind == CharacterType.woman || dna.kind == CharacterType.girl;
+    var hipsWide = math.max(h * 1.12,
+        s * (female ? 0.94 : 0.8) * (1 + 0.28 * _a(Look.hips)));
+    var waistWide =
+        s * (female ? 0.68 : 0.78) * (1 + 0.18 * waist) * (1 + 0.1 * belly);
+    // Each oval: how far down (0 the shoulders, 1 the hips), half its width,
+    // and how deep it is in front and behind.
+    var rings = <(double, double, double, double)>[
+      (0.0, shoulder, deep * 0.55, deep * 0.6 * (1 + 0.2 * muscle)),
+      (0.14, s * 0.9 * (1 + 0.04 * chest), deep * (0.95 + 0.25 * chest),
+          deep * (0.85 + 0.15 * muscle)),
+      (0.32, s * ((female ? 0.86 : 0.84) + 0.05 * chest), deep * (1.0 + 0.55 * chest),
+          deep * (0.8 + 0.12 * muscle)),
+      (0.58, waistWide, deep * (0.8 + 0.45 * belly), deep * 0.72),
+      (0.8, waistWide + (hipsWide - waistWide) * 0.72, deep * (0.88 + 0.6 * belly),
+          deep * 0.82),
+      (1.0, hipsWide, deep * (0.9 + 0.25 * belly), deep * 0.95),
+    ];
+    // How far down it comes.
+    var hemT = length <= 1
+        ? 0.14 + (1.06 - 0.14) * length
+        : 1.06 + (length - 1) * _leg / math.max(1e-6, drop.distance);
+    // Past the hips: a coat hangs a little wider round both legs; [hang]
+    // says how much wider, where a garment says.
+    var flare = length > 1 ? (hang ?? 1 + 0.35 * math.min(1, length - 1)) : 1.0;
+    var used = [
+      for (var r in rings)
+        if (r.$1 < hemT) r,
+    ];
+    // The last oval at the hem, between the ones either side of it -- or
+    // past the hips, hanging round both legs.
+    (double, double, double, double) at(double t) {
+      if (t >= 1) {
+        var last = rings.last;
+        return (t, last.$2 * flare, last.$3, last.$4);
+      }
+      for (var i = 0; i + 1 < rings.length; i++) {
+        var a = rings[i], b = rings[i + 1];
+        if (t <= b.$1) {
+          var f = (t - a.$1) / (b.$1 - a.$1);
+          double mix(double x, double y) => x + (y - x) * f;
+          return (t, mix(a.$2, b.$2), mix(a.$3, b.$3), mix(a.$4, b.$4));
+        }
+      }
+      return rings.last;
     }
-    var botL = Offset(rig.hips.dx + hemHalf, hemY);
-    var botR = Offset(rig.hips.dx - hemHalf, hemY);
-    return Path()
-      ..moveTo(topL.dx, topL.dy)
-      ..quadraticBezierTo(rig.chest.dx + up.dx * u * 0.12,
-          rig.chest.dy + up.dy * u * 0.12, topR.dx, topR.dy)
-      ..quadraticBezierTo(
-          topR.dx - across.dx * u * 0.06, (topR.dy + botR.dy) / 2, botR.dx, botR.dy)
-      ..quadraticBezierTo(rig.hips.dx, hemY + rig.legWidth * 0.3, botL.dx, botL.dy)
-      ..quadraticBezierTo(topL.dx + across.dx * u * 0.06, (topL.dy + botL.dy) / 2,
-          topL.dx, topL.dy)
-      ..close();
+
+    if (from > 0) {
+      used = [at(from), for (var r in used) if (r.$1 > from) r];
+    }
+    used.add(at(hemT));
+    // Each oval's furthest left and right, seen as the body is turned:
+    // across its width, and its front or back brought round towards the
+    // reader's left as it turns.
+    var left = <Offset>[], right = <Offset>[];
+    for (var (t, w, front, back) in used) {
+      w *= fit;
+      front *= fit;
+      back *= fit;
+      var lo = double.infinity, hi = -double.infinity;
+      for (var k = 0; k < 24; k++) {
+        var phi = k * math.pi / 12;
+        var x = w * math.cos(phi);
+        var z = math.sin(phi) * (math.sin(phi) > 0 ? front : back);
+        var seen = x * cy - z * sy;
+        lo = math.min(lo, seen);
+        hi = math.max(hi, seen);
+      }
+      var centre = top + drop * t;
+      left.add(centre + across * lo);
+      right.add(centre + across * hi);
+    }
+    // The hips' own tilt, which the lower body follows: the line across
+    // the body turns from the shoulders' to the hips' on the way down.
+    var hipLine = rig.hipR - rig.hipL;
+    var hipAcross = hipLine.distance < 1e-6
+        ? across
+        : hipLine / hipLine.distance * (hipLine.dx * across.dx + hipLine.dy * across.dy >= 0 ? 1.0 : -1.0);
+    for (var i = 0; i < used.length; i++) {
+      var t = (used[i].$1 / 1.0).clamp(0.0, 1.0);
+      var k = math.pow(t, 1.5).toDouble();
+      var dir = Offset.lerp(across, hipAcross, k)!;
+      var centre = top + drop * used[i].$1;
+      // The point at each side, re-placed along the turned line.
+      var lo = (left[i] - centre).dx * across.dx + (left[i] - centre).dy * across.dy;
+      var hi = (right[i] - centre).dx * across.dx + (right[i] - centre).dy * across.dy;
+      left[i] = centre + dir * lo;
+      right[i] = centre + dir * hi;
+    }
+    // A smooth line through the points down each side.
+    void through(Path path, List<Offset> pts) {
+      for (var i = 0; i + 1 < pts.length; i++) {
+        var p0 = pts[math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1];
+        var p3 = pts[math.min(pts.length - 1, i + 2)];
+        var c1 = p1 + (p2 - p0) / 6, c2 = p2 - (p3 - p1) / 6;
+        path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+      }
+    }
+
+    var up = Offset(math.sin(spine), -math.cos(spine));
+    var path = Path()..moveTo(right.first.dx, right.first.dy);
+    through(path, right);
+    // Across the bottom: round under the seat, or a hem straight across.
+    var bottom = top + drop * hemT;
+    var dip = hemT <= 1.06 && length >= 1 ? drop.distance * 0.05 : drop.distance * 0.015;
+    path.quadraticBezierTo(bottom.dx - up.dx * dip, bottom.dy - up.dy * dip,
+        left.last.dx, left.last.dy);
+    through(path, left.reversed.toList());
+    // Over the top: the shoulders sloping up to the neck -- or, cut across
+    // the chest, a line dipping a little at the middle.
+    if (from > 0) {
+      var edge = top + drop * from;
+      path.quadraticBezierTo(edge.dx - up.dx * u * 0.04, edge.dy - up.dy * u * 0.04,
+          right.first.dx, right.first.dy);
+      return path..close();
+    }
+    // The shoulders sloping up from where the arms join to the neck.
+    var neck = rig.limbWidth * 0.62 + u * 0.08;
+    var neckL = top + up * (u * 0.12) - across * neck;
+    var neckR = top + up * (u * 0.12) + across * neck;
+    var lp = left.first, rp = right.first;
+    path
+      ..quadraticBezierTo(lp.dx * 0.35 + neckL.dx * 0.65, lp.dy * 0.2 + neckL.dy * 0.8,
+          neckL.dx, neckL.dy)
+      ..lineTo(neckR.dx, neckR.dy)
+      ..quadraticBezierTo(rp.dx * 0.35 + neckR.dx * 0.65, rp.dy * 0.2 + neckR.dy * 0.8,
+          rp.dx, rp.dy);
+    return path..close();
   }
 
   void _torso() {
@@ -734,7 +1429,18 @@ class _Drawing {
               part: 30, hem: true);
           _frontOf(g);
         case GarmentShape.dress:
-          _cloth(_torsoPath(fit: g.fitOr, length: 1), g, i, part: 30);
+          _cloth(
+              _torsoPath(
+                  fit: g.fitOr,
+                  // Fitted, it goes on down over the hips as far as it is
+                  // long, hugging them.
+                  length: _fitted(g) ? 1 + g.lengthOr * 0.9 : 1,
+                  from: g.kind.strapless ? 0.2 : 0,
+                  hang: g.kind.flare),
+              g,
+              i,
+              part: 30,
+              hem: _fitted(g));
           _frontOf(g);
         case GarmentShape.legs when g.kind == GarmentKind.overalls:
           // The bib and the straps.
@@ -998,7 +1704,7 @@ class _Drawing {
         _fin(shoulder, elbow);
         continue;
       }
-      _stroke([shoulder, elbow, wrist], armWidth, dna.skin);
+      _limb([shoulder, elbow, wrist], armWidth, dna.skin);
       if (dna.fourLegs) {
         // Front legs: whatever is worn on the legs is worn on these too.
         for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
@@ -1024,9 +1730,31 @@ class _Drawing {
             const Color(0xFFFAFAFA));
         _fill(Path()..addOval(Rect.fromCircle(center: cuff, radius: rig.handRadius * 0.75)),
             const Color(0xFFFAFAFA));
-      } else {
+      } else if (dna.species.animal || dna.fourLegs) {
         _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius)),
             dna.skin);
+      } else {
+        // A hand: a palm longer than it is wide, along the forearm, and a
+        // thumb on the side towards the body.
+        var r = rig.handRadius;
+        var along = forward.distance == 0 ? 0.0 : math.atan2(forward.dy, forward.dx);
+        var inward = limb.onLeft ? 1.0 : -1.0;
+        canvas.save();
+        canvas.translate(hand.dx, hand.dy);
+        canvas.rotate(along - math.pi / 2);
+        // A slim hand, the fingers together and tapering to their tips.
+        var palm = Path()
+          ..moveTo(-r * 0.62, -r * 0.7)
+          ..quadraticBezierTo(-r * 0.78, r * 0.4, -r * 0.42, r * 1.25)
+          ..quadraticBezierTo(0, r * 1.75, r * 0.38, r * 1.3)
+          ..quadraticBezierTo(r * 0.72, r * 0.4, r * 0.6, -r * 0.7)
+          ..quadraticBezierTo(0, -r * 0.95, -r * 0.62, -r * 0.7)
+          ..close();
+        var thumb = Path()
+          ..addOval(Rect.fromCenter(
+              center: Offset(inward * r * 0.62, r * 0.05), width: r * 0.48, height: r * 1.05));
+        _fill(Path.combine(PathOperation.union, palm, thumb), dna.skin);
+        canvas.restore();
       }
       for (var (i, g) in _wearing((g) => g.kind.hasSleeves)) {
         var sleeve = g.sleeveOr;
@@ -1035,7 +1763,8 @@ class _Drawing {
             line: _along(limb, 0, math.min(0.97, sleeve)),
             width: armWidth * 1.14 * g.fitOr,
             part: 60 + limb.index,
-            hem: true);
+            hem: true,
+            span: (0, math.min(0.97, sleeve)));
       }
     }
   }
@@ -1187,6 +1916,89 @@ class _Drawing {
   /// the way [_fill] edges a shape. Drawn as a stroke rather than a shape
   /// because a stroke has no seams: a band made of pieces showed a sliver
   /// at every elbow and knee.
+  /// _limb is an arm or a leg through [points]: thicker at the root than at
+  /// the end, a little fuller near the top where the muscle is, rounded at
+  /// every joint -- as a figure is drawn, rather than a tube.
+  void _limb(List<Offset> points, double width, Color colour, {bool leg = false}) {
+    if (look.hose || points.length < 2) {
+      _stroke(points, width, colour);
+      return;
+    }
+    _fill(_limbShape(points, width, leg: leg), colour);
+  }
+
+  /// _limbShape is the outline of a limb through [points] [width] across
+  /// at the usual -- or of the stretch of it from [t0] to [t1] of its
+  /// length, for a sleeve or a trouser leg, which narrows as the limb does.
+  Path _limbShape(List<Offset> points, double width,
+      {double t0 = 0, double t1 = 1, bool leg = false}) {
+    var lengths = <double>[0];
+    for (var i = 1; i < points.length; i++) {
+      lengths.add(lengths.last + (points[i] - points[i - 1]).distance);
+    }
+    var total = lengths.last;
+    if (total < 1e-6) return _capsule(points, width);
+    // Thick at the root, a swell of muscle, in at the elbow or the knee,
+    // a swell again, and in to the wrist or the ankle -- as far as the
+    // Appearance says.
+    var m = _a(Look.muscle);
+    var j = leg ? 0.5 : 0.52;
+    var profile = leg
+        ? [
+            (0.0, 1.2),
+            (0.3 * j, 1.16 + 0.08 * m),
+            (j, 0.74),
+            (j + 0.32 * (1 - j), 0.84 + 0.08 * m),
+            (1.0, 0.52 * (1 + 0.45 * _a(Look.ankles))),
+          ]
+        : [
+            (0.0, 1.08),
+            (0.4 * j, 1.12 + 0.12 * m),
+            (j, 0.8),
+            (j + 0.3 * (1 - j), 0.86 + 0.06 * m),
+            (1.0, 0.58 * (1 + 0.45 * _a(Look.wrists))),
+          ];
+    double widthAt(double f) {
+      var t = t0 + (t1 - t0) * f;
+      for (var i = 0; i + 1 < profile.length; i++) {
+        var (ta, wa) = profile[i];
+        var (tb, wb) = profile[i + 1];
+        if (t <= tb || i + 2 == profile.length) {
+          var k = ((t - ta) / (tb - ta)).clamp(0.0, 1.0);
+          k = k * k * (3 - 2 * k);
+          return width * (wa + (wb - wa) * k);
+        }
+      }
+      return width;
+    }
+
+    var left = <Offset>[], right = <Offset>[];
+    for (var i = 0; i + 1 < points.length; i++) {
+      var a = points[i], b = points[i + 1];
+      var d = b - a;
+      var len = d.distance;
+      if (len < 1e-6) continue;
+      var n = Offset(-d.dy / len, d.dx / len);
+      const steps = 10;
+      for (var k = 0; k <= steps; k++) {
+        if (k == 0 && i > 0) continue;
+        var f = k / steps;
+        var p = Offset.lerp(a, b, f)!;
+        var w = widthAt((lengths[i] + len * f) / total) / 2;
+        left.add(p + n * w);
+        right.add(p - n * w);
+      }
+    }
+    var shape = Path()..addPolygon([...left, ...right.reversed], true);
+    // Round at the root, at every joint and at the end.
+    for (var i = 0; i < points.length; i++) {
+      var w = widthAt(lengths[i] / total) / 2;
+      shape = Path.combine(PathOperation.union, shape,
+          Path()..addOval(Rect.fromCircle(center: points[i], radius: w)));
+    }
+    return shape;
+  }
+
   void _stroke(List<Offset> points, double width, Color colour) {
     var path = Path()..moveTo(points.first.dx, points.first.dy);
     if (look.hose && points.length == 3) {
@@ -1230,7 +2042,13 @@ class _Drawing {
       {List<Offset>? line,
       double width = 0,
       int part = 0,
-      bool hem = false}) {
+      bool hem = false,
+      (double, double)? span,
+      bool leg = false}) {
+    // Down a limb, as the limb narrows.
+    if (shape == null && line != null && span != null && !look.hose) {
+      shape = _limbShape(line, width, t0: span.$1, t1: span.$2, leg: leg);
+    }
     var c = g.condition;
     var seed = g.seed + i * 7919 + g.kind.index * 104729 + part * 31337;
     var colour = faded(g.color, c.fade);
@@ -1239,8 +2057,8 @@ class _Drawing {
     var bounds = area.getBounds();
     var cut = c.rips > 0 || (hem && c.frays > 0);
     if (cut) canvas.saveLayer(bounds.inflate(edge * 3 + width), Paint());
-    if (shape != null) {
-      _solid(bounds, colour, (p) => canvas.drawPath(shape, p));
+    if (shape case var piece?) {
+      _solid(bounds, colour, (p) => canvas.drawPath(piece, p));
     } else {
       _stroke(line!, width, colour);
     }
@@ -1427,7 +2245,7 @@ class _Drawing {
 
   /// yaw is how far the head is turned from the reader, in radians:
   /// towards the page's left as it grows.
-  double get yaw => (face[FaceControl.turn] + rig.yaw) * math.pi / 180;
+  double get yaw => _onModel ?? (face[FaceControl.turn] + rig.yaw) * math.pi / 180;
 
   /// facing is how much of the face is towards the reader: 1 straight on,
   /// 0 side on, below 0 turned away.
@@ -1442,20 +2260,217 @@ class _Drawing {
   double _toward(double phi) => math.cos(phi - yaw);
 
   /// _nodShift is how far down the face's features move as the head nods.
-  double get _nodShift =>
-      rig.headRadii.height * 0.35 * math.sin(face[FaceControl.nod] * math.pi / 180);
+  double get _nodShift => _onModel != null
+      ? 0
+      : rig.headRadii.height * 0.35 * math.sin(face[FaceControl.nod] * math.pi / 180);
+
+  /// _hangingHair is whether the hair is long enough to hang behind the
+  /// head: long hair, or any hair grown out past the chin.
+  bool get _hangingHair =>
+      (dna.hairStyle == HairStyle.long && _a(Look.hairLength) > -0.6) ||
+      (dna.hairStyle != HairStyle.bald &&
+          dna.hairStyle != HairStyle.long &&
+          _a(Look.hairLength) > 0.35);
 
   void _backHair() {
     var r = rig.headRadii;
+    var len = _a(Look.hairLength);
+    // Long hair is to the shoulders and more; grown-out short hair is a
+    // bob at the chin.
+    // Long hair is to the shoulders, and grown out down the back as far as
+    // the thighs; grown-out short hair is a bob at the chin.
+    var bottom = dna.hairStyle == HairStyle.long
+        ? 1.9 + (len > 0 ? 5.0 : 1.3) * len
+        : 1.0 + 1.6 * (len - 0.35);
+    var wide = 1 + 0.15 * _a(Look.hairVolume);
+    var w = r.width * 1.1 * wide, top = r.height * 1.06;
+    var low = r.height * bottom;
+    // Below the neck, long hair spreads over the back to the shoulders'
+    // width, so it shows either side of the body.
+    var hs = rig.headScale == 0 ? 1.0 : rig.headScale;
+    var shoulderY = (rig.chest.dy - rig.headCentre.dy) / hs;
+    var spread = math.max(w, rig.shoulderHalf / hs * 0.95 * wide);
+    var flares = low > shoulderY * 1.2;
+    // Over the crown, falling either side wider than the head, and ending
+    // in rounded locks rather than a cut line.
     var back = Path()
-      ..moveTo(-r.width * 1.12, -r.height * 0.1)
-      ..quadraticBezierTo(-r.width * 1.25, r.height * 1.6, -r.width * 0.9,
-          r.height * 1.9)
-      ..lineTo(r.width * 0.9, r.height * 1.9)
-      ..quadraticBezierTo(
-          r.width * 1.25, r.height * 1.6, r.width * 1.12, -r.height * 0.1)
-      ..close();
+      ..moveTo(-w, -r.height * 0.15)
+      ..arcToPoint(Offset(w, -r.height * 0.15),
+          radius: Radius.elliptical(w, top), largeArc: false);
+    if (flares) {
+      back
+        ..quadraticBezierTo(w * 1.05, shoulderY * 0.7, spread, shoulderY * 1.15)
+        ..quadraticBezierTo(spread * 1.08, (shoulderY + low) / 2, spread * 0.86, low);
+    } else {
+      back.quadraticBezierTo(w * 1.14, low * 0.55, w * 0.86, low);
+    }
+    var bottomHalf = flares ? spread * 0.86 : w * 0.86;
+    const locks = 5;
+    for (var i = 0; i < locks; i++) {
+      var x0 = bottomHalf - (bottomHalf * 2) * i / locks;
+      var x1 = bottomHalf - (bottomHalf * 2) * (i + 1) / locks;
+      var dip = low + r.height * (0.12 + 0.05 * ((i * 7) % 3));
+      back.quadraticBezierTo((x0 + x1) / 2, dip, x1, low);
+    }
+    if (flares) {
+      back
+        ..quadraticBezierTo(-spread * 1.08, (shoulderY + low) / 2, -spread, shoulderY * 1.15)
+        ..quadraticBezierTo(-w * 1.05, shoulderY * 0.7, -w, -r.height * 0.15);
+    } else {
+      back.quadraticBezierTo(-w * 1.14, low * 0.55, -w, -r.height * 0.15);
+    }
+    back.close();
     _fill(back, dna.hair);
+    _highlights(back, r.width, low);
+  }
+
+  /// _frontHair is long hair fallen forward over the shoulders: a lock each
+  /// side, from the side of the head over the shoulder and down the front,
+  /// in a gentle wave, with strands drawn through it. Drawn over the body
+  /// and under the arms. Turned, only the lock on the near side shows.
+  void _frontHair() {
+    var len = _a(Look.hairLength);
+    if (dna.hairStyle != HairStyle.long || len < 0.2 || facing < 0) return;
+    var hs = rig.headScale == 0 ? 1.0 : rig.headScale;
+    var r = rig.headRadii;
+    var w = r.width * hs, hh = r.height * hs;
+    var hc = rig.headCentre;
+    var bottom = hc.dy + hh * (1.9 + 5.0 * len) * 0.92;
+    var wide = 1 + 0.15 * _a(Look.hairVolume);
+    var spin = math.sin(yaw);
+    for (var (side, inset, thin, short) in [
+      (-1.0, 0.86, 0.7, 0.86),
+      (1.0, 0.86, 0.7, 0.86),
+      (-1.0, 1.0, 1.0, 1.0),
+      (1.0, 1.0, 1.0, 1.0),
+    ]) {
+      // The far side's lock is behind the head and shoulder once turned.
+      if (side * spin > 0.35) continue;
+      var lean = (1 - (side * spin).abs() * 0.6) * inset;
+      List<Offset> line = [
+        Offset(hc.dx + side * w * 0.92 * lean, hc.dy + hh * 0.1),
+        Offset(rig.chest.dx + side * rig.shoulderHalf * 0.78 * lean,
+            rig.chest.dy - hh * 0.02),
+        Offset(rig.chest.dx + side * rig.shoulderHalf * 0.98 * lean,
+            (rig.chest.dy + bottom) / 2),
+        Offset(rig.chest.dx + side * rig.shoulderHalf * 0.92 * lean,
+            hc.dy + (bottom - hc.dy) * short),
+      ];
+      var thick = w * 0.42 * wide * thin;
+      var left = <Offset>[], right = <Offset>[];
+      const steps = 36;
+      Offset at(double t) {
+        var seg = math.min(line.length - 2, (t * (line.length - 1)).floor());
+        var f = t * (line.length - 1) - seg;
+        var p0 = line[math.max(0, seg - 1)], p1 = line[seg], p2 = line[seg + 1];
+        var p3 = line[math.min(line.length - 1, seg + 2)];
+        // Catmull-Rom through the points.
+        var f2 = f * f, f3 = f2 * f;
+        return (p1 * 2 + (p2 - p0) * f + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * f2 +
+                (p1 * 3 - p0 - p2 * 3 + p3) * f3) *
+            0.5;
+      }
+
+      for (var k = 0; k <= steps; k++) {
+        var t = k / steps;
+        var p = at(t), q = at(math.min(1, t + 1 / steps));
+        var d = q - p;
+        if (k == steps) d = p - at(t - 1 / steps);
+        var l = d.distance == 0 ? 1.0 : d.distance;
+        var n = Offset(-d.dy / l, d.dx / l);
+        // A wave down it, and narrowing to the tip.
+        // Waves down it, growing towards the ends, as long hair falls.
+        var wave = math.sin(t * math.pi * 3.4 + side + inset * 2) * w * 0.26 * t;
+        var half = thick * (0.55 + 0.45 * math.sin(math.min(1, t * 1.6) * math.pi / 2)) *
+            (1 - 0.75 * math.pow(t, 3)) / 2;
+        left.add(p + n * (half + wave));
+        right.add(p - n * (half - wave));
+      }
+      var lock = Path()..addPolygon([...left, ...right.reversed], true);
+      _fill(lock, dna.hair);
+      _highlights(lock, w, bottom - hc.dy);
+      // Strands down it.
+      var strand = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(0.5, u * 0.012)
+        ..strokeCap = StrokeCap.round
+        ..color = _shade(dna.hair, 0.22);
+      for (var j = 1; j <= 2; j++) {
+        var f = j / 3;
+        var strandPath = Path();
+        for (var k = 2; k < steps - 3; k++) {
+          var p = Offset.lerp(left[k], right[k], f)!;
+          if (k == 2) {
+            strandPath.moveTo(p.dx, p.dy);
+          } else {
+            strandPath.lineTo(p.dx, p.dy);
+          }
+        }
+        canvas.drawPath(strandPath, strand);
+      }
+    }
+  }
+
+  /// _highlights are streaks of the second hair colour through [hair].
+  void _highlights(Path hair, double w, double h) {
+    var amount = _a(Look.highlights);
+    if (amount <= 0) return;
+    canvas.save();
+    canvas.clipPath(hair);
+    var streak = _feature(u * 0.05, dna.hair2.withValues(alpha: 0.35 + 0.45 * amount));
+    for (var k = 0; k < 3 + (amount * 3).round(); k++) {
+      var x = (_seed(k * 3) - 0.5) * w * 1.8;
+      canvas.drawPath(
+          Path()
+            ..moveTo(x, -h * 1.2)
+            ..quadraticBezierTo(x + w * 0.25 * (_seed(k * 3 + 1) - 0.5), 0,
+                x + w * 0.2 * (_seed(k * 3 + 2) - 0.5), h * 1.2),
+          streak);
+    }
+    canvas.restore();
+  }
+
+  /// _headPath is the shape of the head [w] by [h] across its middle: an
+  /// oval, made squarer at the jaw, sharper at the chin, higher at the
+  /// brow, fuller at the cheeks, as the Head controls say.
+  Path _headPath(double w, double h) {
+    var jaw = _a(Look.jaw), chin = _a(Look.chin);
+    var chinLong = _a(Look.chinLength), forehead = _a(Look.forehead);
+    var bones = _a(Look.cheekbones), cheeks = _a(Look.cheeks);
+    if (jaw == 0 && chin == 0 && chinLong == 0 && forehead == 0 &&
+        bones == 0 && cheeks == 0) {
+      return Path()
+        ..addOval(Rect.fromCenter(center: Offset.zero, width: w * 2, height: h * 2));
+    }
+    double bump(double d, double at, double spread) {
+      var t = (d - at) / spread;
+      return math.exp(-t * t);
+    }
+
+    double smooth(double a, double b, double d) {
+      var t = ((d - a) / (b - a)).clamp(0.0, 1.0);
+      return t * t * (3 - 2 * t);
+    }
+
+    var pts = <Offset>[];
+    const n = 96;
+    for (var k = 0; k < n; k++) {
+      var t = 2 * math.pi * k / n;
+      var x = math.sin(t), y = -math.cos(t);
+      if (y < 0) {
+        y *= 1 + 0.12 * forehead;
+      } else {
+        var widen = 1 +
+            0.07 * bones * bump(y, 0.15, 0.2) +
+            0.1 * cheeks * bump(y, 0.45, 0.25) +
+            0.2 * jaw * bump(y, 0.78, 0.18);
+        widen *= 1 - 0.3 * chin * smooth(0.7, 1, y);
+        x *= widen;
+        y *= 1 + 0.16 * chinLong * smooth(0.5, 1, y);
+      }
+      pts.add(Offset(x * w, y * h));
+    }
+    return Path()..addPolygon(pts, true);
   }
 
   void _head() {
@@ -1464,12 +2479,52 @@ class _Drawing {
     // Ears turned away go behind the head, ears turned towards the reader
     // in front of it, so a head in profile shows one ear on its cheek.
     var ears = [-math.pi / 2, math.pi / 2];
-    void ear(double phi) => _fill(
-        Path()
-          ..addOval(Rect.fromCircle(
-              center: Offset(_across(phi, w * 0.98), u * 0.06 - _nodShift * 0.4),
-              radius: u * 0.1)),
-        dna.skin);
+    void ear(double phi) {
+      var size = 1 + 0.35 * _a(Look.earSize);
+      var out = 1 + 0.45 * _a(Look.earAngle);
+      var at = Offset(_across(phi, w * 0.98),
+          u * 0.06 - _nodShift * 0.4 - _a(Look.earHeight) * u * 0.07);
+      // Taller than it is wide, and as wide as it is turned towards the
+      // reader: seen edge on from the front, whole from the side.
+      var seen = 0.45 + 0.55 * _toward(phi).abs();
+      var ew = u * 0.15 * size * out * seen, eh = u * 0.22 * size;
+      var outward = phi < 0 ? -1.0 : 1.0;
+      var shape = Path()
+        ..moveTo(at.dx, at.dy - eh / 2)
+        ..cubicTo(at.dx + outward * ew * 0.95, at.dy - eh / 2,
+            at.dx + outward * ew * 0.75, at.dy + eh * 0.35, at.dx, at.dy + eh / 2)
+        ..cubicTo(at.dx - outward * ew * 0.35, at.dy + eh * 0.2,
+            at.dx - outward * ew * 0.3, at.dy - eh * 0.4, at.dx, at.dy - eh / 2)
+        ..close();
+      var point = _a(Look.earPoint);
+      if (point > 0) {
+        // An elf's ear: drawn up and out to a point.
+        var dir = phi < 0 ? -1.0 : 1.0;
+        shape = Path.combine(
+            PathOperation.union,
+            shape,
+            Path()
+              ..addPolygon([
+                at + Offset(-u * 0.07 * size, -u * 0.02),
+                at + Offset(dir * u * 0.14 * point * size, -u * 0.24 * point * size),
+                at + Offset(u * 0.07 * size, -u * 0.02),
+              ], true));
+      }
+      _fill(shape, dna.skin);
+      // The curl inside it, in the skin's shadow rather than ink.
+      if (seen > 0.6) {
+        canvas.drawPath(
+            Path()
+              ..moveTo(at.dx, at.dy - eh * 0.3)
+              ..quadraticBezierTo(at.dx + outward * ew * 0.55, at.dy - eh * 0.25,
+                  at.dx + outward * ew * 0.2, at.dy + eh * 0.25),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = math.max(0.5, u * 0.018)
+              ..strokeCap = StrokeCap.round
+              ..color = _shade(dna.skin, 0.25));
+      }
+    }
     if (dna.spikes) _spikes(w, h);
     if (dna.species.animal) {
       _animalEars(w, h);
@@ -1478,15 +2533,14 @@ class _Drawing {
         if (_toward(phi) < 0.3) ear(phi);
       }
     }
-    var head = Path()
-      ..addOval(Rect.fromCenter(center: Offset.zero, width: w * 2, height: h * 2));
+    var head = _headPath(w, h);
     _fill(head, dna.skin);
     // The hair going round the back of the head, bounded by a hairline that
     // curves round the head as it turns: a sliver at each side straight on,
     // half the head side on, all of it from behind.
     if (dna.hairStyle != HairStyle.bald) {
       if (_backOfHead(w, h) case var back?) {
-        canvas.drawPath(back, Paint()..color = dna.hair);
+        _solid(back.getBounds(), dna.hair, (p) => canvas.drawPath(back, p));
         canvas.drawPath(
             head,
             Paint()
@@ -1504,10 +2558,17 @@ class _Drawing {
     _hair(r);
     _horns(w, h);
     if (facing > -0.15) {
+      // Kept on the face: an eye turned to the far side of the head goes
+      // round it, not off its edge.
+      canvas.save();
+      canvas.clipPath(Path()
+        ..addOval(Rect.fromCenter(
+            center: Offset.zero, width: w * 2.08, height: rig.headRadii.height * 2.2)));
       _face(w);
+      canvas.restore();
       _glasses(w);
     }
-    if (dna.hairStyle == HairStyle.long && facing < -0.3) _backHair();
+    if (_hangingHair && facing < -0.3) _backHair();
     _hats(w, h);
   }
 
@@ -1515,26 +2576,58 @@ class _Drawing {
   /// from the front as it turns: everything further round the head than
   /// [_hairline] from the middle of the face. Null when none of it shows.
   Path? _backOfHead(double w, double h) {
-    // Less than half the head, so what shows of it is one piece. On a ball,
-    // a line of longitude is the same share of the way across at every
-    // height -- only the width it is a share of changes.
-    double? lo, hi;
-    for (var k = 0; k <= 48; k++) {
-      var a = _hairline + (2 * math.pi - 2 * _hairline) * k / 48 - yaw;
-      if (math.cos(a) <= 0) continue;
-      var v = math.sin(a);
-      lo = lo == null ? v : math.min(lo, v);
-      hi = hi == null ? v : math.max(hi, v);
+    // The hair is everything further round the head from the face than
+    // the hairline, which is high at the temples and comes down behind
+    // the ears: so a head seen from the side has hair above the ear, and
+    // skin only in front of it and below. Each side of the head is done
+    // apart -- straight on, both show, a sliver each side of the face.
+    double from(double y) {
+      var f = y / h;
+      // Well forward over the top of the head, at the temples above the
+      // ears, and behind them below.
+      if (f < -0.1) {
+        var t = ((f + 0.6) / 0.5).clamp(0.0, 1.0);
+        return 0.55 + (1.2 - 0.55) * t;
+      }
+      var t = ((f + 0.1) / 0.35).clamp(0.0, 1.0);
+      return 1.2 + (_hairline - 1.2) * t;
     }
-    if (lo == null || hi == null || hi - lo < 0.01) return null;
-    var left = <Offset>[], right = <Offset>[];
-    for (var k = 0; k <= 32; k++) {
-      var y = -h + 2 * h * k / 32;
-      var across = w * math.sqrt(math.max(0.0, 1 - (y / h) * (y / h)));
-      left.add(Offset(lo * across, y));
-      right.add(Offset(hi * across, y));
+
+    Path? side(double sign) {
+      var left = <Offset>[], right = <Offset>[];
+      var any = false;
+      for (var k = 0; k <= 40; k++) {
+        var y = -h + 2 * h * k / 40;
+        var across = w * math.sqrt(math.max(0.0, 1 - (y / h) * (y / h)));
+        double? lo, hi;
+        var a0 = from(y);
+        // From the hairline round to the back of the head, on this side.
+        for (var j = 0; j <= 24; j++) {
+          var a = sign * (a0 + (math.pi - a0) * j / 24) - yaw;
+          if (math.cos(a) <= 0) continue;
+          var v = math.sin(a);
+          lo = lo == null ? v : math.min(lo, v);
+          hi = hi == null ? v : math.max(hi, v);
+        }
+        if (lo == null || hi == null) {
+          // None of it shows at this height: a point on the edge, so the
+          // outline carries on round.
+          var edge = math.sin(sign * math.pi / 2 - yaw) >= 0 ? 1.0 : -1.0;
+          lo = hi = edge;
+        } else {
+          any = true;
+        }
+        left.add(Offset(lo * across, y));
+        right.add(Offset(hi * across, y));
+      }
+      if (!any) return null;
+      return Path()..addPolygon([...left, ...right.reversed], true);
     }
-    return Path()..addPolygon([...left, ...right.reversed], true);
+
+    var a = side(1), b = side(-1);
+    if (a == null) return b;
+    if (b == null) return a;
+    return Path.combine(PathOperation.union, a, b);
   }
 
   /// _hairline is how far round the head from the middle of the face the
@@ -1558,6 +2651,7 @@ class _Drawing {
         Paint()..color = dna.hair);
     canvas.restore();
     var shift = _across(0, w) * 0.45;
+    var volume = 1 + 0.12 * _a(Look.hairVolume);
     if (dna.hairStyle == HairStyle.bun) {
       _fill(
           Path()
@@ -1573,25 +2667,140 @@ class _Drawing {
         _fill(
             Path()
               ..addOval(Rect.fromCircle(
-                  center:
-                      Offset(math.cos(a) * w * 0.98, math.sin(a) * h * 0.92),
-                  radius: u * 0.13)),
+                  center: Offset(math.cos(a) * w * 0.98 * volume,
+                      math.sin(a) * h * 0.92 * volume),
+                  radius: u * 0.13 * (1 + 0.25 * _a(Look.hairVolume)))),
             dna.hair);
       }
     }
     if (facing < -0.3) return;
-    // The fringe goes round with the face.
-    var cap = Path()
-      ..moveTo(-w * 1.04, h * 0.12)
-      ..cubicTo(-w * 1.08, -h * 1.28, w * 1.08, -h * 1.28, w * 1.04, h * 0.12)
-      ..cubicTo(w * 0.86, -h * 0.4, w * 0.2, -h * 0.62, -w * 0.12, -h * 0.5)
-      ..cubicTo(-w * 0.5, -h * 0.3, -w * 0.84, -h * 0.2, -w * 1.04, h * 0.12)
-      ..close();
+    // The fringe goes round with the face: lower for a longer fringe or a
+    // lower hairline, its low point moved to where the hair parts.
+    var down = h * (0.3 * _a(Look.fringe) + 0.12 * _a(Look.hairline));
+    var part = w * 0.5 * _a(Look.parting);
+    if (look.hair == _Hair.spiky) _crownSpikes(w, h, volume);
+    var cap = _capPath(w, h, down, part);
     canvas.save();
-    canvas.clipPath(Path()..addOval(behind));
+    if (look.hair != _Hair.spiky && look.hair != _Hair.clumps) {
+      canvas.clipPath(Path()..addOval(behind));
+    }
     canvas.translate(shift, 0);
-    canvas.scale(0.55 + 0.45 * facing.clamp(0.0, 1.0), 1);
+    canvas.scale((0.55 + 0.45 * facing.clamp(0.0, 1.0)) * volume, volume);
     _fill(cap, dna.hair);
+    _shine(cap, w, h);
+    _highlights(cap, w, h);
+    canvas.restore();
+  }
+
+  /// _capPath is the hair over the top of the head down to the fringe:
+  /// [down] lower for a longer fringe, its low point moved [part] to the
+  /// parting -- its edge smooth, or pointed locks in a style that clumps.
+  Path _capPath(double w, double h, double down, double part) {
+    var a0 = Offset(w * 1.04, h * 0.12);
+    var c1 = Offset(w * 0.86, -h * 0.4 + down);
+    var c2 = Offset(w * 0.2 + part, -h * 0.62 + down);
+    var m = Offset(-w * 0.12 + part, -h * 0.5 + down);
+    var c3 = Offset(-w * 0.5 + part, -h * 0.3 + down);
+    var c4 = Offset(-w * 0.84, -h * 0.2 + down);
+    var a1 = Offset(-w * 1.04, h * 0.12);
+    var cap = Path()
+      ..moveTo(a1.dx, a1.dy)
+      ..cubicTo(-w * 1.08, -h * 1.28, w * 1.08, -h * 1.28, a0.dx, a0.dy);
+    if (look.hair != _Hair.clumps && look.hair != _Hair.spiky) {
+      return cap
+        ..cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, m.dx, m.dy)
+        ..cubicTo(c3.dx, c3.dy, c4.dx, c4.dy, a1.dx, a1.dy)
+        ..close();
+    }
+    // Locks: the same edge, cut into points that hang down between.
+    Offset bez(Offset p0, Offset p1, Offset p2, Offset p3, double t) {
+      var s = 1 - t;
+      return p0 * (s * s * s) +
+          p1 * (3 * s * s * t) +
+          p2 * (3 * s * t * t) +
+          p3 * (t * t * t);
+    }
+
+    var edge = <Offset>[
+      for (var k = 0; k <= 5; k++) bez(a0, c1, c2, m, k / 5),
+      for (var k = 1; k <= 5; k++) bez(m, c3, c4, a1, k / 5),
+    ];
+    var spike = h * (look.hair == _Hair.spiky ? 0.26 : 0.18);
+    for (var i = 0; i + 1 < edge.length; i++) {
+      var a = edge[i], b = edge[i + 1];
+      var long = 0.7 + 0.5 * _seed(i + 40);
+      var tip = Offset.lerp(a, b, 0.55)! + Offset(0, spike * long);
+      cap.quadraticBezierTo(a.dx, a.dy + spike * 0.4, tip.dx, tip.dy);
+      cap.quadraticBezierTo(b.dx, b.dy + spike * 0.2, b.dx, b.dy);
+    }
+    return cap..close();
+  }
+
+  /// _crownSpikes are hair standing up off the crown, in spiky hair.
+  void _crownSpikes(double w, double h, double volume) {
+    // Wide at the root and swept a little back, each overlapping the next.
+    var spikes = Path();
+    for (var k = 0; k < 8; k++) {
+      var a = math.pi * (1.02 + k * 0.137);
+      var spread = 0.42;
+      var root = Offset(math.cos(a - spread / 2) * w, math.sin(a - spread / 2) * h);
+      var out = Offset(math.cos(a + spread / 2) * w, math.sin(a + spread / 2) * h);
+      // Longest at the top of the head, shorter down the sides.
+      var top = math.sin(a).abs();
+      var reach = 1.12 + 0.28 * top + 0.1 * _seed(k + 70) + 0.6 * (volume - 1);
+      var tip = Offset(math.cos(a + 0.1) * w * reach, math.sin(a + 0.1) * h * reach);
+      spikes = Path.combine(
+          PathOperation.union,
+          spikes,
+          Path()
+            ..moveTo(root.dx * 0.85, root.dy * 0.85)
+            ..quadraticBezierTo(
+                (root.dx + tip.dx) / 2, (root.dy + tip.dy) / 2 - h * 0.04, tip.dx, tip.dy)
+            ..lineTo(out.dx * 0.85, out.dy * 0.85)
+            ..close());
+    }
+    _fill(spikes, dna.hair);
+  }
+
+  /// _shine is the light on hair, as the style draws it: a ring of shine
+  /// round the crown, a soft band, or fine strands.
+  void _shine(Path hair, double w, double h) {
+    if (look.hair == _Hair.plain) return;
+    canvas.save();
+    canvas.clipPath(hair);
+    var light = Color.lerp(dna.hair, const Color(0xFFFFFFFF), 0.4)!;
+    switch (look.hair) {
+      case _Hair.clumps || _Hair.spiky:
+        // The ring of shine anime draws round a head of hair.
+        // Broken into short arcs, as it is painted, rather than a band.
+        var ring = Rect.fromCenter(
+            center: Offset(-w * 0.08, h * 0.02), width: w * 1.55, height: h * 1.25);
+        var shineColour = Color.lerp(dna.hair, const Color(0xFFFFFFFF), 0.22)!;
+        for (var k = 0; k < 3; k++) {
+          var start = math.pi * (1.22 + k * 0.2);
+          canvas.drawArc(ring, start, math.pi * 0.13, false,
+              _feature(u * (0.03 - k * 0.004), shineColour.withValues(alpha: 0.7)));
+        }
+      case _Hair.soft:
+        canvas.drawOval(
+            Rect.fromCenter(
+                center: Offset(-w * 0.3, -h * 0.72), width: w * 0.9, height: h * 0.32),
+            Paint()
+              ..shader = ui.Gradient.radial(Offset(-w * 0.3, -h * 0.72), w * 0.45,
+                  [light.withValues(alpha: 0.55), light.withValues(alpha: 0)]));
+      case _Hair.strands:
+        var dark = _shade(dna.hair, 0.35).withValues(alpha: 0.6);
+        for (var k = 0; k < 7; k++) {
+          var x = -w * 0.9 + w * 1.8 * k / 6;
+          canvas.drawPath(
+              Path()
+                ..moveTo(x * 0.3, -h * 1.05)
+                ..quadraticBezierTo(x * 0.9, -h * 0.8, x, -h * 0.25),
+              _feature(u * 0.012, k.isEven ? dark : light.withValues(alpha: 0.5)));
+        }
+      case _Hair.plain:
+        break;
+    }
     canvas.restore();
   }
 
@@ -1599,38 +2808,114 @@ class _Drawing {
   /// point standing out from the side of the face.
   void _nose(double w, {required bool front}) {
     var side = math.sin(yaw);
-    var y = u * 0.12 + _nodShift;
+    var y = u * 0.12 + _nodShift - _a(Look.noseHeight) * u * 0.05;
+    var nw = 1 + 0.5 * _a(Look.noseWidth);
+    var nl = 1 + 0.45 * _a(Look.noseLength);
     if (side.abs() < 0.55) {
       if (!front) return;
       var x = _across(0, w * 0.95);
+      var ink = _shade(dna.skin, 0.45);
+      switch (look.nose) {
+        case _Nose.none:
+          return;
+        case _Nose.tick:
+          // Anime's nose: a short tick, or a hint of shadow under it.
+          canvas.drawLine(Offset(x + u * 0.004, y + u * 0.05 * nl),
+              Offset(x - u * 0.014 * nw, y + u * 0.085 * nl),
+              _feature(u * 0.022, ink.withValues(alpha: 0.8)));
+          return;
+        case _Nose.small:
+          canvas.drawPath(
+              Path()
+                ..moveTo(x - u * 0.005, y + u * 0.04 * nl)
+                ..quadraticBezierTo(x - u * 0.03 * nw, y + u * 0.085 * nl,
+                    x + u * 0.01 * nw, y + u * 0.085 * nl),
+              _feature(u * 0.022, ink));
+          return;
+        case _Nose.shaded:
+          // Lit from the left: a shadow down the right of the nose and
+          // under it, and light on its tip.
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: Offset(x + u * 0.03 * nw, y + u * 0.05 * nl),
+                  width: u * 0.05 * nw,
+                  height: u * 0.12 * nl),
+              Paint()
+                ..color = _shade(dna.skin, 0.2).withValues(alpha: 0.5)
+                ..maskFilter = MaskFilter.blur(BlurStyle.normal, u * 0.02));
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: Offset(x, y + u * 0.1 * nl),
+                  width: u * 0.1 * nw,
+                  height: u * 0.03),
+              Paint()
+                ..color = _shade(dna.skin, 0.25).withValues(alpha: 0.45)
+                ..maskFilter = MaskFilter.blur(BlurStyle.normal, u * 0.012));
+          canvas.drawCircle(Offset(x - u * 0.01, y + u * 0.07 * nl), u * 0.018,
+              Paint()..color = const Color(0x40FFFFFF));
+          return;
+        case _Nose.shaped:
+          break;
+      }
       canvas.drawPath(
           Path()
-            ..moveTo(x, y)
+            ..moveTo(x, y - u * 0.06 * (nl - 1))
             ..quadraticBezierTo(
-                x + u * 0.05 * (side >= 0 ? -1 : 1).toDouble() * -1,
-                y + u * 0.07,
-                x - u * 0.01,
-                y + u * 0.08),
-          _feature(u * 0.03, _shade(dna.skin, 0.45)));
+                x + u * 0.05 * nw * (side >= 0 ? -1 : 1).toDouble() * -1,
+                y + u * 0.07 * nl,
+                x - u * 0.01 * nw,
+                y + u * 0.08 * nl),
+          _feature(u * 0.03, ink));
+      var bridge = _a(Look.noseBridge);
+      if (bridge > 0) {
+        // A prominent bridge, a line down from between the eyes.
+        canvas.drawLine(
+            Offset(x - u * 0.012, y - u * 0.1),
+            Offset(x - u * 0.01, y + u * 0.02),
+            _feature(u * 0.016, ink.withValues(alpha: 0.2 + 0.5 * bridge)));
+      }
+      var tip = _a(Look.noseTip);
+      if (tip > 0) {
+        // A rounder tip: the curve under it.
+        canvas.drawArc(
+            Rect.fromCircle(
+                center: Offset(x, y + u * 0.07 * nl),
+                radius: u * 0.035 * (1 + tip) * nw),
+            math.pi * 0.15,
+            math.pi * 0.7,
+            false,
+            _feature(u * 0.02, ink.withValues(alpha: 0.6)));
+      }
+      var nostrils = _a(Look.nostrils);
+      if (nostrils > 0) {
+        for (var s in [-1.0, 1.0]) {
+          canvas.drawOval(
+              Rect.fromCenter(
+                  center: Offset(x + s * u * 0.035 * nw, y + u * 0.085 * nl),
+                  width: u * 0.022 * (1 + nostrils * 0.5),
+                  height: u * 0.014 * (1 + nostrils * 0.5)),
+              Paint()..color = ink.withValues(alpha: 0.35 + 0.5 * nostrils));
+        }
+      }
       return;
     }
     if (front) return;
     // In profile: a point past the outline, which way the face is turned.
     var dir = side > 0 ? -1.0 : 1.0;
     var x = _across(0, w * 0.97);
-    var out = u * 0.13 * (side.abs() - 0.45).clamp(0.0, 0.55) / 0.55;
+    var out = u * 0.13 * (side.abs() - 0.45).clamp(0.0, 0.55) / 0.55 *
+        (1 + 0.5 * _a(Look.noseBridge)) * nl;
     var tip = Path()
-      ..moveTo(x, y - u * 0.04)
-      ..lineTo(x + dir * out, y + u * 0.1)
-      ..lineTo(x, y + u * 0.13)
+      ..moveTo(x, y - u * 0.04 * nl)
+      ..lineTo(x + dir * out, y + u * 0.1 * nl)
+      ..lineTo(x, y + u * 0.13 * nl)
       ..close();
     _fill(tip, dna.skin);
   }
 
-  void _face(double w) {
+  void _face(double w, {bool onModel = false}) {
     var dy = _nodShift;
-    var eyeY = u * 0.06 + dy;
-    var white = Paint()..color = const Color(0xFFFFFFFF);
+    var eyeY = u * 0.06 + dy - _a(Look.eyeHeight) * u * 0.06;
     var lid = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = edge
@@ -1647,20 +2932,41 @@ class _Drawing {
     for (var side in eyeSides) {
       // One eye is in the middle and big; a third sits above the other two.
       var cyclops = dna.eyeCount == 1;
-      var phi = side * 0.42;
+      var phi = side * 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
       var toward = _toward(phi);
       if (toward < 0.12) continue;
-      var c = Offset(_across(phi, w), eyeY);
+      var c = Offset(_eyesAt?[side] ?? _across(phi, w), eyeY);
       if (side == 0 && !cyclops) c = c + Offset(0, -u * 0.14);
-      var ew = u * 0.17 * toward, eh = u * 0.21;
+      var size = 1 + 0.3 * _a(Look.eyeSize);
+      var shape = _a(Look.eyeShape);
+      var ew = u * 0.17 * toward * size * (1 + 0.12 * shape);
+      var eh = u * 0.21 * size * (1 - 0.3 * shape);
       if (cyclops) {
         ew *= 1.8;
         eh *= 1.6;
       }
-      if (look.eyes == _Eyes.anime) {
-        ew *= 1.2;
-        eh *= 1.45;
-        c = c + Offset(0, u * 0.03);
+      // Each style's eye its own size and shape.
+      var (kw, kh, drop) = switch (look.eyes) {
+        _Eyes.anime => (1.2, 1.45, 0.03),
+        _Eyes.shojo => (1.35, 1.6, 0.04),
+        _Eyes.shonen => (1.25, 0.85, 0.0),
+        _Eyes.soft => (0.8, 0.95, 0.0),
+        _Eyes.dot => (0.6, 0.75, 0.0),
+        _Eyes.fine => (1.15, 0.75, 0.0),
+        _Eyes.glossy => (1.3, 1.35, 0.02),
+        _Eyes.real => (1.05, 0.72, 0.0),
+        _Eyes.feature => (1.2, 0.92, 0.01),
+        _ => (1.0, 1.0, 0.0),
+      };
+      ew *= kw;
+      eh *= kh;
+      c = c + Offset(0, u * drop);
+      // Tipped up or down at the outer corner.
+      canvas.save();
+      if (_a(Look.eyeTilt) != 0 && side != 0) {
+        canvas.translate(c.dx, c.dy);
+        canvas.rotate(-side * _a(Look.eyeTilt) * 0.22);
+        canvas.translate(-c.dx, -c.dy);
       }
       var height = eh * open * (1 - 0.45 * squint);
       if (height < eh * 0.14) {
@@ -1674,43 +2980,9 @@ class _Drawing {
         // A squint pushes up from below, so the eye keeps its top.
         var box = Rect.fromLTWH(c.dx - ew / 2,
             c.dy - eh / 2 + (eh - height) * (squint > 0 ? 0.25 : 0.5), ew, height);
-        if (look.eyes == _Eyes.pie) {
-          _pieEye(box, lookX, lookY, toward);
-        } else {
-          var anime = look.eyes == _Eyes.anime;
-          canvas.drawOval(box, white);
-          canvas.save();
-          canvas.clipPath(Path()..addOval(box));
-          var iris = c +
-              Offset(lookX * u * 0.04 * toward, -lookY * u * 0.035 + u * 0.015);
-          var big = anime ? 1.45 : 1.0;
-          canvas.drawOval(
-              Rect.fromCenter(
-                  center: iris,
-                  width: u * 0.124 * big * toward,
-                  height: u * 0.124 * big * (anime ? 1.25 : 1)),
-              Paint()..color = dna.eyes);
-          canvas.drawOval(
-              Rect.fromCenter(
-                  center: iris,
-                  width: u * 0.068 * big * toward,
-                  height: u * 0.068 * big * (anime ? 1.2 : 1)),
-              Paint()..color = const Color(0xFF1B1512));
-          canvas.drawCircle(iris + Offset(-u * 0.022, -u * 0.035) * big,
-              u * 0.017 * big, white);
-          if (anime) {
-            // A second, smaller highlight low on the other side.
-            canvas.drawCircle(iris + Offset(u * 0.025, u * 0.03), u * 0.012, white);
-          }
-          canvas.restore();
-          canvas.drawOval(box, lid);
-          if (anime) {
-            // A heavy upper lash line.
-            canvas.drawArc(box, math.pi * 1.1, math.pi * 0.8, false,
-                _feature(u * 0.035, const Color(0xFF1B1512)));
-          }
-        }
+        _eye(box, c, side, toward, lookX, lookY, lid);
       }
+      canvas.restore();
       if (side != 0) _brow(c, side, toward);
       if (toward > 0.3) {
         canvas.drawOval(
@@ -1720,17 +2992,169 @@ class _Drawing {
                 height: u * 0.08),
             Paint()
               ..color = const Color(0xFFFF7B7B).withValues(
-                  alpha: (0.22 + 0.2 * face[FaceControl.smile]).clamp(0.0, 0.5)));
+                  alpha: (0.22 + 0.2 * face[FaceControl.smile] + 0.35 * _a(Look.blush))
+                      .clamp(0.0, 0.65)));
+        if (look.hatch) {
+          // Anime's blush: short strokes across the cheek.
+          var at = Offset(_across(side * 0.62, w), u * 0.24 + dy);
+          var stroke = _feature(u * 0.011, const Color(0xFFD9485A).withValues(alpha: 0.6));
+          for (var k = -1; k <= 1; k++) {
+            var o = at + Offset(k * u * 0.035 * toward, 0);
+            canvas.drawLine(o + Offset(u * 0.012, -u * 0.02),
+                o + Offset(-u * 0.012, u * 0.02), stroke);
+          }
+        }
       }
     }
+    // On a head in 3D, its own nose, skin and beard are already there.
+    if (onModel) {
+      _mouth(w);
+      return;
+    }
+    if (!dna.species.animal) _skinMarks(w);
     if (dna.species.animal) {
       _muzzle(w);
     } else {
       _nose(w, front: true);
     }
+    if (!dna.species.animal) _beard(w);
     // A beak is a bird's mouth.
     if (dna.species != Species.bird) _mouth(w);
+    if (!dna.species.animal) _moustache(w);
     if (dna.fangs) _fangs(w);
+  }
+
+  /// _skinMarks are freckles, the lines of age and the shine on the skin.
+  void _skinMarks(double w) {
+    var dy = _nodShift;
+    var freckles = _a(Look.freckles);
+    if (freckles > 0) {
+      var dot = Paint()
+        ..color = Color.lerp(dna.skin, const Color(0xFF6B3A1E), 0.5)!
+            .withValues(alpha: 0.75);
+      var n = (freckles * 26).round();
+      for (var k = 0; k < n; k++) {
+        // Across the nose and over the cheeks, under the eyes.
+        var phi = (_seed(k * 2) - 0.5) * 1.5;
+        if (_toward(phi) < 0.25) continue;
+        var y = u * (0.15 + 0.12 * _seed(k * 2 + 1)) + dy;
+        canvas.drawCircle(Offset(_across(phi, w * 0.95), y),
+            u * (0.008 + 0.006 * _seed(k + 99)), dot);
+      }
+    }
+    var age = _a(Look.age);
+    if (age > 0) {
+      var line = _feature(u * 0.013, _shade(dna.skin, 0.4).withValues(alpha: 0.35 + 0.5 * age));
+      // From the side of the nose down to the corners of the mouth.
+      for (var s in [-1.0, 1.0]) {
+        var phi = s * 0.32;
+        if (_toward(phi) < 0.2) continue;
+        var top = Offset(_across(phi * 0.7, w * 0.95), u * 0.16 + dy);
+        var bottom = Offset(_across(phi * 1.15, w * 0.93), u * 0.32 + dy);
+        canvas.drawPath(
+            Path()
+              ..moveTo(top.dx, top.dy)
+              ..quadraticBezierTo(
+                  top.dx + s * u * 0.04 * math.cos(yaw), (top.dy + bottom.dy) / 2,
+                  bottom.dx, bottom.dy),
+            line);
+        // Lines at the outer corners of the eyes.
+        var eye = Offset(_across(s * 0.62, w), u * 0.06 + dy);
+        if (_toward(s * 0.62) > 0.2) {
+          for (var k = -1; k <= 1; k++) {
+            canvas.drawLine(eye + Offset(s * u * 0.02, k * u * 0.025),
+                eye + Offset(s * u * 0.07, k * u * 0.04), line);
+          }
+        }
+      }
+      // Across the forehead.
+      if (facing > 0.3) {
+        for (var k = 0; k < 2; k++) {
+          var y = -u * (0.17 + 0.06 * k) + dy;
+          var x = _across(0, w);
+          canvas.drawPath(
+              Path()
+                ..moveTo(x - u * 0.18 * facing, y)
+                ..quadraticBezierTo(x, y - u * 0.03, x + u * 0.18 * facing, y),
+              line);
+        }
+      }
+    }
+    var shine = _a(Look.shine);
+    if (shine > 0 && facing > 0.2) {
+      var glint = Paint()
+        ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.18 + 0.3 * shine);
+      canvas.drawOval(
+          Rect.fromCenter(
+              center: Offset(_across(-0.25, w), -u * 0.3 + dy),
+              width: u * 0.16 * facing,
+              height: u * 0.07),
+          glint);
+      canvas.drawOval(
+          Rect.fromCenter(
+              center: Offset(_across(-0.55, w), u * 0.18 + dy),
+              width: u * 0.08 * facing,
+              height: u * 0.05),
+          glint);
+    }
+  }
+
+  /// _beard is stubble and a beard: hair over the lower face, longer down
+  /// the chin, with the mouth drawn over it.
+  void _beard(double w) {
+    var stubble = _a(Look.stubble), beard = _a(Look.beard);
+    if (stubble <= 0 && beard <= 0) return;
+    var r = rig.headRadii;
+    var dy = _nodShift;
+    var face = _headPath(w, r.height);
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(-w * 3, u * 0.18 + dy, w * 3, r.height * 4));
+    if (stubble > 0) {
+      canvas.save();
+      canvas.clipPath(face);
+      canvas.drawRect(Rect.fromLTRB(-w * 2, u * 0.18 + dy, w * 2, r.height * 2),
+          Paint()..color = dna.hair.withValues(alpha: 0.12 + 0.3 * stubble));
+      canvas.restore();
+    }
+    if (beard > 0) {
+      var long = 1.05 + 0.55 * _a(Look.beardLength);
+      // Little beard is a goatee on the chin; more of it reaches round the
+      // jaw to the ears.
+      var spread = (0.35 + 0.65 * beard).clamp(0.0, 1.0);
+      var cx = _across(0, w * 0.88);
+      var half = w * spread * 1.02;
+      var top = u * 0.2 + dy;
+      var shape = Path()
+        ..moveTo(cx - half, top - u * 0.1 * spread)
+        ..quadraticBezierTo(cx - half * 1.02, r.height * long * 0.95,
+            cx, r.height * long + dy)
+        ..quadraticBezierTo(cx + half * 1.02, r.height * long * 0.95,
+            cx + half, top - u * 0.1 * spread)
+        ..lineTo(cx + half * 0.5, top + u * 0.04)
+        ..quadraticBezierTo(cx, top + u * 0.02, cx - half * 0.5, top + u * 0.04)
+        ..close();
+      _fill(shape, dna.hair);
+      _highlights(shape, w, r.height * long);
+    }
+    canvas.restore();
+  }
+
+  /// _moustache is over the top lip, drawn after the mouth.
+  void _moustache(double w) {
+    var m = _a(Look.moustache);
+    if (m <= 0 || facing < 0.1) return;
+    var at = Offset(_across(0, w * 0.88),
+        u * 0.255 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+    var across = 0.35 + 0.65 * facing.clamp(0.0, 1.0);
+    var half = u * (0.08 + 0.07 * m) * across;
+    var thick = u * (0.02 + 0.04 * m);
+    var shape = Path()
+      ..moveTo(at.dx - half, at.dy + thick * 0.6)
+      ..quadraticBezierTo(at.dx - half * 0.5, at.dy - thick, at.dx, at.dy - thick * 0.6)
+      ..quadraticBezierTo(at.dx + half * 0.5, at.dy - thick, at.dx + half, at.dy + thick * 0.6)
+      ..quadraticBezierTo(at.dx, at.dy + thick * 0.3, at.dx - half, at.dy + thick * 0.6)
+      ..close();
+    _fill(shape, dna.hair);
   }
 
   // ---- what a creature has that a person does not ----
@@ -1747,8 +3171,12 @@ class _Drawing {
       var ear = Path();
       var inner = Path();
       switch (dna.species) {
-        case Species.cat || Species.fox || Species.monster:
-          var tall = dna.species == Species.fox ? 0.75 : 0.6;
+        case Species.cat || Species.fox || Species.monster || Species.horse:
+          var tall = dna.species == Species.fox
+              ? 0.75
+              : dna.species == Species.horse
+                  ? 0.7
+                  : 0.6;
           ear.addPolygon([
             base + Offset(-w * 0.32, h * 0.15),
             base + Offset(side * w * 0.12, -h * tall),
@@ -1764,8 +3192,12 @@ class _Drawing {
           var at = Offset(_across(side * 1.25, w), -h * 0.35);
           ear.addOval(Rect.fromCenter(
               center: at + Offset(0, h * 0.45), width: w * 0.42, height: h * 1.0));
-        case Species.bear || Species.mouse:
-          var r = dna.species == Species.mouse ? w * 0.42 : w * 0.3;
+        case Species.bear || Species.mouse || Species.hedgehog:
+          var r = switch (dna.species) {
+            Species.mouse => w * 0.42,
+            Species.hedgehog => w * 0.2,
+            _ => w * 0.3,
+          };
           ear.addOval(Rect.fromCircle(center: base + Offset(side * w * 0.12, 0), radius: r));
           inner.addOval(Rect.fromCircle(center: base + Offset(side * w * 0.12, 0), radius: r * 0.55));
         case Species.rabbit:
@@ -1811,7 +3243,11 @@ class _Drawing {
     }
     var cx = _across(0, w * 0.9);
     var y = u * 0.2 + _nodShift;
-    var long = sp == Species.dog || sp == Species.fox || sp == Species.bear;
+    var long = sp == Species.dog ||
+        sp == Species.fox ||
+        sp == Species.bear ||
+        sp == Species.horse ||
+        sp == Species.hedgehog;
     var mw = u * (long ? 0.42 : 0.32) * (0.6 + 0.4 * facing.abs());
     var mh = u * (long ? 0.3 : 0.22);
     // Side on, a long muzzle sticks out past the face.
@@ -2179,33 +3615,348 @@ class _Drawing {
     }
   }
 
+  /// _eye draws an open eye in [box], centred on [c], on [side] of the
+  /// face, turned [toward] the reader, looking [lookX] across and [lookY]
+  /// up -- as the style's kit draws eyes.
+  void _eye(Rect box, Offset c, double side, double toward, double lookX,
+      double lookY, Paint lid) {
+    const dark = Color(0xFF1B1512);
+    var white = Paint()..color = const Color(0xFFFFFFFF);
+    var kind = look.eyes;
+    if (kind == _Eyes.pie) {
+      _pieEye(box, lookX, lookY, toward);
+      return;
+    }
+    var outer = side == 0 ? 1.0 : side;
+    var shift = Offset(lookX * box.width * 0.2, -lookY * box.height * 0.16);
+    if (kind == _Eyes.dot) {
+      // A dark oval with a dot of light.
+      var dot = Rect.fromCenter(
+          center: c + shift * 0.6, width: box.width * 0.62, height: box.height);
+      canvas.drawOval(dot, Paint()..color = dark);
+      canvas.drawCircle(
+          dot.center + Offset(-dot.width * 0.2, -dot.height * 0.22),
+          dot.width * 0.2,
+          white);
+      _lashes(box, outer, toward);
+      return;
+    }
+
+    // The white of the eye: an oval, or an almond with its corners.
+    var almond = kind == _Eyes.shonen ||
+        kind == _Eyes.fine ||
+        kind == _Eyes.real ||
+        kind == _Eyes.feature;
+    Path whites;
+    if (almond) {
+      var lift = box.height * 0.08 * outer;
+      whites = Path()
+        ..moveTo(box.left, box.center.dy + lift)
+        ..quadraticBezierTo(box.center.dx - box.width * 0.05,
+            box.top - box.height * 0.22, box.right, box.center.dy - lift)
+        ..quadraticBezierTo(box.center.dx + box.width * 0.05,
+            box.bottom + box.height * 0.12, box.left, box.center.dy + lift)
+        ..close();
+    } else {
+      var narrow = kind == _Eyes.soft ? 0.7 : 1.0;
+      whites = Path()
+        ..addOval(Rect.fromCenter(
+            center: box.center,
+            width: box.width * narrow,
+            height: box.height));
+    }
+    canvas.drawPath(whites, white);
+    canvas.save();
+    canvas.clipPath(whites);
+
+    // The iris: how much of the eye, and how it is coloured.
+    var irisK = 1 + 0.35 * _a(Look.iris);
+    var (fw, fh) = switch (kind) {
+      _Eyes.anime => (0.66, 0.92),
+      _Eyes.shojo => (0.74, 0.98),
+      _Eyes.shonen => (0.46, 0.72),
+      _Eyes.soft => (0.62, 0.9),
+      _Eyes.fine => (0.5, 0.78),
+      _Eyes.glossy => (0.64, 0.82),
+      _Eyes.real => (0.46, 0.66),
+      _Eyes.feature => (0.56, 0.9),
+      _ => (0.73 * toward, 0.6),
+    };
+    var iris = Rect.fromCenter(
+        center: c + shift + Offset(0, box.height * 0.04),
+        width: box.width * fw * irisK,
+        height: box.height * fh * irisK);
+    if (kind == _Eyes.round) {
+      // The feature cartoon's, as it has always been sized.
+      iris = Rect.fromCenter(
+          center: c + Offset(lookX * u * 0.04 * toward, -lookY * u * 0.035 + u * 0.015),
+          width: u * 0.124 * irisK * toward,
+          height: u * 0.124 * irisK);
+    }
+    var layered = kind != _Eyes.round && kind != _Eyes.soft && kind != _Eyes.shonen;
+    var irisPaint = Paint()..color = dna.eyes;
+    if (layered) {
+      irisPaint.shader = ui.Gradient.linear(iris.topCenter, iris.bottomCenter, [
+        Color.lerp(dna.eyes, dark, 0.6)!,
+        dna.eyes,
+        Color.lerp(dna.eyes, const Color(0xFFFFFFFF), 0.35)!,
+      ], const [
+        0.05,
+        0.55,
+        1,
+      ]);
+    }
+    canvas.drawOval(iris, irisPaint);
+    if (layered) {
+      canvas.drawOval(
+          iris,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.max(0.5, iris.width * 0.07)
+            ..color = Color.lerp(dna.eyes, dark, 0.65)!);
+    }
+    var pupilK = kind == _Eyes.shonen ? 0.38 : 0.5;
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: iris.center,
+            width: iris.width * pupilK,
+            height: iris.height * pupilK * (kind == _Eyes.round ? 1 : 1.05)),
+        Paint()..color = dark);
+
+    // Light: where it catches, by the style.
+    void glint(double ax, double ay, double r) => canvas.drawCircle(
+        iris.center + Offset(iris.width * ax, iris.height * ay),
+        iris.width * r,
+        white);
+    switch (kind) {
+      case _Eyes.anime:
+        glint(-0.22, -0.24, 0.2);
+        glint(0.2, 0.22, 0.09);
+      case _Eyes.shojo:
+        glint(-0.22, -0.26, 0.22);
+        glint(0.22, -0.18, 0.11);
+        glint(-0.12, 0.26, 0.07);
+        _sparkle(iris.center + Offset(iris.width * 0.16, iris.height * 0.2),
+            iris.width * 0.16);
+      case _Eyes.glossy:
+        glint(-0.2, -0.22, 0.26);
+        glint(0.22, 0.18, 0.1);
+        // A soft reflection across the bottom of the eye.
+        canvas.drawOval(
+            Rect.fromLTRB(iris.left, iris.center.dy, iris.right, iris.bottom + iris.height * 0.2),
+            Paint()..color = const Color(0x33FFFFFF));
+      case _Eyes.round:
+        canvas.drawCircle(iris.center + Offset(-u * 0.022, -u * 0.035) * irisK,
+            u * 0.017 * irisK, white);
+      case _Eyes.feature:
+        glint(-0.2, -0.26, 0.2);
+        glint(0.24, 0.18, 0.08);
+      default:
+        glint(-0.2, -0.24, 0.16);
+    }
+    // The upper lid's shadow on the white, for the styles that draw one.
+    if (kind == _Eyes.anime ||
+        kind == _Eyes.shojo ||
+        kind == _Eyes.glossy ||
+        kind == _Eyes.feature) {
+      canvas.drawRect(
+          Rect.fromLTRB(box.left, box.top, box.right, box.top + box.height * 0.2),
+          Paint()..color = _shade(dna.skin, 0.15).withValues(alpha: 0.45));
+    }
+    var heavy = _a(Look.lids);
+    if (heavy > 0) {
+      // A heavy lid comes down over the top of the eye.
+      canvas.drawRect(
+          Rect.fromLTRB(box.left, box.top - box.height * 0.2, box.right,
+              box.top + box.height * 0.4 * heavy),
+          Paint()..color = dna.skin);
+    }
+    canvas.restore();
+
+    // The lines round it.
+    var ink = look.ink ?? dark;
+    switch (kind) {
+      case _Eyes.round:
+        canvas.drawPath(whites, lid);
+      case _Eyes.anime || _Eyes.shojo:
+        var heavyLine = kind == _Eyes.shojo ? 0.042 : 0.036;
+        canvas.drawArc(box.inflate(box.width * 0.02), math.pi * 1.08,
+            math.pi * 0.84, false, _feature(u * heavyLine, ink));
+        // A flick out at the outer corner, and a fine lower lid.
+        var corner = Offset(box.center.dx + outer * box.width * 0.5,
+            box.center.dy - box.height * 0.12);
+        canvas.drawLine(corner,
+            corner + Offset(outer * u * 0.04, -u * 0.03), _feature(u * 0.028, ink));
+        canvas.drawArc(box, math.pi * (outer > 0 ? 0.1 : 0.55), math.pi * 0.35,
+            false, _feature(u * 0.012, ink.withValues(alpha: 0.7)));
+        if (kind == _Eyes.shojo) {
+          for (var k = 0; k < 3; k++) {
+            var a = -math.pi / 2 + outer * (0.6 + k * 0.28);
+            var from = box.center +
+                Offset(math.cos(a) * box.width / 2, math.sin(a) * box.height / 2);
+            canvas.drawLine(from,
+                from + Offset(math.cos(a), math.sin(a) - 0.6) * (u * 0.06),
+                _feature(u * 0.016, ink));
+          }
+        }
+      case _Eyes.shonen:
+        // Sharp: straight lines meeting at a peak.
+        var top = Offset(box.center.dx - outer * box.width * 0.1,
+            box.top - box.height * 0.12);
+        canvas.drawPath(
+            Path()
+              ..moveTo(box.center.dx - outer * box.width * 0.5,
+                  box.center.dy + box.height * 0.08)
+              ..lineTo(top.dx, top.dy)
+              ..lineTo(box.center.dx + outer * box.width * 0.55,
+                  box.center.dy - box.height * 0.1),
+            _feature(u * 0.034, ink));
+        canvas.drawLine(
+            Offset(box.center.dx, box.bottom),
+            Offset(box.center.dx + outer * box.width * 0.45, box.center.dy + box.height * 0.18),
+            _feature(u * 0.014, ink));
+      case _Eyes.soft:
+        // A simple lid over a nearly all-iris eye.
+        canvas.drawArc(box.inflate(box.width * 0.05), math.pi * 1.1,
+            math.pi * 0.8, false, _feature(u * 0.026, ink));
+      case _Eyes.fine || _Eyes.real:
+        canvas.drawPath(
+            Path()
+              ..moveTo(box.left, box.center.dy + box.height * 0.08 * outer)
+              ..quadraticBezierTo(box.center.dx - box.width * 0.05,
+                  box.top - box.height * 0.22, box.right,
+                  box.center.dy - box.height * 0.08 * outer),
+            _feature(u * (kind == _Eyes.fine ? 0.026 : 0.022), ink));
+        // The crease of the lid above it.
+        canvas.drawArc(
+            Rect.fromCenter(
+                center: box.center - Offset(0, box.height * 0.45),
+                width: box.width * 0.85,
+                height: box.height * 0.6),
+            math.pi * 1.15,
+            math.pi * 0.7,
+            false,
+            _feature(u * 0.012, _shade(dna.skin, 0.4).withValues(alpha: 0.7)));
+        canvas.drawArc(box, math.pi * 0.15, math.pi * 0.7, false,
+            _feature(u * 0.01, _shade(dna.skin, 0.4).withValues(alpha: 0.6)));
+      case _Eyes.glossy:
+        canvas.drawArc(box.inflate(box.width * 0.04), math.pi * 1.05,
+            math.pi * 0.9, false, _feature(u * 0.03, _shade(dna.skin, 0.55)));
+      case _Eyes.feature:
+        // The upper lid along the top of the almond, heavy, and on past the
+        // outer corner in a flick.
+        var lift = box.height * 0.08 * outer;
+        var inner = Offset(box.left, box.center.dy + lift);
+        var far = Offset(box.right, box.center.dy - lift);
+        var (a, b) = outer > 0 ? (inner, far) : (far, inner);
+        var flick = b + Offset(outer * box.width * 0.16, -box.height * 0.22);
+        canvas.drawPath(
+            Path()
+              ..moveTo(a.dx, a.dy)
+              ..quadraticBezierTo(box.center.dx - box.width * 0.05,
+                  box.top - box.height * 0.24, b.dx, b.dy)
+              ..lineTo(flick.dx, flick.dy),
+            _feature(u * 0.034, ink));
+        // A fine lower lid, under the outer half.
+        canvas.drawPath(
+            Path()
+              ..moveTo(box.center.dx - outer * box.width * 0.1, box.bottom + box.height * 0.02)
+              ..quadraticBezierTo(box.center.dx + outer * box.width * 0.35,
+                  box.bottom - box.height * 0.02, b.dx, b.dy + box.height * 0.04),
+            _feature(u * 0.011, ink.withValues(alpha: 0.55)));
+        // The crease above.
+        canvas.drawArc(
+            Rect.fromCenter(
+                center: box.center - Offset(0, box.height * 0.5),
+                width: box.width * 0.9,
+                height: box.height * 0.55),
+            math.pi * 1.15,
+            math.pi * 0.7,
+            false,
+            _feature(u * 0.012, _shade(dna.skin, 0.35).withValues(alpha: 0.7)));
+      case _Eyes.dot || _Eyes.pie:
+        break;
+    }
+    _lashes(box, outer, toward);
+  }
+
+  /// _lashes are lashes on the outer half of the upper lid, as long as the
+  /// Appearance says.
+  void _lashes(Rect box, double outer, double toward) {
+    var lashes = _a(Look.lashes);
+    if (lashes <= 0 || toward < 0.35) return;
+    var ink = look.ink ?? const Color(0xFF1B1512);
+    if (look.eyes == _Eyes.feature) {
+      // Fine, curling out from the outer end of the lid line.
+      var fine = _feature(u * 0.011 * (1 + 0.4 * lashes), ink);
+      for (var k = 0; k < 3; k++) {
+        var a = -math.pi / 2 + outer * (0.75 + k * 0.22);
+        var from = box.center +
+            Offset(math.cos(a) * box.width / 2, math.sin(a) * box.height * 0.62);
+        var to = from + Offset(outer * u * 0.035, -u * 0.03) * lashes;
+        canvas.drawPath(
+            Path()
+              ..moveTo(from.dx, from.dy)
+              ..quadraticBezierTo(from.dx + outer * u * 0.005, to.dy, to.dx, to.dy),
+            fine);
+      }
+      return;
+    }
+    var lash = _feature(u * 0.014 * (1 + lashes), ink);
+    for (var k = 0; k < 3; k++) {
+      var a = -math.pi / 2 + outer * (0.35 + k * 0.32);
+      var from = box.center +
+          Offset(math.cos(a) * box.width / 2, math.sin(a) * box.height / 2);
+      var dir = Offset(math.cos(a), math.sin(a) - 0.4);
+      canvas.drawLine(from, from + dir * (u * 0.05 * lashes), lash);
+    }
+  }
+
+  /// _sparkle is a four-pointed star of light, [r] across.
+  void _sparkle(Offset at, double r) {
+    var star = Path()
+      ..moveTo(at.dx, at.dy - r)
+      ..quadraticBezierTo(at.dx, at.dy, at.dx + r, at.dy)
+      ..quadraticBezierTo(at.dx, at.dy, at.dx, at.dy + r)
+      ..quadraticBezierTo(at.dx, at.dy, at.dx - r, at.dy)
+      ..quadraticBezierTo(at.dx, at.dy, at.dx, at.dy - r)
+      ..close();
+    canvas.drawPath(star, Paint()..color = const Color(0xFFFFFFFF));
+  }
+
   /// _brow is the brow over the eye at [c]: raised, squeezed together and
   /// down in a frown, its inner end lifted in worry.
   void _brow(Offset c, double side, double toward) {
     var raise = face[FaceControl.browRaise];
     var squeeze = face[FaceControl.browSqueeze];
     var worry = face[FaceControl.browWorry];
-    var y = c.dy - u * 0.16 - raise * u * 0.055;
+    var y = c.dy - u * 0.16 - raise * u * 0.055 - _a(Look.browHeight) * u * 0.05;
+    var long = 1 + 0.3 * _a(Look.browLength);
+    var angle = _a(Look.browAngle);
     var inner = Offset(
-        c.dx - side * (u * 0.08 + squeeze * u * 0.02) * toward,
-        y + u * 0.01 + squeeze * u * 0.06 - worry * u * 0.07);
-    var outer = Offset(c.dx + side * u * 0.09 * toward,
-        y + u * 0.01 - squeeze * u * 0.01 + worry * u * 0.03);
+        c.dx - side * (u * 0.08 + squeeze * u * 0.02) * toward * long,
+        y + u * 0.01 + squeeze * u * 0.06 - worry * u * 0.07 + angle * u * 0.04);
+    var outer = Offset(c.dx + side * u * 0.09 * toward * long,
+        y + u * 0.01 - squeeze * u * 0.01 + worry * u * 0.03 - angle * u * 0.03);
     var mid = Offset((inner.dx + outer.dx) / 2,
-        math.min(inner.dy, outer.dy) - u * 0.04 * (1 - squeeze * 0.6));
+        math.min(inner.dy, outer.dy) -
+            u * 0.04 * (1 - squeeze * 0.6) * (1 + _a(Look.browArch)));
     canvas.drawPath(
         Path()
           ..moveTo(inner.dx, inner.dy)
           ..quadraticBezierTo(mid.dx, mid.dy, outer.dx, outer.dy),
-        _feature(u * 0.035,
+        _feature(u * 0.035 * (1 + 0.6 * _a(Look.browThickness)),
             dna.hairStyle == HairStyle.bald ? _shade(dna.skin) : dna.hair));
   }
 
   /// _mouth is a mouth shape when one is set -- speech -- or else the mouth
   /// the face's own controls make.
   void _mouth(double w) {
-    var at = Offset(_across(0, w * 0.88), u * 0.3 + _nodShift);
-    var across = (0.35 + 0.65 * facing.clamp(0.0, 1.0));
+    var at = _mouthAt ??
+        Offset(_across(0, w * 0.88),
+            u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+    var across = (0.35 + 0.65 * facing.clamp(0.0, 1.0)) *
+        (1 + 0.3 * _a(Look.mouthWidth));
     canvas.save();
     canvas.translate(at.dx, at.dy);
     canvas.scale(across, 1);
@@ -2225,7 +3976,7 @@ class _Drawing {
   static const _tongue = Color(0xFFE0707A);
 
   void _restMouth() {
-    var smile = face[FaceControl.smile];
+    var smile = (face[FaceControl.smile] + 0.4 * _a(Look.corners)).clamp(-1.0, 1.0);
     var jaw = face[FaceControl.jaw];
     var wide = face[FaceControl.wide];
     var half = u * 0.1 * (1 + 0.4 * wide.clamp(-0.6, 1.0));
@@ -2239,11 +3990,14 @@ class _Drawing {
             _feature(u * 0.03, _lips));
         return;
       }
+      _lipsOver(half, corner, smile);
+      // Thinner lips are a finer line.
+      var lips = (_a(Look.upperLip) + _a(Look.lowerLip)) / 2;
       canvas.drawPath(
           Path()
             ..moveTo(-half, corner)
             ..quadraticBezierTo(0, smile * u * 0.1, half, corner),
-          _feature(u * 0.032, _lips));
+          _feature(u * 0.032 * (1 + 0.45 * math.min(0.0, lips)), _lips));
       return;
     }
     var top = smile > 0 ? smile * u * 0.02 : smile * u * 0.03;
@@ -2268,6 +4022,27 @@ class _Drawing {
         Paint()..color = _tongue);
     canvas.restore();
     canvas.drawPath(mouth, _feature(edge, _shade(_lips, 0.2)));
+  }
+
+  /// _lipsOver draws the lips round a shut mouth [half] wide, when they are
+  /// fuller, thinner or coloured than the line alone.
+  void _lipsOver(double half, double corner, double smile) {
+    var upper = _a(Look.upperLip), lower = _a(Look.lowerLip);
+    var colour = _a(Look.lipColour);
+    if (upper <= 0 && lower <= 0 && colour <= 0) return;
+    var tint = Color.lerp(Color.lerp(dna.skin, const Color(0xFF9A4A4A), 0.35)!,
+        const Color(0xFFC23B55), colour)!;
+    var mid = smile * u * 0.05;
+    var up = u * 0.03 * (1 + upper.clamp(-0.8, 1.0));
+    var down = u * 0.04 * (1 + lower.clamp(-0.8, 1.0));
+    // The upper lip with a dip in the middle, the lower a curve under.
+    var lips = Path()
+      ..moveTo(-half, corner)
+      ..quadraticBezierTo(-half * 0.45, mid - up * 1.1, 0, mid - up * 0.7)
+      ..quadraticBezierTo(half * 0.45, mid - up * 1.1, half, corner)
+      ..quadraticBezierTo(0, mid + down * 1.6, -half, corner)
+      ..close();
+    canvas.drawPath(lips, Paint()..color = tint);
   }
 
   /// _shape draws [m] in units about 22 across, centred on the mouth.

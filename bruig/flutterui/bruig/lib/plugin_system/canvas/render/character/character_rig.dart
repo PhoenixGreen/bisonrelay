@@ -121,6 +121,10 @@ class CharacterRig {
   /// matrix row by row: its own across, down and forward in its columns.
   final List<double> headBasis;
 
+  /// look is the shape the character's body and face are made -- see
+  /// character_appearance.dart -- for whatever draws from this rig.
+  final Appearance look;
+
   /// tilt is the body seen from above, in degrees -- see CharacterPose.tilt
   /// -- tipped about [ground], how far below the hips the feet stand.
   final double tilt;
@@ -167,12 +171,13 @@ class CharacterRig {
     this.headBasis = const [1, 0, 0, 0, 1, 0, 0, 0, 1],
     this.tilt = 0,
     this.ground = 0,
+    this.look = Appearance.rest,
   });
 
   /// footDrop is how far below the ankle the sole is, as a share of the
-  /// body under the chin; the rest of that body is neck, torso and legs.
+  /// body under the chin; the rest of that body is neck, torso -- what is
+  /// left, 0.36 at rest -- and legs.
   static const double _neck = 0.06,
-      _torso = 0.36,
       _thigh = 0.26,
       _shin = 0.26,
       footDrop = 0.06;
@@ -195,6 +200,15 @@ class CharacterRig {
         CharacterBone.upperArmR: pose[CharacterBone.upperArmR] - flap,
       });
     }
+    var lk = dna.look;
+    // Stooped: leaning forward from the waist, the head brought up to look
+    // ahead again.
+    if (lk[Look.posture] != 0 && plan.isEmpty) {
+      pose = pose.withSwings({
+        CharacterBone.spine: pose.swing(CharacterBone.spine) + lk[Look.posture] * 14,
+        CharacterBone.head: pose.swing(CharacterBone.head) - lk[Look.posture] * 10,
+      });
+    }
     if (plan.isNotEmpty) {
       pose = pose.withSwings({
         for (var e in plan.entries) e.key: pose.swing(e.key) + e.value,
@@ -204,14 +218,21 @@ class CharacterRig {
     var unit = box.height / heads;
     var below = (heads - 1) * unit;
     var broad = 0.85 + 0.3 * dna.build;
-    var shoulderHalf = (0.25 + 0.1 * heads) * unit * broad;
-    var hipHalf = shoulderHalf * 0.62;
-    var neckLength = below * _neck;
-    var torsoLength = below * _torso;
-    var thigh = below * _thigh;
-    var shin = below * _shin;
+    var shoulderBase = (0.25 + 0.1 * heads) * unit * broad;
+    var shoulderHalf = shoulderBase *
+        (1 + 0.28 * lk[Look.shoulders] + 0.08 * lk[Look.muscle]);
+    var hipHalf = shoulderBase * 0.62 * (1 + 0.3 * lk[Look.hips]);
+    // Longer legs or neck are made of the body between them: the feet stay
+    // on the ground and the head on top, whatever is longer.
+    var neckShare = _neck * (1 + 0.6 * lk[Look.neckLength]);
+    var legShare = 1 + 0.18 * lk[Look.legLength];
+    var thigh = below * _thigh * legShare;
+    var shin = below * _shin * legShare;
+    var neckLength = below * neckShare;
+    var torsoLength =
+        below * (1 - neckShare - (_thigh + _shin) * legShare - footDrop);
     // Arms reach to about the middle of the thigh, at any height.
-    var arm = torsoLength + thigh * 0.45;
+    var arm = (torsoLength + thigh * 0.45) * (1 + 0.22 * lk[Look.armLength]);
     var upperArm = arm * 0.52;
     var foreArm = arm * 0.48;
     if (dna.fourLegs) {
@@ -220,10 +241,14 @@ class CharacterRig {
       foreArm = shin;
       shoulderHalf = hipHalf * 1.1;
     }
-    var limbWidth = dna.fourLegs
-        ? hipHalf * 0.7
-        : shoulderHalf * (0.27 + 0.1 * dna.build);
-    var legWidth = hipHalf * 0.78;
+    var limbWidth = (dna.fourLegs
+            ? hipHalf * 0.7
+            : shoulderBase * (0.27 + 0.1 * dna.build)) *
+        (1 + 0.45 * lk[Look.armWidth] + 0.15 * lk[Look.muscle]);
+    var legWidth = shoulderBase *
+        0.62 *
+        0.78 *
+        (1 + 0.4 * lk[Look.legWidth] + 0.12 * lk[Look.muscle]);
 
     var cx = box.center.dx;
     var hipY =
@@ -286,8 +311,10 @@ class CharacterRig {
 
     var shoulderL3 = chest3 + spine.on(_V3(-shoulderHalf * 0.86, 0, 0));
     var shoulderR3 = chest3 + spine.on(_V3(shoulderHalf * 0.86, 0, 0));
-    var hipL3 = _V3(-hipHalf * 0.55, 0, 0);
-    var hipR3 = _V3(hipHalf * 0.55, 0, 0);
+    // The hips tilt on their own -- one higher, the weight on that leg.
+    var pelvis = _M3.z(pose[CharacterBone.hips]);
+    var hipL3 = pelvis.on(_V3(-hipHalf * 0.55, 0, 0));
+    var hipR3 = pelvis.on(_V3(hipHalf * 0.55, 0, 0));
 
     (_V3, _V3) reach(_V3 from, _M3 parent, CharacterLimb limb, double a,
         double b) {
@@ -382,6 +409,7 @@ class CharacterRig {
       headBasis: head.m,
       tilt: pose.tilt,
       ground: ground,
+      look: lk,
       footSwing: {
         for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
       },
@@ -418,10 +446,12 @@ class CharacterRig {
   double parentTurn(CharacterLimb limb) => limb.isArm ? bodyTurn : 0;
 
   /// handRadius is the size a hand is drawn.
-  double get handRadius => limbWidth * 0.62;
+  double get handRadius => limbWidth * 0.62 * (1 + 0.3 * look[Look.hands]);
 
   /// headRadii is the head's half width and half height.
-  Size get headRadii => Size(unit * 0.46, unit * 0.5);
+  Size get headRadii => Size(
+      unit * 0.46 * (1 + 0.18 * look[Look.headWidth] + 0.05 * look[Look.cheeks]),
+      unit * 0.5 * (1 + 0.14 * look[Look.headHeight]));
 
   /// sideOn is how far round the body is turned towards side on: 0 facing
   /// the reader or away, 1 side on. Which of a bone's two angles a drag on

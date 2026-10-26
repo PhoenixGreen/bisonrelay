@@ -241,14 +241,14 @@ void _outwards(Float32List v, Float32List n, Uint32List ix) {
   }
 }
 
-/// _Colors is what each part of a mannequin is coloured: its skin where
+/// BodyColours is what each part of a body is coloured: its skin where
 /// nothing covers it, and the outermost thing worn where something does.
-class _Colors {
+class BodyColours {
   final Color skin, hair, eyes;
   Color torso, upperArm, foreArm, pelvis, thigh, shin, foot;
   Color? hat;
 
-  _Colors(CharacterDna dna)
+  BodyColours(CharacterDna dna)
       : skin = dna.skin,
         hair = dna.hair,
         eyes = dna.eyes,
@@ -303,7 +303,8 @@ List<MeshPiece> mannequinPieces(
   var j = rig.joints3;
   _V at(RigJoint k) => j[k] ?? const [0.0, 0.0, 0.0];
   var u = rig.unit;
-  var colors = _Colors(dna);
+  var lk = dna.look;
+  var colors = BodyColours(dna);
   var b = _Builder();
 
   // The body: a chest, a waist and a pelvis, each a rounded lump.
@@ -317,12 +318,15 @@ List<MeshPiece> mannequinPieces(
   var t = rig.torsoLength;
   // The waist first, so the chest and the pelvis -- as near the reader as
   // it is -- are drawn over its ends, and it shows only between them.
+  var waist = 1 + 0.3 * lk[Look.waist] + 0.2 * lk[Look.belly];
+  var belly = 1 + 0.45 * lk[Look.belly];
+  var chestDeep = 1 + 0.35 * lk[Look.chest];
   b.ellipsoid(colors.torso, _add(chest, _mul(down, t * 0.66)), trunk,
-      rig.shoulderHalf * 0.58, t * 0.28, rig.shoulderHalf * 0.36);
+      rig.shoulderHalf * 0.58 * waist, t * 0.28, rig.shoulderHalf * 0.36 * belly);
   b.ellipsoid(colors.pelvis, _add(hips, _mul(down, -t * 0.06)), trunk,
-      rig.hipHalf * 0.98, t * 0.24, rig.hipHalf * 0.62);
+      rig.hipHalf * 0.98, t * 0.24, rig.hipHalf * 0.62 * (1 + 0.2 * lk[Look.belly]));
   b.ellipsoid(colors.torso, _add(chest, _mul(down, t * 0.3)), trunk,
-      rig.shoulderHalf * 0.82, t * 0.36, rig.shoulderHalf * 0.46);
+      rig.shoulderHalf * 0.82, t * 0.36, rig.shoulderHalf * 0.46 * chestDeep);
 
   // Neck and head.
   var head = _Frame.of(rig.headBasis);
@@ -344,28 +348,51 @@ List<MeshPiece> mannequinPieces(
         _add(headAt, skull.on(0, u * 0.3 * hs, 0)), u * 0.12, u * 0.11,
         ends: false);
   }
-  var rx = u * 0.4 * hs, ry = u * 0.5 * hs, rz = u * 0.44 * hs;
+  // As wide and long as the drawn head is.
+  var radii = rig.headRadii;
+  var rx = radii.width / 0.46 * 0.4 * hs, ry = radii.height * hs;
+  var rz = u * 0.44 * hs;
   b.ellipsoid(colors.skin, headAt, skull, rx, ry, rz);
   var skullShape = b.last;
   void onHead(void Function() add, {bool always = false}) =>
       b.sittingOn(skullShape, add, always: always);
+  var nose = 1 + 0.4 * lk[Look.noseWidth];
+  var noseLong = 1 + 0.4 * lk[Look.noseLength];
   onHead(() => b.ellipsoid(colors.skin,
       _add(headAt, skull.on(0, u * 0.06 * hs, rz * 0.98)), skull,
-      u * 0.055 * hs, u * 0.08 * hs, u * 0.06 * hs,
+      u * 0.055 * hs * nose, u * 0.08 * hs * noseLong,
+      u * 0.06 * hs * (1 + 0.4 * lk[Look.noseBridge]),
       rings: 5, sides: 8));
+  // Ears at the sides, as big as the drawn ones.
+  var ear = 1 + 0.35 * lk[Look.earSize];
+  for (var side in [-1.0, 1.0]) {
+    onHead(() => b.ellipsoid(
+        colors.skin,
+        _add(headAt, skull.on(side * rx * 0.98, u * 0.06 * hs, -rz * 0.05)),
+        skull,
+        u * 0.04 * hs * (1 + 0.5 * lk[Look.earAngle]),
+        u * 0.1 * hs * ear,
+        u * 0.07 * hs * ear,
+        rings: 5,
+        sides: 8));
+  }
   // Eyes, looking where the face looks and as open as it is.
   var open = face[FaceControl.eyesOpen].clamp(0.05, 1.3) *
       (1 - face[FaceControl.squint] * 0.5);
   var lookX = face[FaceControl.lookX] * rx * 0.12;
   var lookY = -face[FaceControl.lookY] * ry * 0.08;
+  var eyeSize = 1 + 0.3 * lk[Look.eyeSize];
+  var spacing = 1 + 0.22 * lk[Look.eyeSpacing];
   for (var side in [-1.0, 1.0]) {
     onHead(() => b.ellipsoid(
         colors.eyes,
-        _add(headAt,
-            skull.on(side * rx * 0.36 + lookX, -ry * 0.08 + lookY, rz * 0.9)),
+        _add(
+            headAt,
+            skull.on(side * rx * 0.36 * spacing + lookX,
+                -ry * 0.08 + lookY - lk[Look.eyeHeight] * u * 0.06 * hs, rz * 0.9)),
         skull,
-        u * 0.055 * hs,
-        u * 0.06 * hs * open,
+        u * 0.055 * hs * eyeSize,
+        u * 0.06 * hs * open * eyeSize * (1 - 0.3 * lk[Look.eyeShape]),
         u * 0.03 * hs,
         rings: 5,
         sides: 10));
@@ -394,6 +421,16 @@ List<MeshPiece> mannequinPieces(
       u * 0.04 * hs,
       rings: 5,
       sides: 10));
+  // A beard: the lower face and chin in the hair's colour.
+  var beard = lk[Look.beard];
+  if (beard > 0.05) {
+    var long = 1 + 0.5 * lk[Look.beardLength];
+    onHead(
+        () => b.ellipsoid(colors.hair,
+            _add(headAt, skull.on(0, ry * 0.55 * long, rz * 0.35)), skull,
+            rx * (0.45 + 0.5 * beard), ry * 0.45 * long, rz * 0.62),
+        always: false);
+  }
   if (dna.hairStyle != HairStyle.bald) {
     var curly = dna.hairStyle == HairStyle.curly ? 1.1 : 1.04;
     onHead(

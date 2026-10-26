@@ -540,44 +540,90 @@ const int _snapshotsKept = 240;
 /// [id], and drawn from then on as that picture with its corners rounded.
 class TileSnapshot extends StatelessWidget {
   final String id;
+
+  /// slot is which tile this is, whatever it shows: while [holding], the
+  /// picture it showed last is shown again rather than a new one drawn.
+  final String? slot;
   final TilePaint paint;
   final Color ground;
   final double radius;
   const TileSnapshot(
       {required this.id,
+      this.slot,
       required this.paint,
       required this.ground,
       this.radius = 5,
       super.key});
 
+  /// holding is whether a control is being dragged: every tile drawn from
+  /// what it changes would be drawn again on every step of the drag --
+  /// thirty tiles a step, some of them figures in 3D -- so each keeps its
+  /// picture until the drag is let go.
+  static bool Function() holding = _never;
+  static bool _never() => false;
+
+  /// stoodIn counts the pictures drawn with something standing in for
+  /// what is not ready -- a body still being made: a tile drawn so is not
+  /// kept, and is drawn again when [arrived] says the real thing is here.
+  static int Function() stoodIn = _none;
+  static int _none() => 0;
+  static Listenable? arrived;
+
   @override
   Widget build(BuildContext context) => CustomPaint(
       size: Size.infinite,
-      painter: _SnapshotPainter(id, paint, ground, radius,
-          MediaQuery.maybeDevicePixelRatioOf(context) ?? 1));
+      painter: _SnapshotPainter(id, slot, paint, ground, radius,
+          MediaQuery.maybeDevicePixelRatioOf(context) ?? 1, arrived));
 }
+
+/// _lastIn is the snapshot each tile slot last showed, by its key.
+final Map<String, String> _lastIn = {};
 
 class _SnapshotPainter extends CustomPainter {
   final String id;
+  final String? slot;
   final TilePaint draw;
   final Color ground;
   final double radius;
   final double ratio;
-  _SnapshotPainter(this.id, this.draw, this.ground, this.radius, this.ratio);
+  _SnapshotPainter(this.id, this.slot, this.draw, this.ground, this.radius,
+      this.ratio, Listenable? arrived)
+      : super(repaint: arrived);
+
+  /// _stale is whether this painter showed an older picture, held while a
+  /// control was dragged: the next one draws afresh.
+  bool _stale = false;
 
   ui.Image _image(Size size) {
     var w = math.max(1, (size.width * ratio).round());
     var h = math.max(1, (size.height * ratio).round());
     var key = "$id|${ground.toARGB32()}|${w}x$h";
+    var at = slot == null ? null : "$slot|${w}x$h";
     var kept = _snapshots.remove(key);
-    if (kept != null) return _snapshots[key] = kept;
+    if (kept != null) {
+      if (at != null) _lastIn[at] = key;
+      return _snapshots[key] = kept;
+    }
+    if (at != null && TileSnapshot.holding()) {
+      if (_snapshots[_lastIn[at]] case var held?) {
+        _stale = true;
+        return held;
+      }
+    }
     var recorder = ui.PictureRecorder();
     var canvas = Canvas(recorder)..scale(w / size.width, h / size.height);
     canvas.drawRect(Offset.zero & size, Paint()..color = ground);
+    var stood = TileSnapshot.stoodIn();
     draw(canvas, size);
     var picture = recorder.endRecording();
     var made = picture.toImageSync(w, h);
     picture.dispose();
+    if (TileSnapshot.stoodIn() != stood) {
+      // Not kept: drawn again when what stood in has arrived.
+      _stale = true;
+      return made;
+    }
+    if (at != null) _lastIn[at] = key;
     _snapshots[key] = made;
     while (_snapshots.length > _snapshotsKept) {
       _snapshots.remove(_snapshots.keys.first)!.dispose();
@@ -602,7 +648,7 @@ class _SnapshotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SnapshotPainter old) =>
-      old.id != id || old.ground != ground || old.ratio != ratio;
+      old._stale || old.id != id || old.ground != ground || old.ratio != ratio;
 }
 
 /// CanvasTiles is a choice made by looking rather than by reading: a grid of
@@ -766,6 +812,7 @@ class CanvasTiles<T> extends StatelessWidget {
                       child: TileSnapshot(
                           id: "${t.value.runtimeType}:${t.value}:"
                               "${t.drawnFrom.hashCode}",
+                          slot: "${t.label}|${t.value.runtimeType}:${t.value}",
                           paint: t.paint!,
                           ground: theme.colors.surfaceContainerHighest),
                     )

@@ -40,6 +40,7 @@ Uint8List humanoidGlb(
     {bool vrm = false,
     bool facesBack = false,
     bool animated = false,
+    bool toon = false,
     List<double> color = const [0.8, 0.5, 0.3, 1]}) {
   // Where each bone is as it stands.
   var at = <List<double>>[];
@@ -178,6 +179,17 @@ Uint8List humanoidGlb(
     "materials": [
       {
         "pbrMetallicRoughness": {"baseColorFactor": color},
+        if (toon)
+          "extensions": {
+            "VRMC_materials_mtoon": {
+              "shadeColorFactor": [0.5, 0.3, 0.6],
+              "shadingToonyFactor": 0.95,
+              "shadingShiftFactor": -0.1,
+              "outlineWidthMode": "worldCoordinates",
+              "outlineWidthFactor": 0.02,
+              "outlineColorFactor": [0.2, 0.1, 0.1],
+            }
+          },
       }
     ],
     if (animated)

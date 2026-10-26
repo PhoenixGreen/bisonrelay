@@ -10,15 +10,19 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/human_wear.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/model_math.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
+import 'package:bruig/plugin_system/canvas/render/model/human_wear_fit.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -325,13 +329,28 @@ void main() {
               characterCast.first.dna, CharacterElement.restPose,
               body: body, images: _Models(null)));
       var mannequin = await draw(const CharacterBody(kind: BodyKind.mannequin));
-      expect(await draw(const CharacterBody(kind: BodyKind.model, modelId: "m")),
-          mannequin);
-      expect(await draw(const CharacterBody()), isNot(mannequin));
+      var loading = await draw(const CharacterBody(kind: BodyKind.model, modelId: "m"));
+      var sketch = await draw(const CharacterBody());
+      expect(mannequin.any((b) => b != 0), isTrue);
+      expect(loading.any((b) => b != 0), isTrue, reason: "a model being read stands in");
+      expect(sketch, isNot(mannequin));
+      // A sculpted body is inked as its style draws, not as chosen for a
+      // model: its own outline setting changes nothing.
       expect(
           await draw(const CharacterBody(
               kind: BodyKind.mannequin, shading: ModelShading.toon, outline: true)),
-          isNot(mannequin));
+          mannequin);
+      expect(
+          await _pixels((c) => paintCharacterFigure(
+              c,
+              const Rect.fromLTWH(20, 20, 200, 400),
+              characterCast.first.dna,
+              CharacterElement.restPose,
+              style: CharacterStyle.tvFlat,
+              body: const CharacterBody(kind: BodyKind.mannequin),
+              images: _Models(null))),
+          isNot(mannequin),
+          reason: "its style's thick line");
     });
   });
 
@@ -358,6 +377,54 @@ void main() {
   group("the panel", () {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
+
+    testWidgets("a character already made of a model keeps it, and its lighting",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(
+          CharacterElement(
+              const ElementBase(id: "c", x: 200, y: 50, width: 160, height: 340),
+              dna: characterCast.first.dna,
+              body: const CharacterBody(kind: BodyKind.model, modelId: "m"))));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(900, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(
+              create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(
+                    width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      CharacterElement get() => c.document.elementById("c")! as CharacterElement;
+      Future<void> tap(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.byKey(const ValueKey("characterBody-model")), findsOneWidget,
+          reason: "offered while it is what the character is made of");
+      await tap("characterShading-toon");
+      expect(get().body.shading, ModelShading.toon);
+      await tap("characterOutline");
+      expect(get().body.outline, isTrue);
+      await tap("characterBody-mannequin");
+      expect(get().body.kind, BodyKind.mannequin);
+      expect(find.byKey(const ValueKey("characterBody-model")), findsNothing,
+          reason: "and once changed away from, no longer offered");
+    });
 
     testWidgets("chooses what the body is made of, and how it is lit",
         (tester) async {
@@ -398,17 +465,69 @@ void main() {
           reason: "drawn has no 3D lighting");
       await tap("characterBody-mannequin");
       expect(get().body.kind, BodyKind.mannequin);
-      await tap("characterShading-toon");
-      expect(get().body.shading, ModelShading.toon);
-      await tap("characterOutline");
-      expect(get().body.outline, isTrue);
+      // Not downloaded here: offered, with what it is and how big.
+      expect(find.byKey(const ValueKey("characterSculptedDownload")), findsOneWidget);
+      expect(find.textContaining("MB from MakeHuman"), findsOneWidget);
+      // Its style lights and inks it: no shading of its own to choose.
+      expect(find.byKey(const ValueKey("characterShading-toon")), findsNothing,
+          reason: "the style decides, for a sculpted body");
       expect(find.byKey(const ValueKey("characterModelPick")), findsNothing);
-      await tap("characterBody-model");
-      expect(get().body.kind, BodyKind.model);
-      expect(find.byKey(const ValueKey("characterModelPick")), findsOneWidget);
-      expect(find.textContaining("No model yet"), findsOneWidget);
-      c.undo();
+      // A model from a file is no longer offered for a character not made
+      // of one.
+      expect(find.byKey(const ValueKey("characterBody-model")), findsNothing);
       expect(get().body.kind, BodyKind.mannequin, reason: "one undo step");
+
+      // With hair and shoes downloaded, the hair it wears is chosen by name.
+      expect(find.byKey(const ValueKey("characterHairModel")), findsNothing);
+      HumanBody.instance.useWearForTest({
+        "messy": WearMesh(wearItem("messy")!, Int32List(0), Float32List(0),
+            Float32List(0), const [null, null, null], Float32List(0),
+            Uint32List(0), const {}),
+      });
+      addTearDown(() => HumanBody.instance.useWearForTest(const {}));
+      // Further down than the panel scrolls to here: pressed as it would be.
+      tester
+          .widget<CanvasTextButton>(find.byKey(const ValueKey("appearanceTab-hair")))
+          .onPressed!();
+      await tester.pumpAndSettle();
+      var hair = find.byKey(const ValueKey("characterHairModel"));
+      await tester.ensureVisible(hair);
+      tester.widget<CanvasDropdown<String>>(hair).onChanged("bob1");
+      await tester.pumpAndSettle();
+      expect(get().dna.hairModel, "bob1");
+      var brows = find.byKey(const ValueKey("characterBrowModel"));
+      tester.widget<CanvasDropdown<String>>(brows).onChanged("brow4");
+      await tester.pumpAndSettle();
+      expect(get().dna.browModel, "brow4");
+      expect(CharacterDna.fromJson(get().dna.toJson()).hairModel, "bob1",
+          reason: "kept when saved");
+    });
+  });
+
+  group("toon shading", () {
+    test("a VRM's toon settings are read", () {
+      var g = parseGltf(humanoidGlb(vrm: true, toon: true));
+      var t = g.materials.single.mtoon!;
+      expect(t.shade, [0.5, 0.3, 0.6]);
+      expect(t.toony, 0.95);
+      expect(t.outlineWidth, 0.02);
+      expect(g.materials.single.toon, isTrue);
+      expect(parseGltf(humanoidGlb()).materials.single.mtoon, isNull);
+    });
+
+    test("they shade it, and give it its own outline", () async {
+      var plain = await loadModel(humanoidGlb());
+      var toon = await loadModel(humanoidGlb(toon: true));
+      expect(toon.outlineWidth, 0.02);
+      expect(plain.outlineWidth, 0);
+      Future<List<int>> draw(LoadedModel m, ModelShading shading) => _pixels((c) =>
+          paintCharacterFigure(c, const Rect.fromLTWH(20, 20, 200, 400),
+              characterCast.first.dna, CharacterElement.restPose.withTurn(30),
+              body: CharacterBody(kind: BodyKind.model, modelId: "m", shading: shading),
+              images: _Models(m)));
+      expect(await draw(toon, ModelShading.toon), isNot(await draw(plain, ModelShading.toon)),
+          reason: "its own shadow colour and outline");
+      expect(await draw(plain, ModelShading.toon), isNot(await draw(plain, ModelShading.soft)));
     });
   });
 }

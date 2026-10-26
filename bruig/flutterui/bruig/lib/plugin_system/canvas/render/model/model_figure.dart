@@ -96,6 +96,22 @@ class LoadedModel {
     }
   }
 
+  /// outlineWidth is the widest outline its materials ask for, in the
+  /// file's units, and outlineColour its colour -- what a VRM drawn in
+  /// toon shading is outlined with.
+  double get outlineWidth => gltf.materials.fold(
+      0.0, (w, m) => math.max(w, m.mtoon?.outlineWidth ?? 0));
+
+  ui.Color get outlineColour {
+    for (var m in gltf.materials) {
+      if (m.mtoon case var t? when t.outlineWidth > 0) {
+        return ui.Color.from(
+            alpha: 1, red: t.outlineColor[0], green: t.outlineColor[1], blue: t.outlineColor[2]);
+      }
+    }
+    return const ui.Color(0xFF1A1A1A);
+  }
+
   /// humanoid is whether a human skeleton was found in it: one that can
   /// be posed. A model without one is drawn standing as it was made.
   bool get humanoid => _segments.isNotEmpty;
@@ -188,8 +204,13 @@ class LoadedModel {
   (ui.Offset, List<MeshPiece>) pieces(
       CharacterRig rig, CharacterFace face, ui.Rect box,
       {double lift = 0}) {
+    // Kept by the size it is drawn at, not where: a figure dragged across
+    // the page is the same pieces, stood somewhere else.
     var key = _keyOf(rig, face, box, lift);
-    if (_drawn.remove(key) case var kept?) return _drawn[key] = kept;
+    if (_drawn.remove(key) case var kept?) {
+      _drawn[key] = kept;
+      return (box.bottomCenter, kept.$2);
+    }
     var made = _pieces(rig, face, box, lift);
     _drawn[key] = made;
     if (_drawn.length > 12) _drawn.remove(_drawn.keys.first);
@@ -199,7 +220,7 @@ class LoadedModel {
   static String _keyOf(
       CharacterRig rig, CharacterFace face, ui.Rect box, double lift) {
     var b = StringBuffer()
-      ..write(box)
+      ..write(box.size)
       ..write(lift)
       ..write(rig.yaw)
       ..write(rig.tilt)
@@ -318,6 +339,21 @@ class LoadedModel {
           color: ui.Color.from(alpha: c[3], red: c[0], green: c[1], blue: c[2]),
           image: image,
           doubleSided: mat?.doubleSided ?? false,
+          cutOut: mat?.cutOut ?? false,
+          toon: switch (mat?.mtoon) {
+            MToon t => MeshToon(
+                shade: ui.Color.from(
+                    alpha: 1, red: t.shade[0], green: t.shade[1], blue: t.shade[2]),
+                toony: t.toony,
+                shift: t.shift,
+                rim: ui.Color.from(
+                    alpha: t.rim.any((c) => c > 0) ? 1 : 0.2,
+                    red: t.rim.any((c) => c > 0) ? t.rim[0] : 1,
+                    green: t.rim.any((c) => c > 0) ? t.rim[1] : 1,
+                    blue: t.rim.any((c) => c > 0) ? t.rim[2] : 1),
+                rimPower: t.rimPower),
+            _ => null,
+          },
         ));
       }
     }
@@ -327,6 +363,39 @@ class LoadedModel {
   /// boneAt is where [bone] is when posed as [rig] and [face] say, in the
   /// model's own units, facing the reader, before the body's turn -- or
   /// null when the model has no such bone.
+  /// faceFrame is where the head is on the page, posed: its eyes, the
+  /// bottom of the skull, the middle of the head and the mouth if it marks
+  /// one, each x and y on the
+  /// page and how near the reader, in pixels -- for a face drawn on it.
+  /// Null for a model without eyes to find.
+  ({
+    List<double> eyeL,
+    List<double> eyeR,
+    List<double> base,
+    List<double> top,
+    List<double>? mouth
+  })?
+      faceFrame(CharacterRig rig, CharacterFace face, ui.Rect box, {double lift = 0}) {
+    var h = gltf.humanoid;
+    var l = h[HumanBone.leftEye], r = h[HumanBone.rightEye];
+    var head = h[HumanBone.head], neck = h[HumanBone.neck];
+    if (l == null || r == null || head == null || neck == null) return null;
+    var world = _worldWith(_pose(rig, face));
+    var b = world[head].translation, n = world[neck].translation;
+    // The middle of the head is as far above the skull's base as the neck
+    // is long -- as joints has it.
+    var t = [for (var k = 0; k < 3; k++) b[k] + (b[k] - n[k])];
+    List<double> page(List<double> p) => _onPage(p, rig, box, lift);
+    var m = gltf.nodes.indexWhere((n) => n.name == mouthLandmark);
+    return (
+      eyeL: page(world[l].translation),
+      eyeR: page(world[r].translation),
+      base: page(b),
+      top: page(t),
+      mouth: m < 0 ? null : page(world[m].translation),
+    );
+  }
+
   List<double>? boneAt(CharacterRig rig, CharacterFace face, HumanBone bone) {
     var n = gltf.humanoid[bone];
     if (n == null) return null;
