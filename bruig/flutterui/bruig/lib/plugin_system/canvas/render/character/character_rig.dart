@@ -121,6 +121,11 @@ class CharacterRig {
   /// matrix row by row: its own across, down and forward in its columns.
   final List<double> headBasis;
 
+  /// tilt is the body seen from above, in degrees -- see CharacterPose.tilt
+  /// -- tipped about [ground], how far below the hips the feet stand.
+  final double tilt;
+  final double ground;
+
   const CharacterRig._({
     required this.unit,
     this.headScale = 1,
@@ -160,6 +165,8 @@ class CharacterRig {
     this.wingFlap = 0,
     this.joints3 = const {},
     this.headBasis = const [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    this.tilt = 0,
+    this.ground = 0,
   });
 
   /// footDrop is how far below the ankle the sole is, as a share of the
@@ -239,14 +246,25 @@ class CharacterRig {
     }
     var yawR = pose.turn * math.pi / 180;
     var cosY = math.cos(yawR), sinY = math.sin(yawR);
+    // Seen from above, tipped towards the reader about the feet: nearer is
+    // lower on the page, and up is shorter.
+    var tiltR = pose.tilt * math.pi / 180;
+    var cosT = math.cos(tiltR), sinT = math.sin(tiltR);
+    var ground = box.bottom - hipY;
 
     // Worked out in the body's own space -- x across it to the page's
     // right when it faces the reader, y down, z towards the reader -- from
     // the hips, then turned with the body and laid flat on the page.
     _M3 bone(CharacterBone b) =>
         _M3.z(pose[b]) * _M3.x(pose.swing(b));
-    Offset page(_V3 v) => Offset(cx + v.x * cosY - v.z * sinY, hipY + v.y);
-    double depth(_V3 v) => v.x * sinY + v.z * cosY;
+    Offset page(_V3 v) {
+      var near = v.x * sinY + v.z * cosY;
+      return Offset(cx + v.x * cosY - v.z * sinY,
+          hipY + ground + (v.y - ground) * cosT + near * sinT);
+    }
+
+    double depth(_V3 v) =>
+        -(v.y - ground) * sinT + (v.x * sinY + v.z * cosY) * cosT;
 
     const origin = _V3(0, 0, 0);
     // The spine stands up from the hips rather than hanging from them, so
@@ -362,6 +380,8 @@ class CharacterRig {
           j: [v.x, v.y, v.z],
       },
       headBasis: head.m,
+      tilt: pose.tilt,
+      ground: ground,
       footSwing: {
         for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
       },
@@ -414,6 +434,15 @@ class CharacterRig {
 
   /// _set is [pose] with [bone] turned [degrees] on the page from its
   /// parent: its spread facing the reader, its swing side on.
+  /// _untilted is [v], a step on the page, as it would be seen straight on:
+  /// seen from above or below, up the body is shorter on the page, and a
+  /// pin dragged a step is a step the body takes longer.
+  Offset _untilted(Offset v) {
+    if (tilt == 0) return v;
+    var c = math.cos(tilt * math.pi / 180).abs().clamp(0.2, 1.0);
+    return Offset(v.dx, v.dy / c);
+  }
+
   CharacterPose _set(CharacterPose pose, CharacterBone bone, double degrees) {
     var d = _wrap(degrees);
     // The spine stands up rather than hanging down, so its forward swing
@@ -434,7 +463,7 @@ class CharacterRig {
       CharacterPose pose, CharacterLimb limb, Offset target) {
     var from = root(limb);
     var (a, b) = lengths(limb);
-    var toTarget = target - from;
+    var toTarget = _untilted(target - from);
     var d = toTarget.distance
         .clamp((a - b).abs() + 1e-6, a + b - 1e-6)
         .toDouble();
@@ -462,7 +491,7 @@ class CharacterRig {
   /// solveHead is the pose with the head tilted to look along the line from
   /// the neck to [target], as near as a neck allows.
   CharacterPose solveHead(CharacterPose pose, Offset target) {
-    var turn = turnOf(target - neck) - 180;
+    var turn = turnOf(_untilted(target - neck)) - 180;
     var tilt = _wrap(turn - bodyTurn).clamp(-50.0, 50.0);
     return pose.withAngle(CharacterBone.head, tilt);
   }
@@ -471,7 +500,7 @@ class CharacterRig {
   /// [target], as near as a waist allows: sideways facing the reader,
   /// forwards and back side on.
   CharacterPose solveLean(CharacterPose pose, Offset target) {
-    var turn = (turnOf(target - hips) - 180);
+    var turn = (turnOf(_untilted(target - hips)) - 180);
     return _set(pose, CharacterBone.spine, _wrap(turn).clamp(-60.0, 60.0));
   }
 }

@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
+import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -122,6 +124,10 @@ enum _DragMode {
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
   characterPin,
+
+  /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
+  /// Option held anywhere on the stage.
+  stageOrbit,
 
   /// chartLabel is a chart's title or description being moved or resized
   /// inside the chart. Its own mode because it moves a *part* of an element
@@ -516,6 +522,12 @@ class CanvasStageState extends State<CanvasStage>
   /// dragged in a circle back to where it started would end up a pixel or two
   /// off, every time.
   Offset _dragStart = Offset.zero;
+
+  /// _orbiting is the stage whose camera an Option-drag is swinging round,
+  /// with the camera as it was and where on the screen the drag began.
+  String? _orbiting;
+  StageCamera? _orbitFrom;
+  Offset _orbitAt = Offset.zero;
   Map<String, Rect> _startBounds = {};
 
   /// _startPosed is where each element was on screen when the gesture began.
@@ -1836,13 +1848,30 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
+    // Option held on a 3D stage takes hold of its camera: across goes round
+    // the stage, down looks from higher -- the stage's orbit globe, on the
+    // stage itself.
+    if (HardwareKeyboard.instance.isAltPressed) {
+      if (_hitElement(doc) case StageElement s when !s.locked) {
+        _orbiting = s.id;
+        _orbitFrom = s.cameraAt(controller.frame);
+        _orbitAt = stage;
+        _mode = _DragMode.stageOrbit;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
     // A selected character's pins, before the character itself: like a
     // path's points, they are drawn on top and are what is being aimed at.
     if (_selectedCharacter() case var who? when !who.locked) {
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
       var pin =
           CharacterPlacement.of(who, controller.frame,
-              frameRate: document.frameRate, document: document).pinUnder(doc, reach);
+                  frameRate: document.frameRate,
+                  document: document,
+                  models: controller.images)
+              .pinUnder(doc, reach);
       if (pin != null) {
         _characterPin = pin;
         _mode = _DragMode.characterPin;
@@ -5035,10 +5064,27 @@ class CanvasStageState extends State<CanvasStage>
         setState(() => _marquee = Rect.fromPoints(_dragStart, doc));
       case _DragMode.player:
         _applyPlayerMove(doc);
+      case _DragMode.stageOrbit:
+        if (controller.document.elementById(_orbiting ?? "")
+            case StageElement s) {
+          var from = _orbitFrom ?? s.cameraAt(controller.frame);
+          var d = event.localPosition - _orbitAt;
+          var yaw = from.yaw + d.dx * CanvasOrbitPad.degreesPerPixel * 0.5;
+          var pitch = (from.pitch + d.dy * CanvasOrbitPad.degreesPerPixel * 0.5)
+              .clamp(-10.0, 89.0);
+          controller.replaceElement(
+              controller.stageFilmed(
+                  s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
+              transient: true);
+        }
       case _DragMode.characterPin:
         if (_selectedCharacter() case var who?) {
+          // Where it is seen -- on its stage, and on its model -- as the
+          // pin was taken hold of.
           var posed = CharacterPlacement.of(who, controller.frame,
-                  frameRate: document.frameRate)
+                  frameRate: document.frameRate,
+                  document: document,
+                  models: controller.images)
               .posedBy(_characterPin, doc);
           // Recording, the drag is a performance: a key on every frame the
           // playhead passes while the pin is held.
@@ -5727,6 +5773,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.characterPin ||
+        _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
         _mode == _DragMode.imageLayerMove ||

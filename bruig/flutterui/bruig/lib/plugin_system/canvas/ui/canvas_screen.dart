@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
@@ -647,6 +650,29 @@ class _CanvasScreenState extends State<CanvasScreen> {
                             var center = stage.toDocumentPoint(local);
                             var asset = await droppedAsset(details.data);
                             if (asset == null || !mounted) return;
+                            // A model let go on a character is that
+                            // character's body now, not a second character.
+                            if (asset.kind == AssetKind.model) {
+                              var doc = _controller.document;
+                              var on = doc.elements.reversed
+                                  .whereType<CharacterElement>()
+                                  .where((c) =>
+                                      !c.locked &&
+                                      visualBoundsOf(c, doc, _controller.frame)
+                                          .contains(center))
+                                  .firstOrNull;
+                              if (on != null) {
+                                _controller.beginInteraction();
+                                _controller.replaceElement(on.copyWith(
+                                    body: on.body.copyWith(
+                                        kind: BodyKind.model,
+                                        modelId: asset.id,
+                                        modelName: asset.name)));
+                                _controller.endInteraction();
+                                _controller.selectOnly(on.id);
+                                return;
+                              }
+                            }
                             _controller.addElement(elementForAsset(
                               asset,
                               _controller.document,

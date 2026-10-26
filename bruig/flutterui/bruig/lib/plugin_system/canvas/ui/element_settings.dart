@@ -134,6 +134,9 @@ List<Widget> elementSettings(
                     context, controller, element, write, begin, commit),
               if (element is VectorElement && element.hasDrawing)
                 vectorCropControls(controller, element, write, begin, commit),
+              // Going round a character, in its own box.
+              if (element is CharacterElement)
+                characterOrbitGroup(controller, element, write, begin, commit),
               // Where a text's words come from and how they sit in its box.
               if (element is TextElement)
                 textWordsCard(

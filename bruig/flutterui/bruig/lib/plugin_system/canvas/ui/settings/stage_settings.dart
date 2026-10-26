@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -68,10 +69,28 @@ List<Widget> stageSettings(
           ),
           CanvasControlGroup(
               label: "Where it is",
-              help: "Orbit swings the camera round the stage; Height raises "
-                  "it to look down; Distance moves it nearer or further; "
-                  "Lens is wide at 24 mm and close at 85.",
+              help: "Drag the globe to orbit the camera round the stage -- "
+                  "across to go round, down to look from higher -- or hold "
+                  "Option and drag on the stage itself. Orbit swings the "
+                  "camera round the stage; Height raises it to look down; "
+                  "Distance moves it nearer or further; Lens is wide at "
+                  "24 mm and close at 85.",
               children: [
+                CanvasOrbitPad(
+                  key: const ValueKey("stageOrbitPad"),
+                  turn: camera.yaw,
+                  tilt: camera.pitch,
+                  minTilt: -10,
+                  maxTilt: 89,
+                  rest: (0, 12),
+                  tooltip: "Drag to orbit the camera: across to go round "
+                      "the stage, down to look from higher. Double click "
+                      "for the camera's start.",
+                  onStart: begin,
+                  onChanged: (t, k) =>
+                      film(camera.copyWith(yaw: t, pitch: k), live: true),
+                  onEnd: commit,
+                ),
                 CanvasStepper(
                   key: const ValueKey("stageYaw"),
                   label: "Orbit",

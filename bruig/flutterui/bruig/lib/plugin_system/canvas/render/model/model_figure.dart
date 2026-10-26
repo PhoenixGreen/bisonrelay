@@ -51,6 +51,10 @@ Future<LoadedModel> loadModel(Uint8List bytes) async {
   return LoadedModel.of(gltf, images);
 }
 
+/// ModelJoint is a joint of a model as it is drawn: where on the page,
+/// and how near the reader.
+typedef ModelJoint = ({ui.Offset page, double depth});
+
 /// _Segment is a bone of the rig, and the bone of the model's skeleton
 /// that takes its direction: from [from] to [to] in the rig, and from the
 /// model's [bone] to [tip].
@@ -74,8 +78,17 @@ class LoadedModel {
   /// hipsZ where its feet and its middle are -- in the file's units.
   final double height, floor, hipsX, hipsZ;
 
+  /// _joints is which of the model's bones stands for each of the rig's
+  /// joints -- the rig's left being the model's right.
+  final Map<RigJoint, HumanBone> _joints;
+
+  /// _drawn is the last few posings drawn, so a frame drawn again -- the
+  /// stage repainting under a pointer, a row of tiles -- is not skinned
+  /// again. Newest last.
+  final Map<String, (ui.Offset, List<MeshPiece>)> _drawn = {};
+
   LoadedModel._(this.gltf, this.images, this._fix, this._rest, this._segments,
-      this.height, this.floor, this.hipsX, this.hipsZ);
+      this.height, this.floor, this.hipsX, this.hipsZ, this._joints);
 
   void dispose() {
     for (var i in images) {
@@ -122,7 +135,16 @@ class LoadedModel {
     var (aL, aR) = leftIsRigLeft
         ? (_left, _right)
         : (_right, _left);
+    var joints = <RigJoint, HumanBone>{
+      RigJoint.hips: HumanBone.hips,
+      RigJoint.chest: HumanBone.neck,
+      RigJoint.neck: HumanBone.neck,
+      RigJoint.head: HumanBone.head,
+    };
     for (var (side, rig) in [(aL, _rigLeft), (aR, _rigRight)]) {
+      for (var k = 0; k < 6; k++) {
+        joints[rig[k]] = side[k];
+      }
       add(rig[0], rig[1], side[0], side[1]);
       add(rig[1], rig[2], side[1], side[2]);
       add(rig[3], rig[4], side[3], side[4]);
@@ -154,8 +176,9 @@ class LoadedModel {
     }
     var hips = h[HumanBone.hips];
     var hp = hips == null ? const [0.0, 0.0, 0.0] : rest[hips].translation;
+    joints.removeWhere((_, b) => !h.containsKey(b));
     return LoadedModel._(gltf, images, fix, rest, segments,
-        math.max(1e-6, hi - lo), lo, hp[0], hp[2]);
+        math.max(1e-6, hi - lo), lo, hp[0], hp[2], joints);
   }
 
   /// pieces is the model posed as [rig] is, with [face]'s expression, its
@@ -165,12 +188,98 @@ class LoadedModel {
   (ui.Offset, List<MeshPiece>) pieces(
       CharacterRig rig, CharacterFace face, ui.Rect box,
       {double lift = 0}) {
+    var key = _keyOf(rig, face, box, lift);
+    if (_drawn.remove(key) case var kept?) return _drawn[key] = kept;
+    var made = _pieces(rig, face, box, lift);
+    _drawn[key] = made;
+    if (_drawn.length > 12) _drawn.remove(_drawn.keys.first);
+    return made;
+  }
+
+  static String _keyOf(
+      CharacterRig rig, CharacterFace face, ui.Rect box, double lift) {
+    var b = StringBuffer()
+      ..write(box)
+      ..write(lift)
+      ..write(rig.yaw)
+      ..write(rig.tilt)
+      ..write(rig.headBasis)
+      ..write(face.toJson());
+    for (var v in rig.joints3.values) {
+      b.write(v);
+    }
+    return b.toString();
+  }
+
+  /// _onPage is where a point of the model, posed, is drawn: turned with
+  /// the body, sized to [box] and stood on its bottom -- as x, y down the
+  /// page, and z towards the reader, in pixels.
+  List<double> _onPage(List<double> p, CharacterRig rig, ui.Rect box,
+      double lift) {
+    var v = _seen(rig)(p[0], p[1], p[2], box.height / height, lift);
+    return [box.bottomCenter.dx + v[0], box.bottom - v[1], v[2]];
+  }
+
+  /// _seen is how a point of the model is seen as [rig] is: turned with
+  /// the body and tipped about its feet, sized by s and lifted by lift --
+  /// x across, y up from the ground, z towards the reader, in pixels.
+  /// With s nought, a direction: turned and tipped only.
+  List<double> Function(double x, double y, double z, double s, double lift)
+      _seen(CharacterRig rig) {
+    var yaw = rig.yaw * math.pi / 180, tilt = rig.tilt * math.pi / 180;
+    var cy = math.cos(yaw), sy = math.sin(yaw);
+    var ct = math.cos(tilt), st = math.sin(tilt);
+    return (x, y, z, s, lift) {
+      double up, near, across;
+      if (s == 0) {
+        across = x * cy - z * sy;
+        near = x * sy + z * cy;
+        up = y;
+      } else {
+        x -= hipsX;
+        z -= hipsZ;
+        across = (x * cy - z * sy) * s;
+        near = (x * sy + z * cy) * s;
+        up = (y - floor) * s + lift;
+      }
+      return [across, up * ct - near * st, up * st + near * ct];
+    };
+  }
+
+  /// joints is where each of the rig's joints is on the model, posed as
+  /// [rig] and [face] say, on the page -- what a pin is drawn on and
+  /// taken hold of. The head is its middle, as the rig's is. Empty for a
+  /// model with no human skeleton.
+  Map<RigJoint, ModelJoint> joints(
+      CharacterRig rig, CharacterFace face, ui.Rect box,
+      {double lift = 0}) {
+    if (!humanoid) return const {};
+    var world = _worldWith(_pose(rig, face));
+    var out = <RigJoint, ModelJoint>{};
+    for (var e in _joints.entries) {
+      var p = world[gltf.humanoid[e.value]!].translation;
+      if (e.key == RigJoint.head) {
+        // The head bone is at the bottom of the skull; its middle is as far
+        // above it again as the neck is long.
+        if (gltf.humanoid[HumanBone.neck] case var n?) {
+          var q = world[n].translation;
+          p = [for (var k = 0; k < 3; k++) p[k] + (p[k] - q[k])];
+        }
+      }
+      var at = _onPage(p, rig, box, lift);
+      out[e.key] = (page: ui.Offset(at[0], at[1]), depth: at[2]);
+    }
+    return out;
+  }
+
+  /// _pieces is [pieces], worked out.
+  (ui.Offset, List<MeshPiece>) _pieces(
+      CharacterRig rig, CharacterFace face, ui.Rect box, double lift) {
     var turns = _pose(rig, face);
     var world = _worldWith(turns);
     var weights = _expressionWeights(face);
     var s = box.height / height;
-    var yaw = rig.yaw * math.pi / 180;
-    var cy = math.cos(yaw), sy = math.sin(yaw);
+    var seen = _seen(rig);
     var out = <MeshPiece>[];
     for (var (n, node) in gltf.nodes.indexed) {
       var mi = node.mesh;
@@ -182,15 +291,15 @@ class LoadedModel {
         var points = Float32List(count * 3);
         var normals = nrm == null ? null : Float32List(count * 3);
         for (var i = 0; i < count; i++) {
-          var x = p[i * 3] - hipsX, y = p[i * 3 + 1], z = p[i * 3 + 2] - hipsZ;
-          points[i * 3] = (x * cy - z * sy) * s;
-          points[i * 3 + 1] = (y - floor) * s + lift;
-          points[i * 3 + 2] = (x * sy + z * cy) * s;
+          var v = seen(p[i * 3], p[i * 3 + 1], p[i * 3 + 2], s, lift);
+          points[i * 3] = v[0];
+          points[i * 3 + 1] = v[1];
+          points[i * 3 + 2] = v[2];
           if (normals != null) {
-            var nx = nrm![i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
-            normals[i * 3] = nx * cy - nz * sy;
-            normals[i * 3 + 1] = ny;
-            normals[i * 3 + 2] = nx * sy + nz * cy;
+            var d = seen(nrm![i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2], 0, 0);
+            normals[i * 3] = d[0];
+            normals[i * 3 + 1] = d[1];
+            normals[i * 3 + 2] = d[2];
           }
         }
         var mat = prim.material != null && prim.material! < gltf.materials.length

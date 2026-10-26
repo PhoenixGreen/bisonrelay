@@ -201,7 +201,10 @@ enum GarmentPattern {
   pinstripe("Pinstripe"),
   check("Check"),
   dots("Dots"),
-  camo("Camo");
+  camo("Camo"),
+
+  /// print is a picture on the front -- see Garment.printId.
+  print("Picture print");
 
   final String label;
   const GarmentPattern(this.label);
@@ -304,6 +307,18 @@ class Garment {
 
   final GarmentCondition condition;
 
+  /// outline is a shape of this garment's own, added to it: a collar, a
+  /// peplum, a flared hem, shoulders. Points across the body -- 1 at the
+  /// right shoulder, -1 at the left -- and down it -- nought at the chest,
+  /// one at the hips -- so it goes with the body however it is turned and
+  /// however tall it is. Empty for none.
+  final List<Offset> outline;
+
+  /// printId is the picture a print is of, and printSize how much of the
+  /// front's width it covers.
+  final String printId;
+  final double printSize;
+
   /// seed is what its rips, smudges and patches are laid out by, so they
   /// are in the same places in every frame and every export, and two
   /// garments are not worn in the same places.
@@ -319,6 +334,9 @@ class Garment {
     this.fit,
     this.condition = GarmentCondition.asNew,
     this.seed = 0,
+    this.outline = const [],
+    this.printId = "",
+    this.printSize = 0.6,
   });
 
   double get lengthOr => length ?? kind.length;
@@ -335,6 +353,9 @@ class Garment {
     double? fit,
     GarmentCondition? condition,
     int? seed,
+    List<Offset>? outline,
+    String? printId,
+    double? printSize,
   }) =>
       Garment(
         kind ?? this.kind,
@@ -353,6 +374,9 @@ class Garment {
             : (fit ?? this.fit)?.clamp(0.8, 1.4).toDouble(),
         condition: condition ?? this.condition,
         seed: seed ?? this.seed,
+        outline: outline ?? this.outline,
+        printId: printId ?? this.printId,
+        printSize: (printSize ?? this.printSize).clamp(0.1, 1.5).toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -365,7 +389,15 @@ class Garment {
         if (fit != null) "fit": fit,
         if (!condition.isNew) "condition": condition.toJson(),
         if (seed != 0) "seed": seed,
+        if (outline.isNotEmpty)
+          "outline": [
+            for (var p in outline) [_round(p.dx), _round(p.dy)]
+          ],
+        if (printId.isNotEmpty) "print": printId,
+        if (printSize != 0.6) "printSize": printSize,
       };
+
+  static double _round(double v) => (v * 1000).round() / 1000;
 
   static Garment? fromJson(Object? json) {
     if (json is! Map<String, dynamic>) return null;
@@ -383,6 +415,15 @@ class Garment {
       fit: opt("fit", 0.8, 1.4),
       condition: GarmentCondition.fromJson(json["condition"]),
       seed: jsonInt(json["seed"], 0),
+      outline: [
+        if (json["outline"] case List points)
+          for (var p in points)
+            if (p is List && p.length == 2 && p[0] is num && p[1] is num)
+              Offset((p[0] as num).toDouble().clamp(-3.0, 3.0),
+                  (p[1] as num).toDouble().clamp(-1.0, 3.0)),
+      ],
+      printId: jsonString(json["print"], ""),
+      printSize: jsonDouble(json["printSize"], 0.6).clamp(0.1, 1.5),
     );
   }
 }
@@ -566,3 +607,27 @@ Color faded(Color c, double amount) {
       blue: math.min(1, grey + 0.12));
   return Color.lerp(c, target, amount * 0.7)!;
 }
+
+
+/// outlineShapes is the ready-made shapes a garment's outline can start
+/// from: name, and points in the outline's terms -- see Garment.outline.
+const List<(String, List<Offset>)> outlineShapes = [
+  ("Collar", [
+    Offset(-0.55, -0.02), Offset(-0.3, 0.12), Offset(0, 0.04),
+    Offset(0.3, 0.12), Offset(0.55, -0.02), Offset(0.2, -0.06),
+    Offset(-0.2, -0.06),
+  ]),
+  ("Peplum", [
+    Offset(-1.05, 0.6), Offset(1.05, 0.6), Offset(1.6, 0.98),
+    Offset(0.5, 0.9), Offset(0, 0.98), Offset(-0.5, 0.9),
+    Offset(-1.6, 0.98),
+  ]),
+  ("Flared hem", [
+    Offset(-1.05, 0.85), Offset(1.05, 0.85), Offset(1.9, 1.4),
+    Offset(0, 1.45), Offset(-1.9, 1.4),
+  ]),
+  ("Shoulders", [
+    Offset(-1.3, -0.05), Offset(1.3, -0.05), Offset(1.2, 0.2),
+    Offset(-1.2, 0.2),
+  ]),
+];

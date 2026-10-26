@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'dart:typed_data';
 
 import 'package:bruig/components/panel_stack.dart';
@@ -48,11 +49,18 @@ class CanvasAssetsPanel extends StatelessWidget {
                     "Click one to put it "
                         "in the middle of the canvas, or drag it where you want "
                         "it. Double-click a name to rename it.",
+                  AssetKind.model => "Click one for a character made of it "
+                      "in the middle of the canvas, or drag it where you want "
+                      "it -- onto a character to make that character of it. "
+                      "Double-click a name to rename it.",
                   AssetKind.audio => "Click one for a speaker in the middle "
                       "of the canvas, or drag it onto a channel on the "
                       "timeline to play it there. Double-click a name to "
                       "rename it.",
                 },
+                // Models shut until wanted, as Stock is: most canvases have
+                // no 3D characters, and the panels it would squeeze do.
+                startsOpen: kind != AssetKind.model,
                 // Keyed by its kind: panels sharing a row become tabs, and
                 // without a key the one section is handed each tab's kind in
                 // turn -- the Audio tab showed the pictures, and Pictures
@@ -86,6 +94,7 @@ IconData _iconOf(AssetKind kind) => switch (kind) {
       AssetKind.video => Icons.movie_outlined,
       AssetKind.audio => Icons.music_note_outlined,
       AssetKind.vector => Icons.draw_outlined,
+      AssetKind.model => Icons.view_in_ar_outlined,
     };
 
 /// AssetView is how a section shows its assets.
@@ -167,6 +176,8 @@ class _AssetSectionState extends State<AssetSection> {
         await pickCanvasVideo(context, controller);
       case AssetKind.audio:
         await pickCanvasAudio(context, controller);
+      case AssetKind.model:
+        await pickCanvasModel(context);
     }
   }
 
@@ -307,7 +318,7 @@ class _Still extends StatelessWidget {
     var still = switch (asset.kind) {
       AssetKind.picture || AssetKind.vector => asset.id,
       AssetKind.video => asset.poster,
-      AssetKind.audio => "",
+      AssetKind.audio || AssetKind.model => "",
     };
     return ClipRRect(
       borderRadius: BorderRadius.circular(width < 60 ? 3 : 6),

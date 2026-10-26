@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_bvh.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_motion_files.dart';
+import 'package:bruig/plugin_system/canvas/ui/body_capture.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_gltf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
@@ -12,14 +16,22 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dar
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
-import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
+import 'package:bruig/plugin_system/canvas/ui/garment_shape_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
+import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:provider/provider.dart';
 
 // character_settings.dart is a Character element's settings.
 //
@@ -385,11 +397,13 @@ List<Widget> characterSettings(
             columns: 4,
             previewHeight: 64,
             tiles: [
+              // In 3D when the body is: a pose is seen on what it moves.
               for (var (i, p) in posePresets.indexed)
                 CanvasTile(i, p.name,
-                    drawnFrom: drawn,
-                    paint: (canvas, size) =>
-                        _figureTile(canvas, size, dna, p.pose, style)),
+                    drawnFrom: "$drawn|${e.body.toJson()}|"
+                        "${controller.images.resolveModel(e.body.modelId) != null}",
+                    paint: (canvas, size) => _figureTile(canvas, size, dna,
+                        p.pose, style, e.body, controller.images)),
             ],
             selected: (i) => _samePose(posePresets[i].pose, pose),
             keyOf: (i) => "characterPose-${posePresets[i].name}",
@@ -854,6 +868,52 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
     return all;
   }
 
+  /// _record starts the microphone, or -- recording -- stops it and puts
+  /// what it heard on the timeline from where the recording began, on a
+  /// channel of its own, as the voice to lip sync to.
+  Future<void> _record() async {
+    if (LiveCapture.recording.value == CaptureKind.microphone) {
+      String said;
+      try {
+        var file = await LiveCapture.stop();
+        if (file == null || !mounted) {
+          said = "Nothing was recorded.";
+        } else {
+          var source = await addCanvasAudio(context, controller, file);
+          if (source == null || !mounted) {
+            said = "The recording could not be kept.";
+          } else {
+            var clip = channelClip(controller.document, _recordFrom,
+                source: source,
+                channel: controller.newChannelId(),
+                channelName: "Voice");
+            controller.addElement(clip);
+            _voice = clip.id;
+            said = "Recorded, from frame ${_recordFrom + 1}. Lip sync to it "
+                "below.";
+          }
+          try {
+            await File(file).delete();
+          } catch (_) {}
+        }
+      } catch (error) {
+        said = "$error";
+      }
+      if (mounted) setState(() => _said = said);
+      return;
+    }
+    try {
+      _recordFrom = controller.frame;
+      await LiveCapture.start(CaptureKind.microphone);
+      if (mounted) setState(() => _said = "Recording. Press Stop when done.");
+    } catch (error) {
+      if (mounted) setState(() => _said = "$error");
+    }
+  }
+
+  /// _recordFrom is the frame a voice-over being recorded starts on.
+  int _recordFrom = 0;
+
   Future<void> _sync(AudioElement voice) async {
     setState(() {
       _busy = true;
@@ -886,6 +946,26 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
             "nothing installed. Either way the mouths are blocks on the "
             "Mouth lane of the timeline, to move or change by hand.",
         children: [
+          if (LiveCapture.available &&
+              context.watch<CanvasPreferences>().allowCapture)
+            ValueListenableBuilder<CaptureKind?>(
+              valueListenable: LiveCapture.recording,
+              builder: (context, now, _) => CanvasTextButton(
+                key: const ValueKey("characterRecordVoice"),
+                icon: now == CaptureKind.microphone
+                    ? Icons.stop_circle_outlined
+                    : Icons.mic_none_outlined,
+                label: now == CaptureKind.microphone
+                    ? "Stop, and use it"
+                    : "Record a voice-over",
+                primary: now == CaptureKind.microphone,
+                onPressed: now != null && now != CaptureKind.microphone
+                    ? null
+                    : _record,
+              ),
+            ),
+          if (LiveCapture.available) captureSwitch(context),
+          const CanvasLineBreak(),
           if (voice == null)
             const CanvasStatus("Add a voice-over first: a timed Audio element, "
                 "or a sound on the timeline's channels.")
@@ -1137,6 +1217,69 @@ class _WalkGroupState extends State<_WalkGroup> {
           ]);
 }
 
+/// characterOrbitGroup orbits the character in its own box -- round it and
+/// over it -- and nothing else: not its stage's camera, not the page. The
+/// orbit is the character's turn and tilt, so it is keyed on the timeline
+/// as a pose is, and can move.
+Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var pose = e.poseAtFrame(controller.frame);
+  void orbit(double turn, double tilt, {bool live = true}) {
+    write(controller.characterPosed(e, pose.withTurn(turn).withTilt(tilt)));
+    if (!live) commit();
+  }
+
+  return CanvasControlGroup(
+      key: const ValueKey("characterOrbit"),
+      label: "Orbit",
+      help: "Drag the globe to go round the character -- across to turn "
+          "it, up and down to see it from below or above. Only this "
+          "character moves: on a stage, the camera stays where it is. A "
+          "body in 3D is seen from there whole; a drawn one has its arms "
+          "and legs foreshortened. Double click the globe to face it "
+          "again.",
+      children: [
+        CanvasOrbitPad(
+          key: const ValueKey("characterOrbitPad"),
+          turn: pose.turn,
+          tilt: pose.tilt,
+          onStart: begin,
+          onChanged: (t, k) => orbit(t, k),
+          onEnd: commit,
+        ),
+        CanvasStepper(
+          key: const ValueKey("characterOrbitTurn"),
+          label: "Turn",
+          value: pose.turn,
+          min: -180,
+          max: 180,
+          step: 15,
+          suffix: "°",
+          defaultValue: 0,
+          onChanged: (v) {
+            begin();
+            orbit(v, pose.tilt);
+          },
+          onCommit: commit,
+        ),
+        CanvasStepper(
+          key: const ValueKey("characterOrbitTilt"),
+          label: "Tilt",
+          value: pose.tilt,
+          min: -85,
+          max: 85,
+          step: 5,
+          suffix: "°",
+          defaultValue: 0,
+          onChanged: (v) {
+            begin();
+            orbit(pose.turn, v);
+          },
+          onCommit: commit,
+        ),
+      ]);
+}
+
 /// ModelImportGroup brings a 3D model in from a file and makes it the
 /// character's body.
 class ModelImportGroup extends StatefulWidget {
@@ -1152,15 +1295,63 @@ class ModelImportGroup extends StatefulWidget {
 class ModelImportGroupState extends State<ModelImportGroup> {
   String _said = "";
 
+  /// _loaded is whether the model had been read when this was last drawn:
+  /// when it arrives, the tiles that show it are drawn again.
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loaded = _model() != null;
+    widget.controller.images.addListener(_onImages);
+    _loadLibrary();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.images.removeListener(_onImages);
+    super.dispose();
+  }
+
+  Object? _model() =>
+      widget.controller.images.resolveModel(widget.character.body.modelId);
+
+  void _onImages() {
+    var now = _model() != null;
+    if (now == _loaded || !mounted) return;
+    _loaded = now;
+    widget.controller.arrived();
+  }
+
+  /// _library is the models already brought in, to pick one from.
+  List<LibraryAsset> _library = const [];
+
+  Future<void> _loadLibrary() async {
+    var all = await CanvasLibrary.list(kind: AssetKind.model);
+    if (mounted) setState(() => _library = all);
+  }
+
   Future<void> _pick() async {
     var picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ["glb", "gltf", "vrm"],
+      allowedExtensions: modelExtensions,
       withData: false,
     );
     var file = picked?.files.singleOrNull?.path;
     if (file == null) return;
     await importFrom(file);
+  }
+
+  /// _use makes the model [id], called [name], the character's body.
+  void _use(String id, String name) {
+    var c = widget.controller;
+    var now = c.document.elementById(widget.character.id);
+    if (now is! CharacterElement) return;
+    c.beginInteraction();
+    c.replaceElement(now.copyWith(
+        body: now.body
+            .copyWith(kind: BodyKind.model, modelId: id, modelName: name)));
+    c.endInteraction();
   }
 
   /// importFrom stores the model at [file] and makes it the character's
@@ -1169,31 +1360,12 @@ class ModelImportGroupState extends State<ModelImportGroup> {
   Future<void> importFrom(String file) async {
     String said;
     try {
-      var gltf = parseGltf(await File(file).readAsBytes());
-      var id = await CanvasMedia.saveFile(MediaKind.model, file);
-      if (id == null) {
-        said = "That model could not be stored: it may be bigger than "
-            "${MediaKind.model.maxBytes >> 20} MB.";
-      } else {
-        var c = widget.controller;
-        var now = c.document.elementById(widget.character.id);
-        if (now is! CharacterElement) return;
-        var name = gltf.title.isNotEmpty
-            ? gltf.title
-            : file.split(Platform.pathSeparator).last;
-        c.beginInteraction();
-        c.replaceElement(now.copyWith(
-            body: now.body.copyWith(
-                kind: BodyKind.model, modelId: id, modelName: name)));
-        c.endInteraction();
-        said = _about(gltf);
-      }
+      var stored = await storeModel(file);
+      _use(stored.id, stored.name);
+      said = _about(stored.gltf);
+      unawaited(_loadLibrary());
     } on GltfError catch (error) {
       said = "That file could not be read: $error";
-    } on FormatException {
-      said = "That file could not be read: it is not a glTF, GLB or VRM file.";
-    } on FileSystemException {
-      said = "That file could not be opened.";
     }
     if (mounted) setState(() => _said = said);
   }
@@ -1242,12 +1414,45 @@ class ModelImportGroupState extends State<ModelImportGroup> {
                 : "Bring in another model…",
             onPressed: _pick,
           ),
+          if (_library.isNotEmpty)
+            CanvasDropdown<String>(
+              key: const ValueKey("characterModelLibrary"),
+              label: "From the library",
+              value: _library.any((a) => a.id == body.modelId)
+                  ? body.modelId
+                  : "",
+              width: 170,
+              options: [
+                if (!_library.any((a) => a.id == body.modelId))
+                  ("", "Choose a model"),
+                for (var a in _library) (a.id, a.name),
+              ],
+              onChanged: (id) {
+                if (id.isEmpty) return;
+                var a = _library.firstWhere((a) => a.id == id);
+                _use(a.id, a.name);
+                setState(() => _said = "");
+              },
+            ),
           CanvasStatus(status),
         ]);
   }
 }
 
-/// _ImportGroup lays motion capture from a BVH file on the character.
+/// captureSwitch lets the canvas use the camera and the microphone -- off
+/// until it is switched on. One switch for both, wherever either is used.
+Widget captureSwitch(BuildContext context) {
+  var prefs = context.watch<CanvasPreferences>();
+  return CanvasToggle(
+    key: const ValueKey("canvasAllowCapture"),
+    label: "Allow the camera and microphone",
+    value: prefs.allowCapture,
+    onChanged: (v) => prefs.allowCapture = v,
+  );
+}
+
+/// _ImportGroup lays motion from a file -- BVH, Mixamo's FBX, a glTF's
+/// own animation -- or from a video on the character.
 class _ImportGroup extends StatefulWidget {
   final CanvasController controller;
   final CharacterElement character;
@@ -1260,11 +1465,28 @@ class _ImportGroup extends StatefulWidget {
 class _ImportGroupState extends State<_ImportGroup> {
   bool _faceReader = true;
   String _said = "";
+  bool _busy = false;
+  bool _video = BodyCapture.known ?? false;
+
+  /// _file and _motions are a file holding several motions, waiting for
+  /// one to be picked; _motion is the one picked.
+  String? _file;
+  Uint8List? _bytes;
+  List<String> _motions = const [];
+  int _motion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    BodyCapture.available().then((v) {
+      if (mounted && v != _video) setState(() => _video = v);
+    });
+  }
 
   Future<void> _pick() async {
     var picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ["bvh"],
+      allowedExtensions: motionExtensions,
       withData: false,
     );
     var file = picked?.files.singleOrNull?.path;
@@ -1272,52 +1494,211 @@ class _ImportGroupState extends State<_ImportGroup> {
     await importFrom(file);
   }
 
-  /// importFrom reads the BVH at [file] and lays it on the character.
-  Future<void> importFrom(String file) async {
+  Future<void> _pickVideo() async {
+    var picked = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      withData: false,
+    );
+    var file = picked?.files.singleOrNull?.path;
+    if (file == null) return;
+    setState(() {
+      _busy = true;
+      _said = "Finding the person in the video, frame by frame…";
+    });
+    String said;
+    try {
+      var rate = widget.controller.document.frameRate <= 0
+          ? 12
+          : widget.controller.document.frameRate;
+      var motion = await BodyCapture.fromVideo(file, rate.toDouble());
+      said = _lay(motion, "the video");
+    } on MotionError catch (error) {
+      said = "$error";
+    }
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _said = said;
+      });
+    }
+  }
+
+  /// _record starts the camera, or -- recording -- stops it and reads the
+  /// movement off what it saw.
+  Future<void> _record() async {
+    if (LiveCapture.recording.value == CaptureKind.camera) {
+      setState(() {
+        _busy = true;
+        _said = "Finding you in the recording, frame by frame…";
+      });
+      String said;
+      try {
+        var file = await LiveCapture.stop();
+        if (file == null) {
+          said = "Nothing was recorded.";
+        } else {
+          var rate = widget.controller.document.frameRate <= 0
+              ? 12
+              : widget.controller.document.frameRate;
+          var motion = await BodyCapture.fromVideo(file, rate.toDouble());
+          said = _lay(motion, "the camera");
+          try {
+            await File(file).delete();
+          } catch (_) {}
+        }
+      } on MotionError catch (error) {
+        said = "$error";
+      } catch (error) {
+        said = "$error";
+      }
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _said = said;
+        });
+      }
+      return;
+    }
+    try {
+      await LiveCapture.start(CaptureKind.camera);
+      if (mounted) {
+        setState(() => _said = "Recording. Step back so all of you is "
+            "seen, move, then press Stop.");
+      }
+    } catch (error) {
+      if (mounted) setState(() => _said = "$error");
+    }
+  }
+
+  /// importFrom reads the motion file at [file] and lays it on the
+  /// character.
+  Future<void> importFrom(String file, {int? animation}) async {
     var c = widget.controller;
     String said;
     try {
-      var bvh = parseBvh(await File(file).readAsString());
-      var poses = bvhPoses(bvh,
-          frameRate: c.document.frameRate <= 0 ? 12 : c.document.frameRate,
-          headsTall: widget.character.dna.headsTall);
-      var now = c.document.elementById(widget.character.id);
-      if (now is! CharacterElement) return;
-      c.beginInteraction();
-      var laid = c.importMotion(now, poses, faceReader: _faceReader);
-      c.endInteraction();
-      said = laid < poses.length
-          ? "$laid of ${poses.length} frames laid: the canvas ended first."
-          : "$laid frames of motion laid, from the playhead on.";
-    } on BvhError catch (error) {
+      var rate = c.document.frameRate <= 0 ? 12 : c.document.frameRate;
+      var bytes = _file == file && _bytes != null
+          ? _bytes!
+          : await File(file).readAsBytes();
+      // A file with several motions waits for one to be picked.
+      if (animation == null) {
+        var names = motionsIn(bytes);
+        if (names.length > 1) {
+          if (mounted) {
+            setState(() {
+              _file = file;
+              _bytes = bytes;
+              _motions = names;
+              _motion = 0;
+              _said = "The file has ${names.length} motions: pick one, "
+                  "and lay it.";
+            });
+          }
+          return;
+        }
+      }
+      var (motion, from) = readMotionFile(bytes, file,
+          frameRate: rate.toDouble(), animation: animation ?? 0);
+      said = _lay(motion, from);
+    } on MotionError catch (error) {
       said = "That file could not be read: $error";
+    } on GltfError catch (error) {
+      said = "That file could not be read: $error";
+    } on FormatException {
+      said = "That file could not be read.";
     } on FileSystemException {
       said = "That file could not be opened.";
     }
     if (mounted) setState(() => _said = said);
   }
 
+  /// _lay retargets [motion] on to the character as keyframes from the
+  /// playhead, and says how it went.
+  String _lay(JointMotion motion, String from) {
+    var c = widget.controller;
+    var rate = c.document.frameRate <= 0 ? 12 : c.document.frameRate;
+    var poses = motionPoses(motion,
+        frameRate: rate, headsTall: widget.character.dna.headsTall);
+    var now = c.document.elementById(widget.character.id);
+    if (now is! CharacterElement) return "";
+    c.beginInteraction();
+    var laid = c.importMotion(now, poses, faceReader: _faceReader);
+    c.endInteraction();
+    return laid < poses.length
+        ? "$laid of ${poses.length} frames laid from $from: the canvas ended "
+            "first."
+        : "$laid frames of motion laid from $from, from the playhead on.";
+  }
+
   @override
   Widget build(BuildContext context) => CanvasControlGroup(
           label: "Motion capture",
-          help: "Lays a BVH file -- motion capture, as the CMU library and "
-              "most capture tools give it out -- on the character as "
-              "keyframes from the frame being looked at. Any skeleton "
-              "with the usual joints works, Mixamo's included; the "
-              "character's own proportions are kept.",
+          help: "Lays motion on the character as keyframes from the frame "
+              "being looked at: a BVH file (the CMU library, most capture "
+              "tools), an FBX from Mixamo, or the animation in a .glb, "
+              ".gltf or .vrm. Any skeleton with the usual joints works; "
+              "the character's own proportions are kept. On macOS 14 and "
+              "later, a video of someone moving can be read for their "
+              "motion too -- on this computer, with nothing uploaded.",
           children: [
             CanvasTextButton(
               key: const ValueKey("characterImportBvh"),
               icon: Icons.file_open_outlined,
-              label: "Import a BVH file",
-              onPressed: _pick,
+              label: "Import motion…",
+              onPressed: _busy ? null : _pick,
             ),
+            if (_video)
+              CanvasTextButton(
+                key: const ValueKey("characterImportVideo"),
+                icon: Icons.accessibility_new_outlined,
+                label: "From a video…",
+                onPressed: _busy ? null : _pickVideo,
+              ),
+            if (_video &&
+                LiveCapture.available &&
+                context.watch<CanvasPreferences>().allowCapture)
+              ValueListenableBuilder<CaptureKind?>(
+                valueListenable: LiveCapture.recording,
+                builder: (context, now, _) => CanvasTextButton(
+                  key: const ValueKey("characterRecordCamera"),
+                  icon: now == CaptureKind.camera
+                      ? Icons.stop_circle_outlined
+                      : Icons.videocam_outlined,
+                  label: now == CaptureKind.camera
+                      ? "Stop, and use it"
+                      : "Record with the camera",
+                  primary: now == CaptureKind.camera,
+                  onPressed: _busy ||
+                          (now != null && now != CaptureKind.camera)
+                      ? null
+                      : _record,
+                ),
+              ),
+            if (_motions.length > 1 && _file != null) ...[
+              CanvasDropdown<int>(
+                key: const ValueKey("characterImportWhich"),
+                label: "Motion",
+                value: _motion,
+                options: [
+                  for (var (i, n) in _motions.indexed)
+                    (i, n.isEmpty ? "Motion ${i + 1}" : n),
+                ],
+                onChanged: (i) => setState(() => _motion = i),
+              ),
+              CanvasTextButton(
+                key: const ValueKey("characterImportLay"),
+                icon: Icons.download_done_outlined,
+                label: "Lay this motion",
+                onPressed: () => importFrom(_file!, animation: _motion),
+              ),
+            ],
             CanvasToggle(
               key: const ValueKey("characterImportFace"),
               label: "Start facing the reader",
               value: _faceReader,
               onChanged: (v) => setState(() => _faceReader = v),
             ),
+            if (LiveCapture.available) captureSwitch(context),
             if (_said.isNotEmpty) ...[
               const CanvasLineBreak(),
               CanvasStatus(_said, key: const ValueKey("characterImportSaid")),
@@ -1395,6 +1776,10 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
 
   /// _change writes the picked garment as [g]: [live] while a number is
   /// being dragged, committed when it is let go.
+  /// _pickedGarment is the garment being edited, as it is now.
+  Garment? get _pickedGarment =>
+      _picked >= 0 && _picked < dna.wardrobe.length ? dna.wardrobe[_picked] : null;
+
   void _change(Garment g, {bool live = false}) {
     var wardrobe = [...dna.wardrobe];
     wardrobe[_picked] = g;
@@ -1617,6 +2002,77 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
                     _change(g.copyWith(sleeve: v / 100), live: true),
                 onCommit: widget.commit,
               ),
+          ]),
+      if (g.pattern == GarmentPattern.print)
+        CanvasControlGroup(
+            key: const ValueKey("characterGarmentPrint"),
+            label: "Picture print",
+            help: "A picture on the front of it -- a band's logo, a slogan, "
+                "a face -- as big as a share of the front's width. A "
+                "picture with a clear background shows the cloth round "
+                "it.",
+            children: [
+              CanvasTextButton(
+                key: const ValueKey("characterGarmentPrintPick"),
+                icon: Icons.image_outlined,
+                label: g.printId.isEmpty
+                    ? "Choose a picture…"
+                    : "Another picture…",
+                onPressed: () async {
+                  var id = await pickCanvasImage(context, vectors: false);
+                  if (id == null || !mounted) return;
+                  _change(_pickedGarment!.copyWith(printId: id));
+                },
+              ),
+              CanvasStepper(
+                key: const ValueKey("characterGarmentPrintSize"),
+                label: "Size",
+                value: g.printSize * 100,
+                min: 10,
+                max: 150,
+                step: 10,
+                suffix: "%",
+                defaultValue: 60,
+                onChanged: (v) =>
+                    _change(g.copyWith(printSize: v / 100), live: true),
+                onCommit: widget.commit,
+              ),
+            ]),
+      CanvasControlGroup(
+          key: const ValueKey("characterGarmentShape"),
+          label: "Shape",
+          help: "A shape of its own, laid on over it and going with the body "
+              "-- a collar, a peplum, a flared hem. Start from one, then "
+              "drag its points; click an edge to put a point in it, double "
+              "click a point to take it out.",
+          children: [
+            for (var (name, points) in outlineShapes)
+              CanvasTextButton(
+                key: ValueKey("characterGarmentShape-$name"),
+                label: name,
+                grow: false,
+                onPressed: () => _change(g.copyWith(outline: points)),
+              ),
+            if (g.outline.isNotEmpty)
+              CanvasTextButton(
+                key: const ValueKey("characterGarmentShapeClear"),
+                icon: Icons.close,
+                label: "No shape",
+                grow: false,
+                onPressed: () => _change(g.copyWith(outline: const [])),
+              ),
+            const CanvasLineBreak(),
+            GarmentShapeEditor(
+              key: const ValueKey("characterGarmentShapeEditor"),
+              dna: dna,
+              style: style,
+              outline: g.outline,
+              images: widget.controller.images,
+              onStart: widget.controller.beginInteraction,
+              onChanged: (pts) =>
+                  _change(_pickedGarment!.copyWith(outline: pts), live: true),
+              onEnd: widget.commit,
+            ),
           ]),
       CanvasTiles<int>(
         label: "Condition",

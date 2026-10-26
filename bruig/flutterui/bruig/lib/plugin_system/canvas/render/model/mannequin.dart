@@ -170,11 +170,21 @@ class _Builder {
 
   /// pieces is everything built, seen turned [yaw] degrees away from the
   /// reader, in pixels from the hips.
-  List<MeshPiece> pieces(double yaw) {
+  List<MeshPiece> pieces(double yaw, {double tilt = 0, double ground = 0}) {
     var r = yaw * math.pi / 180, cy = math.cos(r), sy = math.sin(r);
-    // Turned as CharacterRig turns a body onto the page, and y made to run
-    // up.
-    double depthOf(_V p) => p[0] * sy + p[2] * cy;
+    var t = tilt * math.pi / 180, ct = math.cos(t), st = math.sin(t);
+    // Turned and tipped as CharacterRig turns a body onto the page, and y
+    // made to run up.
+    List<double> seen(double x, double y, double z, double g) {
+      var near = x * sy + z * cy;
+      return [
+        x * cy - z * sy,
+        -(g + (y - g) * ct + near * st),
+        -(y - g) * st + near * ct,
+      ];
+    }
+
+    double depthOf(_V p) => seen(p[0], p[1], p[2], ground)[2];
     var depths = [for (var s in _shapes) depthOf(s.centre)];
     var out = <MeshPiece>[];
     for (var (k, shape) in _shapes.indexed) {
@@ -189,14 +199,14 @@ class _Builder {
       var n = pts.length ~/ 3;
       var points = Float32List(n * 3), normals = Float32List(n * 3);
       for (var i = 0; i < n; i++) {
-        var x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
-        points[i * 3] = x * cy - z * sy;
-        points[i * 3 + 1] = -y;
-        points[i * 3 + 2] = x * sy + z * cy;
-        var nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
-        normals[i * 3] = nx * cy - nz * sy;
-        normals[i * 3 + 1] = -ny;
-        normals[i * 3 + 2] = nx * sy + nz * cy;
+        var p = seen(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2], ground);
+        points[i * 3] = p[0];
+        points[i * 3 + 1] = p[1];
+        points[i * 3 + 2] = p[2];
+        var n = seen(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2], 0);
+        normals[i * 3] = n[0];
+        normals[i * 3 + 1] = n[1];
+        normals[i * 3 + 2] = n[2];
       }
       var indices = Uint32List.fromList(idx);
       _outwards(points, normals, indices);
@@ -439,7 +449,7 @@ List<MeshPiece> mannequinPieces(
         leg * 0.75, u * 0.07, u * 0.19,
         rings: 6, sides: 12);
   }
-  return b.pieces(rig.yaw);
+  return b.pieces(rig.yaw, tilt: rig.tilt, ground: rig.ground);
 }
 
 /// _frameAlong is a frame pointing down [along], facing as near

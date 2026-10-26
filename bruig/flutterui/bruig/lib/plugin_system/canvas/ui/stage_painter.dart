@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/procedural_cache.dart';
+import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_sequence.dart';
 import 'package:bruig/plugin_system/canvas/ui/stage_geometry.dart';
@@ -1533,7 +1534,12 @@ class StagePainter extends CustomPainter {
     Offset at(Offset doc) => doc * scale + origin;
     var placed =
         CharacterPlacement.of(who, frame,
-            frameRate: document.frameRate, document: document);
+            frameRate: document.frameRate,
+            document: document,
+            models: switch (images) {
+              CanvasModelSource m => m,
+              _ => null,
+            });
     var bone = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5

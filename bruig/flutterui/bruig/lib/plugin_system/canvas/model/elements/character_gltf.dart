@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_bvh.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/model_math.dart';
 
 // character_gltf.dart reads a 3D character from a glTF file -- .glb, .gltf
@@ -146,6 +147,61 @@ class GltfMaterial {
       this.color, this.image, this.doubleSided, this.toon, this.transparent);
 }
 
+/// GltfChannel is one property of one node moving: its key times in
+/// seconds, and its values at them -- three numbers a key for a move or a
+/// size, four for a turn.
+class GltfChannel {
+  final int node;
+
+  /// path is "translation", "rotation" or "scale".
+  final String path;
+  final Float32List times;
+  final Float32List values;
+
+  /// step holds each value until the next key, rather than easing.
+  final bool step;
+  const GltfChannel(this.node, this.path, this.times, this.values, this.step);
+
+  int get size => path == "rotation" ? 4 : 3;
+
+  /// at is the value at [t] seconds.
+  List<double> at(double t) {
+    var n = times.length, k = size;
+    if (n == 0) return List.filled(k, 0);
+    List<double> key(int i) => [for (var c = 0; c < k; c++) values[i * k + c]];
+    if (t <= times.first) return key(0);
+    if (t >= times[n - 1]) return key(n - 1);
+    var lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      var mid = (lo + hi) >> 1;
+      if (times[mid] <= t) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    if (step) return key(lo);
+    var f = (t - times[lo]) / (times[hi] - times[lo]);
+    if (k == 4) {
+      var a = key(lo), b = key(hi);
+      var q = Quat.slerp(Quat(a[0], a[1], a[2], a[3]), Quat(b[0], b[1], b[2], b[3]), f);
+      return [q.x, q.y, q.z, q.w];
+    }
+    var a = key(lo), b = key(hi);
+    return [for (var c = 0; c < k; c++) a[c] + (b[c] - a[c]) * f];
+  }
+}
+
+/// GltfAnimation is one of a file's motions: a name, and what it moves.
+class GltfAnimation {
+  final String name;
+  final List<GltfChannel> channels;
+  const GltfAnimation(this.name, this.channels);
+
+  double get seconds => channels.fold(
+      0.0, (m, c) => c.times.isEmpty ? m : (c.times.last > m ? c.times.last : m));
+}
+
 /// ExpressionBind is one face shape a VRM expression turns on, and how far.
 typedef ExpressionBind = ({int mesh, int target, double weight});
 
@@ -171,22 +227,30 @@ class Gltf {
   /// vrm is the VRM version -- 0 or 1 -- or null for plain glTF.
   final int? vrm;
   final String title;
+  final List<GltfAnimation> animations;
 
   const Gltf(this.nodes, this.meshes, this.skins, this.materials, this.images,
-      this.roots, this.humanoid, this.expressions, this.vrm, this.title);
+      this.roots, this.humanoid, this.expressions, this.vrm, this.title,
+      [this.animations = const []]);
 
   /// facesBack is whether the character faces away down -z, as VRM 0
   /// characters do, rather than towards +z as glTF says it should.
   bool get facesBack => vrm == 0;
 
   /// world is every node's place in the scene, with [turns] in place of
-  /// the nodes' own turns where given.
-  List<Mat4> world([Map<int, Quat> turns = const {}]) {
+  /// the nodes' own turns where given, and [moves] in place of where they
+  /// are against their parents.
+  List<Mat4> world(
+      [Map<int, Quat> turns = const {},
+      Map<int, List<double>> moves = const {}]) {
     var out = List<Mat4?>.filled(nodes.length, null);
     Mat4 at(int i) {
       if (out[i] case var m?) return m;
       var n = nodes[i];
-      var local = n.local(turns[i]);
+      var move = moves[i];
+      var local = move == null
+          ? n.local(turns[i])
+          : Mat4.trs(move, turns[i] ?? n.rotation, n.scale);
       return out[i] = n.parent < 0 ? local : at(n.parent) * local;
     }
 
@@ -333,8 +397,43 @@ class _Reader {
     var title = ((json["asset"] as Map?)?["extras"] as Map?)?["title"] as String? ??
         (((json["extensions"] as Map?)?["VRMC_vrm"] as Map?)?["meta"] as Map?)?["name"] as String? ??
         "";
+    var animations = <GltfAnimation>[];
+    for (var (i, a) in list("animations").indexed) {
+      var am = a as Map;
+      var samplers = (am["samplers"] as List?) ?? const [];
+      var channels = <GltfChannel>[];
+      for (var c in (am["channels"] as List?) ?? const []) {
+        var cm = c as Map;
+        var target = cm["target"] as Map?;
+        var node = (target?["node"] as num?)?.toInt();
+        var path = target?["path"] as String?;
+        var si = (cm["sampler"] as num?)?.toInt();
+        if (node == null || si == null || si >= samplers.length) continue;
+        if (path != "translation" && path != "rotation" && path != "scale") {
+          continue;
+        }
+        var sm = samplers[si] as Map;
+        var times = _floats((sm["input"] as num).toInt());
+        var values = _floats((sm["output"] as num).toInt());
+        var size = path == "rotation" ? 4 : 3;
+        // A cubic spline keeps an in-tangent, the value and an out-tangent
+        // for each key: the value is all a motion needs.
+        if (sm["interpolation"] == "CUBICSPLINE") {
+          values = Float32List.fromList([
+            for (var k = 0; k < times.length; k++)
+              for (var c = 0; c < size; c++) values[(k * 3 + 1) * size + c],
+          ]);
+        }
+        channels.add(GltfChannel(
+            node, path!, times, values, sm["interpolation"] == "STEP"));
+      }
+      if (channels.isNotEmpty) {
+        animations.add(GltfAnimation(
+            (am["name"] as String?) ?? "Motion ${i + 1}", channels));
+      }
+    }
     return Gltf(nodes, meshes, skins, materials, images, roots, humanoid,
-        expressions, vrm, title);
+        expressions, vrm, title, animations);
   }
 
   GltfMesh _mesh(Map m) {
@@ -641,4 +740,66 @@ Map<String, List<ExpressionBind>> _guessExpressions(List<GltfMesh> meshes) {
     if (binds.isNotEmpty) out[e.key] = binds;
   }
   return out;
+}
+
+
+/// _motionNames is the name each human bone goes by when a glTF motion is
+/// handed to motionPoses -- Mixamo's, which it knows.
+const Map<HumanBone, String> _motionNames = {
+  HumanBone.hips: "hips",
+  HumanBone.spine: "spine",
+  HumanBone.chest: "spine2",
+  HumanBone.neck: "neck",
+  HumanBone.head: "head",
+  HumanBone.leftUpperArm: "leftarm",
+  HumanBone.leftLowerArm: "leftforearm",
+  HumanBone.leftHand: "lefthand",
+  HumanBone.rightUpperArm: "rightarm",
+  HumanBone.rightLowerArm: "rightforearm",
+  HumanBone.rightHand: "righthand",
+  HumanBone.leftUpperLeg: "leftupleg",
+  HumanBone.leftLowerLeg: "leftleg",
+  HumanBone.leftFoot: "leftfoot",
+  HumanBone.rightUpperLeg: "rightupleg",
+  HumanBone.rightLowerLeg: "rightleg",
+  HumanBone.rightFoot: "rightfoot",
+};
+
+/// gltfMotion is [gltf]'s animation [index] as a skeleton moving, sampled
+/// at [frameRate] -- its human bones named so motionPoses finds them,
+/// whatever the file called them.
+JointMotion gltfMotion(Gltf gltf, {int index = 0, double frameRate = 30}) {
+  if (gltf.animations.isEmpty) {
+    throw const MotionError("The file has no motion in it.");
+  }
+  var anim = gltf.animations[index.clamp(0, gltf.animations.length - 1)];
+  var byNode = {for (var e in gltf.humanoid.entries) e.value: e.key};
+  var names = [
+    for (var (i, n) in gltf.nodes.indexed)
+      _motionNames[byNode[i]] ?? (n.name.isEmpty ? "node$i" : n.name),
+  ];
+  // VRM 0 faces away; turned round, so its left is on the same side as
+  // every other skeleton's.
+  var turnRound = gltf.facesBack;
+  var frames = (anim.seconds * frameRate).round() + 1;
+  return JointMotion(names, frames, 1 / frameRate, (f) {
+    var t = f / frameRate;
+    var turns = <int, Quat>{};
+    var moves = <int, List<double>>{};
+    for (var c in anim.channels) {
+      if (c.node >= gltf.nodes.length) continue;
+      var v = c.at(t);
+      if (c.path == "rotation") {
+        turns[c.node] = Quat(v[0], v[1], v[2], v[3]);
+      } else if (c.path == "translation") {
+        moves[c.node] = v;
+      }
+    }
+    return [
+      for (var m in gltf.world(turns, moves))
+        turnRound
+            ? [-m.translation[0], m.translation[1], -m.translation[2]]
+            : m.translation,
+    ];
+  });
 }

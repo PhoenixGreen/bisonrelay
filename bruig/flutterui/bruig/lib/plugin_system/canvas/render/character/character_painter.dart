@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
@@ -37,7 +38,9 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
   var life = lifeAt(e, frame, frameRate);
   var (pose, face) = e.performanceAt(frame, frameRate);
   if (staged != null) {
-    pose = pose.withTurn(pose.turn + staged.turn);
+    pose = pose
+        .withTurn(pose.turn + staged.turn)
+        .withTilt((pose.tilt + staged.tilt).clamp(-85.0, 85.0));
     if (staged.shadow case var shadow?) {
       canvas.drawPath(shadow, _shadowPaint(e.shadow, box.height));
     }
@@ -107,7 +110,9 @@ void paintCharacterFigure(
   var look = _Look.of(style);
   void draw(Canvas onto) => body.inThreeD
       ? _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images)
-      : _Drawing(onto, rig, dna, face, life, bare: bare, look: look).draw();
+      : _Drawing(onto, rig, dna, face, life,
+              bare: bare, look: look, images: images)
+          .draw();
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   switch (style) {
@@ -302,8 +307,11 @@ class _Drawing {
 
   final _Look look;
 
+  /// images is where a garment's picture print comes from.
+  final CanvasImageSource? images;
+
   _Drawing(this.canvas, this.rig, this.dna, this.face, this.life,
-      {this.bare = false, this.look = const _Look()});
+      {this.bare = false, this.look = const _Look(), this.images});
 
   double get u => rig.unit;
 
@@ -750,7 +758,30 @@ class _Drawing {
         default:
           break;
       }
+      // A shape of the garment's own, laid on over it.
+      if (g.outline.length >= 3) _cloth(_outlinePath(g.outline), g, i, part: 32);
     }
+  }
+
+  /// _outlinePath is a garment's own outline -- see Garment.outline -- on
+  /// the body as it stands and turns: a smooth curve through its points.
+  Path _outlinePath(List<Offset> points) {
+    var (across, _, half, low) = _torsoFrame;
+    Offset at(Offset p) {
+      var width = half + (low - half) * p.dy.clamp(0.0, 1.0);
+      return Offset.lerp(rig.chest, rig.hips, p.dy)! + across * (width * p.dx);
+    }
+
+    var pts = [for (var p in points) at(p)];
+    var path = Path();
+    Offset mid(int k) =>
+        Offset.lerp(pts[k % pts.length], pts[(k + 1) % pts.length], 0.5)!;
+    path.moveTo(mid(0).dx, mid(0).dy);
+    for (var k = 1; k <= pts.length; k++) {
+      var c = pts[k % pts.length], m = mid(k);
+      path.quadraticBezierTo(c.dx, c.dy, m.dx, m.dy);
+    }
+    return path..close();
   }
 
   /// _frontOf is what is on the front of a garment -- a hood and pocket, a
@@ -1215,7 +1246,7 @@ class _Drawing {
     }
     canvas.save();
     canvas.clipPath(area);
-    _pattern(bounds, g, seed);
+    _pattern(bounds, g, seed, part);
     _wear(area, bounds, g, colour, seed);
     canvas.restore();
     if (shape != null) _outline(shape, colour);
@@ -1309,12 +1340,28 @@ class _Drawing {
   }
 
   /// _pattern prints [g]'s pattern over [bounds], in its second colour.
-  void _pattern(Rect bounds, Garment g, int seed) {
+  void _pattern(Rect bounds, Garment g, int seed, [int part = 0]) {
     var ink = Paint()..color = g.color2.withValues(alpha: 0.85);
     var step = u * 0.1;
     switch (g.pattern) {
       case GarmentPattern.plain:
         return;
+      case GarmentPattern.print:
+        // On the front of the body only -- not down each sleeve -- and not
+        // from behind.
+        if (part != 30 && part != 31) return;
+        if (bodyFacing < 0.2 || g.printId.isEmpty) return;
+        var picture = images?.resolve(g.printId, const BackgroundRemoval());
+        if (picture == null) return;
+        var w = bounds.width * g.printSize * bodyFacing;
+        var h = w * picture.height / math.max(1, picture.width);
+        var centre = Offset(bounds.center.dx, bounds.top + bounds.height * 0.4);
+        canvas.drawImageRect(
+            picture,
+            Rect.fromLTWH(
+                0, 0, picture.width.toDouble(), picture.height.toDouble()),
+            Rect.fromCenter(center: centre, width: w, height: h),
+            Paint()..filterQuality = FilterQuality.medium);
       case GarmentPattern.stripes:
         for (var y = bounds.top; y < bounds.bottom; y += step) {
           canvas.drawRect(

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show ZLibEncoder;
 import 'dart:typed_data';
 
 // canvas_model_fixture.dart builds a little 3D character as a GLB file, for
@@ -38,6 +39,7 @@ int get fixtureBoneCount => _bones.length;
 Uint8List humanoidGlb(
     {bool vrm = false,
     bool facesBack = false,
+    bool animated = false,
     List<double> color = const [0.8, 0.5, 0.3, 1]}) {
   // Where each bone is as it stands.
   var at = <List<double>>[];
@@ -123,6 +125,9 @@ Uint8List humanoidGlb(
     inverse.addAll([-p[0] * flip, -p[1], -p[2] * flip, 1]);
   }
   var ib = put(floats(inverse), 5126, _bones.length, "MAT4");
+  // A second's motion: the left arm brought down from the T to the side.
+  var times = put(floats([0, 1]), 5126, 2, "SCALAR");
+  var down = put(floats([0, 0, 0, 1, 0, 0, -0.70710678, 0.70710678]), 5126, 2, "VEC4");
 
   var nodes = <Map<String, dynamic>>[
     for (var (i, b) in _bones.indexed)
@@ -175,6 +180,21 @@ Uint8List humanoidGlb(
         "pbrMetallicRoughness": {"baseColorFactor": color},
       }
     ],
+    if (animated)
+      "animations": [
+        {
+          "name": "Arm down",
+          "samplers": [
+            {"input": times, "output": down, "interpolation": "LINEAR"}
+          ],
+          "channels": [
+            {
+              "sampler": 0,
+              "target": {"node": 4, "path": "rotation"}
+            }
+          ],
+        }
+      ],
     "buffers": [
       {"byteLength": bin.length}
     ],
@@ -238,4 +258,137 @@ Uint8List humanoidGlb(
   out.setUint32(at2 + 4, 0x004E4942, Endian.little);
   o.setRange(at2 + 8, at2 + 8 + b.length, b);
   return o;
+}
+
+
+/// mixamoFbx is the fixture's skeleton as Mixamo's binary FBX gives one
+/// out, in centimetres, with a second of motion on it: the left arm
+/// brought down from the T to the side, turned round z from 0 to -90
+/// degrees.
+Uint8List mixamoFbx() {
+  var out = BytesBuilder();
+  out.add(latin1.encode("Kaydara FBX Binary  "));
+  out.add([0, 0x1a, 0]);
+  out.add(_u32(7400));
+
+  // A record as bytes, its end offset counted from where it will start.
+  Uint8List record(int start, String name, List<Uint8List> props,
+      List<Uint8List Function(int)> children) {
+    var p = BytesBuilder();
+    for (var x in props) {
+      p.add(x);
+    }
+    var propBytes = p.takeBytes();
+    var headLength = 13 + name.length;
+    var at = start + headLength + propBytes.length;
+    var kids = BytesBuilder();
+    for (var c in children) {
+      var k = c(at);
+      kids.add(k);
+      at += k.length;
+    }
+    if (children.isNotEmpty) {
+      kids.add(Uint8List(13));
+      at += 13;
+    }
+    var b = BytesBuilder();
+    b.add(_u32(at));
+    b.add(_u32(props.length));
+    b.add(_u32(propBytes.length));
+    b.addByte(name.length);
+    b.add(latin1.encode(name));
+    b.add(propBytes);
+    b.add(kids.takeBytes());
+    return b.takeBytes();
+  }
+
+  Uint8List Function(int) node(String name, List<Uint8List> props,
+          [List<Uint8List Function(int)> children = const []]) =>
+      (start) => record(start, name, props, children);
+
+  Uint8List Function(int) p70(Map<String, List<double>> vectors) =>
+      node("Properties70", [], [
+        for (var e in vectors.entries)
+          node("P", [
+            _s(e.key), _s(e.key), _s(""), _s("A"),
+            for (var v in e.value) _d(v),
+          ]),
+      ]);
+
+  var models = <Uint8List Function(int)>[];
+  for (var (i, b) in _bones.indexed) {
+    models.add(node("Model", [
+      _l(1000 + i),
+      _s("${b.$1}\u0000\u0001Model"),
+      _s("LimbNode"),
+    ], [
+      p70({"Lcl Translation": [for (var v in b.$3) v * 100]}),
+    ]));
+  }
+  // The curve node and its three curves.
+  const second = 46186158000;
+  models.add(node("AnimationCurveNode", [_l(2000), _s("R\u0000\u0001AnimCurveNode"), _s("")]));
+  for (var (k, values) in [
+    [0.0, 0.0],
+    [0.0, 0.0],
+    [0.0, -90.0],
+  ].indexed) {
+    models.add(node("AnimationCurve", [
+      _l(3000 + k),
+      _s("\u0000\u0001AnimCurve"),
+      _s(""),
+    ], [
+      node("KeyTime", [_longs([0, second])]),
+      node("KeyValueFloat", [_floats(values, compressed: k == 2)]),
+    ]));
+  }
+  var links = <Uint8List Function(int)>[
+    for (var (i, b) in _bones.indexed)
+      if (b.$2 >= 0) node("C", [_s("OO"), _l(1000 + i), _l(1000 + b.$2)]),
+    for (var (k, axis) in ["d|X", "d|Y", "d|Z"].indexed)
+      node("C", [_s("OP"), _l(3000 + k), _l(2000), _s(axis)]),
+    node("C", [_s("OP"), _l(2000), _l(1004), _s("Lcl Rotation")]),
+  ];
+
+  var at = 27;
+  for (var top in [node("Objects", [], models), node("Connections", [], links)]) {
+    var r = top(at);
+    out.add(r);
+    at += r.length;
+  }
+  out.add(Uint8List(13));
+  return out.takeBytes();
+}
+
+Uint8List _u32(int v) => (ByteData(4)..setUint32(0, v, Endian.little)).buffer.asUint8List();
+Uint8List _s(String v) {
+  var b = latin1.encode(v);
+  return Uint8List.fromList([0x53, ..._u32(b.length), ...b]);
+}
+
+Uint8List _l(int v) => Uint8List.fromList(
+    [0x4C, ...(ByteData(8)..setInt64(0, v, Endian.little)).buffer.asUint8List()]);
+Uint8List _d(double v) => Uint8List.fromList(
+    [0x44, ...(ByteData(8)..setFloat64(0, v, Endian.little)).buffer.asUint8List()]);
+
+Uint8List _longs(List<int> v) {
+  var d = ByteData(v.length * 8);
+  for (var (i, x) in v.indexed) {
+    d.setInt64(i * 8, x, Endian.little);
+  }
+  var raw = d.buffer.asUint8List();
+  return Uint8List.fromList(
+      [0x6C, ..._u32(v.length), ..._u32(0), ..._u32(raw.length), ...raw]);
+}
+
+Uint8List _floats(List<double> v, {bool compressed = false}) {
+  var raw = Float32List.fromList(v).buffer.asUint8List();
+  var data = compressed ? Uint8List.fromList(ZLibEncoder().convert(raw)) : raw;
+  return Uint8List.fromList([
+    0x66,
+    ..._u32(v.length),
+    ..._u32(compressed ? 1 : 0),
+    ..._u32(data.length),
+    ...data,
+  ]);
 }

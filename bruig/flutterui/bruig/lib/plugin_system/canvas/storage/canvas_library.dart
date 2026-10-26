@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
@@ -37,7 +38,11 @@ enum AssetKind {
 
   /// vector is the drawings -- .svg files, kept in their own store and
   /// placed as a Vector element. See VectorElement.
-  vector("Vectors");
+  vector("Vectors"),
+
+  /// model is the 3D characters -- .glb, .gltf and .vrm files -- placed as
+  /// a Character element made of the model. See CharacterBody.
+  model("Models");
 
   final String label;
   const AssetKind(this.label);
@@ -492,6 +497,8 @@ class CanvasLibrary {
               }
             case ImageElement i when i.assetId.isNotEmpty:
               names.putIfAbsent(i.assetId, () => i.name);
+            case CharacterElement c when c.body.modelId.isNotEmpty:
+              names.putIfAbsent(c.body.modelId, () => c.body.modelName);
             default:
               break;
           }
@@ -522,18 +529,27 @@ class CanvasLibrary {
         added: await when(await CanvasAssets.pathOf(id)),
       ));
     }
+    var models = 0;
     for (var kind in MediaKind.values) {
-      // 3D characters are chosen from a character's own settings, not
-      // placed from the library.
-      if (kind == MediaKind.model) continue;
       for (var id in await CanvasMedia.stored(kind)) {
         if (extras.contains(id)) continue;
+        if (kind == MediaKind.model) {
+          var name = names[id];
+          out.add(LibraryAsset(
+            id: id,
+            kind: AssetKind.model,
+            name: name == null || name.isEmpty ? "Model ${++models}" : name,
+            added: await when(await CanvasMedia.existingPath(kind, id)),
+          ));
+          continue;
+        }
         var source = sources[id] ?? MediaSource(assetId: id);
         out.add(LibraryAsset.fromSource(
             switch (kind) {
               MediaKind.video => AssetKind.video,
               MediaKind.audio => AssetKind.audio,
-              MediaKind.vector || MediaKind.model => AssetKind.vector,
+              MediaKind.vector => AssetKind.vector,
+              MediaKind.model => AssetKind.model,
             },
             source,
             added: await when(await CanvasMedia.existingPath(kind, id))));

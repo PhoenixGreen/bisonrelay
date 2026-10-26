@@ -467,7 +467,8 @@ class MotionClip {
       pose = switch (layer) {
         // The body's own turn is where it is facing, which a walk does not
         // change.
-        MotionLayer.body => pose.lerp(move.pose.withTurn(pose.turn), w),
+        MotionLayer.body =>
+          pose.lerp(move.pose.withTurn(pose.turn).withTilt(pose.tilt), w),
         MotionLayer.upper => pose.only(move.pose, upperBones, w),
         MotionLayer.added => pose.plus(move.pose, w),
       };

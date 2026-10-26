@@ -1,3 +1,4 @@
+import AVFoundation
 import Cocoa
 import CoreImage
 import FlutterMacOS
@@ -30,6 +31,11 @@ class MainFlutterWindow: NSWindow {
       name: "bruig/vision",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
     vision.setMethodCallHandler(VisionBridge.handle)
+
+    let capture = FlutterMethodChannel(
+      name: "bruig/capture",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    capture.setMethodCallHandler(CaptureRecorder.shared.handle)
 
     super.awakeFromNib()
   }
@@ -151,9 +157,246 @@ enum VisionBridge {
           }
         }
       }
+    case "bodyPose3D":
+      guard #available(macOS 14.0, *) else {
+        result(FlutterError(code: "unavailable",
+                            message: "Motion from a video needs macOS 14 or later",
+                            details: nil))
+        return
+      }
+      let args = call.arguments as? [String: Any] ?? [:]
+      guard let path = args["path"] as? String else {
+        result(FlutterError(code: "args", message: "No video given", details: nil))
+        return
+      }
+      let fps = args["fps"] as? Double ?? 24
+      let longest = args["seconds"] as? Double ?? 120
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let found = try BodyPoseReader.read(path: path, fps: fps, longest: longest)
+          DispatchQueue.main.async { result(found) }
+        } catch {
+          DispatchQueue.main.async {
+            result(FlutterError(code: "failed",
+                                message: error.localizedDescription, details: nil))
+          }
+        }
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+}
+
+// BodyPoseReader finds a person's body in 3D on each frame of a video, for
+// the canvas's characters to move as they do. Each frame's answer is the
+// seventeen joints Vision knows, in metres from the hips, y up; a frame
+// with nobody found holds the last one found.
+//
+// It answers "names", the joints in Mixamo's names (which the app's
+// retargeting knows), "frames", every frame's joints as x, y and z one
+// after another, "frameTime", and "found", how many frames had a person.
+@available(macOS 14.0, *)
+enum BodyPoseReader {
+  static let joints: [(VNHumanBodyPose3DObservation.JointName, String)] = [
+    (.root, "hips"), (.spine, "spine"), (.centerShoulder, "neck"),
+    (.centerHead, "head"), (.topHead, "headtop_end"),
+    (.leftShoulder, "leftarm"), (.leftElbow, "leftforearm"), (.leftWrist, "lefthand"),
+    (.rightShoulder, "rightarm"), (.rightElbow, "rightforearm"), (.rightWrist, "righthand"),
+    (.leftHip, "leftupleg"), (.leftKnee, "leftleg"), (.leftAnkle, "leftfoot"),
+    (.rightHip, "rightupleg"), (.rightKnee, "rightleg"), (.rightAnkle, "rightfoot"),
+  ]
+
+  static func read(path: String, fps: Double, longest: Double) throws -> [String: Any] {
+    let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+    let seconds = min(CMTimeGetSeconds(asset.duration), longest)
+    guard seconds > 0 else {
+      throw NSError(domain: "bruig.vision", code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "The video could not be read"])
+    }
+    let images = AVAssetImageGenerator(asset: asset)
+    images.appliesPreferredTrackTransform = true
+    images.requestedTimeToleranceBefore = .zero
+    images.requestedTimeToleranceAfter = .zero
+    images.maximumSize = CGSize(width: 1280, height: 1280)
+
+    let count = max(1, Int((seconds * fps).rounded()))
+    var frames: [Double] = []
+    frames.reserveCapacity(count * joints.count * 3)
+    var last: [Double]? = nil
+    var found = 0
+    for f in 0..<count {
+      let time = CMTime(seconds: Double(f) / fps, preferredTimescale: 600)
+      var row: [Double]? = nil
+      if let image = try? images.copyCGImage(at: time, actualTime: nil) {
+        let request = VNDetectHumanBodyPose3DRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        if (try? handler.perform([request])) != nil,
+           let body = request.results?.first {
+          var r: [Double] = []
+          for (joint, _) in joints {
+            if let p = try? body.recognizedPoint(joint) {
+              let c = p.position.columns.3
+              r += [Double(c.x), Double(c.y), Double(c.z)]
+            } else {
+              r += [0, 0, 0]
+            }
+          }
+          row = r
+          found += 1
+        }
+      }
+      if let r = row { last = r }
+      // Before anyone is found, nothing is held yet: those frames are
+      // filled from the first that has someone, below.
+      frames += last ?? Array(repeating: Double.nan, count: joints.count * 3)
+    }
+    if found == 0 {
+      return ["found": 0, "names": joints.map { $0.1 }, "frames": [Double](), "frameTime": 1 / fps]
+    }
+    if let first = frames.firstIndex(where: { !$0.isNaN }) {
+      let fill = Array(frames[first..<(first + joints.count * 3)])
+      for i in stride(from: 0, to: first, by: joints.count * 3) {
+        frames.replaceSubrange(i..<(i + joints.count * 3), with: fill)
+      }
+    }
+    return [
+      "found": found,
+      "names": joints.map { $0.1 },
+      "frames": FlutterStandardTypedData(float64: Data(bytes: frames, count: frames.count * 8)),
+      "frameTime": 1 / fps,
+    ]
+  }
+}
+
+// CaptureRecorder records from the camera or the microphone to a file, for
+// the canvas: a movement for a character to copy, or a voice-over for it to
+// lip sync to. Only when asked -- the app's setting for it is off until it
+// is switched on -- and only ever to a file on this computer.
+//
+// "start" takes "kind", "camera" or "microphone", and answers once
+// recording has begun (macOS asks the person first, the first time);
+// "stop" answers with "path", the file recorded.
+final class CaptureRecorder: NSObject, AVCaptureFileOutputRecordingDelegate {
+  static let shared = CaptureRecorder()
+
+  private var session: AVCaptureSession?
+  private var movie: AVCaptureMovieFileOutput?
+  private var audio: AVAudioRecorder?
+  private var stopped: ((String?, Error?) -> Void)?
+
+  func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    switch call.method {
+    case "start":
+      let kind = args["kind"] as? String ?? "camera"
+      let media: AVMediaType = kind == "camera" ? .video : .audio
+      AVCaptureDevice.requestAccess(for: media) { granted in
+        DispatchQueue.main.async {
+          guard granted else {
+            result(FlutterError(code: "denied",
+              message: kind == "camera"
+                ? "The camera is not allowed. Allow it in System Settings, Privacy & Security, Camera."
+                : "The microphone is not allowed. Allow it in System Settings, Privacy & Security, Microphone.",
+              details: nil))
+            return
+          }
+          do {
+            if kind == "camera" { try self.startCamera() } else { try self.startMicrophone() }
+            result(true)
+          } catch {
+            result(FlutterError(code: "failed", message: error.localizedDescription, details: nil))
+          }
+        }
+      }
+    case "stop":
+      stop { path, error in
+        DispatchQueue.main.async {
+          if let error = error {
+            result(FlutterError(code: "failed", message: error.localizedDescription, details: nil))
+          } else {
+            result(["path": path ?? ""])
+          }
+        }
+      }
+    case "cancel":
+      stop { path, _ in
+        if let path = path { try? FileManager.default.removeItem(atPath: path) }
+      }
+      result(true)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func scratch(_ ext: String) -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("canvas-capture-\(UUID().uuidString).\(ext)")
+  }
+
+  private func startCamera() throws {
+    guard movie == nil, audio == nil else { throw failure("Already recording") }
+    guard let camera = AVCaptureDevice.default(for: .video) else {
+      throw failure("No camera was found")
+    }
+    let session = AVCaptureSession()
+    session.sessionPreset = .high
+    let input = try AVCaptureDeviceInput(device: camera)
+    guard session.canAddInput(input) else { throw failure("The camera could not be used") }
+    session.addInput(input)
+    let output = AVCaptureMovieFileOutput()
+    guard session.canAddOutput(output) else { throw failure("The camera could not record") }
+    session.addOutput(output)
+    session.startRunning()
+    output.startRecording(to: scratch("mov"), recordingDelegate: self)
+    self.session = session
+    self.movie = output
+  }
+
+  private func startMicrophone() throws {
+    guard movie == nil, audio == nil else { throw failure("Already recording") }
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+      AVSampleRateKey: 48000,
+      AVNumberOfChannelsKey: 1,
+      AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+    ]
+    let recorder = try AVAudioRecorder(url: scratch("m4a"), settings: settings)
+    guard recorder.record() else { throw failure("The microphone could not record") }
+    audio = recorder
+  }
+
+  private func stop(_ done: @escaping (String?, Error?) -> Void) {
+    if let recorder = audio {
+      recorder.stop()
+      audio = nil
+      done(recorder.url.path, nil)
+      return
+    }
+    guard let output = movie, output.isRecording else {
+      done(nil, nil)
+      return
+    }
+    stopped = done
+    output.stopRecording()
+  }
+
+  func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL,
+                  from connections: [AVCaptureConnection], error: Error?) {
+    session?.stopRunning()
+    session = nil
+    movie = nil
+    let done = stopped
+    stopped = nil
+    // A recording stopped on purpose can still report an error that only
+    // says it stopped; the file is fine whenever it is there.
+    let kept = FileManager.default.fileExists(atPath: url.path)
+    done?(kept ? url.path : nil, kept ? nil : error)
+  }
+
+  private func failure(_ message: String) -> NSError {
+    NSError(domain: "bruig.capture", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message])
   }
 }
 

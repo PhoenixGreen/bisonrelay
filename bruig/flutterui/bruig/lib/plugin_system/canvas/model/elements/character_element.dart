@@ -77,6 +77,9 @@ String swingChannel(CharacterBone bone) => "$swingChannelPrefix${bone.name}";
 const String turnChannel = "body.turn";
 const String liftChannel = "body.lift";
 
+/// tiltChannel is the channel the view of the body tilted is pinned on.
+const String tiltChannel = "body.tilt";
+
 /// CharacterPose is an angle for each bone, in degrees, relative to the bone
 /// it hangs from -- two of them: [angles], the spread seen from the front,
 /// and [swings], forward and back, seen from the side -- and how the whole
@@ -98,11 +101,18 @@ class CharacterPose {
   /// and the bounce in a walk.
   final double lift;
 
+  /// tilt is the body seen from above, in degrees -- from below as it goes
+  /// negative: an orbit round the character up and over, as [turn] is one
+  /// round it. A body in 3D is seen from there; a drawn one has its limbs
+  /// foreshortened as they would be.
+  final double tilt;
+
   const CharacterPose(
       [this.angles = const {},
       this.swings = const {},
       this.turn = 0,
-      this.lift = 0]);
+      this.lift = 0,
+      this.tilt = 0]);
 
   static const CharacterPose rest = CharacterPose();
 
@@ -111,22 +121,25 @@ class CharacterPose {
   double swing(CharacterBone bone) => swings[bone] ?? 0;
 
   CharacterPose withAngle(CharacterBone bone, double degrees) =>
-      CharacterPose({...angles, bone: degrees}, swings, turn, lift);
+      CharacterPose({...angles, bone: degrees}, swings, turn, lift, tilt);
 
   CharacterPose withAngles(Map<CharacterBone, double> more) =>
-      CharacterPose({...angles, ...more}, swings, turn, lift);
+      CharacterPose({...angles, ...more}, swings, turn, lift, tilt);
 
   CharacterPose withSwing(CharacterBone bone, double degrees) =>
-      CharacterPose(angles, {...swings, bone: degrees}, turn, lift);
+      CharacterPose(angles, {...swings, bone: degrees}, turn, lift, tilt);
 
   CharacterPose withSwings(Map<CharacterBone, double> more) =>
-      CharacterPose(angles, {...swings, ...more}, turn, lift);
+      CharacterPose(angles, {...swings, ...more}, turn, lift, tilt);
 
   CharacterPose withTurn(double degrees) =>
-      CharacterPose(angles, swings, degrees, lift);
+      CharacterPose(angles, swings, degrees, lift, tilt);
 
   CharacterPose withLift(double heads) =>
-      CharacterPose(angles, swings, turn, heads);
+      CharacterPose(angles, swings, turn, heads, tilt);
+
+  CharacterPose withTilt(double degrees) =>
+      CharacterPose(angles, swings, turn, lift, degrees);
 
   /// lerp is this pose [t] of the way to [other], bone by bone.
   CharacterPose lerp(CharacterPose other, double t) {
@@ -137,7 +150,7 @@ class CharacterPose {
       for (var b in CharacterBone.values) b: mix(this[b], other[b]),
     }, {
       for (var b in CharacterBone.values) b: mix(swing(b), other.swing(b)),
-    }, mix(turn, other.turn), mix(lift, other.lift));
+    }, mix(turn, other.turn), mix(lift, other.lift), mix(tilt, other.tilt));
   }
 
   /// plus is this pose with [other] added to it, [weight] of it: a motion
@@ -148,7 +161,8 @@ class CharacterPose {
       }, {
         for (var b in CharacterBone.values)
           b: swing(b) + other.swing(b) * weight,
-      }, turn + other.turn * weight, lift + other.lift * weight);
+      }, turn + other.turn * weight, lift + other.lift * weight,
+          tilt + other.tilt * weight);
 
   /// only is this pose with only [bones] taken from [other], [weight] of the
   /// way: a wave laid over the arm of a walk, and nothing else of it.
@@ -162,7 +176,7 @@ class CharacterPose {
           b: bones.contains(b)
               ? swing(b) + (other.swing(b) - swing(b)) * weight
               : swing(b),
-      }, turn, lift);
+      }, turn, lift, tilt);
 
   /// over is this pose with whatever [frame]'s keyframe pins in its place:
   /// the pose the character has at that frame.
@@ -174,9 +188,12 @@ class CharacterPose {
       if (v[boneChannel(bone)] case var x?) (a ??= {...angles})[bone] = x;
       if (v[swingChannel(bone)] case var x?) (s ??= {...swings})[bone] = x;
     }
-    var t = v[turnChannel], l = v[liftChannel];
-    if (a == null && s == null && t == null && l == null) return this;
-    return CharacterPose(a ?? angles, s ?? swings, t ?? turn, l ?? lift);
+    var t = v[turnChannel], l = v[liftChannel], k = v[tiltChannel];
+    if (a == null && s == null && t == null && l == null && k == null) {
+      return this;
+    }
+    return CharacterPose(
+        a ?? angles, s ?? swings, t ?? turn, l ?? lift, k ?? tilt);
   }
 
   /// channels is every bone as keyframe channels, at rest ones included: a
@@ -189,6 +206,7 @@ class CharacterPose {
         },
         turnChannel: turn,
         liftChannel: lift,
+        tiltChannel: tilt,
       };
 
   Map<String, dynamic> toJson() => {
@@ -201,6 +219,7 @@ class CharacterPose {
           },
         if (turn != 0) "turn": turn,
         if (lift != 0) "lift": lift,
+        if (tilt != 0) "tilt": tilt,
       };
 
   factory CharacterPose.fromJson(Object? json) {
@@ -213,7 +232,8 @@ class CharacterPose {
                 bone: (e.value as num).toDouble(),
         };
     return CharacterPose(bones(json), bones(json["swing"]),
-        jsonDouble(json["turn"], 0), jsonDouble(json["lift"], 0));
+        jsonDouble(json["turn"], 0), jsonDouble(json["lift"], 0),
+        jsonDouble(json["tilt"], 0).clamp(-85.0, 85.0));
   }
 }
 

@@ -40,12 +40,37 @@ class Bvh {
   double get seconds => frames.length * frameTime;
 }
 
-/// BvhError is a file that is not BVH, or not BVH this can read.
-class BvhError implements Exception {
+/// MotionError is a motion file that cannot be read, or whose skeleton is
+/// missing a joint our bones need -- BVH, FBX, glTF or capture alike.
+class MotionError implements Exception {
   final String message;
-  const BvhError(this.message);
+  const MotionError(this.message);
   @override
   String toString() => message;
+}
+
+/// BvhError is the name a BVH's MotionError had first.
+typedef BvhError = MotionError;
+
+/// JointMotion is a skeleton moving, from whatever file or capture: its
+/// joints' names and, frame by frame, where each joint is -- y up, in any
+/// unit. What every source of motion is turned into before it is
+/// retargeted on to a character; see motionPoses.
+class JointMotion {
+  final List<String> names;
+  final int frameCount;
+
+  /// frameTime is the seconds between frames.
+  final double frameTime;
+
+  /// positionsAt is where each joint is on frame [f], in the order of
+  /// [names].
+  final List<List<double>> Function(int f) positionsAt;
+
+  const JointMotion(
+      this.names, this.frameCount, this.frameTime, this.positionsAt);
+
+  double get seconds => frameCount * frameTime;
 }
 
 /// parseBvh reads [text], or throws a BvhError saying what was wrong.
@@ -145,6 +170,9 @@ _Mat _turn(String axis, double degrees) {
 }
 
 /// _positions is where each joint of [bvh] is in frame [f].
+/// bvhPositions is where each joint of [bvh] is in frame [f].
+List<List<double>> bvhPositions(Bvh bvh, int f) => _positions(bvh, f);
+
 List<List<double>> _positions(Bvh bvh, int f) {
   var row = bvh.frames[f];
   var turns = <_Mat>[];
@@ -184,10 +212,10 @@ List<List<double>> _positions(Bvh bvh, int f) {
 
 /// _find is the joint whose name, without any "prefix:", is one of [names],
 /// ignoring case -- the names the common rigs use for the same joint.
-int _find(Bvh bvh, List<String> names) {
+int _find(List<String> joints, List<String> names) {
   for (var name in names) {
-    for (var (i, j) in bvh.joints.indexed) {
-      var n = j.name.split(":").last.toLowerCase();
+    for (var (i, j) in joints.indexed) {
+      var n = j.split(":").last.toLowerCase();
       if (n == name) return i;
     }
   }
@@ -200,7 +228,7 @@ class _BvhRig {
   final int lUpLeg, lLeg, lFoot, rUpLeg, rLeg, rFoot;
   final int lArm, lForeArm, lHand, rArm, rForeArm, rHand;
 
-  _BvhRig(Bvh b)
+  _BvhRig(List<String> b)
       : hips = _find(b, ["hips", "hip", "pelvis", "root"]),
         chest = _find(b, ["neck", "spine2", "chest2", "chest", "spine1", "spine"]),
         head = _find(b, ["head"]),
@@ -241,18 +269,33 @@ class _BvhRig {
 /// bvhPoses is [bvh] as poses of a character [headsTall] heads tall, one for
 /// each frame at [frameRate], from its first frame. Throws a BvhError when
 /// the skeleton is missing a joint our bones need.
-///
-/// The BVH's left is the character's own left, which faces the reader on
-/// the page's right -- our "R" bones.
 List<CharacterPose> bvhPoses(Bvh bvh,
+        {required int frameRate, required double headsTall}) =>
+    motionPoses(
+        JointMotion([for (var j in bvh.joints) j.name], bvh.frames.length,
+            bvh.frameTime, (f) => _positions(bvh, f)),
+        frameRate: frameRate,
+        headsTall: headsTall);
+
+/// motionPoses is [motion] as poses of a character [headsTall] heads tall,
+/// one for each frame at [frameRate], from its first frame. Throws a
+/// MotionError when the skeleton is missing a joint our bones need.
+///
+/// The skeleton's left is the character's own left, which faces the reader
+/// on the page's right -- our "R" bones.
+List<CharacterPose> motionPoses(JointMotion motion,
     {required int frameRate, required double headsTall}) {
-  var rig = _BvhRig(bvh);
+  var rig = _BvhRig(motion.names);
   if (rig.missing.isNotEmpty) {
-    throw BvhError("The skeleton has no joint for the "
+    throw MotionError("The skeleton has no joint for the "
         "${rig.missing.join(", ")}.");
   }
-  // How far a lift is: the BVH's own leg length is our leg's, in heads.
-  var rest = _positions(bvh, 0);
+  if (motion.frameCount <= 0) {
+    throw const MotionError("The file has no frames of motion in it.");
+  }
+  // How far a lift is: the skeleton's own leg length is our leg's, in
+  // heads.
+  var rest = motion.positionsAt(0);
   double dist(List<double> a, List<double> b) => math.sqrt(
       math.pow(a[0] - b[0], 2) + math.pow(a[1] - b[1], 2) + math.pow(a[2] - b[2], 2));
   var leg = dist(rest[rig.lUpLeg], rest[rig.lLeg]) +
@@ -261,11 +304,11 @@ List<CharacterPose> bvhPoses(Bvh bvh,
   var groundHips = rest[rig.hips][1];
 
   var out = <CharacterPose>[];
-  var count = math.max(1, (bvh.seconds * frameRate).round());
+  var count = math.max(1, (motion.seconds * frameRate).round());
   for (var f = 0; f < count; f++) {
-    var src = math.min(bvh.frames.length - 1,
-        (f / frameRate / bvh.frameTime).round());
-    var p = _positions(bvh, src);
+    var src = math.min(motion.frameCount - 1,
+        (f / frameRate / motion.frameTime).round());
+    var p = motion.positionsAt(src);
     List<double> sub(int a, int b) =>
         [p[b][0] - p[a][0], p[b][1] - p[a][1], p[b][2] - p[a][2]];
 

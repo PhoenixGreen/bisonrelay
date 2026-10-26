@@ -150,7 +150,13 @@ class Staging {
   /// shadow is its shadow on the floor, or null in a light with none.
   final Path? shadow;
 
-  const Staging(this.box, this.depth, this.turn, this.light, this.shadow);
+  /// tilt is how far above it the camera looks down on it, in degrees:
+  /// added to the character's own tilt, so it is seen from where the
+  /// camera is.
+  final double tilt;
+
+  const Staging(this.box, this.depth, this.turn, this.light, this.shadow,
+      [this.tilt = 0]);
 }
 
 /// staging is [e] as it stands on its stage among [elements] on [frame], or
@@ -186,8 +192,12 @@ Staging? staging(
     }
     if (points.length >= 3) shadow = Path()..addPolygon(points, true);
   }
-  return Staging(box, feet.depth, stage.cameraAt(frame).yaw + on.facing,
-      stage.light, shadow);
+  // Seen from the camera's height: the angle down to the middle of the
+  // body.
+  var camera = stage.cameraAt(frame);
+  var tilt = view.lookingDown(on.x, on.height / 2, on.z).clamp(-85.0, 85.0);
+  return Staging(box, feet.depth, camera.yaw + on.facing, stage.light, shadow,
+      tilt);
 }
 
 /// inStageOrder is [elements] in the order they are drawn: each character

@@ -23,6 +23,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _lastFolderKey = "canvasLastFolder";
   static const _lastNameKey = "canvasLastName";
   static const _allowFetchingKey = "canvasAllowFetching";
+  static const _allowCaptureKey = "canvasAllowCapture";
   static const _fitKey = "canvasFit";
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
@@ -67,6 +68,21 @@ class CanvasPreferences extends ChangeNotifier {
   /// does the same job with no connection at all.
   bool get allowFetching => _allowFetching;
   bool _allowFetching = false;
+
+  /// allowCapture is whether the canvas may record from the camera and the
+  /// microphone -- a movement for a character to copy, a voice-over for it
+  /// to speak. Off until switched on, and macOS asks as well the first
+  /// time: a design tool that can turn the camera on is one that has to be
+  /// asked to.
+  bool get allowCapture => _allowCapture;
+  bool _allowCapture = false;
+
+  set allowCapture(bool value) {
+    if (_allowCapture == value) return;
+    _allowCapture = value;
+    StorageManager.saveBool(_allowCaptureKey, value);
+    notifyListeners();
+  }
 
   /// fit is how the canvas is framed -- the whole of it, or the full width.
   ///
@@ -190,6 +206,8 @@ class CanvasPreferences extends ChangeNotifier {
     _lastName = await StorageManager.readString(_lastNameKey);
     _allowFetching =
         await StorageManager.readBool(_allowFetchingKey, defaultVal: false);
+    _allowCapture =
+        await StorageManager.readBool(_allowCaptureKey, defaultVal: false);
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
@@ -49,6 +50,15 @@ CanvasElement elementForAsset(LibraryAsset asset, CanvasDocument document,
       var e = newElement(ElementKind.vector, document, center: center)
           as VectorElement;
       return shaped(e.copyWith(assetId: asset.id)).withBase(name: asset.name);
+    case AssetKind.model:
+      // A character made of the model, standing where it was let go.
+      var e = newElement(ElementKind.character, document, center: center)
+          as CharacterElement;
+      return e
+          .copyWith(
+              body: e.body.copyWith(
+                  kind: BodyKind.model, modelId: asset.id, modelName: asset.name))
+          .withBase(name: asset.name);
     case AssetKind.audio:
       var e = newElement(ElementKind.audio, document, center: center)
           as AudioElement;

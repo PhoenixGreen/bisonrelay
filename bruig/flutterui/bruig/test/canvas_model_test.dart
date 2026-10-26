@@ -19,6 +19,7 @@ import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -231,6 +232,57 @@ void main() {
           body: const CharacterBody(kind: BodyKind.model, modelId: "m"),
           images: src));
       expect(await draw(0), isNot(await draw(90)));
+    });
+  });
+
+  group("pins on a model", () {
+    late LoadedModel model;
+    setUpAll(() async => model = await loadModel(humanoidGlb()));
+
+    CharacterElement who(CharacterPose pose) => CharacterElement(
+        const ElementBase(id: "c", x: 100, y: 50, width: 160, height: 340),
+        dna: characterCast.first.dna,
+        pose: pose,
+        life: CharacterLife.still,
+        body: const CharacterBody(kind: BodyKind.model, modelId: "m"));
+
+    test("sit on the model's joints, not the rig's", () {
+      var e = who(CharacterElement.restPose);
+      var drawn = CharacterPlacement.of(e, 0);
+      var placed = CharacterPlacement.of(e, 0, models: _Models(model));
+      expect(placed.model, isNotEmpty);
+      expect(placed.pin(CharacterPin.handR),
+          isNot(drawn.pin(CharacterPin.handR)));
+      expect(placed.pin(CharacterPin.handR),
+          placed.model[RigJoint.wristR]!.page);
+    });
+
+    test("a hand dragged lands the model's hand where it was dropped", () {
+      var e = who(CharacterElement.restPose);
+      var placed = CharacterPlacement.of(e, 0, models: _Models(model));
+      var shoulder = placed.model[RigJoint.shoulderR]!.page;
+      var hand = placed.pin(CharacterPin.handR);
+      // Half way up towards the shoulder, out to the side: in reach.
+      var target = shoulder + Offset((hand - shoulder).distance * 0.6, -20);
+      var pose = placed.posedBy(CharacterPin.handR, target);
+      var after = CharacterPlacement.of(who(pose), 0, models: _Models(model));
+      expect((after.pin(CharacterPin.handR) - target).distance, lessThan(4));
+    });
+  });
+
+  group("drawing a model again", () {
+    test("the same posing is not worked out twice", () async {
+      var model = await loadModel(humanoidGlb());
+      var rig = _rig(CharacterElement.restPose);
+      var box = const Rect.fromLTWH(0, 0, 200, 400);
+      var a = model.pieces(rig, CharacterFace.rest, box);
+      expect(identical(model.pieces(rig, CharacterFace.rest, box).$2, a.$2),
+          isTrue);
+      expect(
+          identical(
+              model.pieces(_rig(posePresets[1].pose), CharacterFace.rest, box).$2,
+              a.$2),
+          isFalse);
     });
   });
 

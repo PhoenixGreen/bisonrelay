@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -58,6 +59,7 @@ Future<LibraryAsset?> fetchStockItem(
       AssetKind.vector => ".svg",
       AssetKind.video => ".mp4",
       AssetKind.audio => ".mp3",
+      AssetKind.model => ".glb",
     };
   }
 
@@ -71,6 +73,7 @@ Future<LibraryAsset?> fetchStockItem(
           AssetKind.vector => MediaKind.vector.maxBytes,
           AssetKind.video => MediaKind.video.maxBytes,
           AssetKind.audio => MediaKind.audio.maxBytes,
+          AssetKind.model => MediaKind.model.maxBytes,
         },
         allowFetching: allowFetching,
         proxied: proxied);
@@ -108,6 +111,13 @@ Future<LibraryAsset?> fetchStockItem(
       case AssetKind.audio:
         if (!context.mounted) return null;
         id = (await addCanvasAudio(context, controller, file.path))?.assetId;
+      case AssetKind.model:
+        try {
+          id = (await storeModel(file.path)).id;
+        } catch (e) {
+          report("${item.title} is not a model the canvas can keep: $e");
+          return null;
+        }
     }
     // The video and audio imports have said why already.
     if (id == null) return null;

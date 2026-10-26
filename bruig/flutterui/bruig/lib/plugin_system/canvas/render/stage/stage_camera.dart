@@ -79,6 +79,14 @@ class StageView {
     );
   }
 
+  /// lookingDown is how far down the camera looks to see [x], [y], [z], in
+  /// degrees: the angle from level to the line from its eye -- negative
+  /// looking up.
+  double lookingDown(double x, double y, double z) {
+    var dx = x - _eye.x, dz = z - _eye.z;
+    return math.atan2(_eye.y - y, math.sqrt(dx * dx + dz * dz)) * 180 / math.pi;
+  }
+
   /// scaleAt is how many page units one metre is at [depth].
   double scaleAt(double depth) => _focal / math.max(depth, nearest);
 

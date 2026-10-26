@@ -465,6 +465,10 @@ class CanvasController extends ChangeNotifier {
     super.notifyListeners();
   }
 
+  /// arrived says something the settings draw from has finished loading --
+  /// a model their tiles show -- so they are drawn again with it.
+  void arrived() => notifyListeners();
+
   /// restoreFit puts back the frame the reader last chose, without telling
   /// anybody.
   ///

@@ -35,5 +35,9 @@
     	<key>NSAllowsArbitraryLoads</key>
     	<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>The Canvas records you moving so a character can move the same way, when you choose to.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The Canvas records a voice-over for a character to lip sync to, when you choose to.</string>
 </dict>
 </plist>
