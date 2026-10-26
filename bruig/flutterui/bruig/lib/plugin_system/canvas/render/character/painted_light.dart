@@ -127,23 +127,48 @@ class PaintedBuffers {
   }
 }
 
+/// _lit is the last few figures lit, by what they were drawn from: the
+/// picture and where it went against the figure's own corner. A canvas
+/// drawn again -- a selection, a hover, a figure dragged along -- draws the
+/// picture it already has.
+final Map<String, (Rect, Image)> _lit = {};
+const int _litKept = 12;
+
 /// paintPainted draws [figure] -- the sketch, drawn as flat colour onto
 /// the canvas it is given, laying its shapes into the buffers -- lit as
 /// [look] says, filling [room] on [onto]. False when the shader is not
 /// loaded: nothing is drawn, and the caller draws it as it would have.
+///
+/// [key] is everything the figure is drawn from but where it is: drawn
+/// again from the same, it is the picture made last time, put where
+/// [room] is now.
 bool paintPainted(Canvas onto, Rect room, PaintedLook look,
-    void Function(Canvas flat, PaintedBuffers buffers) figure) {
+    void Function(Canvas flat, PaintedBuffers buffers) figure,
+    {String? key}) {
   var program = PaintShader.program;
   if (program == null) {
     PaintShader.load();
     return false;
   }
-  // Drawn at twice the size it is seen at, no bigger than sensible.
   var m = onto.getTransform();
   var seen = math.sqrt(m[0] * m[0] + m[1] * m[1]).clamp(0.25, 8.0);
-  var scale = seen * 2;
+  var full = key == null ? null : "$key|${seen.toStringAsFixed(3)}|${room.size}";
+  if (full != null) {
+    if (_lit.remove(full) case (var at, var image)?) {
+      _lit[full] = (at, image);
+      onto.drawImageRect(
+          image,
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+          at.shift(room.topLeft),
+          Paint()..filterQuality = FilterQuality.medium);
+      return true;
+    }
+  }
+  // Drawn a little larger than it is seen -- the light is soft, and every
+  // pixel more is more to blur -- and no bigger than sensible.
+  var scale = seen * 1.25;
   var longest = math.max(room.width, room.height) * scale;
-  if (longest > 2400) scale *= 2400 / longest;
+  if (longest > 1800) scale *= 1800 / longest;
   var w = math.max(1, (room.width * scale).ceil());
   var h = math.max(1, (room.height * scale).ceil());
   var flatRecorder = PictureRecorder();
@@ -194,8 +219,17 @@ bool paintPainted(Canvas onto, Rect room, PaintedLook look,
   var picture = lit.endRecording().toImageSync(w, h);
   onto.drawImageRect(picture, Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), room,
       Paint()..filterQuality = FilterQuality.medium);
-  for (var i in [albedo, height, part, picture]) {
+  for (var i in [albedo, height, part]) {
     i.dispose();
+  }
+  if (full != null) {
+    _lit[full] = (Offset.zero & room.size, picture);
+    while (_lit.length > _litKept) {
+      var first = _lit.keys.first;
+      _lit.remove(first)!.$2.dispose();
+    }
+  } else {
+    picture.dispose();
   }
   return true;
 }

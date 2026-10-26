@@ -296,6 +296,23 @@ const List<PosePreset> posePresets = [
         CharacterBone.shinL: -3,
         CharacterBone.thighR: -2,
       })),
+  // Weight on one leg, the hips tilted up on that side and the shoulders
+  // the other way, the free knee easy and the head inclined: the stance a
+  // character sheet draws a figure in.
+  PosePreset(
+      "Contrapposto",
+      CharacterPose({
+        CharacterBone.hips: 7,
+        CharacterBone.spine: -4,
+        CharacterBone.head: 6,
+        CharacterBone.upperArmL: 9,
+        CharacterBone.foreArmL: -8,
+        CharacterBone.upperArmR: -14,
+        CharacterBone.foreArmR: 18,
+        CharacterBone.thighL: 4,
+        CharacterBone.thighR: -9,
+        CharacterBone.shinR: 10,
+      })),
 ];
 
 /// ExpressionPreset is one ready-made feeling.

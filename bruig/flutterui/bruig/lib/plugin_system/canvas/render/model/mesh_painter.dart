@@ -441,9 +441,9 @@ bool paintMeshesInked(Canvas canvas, Offset origin, List<MeshPiece> pieces,
   var order = _sorted(pieces);
   if (order.isEmpty) return true;
   bounds = bounds.inflate(look.outline * 2 + 2);
-  // Drawn at twice the size it is seen at, for smooth edges; no bigger
-  // than a picture can sensibly be.
-  var scale = seen * 2;
+  // Drawn half as large again as it is seen at, for smooth edges; no
+  // bigger than a picture can sensibly be.
+  var scale = seen * 1.5;
   var longest = math.max(bounds.width, bounds.height) * scale;
   if (longest > 2400) scale *= 2400 / longest;
   var w = math.max(1, (bounds.width * scale).ceil());
@@ -562,7 +562,9 @@ class _Run {
           colors[k] = _argb(1, whole, (t - whole) * 255, 0);
         case _Pass.shade:
           var sc = p.toon == null && shade != null ? shade : toon.shade;
-          colors[k] = _argb(1, sc.r, sc.g, sc.b);
+          // Hair cut out of cards is marked by a shade a little see-through,
+          // for the light to give it a sheen and no lines between cards.
+          colors[k] = _argb(p.cutOut ? 0.6 : 1, sc.r, sc.g, sc.b);
         default:
           colors[k] = 0xFF000000;
       }

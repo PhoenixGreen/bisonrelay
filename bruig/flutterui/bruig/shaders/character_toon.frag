@@ -73,8 +73,11 @@ void main() {
   vec3 n = normalAt(uv);
   float ndl = dot(n, normalize(uLight));
   vec3 colour;
+  // Hair, cut out of cards: its shade drawn a little see-through.
+  vec4 sh = texture(uShade, uv);
+  bool hair = sh.a > 0.25 && sh.a < 0.8;
   if (uMode > 0.5) {
-    vec4 s = texture(uShade, uv);
+    vec4 s = sh;
     vec3 shade = s.a > 0.0 ? s.rgb / s.a : vec3(0.72, 0.66, 0.84);
     float soft = max(0.02, 1.0 - uToony);
     float lit = clamp((ndl + uShift + soft * 0.5) / soft, 0.0, 1.0);
@@ -96,6 +99,11 @@ void main() {
     colour = base * min(k, 1.1);
   }
   colour += uRim.rgb * uRim.a * pow(1.0 - clamp(abs(n.z), 0.0, 1.0), uRimPower);
+  // A band of sheen across hair where it turns towards the light.
+  if (hair) {
+    float band = exp(-pow((ndl - 0.5) / 0.14, 2.0));
+    colour += vec3(1.0, 0.95, 0.85) * band * 0.22;
+  }
 
   // Lines inside: where one part stands in front of another, or the
   // surface turns sharply, or the colour changes, as at a cuff. Depth is
@@ -114,6 +122,11 @@ void main() {
       vec4 c1 = texture(uAlbedo, q1);
       vec4 c2 = texture(uAlbedo, q2);
       if (c1.a < 0.5 || c2.a < 0.5) continue;
+      // Within hair, one card over another is no line.
+      if (hair) {
+        vec4 s1 = texture(uShade, q1), s2 = texture(uShade, q2);
+        if (s1.a > 0.25 && s1.a < 0.8 && s2.a > 0.25 && s2.a < 0.8) continue;
+      }
       float bend = abs(depthAt(q1) + depthAt(q2) - 2.0 * d0);
       edge = max(edge, smoothstep(0.025, 0.06, bend));
       float nd = max(1.0 - dot(normalAt(q1), n), 1.0 - dot(normalAt(q2), n));

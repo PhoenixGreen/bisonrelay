@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'dart:ui' as ui;
@@ -136,7 +137,19 @@ void paintCharacterFigure(
           ),
           (flat, buffers) => _Drawing(flat, rig, dna, face, life,
                   bare: bare, look: look, images: images, painted: buffers)
-              .draw());
+              .draw(),
+          // A garment's picture print comes from the images, which are not
+          // part of this: a figure wearing one is drawn afresh each time.
+          key: dna.worn.any((g) => g.printId.isNotEmpty)
+              ? null
+              : jsonEncode([
+                  dna.toJson(),
+                  pose.toJson(),
+                  face.toJson(),
+                  [life.blink, life.breath, life.lookX, life.lookY],
+                  style.name,
+                  bare,
+                ]));
       if (lit) return;
     }
     _Drawing(onto, rig, dna, face, life, bare: bare, look: look, images: images)
@@ -473,6 +486,11 @@ enum _Hair {
 
   /// strands is smooth hair with fine strands drawn through it.
   strands,
+
+  /// flowing is a feature film's hair: full at the crown, parted deep to
+  /// one side with the fringe sweeping across the brow, and strands
+  /// flowing out from the parting.
+  flowing,
 }
 
 /// _Nose is how a style draws a nose seen from the front.
@@ -528,7 +546,7 @@ class _Look {
             ink: Color(0xFF7A5040),
             shading: _Shading.painted,
             eyes: _Eyes.feature,
-            hair: _Hair.soft,
+            hair: _Hair.flowing,
             nose: _Nose.small,
             limbs: 0.92),
         CharacterStyle.featureCartoon => const _Look(
@@ -1924,7 +1942,17 @@ class _Drawing {
       _stroke(points, width, colour);
       return;
     }
-    _fill(_limbShape(points, width, leg: leg), colour);
+    var shape = _limbShape(points, width, leg: leg);
+    _solid(shape.getBounds(), colour, (p) => canvas.drawPath(shape, p));
+    // No line where it joins the body: the shoulder or the hip and the
+    // limb are one form, not a limb stuck on.
+    canvas.save();
+    canvas.clipPath(Path.combine(
+        PathOperation.difference,
+        Path()..addRect(shape.getBounds().inflate(width)),
+        Path()..addOval(Rect.fromCircle(center: points.first, radius: width * 0.7))));
+    _outline(shape, colour);
+    canvas.restore();
   }
 
   /// _limbShape is the outline of a limb through [points] [width] across
@@ -1972,26 +2000,39 @@ class _Drawing {
       return width;
     }
 
-    var left = <Offset>[], right = <Offset>[];
+    // Down its middle, finely, then out each side square to the way it
+    // runs there -- turning smoothly round an elbow or a knee rather than
+    // in a kink.
+    var middle = <Offset>[], at = <double>[];
     for (var i = 0; i + 1 < points.length; i++) {
       var a = points[i], b = points[i + 1];
-      var d = b - a;
-      var len = d.distance;
+      var len = (b - a).distance;
       if (len < 1e-6) continue;
-      var n = Offset(-d.dy / len, d.dx / len);
-      const steps = 10;
+      const steps = 12;
       for (var k = 0; k <= steps; k++) {
-        if (k == 0 && i > 0) continue;
-        var f = k / steps;
-        var p = Offset.lerp(a, b, f)!;
-        var w = widthAt((lengths[i] + len * f) / total) / 2;
-        left.add(p + n * w);
-        right.add(p - n * w);
+        if (k == 0 && middle.isNotEmpty) continue;
+        middle.add(Offset.lerp(a, b, k / steps)!);
+        at.add((lengths[i] + len * k / steps) / total);
       }
     }
+    if (middle.length < 2) return _capsule(points, width);
+    var left = <Offset>[], right = <Offset>[];
+    for (var k = 0; k < middle.length; k++) {
+      // Its direction averaged over a little way either side.
+      var back = middle[math.max(0, k - 3)], ahead = middle[math.min(middle.length - 1, k + 3)];
+      var d = ahead - back;
+      var len = d.distance;
+      if (len < 1e-6) d = middle.last - middle.first;
+      len = d.distance == 0 ? 1.0 : d.distance;
+      var n = Offset(-d.dy / len, d.dx / len);
+      var w = widthAt(at[k]) / 2;
+      left.add(middle[k] + n * w);
+      right.add(middle[k] - n * w);
+    }
     var shape = Path()..addPolygon([...left, ...right.reversed], true);
-    // Round at the root, at every joint and at the end.
-    for (var i = 0; i < points.length; i++) {
+    // Round at the root and the end; round at the joint on the outside of
+    // the bend.
+    for (var i in [0, points.length - 1, if (points.length == 3) 1]) {
       var w = widthAt(lengths[i] / total) / 2;
       shape = Path.combine(PathOperation.union, shape,
           Path()..addOval(Rect.fromCircle(center: points[i], radius: w)));
@@ -2283,7 +2324,9 @@ class _Drawing {
         ? 1.9 + (len > 0 ? 5.0 : 1.3) * len
         : 1.0 + 1.6 * (len - 0.35);
     var wide = 1 + 0.15 * _a(Look.hairVolume);
-    var w = r.width * 1.1 * wide, top = r.height * 1.06;
+    // Flowing hair stands out from the head, full at the sides.
+    var full = look.hair == _Hair.flowing ? 1.22 : 1.1;
+    var w = r.width * full * wide, top = r.height * (full - 0.04);
     var low = r.height * bottom;
     // Below the neck, long hair spreads over the back to the shoulders'
     // width, so it shows either side of the body.
@@ -2321,6 +2364,23 @@ class _Drawing {
     }
     back.close();
     _fill(back, dna.hair);
+    if (look.hair == _Hair.flowing) {
+      // Strands falling from the crown, waving as they go.
+      canvas.save();
+      canvas.clipPath(back);
+      var dark = _feature(math.max(0.5, u * 0.012), _shade(dna.hair, 0.28).withValues(alpha: 0.5));
+      for (var k = 0; k < 9; k++) {
+        var x = -bottomHalf * 0.9 + bottomHalf * 1.8 * k / 8;
+        var strand = Path()..moveTo(x * 0.3, -r.height * 0.9);
+        for (var j = 1; j <= 6; j++) {
+          var y = -r.height * 0.9 + (low + r.height * 0.9) * j / 6;
+          var wave = math.sin(j * 1.3 + k) * r.width * 0.08 * j / 6;
+          strand.lineTo(x * (0.3 + 0.7 * j / 6) + wave, y);
+        }
+        canvas.drawPath(strand, dark);
+      }
+      canvas.restore();
+    }
     _highlights(back, r.width, low);
   }
 
@@ -2356,7 +2416,7 @@ class _Drawing {
         Offset(rig.chest.dx + side * rig.shoulderHalf * 0.92 * lean,
             hc.dy + (bottom - hc.dy) * short),
       ];
-      var thick = w * 0.42 * wide * thin;
+      var thick = w * (look.hair == _Hair.flowing ? 0.56 : 0.42) * wide * thin;
       var left = <Offset>[], right = <Offset>[];
       const steps = 36;
       Offset at(double t) {
@@ -2688,6 +2748,15 @@ class _Drawing {
     canvas.scale((0.55 + 0.45 * facing.clamp(0.0, 1.0)) * volume, volume);
     _fill(cap, dna.hair);
     _shine(cap, w, h);
+    if (look.hair == _Hair.flowing) {
+      var p = Offset(_parting(w), -h * 0.8);
+      _flowStrands(cap, p, [
+        for (var k = 0; k < 9; k++)
+          Offset(-w * 1.05 + w * 0.55 * k / 8, -h * 0.9 + h * 1.0 * k / 8),
+        for (var k = 0; k < 4; k++)
+          Offset(w * 0.95 + w * 0.08 * k / 3, -h * 0.75 + h * 0.75 * k / 3),
+      ]);
+    }
     _highlights(cap, w, h);
     canvas.restore();
   }
@@ -2696,6 +2765,7 @@ class _Drawing {
   /// [down] lower for a longer fringe, its low point moved [part] to the
   /// parting -- its edge smooth, or pointed locks in a style that clumps.
   Path _capPath(double w, double h, double down, double part) {
+    if (look.hair == _Hair.flowing) return _flowingCap(w, h, down, part);
     var a0 = Offset(w * 1.04, h * 0.12);
     var c1 = Offset(w * 0.86, -h * 0.4 + down);
     var c2 = Offset(w * 0.2 + part, -h * 0.62 + down);
@@ -2734,6 +2804,50 @@ class _Drawing {
       cap.quadraticBezierTo(b.dx, b.dy + spike * 0.2, b.dx, b.dy);
     }
     return cap..close();
+  }
+
+  /// _parting is where flowing hair parts, across the head: deep to one
+  /// side, further as the Appearance says.
+  double _parting(double w) => w * (0.38 + 0.4 * _a(Look.parting));
+
+  /// _flowingCap is flowing hair over the top of the head: fuller than the
+  /// head at the crown, its edge rising from the near temple to a parting
+  /// well to one side, then sweeping down across the brow to the far
+  /// temple -- the fringe framing the face.
+  Path _flowingCap(double w, double h, double down, double part) {
+    var p = Offset(_parting(w) + part * 0.3, -h * 0.8 + down * 0.4);
+    var near = Offset(w * 1.04, h * 0.05);
+    var far = Offset(-w * 1.04, h * 0.12);
+    return Path()
+      ..moveTo(far.dx, far.dy)
+      // Over the crown, standing up off the head.
+      ..cubicTo(-w * 1.16, -h * 1.42, w * 1.16, -h * 1.42, near.dx, near.dy)
+      // Up the near side to the parting.
+      ..cubicTo(w * 0.98, -h * 0.4, p.dx + w * 0.2, p.dy - h * 0.02, p.dx, p.dy)
+      // And swept down across the brow, low over the far temple.
+      ..cubicTo(p.dx - w * 0.35, p.dy + h * 0.06, -w * 0.45, -h * 0.5 + down,
+          -w * 0.72, -h * 0.22 + down)
+      ..quadraticBezierTo(-w * 0.95, -h * 0.02 + down * 0.5, far.dx, far.dy)
+      ..close();
+  }
+
+  /// _flowStrands draws fine strands through [hair], flowing out from
+  /// [from] along [to]: darker lines, and a few of light.
+  void _flowStrands(Path hair, Offset from, List<Offset> to) {
+    canvas.save();
+    canvas.clipPath(hair);
+    var dark = _feature(math.max(0.5, u * 0.011), _shade(dna.hair, 0.3).withValues(alpha: 0.55));
+    var light = _feature(math.max(0.5, u * 0.009),
+        Color.lerp(dna.hair, const Color(0xFFFFFFFF), 0.45)!.withValues(alpha: 0.5));
+    for (var (i, end) in to.indexed) {
+      var mid = Offset.lerp(from, end, 0.5)! + Offset((end - from).dy * 0.12, -(end - from).dx * 0.06);
+      canvas.drawPath(
+          Path()
+            ..moveTo(from.dx, from.dy)
+            ..quadraticBezierTo(mid.dx, mid.dy, end.dx, end.dy),
+          i % 3 == 1 ? light : dark);
+    }
+    canvas.restore();
   }
 
   /// _crownSpikes are hair standing up off the crown, in spiky hair.
@@ -2781,7 +2895,7 @@ class _Drawing {
           canvas.drawArc(ring, start, math.pi * 0.13, false,
               _feature(u * (0.03 - k * 0.004), shineColour.withValues(alpha: 0.7)));
         }
-      case _Hair.soft:
+      case _Hair.soft || _Hair.flowing:
         canvas.drawOval(
             Rect.fromCenter(
                 center: Offset(-w * 0.3, -h * 0.72), width: w * 0.9, height: h * 0.32),
