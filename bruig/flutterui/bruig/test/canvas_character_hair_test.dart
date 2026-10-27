@@ -345,6 +345,19 @@ void main() {
       expect(c.hairPick, count);
       c.undo();
       expect(get().dna.hairRig!.strokes.length, count, reason: "grown and drawn out: one step");
+      // Drawing locks: over the hair there, a wide new one, root to tip.
+      c.hairAddLocks = true;
+      c.hairLockWidth = 0.3;
+      await tester.pump();
+      var before = get().dna.hairRig!.strokes.length;
+      await tester.dragFrom(onScreen(mid), const Offset(6, 40));
+      await tester.pumpAndSettle();
+      var strokes = get().dna.hairRig!.strokes;
+      expect(strokes.length, before + 1, reason: "grown over the hair, not picked");
+      expect(strokes.last.w0, 0.3);
+      expect(strokes.last.length, greaterThan(0.04), reason: "drawn out to its tip");
+      c.undo();
+      c.hairAddLocks = false;
       c.pickHair(i);
       c.deleteSelected();
       await tester.pump();

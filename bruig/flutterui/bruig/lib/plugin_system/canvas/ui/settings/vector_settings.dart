@@ -130,6 +130,8 @@ List<Widget> vectorSettings(
     VectorTool.pen: "Pen",
     VectorTool.scale: "Thickness",
     VectorTool.tint: "Tint",
+    VectorTool.shadow: "Shadow",
+    VectorTool.highlight: "Highlight",
     VectorTool.boolean: "Combine",
     VectorTool.align: "Align",
     VectorTool.corner: "Corners",
@@ -153,6 +155,8 @@ List<Widget> vectorSettings(
       VectorTool.pen,
       VectorTool.scale,
       VectorTool.tint,
+      VectorTool.shadow,
+      VectorTool.highlight,
       VectorTool.boolean,
       VectorTool.align,
       VectorTool.corner,
@@ -193,7 +197,8 @@ List<Widget> vectorSettings(
         controller.vectorTool = tool;
       },
       keyOf: (tool) => "vectorTool-${tool.name}",
-      tooltipOf: (tool) => "${tool.label} (${_toolKey(tool)})",
+      tooltipOf: (tool) =>
+          _toolKey(tool).isEmpty ? tool.label : "${tool.label} (${_toolKey(tool)})",
       settings: editing
           ? [
               ..._toolSettings(e, controller),
@@ -640,8 +645,10 @@ List<Widget> _toolSettings(VectorElement e, CanvasController controller) {
       ];
     // The brush: its colour, where it shows -- by the colour, as the colour
     // is what it is shown on -- and its size and edge.
-    case VectorTool.tint:
+    case VectorTool.tint || VectorTool.shadow || VectorTool.highlight:
       return [
+        // Shadow and highlight take their colour from what they paint on.
+        if (controller.vectorTool == VectorTool.tint)
         CanvasColorButton(
           key: const ValueKey("vectorTintColour"),
           label: "Tint",
@@ -1263,6 +1270,7 @@ String _toolKey(VectorTool tool) => switch (tool) {
       VectorTool.pen => "P",
       VectorTool.scale => "S",
       VectorTool.tint => "I",
+      VectorTool.shadow || VectorTool.highlight => "",
       VectorTool.boolean => "B",
       VectorTool.align => "A",
       VectorTool.corner => "C",
@@ -1299,6 +1307,15 @@ String _toolHint(VectorTool tool) => switch (tool) {
           "points alone; click off the points to let them go. With nothing "
           "picked, drag across a line to thicken or thin every point the "
           "drag passes near. The points are hidden while you drag.",
+      VectorTool.shadow => "Paint shadow over a shape: in its own colour, "
+          "deeper and a little cooler -- over an orange sleeve, a darker "
+          "orange -- with a hard edge, as cel shading has. With shapes picked, "
+          "only on those, however far over their edges the brush goes. Size "
+          "and softness are the tint brush's.",
+      VectorTool.highlight => "Paint light over a shape: in its own colour, "
+          "lighter and a little warmer -- where the light catches hair, a "
+          "cheek, a fold. With shapes picked, only on those. Size and softness "
+          "are the tint brush's.",
       VectorTool.tint => "Paint over the drawing to tint it. The tint shows "
           "only where the drawing is: on its lines, in its fills, or both -- "
           "Tint line and Tint fill. A soft brush blends into what is under "

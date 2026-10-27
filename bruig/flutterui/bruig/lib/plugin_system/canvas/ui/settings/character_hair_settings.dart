@@ -58,7 +58,10 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
         help: "Hair as its style draws it, or made of strokes: each one "
             "growing from the scalp, so it turns with the head on every view, "
             "in front of the face where it grows on the near side and behind "
-            "it on the far side. Start from one of these and shape it.",
+            "it on the far side. Start from one of these and shape it. With "
+            "Draw new locks on, press where a lock grows -- over the hair "
+            "there or not -- and drag to where it ends: thick locks, as wide "
+            "as Lock width, for a fringe of big pointed clumps.",
         children: [
           CanvasDropdown<String>(
             key: const ValueKey("characterHairPreset"),
@@ -86,6 +89,26 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
               value: widget.controller.editHair,
               onChanged: (v) => widget.controller.editHair = v,
             ),
+          // Thick locks drawn on: a press and a drag, root to tip.
+          if (rig != null && widget.controller.editHair) ...[
+            CanvasToggle(
+              key: const ValueKey("characterHairAddLocks"),
+              label: "Draw new locks",
+              value: widget.controller.hairAddLocks,
+              onChanged: (v) => widget.controller.hairAddLocks = v,
+            ),
+            if (widget.controller.hairAddLocks)
+              CanvasSlider(
+                key: const ValueKey("characterHairLockWidth"),
+                label: "Lock width",
+                value: widget.controller.hairLockWidth,
+                min: 0.05,
+                max: 0.6,
+                decimals: 2,
+                width: 150,
+                onChanged: (v) => widget.controller.hairLockWidth = v,
+              ),
+          ],
         ]);
     if (rig == null) return made;
 

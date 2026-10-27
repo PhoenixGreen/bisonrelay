@@ -1907,9 +1907,14 @@ class CanvasStageState extends State<CanvasStage>
       var view = HairView.of(who, controller.frame,
           frameRate: document.frameRate, document: document);
       if (view != null) {
-        var hold = view.under(doc, _scale, reach, picked: controller.hairPick);
+        // Adding locks, every press grows one -- over the hair there or not.
+        var hold = controller.hairAddLocks
+            ? null
+            : view.under(doc, _scale, reach, picked: controller.hairPick);
         if (hold == null) {
-          if (view.grownAt(doc) case var grown?) {
+          if (view.grownAt(doc,
+                  width: controller.hairAddLocks ? controller.hairLockWidth : null)
+              case var grown?) {
             controller.beginInteraction();
             var hair = view.hair;
             who = who.copyWith(
@@ -2652,7 +2657,8 @@ class CanvasStageState extends State<CanvasStage>
         return true;
       case VectorTool.corner when _pressCorner(e, doc, reach):
         return true;
-      case VectorTool.tint when _pressTint(e, doc):
+      case VectorTool.tint || VectorTool.shadow || VectorTool.highlight
+          when _pressTint(e, doc):
         return true;
       default:
         // Otherwise as the select tool: what a scale with nothing to scale,
@@ -3675,6 +3681,14 @@ class CanvasStageState extends State<CanvasStage>
   /// _tintWaiting is a tint press off the drawing, not yet a stroke.
   Offset? _tintWaiting;
 
+  /// _shade is what the brush stroke being painted is: a tint (nought), a
+  /// shadow (below), or a highlight (above). See VectorTool.shadow.
+  int get _shade => switch (controller.vectorTool) {
+        VectorTool.shadow => -1,
+        VectorTool.highlight => 1,
+        _ => 0,
+      };
+
   void _startTint(VectorElement e, Offset doc) {
     var space = VectorSpace(e);
     // The brush is a size on screen; in the drawing's units it is that
@@ -3689,7 +3703,8 @@ class CanvasStageState extends State<CanvasStage>
           points: const [],
           paint: controller.vectorTint,
           width: controller.vectorBrushSize / _scale * unit,
-          soft: controller.vectorBrushSoft,
+          // Shading drawn on is cel shading: a hard edge, unless softened.
+          soft: _shade != 0 ? controller.vectorBrushSoft * 0.5 : controller.vectorBrushSoft,
           line: controller.vectorTintLine,
           fill: controller.vectorTintFill,
           erase: HardwareKeyboard.instance.isAltPressed,
@@ -3729,7 +3744,7 @@ class CanvasStageState extends State<CanvasStage>
         erase: like.erase);
     _strokeOn = _onPicked(shapesUnder(e, at, like.width / 2));
     controller.replaceElement(
-        withStrokeOn(e, _strokeOn, _stroke!, rubOut: rubOut),
+        withStrokeOn(e, _strokeOn, _stroke!, rubOut: rubOut, shade: rubOut ? 0 : _shade),
         transient: true);
   }
 
@@ -3751,7 +3766,8 @@ class CanvasStageState extends State<CanvasStage>
     _stroke = stroke.withPoint(at);
     _strokeOn = {..._strokeOn, ..._onPicked(shapesUnder(before, at, stroke.width / 2))};
     controller.replaceElement(
-        withStrokeOn(before, _strokeOn, _stroke!, rubOut: _strokeRubs),
+        withStrokeOn(before, _strokeOn, _stroke!,
+            rubOut: _strokeRubs, shade: _strokeRubs ? 0 : _shade),
         transient: true);
   }
 
@@ -3762,6 +3778,8 @@ class CanvasStageState extends State<CanvasStage>
   void _moveBrush(Offset stage) {
     var on = controller.editingVector != null &&
         (controller.vectorTool == VectorTool.tint ||
+            controller.vectorTool == VectorTool.shadow ||
+            controller.vectorTool == VectorTool.highlight ||
             controller.vectorTool == VectorTool.pencil ||
             controller.vectorTool == VectorTool.eraser);
     var at = on ? stage : null;
@@ -3778,7 +3796,11 @@ class CanvasStageState extends State<CanvasStage>
     var eraser = controller.vectorTool == VectorTool.eraser;
     if (at == null ||
         controller.editingVector == null ||
-        (controller.vectorTool != VectorTool.tint && !pencil && !eraser)) {
+        (controller.vectorTool != VectorTool.tint &&
+            controller.vectorTool != VectorTool.shadow &&
+            controller.vectorTool != VectorTool.highlight &&
+            !pencil &&
+            !eraser)) {
       return null;
     }
     var d = math.max(
@@ -6577,6 +6599,8 @@ class CanvasStageState extends State<CanvasStage>
                                   // Typing: the letters, not their points.
                                   controller.vectorTool == VectorTool.text ||
                                   controller.vectorTool == VectorTool.tint ||
+                                  controller.vectorTool == VectorTool.shadow ||
+                                  controller.vectorTool == VectorTool.highlight ||
                                   controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),

@@ -992,7 +992,7 @@ class _Drawing {
   /// _eyeKit is how much wider and taller the style draws its eyes, and
   /// how much lower, in head units.
   (double, double, double) get _eyeKit => switch (_eyeKind) {
-        _Eyes.anime => (1.45, 1.42, 0.08),
+        _Eyes.anime => (1.3, 1.25, 0.08),
         _Eyes.shojo => (1.35, 1.6, 0.04),
         _Eyes.shonen => (1.25, 0.85, 0.0),
         _Eyes.soft => (0.8, 0.95, 0.0),
@@ -2086,10 +2086,13 @@ class _Drawing {
         ..quadraticBezierTo(over(rp).dx, over(rp).dy, rp.dx, rp.dy);
       return path..close();
     }
-    // The shoulders sloping up from where the arms join to the neck.
+    // The shoulders sloping up from where the arms join to the neck -- seen
+    // from the side, only a little: the neck comes up out of the middle of
+    // the top of the body, not from corners square with it.
     var neck = rig.limbWidth * 0.62 + u * 0.08;
-    var neckL = top + up * (u * 0.12) - across * neck;
-    var neckR = top + up * (u * 0.12) + across * neck;
+    var rise = u * 0.12 * (1 - 0.6 * rig.sideOn);
+    var neckL = top + up * rise - across * neck;
+    var neckR = top + up * rise + across * neck;
     var lp = left.first, rp = right.first;
     path
       ..quadraticBezierTo(lp.dx * 0.35 + neckL.dx * 0.65, lp.dy * 0.2 + neckL.dy * 0.8,
@@ -2315,11 +2318,11 @@ class _Drawing {
         // hanging down between the shoulders.
         var side = math.sin(rig.yaw * math.pi / 180);
         var back = side >= 0 ? 1.0 : -1.0;
-        var neck = rig.chest - up * (u * 0.08);
+        var neck = rig.chest + up * (u * 0.02);
         var hood = Path()
-          ..moveTo(neck.dx - back * u * 0.05, neck.dy - u * 0.12)
-          ..quadraticBezierTo(neck.dx + back * u * 0.32, neck.dy - u * 0.2,
-              neck.dx + back * u * 0.36, neck.dy + u * 0.12)
+          ..moveTo(neck.dx - back * u * 0.02, neck.dy - u * 0.04)
+          ..quadraticBezierTo(neck.dx + back * u * 0.3, neck.dy - u * 0.1,
+              neck.dx + back * u * 0.34, neck.dy + u * 0.14)
           ..quadraticBezierTo(neck.dx + back * u * 0.3, neck.dy + u * 0.42,
               neck.dx + back * u * 0.14, neck.dy + u * 0.5)
           ..quadraticBezierTo(neck.dx + back * u * 0.08, neck.dy + u * 0.2,
@@ -2344,9 +2347,9 @@ class _Drawing {
         // either side of the neck to a small V at the front.
         var hood = Path()
           ..moveTo(off(0.6, 0.02).dx, off(0.6, 0.02).dy)
-          ..quadraticBezierTo(off(0.5, -0.3).dx, off(0.5, -0.3).dy,
-              off(0, -0.32).dx, off(0, -0.32).dy)
-          ..quadraticBezierTo(off(-0.5, -0.3).dx, off(-0.5, -0.3).dy,
+          ..quadraticBezierTo(off(0.5, -0.17).dx, off(0.5, -0.17).dy,
+              off(0, -0.18).dx, off(0, -0.18).dy)
+          ..quadraticBezierTo(off(-0.5, -0.17).dx, off(-0.5, -0.17).dy,
               off(-0.6, 0.02).dx, off(-0.6, 0.02).dy)
           ..quadraticBezierTo(off(-0.3, 0.0).dx, off(-0.3, 0.0).dy,
               off(0, 0.14).dx, off(0, 0.14).dy)
@@ -3567,16 +3570,20 @@ class _Drawing {
     var face = Path()
       ..moveTo(at(-0.95, 0.05).dx, at(-0.95, 0.05).dy)
       ..lineTo(at(-0.02, -0.1).dx, at(-0.02, -0.1).dy)
-      // The cheek and the mouth stand forward of the round of the skull,
-      // which leaves the eye set back in from the face's line.
-      ..quadraticBezierTo(at(0.14 * k, 0.2).dx, at(0.14 * k, 0.2).dy,
-          at(0.1 * k, 0.55).dx, at(0.1 * k, 0.55).dy)
-      // A small soft chin, and the jaw running back up under the ear.
+      // The face's line nearly straight down past the cheek to the mouth,
+      // standing a little forward of the round of the skull -- which leaves
+      // the eye set back in from it -- to a small chin, and the jaw straight
+      // back from it to below the ear.
+      ..quadraticBezierTo(at(0.07 * k, 0.25).dx, at(0.07 * k, 0.25).dy,
+          at(0.05 * k, 0.58).dx, at(0.05 * k, 0.58).dy)
       ..quadraticBezierTo(at(0.04 * k, 0.8 * chinOut).dx,
-          at(0.04 * k, 0.8 * chinOut).dy, at(-0.16, 0.88 + 0.06 * k * chinOut).dx,
-          at(-0.16, 0.88 + 0.06 * k * chinOut).dy)
-      ..quadraticBezierTo(at(-0.42, 0.92 * jawDeep).dx, at(-0.42, 0.92 * jawDeep).dy,
-          at(-0.8, 0.62).dx, at(-0.8, 0.62).dy)
+          at(0.04 * k, 0.8 * chinOut).dy, at(-0.1, 0.9 + 0.05 * k * chinOut).dx,
+          at(-0.1, 0.9 + 0.05 * k * chinOut).dy)
+      // The jaw back from the chin, rising a little, then turning up in a
+      // round corner under the ear to the bottom of it.
+      ..lineTo(at(-0.68, 0.7 * jawDeep).dx, at(-0.68, 0.7 * jawDeep).dy)
+      ..quadraticBezierTo(at(-0.96, 0.62 * jawDeep).dx, at(-0.96, 0.62 * jawDeep).dy,
+          at(-0.98, 0.3).dx, at(-0.98, 0.3).dy)
       ..close();
     return Path.combine(PathOperation.union, head, face);
   }

@@ -1684,6 +1684,37 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("shadow and highlight paint each shape in its own colour",
+        (tester) async {
+      var two = '<path d="M10 10 L45 10 L45 90 L10 90 Z" fill="#ff0000"/>'
+          '<path d="M55 10 L90 10 L90 90 L55 90 Z" fill="#0000ff"/>';
+      var (c, view) = await stage(tester, element: drawing(two));
+      await open(tester, c, view, const Offset(150, 150));
+      c.pickVectorShape(-1);
+      c.vectorTool = VectorTool.shadow;
+      c.vectorBrushSize = 20;
+      await settle(tester);
+      var scale = view.pageRect.width / c.document.size.size.width;
+      await tester.dragFrom(
+          onScreen(view, c, const Offset(115, 130)), Offset(70 * scale, 0));
+      await tester.pumpAndSettle();
+      var red = now(c).shapes![0].tints.single.paint.color;
+      var blue = now(c).shapes![1].tints.single.paint.color;
+      expect(red, shadeOf(const Color(0xFFFF0000), -1));
+      expect(blue, shadeOf(const Color(0xFF0000FF), -1));
+      expect(red.r, lessThan(1), reason: "darker than the shape");
+      // Lighter, the other way.
+      c.vectorTool = VectorTool.highlight;
+      await settle(tester);
+      await tester.dragFrom(
+          onScreen(view, c, const Offset(115, 170)), Offset(70 * scale, 0));
+      await tester.pumpAndSettle();
+      var lit = now(c).shapes![1].tints.last.paint.color;
+      expect(lit, shadeOf(const Color(0xFF0000FF), 1));
+      expect(lit.r, greaterThan(0), reason: "lighter than the shape");
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("with a filled shape picked, the pencil in its colour adds to it",
         (tester) async {
       var (c, view) = await stage(tester, element: drawing(square));

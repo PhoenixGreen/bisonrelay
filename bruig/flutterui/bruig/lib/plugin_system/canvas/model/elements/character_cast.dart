@@ -218,8 +218,8 @@ const List<CastMember> characterCast = [
         hairStyle: HairStyle.short,
         eyes: Color(0xFFC0303A),
         look: Appearance({
-          Look.neckLength: -0.5,
-          Look.eyeSize: 0.55,
+          Look.neckLength: 0.25,
+          Look.eyeSize: 0.35,
           Look.mouthWidth: -0.35,
           Look.cheeks: 0.35,
           Look.noseLength: -0.5,

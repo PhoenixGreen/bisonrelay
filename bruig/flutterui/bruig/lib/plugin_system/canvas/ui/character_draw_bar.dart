@@ -34,6 +34,8 @@ const List<VectorTool> drawBarTools = [
   VectorTool.boolean,
   VectorTool.align,
   VectorTool.tint,
+  VectorTool.shadow,
+  VectorTool.highlight,
   VectorTool.text,
 ];
 
@@ -219,6 +221,15 @@ class CharacterDrawBar extends StatelessWidget {
                     }
                     controller.editHair = !controller.editHair;
                   }),
+            if (controller.editHair && e.dna.hairRig != null)
+              toggle(
+                  "characterDrawLocks",
+                  Icons.brush,
+                  controller.hairAddLocks,
+                  controller.hairAddLocks
+                      ? "Stop drawing new locks"
+                      : "Draw new locks: press where one grows, drag to its tip",
+                  () => controller.hairAddLocks = !controller.hairAddLocks),
             rule(),
             _ToolRow(controller: controller, character: e, drawing: drawing),
             // The tool in hand and the way out, at the end of the line.

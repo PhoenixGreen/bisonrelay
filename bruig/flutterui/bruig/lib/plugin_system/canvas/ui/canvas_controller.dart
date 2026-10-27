@@ -4005,6 +4005,26 @@ class CanvasController extends ChangeNotifier {
         : null;
   }
 
+  /// hairAddLocks is whether a press on the head while its hair is shaped
+  /// grows a new lock there -- dragged out to its tip -- over the hair
+  /// already there or not, rather than taking hold of what is under it;
+  /// hairLockWidth how wide a lock grown so is at its root, in head heights.
+  bool get hairAddLocks => _hairAddLocks;
+  bool _hairAddLocks = false;
+  set hairAddLocks(bool on) {
+    if (_hairAddLocks == on) return;
+    _hairAddLocks = on;
+    notifyListeners();
+  }
+
+  double get hairLockWidth => _hairLockWidth;
+  double _hairLockWidth = 0.26;
+  set hairLockWidth(double w) {
+    if (_hairLockWidth == w) return;
+    _hairLockWidth = w;
+    notifyListeners();
+  }
+
   int? get hairPick =>
       _hairPickOf != null && hairCharacter?.id == _hairPickOf ? _hairPick : null;
   int? _hairPick;

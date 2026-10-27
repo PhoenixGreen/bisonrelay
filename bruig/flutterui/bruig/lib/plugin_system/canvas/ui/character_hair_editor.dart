@@ -168,9 +168,9 @@ class HairView {
   }
 
   /// grownAt is a new stroke growing where [page] is on the scalp -- of the
-  /// group that part of the head grows, as wide as that group's strokes --
-  /// or null off the head.
-  HairStroke? grownAt(Offset page) {
+  /// group that part of the head grows, as wide as that group's strokes, or
+  /// a lock [width] wide -- or null off the head.
+  HairStroke? grownAt(Offset page, {double? width}) {
     var at = head.scalpAt(headOf(page));
     if (at == null) return null;
     var (lon, lat) = at;
@@ -184,6 +184,11 @@ class HairView {
                 ? HairGroup.back
                 : HairGroup.sides;
     var like = hair.inGroup(group).firstOrNull?.$2;
+    // A lock of a width given: thick at the root, full along, to a point.
+    if (width != null) {
+      return HairStroke(group, lon, math.max(lat, -40),
+          length: 0.04, w0: width, w1: width * 0.85, w2: 0);
+    }
     return HairStroke(group, lon, math.max(lat, -40),
         length: 0.04,
         w0: like?.w0 ?? 0.12,

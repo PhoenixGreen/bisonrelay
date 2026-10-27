@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/components/paint_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/model/svg_import.dart';
 import 'package:bruig/plugin_system/canvas/model/vector_brush.dart';
@@ -21,6 +22,11 @@ enum VectorTool {
   pen("Pen"),
   scale("Line thickness"),
   tint("Tint"),
+
+  /// shadow and highlight paint the tint brush's strokes in each shape's
+  /// own colour, darker or lighter: cel shading drawn on by hand.
+  shadow("Shadow"),
+  highlight("Highlight"),
   boolean("Combine shapes"),
   align("Align"),
   corner("Round corners"),
@@ -1646,17 +1652,38 @@ Set<int> shapesUnder(VectorElement e, Offset at, double radius) {
 /// withStrokeOn is [e] with [stroke] laid on each shape in [on] -- as a
 /// rub-out where [rubOut], as a tint otherwise. See VectorShape.tints.
 VectorElement withStrokeOn(VectorElement e, Set<int> on, VectorTint stroke,
-    {bool rubOut = false}) {
+    {bool rubOut = false, int shade = 0}) {
   if (on.isEmpty) return e;
   var shapes = [...?e.shapes];
   for (var i in on) {
     if (i < 0 || i >= shapes.length) continue;
     var s = shapes[i];
+    var mine = shade == 0 ? stroke : _shadedFor(s, stroke, shade);
     shapes[i] = rubOut
-        ? s.copyWith(erasures: [...s.erasures, stroke])
-        : s.copyWith(tints: [...s.tints, stroke]);
+        ? s.copyWith(erasures: [...s.erasures, mine])
+        : s.copyWith(tints: [...s.tints, mine]);
   }
   return e.copyWith(shapes: shapes);
+}
+
+/// shadeOf is [colour] in shadow -- [shade] below nought -- or caught by
+/// the light above it: a shadow deeper and a little cooler, as cel shading
+/// darkens, a highlight lighter and a little warmer.
+Color shadeOf(Color colour, int shade) => shade < 0
+    ? Color.lerp(colour, const Color(0xFF2A2140), 0.3)!
+    : Color.lerp(colour, const Color(0xFFFFF6E8), 0.38)!;
+
+/// _shadedFor is [stroke] in [s]'s own colour, shaded as [shade] says.
+VectorTint _shadedFor(VectorShape s, VectorTint stroke, int shade) {
+  var base = s.fill ?? s.stroke ?? const Color(0xFF808080);
+  return VectorTint(
+      points: stroke.points,
+      paint: PaintSpec(shadeOf(base, shade)),
+      width: stroke.width,
+      soft: stroke.soft,
+      line: stroke.line,
+      fill: stroke.fill,
+      erase: false);
 }
 
 /// hasTints and hasErasures are whether any shape of [e] carries a tint, or

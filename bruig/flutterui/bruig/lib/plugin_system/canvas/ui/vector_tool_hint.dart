@@ -16,6 +16,8 @@ IconData vectorToolIcon(VectorTool tool) => switch (tool) {
       VectorTool.pen => Icons.draw_outlined,
       VectorTool.scale => Icons.open_in_full,
       VectorTool.tint => Icons.brush_outlined,
+      VectorTool.shadow => Icons.dark_mode_outlined,
+      VectorTool.highlight => Icons.light_mode_outlined,
       VectorTool.boolean => Icons.join_inner,
       VectorTool.align => Icons.align_horizontal_center,
       VectorTool.corner => Icons.rounded_corner,
@@ -34,6 +36,10 @@ String vectorToolLine(VectorTool tool) => switch (tool) {
       VectorTool.scale => "Drag right to thicken the line, left to thin it",
       VectorTool.tint =>
         "Paint over the drawing to tint it -- only the shapes picked, if any · Alt rubs off",
+      VectorTool.shadow =>
+        "Paint shadow over a shape, in its own colour darker -- only the shapes picked, if any",
+      VectorTool.highlight =>
+        "Paint light over a shape, in its own colour lighter -- only the shapes picked, if any",
       VectorTool.boolean => "Pick shapes, then combine them",
       VectorTool.align => "Line up what the last select tool picked",
       VectorTool.corner => "Click a point to round or cut its corner",
