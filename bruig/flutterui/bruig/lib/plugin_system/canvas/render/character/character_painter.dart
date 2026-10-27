@@ -75,6 +75,8 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
           _shadowPaint(e.shadow, box.height, strength: up));
     }
   }
+  // A sketch from the nearest of the views it has.
+  if (!e.body.inThreeD) pose = e.inView(pose);
   var light = staged == null ? null : lightFilter(staged.light);
   if (light != null) {
     canvas.saveLayer(box.inflate(box.height), Paint()..colorFilter = light);

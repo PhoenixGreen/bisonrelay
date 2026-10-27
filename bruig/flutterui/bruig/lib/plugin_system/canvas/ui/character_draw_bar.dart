@@ -56,7 +56,7 @@ class CharacterDrawBar extends StatelessWidget {
           if (e == null || controller.playing) return const SizedBox.shrink();
           var theme = ThemeNotifier.of(context);
           var drawing = controller.drawingOn == e.id;
-          var pose = e.poseAtFrame(controller.frame).inPanel;
+          var pose = e.inView(e.poseAtFrame(controller.frame));
           var garment = switch (controller.drawingGarment) {
             var g? when drawing && g < e.dna.wardrobe.length =>
               e.dna.wardrobe[g],
@@ -119,11 +119,10 @@ class CharacterDrawBar extends StatelessWidget {
                   onStart: controller.beginInteraction,
                   onChanged: (turn, tilt) => write(controller.characterPosed(
                       e,
-                      e
+                      e.inView(e
                           .poseAtFrame(controller.frame)
                           .withTurn(turn)
-                          .withTilt(tilt)
-                          .inPanel)),
+                          .withTilt(tilt)))),
                   onEnd: controller.endInteraction,
                 ),
               ),
@@ -131,7 +130,7 @@ class CharacterDrawBar extends StatelessWidget {
             const SizedBox(width: 6),
             CanvasDropdown<String>(
               key: const ValueKey("characterDrawPanel"),
-              label: "Panel",
+              label: "View",
               width: 200,
               grow: false,
               stepped: true,

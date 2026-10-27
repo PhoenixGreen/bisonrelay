@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.d
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
@@ -17,6 +18,7 @@ export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.d
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
@@ -177,6 +179,13 @@ class CharacterPose {
   /// inPanel is this pose seen from the panel nearest its view.
   CharacterPose get inPanel =>
       CharacterPose(angles, swings, panelTurn, lift, panelTilt);
+
+  /// inViews is this pose seen from the nearest of [views] -- or its
+  /// mirror. See character_views.dart.
+  CharacterPose inViews(List<CharacterView> views) {
+    var (t, k) = nearestView(views, turn, tilt);
+    return CharacterPose(angles, swings, t, lift, k);
+  }
 
   /// lerp is this pose [t] of the way to [other], bone by bone.
   CharacterPose lerp(CharacterPose other, double t) {
@@ -1214,6 +1223,26 @@ class CharacterElement extends CanvasElement {
     return copyWith(drawings: next);
   }
 
+  /// views is the views a sketch is drawn from -- see character_views.dart
+  /// -- front, side and back to start, and others as they are added.
+  final List<CharacterView> views;
+
+  /// inView is [pose] as the sketch is drawn in it: seen from the nearest
+  /// view it has.
+  CharacterPose inView(CharacterPose pose) => pose.inViews(views);
+
+  /// withView is this with [v] added as a view, or -- [on] false -- taken
+  /// away. What was drawn on it is kept, for it to come back to.
+  CharacterElement withView(CharacterView v, {bool on = true}) {
+    var next = [for (var w in views) if (w != v) w];
+    if (on) next.add(v);
+    if (next.isEmpty) return this;
+    next.sort((a, b) => a.tilt != b.tilt
+        ? CharacterView.tilts.indexOf(a.tilt).compareTo(CharacterView.tilts.indexOf(b.tilt))
+        : a.turn.compareTo(b.turn));
+    return copyWith(views: next);
+  }
+
   /// hiddenLayers is the body layers left out of the drawing -- see
   /// character_layers.dart -- by BodyLayer name. A garment's is its own:
   /// Garment.hidden.
@@ -1282,6 +1311,7 @@ class CharacterElement extends CanvasElement {
     this.drawings = const {},
     this.faceRigs = const {},
     this.hiddenLayers = const {},
+    this.views = CharacterView.start,
   });
 
   /// restPose is a new character's stance: arms a little away from the body
@@ -1392,7 +1422,8 @@ class CharacterElement extends CanvasElement {
       body: body,
       drawings: drawings,
       faceRigs: faceRigs,
-      hiddenLayers: hiddenLayers);
+      hiddenLayers: hiddenLayers,
+      views: views);
 
   CharacterElement copyWith({
     CharacterDna? dna,
@@ -1411,6 +1442,7 @@ class CharacterElement extends CanvasElement {
     Map<String, CharacterDrawing>? drawings,
     Map<String, FaceRig>? faceRigs,
     Set<String>? hiddenLayers,
+    List<CharacterView>? views,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -1427,7 +1459,8 @@ class CharacterElement extends CanvasElement {
           body: body ?? this.body,
           drawings: drawings ?? this.drawings,
           faceRigs: faceRigs ?? this.faceRigs,
-          hiddenLayers: hiddenLayers ?? this.hiddenLayers);
+          hiddenLayers: hiddenLayers ?? this.hiddenLayers,
+          views: views ?? this.views);
 
   @override
   Map<String, dynamic> props() => {
@@ -1448,10 +1481,11 @@ class CharacterElement extends CanvasElement {
         if (faceRigs.isNotEmpty)
           "faceRigs": {for (var e in faceRigs.entries) e.key: e.value.toJson()},
         if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
+        "views": [for (var v in views) v.toJson()],
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
-      CharacterElement(b,
+      _withViews(json, CharacterElement(b,
           dna: json["dna"] is Map<String, dynamic>
               ? CharacterDna.fromJson(json["dna"] as Map<String, dynamic>)
               : const CharacterDna(),
@@ -1492,5 +1526,39 @@ class CharacterElement extends CanvasElement {
             if (json["hiddenLayers"] case List raw)
               for (var l in raw)
                 if (BodyLayer.fromName(l as String?) case var layer?) layer.name,
-          });
+          }));
+
+  /// _withViews is [e] with the views [json] keeps -- or, for a character
+  /// saved before it had them, front, side and back and every panel drawn
+  /// on, so nothing drawn goes unseen.
+  static CharacterElement _withViews(Map<String, dynamic> json, CharacterElement e) {
+    if (json["views"] case List raw) {
+      var views = <CharacterView>{
+        for (var v in raw)
+          if (CharacterView.fromJson(v) case var view?) view,
+      };
+      return views.isEmpty ? e : e.copyWith(views: views.toList());
+    }
+    CharacterView? fromKey(String key) {
+      var p = key.split(",");
+      if (p.length != 2) return null;
+      var t = double.tryParse(p[0]), k = double.tryParse(p[1]);
+      return t == null || k == null ? null : CharacterView.of(t, k);
+    }
+
+    var keys = {
+      ...e.drawings.keys,
+      ...e.faceRigs.keys,
+      for (var g in e.dna.wardrobe) ...g.drawings.keys,
+    };
+    var views = {...CharacterView.start};
+    for (var k in keys) {
+      if (fromKey(k) case var v?) views.add(v);
+    }
+    var out = e;
+    for (var v in views) {
+      out = out.withView(v);
+    }
+    return out;
+  }
 }

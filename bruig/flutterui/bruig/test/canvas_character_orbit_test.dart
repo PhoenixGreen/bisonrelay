@@ -208,7 +208,9 @@ void main() {
           tester,
           CharacterElement(
               const ElementBase(id: "c", x: 200, y: 50, width: 160, height: 340),
-              dna: characterCast.first.dna));
+              dna: characterCast.first.dna,
+              // Every view: the globe goes to the nearest the character has.
+              views: CharacterView.all));
       CharacterElement get() => c.document.elementById("c")! as CharacterElement;
       var pad = find.byKey(const ValueKey("characterOrbitPad"));
       await tester.ensureVisible(pad);

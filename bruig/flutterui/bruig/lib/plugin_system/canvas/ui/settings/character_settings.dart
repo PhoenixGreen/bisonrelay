@@ -1341,7 +1341,7 @@ Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
   var panels = !e.body.inThreeD;
   void orbit(double turn, double tilt, {bool live = true}) {
     var next = pose.withTurn(turn).withTilt(tilt);
-    if (panels) next = next.inPanel;
+    if (panels) next = e.inView(next);
     write(controller.characterPosed(e, next));
     if (!live) commit();
   }
@@ -2331,7 +2331,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
     var controller = widget.controller;
     var drawing =
         controller.drawingOn == e.id && controller.drawingGarment == _picked;
-    var pose = e.poseAtFrame(controller.frame).inPanel;
+    var pose = e.inView(e.poseAtFrame(controller.frame));
     var (own, mirrored) = g.drawingFor(pose.panelTurn, pose.panelTilt);
     return CanvasControlGroup(
         key: const ValueKey("characterGarmentDrawn"),

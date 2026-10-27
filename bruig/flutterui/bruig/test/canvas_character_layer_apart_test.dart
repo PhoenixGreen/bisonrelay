@@ -27,7 +27,8 @@ CharacterElement _sketch({double turn = 0}) {
   var e = CharacterElement(
       const ElementBase(id: "c", x: 20, y: 20, width: 160, height: 340),
       dna: characterCast.first.dna);
-  return e.copyWith(pose: e.pose.withTurn(turn));
+  // Every view, for the panels at three-quarters and above.
+  return e.copyWith(pose: e.pose.withTurn(turn), views: CharacterView.all);
 }
 
 Future<List<int>> _pixels(CharacterElement e) async {

@@ -251,7 +251,7 @@ class _LayerList extends StatelessWidget {
 /// drawn as it is made, or by its own shapes -- and the way to draw on it,
 /// take it apart there, or put it back.
 Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row) {
-  var pose = e.poseAtFrame(controller.frame).inPanel;
+  var pose = e.inView(e.poseAtFrame(controller.frame));
   var apart = controller.layerTakenApart(e.id, row.key);
   var drawing = controller.drawingOn == e.id &&
       (controller.drawingLayer == row.key ||
@@ -260,7 +260,7 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
   return CanvasControlGroup(
       key: const ValueKey("characterLayerView"),
       label: "${row.label} on this view",
-      help: "Seen ${panelLabel(pose.panelTurn, pose.panelTilt).toLowerCase()}. "
+      help: "Seen from the ${viewLabel(pose.panelTurn, pose.panelTilt).toLowerCase()}. "
           "Take it apart to edit its outline point by point here: the "
           "other views, and the rest of the figure, stay as they are made. "
           "Draw on it to add shapes that go with it.",

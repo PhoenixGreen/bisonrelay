@@ -25,7 +25,8 @@ CharacterElement _sketch({double turn = 0}) {
   var e = CharacterElement(
       const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
       dna: characterCast.first.dna);
-  return e.copyWith(pose: e.pose.withTurn(turn));
+  // Every view, for the panels at three-quarters and above.
+  return e.copyWith(pose: e.pose.withTurn(turn), views: CharacterView.all);
 }
 
 const _scale = 3.0;

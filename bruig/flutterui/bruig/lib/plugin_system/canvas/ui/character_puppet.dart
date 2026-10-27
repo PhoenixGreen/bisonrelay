@@ -92,7 +92,7 @@ class CharacterPlacement {
             .withTilt((performed.tilt + at.tilt).clamp(-85.0, 85.0));
         // A sketch from the panel it is drawn from -- see paintCharacterFigure.
         var rig = CharacterRig.of(
-            e.style.dnaOf(e.dna), e.body.inThreeD ? seen : seen.inPanel, at.box,
+            e.style.dnaOf(e.dna), e.body.inThreeD ? seen : e.inView(seen), at.box,
             breath: breath);
         return CharacterPlacement._(
           e,
@@ -114,7 +114,7 @@ class CharacterPlacement {
     // As it is drawn: in its style's proportions, and on the frame its
     // style shows -- see paintCharacter.
     var rig = CharacterRig.of(e.style.dnaOf(e.dna),
-        e.body.inThreeD ? performed : performed.inPanel, bounds,
+        e.body.inThreeD ? performed : e.inView(performed), bounds,
         breath: breath);
     return CharacterPlacement._(
       e,

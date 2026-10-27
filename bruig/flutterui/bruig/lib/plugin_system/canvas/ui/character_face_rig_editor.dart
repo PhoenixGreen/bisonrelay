@@ -58,7 +58,7 @@ class FaceRigView {
     var placed = CharacterPlacement.of(e, frame,
         frameRate: frameRate, document: document);
     var (pose, face) = e.performanceAt(e.style.frameOf(frame), frameRate);
-    var panel = pose.inPanel;
+    var panel = e.inView(pose);
     var (rig, mirrored) = e.faceRigFor(panel.panelTurn, panel.panelTilt);
     return FaceRigView._(
         e,

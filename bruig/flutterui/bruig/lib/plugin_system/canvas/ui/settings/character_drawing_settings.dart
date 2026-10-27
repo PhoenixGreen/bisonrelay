@@ -16,28 +16,38 @@ import 'package:flutter/material.dart';
 // what of the generated drawing is left out under it. The bar over the
 // canvas has the same; see character_draw_bar.dart.
 
-/// panelOptions is every panel a sketch is drawn in, named, each marked as
-/// drawn on or mirrored from the other side.
-List<(String, String)> panelOptions(CharacterElement e) => [
-      for (var tilt in CharacterPose.panelTilts)
-        for (var turn in CharacterPose.panelTurns)
-          (
-            panelKey(turn, tilt),
-            switch (e.drawingFor(turn, tilt)) {
-              (var d, _) when d.isEmpty => panelLabel(turn, tilt),
-              (_, true) => "${panelLabel(turn, tilt)} · mirrored",
-              _ => "${panelLabel(turn, tilt)} · drawn",
-            },
-          ),
-    ];
+/// panelOptions is the views [e] is drawn from, each way round -- the
+/// other way its mirror until it is drawn on -- named and marked as drawn
+/// on or mirrored; and then, with [adding], every view it does not have yet,
+/// to add.
+List<(String, String)> panelOptions(CharacterElement e, {bool adding = true}) {
+  String mark(double turn, double tilt, String name) => switch (e.drawingFor(turn, tilt)) {
+        (var d, _) when d.isEmpty => name,
+        (_, true) => "$name · mirrored",
+        _ => "$name · drawn",
+      };
+  return [
+    for (var v in e.views) ...[
+      (panelKey(v.turn, v.tilt), mark(v.turn, v.tilt, v.label)),
+      if (v.turn != 0 && v.turn != 180)
+        (panelKey(-v.turn, v.tilt), mark(-v.turn, v.tilt, "${v.label}, other way")),
+    ],
+    if (adding)
+      for (var v in CharacterView.all)
+        if (!e.views.contains(v)) ("add:${panelKey(v.turn, v.tilt)}", "+ Add ${v.label}"),
+  ];
+}
 
-/// showPanel turns [e] to the panel named [key] -- see panelKey -- where
-/// the playhead is.
+/// showPanel turns [e] to the view named [key] -- see panelKey -- where
+/// the playhead is; "add:" before it, adds the view first.
 CharacterElement showPanel(
     CanvasController controller, CharacterElement e, String key) {
+  var adding = key.startsWith("add:");
+  if (adding) key = key.substring(4);
   var [turn, tilt] = [for (var p in key.split(",")) double.parse(p)];
+  if (adding) e = e.withView(CharacterView.of(turn, tilt));
   var pose = e.poseAtFrame(controller.frame).withTurn(turn).withTilt(tilt);
-  return controller.characterPosed(e, pose.inPanel);
+  return controller.characterPosed(e, e.inView(pose));
 }
 
 /// drawingTarget is the drawing the tools edit for [e]: the one laid over
@@ -65,7 +75,7 @@ Widget characterDrawingSection(
     commit();
   }
 
-  var pose = e.poseAtFrame(controller.frame).inPanel;
+  var pose = e.inView(e.poseAtFrame(controller.frame));
   var turn = pose.panelTurn, tilt = pose.panelTilt;
   var (drawing, mirrored) = e.drawingFor(turn, tilt);
   var drawingOn = controller.drawingOn == e.id;
@@ -91,12 +101,13 @@ Widget characterDrawingSection(
       children: [
         CanvasControlGroup(
             key: const ValueKey("characterDrawingPanel"),
-            label: "Panel",
-            help: "A sketch is drawn from eight sides and four heights. "
-                "What is drawn goes on the panel it is seen from, each shape "
-                "on the part of the body under it, and moves with that part "
-                "as the character is posed. A side not drawn yet is the "
-                "other side's drawing, mirrored, until it is drawn on.",
+            label: "View",
+            help: "A sketch starts with three views -- front, side and back -- "
+                "and is drawn from the nearest one however it turns. Add "
+                "others as they are wanted: three-quarters, from above, from "
+                "below, from the top. What is drawn goes on the view it is "
+                "seen from, each shape on the part of the body under it. A "
+                "side turned the other way is its mirror until it is drawn on.",
             children: [
               CanvasDropdown<String>(
                 key: const ValueKey("characterDrawingPanelPick"),
@@ -105,6 +116,16 @@ Widget characterDrawingSection(
                 options: panelOptions(e),
                 onChanged: (key) => now(showPanel(controller, e, key)),
               ),
+              // Front, side and back stay: a character needs a view, and
+              // these are where a turnaround starts.
+              if (e.views.length > 1)
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingViewRemove"),
+                  label: "Remove this view",
+                  icon: Icons.remove_circle_outline,
+                  onPressed: () =>
+                      now(e.withView(CharacterView.of(turn, tilt), on: false)),
+                ),
               CanvasDropdown<CharacterZoom?>(
                 key: const ValueKey("characterDrawingZoom"),
                 label: "Zoom to",

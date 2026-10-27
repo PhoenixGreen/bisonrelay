@@ -69,7 +69,7 @@ List<Widget> appearanceRigControls(
   var features = _features(group);
   if (features.isEmpty) return const [];
 
-  var pose = e.poseAtFrame(controller.frame).inPanel;
+  var pose = e.inView(e.poseAtFrame(controller.frame));
   var turn = pose.panelTurn, tilt = pose.panelTilt;
   var (rig, mirrored) = e.faceRigFor(turn, tilt);
   void set(FacePoint p, FaceAdjust a) => live(e.withFaceRig(

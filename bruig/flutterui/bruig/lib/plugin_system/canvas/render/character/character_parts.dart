@@ -260,7 +260,7 @@ void paintDrawing(
     CharacterElement e, int frame, int frameRate) {
   frame = e.style.frameOf(frame);
   var (pose, _) = e.performanceAt(frame, frameRate);
-  pose = pose.inPanel;
+  pose = e.inView(pose);
   var box = characterBox(e, frame, Offset.zero & Size(e.width, e.height));
   var rig = CharacterRig.of(e.style.dnaOf(e.dna), pose, box,
       breath: lifeAt(e, frame, frameRate).breath);

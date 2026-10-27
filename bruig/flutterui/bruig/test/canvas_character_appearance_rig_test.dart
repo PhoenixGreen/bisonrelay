@@ -26,7 +26,8 @@ CharacterElement _sketch({double turn = 0, BodyKind body = BodyKind.drawn}) {
       const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
       dna: characterCast.first.dna,
       body: CharacterBody(kind: body));
-  return e.copyWith(pose: e.pose.withTurn(turn));
+  // Every view, for the panels at three-quarters and above.
+  return e.copyWith(pose: e.pose.withTurn(turn), views: CharacterView.all);
 }
 
 void main() {
