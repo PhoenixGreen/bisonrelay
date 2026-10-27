@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart';
@@ -198,13 +199,41 @@ CharacterDrawing shapesOnParts(List<VectorShape> shapes, CharacterRig rig,
   var parts = <CharacterPart>[];
   var local = <VectorShape>[];
   for (var (i, shape) in shapes.indexed) {
-    var part = i < keep.length ? keep[i] : partAt(rig, shapeCentre(shape), among: among);
+    var part = i < keep.length
+        ? keep[i]
+        : partAt(rig, shapeCentre(shape), among: among);
     var f = frames[part]!;
     parts.add(part);
     local.add(mapShape(shape, (x, y) => f.toLocal(Offset(x, y)),
         1 / (f.scale == 0 ? 1 : f.scale)));
   }
   return CharacterDrawing(shapes: local, parts: parts, hidden: hidden);
+}
+
+/// paintPanelShapes draws the shapes [onPanel] names -- each a place in the
+/// panel's order, a drawing and which of its shapes -- lowest first, each
+/// where [rig] has its part, as a drawing element draws its shapes.
+void paintPanelShapes(Canvas canvas, CharacterRig rig,
+    List<(double, CharacterDrawing, int)> onPanel, Rect room) {
+  if (onPanel.isEmpty) return;
+  var frames = partFrames(rig);
+  var sorted = [...onPanel]..sort((a, b) => a.$1.compareTo(b.$1));
+  var shapes = <VectorShape>[
+    for (var (_, d, i) in sorted)
+      if (frames[d.parts[i]] case var f?)
+        mapShape(d.shapes[i], (a, b) {
+          var p = f.toPage(a, b);
+          return (p.dx, p.dy);
+        }, f.scale),
+  ];
+  paintVector(
+      canvas,
+      room,
+      VectorElement(
+          ElementBase(id: "drawn", width: room.width, height: room.height),
+          viewBox: room,
+          shapes: shapes),
+      null);
 }
 
 /// paintDrawing draws what is drawn by hand on the panel, where [rig] has
@@ -246,8 +275,8 @@ void paintDrawing(
 VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
     {int? garment}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
-  var (drawing, _) =
-      _garmentOf(e, garment)?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  var (drawing, _) = _garmentOf(e, garment)?.drawingFor(turn, tilt) ??
+      e.drawingFor(turn, tilt);
   return VectorElement(
     // Where the character is, and moved as it is moved.
     e.base.copyWith(
@@ -274,20 +303,254 @@ CharacterElement drawnFromProxy(
     {VectorElement? before, int? garment}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var g = _garmentOf(e, garment);
-  var (old, mirrored) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  // A mirrored panel's drawing is laid out mirrored, parts and all: what is
+  // drawn on it is kept as it is shown, and is its own from then on.
+  var (old, _) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  var base = _orderBase(e, g);
   var shapes = proxy.shapes ?? const <VectorShape>[];
-  var same = !mirrored &&
-      before != null &&
-      (before.shapes?.length ?? -1) == shapes.length &&
-      old.parts.length == shapes.length;
-  var drawing = shapesOnParts(shapes, rig,
-      keep: same ? old.parts : const [],
+  var was = before?.shapes ?? const <VectorShape>[];
+  var sameCount =
+      was.length == shapes.length && old.shapes.length == shapes.length;
+  // Each shape keeps the part and the place in the order it had: found as
+  // the very shape it was, or -- as many as there were -- edited where it
+  // was. A shape new to it goes on the part under it, and in the order
+  // between the shapes either side -- or, at the end, over everything.
+  var parts = <CharacterPart?>[];
+  var order = <double?>[];
+  for (var (i, shape) in shapes.indexed) {
+    var j = i < was.length && identical(was[i], shape)
+        ? i
+        : was.indexWhere((w) => identical(w, shape));
+    if (j < 0 && sameCount) j = i;
+    if (j >= 0 && j < old.shapes.length) {
+      parts.add(old.parts[j]);
+      order.add(old.orderOf(j, base));
+    } else {
+      parts.add(null);
+      order.add(null);
+    }
+  }
+  var top = panelOrderTop(e, turn, tilt);
+  for (var i = 0; i < order.length; i++) {
+    if (order[i] != null) continue;
+    var before = i > 0 ? order[i - 1] : null;
+    double? after;
+    for (var k = i + 1; k < order.length; k++) {
+      if (order[k] != null) {
+        after = order[k];
+        break;
+      }
+    }
+    order[i] = before != null && after != null && after > before
+        ? (before + after) / 2
+        : (top = top + 1);
+  }
+  var placed = shapesOnParts(shapes, rig,
+      keep: [
+        for (var (i, p) in parts.indexed)
+          p ?? partAt(rig, shapeCentre(shapes[i]), among: g?.kind.covers)
+      ],
       hidden: old.hidden,
       among: g?.kind.covers);
+  var drawing =
+      placed.copyWith(order: [for (var o in order) o!], replaces: old.replaces);
   if (g == null) return e.withDrawing(turn, tilt, drawing);
   var wardrobe = [...e.dna.wardrobe];
   wardrobe[garment!] = g.withDrawing(turn, tilt, drawing);
   return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+}
+
+/// _orderBase is where the shapes of a drawing kept without an order go:
+/// a garment's over what is taken apart, the character's over those.
+/// See paintCharacterFigure, which draws them so.
+double _orderBase(CharacterElement e, Garment? g) {
+  if (g == null) return 2e6;
+  var i = e.dna.worn.indexOf(g);
+  return 1e6 + math.max(0, i) * 1e4;
+}
+
+/// panelOrderTop is the highest place in the order of anything drawn on
+/// [e]'s panel turned [turn] and tilted [tilt] -- what a new shape goes
+/// over.
+double panelOrderTop(CharacterElement e, double turn, double tilt) {
+  var top = 0.0;
+  void of(CharacterDrawing d, double base) {
+    for (var i = 0; i < d.shapes.length; i++) {
+      top = math.max(top, d.orderOf(i, base));
+    }
+  }
+
+  of(e.drawingFor(turn, tilt).$1, 2e6);
+  for (var g in e.dna.worn) {
+    of(g.drawingFor(turn, tilt).$1, _orderBase(e, g));
+  }
+  return top;
+}
+
+/// isTakenApart is whether [e]'s panel turned [turn] and tilted [tilt] is
+/// drawn by its shapes -- see takeApartPanel -- or, with [garment], that
+/// garment of its wardrobe is.
+bool isTakenApart(CharacterElement e, double turn, double tilt,
+    {int? garment}) {
+  if (_garmentOf(e, garment) case var g?) {
+    return g.drawingFor(turn, tilt).$1.replaces;
+  }
+  return e.drawingFor(turn, tilt).$1.hidden.length ==
+      CharacterRegion.values.length;
+}
+
+/// _captured is [e]'s figure on the panel seen on [frame], taken apart: as
+/// it is worn, and -- for each garment of its wardrobe worn -- without
+/// that garment, by its keys, to tell whose each shape is.
+(List<CapturedShape>, Map<int, Set<String>>) _captured(
+    CharacterElement e, int frame, int frameRate, Iterable<int> garments) {
+  var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
+  var dna = e.style.dnaOf(e.dna);
+  var shown = e.style.frameOf(frame);
+  var (_, face) = e.performanceAt(shown, frameRate);
+  var life = lifeAt(e, shown, frameRate);
+  var faceRig = e.faceRigFor(turn, tilt).$1;
+  List<CapturedShape> capture(CharacterDna d) =>
+      captureFigure(rig, d, face, life, e.style, faceRig: faceRig);
+  var full = capture(dna);
+  var without = <int, Set<String>>{
+    for (var gi in garments)
+      gi: {
+        for (var c
+            in capture(dna.copyWith(wardrobe: [...dna.wardrobe]..removeAt(gi))))
+          c.key
+      },
+  };
+  return (full, without);
+}
+
+/// _wornIndices is which of [e]'s wardrobe is drawn by its own drawing --
+/// worn, and not drawn by hand alone.
+List<int> _wornIndices(CharacterElement e) {
+  var worn = e.dna.worn;
+  return [
+    for (var (i, g) in e.dna.wardrobe.indexed)
+      if (worn.contains(g) && !g.drawnOnly) i,
+  ];
+}
+
+/// takeApartPanel is [e] with the panel it is seen from on [frame] taken
+/// apart into shapes, to edit point by point with the drawing tools: the
+/// body's on the character's drawing for the panel, with the drawing it
+/// is made from left out there; each garment's on that garment's drawing,
+/// standing in for it. In the order the figure was drawn in, each shape on
+/// the part of the body under it. What was drawn on the panel by hand
+/// stays, over it. Changes to the character's settings no longer show on
+/// the panel until it is put back -- see putPanelBack.
+CharacterElement takeApartPanel(CharacterElement e, int frame, int frameRate) {
+  var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
+  var garments = _wornIndices(e);
+  var (full, without) = _captured(e, frame, frameRate, garments);
+  // Whose each shape is: the garment it is not there without, or the body.
+  var body = <(int, VectorShape)>[];
+  var worn = <int, List<(int, VectorShape)>>{};
+  for (var (z, c) in full.indexed) {
+    int? owner;
+    for (var gi in garments) {
+      if (!without[gi]!.contains(c.key)) {
+        owner = gi;
+        break;
+      }
+    }
+    (owner == null ? body : (worn[owner] ??= [])).add((z, c.shape));
+  }
+  // What was drawn by hand on the panel goes over all of it.
+  var top = full.length.toDouble();
+  CharacterDrawing taken(List<(int, VectorShape)> shapes, CharacterDrawing kept,
+      {Set<CharacterPart>? among,
+      Set<CharacterRegion> hidden = const {},
+      bool replaces = false}) {
+    var on = shapesOnParts([for (var (_, s) in shapes) s], rig, among: among);
+    return CharacterDrawing(
+      shapes: [...on.shapes, ...kept.shapes],
+      parts: [...on.parts, ...kept.parts],
+      order: [
+        for (var (z, _) in shapes) z.toDouble(),
+        for (var i = 0; i < kept.shapes.length; i++) top + 1 + i,
+      ],
+      hidden: hidden,
+      replaces: replaces,
+    );
+  }
+
+  var (ownDrawing, ownMirrored) = e.drawingFor(turn, tilt);
+  var next = e.withDrawing(
+      turn,
+      tilt,
+      taken(body, ownMirrored ? CharacterDrawing.empty : ownDrawing,
+          hidden: CharacterRegion.values.toSet()));
+  var wardrobe = [...next.dna.wardrobe];
+  for (var gi in garments) {
+    var g = wardrobe[gi];
+    var (d, mirrored) = g.drawingFor(turn, tilt);
+    wardrobe[gi] = g.withDrawing(
+        turn,
+        tilt,
+        taken(worn[gi] ?? const [], mirrored ? CharacterDrawing.empty : d,
+            among: g.kind.covers, replaces: true));
+  }
+  return next.copyWith(dna: next.dna.copyWith(wardrobe: wardrobe));
+}
+
+/// takeApartGarment is [e] with garment [garment] of its wardrobe taken
+/// apart on the panel it is seen from on [frame]: its shapes on its drawing
+/// for the panel, standing in for it there. The rest of the figure is
+/// drawn as it is made.
+CharacterElement takeApartGarment(
+    CharacterElement e, int garment, int frame, int frameRate) {
+  var g = _garmentOf(e, garment);
+  if (g == null || g.drawnOnly || !e.dna.worn.contains(g)) return e;
+  var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (full, without) = _captured(e, frame, frameRate, [garment]);
+  var mine = [
+    for (var (z, c) in full.indexed)
+      if (!without[garment]!.contains(c.key)) (z, c.shape),
+  ];
+  var on =
+      shapesOnParts([for (var (_, s) in mine) s], rig, among: g.kind.covers);
+  var (kept, mirrored) = g.drawingFor(turn, tilt);
+  if (mirrored) kept = CharacterDrawing.empty;
+  var top = full.length.toDouble();
+  var wardrobe = [...e.dna.wardrobe];
+  wardrobe[garment] = g.withDrawing(
+      turn,
+      tilt,
+      CharacterDrawing(
+        shapes: [...on.shapes, ...kept.shapes],
+        parts: [...on.parts, ...kept.parts],
+        order: [
+          for (var (z, _) in mine) z.toDouble(),
+          for (var i = 0; i < kept.shapes.length; i++) top + 1 + i,
+        ],
+        replaces: true,
+      ));
+  return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+}
+
+/// putPanelBack is [e] with the panel it is seen from on [frame] drawn as
+/// it is made again -- and what was drawn on it gone -- or, with
+/// [garment], that garment there.
+CharacterElement putPanelBack(CharacterElement e, int frame, int frameRate,
+    {int? garment}) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  if (_garmentOf(e, garment) case var g?) {
+    var wardrobe = [...e.dna.wardrobe];
+    wardrobe[garment!] = g.withDrawing(turn, tilt, CharacterDrawing.empty);
+    return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+  }
+  var next = e.withDrawing(turn, tilt, CharacterDrawing.empty);
+  var wardrobe = [
+    for (var g in next.dna.wardrobe)
+      g.drawingFor(turn, tilt).$1.replaces
+          ? g.withDrawing(turn, tilt, CharacterDrawing.empty)
+          : g,
+  ];
+  return next.copyWith(dna: next.dna.copyWith(wardrobe: wardrobe));
 }
 
 /// _garmentOf is [e]'s garment [i], where there is one.
@@ -365,7 +628,8 @@ class PlacedRigPoint {
 
 /// placedRigPoints is [limb]'s points, root to end, where [rig] puts them,
 /// as [points] has them changed.
-List<PlacedRigPoint> placedRigPoints(CharacterRig rig, CharacterLimb limb, RigPoints points) {
+List<PlacedRigPoint> placedRigPoints(
+    CharacterRig rig, CharacterLimb limb, RigPoints points) {
   var a = rig.root(limb), b = rig.middle(limb), c = rig.end(limb);
   var (upper, lower) = rig.lengths(limb);
   var whole = upper + lower;
@@ -377,15 +641,19 @@ List<PlacedRigPoint> placedRigPoints(CharacterRig rig, CharacterLimb limb, RigPo
         var dir = _unit(to - from, p.bone == 0 ? _unit(c - b) : _unit(b - a));
         var on = Offset.lerp(from, to, p.f)!;
         var across = Offset(-dir.dy, dir.dx);
-        var t = whole == 0 ? 0.0 : (p.bone == 0 ? p.f * upper : upper + p.f * lower) / whole;
-        return PlacedRigPoint(p, on + dir * (p.along * u) + across * (p.across * u), on, dir, t);
+        var t = whole == 0
+            ? 0.0
+            : (p.bone == 0 ? p.f * upper : upper + p.f * lower) / whole;
+        return PlacedRigPoint(
+            p, on + dir * (p.along * u) + across * (p.across * u), on, dir, t);
       }(),
   ];
 }
 
 /// rigPointFor is the point a limb would have at [page] -- a click on its
 /// line -- unmoved: on the bone nearest, how far along it.
-RigPoint rigPointFor(CharacterRig rig, CharacterLimb limb, RigPoints points, Offset page) {
+RigPoint rigPointFor(
+    CharacterRig rig, CharacterLimb limb, RigPoints points, Offset page) {
   var placed = placedRigPoints(rig, limb, points);
   var best = (0, 0.5);
   var bestD = double.infinity;
@@ -395,7 +663,8 @@ RigPoint rigPointFor(CharacterRig rig, CharacterLimb limb, RigPoints points, Off
     var len2 = ab.dx * ab.dx + ab.dy * ab.dy;
     var k = len2 < 1e-9
         ? 0.0
-        : (((page - p.at).dx * ab.dx + (page - p.at).dy * ab.dy) / len2).clamp(0.0, 1.0);
+        : (((page - p.at).dx * ab.dx + (page - p.at).dy * ab.dy) / len2)
+            .clamp(0.0, 1.0);
     var d = (page - (p.at + ab * k)).distance;
     if (d < bestD) {
       bestD = d;

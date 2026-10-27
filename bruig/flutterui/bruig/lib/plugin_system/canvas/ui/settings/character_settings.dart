@@ -2260,6 +2260,23 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               onPressed: () => _change(g.withDrawing(
                   pose.panelTurn, pose.panelTilt, CharacterDrawing.empty)),
             ),
+          // Its own drawing as shapes on this panel, to edit point by point.
+          if (!g.drawnOnly)
+            own.replaces && !mirrored
+                ? CanvasTextButton(
+                    key: const ValueKey("characterGarmentPutBack"),
+                    label: "Put it back on this panel",
+                    icon: Icons.restart_alt,
+                    onPressed: () =>
+                        controller.putCharacterBack(e.id, garment: _picked),
+                  )
+                : CanvasTextButton(
+                    key: const ValueKey("characterGarmentTakeApart"),
+                    label: "Take it apart on this panel",
+                    icon: Icons.scatter_plot_outlined,
+                    onPressed: () =>
+                        controller.takeApartCharacter(e.id, garment: _picked),
+                  ),
         ]);
   }
 

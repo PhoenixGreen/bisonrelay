@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
@@ -132,16 +133,30 @@ void paintCharacterFigure(
   if (!body.inThreeD) pose = pose.inPanel;
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
-  // What is drawn by hand on what it wears, each shape on the part of the
-  // body under it -- over the figure, under what is drawn on the panel.
-  void worn(Canvas onto) {
-    if (bare) return;
-    for (var g in dna.worn) {
-      if (g.drawings.isEmpty) continue;
-      var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
-      paintDrawing(onto, rig, d, box.inflate(box.height));
+  // What is drawn by hand -- or taken apart -- on the panel: the
+  // character's own and what it wears, each shape on the part of the body
+  // under it, all in one order. See CharacterDrawing.order.
+  var onPanel = <(double, CharacterDrawing, int)>[];
+  // A garment taken apart on the panel is drawn by its shapes alone.
+  var replaced = <Garment>{};
+  if (!body.inThreeD) {
+    if (!bare) {
+      for (var (gi, g) in dna.worn.indexed) {
+        if (g.drawings.isEmpty) continue;
+        var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
+        if (d.replaces) replaced.add(g);
+        for (var i = 0; i < d.shapes.length; i++) {
+          onPanel.add((d.orderOf(i, 1e6 + gi * 1e4), d, i));
+        }
+      }
+    }
+    if (drawing != null) {
+      for (var i = 0; i < drawing.shapes.length; i++) {
+        onPanel.add((drawing.orderOf(i, 2e6), drawing, i));
+      }
     }
   }
+  void drawn(Canvas onto) => paintPanelShapes(onto, rig, onPanel, box.inflate(box.height));
 
   void drawOn(Canvas onto) {
     if (body.inThreeD) {
@@ -168,10 +183,10 @@ void paintCharacterFigure(
                     images: images,
                     painted: buffers,
                     hidden: drawing?.hidden ?? const {},
-                    faceRig: faceRig ?? FaceRig.none)
+                    faceRig: faceRig ?? FaceRig.none,
+                    replaced: replaced)
                 .draw();
-            worn(flat);
-            if (drawing != null) paintDrawing(flat, rig, drawing, box.inflate(box.height));
+            drawn(flat);
           },
           // A garment's picture print comes from the images, which are not
           // part of this: a figure wearing one is drawn afresh each time.
@@ -194,11 +209,11 @@ void paintCharacterFigure(
             look: look,
             images: images,
             hidden: drawing?.hidden ?? const {},
-            faceRig: faceRig ?? FaceRig.none)
+            faceRig: faceRig ?? FaceRig.none,
+            replaced: replaced)
         .draw();
-    worn(onto);
     // Drawn by hand over it, each shape where its part is.
-    if (drawing != null) paintDrawing(onto, rig, drawing, box.inflate(box.height));
+    drawn(onto);
   }
 
   void draw(Canvas onto) => CanvasPerf.time("character", () => drawOn(onto));
@@ -738,7 +753,12 @@ class _Drawing {
       this.images,
       this.painted,
       this.hidden = const {},
-      this.faceRig = FaceRig.none});
+      this.faceRig = FaceRig.none,
+      this.replaced = const {}});
+
+  /// replaced is what it wears that is taken apart on this panel, and drawn
+  /// by its shapes instead -- see CharacterDrawing.replaces.
+  final Set<Garment> replaced;
 
   /// faceRig is the face as it is set on the panel drawn -- see
   /// character_face_rig.dart.
@@ -1047,11 +1067,14 @@ class _Drawing {
   }
 
   /// garments is what is drawn on the body, innermost first: nothing in
-  /// the bare view.
-  /// garments is what is worn as it is drawn here: not a garment drawn by
-  /// hand alone -- see Garment.drawnOnly.
-  late final List<Garment> garments =
-      bare ? const [] : [for (var g in dna.worn) if (!g.drawnOnly) g];
+  /// the bare view, and not a garment drawn by hand alone -- see
+  /// Garment.drawnOnly.
+  late final List<Garment> garments = bare
+      ? const []
+      : [
+          for (var g in dna.worn)
+            if (!g.drawnOnly && !replaced.contains(g)) g
+        ];
 
   Iterable<(int, Garment)> _wearing(bool Function(Garment) which) sync* {
     for (var (i, g) in garments.indexed) {
@@ -1271,8 +1294,7 @@ class _Drawing {
               .isNotEmpty &&
           !(!bare &&
               dna.worn.any((g) =>
-                  g.drawnOnly &&
-                  g.drawings.isNotEmpty &&
+                  (g.drawnOnly && g.drawings.isNotEmpty || replaced.contains(g)) &&
                   g.kind.shape == GarmentShape.shoes))) {
         _foot(limb, dna.skin, bareFoot: true);
       }
@@ -4623,3 +4645,16 @@ Map<FacePoint, Offset> facePivots(
     _Drawing(Canvas(ui.PictureRecorder()), rig, dna, face, LifeAt.none,
             look: _Look.of(style))
         ._facePivots();
+
+/// captureFigure is [dna] -- as [style] draws it, in [rig], making [face] --
+/// taken apart into its shapes, in the order they are drawn: see
+/// character_outline.dart. As it is drawn without painted light, which
+/// lights the shapes rather than adding any.
+List<CapturedShape> captureFigure(CharacterRig rig, CharacterDna dna,
+    CharacterFace face, LifeAt life, CharacterStyle style,
+    {FaceRig faceRig = FaceRig.none}) {
+  var c = CaptureCanvas();
+  _Drawing(c, rig, dna, face, life, look: _Look.of(style), faceRig: faceRig)
+      .draw();
+  return c.shapes;
+}

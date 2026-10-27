@@ -132,21 +132,45 @@ class CharacterDrawing {
   final List<CharacterPart> parts;
   final Set<CharacterRegion> hidden;
 
+  /// order is where each shape is drawn among all a panel's -- the
+  /// character's and what it wears -- lowest first: a panel taken apart
+  /// keeps the order the figure was drawn in, so hair lies over a collar
+  /// and a hand over a sleeve. Empty for a drawing made before, whose
+  /// shapes go as orderOf says.
+  final List<double> order;
+
+  /// replaces is a garment's drawing standing in for its own on the panel:
+  /// a garment taken apart there.
+  final bool replaces;
+
   const CharacterDrawing(
-      {this.shapes = const [], this.parts = const [], this.hidden = const {}});
+      {this.shapes = const [],
+      this.parts = const [],
+      this.hidden = const {},
+      this.order = const [],
+      this.replaces = false});
+
+  /// orderOf is where shape [i] is drawn: as kept, or -- for a drawing
+  /// without -- after everything taken apart, from [base] on.
+  double orderOf(int i, double base) =>
+      i < order.length ? order[i] : base + i;
 
   static const CharacterDrawing empty = CharacterDrawing();
 
-  bool get isEmpty => shapes.isEmpty && hidden.isEmpty;
+  bool get isEmpty => shapes.isEmpty && hidden.isEmpty && !replaces;
 
   CharacterDrawing copyWith(
           {List<VectorShape>? shapes,
           List<CharacterPart>? parts,
-          Set<CharacterRegion>? hidden}) =>
+          Set<CharacterRegion>? hidden,
+          List<double>? order,
+          bool? replaces}) =>
       CharacterDrawing(
           shapes: shapes ?? this.shapes,
           parts: parts ?? this.parts,
-          hidden: hidden ?? this.hidden);
+          hidden: hidden ?? this.hidden,
+          order: order ?? this.order,
+          replaces: replaces ?? this.replaces);
 
   /// mirrored is this drawing seen from the other side: each shape flipped
   /// across its bone and put on the part opposite.
@@ -154,12 +178,16 @@ class CharacterDrawing {
         shapes: [for (var s in shapes) mapShape(s, (x, y) => (x, -y), 1)],
         parts: [for (var p in parts) p.mirrored],
         hidden: {for (var r in hidden) r.mirrored},
+        order: order,
+        replaces: replaces,
       );
 
   Map<String, dynamic> toJson() => {
         "shapes": [for (var s in shapes) s.toJson()],
         "parts": [for (var p in parts) p.name],
         if (hidden.isNotEmpty) "hidden": [for (var r in hidden) r.name],
+        if (order.isNotEmpty) "order": order,
+        if (replaces) "replaces": true,
       };
 
   factory CharacterDrawing.fromJson(Map<String, dynamic> json) {
@@ -175,9 +203,16 @@ class CharacterDrawing {
             CharacterPart.torso);
       }
     }
+    var order = [
+      for (var o in json["order"] as List? ?? const [])
+        if (o is num) o.toDouble(),
+    ];
     return CharacterDrawing(
       shapes: shapes,
       parts: parts,
+      // Kept only whole: a shape's place is no use without the rest's.
+      order: order.length == shapes.length ? order : const [],
+      replaces: json["replaces"] == true,
       hidden: {
         for (var r in (json["hidden"] as List? ?? const []))
           if (CharacterRegion.fromName(r as String?) case var region?) region,

@@ -3998,6 +3998,38 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// drawnTakenApart is whether what is drawn on -- the character, or the
+  /// garment of it -- is taken apart into shapes on the panel seen, to edit
+  /// point by point. See takeApartPanel.
+  bool get drawnTakenApart {
+    var id = drawingOn;
+    var c = id == null ? null : _document.elementById(id);
+    if (c is! CharacterElement) return false;
+    var (_, turn, tilt) = drawnRig(c, _frame, math.max(1, _document.frameRate));
+    return isTakenApart(c, turn, tilt, garment: _drawingGarment);
+  }
+
+  /// takeApartCharacter takes the panel of character [id] seen where the
+  /// playhead is apart into shapes -- or, with [garment], that garment of
+  /// it -- for the drawing tools to edit point by point.
+  void takeApartCharacter(String id, {int? garment}) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement || c.body.inThreeD) return;
+    var rate = math.max(1, _document.frameRate);
+    replaceElement(garment == null
+        ? takeApartPanel(c, _frame, rate)
+        : takeApartGarment(c, garment, _frame, rate));
+  }
+
+  /// putCharacterBack draws the panel of character [id] seen where the
+  /// playhead is as it is made again -- or, with [garment], that garment.
+  void putCharacterBack(String id, {int? garment}) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    replaceElement(putPanelBack(c, _frame, math.max(1, _document.frameRate),
+        garment: garment));
+  }
+
   /// stopDrawingOnCharacter puts the drawing tools down, the character
   /// picked again.
   void stopDrawingOnCharacter() {

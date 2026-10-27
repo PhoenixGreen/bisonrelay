@@ -117,6 +117,21 @@ Widget characterDrawingSection(
                   if (z != null) controller.zoomToCharacter(e.id, z);
                 },
               ),
+              // The panel's own drawing as shapes, to edit point by point.
+              if (!isTakenApart(e, turn, tilt))
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingTakeApart"),
+                  label: "Take this panel apart",
+                  icon: Icons.scatter_plot_outlined,
+                  onPressed: () => controller.takeApartCharacter(e.id),
+                )
+              else
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingPutBack"),
+                  label: "Put the drawing back",
+                  icon: Icons.restart_alt,
+                  onPressed: () => controller.putCharacterBack(e.id),
+                ),
             ]),
         CanvasControlGroup(
             key: const ValueKey("characterDrawingPuppet"),

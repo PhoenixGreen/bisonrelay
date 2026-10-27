@@ -302,17 +302,39 @@ class _Tip extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var tool = controller.vectorTool;
     var points = tool == VectorTool.select;
+    // With a select tool in hand and nothing of the panel's own to pick
+    // yet: its drawing can be taken apart into shapes to edit.
+    var offer = (points || tool == VectorTool.selectShapes) &&
+        !controller.drawnTakenApart;
+    var muted = TextStyle(fontSize: 12, color: theme.colors.onSurfaceVariant);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       ConstrainedBox(
         key: const ValueKey("characterDrawHint"),
         constraints: const BoxConstraints(maxWidth: 230),
-        child: Text(vectorToolLine(tool),
+        child: Text(
+            offer
+                ? (controller.drawingGarment == null
+                    ? "Take the panel apart to edit its outline"
+                    : "Take it apart to edit its outline")
+                : vectorToolLine(tool),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style:
-                TextStyle(fontSize: 12, color: theme.colors.onSurfaceVariant)),
+            style: muted),
       ),
       const SizedBox(width: 8),
+      if (offer) ...[
+        _Pill(
+          key: const ValueKey("characterDrawTakeApart"),
+          label: "Take apart",
+          onTap: () {
+            if (controller.drawingOn case var id?) {
+              controller.takeApartCharacter(id,
+                  garment: controller.drawingGarment);
+            }
+          },
+        ),
+        const SizedBox(width: 6),
+      ],
       if (!points) ...[
         _Pill(
           key: const ValueKey("characterDrawPoints"),
