@@ -180,6 +180,16 @@ class CharacterPose {
   CharacterPose get inPanel =>
       CharacterPose(angles, swings, panelTurn, lift, panelTilt);
 
+  /// near is whether this pose is about [other]: every bone within a few
+  /// degrees of it, on average -- what a view of a pose is drawn for.
+  bool near(CharacterPose other, {double within = 8}) {
+    var sum = 0.0;
+    for (var b in CharacterBone.values) {
+      sum += (this[b] - other[b]).abs() + (swing(b) - other.swing(b)).abs();
+    }
+    return sum / CharacterBone.values.length <= within;
+  }
+
   /// inViews is this pose seen from the nearest of [views] -- or its
   /// mirror. See character_views.dart.
   CharacterPose inViews(List<CharacterView> views) {
@@ -1190,12 +1200,12 @@ class CharacterElement extends CanvasElement {
   /// drawingFor is what is drawn on the panel turned [turn] and tilted
   /// [tilt]: its own drawing, or, where it has none, the panel opposite's
   /// mirrored. The second is whether it is that mirror.
-  (CharacterDrawing, bool) drawingFor(double turn, double tilt) {
-    if (drawings[panelKey(turn, tilt)] case var own?) return (own, false);
-    var opposite = turn.round() % 180 == 0 ? null : drawings[panelKey(-turn, tilt)];
-    if (opposite != null) return (opposite.mirrored, true);
-    return (CharacterDrawing.empty, false);
-  }
+  (CharacterDrawing, bool) drawingFor(double turn, double tilt) =>
+      drawingAt(panelKey(turn, tilt));
+
+  /// drawingAt is the same for the view kept by [key] -- see viewKeyOf --
+  /// and, for a view of a pose with nothing drawn on it, its view's.
+  (CharacterDrawing, bool) drawingAt(String key) => drawingAtKey(drawings, key);
 
   /// lookValue is the value of the Appearance slider named [look].
   double lookValue(String look) => switch (Look.fromName(look)) {
@@ -1206,22 +1216,21 @@ class CharacterElement extends CanvasElement {
   /// drawingShown is the panel's drawing as it is drawn: its keyed layers
   /// as their keyforms make them at the sliders' values -- see LayerKeys --
   /// and whether it is the other side's, mirrored.
-  (CharacterDrawing, bool) drawingShown(double turn, double tilt) {
-    var (d, mirrored) = drawingFor(turn, tilt);
+  (CharacterDrawing, bool) drawingShown(double turn, double tilt) =>
+      drawingShownAt(panelKey(turn, tilt));
+
+  (CharacterDrawing, bool) drawingShownAt(String key) {
+    var (d, mirrored) = drawingAt(key);
     return (keyedAt(d, lookValue), mirrored);
   }
 
   /// withDrawing is this with [drawing] on the panel turned [turn] and
   /// tilted [tilt]; an empty one takes the panel's own drawing away.
-  CharacterElement withDrawing(double turn, double tilt, CharacterDrawing drawing) {
-    var next = {...drawings};
-    if (drawing.isEmpty) {
-      next.remove(panelKey(turn, tilt));
-    } else {
-      next[panelKey(turn, tilt)] = drawing;
-    }
-    return copyWith(drawings: next);
-  }
+  CharacterElement withDrawing(double turn, double tilt, CharacterDrawing drawing) =>
+      withDrawingAt(panelKey(turn, tilt), drawing);
+
+  CharacterElement withDrawingAt(String key, CharacterDrawing drawing) =>
+      copyWith(drawings: withDrawingAtKey(drawings, key, drawing));
 
   /// views is the views a sketch is drawn from -- see character_views.dart
   /// -- front, side and back to start, and others as they are added.
@@ -1229,7 +1238,22 @@ class CharacterElement extends CanvasElement {
 
   /// inView is [pose] as the sketch is drawn in it: seen from the nearest
   /// view it has.
-  CharacterPose inView(CharacterPose pose) => pose.inViews(views);
+  CharacterPose inView(CharacterPose pose) =>
+      pose.inViews([for (var v in views) if (v.pose == null) v]);
+
+  /// viewKey is the key of the view [pose] is drawn from -- see viewKeyOf:
+  /// the nearest view it has, and of those, one of a pose it is in.
+  String viewKey(CharacterPose pose) {
+    var seen = inView(pose);
+    var turn = seen.turn.abs();
+    for (var v in views) {
+      if (v.pose != null && v.turn == turn && v.tilt == seen.tilt && v.posed != null &&
+          pose.near(v.posed!)) {
+        return viewKeyOf(seen.turn, seen.tilt, v.pose);
+      }
+    }
+    return panelKey(seen.turn, seen.tilt);
+  }
 
   /// withView is this with [v] added as a view, or -- [on] false -- taken
   /// away. What was drawn on it is kept, for it to come back to.
@@ -1275,21 +1299,24 @@ class CharacterElement extends CanvasElement {
   /// faceRigFor is the face set on the panel turned [turn] and tilted
   /// [tilt]: its own, or the panel opposite's mirrored -- and whether it is
   /// that mirror. See drawingFor.
-  (FaceRig, bool) faceRigFor(double turn, double tilt) {
-    if (faceRigs[panelKey(turn, tilt)] case var own?) return (own, false);
-    var opposite = turn.round() % 180 == 0 ? null : faceRigs[panelKey(-turn, tilt)];
-    if (opposite != null) return (opposite.mirrored, true);
-    return (FaceRig.none, false);
+  (FaceRig, bool) faceRigFor(double turn, double tilt) => faceRigAt(panelKey(turn, tilt));
+
+  (FaceRig, bool) faceRigAt(String key) {
+    var (r, mirrored) = atViewKey(faceRigs, key, (r) => r.mirrored);
+    return (r ?? FaceRig.none, mirrored);
   }
 
   /// withFaceRig is this with [rig] on the panel turned [turn] and tilted
   /// [tilt]; an empty one takes the panel's own away.
-  CharacterElement withFaceRig(double turn, double tilt, FaceRig rig) {
+  CharacterElement withFaceRig(double turn, double tilt, FaceRig rig) =>
+      withFaceRigAt(panelKey(turn, tilt), rig);
+
+  CharacterElement withFaceRigAt(String key, FaceRig rig) {
     var next = {...faceRigs};
     if (rig.isEmpty) {
-      next.remove(panelKey(turn, tilt));
+      next.remove(key);
     } else {
-      next[panelKey(turn, tilt)] = rig;
+      next[key] = rig;
     }
     return copyWith(faceRigs: next);
   }

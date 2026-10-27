@@ -327,26 +327,68 @@ enum CharacterZoom {
   const CharacterZoom(this.label);
 }
 
+/// viewKeyOf is the key a view's drawings are kept by: its panel's -- see
+/// panelKey -- and, for a view of a pose, "@" and the pose's name.
+String viewKeyOf(double turn, double tilt, [String? pose]) =>
+    pose == null ? panelKey(turn, tilt) : "${panelKey(turn, tilt)}@$pose";
+
+/// oppositeKey is the key of the view turned the other way -- the one [key]
+/// is the mirror of -- or null for one with no other way: front or back.
+String? oppositeKey(String key) {
+  var at = key.indexOf("@");
+  var panel = at < 0 ? key : key.substring(0, at);
+  var rest = at < 0 ? "" : key.substring(at);
+  var comma = panel.indexOf(",");
+  if (comma < 0) return null;
+  var turn = double.tryParse(panel.substring(0, comma));
+  if (turn == null || turn.round() % 180 == 0) return null;
+  return "${(-turn).round()},${panel.substring(comma + 1)}$rest";
+}
+
+/// baseKeyOf is a pose view's key without its pose -- the view it is drawn
+/// as until it is drawn itself -- or null for a view with none.
+String? baseKeyOf(String key) {
+  var at = key.indexOf("@");
+  return at < 0 ? null : key.substring(0, at);
+}
+
+/// atViewKey is what [kept] has for the view [key]: its own; or the view
+/// turned the other way's, [mirror]ed; or, for a view of a pose, its view's
+/// with no pose -- and whether it is a mirror.
+(T?, bool) atViewKey<T>(Map<String, T> kept, String key, T Function(T) mirror) {
+  if (kept[key] case var own?) return (own, false);
+  if (oppositeKey(key) case var other? when kept[other] != null) {
+    return (mirror(kept[other] as T), true);
+  }
+  if (baseKeyOf(key) case var base?) return atViewKey(kept, base, mirror);
+  return (null, false);
+}
+
 /// drawingOnPanel is what [drawings] has on the panel turned [turn] and
 /// tilted [tilt]: its own, or the panel opposite's mirrored -- and whether
 /// it is that mirror. See CharacterElement.drawingFor.
 (CharacterDrawing, bool) drawingOnPanel(
-    Map<String, CharacterDrawing> drawings, double turn, double tilt) {
-  if (drawings[panelKey(turn, tilt)] case var own?) return (own, false);
-  var opposite = turn.round() % 180 == 0 ? null : drawings[panelKey(-turn, tilt)];
-  if (opposite != null) return (opposite.mirrored, true);
-  return (CharacterDrawing.empty, false);
+        Map<String, CharacterDrawing> drawings, double turn, double tilt) =>
+    drawingAtKey(drawings, panelKey(turn, tilt));
+
+(CharacterDrawing, bool) drawingAtKey(Map<String, CharacterDrawing> drawings, String key) {
+  var (d, mirrored) = atViewKey(drawings, key, (d) => d.mirrored);
+  return (d ?? CharacterDrawing.empty, mirrored);
 }
 
 /// withPanelDrawing is [drawings] with [drawing] on the panel turned [turn]
 /// and tilted [tilt]; an empty one takes the panel's own away.
 Map<String, CharacterDrawing> withPanelDrawing(Map<String, CharacterDrawing> drawings,
-    double turn, double tilt, CharacterDrawing drawing) {
+        double turn, double tilt, CharacterDrawing drawing) =>
+    withDrawingAtKey(drawings, panelKey(turn, tilt), drawing);
+
+Map<String, CharacterDrawing> withDrawingAtKey(
+    Map<String, CharacterDrawing> drawings, String key, CharacterDrawing drawing) {
   var next = {...drawings};
   if (drawing.isEmpty) {
-    next.remove(panelKey(turn, tilt));
+    next.remove(key);
   } else {
-    next[panelKey(turn, tilt)] = drawing;
+    next[key] = drawing;
   }
   return next;
 }

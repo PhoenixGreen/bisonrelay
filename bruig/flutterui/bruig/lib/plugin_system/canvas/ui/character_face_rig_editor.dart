@@ -50,8 +50,11 @@ class FaceRigView {
   final bool mirrored;
   final double turn, tilt;
 
+  /// key is the view's -- see viewKeyOf -- what its face rig is kept by.
+  final String key;
+
   FaceRigView._(this.element, this.placed, this.pivots, this.rig, this.mirrored,
-      this.turn, this.tilt);
+      this.turn, this.tilt, this.key);
 
   factory FaceRigView.of(CharacterElement e, int frame,
       {int frameRate = 12, CanvasDocument? document}) {
@@ -59,7 +62,8 @@ class FaceRigView {
         frameRate: frameRate, document: document);
     var (pose, face) = e.performanceAt(e.style.frameOf(frame), frameRate);
     var panel = e.inView(pose);
-    var (rig, mirrored) = e.faceRigFor(panel.panelTurn, panel.panelTilt);
+    var key = e.viewKey(pose);
+    var (rig, mirrored) = e.faceRigAt(key);
     return FaceRigView._(
         e,
         placed,
@@ -67,7 +71,8 @@ class FaceRigView {
         rig,
         mirrored,
         panel.panelTurn,
-        panel.panelTilt);
+        panel.panelTilt,
+        key);
   }
 
   double get _u => placed.rig.unit;
@@ -160,8 +165,7 @@ class FaceRigView {
         var by = (angle(b - c) - angle(a - c)) * 180 / math.pi;
         adj = adj.copyWith(turn: (adj.turn + by + 180) % 360 - 180);
     }
-    return element.withFaceRig(
-        turn, tilt, withFacePoint(rig, p, adj, mirror: mirror));
+    return element.withFaceRigAt(key, withFacePoint(rig, p, adj, mirror: mirror));
   }
 }
 
@@ -187,8 +191,8 @@ CharacterElement faceDragged(CharacterElement start, FaceHold hold, Offset from,
 CharacterElement withFacePointBack(CharacterElement e, FacePoint p, int frame,
     {int frameRate = 12, bool mirror = false}) {
   var view = FaceRigView.of(e, frame, frameRate: frameRate);
-  return e.withFaceRig(view.turn, view.tilt,
-      withFacePoint(view.rig, p, FaceAdjust.rest, mirror: mirror));
+  return e.withFaceRigAt(
+      view.key, withFacePoint(view.rig, p, FaceAdjust.rest, mirror: mirror));
 }
 
 /// faceColour is the face rig's colour, apart from the limbs' green.

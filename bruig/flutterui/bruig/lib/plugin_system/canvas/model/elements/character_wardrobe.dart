@@ -391,6 +391,13 @@ class Garment {
   (CharacterDrawing, bool) drawingFor(double turn, double tilt) =>
       drawingOnPanel(drawings, turn, tilt);
 
+  /// drawingAt and withDrawingAt are the same by a view's key -- see
+  /// viewKeyOf.
+  (CharacterDrawing, bool) drawingAt(String key) => drawingAtKey(drawings, key);
+
+  Garment withDrawingAt(String key, CharacterDrawing drawing) =>
+      copyWith(drawings: withDrawingAtKey(drawings, key, drawing));
+
   Garment withDrawing(double turn, double tilt, CharacterDrawing drawing) =>
       copyWith(drawings: withPanelDrawing(drawings, turn, tilt, drawing));
 

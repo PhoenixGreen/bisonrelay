@@ -91,15 +91,16 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       // What is drawn by hand on the panel it is seen from.
       drawing: e.body.inThreeD || e.drawings.isEmpty
           ? null
-          : e.drawingFor(pose.panelTurn, pose.panelTilt).$1,
+          : e.drawingAt(e.viewKey(pose)).$1,
       // The face as it is set on that panel.
       faceRig: e.body.inThreeD || e.faceRigs.isEmpty
           ? null
-          : e.faceRigFor(pose.panelTurn, pose.panelTilt).$1,
+          : e.faceRigAt(e.viewKey(pose)).$1,
       // Its layers as shown -- and, while it is edited, the one soloed.
       layers: e.body.inThreeD
           ? LayerView.all
-          : e.layerView(solo: editing ? characterSoloOf?.call(e) : null));
+          : e.layerView(solo: editing ? characterSoloOf?.call(e) : null),
+      viewKey: e.body.inThreeD ? null : e.viewKey(pose));
   if (light != null) canvas.restore();
 }
 
@@ -138,7 +139,8 @@ void paintCharacterFigure(
     CharacterStyle? bodyStyle,
     CharacterDrawing? drawing,
     FaceRig? faceRig,
-    LayerView layers = LayerView.all}) {
+    LayerView layers = LayerView.all,
+    String? viewKey}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -171,7 +173,7 @@ void paintCharacterFigure(
         // A garment's layer hidden: what is drawn on it too.
         var key = garmentLayer(dna.wardrobe.indexOf(g));
         if (!layers.shows(key)) continue;
-        var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
+        var (d, _) = g.drawingAt(viewKey ?? panelKey(pose.panelTurn, pose.panelTilt));
         if (d.replaces) replaced.add(g);
         for (var i = 0; i < d.shapes.length; i++) {
           onPanel.add((d.orderOf(i, 1e6 + gi * 1e4), d, i, key));

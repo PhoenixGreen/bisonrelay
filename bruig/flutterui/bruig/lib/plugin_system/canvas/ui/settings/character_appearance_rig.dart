@@ -71,9 +71,10 @@ List<Widget> appearanceRigControls(
 
   var pose = e.inView(e.poseAtFrame(controller.frame));
   var turn = pose.panelTurn, tilt = pose.panelTilt;
-  var (rig, mirrored) = e.faceRigFor(turn, tilt);
-  void set(FacePoint p, FaceAdjust a) => live(e.withFaceRig(
-      turn, tilt, withFacePoint(rig, p, a, mirror: controller.mirrorEdits)));
+  var key = e.viewKey(e.poseAtFrame(controller.frame));
+  var (rig, mirrored) = e.faceRigAt(key);
+  void set(FacePoint p, FaceAdjust a) => live(
+      e.withFaceRigAt(key, withFacePoint(rig, p, a, mirror: controller.mirrorEdits)));
 
   return [
     CanvasControlGroup(
@@ -165,8 +166,8 @@ List<Widget> appearanceRigControls(
                 label: "Put it back",
                 icon: Icons.restart_alt,
                 grow: false,
-                onPressed: () => now(e.withFaceRig(
-                    turn, tilt, rig.withPoint(p, FaceAdjust.rest))),
+                onPressed: () =>
+                    now(e.withFaceRigAt(key, rig.withPoint(p, FaceAdjust.rest))),
               ),
           ]),
   ];

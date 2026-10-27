@@ -59,8 +59,8 @@ void main() {
         expect(g.kind.covers, contains(p), reason: "${g.title} on what it covers");
       }
     }
-    expect(isTakenApart(apart, 0, 0), isTrue);
-    expect(isTakenApart(e, 0, 0), isFalse);
+    expect(isTakenApart(apart, panelKey(0, 0)), isTrue);
+    expect(isTakenApart(e, panelKey(0, 0)), isFalse);
     expect(_coverMiss(await _pixels(apart), await _pixels(e)), lessThan(0.02),
         reason: "the same figure");
     // In the order it was drawn in: something of the body over the hoodie
@@ -69,7 +69,7 @@ void main() {
     var lowestHoodie = hoodie.drawingFor(0, 0).$1.order.reduce((a, b) => a < b ? a : b);
     expect(body.order.any((o) => o > lowestHoodie), isTrue);
     // Other panels are as they were made.
-    expect(isTakenApart(apart, 90, 0), isFalse);
+    expect(isTakenApart(apart, panelKey(90, 0)), isFalse);
     // Put back, exactly as it was made.
     var back = putPanelBack(apart, 0, 24);
     expect(await _pixels(back), await _pixels(e));
@@ -88,8 +88,8 @@ void main() {
     var e = _sketch();
     var hoodie = e.dna.wardrobe.indexWhere((g) => g.kind == GarmentKind.hoodie);
     var apart = takeApartGarment(e, hoodie, 0, 24);
-    expect(isTakenApart(apart, 0, 0, garment: hoodie), isTrue);
-    expect(isTakenApart(apart, 0, 0), isFalse, reason: "the body as it is made");
+    expect(isTakenApart(apart, panelKey(0, 0), garment: hoodie), isTrue);
+    expect(isTakenApart(apart, panelKey(0, 0)), isFalse, reason: "the body as it is made");
     expect(apart.drawings, isEmpty);
     expect(_coverMiss(await _pixels(apart), await _pixels(e)), lessThan(0.02));
     var saved = elementFromJson(apart.toJson()) as CharacterElement;
@@ -124,7 +124,7 @@ void main() {
     // A shape drawn new goes over everything.
     c.replaceElement(c.editingVector!.copyWith(shapes: [...c.editingVector!.shapes!, s]));
     var (added, _) = (c.document.elementById("c") as CharacterElement).drawingFor(0, 0);
-    var top = panelOrderTop(e, 0, 0);
+    var top = panelOrderTop(e, panelKey(0, 0));
     expect(added.order.last, greaterThan(top - 1e-9));
   });
 

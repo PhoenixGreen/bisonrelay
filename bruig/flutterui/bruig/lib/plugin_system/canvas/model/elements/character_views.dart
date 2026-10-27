@@ -9,6 +9,12 @@
 // of 45 degrees, from one of its four heights. Drawings, face rigs and
 // garment drawings are kept by a view's panel, so nothing about them
 // changes when views come and go.
+//
+// A view can be of a pose as well -- "Running, ¾ front" -- drawn when the
+// character is in that pose, seen from there; until it is drawn on itself,
+// it is drawn as its view with no pose, which follows the pose anyway.
+
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 
 /// CharacterView is one view a character is drawn from: [turn] round it,
 /// 0 to 180, the other way being its mirror, and [tilt] from below to the
@@ -16,7 +22,15 @@
 class CharacterView {
   final double turn;
   final double tilt;
-  const CharacterView(this.turn, this.tilt);
+
+  /// pose is the name of the pose it is a view of, and posed the pose, or
+  /// null for a view of whatever pose the character is in.
+  final String? pose;
+  final CharacterPose? posed;
+  const CharacterView(this.turn, this.tilt, {this.pose, this.posed});
+
+  /// key is what its drawings are kept by. See viewKeyOf.
+  String get key => pose == null ? "${turn.round()},${tilt.round()}" : "${turn.round()},${tilt.round()}@$pose";
 
   static const CharacterView front = CharacterView(0, 0);
   static const CharacterView side = CharacterView(90, 0);
@@ -36,22 +50,27 @@ class CharacterView {
           for (var turn in turns) CharacterView(turn, tilt),
       ];
 
-  String get label => viewLabel(turn, tilt);
+  String get label => pose == null ? viewLabel(turn, tilt) : "$pose · ${viewLabel(turn, tilt)}";
 
   @override
   bool operator ==(Object other) =>
-      other is CharacterView && other.turn == turn && other.tilt == tilt;
+      other is CharacterView && other.turn == turn && other.tilt == tilt && other.pose == pose;
 
   @override
-  int get hashCode => Object.hash(turn, tilt);
+  int get hashCode => Object.hash(turn, tilt, pose);
 
-  List<double> toJson() => [turn, tilt];
+  List<Object> toJson() => [turn, tilt, if (pose != null && posed != null) ...[pose!, posed!.toJson()]];
 
   static CharacterView? fromJson(Object? json) {
-    if (json is! List || json.length != 2 || json[0] is! num || json[1] is! num) {
+    if (json is! List || json.length < 2 || json[0] is! num || json[1] is! num) {
       return null;
     }
-    return CharacterView.of((json[0] as num).toDouble(), (json[1] as num).toDouble());
+    var v = CharacterView.of((json[0] as num).toDouble(), (json[1] as num).toDouble());
+    if (json.length >= 4 && json[2] is String) {
+      return CharacterView(v.turn, v.tilt,
+          pose: json[2] as String, posed: CharacterPose.fromJson(json[3]));
+    }
+    return v;
   }
 
   /// of is the view a panel turned [turn] and tilted [tilt] is: turned

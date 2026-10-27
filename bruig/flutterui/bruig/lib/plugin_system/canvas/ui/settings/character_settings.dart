@@ -2331,8 +2331,8 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
     var controller = widget.controller;
     var drawing =
         controller.drawingOn == e.id && controller.drawingGarment == _picked;
-    var pose = e.inView(e.poseAtFrame(controller.frame));
-    var (own, mirrored) = g.drawingFor(pose.panelTurn, pose.panelTilt);
+    var key = e.viewKey(e.poseAtFrame(controller.frame));
+    var (own, mirrored) = g.drawingAt(key);
     return CanvasControlGroup(
         key: const ValueKey("characterGarmentDrawn"),
         label: "Drawn by hand",
@@ -2370,8 +2370,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               key: const ValueKey("characterGarmentClear"),
               label: "Clear this panel",
               icon: Icons.delete_outline,
-              onPressed: () => _change(g.withDrawing(
-                  pose.panelTurn, pose.panelTilt, CharacterDrawing.empty)),
+              onPressed: () => _change(g.withDrawingAt(key, CharacterDrawing.empty)),
             ),
           // Its own drawing as shapes on this panel, to edit point by point.
           if (!g.drawnOnly)

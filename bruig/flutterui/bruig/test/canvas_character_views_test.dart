@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
@@ -122,5 +124,82 @@ void main() {
     expect(get().views, contains(const CharacterView(45, 0)));
     expect(get().inView(get().pose).turn, 45);
     expect(tester.takeException(), isNull);
+  });
+
+  group("views of a pose", () {
+    var wave = posePresets.firstWhere((p) => p.name == "Wave");
+    CharacterElement waving(CharacterElement e) => e.copyWith(pose: wave.pose);
+    var view = CharacterView(0, 0, pose: "Wave", posed: wave.pose);
+    var dot = const VectorShape(paths: [
+      VectorPath([VectorNode(60, 40), VectorNode(70, 40), VectorNode(70, 50)], closed: true)
+    ], fill: Color(0xFFFF0000));
+
+    test("drawn from when it is in that pose, from there", () {
+      var e = _sketch().withView(view);
+      expect(e.viewKey(e.pose), panelKey(0, 0), reason: "not waving");
+      expect(e.viewKey(wave.pose), "0,0@Wave");
+      expect(e.viewKey(wave.pose.withTurn(90)), panelKey(90, 0), reason: "no view of it side on");
+      // Its own pose's drawing first; until there is one, its view's.
+      var plain = CharacterDrawing(shapes: [dot], parts: const [CharacterPart.head]);
+      e = e.withDrawing(0, 0, plain);
+      expect(e.drawingAt("0,0@Wave").$1.shapes.length, 1);
+      var own = e.withDrawingAt("0,0@Wave", CharacterDrawing.empty.copyWith(hidden: {CharacterRegion.head}));
+      expect(own.drawingAt("0,0@Wave").$1.hidden, {CharacterRegion.head});
+      expect(own.drawingAt(panelKey(0, 0)).$1.hidden, isEmpty);
+      // Turned the other way: its mirror.
+      var side = _sketch().withDrawingAt("90,0@Wave", plain);
+      expect(side.drawingAt("-90,0@Wave").$2, isTrue);
+      expect(oppositeKey("45,45@Wave"), "-45,45@Wave");
+      expect(oppositeKey("180,0@Wave"), isNull);
+      // Saved and loaded.
+      var saved = elementFromJson(own.toJson()) as CharacterElement;
+      expect(saved.views, contains(view));
+      expect(saved.viewKey(wave.pose), "0,0@Wave");
+    });
+
+    test("drawn on in that pose, it shows in that pose alone", () async {
+      var c = CanvasController(CanvasDocument(frames: 24)
+          .addElement(waving(_sketch()).withView(view)));
+      c.drawOnCharacter("c");
+      c.replaceElement(c.editingVector!.copyWith(shapes: [dot]));
+      var e = c.document.elementById("c") as CharacterElement;
+      expect(e.drawings.keys, ["0,0@Wave"]);
+      var standing = e.copyWith(pose: CharacterElement.restPose);
+      expect(await _pixels(standing), await _pixels(_sketch()), reason: "standing: as made");
+      expect(await _pixels(e), isNot(await _pixels(waving(_sketch()).withView(view))));
+    });
+
+    testWidgets("added from the Drawing section, in that pose", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      CanvasSection.openAll = true;
+      addTearDown(() => CanvasSection.openAll = false);
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(900, 14000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      tester.widget<CanvasDropdown<String?>>(find.byKey(const ValueKey("characterDrawingPoseView")))
+          .onChanged("Wave");
+      await tester.pumpAndSettle();
+      var e = c.document.elementById("c") as CharacterElement;
+      expect(e.views, contains(view));
+      expect(e.viewKey(e.poseAtFrame(0)), "0,0@Wave", reason: "in the pose, seen from its view");
+      var pick = tester.widget<CanvasDropdown<String>>(
+          find.byKey(const ValueKey("characterDrawingPanelPick")));
+      expect(pick.value, "0,0@Wave");
+      expect(pick.options.map((o) => o.$1), contains(panelKey(0, 0)));
+      expect(tester.takeException(), isNull);
+    });
   });
 }

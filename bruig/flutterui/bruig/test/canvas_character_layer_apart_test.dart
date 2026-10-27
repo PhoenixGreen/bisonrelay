@@ -60,9 +60,9 @@ void main() {
     for (var p in d.parts) {
       expect(p, CharacterPart.head);
     }
-    expect(isLayerTakenApart(apart, eyes, 0, 0), isTrue);
-    expect(isLayerTakenApart(apart, BodyLayer.mouth.name, 0, 0), isFalse);
-    expect(isLayerTakenApart(apart, eyes, 90, 0), isFalse, reason: "this view only");
+    expect(isLayerTakenApart(apart, eyes, panelKey(0, 0)), isTrue);
+    expect(isLayerTakenApart(apart, BodyLayer.mouth.name, panelKey(0, 0)), isFalse);
+    expect(isLayerTakenApart(apart, eyes, panelKey(90, 0)), isFalse, reason: "this view only");
     expect(_coverMiss(await _pixels(apart), await _pixels(e)), lessThan(0.005));
     // Again: taken afresh, not twice.
     var again = takeApartLayer(apart, eyes, 0, 24);

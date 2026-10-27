@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
@@ -21,16 +22,16 @@ import 'package:flutter/material.dart';
 /// on or mirrored; and then, with [adding], every view it does not have yet,
 /// to add.
 List<(String, String)> panelOptions(CharacterElement e, {bool adding = true}) {
-  String mark(double turn, double tilt, String name) => switch (e.drawingFor(turn, tilt)) {
+  String markAt(String key, String name) => switch (e.drawingAt(key)) {
         (var d, _) when d.isEmpty => name,
         (_, true) => "$name · mirrored",
         _ => "$name · drawn",
       };
   return [
     for (var v in e.views) ...[
-      (panelKey(v.turn, v.tilt), mark(v.turn, v.tilt, v.label)),
+      (v.key, markAt(v.key, v.label)),
       if (v.turn != 0 && v.turn != 180)
-        (panelKey(-v.turn, v.tilt), mark(-v.turn, v.tilt, "${v.label}, other way")),
+        (oppositeKey(v.key)!, markAt(oppositeKey(v.key)!, "${v.label}, other way")),
     ],
     if (adding)
       for (var v in CharacterView.all)
@@ -44,10 +45,34 @@ CharacterElement showPanel(
     CanvasController controller, CharacterElement e, String key) {
   var adding = key.startsWith("add:");
   if (adding) key = key.substring(4);
-  var [turn, tilt] = [for (var p in key.split(",")) double.parse(p)];
+  var at = key.indexOf("@");
+  var panel = at < 0 ? key : key.substring(0, at);
+  var [turn, tilt] = [for (var p in panel.split(",")) double.parse(p)];
   if (adding) e = e.withView(CharacterView.of(turn, tilt));
-  var pose = e.poseAtFrame(controller.frame).withTurn(turn).withTilt(tilt);
+  var pose = e.poseAtFrame(controller.frame);
+  // A view of a pose: in that pose.
+  if (at >= 0) {
+    var name = key.substring(at + 1);
+    for (var v in e.views) {
+      if (v.pose == name && v.posed != null) pose = v.posed!;
+    }
+  }
+  pose = pose.withTurn(turn).withTilt(tilt);
   return controller.characterPosed(e, e.inView(pose));
+}
+
+/// _viewOf is the view [key] names -- see viewKeyOf -- turned the way
+/// round its mirror is not.
+CharacterView _viewOf(CharacterElement e, String key) {
+  var at = key.indexOf("@");
+  var [turn, tilt] = [
+    for (var p in (at < 0 ? key : key.substring(0, at)).split(",")) double.parse(p)
+  ];
+  var v = CharacterView.of(turn, tilt);
+  if (at < 0) return v;
+  var name = key.substring(at + 1);
+  return e.views.firstWhere((w) => w.pose == name && w.turn == v.turn && w.tilt == v.tilt,
+      orElse: () => v);
 }
 
 /// drawingTarget is the drawing the tools edit for [e]: the one laid over
@@ -77,7 +102,9 @@ Widget characterDrawingSection(
 
   var pose = e.inView(e.poseAtFrame(controller.frame));
   var turn = pose.panelTurn, tilt = pose.panelTilt;
-  var (drawing, mirrored) = e.drawingFor(turn, tilt);
+  // The view it is drawn from: of the pose it is in, where it has one.
+  var key = e.viewKey(e.poseAtFrame(controller.frame));
+  var (drawing, mirrored) = e.drawingAt(key);
   var drawingOn = controller.drawingOn == e.id;
   var panels = e.drawings.length;
 
@@ -85,7 +112,7 @@ Widget characterDrawingSection(
     var next = {...drawing.hidden};
     hidden ? next.add(region) : next.remove(region);
     // A mirrored panel changed is its own from then on.
-    now(e.withDrawing(turn, tilt, drawing.copyWith(hidden: next)));
+    now(e.withDrawingAt(key, drawing.copyWith(hidden: next)));
   }
 
   return section(e, "drawing",
@@ -112,9 +139,39 @@ Widget characterDrawingSection(
               CanvasDropdown<String>(
                 key: const ValueKey("characterDrawingPanelPick"),
                 label: "Seen from",
-                value: panelKey(turn, tilt),
+                value: key,
                 options: panelOptions(e),
                 onChanged: (key) => now(showPanel(controller, e, key)),
+              ),
+              // A view of a pose: drawn when it is in that pose, from here.
+              CanvasDropdown<String?>(
+                key: const ValueKey("characterDrawingPoseView"),
+                label: "Add a pose view",
+                value: null,
+                options: [
+                  (null, "Pick a pose"),
+                  ("", "The pose it is in now"),
+                  for (var p in posePresets) (p.name, p.name),
+                ],
+                onChanged: (name) {
+                  if (name == null) return;
+                  var now0 = e.poseAtFrame(controller.frame);
+                  var posed = name.isEmpty
+                      ? now0
+                      : posePresets.firstWhere((p) => p.name == name).pose;
+                  if (name.isEmpty) {
+                    var n = 1;
+                    while (e.views.any((v) => v.pose == "Pose $n")) {
+                      n++;
+                    }
+                    name = "Pose $n";
+                  }
+                  var base = CharacterView.of(turn, tilt);
+                  var view = CharacterView(base.turn, base.tilt, pose: name, posed: posed);
+                  var next = e.withView(base).withView(view);
+                  now(controller.characterPosed(
+                      next, next.inView(posed.withTurn(turn).withTilt(tilt))));
+                },
               ),
               // Front, side and back stay: a character needs a view, and
               // these are where a turnaround starts.
@@ -124,7 +181,7 @@ Widget characterDrawingSection(
                   label: "Remove this view",
                   icon: Icons.remove_circle_outline,
                   onPressed: () =>
-                      now(e.withView(CharacterView.of(turn, tilt), on: false)),
+                      now(e.withView(_viewOf(e, key), on: false)),
                 ),
               CanvasDropdown<CharacterZoom?>(
                 key: const ValueKey("characterDrawingZoom"),
@@ -139,7 +196,7 @@ Widget characterDrawingSection(
                 },
               ),
               // The panel's own drawing as shapes, to edit point by point.
-              if (!isTakenApart(e, turn, tilt))
+              if (!isTakenApart(e, key))
                 CanvasTextButton(
                   key: const ValueKey("characterDrawingTakeApart"),
                   label: "Take this panel apart",
@@ -202,12 +259,12 @@ Widget characterDrawingSection(
                   icon: Icons.restart_alt,
                   onPressed: controller.putFacePointBack,
                 ),
-              if (e.faceRigs.containsKey(panelKey(turn, tilt)))
+              if (e.faceRigs.containsKey(key))
                 CanvasTextButton(
                   key: const ValueKey("characterDrawingFaceReset"),
                   label: "Put this panel's face back",
                   icon: Icons.restart_alt,
-                  onPressed: () => now(e.withFaceRig(turn, tilt, FaceRig.none)),
+                  onPressed: () => now(e.withFaceRigAt(key, FaceRig.none)),
                 ),
             ]),
         CanvasControlGroup(
@@ -277,7 +334,7 @@ Widget characterDrawingSection(
                       : "Clear this panel",
                   icon: Icons.delete_outline,
                   onPressed: () =>
-                      now(e.withDrawing(turn, tilt, CharacterDrawing.empty)),
+                      now(e.withDrawingAt(key, CharacterDrawing.empty)),
                 ),
             ]),
       ]);

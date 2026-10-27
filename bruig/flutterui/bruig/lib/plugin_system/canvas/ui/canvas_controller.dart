@@ -4062,9 +4062,9 @@ class CanvasController extends ChangeNotifier {
     var id = drawingOn;
     var c = id == null ? null : _document.elementById(id);
     if (c is! CharacterElement) return false;
-    var (_, turn, tilt) = drawnRig(c, _frame, math.max(1, _document.frameRate));
-    if (_drawingLayer case var layer?) return isLayerTakenApart(c, layer, turn, tilt);
-    return isTakenApart(c, turn, tilt, garment: _drawingGarment);
+    var key = drawnKey(c, _frame, math.max(1, _document.frameRate));
+    if (_drawingLayer case var layer?) return isLayerTakenApart(c, layer, key);
+    return isTakenApart(c, key, garment: _drawingGarment);
   }
 
   /// layerTakenApart is whether [layer] of character [id] is drawn by its
@@ -4072,8 +4072,7 @@ class CanvasController extends ChangeNotifier {
   bool layerTakenApart(String id, String layer) {
     var c = _document.elementById(id);
     if (c is! CharacterElement || c.body.inThreeD) return false;
-    var (_, turn, tilt) = drawnRig(c, _frame, math.max(1, _document.frameRate));
-    return isLayerTakenApart(c, layer, turn, tilt);
+    return isLayerTakenApart(c, layer, drawnKey(c, _frame, math.max(1, _document.frameRate)));
   }
 
   /// takeApartCharacterLayer takes [layer] of character [id] apart on the
