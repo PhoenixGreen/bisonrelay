@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
@@ -238,6 +239,10 @@ class StagePainter extends CustomPainter {
   /// feature, and facePicked the feature picked.
   final CharacterElement? faceCharacter;
   final FacePoint? facePicked;
+
+  /// garmentArea is the character a garment is being drawn on and the
+  /// parts of its body the garment covers, washed over it.
+  final (CharacterElement, Set<CharacterPart>)? garmentArea;
   final bool guideHandles;
   final GuideHandle? guideHeld;
 
@@ -385,6 +390,7 @@ class StagePainter extends CustomPainter {
     this.rigPicked,
     this.faceCharacter,
     this.facePicked,
+    this.garmentArea,
     this.guideHandles = true,
     this.guideHeld,
     this.editingVector,
@@ -870,6 +876,16 @@ class StagePainter extends CustomPainter {
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
+    // Where a garment being drawn on is worn, under everything else.
+    if (garmentArea case (var who, var parts)) {
+      paintBodyArea(
+          canvas,
+          CharacterPlacement.of(who, frame,
+              frameRate: document.frameRate, document: document),
+          parts,
+          (doc) => doc * scale + origin,
+          scale);
+    }
     // The puppet to draw over, under the pins that pose it.
     if (guideCharacter case var who?) {
       paintGuide(
@@ -1916,6 +1932,7 @@ class StagePainter extends CustomPainter {
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||
       old.facePicked != facePicked ||
+      old.garmentArea?.$1 != garmentArea?.$1 ||
       old.guideHandles != guideHandles ||
       old.guideHeld != guideHeld ||
       old.editingVector != editingVector ||

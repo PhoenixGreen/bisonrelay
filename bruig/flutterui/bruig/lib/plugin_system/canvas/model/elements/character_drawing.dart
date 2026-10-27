@@ -241,3 +241,27 @@ enum CharacterZoom {
   final String label;
   const CharacterZoom(this.label);
 }
+
+/// drawingOnPanel is what [drawings] has on the panel turned [turn] and
+/// tilted [tilt]: its own, or the panel opposite's mirrored -- and whether
+/// it is that mirror. See CharacterElement.drawingFor.
+(CharacterDrawing, bool) drawingOnPanel(
+    Map<String, CharacterDrawing> drawings, double turn, double tilt) {
+  if (drawings[panelKey(turn, tilt)] case var own?) return (own, false);
+  var opposite = turn.round() % 180 == 0 ? null : drawings[panelKey(-turn, tilt)];
+  if (opposite != null) return (opposite.mirrored, true);
+  return (CharacterDrawing.empty, false);
+}
+
+/// withPanelDrawing is [drawings] with [drawing] on the panel turned [turn]
+/// and tilted [tilt]; an empty one takes the panel's own away.
+Map<String, CharacterDrawing> withPanelDrawing(Map<String, CharacterDrawing> drawings,
+    double turn, double tilt, CharacterDrawing drawing) {
+  var next = {...drawings};
+  if (drawing.isEmpty) {
+    next.remove(panelKey(turn, tilt));
+  } else {
+    next[panelKey(turn, tilt)] = drawing;
+  }
+  return next;
+}

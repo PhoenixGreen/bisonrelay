@@ -50,6 +50,11 @@ class CharacterDrawBar extends StatelessWidget {
           var theme = ThemeNotifier.of(context);
           var drawing = controller.drawingOn == e.id;
           var pose = e.poseAtFrame(controller.frame).inPanel;
+          var garment = switch (controller.drawingGarment) {
+            var g? when drawing && g < e.dna.wardrobe.length =>
+              e.dna.wardrobe[g],
+            _ => null,
+          };
 
           void write(CharacterElement next) {
             controller.beginInteraction();
@@ -82,6 +87,17 @@ class CharacterDrawBar extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 runSpacing: 4,
                 children: [
+                  // What is being drawn on, when it is something it wears.
+                  if (garment != null)
+                    Padding(
+                      key: const ValueKey("characterDrawGarment"),
+                      padding: const EdgeInsets.only(left: 6, right: 10),
+                      child: Text("Drawing: ${garment.title}",
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colors.onSurface)),
+                    ),
                   // Going round it, panel to panel.
                   CanvasOrbitPad(
                     key: const ValueKey("characterDrawOrbit"),

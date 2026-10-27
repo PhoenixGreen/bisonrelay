@@ -132,6 +132,17 @@ void paintCharacterFigure(
   if (!body.inThreeD) pose = pose.inPanel;
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
+  // What is drawn by hand on what it wears, each shape on the part of the
+  // body under it -- over the figure, under what is drawn on the panel.
+  void worn(Canvas onto) {
+    if (bare) return;
+    for (var g in dna.worn) {
+      if (g.drawings.isEmpty) continue;
+      var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
+      paintDrawing(onto, rig, d, box.inflate(box.height));
+    }
+  }
+
   void drawOn(Canvas onto) {
     if (body.inThreeD) {
       _paintInThreeD(onto, rig, dna, pose, face, life, body, box, images,
@@ -159,6 +170,7 @@ void paintCharacterFigure(
                     hidden: drawing?.hidden ?? const {},
                     faceRig: faceRig ?? FaceRig.none)
                 .draw();
+            worn(flat);
             if (drawing != null) paintDrawing(flat, rig, drawing, box.inflate(box.height));
           },
           // A garment's picture print comes from the images, which are not
@@ -184,6 +196,7 @@ void paintCharacterFigure(
             hidden: drawing?.hidden ?? const {},
             faceRig: faceRig ?? FaceRig.none)
         .draw();
+    worn(onto);
     // Drawn by hand over it, each shape where its part is.
     if (drawing != null) paintDrawing(onto, rig, drawing, box.inflate(box.height));
   }
@@ -1035,7 +1048,10 @@ class _Drawing {
 
   /// garments is what is drawn on the body, innermost first: nothing in
   /// the bare view.
-  List<Garment> get garments => bare ? const [] : dna.worn;
+  /// garments is what is worn as it is drawn here: not a garment drawn by
+  /// hand alone -- see Garment.drawnOnly.
+  late final List<Garment> garments =
+      bare ? const [] : [for (var g in dna.worn) if (!g.drawnOnly) g];
 
   Iterable<(int, Garment)> _wearing(bool Function(Garment) which) sync* {
     for (var (i, g) in garments.indexed) {
@@ -1248,10 +1264,16 @@ class _Drawing {
       if (!_oneSkin) {
         _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true, limb: limb);
       }
-      // A bare foot, unless a shoe covers it all.
+      // A bare foot, unless a shoe covers it all -- one drawn by hand as
+      // well: what is drawn is the shoe.
       if (!_wearing((g) =>
-              g.kind.shape == GarmentShape.shoes && g.kind != GarmentKind.sandals)
-          .isNotEmpty) {
+                  g.kind.shape == GarmentShape.shoes && g.kind != GarmentKind.sandals)
+              .isNotEmpty &&
+          !(!bare &&
+              dna.worn.any((g) =>
+                  g.drawnOnly &&
+                  g.drawings.isNotEmpty &&
+                  g.kind.shape == GarmentShape.shoes))) {
         _foot(limb, dna.skin, bareFoot: true);
       }
       for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {

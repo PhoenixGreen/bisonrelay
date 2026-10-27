@@ -3949,15 +3949,30 @@ class CanvasController extends ChangeNotifier {
   CharacterElement? _proxyOver;
   int _proxyFrame = -1;
 
+  /// drawingGarment is which of the character's wardrobe is being drawn
+  /// on, or null for the character itself.
+  int? get drawingGarment => drawingOn == null ? null : _drawingGarment;
+  int? _drawingGarment;
+
   /// drawOnCharacter starts drawing on the sketched character [id], on the
-  /// panel it is seen from where the playhead is.
-  void drawOnCharacter(String id) {
+  /// panel it is seen from where the playhead is -- or, with [garment], on
+  /// that garment of its wardrobe: each shape on the part of the body it
+  /// covers under it.
+  void drawOnCharacter(String id, {int? garment}) {
     var c = _document.elementById(id);
     if (c is! CharacterElement || c.body.inThreeD) return;
-    if (drawingOn == id) return;
+    if (garment != null && (garment < 0 || garment >= c.dna.wardrobe.length)) return;
+    if (drawingOn == id && _drawingGarment == garment) return;
+    // From one to the other, the first put down.
+    if (drawingOn != null) {
+      selectOnly(drawingOn!);
+      _keepDrawingProxy();
+    }
     stopVectorTyping();
     _fitEditedVector();
-    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate));
+    _drawingGarment = garment;
+    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
+        garment: garment);
     var next = _document.removeElement(proxy.id).addElement(proxy);
     next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
     _vectorEditing = proxy.id;
@@ -3996,7 +4011,7 @@ class CanvasController extends ChangeNotifier {
     if (identical(proxy, before) || proxy.shapes == before.shapes) return next;
     var drawn = drawnFromProxy(
         c, proxy, _frame, math.max(1, _document.frameRate),
-        before: before);
+        before: before, garment: _drawingGarment);
     _proxyOver = drawn;
     _proxyFrame = _frame;
     return next.withElement(drawn);
@@ -4016,13 +4031,19 @@ class CanvasController extends ChangeNotifier {
         ]);
       }
       _proxyOver = null;
+      _drawingGarment = null;
       return;
     }
     var c = _document.elementById(cid);
     if (c is! CharacterElement) return;
     if (identical(c, _proxyOver) && _frame == _proxyFrame) return;
     var at = _document.elementById(id!);
-    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate));
+    // A garment taken off while it was drawn on: nothing left to draw on.
+    if (_drawingGarment case var g? when g >= c.dna.wardrobe.length) {
+      _drawingGarment = null;
+    }
+    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
+        garment: _drawingGarment);
     if (at is VectorElement) {
       _document = _document.withElement(proxy);
     }

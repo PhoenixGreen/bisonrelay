@@ -402,7 +402,7 @@ List<Widget> characterSettings(
         summary: [
           if (e.bareView) "Bare view",
           for (var g in dna.wardrobe)
-            if (g.kind.slot != GarmentSlot.base) g.kind.label,
+            if (g.kind.slot != GarmentSlot.base) g.title,
         ].join(" · "),
         children: [
           _WardrobeGroup(
@@ -2105,6 +2105,15 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               options: [for (var s in GarmentSlot.values) (s, s.label)],
               onChanged: (v) => setState(() => _slot = v),
             ),
+            // One of its own, drawn by hand on the canvas: worn where the
+            // slot is, on the parts of the body it covers.
+            if (!e.body.inThreeD)
+              CanvasTextButton(
+                key: const ValueKey("characterGarmentNew"),
+                label: "New, drawn by hand",
+                icon: Icons.draw_outlined,
+                onPressed: _newDrawn,
+              ),
           ]),
       CanvasTiles<GarmentKind>(
         columns: 4,
@@ -2146,7 +2155,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               const CanvasLineBreak(),
               CanvasTextButton(
                 key: ValueKey("characterWorn-$i"),
-                label: g.kind.label,
+                label: g.title,
                 primary: i == _picked,
                 onPressed: () => setState(() => _picked = i),
               ),
@@ -2187,12 +2196,80 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
     ]);
   }
 
+  /// _newDrawn puts on a garment of its own where the slot picked is, with
+  /// nothing of it drawn but what is drawn on it by hand, and starts drawing
+  /// it on the canvas.
+  void _newDrawn() {
+    var k = GarmentKind.values.firstWhere((k) => k.slot == _slot);
+    var g = Garment(k,
+        color: _defaultColour(k),
+        seed: newSeed(dna.wardrobe.length, k),
+        name: "My ${_slot.label.toLowerCase()}",
+        drawnOnly: true);
+    var next = putOn(dna.wardrobe, g);
+    _picked = next.indexOf(g);
+    _wear(next);
+    widget.controller.drawOnCharacter(e.id, garment: _picked);
+  }
+
+  /// _drawnGroup is drawing a garment by hand on the canvas: on it, over it,
+  /// or in place of it.
+  Widget _drawnGroup(Garment g) {
+    var controller = widget.controller;
+    var drawing =
+        controller.drawingOn == e.id && controller.drawingGarment == _picked;
+    var pose = e.poseAtFrame(controller.frame).inPanel;
+    var (own, mirrored) = g.drawingFor(pose.panelTurn, pose.panelTilt);
+    return CanvasControlGroup(
+        key: const ValueKey("characterGarmentDrawn"),
+        label: "Drawn by hand",
+        help: "Draw on it on the canvas, with the drawing tools, panel by "
+            "panel. Each shape goes on the part of the body under it of "
+            "those it covers -- shown washed over the character while you "
+            "draw -- and is worn: it moves as the body does. Only what is "
+            "drawn leaves its own drawing out, so yours is the garment.",
+        children: [
+          CanvasTextButton(
+            key: const ValueKey("characterGarmentDraw"),
+            label: drawing ? "Stop drawing it" : "Draw on it",
+            icon: Icons.draw_outlined,
+            primary: drawing,
+            onPressed: () => drawing
+                ? controller.stopDrawingOnCharacter()
+                : controller.drawOnCharacter(e.id, garment: _picked),
+          ),
+          CanvasToggle(
+            key: const ValueKey("characterGarmentDrawnOnly"),
+            label: "Only what is drawn",
+            value: g.drawnOnly,
+            onChanged: (v) => _change(g.copyWith(drawnOnly: v)),
+          ),
+          CanvasTextField(
+            key: const ValueKey("characterGarmentName"),
+            label: "Name",
+            value: g.name,
+            hint: g.kind.label,
+            onChanged: (v) => _change(g.copyWith(name: v.trim()), live: true),
+            onCommit: widget.commit,
+          ),
+          if (!own.isEmpty && !mirrored)
+            CanvasTextButton(
+              key: const ValueKey("characterGarmentClear"),
+              label: "Clear this panel",
+              icon: Icons.delete_outline,
+              onPressed: () => _change(g.withDrawing(
+                  pose.panelTurn, pose.panelTilt, CharacterDrawing.empty)),
+            ),
+        ]);
+  }
+
   List<Widget> _garmentEditor(Garment g) {
     var k = g.kind;
     return [
+      if (!e.body.inThreeD) _drawnGroup(g),
       CanvasControlGroup(
           key: const ValueKey("characterGarmentEditor"),
-          label: k.label,
+          label: g.title,
           help: "Its colours -- the second is its pattern's, and its trim's "
               "-- and how it is cut: how loose, how long, how far down "
               "the arm.",

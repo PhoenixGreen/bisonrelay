@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
@@ -102,11 +103,13 @@ double _toSegment(Offset p, Offset a, Offset b) {
 }
 
 /// partAt is the part of the body [rig] has nearest [p] -- what a shape
-/// drawn there is drawn on.
-CharacterPart partAt(CharacterRig rig, Offset p) {
-  var best = CharacterPart.torso;
+/// drawn there is drawn on -- of [among], where it is given: the parts a
+/// garment covers.
+CharacterPart partAt(CharacterRig rig, Offset p, {Set<CharacterPart>? among}) {
+  var best = among == null || among.isEmpty ? CharacterPart.torso : among.first;
   var bestD = double.infinity;
   void consider(CharacterPart part, double d) {
+    if (among != null && among.isNotEmpty && !among.contains(part)) return;
     if (d < bestD) {
       bestD = d;
       best = part;
@@ -189,12 +192,13 @@ List<VectorShape> drawingOnPage(
 /// keep where there is one; a new shape is put on the part under it.
 CharacterDrawing shapesOnParts(List<VectorShape> shapes, CharacterRig rig,
     {List<CharacterPart> keep = const [],
-    Set<CharacterRegion> hidden = const {}}) {
+    Set<CharacterRegion> hidden = const {},
+    Set<CharacterPart>? among}) {
   var frames = partFrames(rig);
   var parts = <CharacterPart>[];
   var local = <VectorShape>[];
   for (var (i, shape) in shapes.indexed) {
-    var part = i < keep.length ? keep[i] : partAt(rig, shapeCentre(shape));
+    var part = i < keep.length ? keep[i] : partAt(rig, shapeCentre(shape), among: among);
     var f = frames[part]!;
     parts.add(part);
     local.add(mapShape(shape, (x, y) => f.toLocal(Offset(x, y)),
@@ -237,9 +241,13 @@ void paintDrawing(
 /// while it is drawn on -- see drawingProxyId -- laid exactly over it: the
 /// shapes drawn on the panel, where the pose has them, in the character's
 /// own box. It draws nothing itself; the character draws what is on it.
-VectorElement drawingProxy(CharacterElement e, int frame, int frameRate) {
+///
+/// With [garment], the drawing on that garment of its wardrobe instead.
+VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
+    {int? garment}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
-  var (drawing, _) = e.drawingFor(turn, tilt);
+  var (drawing, _) =
+      _garmentOf(e, garment)?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
   return VectorElement(
     // Where the character is, and moved as it is moved.
     e.base.copyWith(
@@ -258,20 +266,33 @@ VectorElement drawingProxy(CharacterElement e, int frame, int frameRate) {
 /// it is over. [before] is the stand-in as it was, whose shapes, when there
 /// are as many, keep the parts they were on; a shape added or taken away
 /// puts them all where they now are.
+///
+/// With [garment], onto that garment of its wardrobe, each shape on the
+/// part under it of those the garment covers.
 CharacterElement drawnFromProxy(
     CharacterElement e, VectorElement proxy, int frame, int frameRate,
-    {VectorElement? before}) {
+    {VectorElement? before, int? garment}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
-  var (old, mirrored) = e.drawingFor(turn, tilt);
+  var g = _garmentOf(e, garment);
+  var (old, mirrored) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
   var shapes = proxy.shapes ?? const <VectorShape>[];
   var same = !mirrored &&
       before != null &&
       (before.shapes?.length ?? -1) == shapes.length &&
       old.parts.length == shapes.length;
   var drawing = shapesOnParts(shapes, rig,
-      keep: same ? old.parts : const [], hidden: old.hidden);
-  return e.withDrawing(turn, tilt, drawing);
+      keep: same ? old.parts : const [],
+      hidden: old.hidden,
+      among: g?.kind.covers);
+  if (g == null) return e.withDrawing(turn, tilt, drawing);
+  var wardrobe = [...e.dna.wardrobe];
+  wardrobe[garment!] = g.withDrawing(turn, tilt, drawing);
+  return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
 }
+
+/// _garmentOf is [e]'s garment [i], where there is one.
+Garment? _garmentOf(CharacterElement e, int? i) =>
+    i == null || i < 0 || i >= e.dna.wardrobe.length ? null : e.dna.wardrobe[i];
 
 /// zoomRect is the stretch of the body [rig] has that [zoom] names, in the
 /// rig's own measure, with room round it to draw in.

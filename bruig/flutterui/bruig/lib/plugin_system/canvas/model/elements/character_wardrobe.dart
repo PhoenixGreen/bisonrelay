@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 
 // character_wardrobe.dart is what a character wears: an ordered list of
 // garments, from the skin outwards.
@@ -198,6 +199,41 @@ enum GarmentKind {
   /// strapless is a top edge straight across the chest under the arms,
   /// with nothing over the shoulders.
   bool get strapless => this == tubeDress;
+
+  /// covers is the parts of the body it is worn on: what is drawn on it by
+  /// hand is put on whichever of these it is drawn over. See
+  /// Garment.drawings.
+  Set<CharacterPart> get covers {
+    const arms = {
+      CharacterPart.upperArmL,
+      CharacterPart.upperArmR,
+      CharacterPart.foreArmL,
+      CharacterPart.foreArmR,
+    };
+    const thighs = {CharacterPart.thighL, CharacterPart.thighR};
+    const shins = {CharacterPart.shinL, CharacterPart.shinR};
+    const feet = {CharacterPart.footL, CharacterPart.footR};
+    return switch (shape) {
+      GarmentShape.torso => {CharacterPart.torso, ...arms},
+      GarmentShape.legs => {
+          CharacterPart.torso,
+          ...thighs,
+          ...shins,
+          if (this == socks || this == tights) ...feet,
+        },
+      GarmentShape.skirt => {CharacterPart.torso, ...thighs, ...shins},
+      GarmentShape.dress => {CharacterPart.torso, ...arms, ...thighs, ...shins},
+      GarmentShape.cape => {
+          CharacterPart.torso,
+          CharacterPart.upperArmL,
+          CharacterPart.upperArmR,
+          ...thighs,
+        },
+      GarmentShape.shoes => {...feet, ...shins},
+      GarmentShape.hat || GarmentShape.glasses => {CharacterPart.head},
+      GarmentShape.neck => {CharacterPart.head, CharacterPart.torso},
+    };
+  }
 }
 
 /// GarmentPattern is what is printed on a garment, in its second colour.
@@ -330,6 +366,30 @@ class Garment {
   /// garments are not worn in the same places.
   final int seed;
 
+  /// name is what it is called, where it is not just its kind: a garment
+  /// drawn by hand.
+  final String name;
+
+  /// drawings is what is drawn on it by hand, panel by panel -- see
+  /// character_drawing.dart -- each shape on the part of the body under it
+  /// that the garment covers, so it is worn: it moves with the body.
+  final Map<String, CharacterDrawing> drawings;
+
+  /// drawnOnly leaves its own drawing out, for what is drawn on it by hand
+  /// to be the garment: how a garment made from new is.
+  final bool drawnOnly;
+
+  /// title is what it is called in the wardrobe.
+  String get title => name.isEmpty ? kind.label : name;
+
+  /// drawingFor is what is drawn on it on the panel turned [turn] and tilted
+  /// [tilt], and whether that is the other side's, mirrored.
+  (CharacterDrawing, bool) drawingFor(double turn, double tilt) =>
+      drawingOnPanel(drawings, turn, tilt);
+
+  Garment withDrawing(double turn, double tilt, CharacterDrawing drawing) =>
+      copyWith(drawings: withPanelDrawing(drawings, turn, tilt, drawing));
+
   const Garment(
     this.kind, {
     required this.color,
@@ -343,6 +403,9 @@ class Garment {
     this.outline = const [],
     this.printId = "",
     this.printSize = 0.6,
+    this.name = "",
+    this.drawings = const {},
+    this.drawnOnly = false,
   });
 
   double get lengthOr => length ?? kind.length;
@@ -362,6 +425,9 @@ class Garment {
     List<Offset>? outline,
     String? printId,
     double? printSize,
+    String? name,
+    Map<String, CharacterDrawing>? drawings,
+    bool? drawnOnly,
   }) =>
       Garment(
         kind ?? this.kind,
@@ -383,6 +449,9 @@ class Garment {
         outline: outline ?? this.outline,
         printId: printId ?? this.printId,
         printSize: (printSize ?? this.printSize).clamp(0.1, 1.5).toDouble(),
+        name: name ?? this.name,
+        drawings: drawings ?? this.drawings,
+        drawnOnly: drawnOnly ?? this.drawnOnly,
       );
 
   Map<String, dynamic> toJson() => {
@@ -401,6 +470,10 @@ class Garment {
           ],
         if (printId.isNotEmpty) "print": printId,
         if (printSize != 0.6) "printSize": printSize,
+        if (name.isNotEmpty) "name": name,
+        if (drawings.isNotEmpty)
+          "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
+        if (drawnOnly) "drawnOnly": true,
       };
 
   static double _round(double v) => (v * 1000).round() / 1000;
@@ -430,6 +503,14 @@ class Garment {
       ],
       printId: jsonString(json["print"], ""),
       printSize: jsonDouble(json["printSize"], 0.6).clamp(0.1, 1.5),
+      name: jsonString(json["name"], ""),
+      drawings: {
+        if (json["drawings"] case Map raw)
+          for (var e in raw.entries)
+            if (e.value is Map<String, dynamic>)
+              "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
+      },
+      drawnOnly: jsonBool(json["drawnOnly"], false),
     );
   }
 }

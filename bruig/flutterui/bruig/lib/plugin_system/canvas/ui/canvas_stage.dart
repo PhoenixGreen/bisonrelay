@@ -2424,6 +2424,16 @@ class CanvasStageState extends State<CanvasStage>
     return e is CharacterElement && e.visible ? e : null;
   }
 
+  /// _garmentArea is the character a garment is drawn on, and the parts of
+  /// its body the garment covers.
+  (CharacterElement, Set<CharacterPart>)? _garmentArea() {
+    var g = controller.drawingGarment;
+    if (g == null) return null;
+    var who = _posedCharacter();
+    if (who == null || g >= who.dna.wardrobe.length) return null;
+    return (who, who.dna.wardrobe[g].kind.covers);
+  }
+
   /// _guideCharacter is the sketch the puppet is laid over, while it is
   /// shown: the one being drawn on, or picked.
   CharacterElement? _guideCharacter() {
@@ -6393,6 +6403,7 @@ class CanvasStageState extends State<CanvasStage>
                                     : null),
                         rigCharacter: controller.rigCharacter,
                         faceCharacter: controller.faceCharacter,
+                        garmentArea: _garmentArea(),
                         facePicked: controller.facePick,
                         rigPicked: controller.rigPick,
                         guideCharacter: _guideCharacter(),
