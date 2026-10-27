@@ -205,6 +205,34 @@ const List<CastMember> characterCast = [
         fur2: Color(0xFFE8F6FF),
         wardrobe: [],
       )),
+  // Ken's anime boy: drawn in the Anime style, he is the reference.
+  CastMember(
+      "Kai",
+      "Anime boy, oversized hoodie",
+      CharacterDna(
+        type: CharacterType.boy,
+        headsTall: 3.7,
+        build: 0.4,
+        skin: Color(0xFFF6DCC6),
+        hair: Color(0xFF1A1A1F),
+        hairStyle: HairStyle.short,
+        eyes: Color(0xFFC0303A),
+        look: Appearance({
+          Look.neckLength: -0.5,
+          Look.eyeSize: 0.55,
+          Look.mouthWidth: -0.35,
+          Look.cheeks: 0.35,
+          Look.noseLength: -0.5,
+          Look.chin: -0.3,
+          Look.earSize: 0.2,
+        }),
+        wardrobe: [
+          ...baseLayer_,
+          Garment(GarmentKind.joggers, color: Color(0xFF3B2A26), fit: 1.08),
+          Garment(GarmentKind.hoodie, color: Color(0xFFF07A3E), fit: 1.3),
+          Garment(GarmentKind.trainers, color: Color(0xFFE5393B)),
+        ],
+      )),
 ];
 
 /// PosePreset is one ready-made stance.

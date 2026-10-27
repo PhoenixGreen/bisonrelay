@@ -968,7 +968,7 @@ class _Drawing {
   /// _eyeKit is how much wider and taller the style draws its eyes, and
   /// how much lower, in head units.
   (double, double, double) get _eyeKit => switch (_eyeKind) {
-        _Eyes.anime => (1.55, 1.3, 0.07),
+        _Eyes.anime => (1.45, 1.42, 0.08),
         _Eyes.shojo => (1.35, 1.6, 0.04),
         _Eyes.shonen => (1.25, 0.85, 0.0),
         _Eyes.soft => (0.8, 0.95, 0.0),
@@ -993,7 +993,7 @@ class _Drawing {
       for (var side in [-1.0, 1.0]) {
         var phi = side * 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
         if (_toward(phi) < 0.12) continue;
-        var c = Offset(_across(phi, w), eyeY);
+        var c = Offset(_eyeAcross(phi, w), eyeY);
         out[side > 0 ? FacePoint.eyeL : FacePoint.eyeR] = c;
         out[side > 0 ? FacePoint.browL : FacePoint.browR] = _browAt(c);
       }
@@ -1549,6 +1549,9 @@ class _Drawing {
             limb: limb);
         if (g.kind == GarmentKind.socks) {
           _inGarment(g, () => _foot(limb, g.color));
+        }
+        if (g.kind == GarmentKind.joggers) {
+          _cuff(limb, g, from, math.min(1, to), legWidth * 1.12 * g.fitOr, leg: true);
         }
         if (from == 0 && !dna.fourLegs && !seated.any((s) => s.$1 == i)) {
           seated.add((i, g));
@@ -2144,6 +2147,33 @@ class _Drawing {
     }
   }
 
+  /// _cuff is a ribbed cuff across the end of [g] down [limb], from [from]
+  /// to [end] of it and [width] across: a band a shade darker, as wide as
+  /// the cloth there, the cloth gathered into it.
+  void _cuff(CharacterLimb limb, Garment g, double from, double end, double width,
+      {required bool leg}) {
+    if (look.hose) return;
+    var shape = _limbShape(_along(limb, from, end), width,
+        t0: from,
+        t1: end,
+        leg: leg,
+        limb: limb,
+        loose: ((g.fitOr - 1) * 4).clamp(0.0, 0.9));
+    var at = _along(limb, end - (leg ? 0.06 : 0.07), end);
+    var d = at.last - at.first;
+    if (d.distance <= 1e-6) return;
+    var n = Offset(-d.dy, d.dx) / d.distance * (width * 4);
+    var past = d / d.distance * (width * 4);
+    var band = Path.combine(
+        PathOperation.intersect,
+        shape,
+        Path()
+          ..addPolygon(
+              [at.first + n, at.first - n, at.first - n + past, at.first + n + past], true));
+    _inGarment(g, () => _fill(band,
+        Color.lerp(faded(g.color, g.condition.fade), const Color(0xFF000000), 0.1)!));
+  }
+
   /// _ribbed is whether [g] ends in a ribbed band -- at its hem, and at
   /// its cuffs.
   bool _ribbed(Garment g) =>
@@ -2223,6 +2253,22 @@ class _Drawing {
           ..close();
         _fill(hood, Color.lerp(colour, const Color(0xFF000000), 0.06)!);
         canvas.drawLine(at(0, 0.02), at(0, 0.96), line..strokeWidth = edge * 0.8);
+      } else if (g.kind == GarmentKind.hoodie) {
+        // Side on: the hood is a fold of cloth at the back of the neck,
+        // hanging down between the shoulders.
+        var side = math.sin(rig.yaw * math.pi / 180);
+        var back = side >= 0 ? 1.0 : -1.0;
+        var neck = rig.chest - up * (u * 0.08);
+        var hood = Path()
+          ..moveTo(neck.dx - back * u * 0.05, neck.dy - u * 0.12)
+          ..quadraticBezierTo(neck.dx + back * u * 0.32, neck.dy - u * 0.2,
+              neck.dx + back * u * 0.36, neck.dy + u * 0.12)
+          ..quadraticBezierTo(neck.dx + back * u * 0.3, neck.dy + u * 0.42,
+              neck.dx + back * u * 0.14, neck.dy + u * 0.5)
+          ..quadraticBezierTo(neck.dx + back * u * 0.08, neck.dy + u * 0.2,
+              neck.dx - back * u * 0.05, neck.dy + u * 0.04)
+          ..close();
+        _fill(hood, Color.lerp(colour, const Color(0xFF000000), 0.05)!);
       }
       return;
     }
@@ -2502,25 +2548,8 @@ class _Drawing {
             span: (0, end),
             limb: limb);
         // A long sleeve ends in a ribbed cuff: a band across its end.
-        if (_ribbed(g) && sleeve > 0.8 && !look.hose) {
-          var line = _along(limb, 0, end);
-          var shape = _limbShape(line, armWidth * 1.14 * g.fitOr,
-              t1: end, limb: limb, loose: ((g.fitOr - 1) * 4).clamp(0.0, 0.9));
-          var at = _along(limb, end - 0.07, end);
-          var d = at.last - at.first;
-          if (d.distance > 1e-6) {
-            var n = Offset(-d.dy, d.dx) / d.distance * (armWidth * 4);
-            var past = d / d.distance * (armWidth * 4);
-            var band = Path.combine(
-                PathOperation.intersect,
-                shape,
-                Path()
-                  ..addPolygon(
-                      [at.first + n, at.first - n, at.first - n + past, at.first + n + past],
-                      true));
-            _inGarment(g, () => _fill(band,
-                Color.lerp(faded(g.color, g.condition.fade), const Color(0xFF000000), 0.1)!));
-          }
+        if (_ribbed(g) && sleeve > 0.8) {
+          _cuff(limb, g, 0, end, armWidth * 1.14 * g.fitOr, leg: false);
         }
       }
       if (cut != null) canvas.restore();
@@ -3165,6 +3194,13 @@ class _Drawing {
   /// the front.
   double _across(double phi, double w) => w * math.sin(phi - yaw);
 
+  /// _eyeAcross is how far across the face a feature [phi] round the head
+  /// beside the nose is -- an eye, a cheek: set back in from the face's
+  /// front line as the head turns side on, behind the cheek and the brow
+  /// that a round head has not got.
+  double _eyeAcross(double phi, double w) =>
+      _across(phi, w) * (1 - 0.18 * math.sin(yaw).abs());
+
   /// _toward is how far a feature [phi] round the head faces the reader.
   double _toward(double phi) => math.cos(phi - yaw);
 
@@ -3471,12 +3507,14 @@ class _Drawing {
     Offset at(double x, double y) => Offset(front + dir * x * w, y * h + dy);
     var face = Path()
       ..moveTo(at(-0.95, 0.05).dx, at(-0.95, 0.05).dy)
-      ..lineTo(at(-0.02, 0.05).dx, at(-0.02, 0.05).dy)
-      ..quadraticBezierTo(at(0.05 * k, 0.32).dx, at(0.05 * k, 0.32).dy,
-          at(0.0, 0.55).dx, at(0.0, 0.55).dy)
-      ..quadraticBezierTo(at(0.02 * k, 0.82 * chinOut).dx,
-          at(0.02 * k, 0.82 * chinOut).dy, at(-0.16, 0.92 + 0.08 * k * chinOut).dx,
-          at(-0.16, 0.92 + 0.08 * k * chinOut).dy)
+      ..lineTo(at(-0.02, -0.1).dx, at(-0.02, -0.1).dy)
+      // The cheek and the mouth stand forward of the round of the skull,
+      // which leaves the eye set back in from the face's line.
+      ..quadraticBezierTo(at(0.14 * k, 0.2).dx, at(0.14 * k, 0.2).dy,
+          at(0.1 * k, 0.55).dx, at(0.1 * k, 0.55).dy)
+      ..quadraticBezierTo(at(0.06 * k, 0.82 * chinOut).dx,
+          at(0.06 * k, 0.82 * chinOut).dy, at(-0.12, 0.92 + 0.08 * k * chinOut).dx,
+          at(-0.12, 0.92 + 0.08 * k * chinOut).dy)
       ..quadraticBezierTo(at(-0.45, 1.0 * jawDeep).dx, at(-0.45, 1.0 * jawDeep).dy,
           at(-0.8, 0.7).dx, at(-0.8, 0.7).dy)
       ..close();
@@ -4080,7 +4118,7 @@ class _Drawing {
       var phi = side * 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
       var toward = _toward(phi);
       if (toward < 0.12) continue;
-      var c = Offset(_eyesAt?[side] ?? _across(phi, w), eyeY);
+      var c = Offset(_eyesAt?[side] ?? _eyeAcross(phi, w), eyeY);
       if (side == 0 && !cyclops) c = c + Offset(0, -u * 0.14);
       var size = 1 + 0.3 * _a(Look.eyeSize);
       var shape = _a(Look.eyeShape);
@@ -4134,7 +4172,7 @@ class _Drawing {
       if (toward > 0.3) {
         canvas.drawOval(
             Rect.fromCenter(
-                center: Offset(_across(side * 0.62, w), cheekY),
+                center: Offset(_eyeAcross(side * 0.62, w), cheekY),
                 width: u * 0.14 * toward,
                 height: u * 0.08),
             Paint()
@@ -4143,7 +4181,7 @@ class _Drawing {
                       .clamp(0.0, 0.65)));
         if (look.hatch) {
           // Anime's blush: short strokes across the cheek.
-          var at = Offset(_across(side * 0.62, w), cheekY);
+          var at = Offset(_eyeAcross(side * 0.62, w), cheekY);
           var stroke = _feature(u * 0.011, const Color(0xFFD9485A).withValues(alpha: 0.6));
           for (var k = -1; k <= 1; k++) {
             var o = at + Offset(k * u * 0.035 * toward, 0);
@@ -4822,7 +4860,7 @@ class _Drawing {
         Paint()..color = Color.lerp(dna.eyes, dark, 0.85)!);
     // The lid's shadow across the top of the eye.
     canvas.drawRect(Rect.fromLTRB(box.left - w, box.top, box.right + w, top + h * 0.13),
-        Paint()..color = Color.lerp(dna.skin, dark, 0.35)!.withValues(alpha: 0.35));
+        Paint()..color = Color.lerp(dna.skin, dark, 0.35)!.withValues(alpha: 0.2));
     var light = Paint()..color = const Color(0xFFFFFFFF);
     canvas.drawOval(
         Rect.fromCenter(
@@ -4842,9 +4880,9 @@ class _Drawing {
       ..moveTo(inner - outer * w * 0.04, box.center.dy - h * 0.0)
       ..cubicTo(inner, top + h * 0.02, box.center.dx - outer * w * 0.2, top - t0,
           box.center.dx + outer * w * 0.15, top - t0 * 0.6)
-      ..quadraticBezierTo(far + outer * w * 0.08, top + h * 0.02,
-          far + outer * w * 0.2, box.center.dy - h * 0.06)
-      ..quadraticBezierTo(far + outer * w * 0.02, top + h * 0.1 + t1 * 0.4,
+      ..quadraticBezierTo(far + outer * w * 0.05, top + h * 0.02,
+          far + outer * w * 0.1, box.center.dy - h * 0.1)
+      ..quadraticBezierTo(far, top + h * 0.1 + t1 * 0.4,
           far - outer * w * 0.05, top + t1)
       ..quadraticBezierTo(box.center.dx, top + t1 * 0.45, inner + outer * w * 0.06,
           top + h * 0.12 + t0)

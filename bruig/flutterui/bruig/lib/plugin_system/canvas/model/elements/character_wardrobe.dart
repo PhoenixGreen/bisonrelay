@@ -89,6 +89,10 @@ enum GarmentKind {
   // Bottoms.
   trousers("Trousers", GarmentSlot.bottom, GarmentShape.legs, length: 1.0),
   jeans("Jeans", GarmentSlot.bottom, GarmentShape.legs, length: 1.0),
+
+  /// joggers are loose trousers gathered into a ribbed cuff at the ankle.
+  joggers("Joggers", GarmentSlot.bottom, GarmentShape.legs,
+      length: 0.97, fit: 1.15),
   shorts("Shorts", GarmentSlot.bottom, GarmentShape.legs, length: 0.36),
   leggings("Leggings", GarmentSlot.bottom, GarmentShape.legs,
       length: 0.95, fit: 0.9),
