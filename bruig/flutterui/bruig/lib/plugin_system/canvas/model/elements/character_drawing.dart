@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
 // character_drawing.dart is what is drawn by hand on a sketched character:
@@ -143,12 +144,26 @@ class CharacterDrawing {
   /// a garment taken apart there.
   final bool replaces;
 
+  /// layers is the layer each shape is drawn as -- see character_layers.dart
+  /// -- shape by shape: null for one drawn over the whole figure. Empty for
+  /// a drawing made before, all of whose shapes are.
+  final List<String?> layers;
+
+  /// hiddenLayers is the body layers drawn by their shapes here, in place
+  /// of their own drawing: layers taken apart on the panel.
+  final Set<String> hiddenLayers;
+
   const CharacterDrawing(
       {this.shapes = const [],
       this.parts = const [],
       this.hidden = const {},
       this.order = const [],
-      this.replaces = false});
+      this.replaces = false,
+      this.layers = const [],
+      this.hiddenLayers = const {}});
+
+  /// layerOf is the layer shape [i] is drawn as, or null.
+  String? layerOf(int i) => i < layers.length ? layers[i] : null;
 
   /// orderOf is where shape [i] is drawn: as kept, or -- for a drawing
   /// without -- after everything taken apart, from [base] on.
@@ -157,20 +172,25 @@ class CharacterDrawing {
 
   static const CharacterDrawing empty = CharacterDrawing();
 
-  bool get isEmpty => shapes.isEmpty && hidden.isEmpty && !replaces;
+  bool get isEmpty =>
+      shapes.isEmpty && hidden.isEmpty && !replaces && hiddenLayers.isEmpty;
 
   CharacterDrawing copyWith(
           {List<VectorShape>? shapes,
           List<CharacterPart>? parts,
           Set<CharacterRegion>? hidden,
           List<double>? order,
-          bool? replaces}) =>
+          bool? replaces,
+          List<String?>? layers,
+          Set<String>? hiddenLayers}) =>
       CharacterDrawing(
           shapes: shapes ?? this.shapes,
           parts: parts ?? this.parts,
           hidden: hidden ?? this.hidden,
           order: order ?? this.order,
-          replaces: replaces ?? this.replaces);
+          replaces: replaces ?? this.replaces,
+          layers: layers ?? this.layers,
+          hiddenLayers: hiddenLayers ?? this.hiddenLayers);
 
   /// mirrored is this drawing seen from the other side: each shape flipped
   /// across its bone and put on the part opposite.
@@ -180,7 +200,12 @@ class CharacterDrawing {
         hidden: {for (var r in hidden) r.mirrored},
         order: order,
         replaces: replaces,
+        layers: [for (var l in layers) l == null ? null : _mirroredLayer(l)],
+        hiddenLayers: {for (var l in hiddenLayers) _mirroredLayer(l)},
       );
+
+  static String _mirroredLayer(String l) =>
+      BodyLayer.fromName(l)?.mirrored.name ?? l;
 
   Map<String, dynamic> toJson() => {
         "shapes": [for (var s in shapes) s.toJson()],
@@ -188,6 +213,8 @@ class CharacterDrawing {
         if (hidden.isNotEmpty) "hidden": [for (var r in hidden) r.name],
         if (order.isNotEmpty) "order": order,
         if (replaces) "replaces": true,
+        if (layers.any((l) => l != null)) "layers": layers,
+        if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
       };
 
   factory CharacterDrawing.fromJson(Map<String, dynamic> json) {
@@ -207,7 +234,15 @@ class CharacterDrawing {
       for (var o in json["order"] as List? ?? const [])
         if (o is num) o.toDouble(),
     ];
+    var layers = [
+      for (var l in json["layers"] as List? ?? const []) l is String ? l : null,
+    ];
     return CharacterDrawing(
+      layers: layers.length == shapes.length ? layers : const [],
+      hiddenLayers: {
+        for (var l in json["hiddenLayers"] as List? ?? const [])
+          if (l is String) l,
+      },
       shapes: shapes,
       parts: parts,
       // Kept only whole: a shape's place is no use without the rest's.

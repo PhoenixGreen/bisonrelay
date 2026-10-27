@@ -62,6 +62,9 @@ class CharacterDrawBar extends StatelessWidget {
               e.dna.wardrobe[g],
             _ => null,
           };
+          // What is being drawn on: a garment, or one layer of the body.
+          var onLayer = garment?.title ??
+              (drawing ? BodyLayer.fromName(controller.drawingLayer)?.label : null);
 
           void write(CharacterElement next) {
             controller.beginInteraction();
@@ -86,17 +89,17 @@ class CharacterDrawBar extends StatelessWidget {
           var zoom = controller.characterZoom;
           var row = Row(mainAxisSize: MainAxisSize.min, children: [
             // What is being drawn on, when it is something it wears.
-            if (garment != null)
+            if (onLayer != null)
               Padding(
                 key: const ValueKey("characterDrawGarment"),
                 padding: const EdgeInsets.only(left: 6, right: 8),
                 child: Tooltip(
-                  message: "Drawing: ${garment.title}",
+                  message: "Drawing: $onLayer",
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.checkroom_outlined,
                         size: 16, color: theme.colors.primary),
                     const SizedBox(width: 4),
-                    Text(garment.title,
+                    Text(onLayer,
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

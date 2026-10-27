@@ -151,7 +151,7 @@ void paintCharacterFigure(
   // What is drawn by hand -- or taken apart -- on the panel: the
   // character's own and what it wears, each shape on the part of the body
   // under it, all in one order. See CharacterDrawing.order.
-  var onPanel = <(double, CharacterDrawing, int)>[];
+  var onPanel = <(double, CharacterDrawing, int, String?)>[];
   // A garment taken apart on the panel is drawn by its shapes alone.
   var replaced = <Garment>{};
   if (!body.inThreeD) {
@@ -159,21 +159,39 @@ void paintCharacterFigure(
       for (var (gi, g) in dna.worn.indexed) {
         if (g.drawings.isEmpty) continue;
         // A garment's layer hidden: what is drawn on it too.
-        if (!layers.shows(garmentLayer(dna.wardrobe.indexOf(g)))) continue;
+        var key = garmentLayer(dna.wardrobe.indexOf(g));
+        if (!layers.shows(key)) continue;
         var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
         if (d.replaces) replaced.add(g);
         for (var i = 0; i < d.shapes.length; i++) {
-          onPanel.add((d.orderOf(i, 1e6 + gi * 1e4), d, i));
+          onPanel.add((d.orderOf(i, 1e6 + gi * 1e4), d, i, key));
         }
       }
     }
     if (drawing != null) {
       for (var i = 0; i < drawing.shapes.length; i++) {
-        onPanel.add((drawing.orderOf(i, 2e6), drawing, i));
+        // A layer hidden: its shapes too.
+        var layer = drawing.layerOf(i);
+        if (layer != null && !layers.shows(layer)) continue;
+        onPanel.add((drawing.orderOf(i, 2e6), drawing, i, layer));
       }
     }
   }
-  void drawn(Canvas onto) => paintPanelShapes(onto, rig, onPanel, box.inflate(box.height));
+  // A layer taken apart on the panel is drawn by its shapes, not its own
+  // drawing.
+  var generated = drawing == null || drawing.hiddenLayers.isEmpty
+      ? layers
+      : LayerView(hidden: {...layers.hidden, ...drawing.hiddenLayers}, solo: layers.solo);
+  // The shapes drawn: all of them, or -- a layer soloed -- the rest's or
+  // its own.
+  void drawn(Canvas onto, {bool? soloed}) => paintPanelShapes(
+      onto,
+      rig,
+      [
+        for (var (o, d, i, layer) in onPanel)
+          if (soloed == null || (layer == layers.solo) == soloed) (o, d, i)
+      ],
+      box.inflate(box.height));
 
   void drawOn(Canvas onto) {
     if (body.inThreeD) {
@@ -193,14 +211,15 @@ void paintCharacterFigure(
           hidden: drawing?.hidden ?? const {},
           faceRig: faceRig ?? FaceRig.none,
           replaced: replaced,
-          layers: layers,
+          layers: generated,
           pass: p);
       onto.saveLayer(box.inflate(box.height),
           Paint()..color = const Color(0x2E000000));
       pass(_Pass.others).draw();
-      drawn(onto);
+      drawn(onto, soloed: false);
       onto.restore();
       pass(_Pass.solo).draw();
+      drawn(onto, soloed: true);
       return;
     }
     if (look.shading == _Shading.painted) {
@@ -222,7 +241,7 @@ void paintCharacterFigure(
                     hidden: drawing?.hidden ?? const {},
                     faceRig: faceRig ?? FaceRig.none,
                     replaced: replaced,
-                    layers: layers)
+                    layers: generated)
                 .draw();
             drawn(flat);
           },
@@ -239,7 +258,7 @@ void paintCharacterFigure(
                   bare,
                   drawing?.toJson(),
                   faceRig?.toJson(),
-                  layers.key,
+                  generated.key,
                 ]));
       if (lit) return;
     }
@@ -250,7 +269,7 @@ void paintCharacterFigure(
             hidden: drawing?.hidden ?? const {},
             faceRig: faceRig ?? FaceRig.none,
             replaced: replaced,
-            layers: layers)
+            layers: generated)
         .draw();
     // Drawn by hand over it, each shape where its part is.
     drawn(onto);

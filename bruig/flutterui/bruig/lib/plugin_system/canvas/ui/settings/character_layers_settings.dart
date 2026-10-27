@@ -86,6 +86,7 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
           onSolo: (key) => controller.soloLayer(e.id, key),
         ),
         if (pickedRow != null) ...[
+          _onThisView(controller, e, pickedRow),
           if (BodyLayer.fromName(pickedRow.key) case var body?)
             AppearanceEditor(
               key: ValueKey("characterLayerLook-${e.id}-${body.name}"),
@@ -218,4 +219,50 @@ class _LayerList extends StatelessWidget {
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
   }
+}
+
+/// _onThisView is the picked layer on the panel seen where the playhead is:
+/// drawn as it is made, or by its own shapes -- and the way to draw on it,
+/// take it apart there, or put it back.
+Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row) {
+  var pose = e.poseAtFrame(controller.frame).inPanel;
+  var apart = controller.layerTakenApart(e.id, row.key);
+  var drawing = controller.drawingOn == e.id &&
+      (controller.drawingLayer == row.key ||
+          (controller.drawingGarment != null &&
+              garmentLayer(controller.drawingGarment!) == row.key));
+  return CanvasControlGroup(
+      key: const ValueKey("characterLayerView"),
+      label: "${row.label} on this view",
+      help: "Seen ${panelLabel(pose.panelTurn, pose.panelTilt).toLowerCase()}. "
+          "Take it apart to edit its outline point by point here: the "
+          "other views, and the rest of the figure, stay as they are made. "
+          "Draw on it to add shapes that go with it.",
+      children: [
+        CanvasStatus(apart
+            ? "Drawn by its own shapes on this view. Its sliders change the other views."
+            : "Drawn from its sliders on this view."),
+        CanvasTextButton(
+          key: const ValueKey("characterLayerDraw"),
+          label: drawing ? "Stop drawing on it" : "Draw on it",
+          icon: Icons.draw_outlined,
+          primary: drawing,
+          onPressed: () => drawing
+              ? controller.stopDrawingOnCharacter()
+              : controller.drawOnCharacter(e.id, layer: row.key),
+        ),
+        apart
+            ? CanvasTextButton(
+                key: const ValueKey("characterLayerPutBack"),
+                label: "Put it back here",
+                icon: Icons.restart_alt,
+                onPressed: () => controller.putCharacterLayerBack(e.id, row.key),
+              )
+            : CanvasTextButton(
+                key: const ValueKey("characterLayerTakeApart"),
+                label: "Take it apart here",
+                icon: Icons.scatter_plot_outlined,
+                onPressed: () => controller.takeApartCharacterLayer(e.id, row.key),
+              ),
+      ]);
 }

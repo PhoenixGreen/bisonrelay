@@ -271,12 +271,14 @@ void paintDrawing(
 /// shapes drawn on the panel, where the pose has them, in the character's
 /// own box. It draws nothing itself; the character draws what is on it.
 ///
-/// With [garment], the drawing on that garment of its wardrobe instead.
+/// With [garment], the drawing on that garment of its wardrobe instead;
+/// with [layer], only the shapes drawn as that body layer.
 VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
-    {int? garment}) {
+    {int? garment, String? layer}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var (drawing, _) = _garmentOf(e, garment)?.drawingFor(turn, tilt) ??
       e.drawingFor(turn, tilt);
+  if (layer != null) drawing = _only(drawing, layer).$1;
   return VectorElement(
     // Where the character is, and moved as it is moved.
     e.base.copyWith(
@@ -290,33 +292,55 @@ VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
   );
 }
 
+/// _only is [d]'s shapes drawn as [layer], as a drawing of their own, and
+/// which of [d]'s they are.
+(CharacterDrawing, List<int>) _only(CharacterDrawing d, String layer) {
+  var at = [
+    for (var i = 0; i < d.shapes.length; i++)
+      if (d.layerOf(i) == layer) i,
+  ];
+  return (
+    CharacterDrawing(
+      shapes: [for (var i in at) d.shapes[i]],
+      parts: [for (var i in at) d.parts[i]],
+      order: [for (var i in at) d.orderOf(i, 2e6)],
+      layers: [for (var _ in at) layer],
+    ),
+    at
+  );
+}
+
 /// drawnFromProxy is [e] with what is on [proxy] -- see drawingProxy --
 /// taken onto the panel it is seen from on [frame]: each shape on the part
-/// it is over. [before] is the stand-in as it was, whose shapes, when there
-/// are as many, keep the parts they were on; a shape added or taken away
-/// puts them all where they now are.
+/// it is over. [before] is the stand-in as it was: a shape found on it as
+/// it was keeps its part, its layer and its place in the order.
 ///
 /// With [garment], onto that garment of its wardrobe, each shape on the
-/// part under it of those the garment covers.
+/// part under it of those the garment covers; with [layer], as the shapes
+/// of that body layer, the panel's others left as they are.
 CharacterElement drawnFromProxy(
     CharacterElement e, VectorElement proxy, int frame, int frameRate,
-    {VectorElement? before, int? garment}) {
+    {VectorElement? before, int? garment, String? layer}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var g = _garmentOf(e, garment);
   // A mirrored panel's drawing is laid out mirrored, parts and all: what is
   // drawn on it is kept as it is shown, and is its own from then on.
-  var (old, _) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  var (whole, _) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  var (old, mine) = layer == null
+      ? (whole, [for (var i = 0; i < whole.shapes.length; i++) i])
+      : _only(whole, layer);
   var base = _orderBase(e, g);
   var shapes = proxy.shapes ?? const <VectorShape>[];
   var was = before?.shapes ?? const <VectorShape>[];
-  var sameCount =
-      was.length == shapes.length && old.shapes.length == shapes.length;
-  // Each shape keeps the part and the place in the order it had: found as
-  // the very shape it was, or -- as many as there were -- edited where it
-  // was. A shape new to it goes on the part under it, and in the order
-  // between the shapes either side -- or, at the end, over everything.
+  var sameCount = was.length == shapes.length && old.shapes.length == shapes.length;
+  // Each shape keeps the part, layer and place in the order it had: found
+  // as the very shape it was, or -- as many as there were -- edited where
+  // it was. A shape new to it goes on the part under it, as the layer drawn
+  // on, and in the order between the shapes either side -- or, at the end,
+  // over everything.
   var parts = <CharacterPart?>[];
   var order = <double?>[];
+  var layers = <String?>[];
   for (var (i, shape) in shapes.indexed) {
     var j = i < was.length && identical(was[i], shape)
         ? i
@@ -325,9 +349,11 @@ CharacterElement drawnFromProxy(
     if (j >= 0 && j < old.shapes.length) {
       parts.add(old.parts[j]);
       order.add(old.orderOf(j, base));
+      layers.add(old.layerOf(j));
     } else {
       parts.add(null);
       order.add(null);
+      layers.add(layer);
     }
   }
   var top = panelOrderTop(e, turn, tilt);
@@ -350,10 +376,18 @@ CharacterElement drawnFromProxy(
         for (var (i, p) in parts.indexed)
           p ?? partAt(rig, shapeCentre(shapes[i]), among: g?.kind.covers)
       ],
-      hidden: old.hidden,
       among: g?.kind.covers);
-  var drawing =
-      placed.copyWith(order: [for (var o in order) o!], replaces: old.replaces);
+  // The panel's other shapes, as they were, beside these.
+  var others = [
+    for (var i = 0; i < whole.shapes.length; i++)
+      if (!mine.contains(i)) i,
+  ];
+  var drawing = whole.copyWith(
+    shapes: [for (var i in others) whole.shapes[i], ...placed.shapes],
+    parts: [for (var i in others) whole.parts[i], ...placed.parts],
+    order: [for (var i in others) whole.orderOf(i, base), for (var o in order) o!],
+    layers: [for (var i in others) whole.layerOf(i), ...layers],
+  );
   if (g == null) return e.withDrawing(turn, tilt, drawing);
   var wardrobe = [...e.dna.wardrobe];
   wardrobe[garment!] = g.withDrawing(turn, tilt, drawing);
@@ -390,38 +424,30 @@ double panelOrderTop(CharacterElement e, double turn, double tilt) {
 /// isTakenApart is whether [e]'s panel turned [turn] and tilted [tilt] is
 /// drawn by its shapes -- see takeApartPanel -- or, with [garment], that
 /// garment of its wardrobe is.
-bool isTakenApart(CharacterElement e, double turn, double tilt,
-    {int? garment}) {
+bool isTakenApart(CharacterElement e, double turn, double tilt, {int? garment}) {
   if (_garmentOf(e, garment) case var g?) {
     return g.drawingFor(turn, tilt).$1.replaces;
   }
-  return e.drawingFor(turn, tilt).$1.hidden.length ==
-      CharacterRegion.values.length;
+  return e.drawingFor(turn, tilt).$1.hidden.length == CharacterRegion.values.length;
 }
 
-/// _captured is [e]'s figure on the panel seen on [frame], taken apart: as
-/// it is worn, and -- for each garment of its wardrobe worn -- without
-/// that garment, by its keys, to tell whose each shape is.
-(List<CapturedShape>, Map<int, Set<String>>) _captured(
-    CharacterElement e, int frame, int frameRate, Iterable<int> garments) {
+/// isLayerTakenApart is whether [layer] of [e] is drawn by its shapes on
+/// the panel turned [turn] and tilted [tilt]: taken apart there alone, or
+/// with the whole panel.
+bool isLayerTakenApart(CharacterElement e, String layer, double turn, double tilt) {
+  if (garmentOfLayer(layer) case var i?) return isTakenApart(e, turn, tilt, garment: i);
+  return isTakenApart(e, turn, tilt) ||
+      e.drawingFor(turn, tilt).$1.hiddenLayers.contains(layer);
+}
+
+/// _captured is [e]'s figure on the panel seen on [frame], taken apart,
+/// every shape marked with the layer it is drawn as.
+List<CapturedShape> _captured(CharacterElement e, int frame, int frameRate) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
-  var dna = e.style.dnaOf(e.dna);
   var shown = e.style.frameOf(frame);
   var (_, face) = e.performanceAt(shown, frameRate);
-  var life = lifeAt(e, shown, frameRate);
-  var faceRig = e.faceRigFor(turn, tilt).$1;
-  List<CapturedShape> capture(CharacterDna d) =>
-      captureFigure(rig, d, face, life, e.style, faceRig: faceRig);
-  var full = capture(dna);
-  var without = <int, Set<String>>{
-    for (var gi in garments)
-      gi: {
-        for (var c
-            in capture(dna.copyWith(wardrobe: [...dna.wardrobe]..removeAt(gi))))
-          c.key
-      },
-  };
-  return (full, without);
+  return captureFigure(rig, e.style.dnaOf(e.dna), face, lifeAt(e, shown, frameRate),
+      e.style, faceRig: e.faceRigFor(turn, tilt).$1);
 }
 
 /// _wornIndices is which of [e]'s wardrobe is drawn by its own drawing --
@@ -434,103 +460,147 @@ List<int> _wornIndices(CharacterElement e) {
   ];
 }
 
+/// _taken is [shapes] -- captured, each with its place in the order it was
+/// drawn in -- put on the parts of [rig]'s body under them, [among] those
+/// a garment covers, as the start of a drawing, with [kept] after them:
+/// what was drawn on the panel by hand, over everything at [top] on.
+CharacterDrawing _taken(CharacterRig rig, List<(int, CapturedShape)> shapes,
+    CharacterDrawing kept, double top,
+    {Set<CharacterPart>? among, String? layer}) {
+  var on = shapesOnParts([for (var (_, c) in shapes) c.shape], rig, among: among);
+  return kept.copyWith(
+    shapes: [...on.shapes, ...kept.shapes],
+    parts: [...on.parts, ...kept.parts],
+    order: [
+      for (var (z, _) in shapes) z.toDouble(),
+      for (var i = 0; i < kept.shapes.length; i++) kept.orderOf(i, top + 1),
+    ],
+    layers: [
+      for (var (_, c) in shapes) layer ?? c.layer,
+      for (var i = 0; i < kept.shapes.length; i++) kept.layerOf(i),
+    ],
+  );
+}
+
 /// takeApartPanel is [e] with the panel it is seen from on [frame] taken
 /// apart into shapes, to edit point by point with the drawing tools: the
-/// body's on the character's drawing for the panel, with the drawing it
-/// is made from left out there; each garment's on that garment's drawing,
-/// standing in for it. In the order the figure was drawn in, each shape on
-/// the part of the body under it. What was drawn on the panel by hand
-/// stays, over it. Changes to the character's settings no longer show on
-/// the panel until it is put back -- see putPanelBack.
+/// body's on the character's drawing for the panel, each marked with its
+/// layer, with the drawing it is made from left out there; each garment's
+/// on that garment's drawing, standing in for it. In the order the figure
+/// was drawn in, each shape on the part of the body under it. What was
+/// drawn on the panel by hand stays, over it. Changes to the character's
+/// settings no longer show on the panel until it is put back -- see
+/// putPanelBack.
 CharacterElement takeApartPanel(CharacterElement e, int frame, int frameRate) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var garments = _wornIndices(e);
-  var (full, without) = _captured(e, frame, frameRate, garments);
-  // Whose each shape is: the garment it is not there without, or the body.
-  var body = <(int, VectorShape)>[];
-  var worn = <int, List<(int, VectorShape)>>{};
-  for (var (z, c) in full.indexed) {
-    int? owner;
-    for (var gi in garments) {
-      if (!without[gi]!.contains(c.key)) {
-        owner = gi;
-        break;
-      }
-    }
-    (owner == null ? body : (worn[owner] ??= [])).add((z, c.shape));
-  }
-  // What was drawn by hand on the panel goes over all of it.
+  var full = _captured(e, frame, frameRate);
   var top = full.length.toDouble();
-  CharacterDrawing taken(List<(int, VectorShape)> shapes, CharacterDrawing kept,
-      {Set<CharacterPart>? among,
-      Set<CharacterRegion> hidden = const {},
-      bool replaces = false}) {
-    var on = shapesOnParts([for (var (_, s) in shapes) s], rig, among: among);
-    return CharacterDrawing(
-      shapes: [...on.shapes, ...kept.shapes],
-      parts: [...on.parts, ...kept.parts],
-      order: [
-        for (var (z, _) in shapes) z.toDouble(),
-        for (var i = 0; i < kept.shapes.length; i++) top + 1 + i,
-      ],
-      hidden: hidden,
-      replaces: replaces,
-    );
+  var body = <(int, CapturedShape)>[];
+  var worn = <int, List<(int, CapturedShape)>>{};
+  for (var (z, c) in full.indexed) {
+    var gi = c.layer == null ? null : garmentOfLayer(c.layer!);
+    (gi == null ? body : (worn[gi] ??= [])).add((z, c));
   }
-
-  var (ownDrawing, ownMirrored) = e.drawingFor(turn, tilt);
-  var next = e.withDrawing(
-      turn,
-      tilt,
-      taken(body, ownMirrored ? CharacterDrawing.empty : ownDrawing,
-          hidden: CharacterRegion.values.toSet()));
+  var (own, ownMirrored) = e.drawingFor(turn, tilt);
+  // Layers taken apart alone before: their shapes are taken again.
+  var kept = ownMirrored ? CharacterDrawing.empty : own;
+  kept = _without(kept, kept.hiddenLayers).copyWith(hiddenLayers: const {});
+  var next = e.withDrawing(turn, tilt,
+      _taken(rig, body, kept, top).copyWith(hidden: CharacterRegion.values.toSet()));
   var wardrobe = [...next.dna.wardrobe];
   for (var gi in garments) {
     var g = wardrobe[gi];
     var (d, mirrored) = g.drawingFor(turn, tilt);
-    wardrobe[gi] = g.withDrawing(
-        turn,
-        tilt,
-        taken(worn[gi] ?? const [], mirrored ? CharacterDrawing.empty : d,
-            among: g.kind.covers, replaces: true));
+    var keep = mirrored || d.replaces ? CharacterDrawing.empty : d;
+    wardrobe[gi] = g.withDrawing(turn, tilt,
+        _taken(rig, worn[gi] ?? const [], keep, top, among: g.kind.covers)
+            .copyWith(replaces: true));
   }
   return next.copyWith(dna: next.dna.copyWith(wardrobe: wardrobe));
 }
 
-/// takeApartGarment is [e] with garment [garment] of its wardrobe taken
-/// apart on the panel it is seen from on [frame]: its shapes on its drawing
-/// for the panel, standing in for it there. The rest of the figure is
-/// drawn as it is made.
-CharacterElement takeApartGarment(
-    CharacterElement e, int garment, int frame, int frameRate) {
-  var g = _garmentOf(e, garment);
-  if (g == null || g.drawnOnly || !e.dna.worn.contains(g)) return e;
+/// _without is [d] without the shapes drawn as any of [layers].
+CharacterDrawing _without(CharacterDrawing d, Set<String> layers) {
+  if (layers.isEmpty) return d;
+  var keep = [
+    for (var i = 0; i < d.shapes.length; i++)
+      if (!layers.contains(d.layerOf(i))) i,
+  ];
+  return d.copyWith(
+    shapes: [for (var i in keep) d.shapes[i]],
+    parts: [for (var i in keep) d.parts[i]],
+    order: [for (var i in keep) d.orderOf(i, 2e6)],
+    layers: [for (var i in keep) d.layerOf(i)],
+  );
+}
+
+/// takeApartLayer is [e] with [layer] taken apart on the panel it is seen
+/// from on [frame]: its shapes -- and only its -- in the order the figure
+/// is drawn in, standing in for its own drawing there. A body layer's go
+/// on the character's drawing for the panel, a garment's on the garment's.
+/// The rest of the figure is drawn as it is made.
+CharacterElement takeApartLayer(
+    CharacterElement e, String layer, int frame, int frameRate) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
-  var (full, without) = _captured(e, frame, frameRate, [garment]);
+  var full = _captured(e, frame, frameRate);
+  var top = full.length.toDouble();
   var mine = [
     for (var (z, c) in full.indexed)
-      if (!without[garment]!.contains(c.key)) (z, c.shape),
+      if (c.layer == layer) (z, c),
   ];
-  var on =
-      shapesOnParts([for (var (_, s) in mine) s], rig, among: g.kind.covers);
-  var (kept, mirrored) = g.drawingFor(turn, tilt);
-  if (mirrored) kept = CharacterDrawing.empty;
-  var top = full.length.toDouble();
-  var wardrobe = [...e.dna.wardrobe];
-  wardrobe[garment] = g.withDrawing(
+  if (garmentOfLayer(layer) case var gi?) {
+    var g = _garmentOf(e, gi);
+    if (g == null || g.drawnOnly || !e.dna.worn.contains(g)) return e;
+    var (d, mirrored) = g.drawingFor(turn, tilt);
+    var keep = mirrored || d.replaces ? CharacterDrawing.empty : d;
+    var wardrobe = [...e.dna.wardrobe];
+    wardrobe[gi] = g.withDrawing(turn, tilt,
+        _taken(rig, mine, keep, top, among: g.kind.covers).copyWith(replaces: true));
+    return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+  }
+  // As shown -- a mirror is kept as it is, its own from now on -- without
+  // this layer's shapes from before.
+  var (own, _) = e.drawingFor(turn, tilt);
+  var kept = _without(own, {layer});
+  var taken = _taken(rig, mine, CharacterDrawing.empty, top, layer: layer);
+  return e.withDrawing(
       turn,
       tilt,
-      CharacterDrawing(
-        shapes: [...on.shapes, ...kept.shapes],
-        parts: [...on.parts, ...kept.parts],
+      kept.copyWith(
+        shapes: [...kept.shapes, ...taken.shapes],
+        parts: [...kept.parts, ...taken.parts],
         order: [
-          for (var (z, _) in mine) z.toDouble(),
-          for (var i = 0; i < kept.shapes.length; i++) top + 1 + i,
+          for (var i = 0; i < kept.shapes.length; i++) kept.orderOf(i, 2e6),
+          ...taken.order,
         ],
-        replaces: true,
+        layers: [
+          for (var i = 0; i < kept.shapes.length; i++) kept.layerOf(i),
+          ...taken.layers,
+        ],
+        hiddenLayers: {...kept.hiddenLayers, layer},
       ));
-  return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
 }
+
+/// putLayerBack is [e] with [layer] drawn as it is made again on the panel
+/// seen on [frame]: its shapes there gone.
+CharacterElement putLayerBack(
+    CharacterElement e, String layer, int frame, int frameRate) {
+  if (garmentOfLayer(layer) case var gi?) {
+    return putPanelBack(e, frame, frameRate, garment: gi);
+  }
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (own, _) = e.drawingFor(turn, tilt);
+  var kept = _without(own, {layer});
+  return e.withDrawing(turn, tilt,
+      kept.copyWith(hiddenLayers: {...kept.hiddenLayers}..remove(layer)));
+}
+
+/// takeApartGarment is [e] with garment [garment] of its wardrobe taken
+/// apart on the panel it is seen from on [frame]. See takeApartLayer.
+CharacterElement takeApartGarment(
+        CharacterElement e, int garment, int frame, int frameRate) =>
+    takeApartLayer(e, garmentLayer(garment), frame, frameRate);
 
 /// putPanelBack is [e] with the panel it is seen from on [frame] drawn as
 /// it is made again -- and what was drawn on it gone -- or, with

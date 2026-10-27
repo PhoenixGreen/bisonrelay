@@ -3998,15 +3998,27 @@ class CanvasController extends ChangeNotifier {
   int? get drawingGarment => drawingOn == null ? null : _drawingGarment;
   int? _drawingGarment;
 
+  /// drawingLayer is the body layer being drawn on -- its shapes alone on
+  /// the drawing laid over the character -- or null for all of them.
+  String? get drawingLayer => drawingOn == null ? null : _drawingLayer;
+  String? _drawingLayer;
+
   /// drawOnCharacter starts drawing on the sketched character [id], on the
   /// panel it is seen from where the playhead is -- or, with [garment], on
   /// that garment of its wardrobe: each shape on the part of the body it
   /// covers under it.
-  void drawOnCharacter(String id, {int? garment}) {
+  ///
+  /// With [layer], a layer of the character: a garment's is that garment;
+  /// a body layer's shapes are drawn on alone, as that layer.
+  void drawOnCharacter(String id, {int? garment, String? layer}) {
     var c = _document.elementById(id);
     if (c is! CharacterElement || c.body.inThreeD) return;
+    if (layer != null) {
+      garment ??= garmentOfLayer(layer);
+      if (garment != null) layer = null;
+    }
     if (garment != null && (garment < 0 || garment >= c.dna.wardrobe.length)) return;
-    if (drawingOn == id && _drawingGarment == garment) return;
+    if (drawingOn == id && _drawingGarment == garment && _drawingLayer == layer) return;
     // From one to the other, the first put down.
     if (drawingOn != null) {
       selectOnly(drawingOn!);
@@ -4015,8 +4027,9 @@ class CanvasController extends ChangeNotifier {
     stopVectorTyping();
     _fitEditedVector();
     _drawingGarment = garment;
+    _drawingLayer = layer;
     var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
-        garment: garment);
+        garment: garment, layer: layer);
     var next = _document.removeElement(proxy.id).addElement(proxy);
     next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
     _vectorEditing = proxy.id;
@@ -4039,7 +4052,32 @@ class CanvasController extends ChangeNotifier {
     var c = id == null ? null : _document.elementById(id);
     if (c is! CharacterElement) return false;
     var (_, turn, tilt) = drawnRig(c, _frame, math.max(1, _document.frameRate));
+    if (_drawingLayer case var layer?) return isLayerTakenApart(c, layer, turn, tilt);
     return isTakenApart(c, turn, tilt, garment: _drawingGarment);
+  }
+
+  /// layerTakenApart is whether [layer] of character [id] is drawn by its
+  /// shapes on the panel seen where the playhead is.
+  bool layerTakenApart(String id, String layer) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement || c.body.inThreeD) return false;
+    var (_, turn, tilt) = drawnRig(c, _frame, math.max(1, _document.frameRate));
+    return isLayerTakenApart(c, layer, turn, tilt);
+  }
+
+  /// takeApartCharacterLayer takes [layer] of character [id] apart on the
+  /// panel seen where the playhead is, alone -- see takeApartLayer -- and
+  /// putCharacterLayerBack draws it there as it is made again.
+  void takeApartCharacterLayer(String id, String layer) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement || c.body.inThreeD) return;
+    replaceElement(takeApartLayer(c, layer, _frame, math.max(1, _document.frameRate)));
+  }
+
+  void putCharacterLayerBack(String id, String layer) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    replaceElement(putLayerBack(c, layer, _frame, math.max(1, _document.frameRate)));
   }
 
   /// takeApartCharacter takes the panel of character [id] seen where the
@@ -4049,6 +4087,11 @@ class CanvasController extends ChangeNotifier {
     var c = _document.elementById(id);
     if (c is! CharacterElement || c.body.inThreeD) return;
     var rate = math.max(1, _document.frameRate);
+    // Drawing on one layer: that layer.
+    if (garment == null && drawingOn == id && _drawingLayer != null) {
+      replaceElement(takeApartLayer(c, _drawingLayer!, _frame, rate));
+      return;
+    }
     replaceElement(garment == null
         ? takeApartPanel(c, _frame, rate)
         : takeApartGarment(c, garment, _frame, rate));
@@ -4087,7 +4130,7 @@ class CanvasController extends ChangeNotifier {
     if (identical(proxy, before) || proxy.shapes == before.shapes) return next;
     var drawn = drawnFromProxy(
         c, proxy, _frame, math.max(1, _document.frameRate),
-        before: before, garment: _drawingGarment);
+        before: before, garment: _drawingGarment, layer: _drawingLayer);
     _proxyOver = drawn;
     _proxyFrame = _frame;
     return next.withElement(drawn);
@@ -4108,6 +4151,7 @@ class CanvasController extends ChangeNotifier {
       }
       _proxyOver = null;
       _drawingGarment = null;
+      _drawingLayer = null;
       return;
     }
     var c = _document.elementById(cid);
@@ -4119,7 +4163,7 @@ class CanvasController extends ChangeNotifier {
       _drawingGarment = null;
     }
     var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
-        garment: _drawingGarment);
+        garment: _drawingGarment, layer: _drawingLayer);
     if (at is VectorElement) {
       _document = _document.withElement(proxy);
     }
