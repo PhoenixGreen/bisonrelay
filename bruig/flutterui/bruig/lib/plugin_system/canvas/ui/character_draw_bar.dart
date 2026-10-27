@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 // character is picked, as a picture's bar does (see image_tool_hint.dart),
 // on one line: going round it, the panel it is seen from, zooming onto a
 // part of it, the puppet, face and limb handles, the drawing tools -- a
-// drawing's own, as its Drawing section has them, three at a time -- and,
+// drawing's own, as its Drawing section has them, all of them -- and,
 // while it is drawn on, what to do with the tool in hand and the way out.
 // A narrow canvas scrolls it sideways rather than taking it onto a second
 // line.
@@ -34,9 +34,6 @@ const List<VectorTool> drawBarTools = [
   VectorTool.tint,
   VectorTool.text,
 ];
-
-/// drawBarShown is how many tools the bar shows at once.
-const int drawBarShown = 3;
 
 /// drawBarCharacter is the character the bar is for: the one drawn on, or
 /// the sketch picked alone.
@@ -181,7 +178,7 @@ class CharacterDrawBar extends StatelessWidget {
                     : "Reshape the limbs point by point",
                 () => controller.editRig = !controller.editRig),
             rule(),
-            _ToolStrip(controller: controller, character: e, drawing: drawing),
+            _ToolRow(controller: controller, character: e, drawing: drawing),
             // The tool in hand and the way out, at the end of the line.
             if (drawing) ...[
               rule(),
@@ -218,58 +215,21 @@ class CharacterDrawBar extends StatelessWidget {
       );
 }
 
-/// _ToolStrip is the drawing tools, [drawBarShown] at a time, with an arrow
-/// either side to step through the rest. The tool in hand is always one of
-/// those shown.
-class _ToolStrip extends StatefulWidget {
+/// _ToolRow is every drawing tool, side by side: one click to any of them.
+class _ToolRow extends StatelessWidget {
   final CanvasController controller;
   final CharacterElement character;
   final bool drawing;
-  const _ToolStrip(
+  const _ToolRow(
       {required this.controller,
       required this.character,
       required this.drawing});
 
   @override
-  State<_ToolStrip> createState() => _ToolStripState();
-}
-
-class _ToolStripState extends State<_ToolStrip> {
-  int _start = 0;
-  VectorTool? _shownFor;
-
-  int get _last => drawBarTools.length - drawBarShown;
-
-  @override
   Widget build(BuildContext context) {
-    var controller = widget.controller;
-    var inHand = widget.drawing ? controller.vectorTool : null;
-    // Picked somewhere else -- a key, the settings -- it comes into view.
-    if (inHand != null && inHand != _shownFor) {
-      _shownFor = inHand;
-      var i = drawBarTools.indexOf(inHand);
-      if (i >= 0 && (i < _start || i >= _start + drawBarShown)) {
-        _start = (i - 1).clamp(0, _last);
-      }
-    }
-    Widget arrow(String key, IconData icon, int by) => SizedBox(
-          width: 22,
-          child: IconButton(
-            key: ValueKey(key),
-            padding: EdgeInsets.zero,
-            iconSize: 18,
-            visualDensity: VisualDensity.compact,
-            tooltip: by < 0 ? "Earlier tools" : "More tools",
-            onPressed: (by < 0 ? _start > 0 : _start < _last)
-                ? () => setState(() => _start = (_start + by).clamp(0, _last))
-                : null,
-            icon: Icon(icon),
-          ),
-        );
-
+    var inHand = drawing ? controller.vectorTool : null;
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      arrow("characterDrawToolsPrev", Icons.chevron_left, -1),
-      for (var tool in drawBarTools.skip(_start).take(drawBarShown))
+      for (var tool in drawBarTools)
         CanvasIconButton(
           key: ValueKey("characterDrawTool-${tool.name}"),
           icon: vectorToolIcon(tool),
@@ -281,12 +241,11 @@ class _ToolStripState extends State<_ToolStrip> {
               controller.stopDrawingOnCharacter();
               return;
             }
-            controller.drawOnCharacter(widget.character.id,
+            controller.drawOnCharacter(character.id,
                 garment: controller.drawingGarment);
             controller.vectorTool = tool;
           },
         ),
-      arrow("characterDrawToolsNext", Icons.chevron_right, 1),
     ]);
   }
 }

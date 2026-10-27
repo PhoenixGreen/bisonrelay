@@ -268,7 +268,7 @@ void main() {
       expect(c.selection, {"c"});
     });
 
-    testWidgets("the bar is one line, three tools at a time, the tip at its end",
+    testWidgets("the bar is one line, every tool on it, the tip at its end",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
@@ -289,20 +289,11 @@ void main() {
             for (var t in drawBarTools)
               if (find.byKey(ValueKey("characterDrawTool-${t.name}")).evaluate().isNotEmpty) t
           ].length;
-      expect(shown(), drawBarShown);
-      expect(find.byKey(const ValueKey("characterDrawTool-select")), findsOneWidget);
-      // The arrow steps on to the rest.
-      var next = find.byKey(const ValueKey("characterDrawToolsNext"));
-      await tester.ensureVisible(next);
-      await tester.tap(next);
-      await tester.pump();
-      expect(find.byKey(const ValueKey("characterDrawTool-select")), findsNothing);
-      expect(find.byKey(const ValueKey("characterDrawTool-shapes")), findsOneWidget);
-      // A tool picked elsewhere comes into view.
+      expect(shown(), drawBarTools.length, reason: "every tool, no arrows");
+      expect(find.byKey(const ValueKey("characterDrawToolsNext")), findsNothing);
       c.drawOnCharacter("c");
       c.vectorTool = VectorTool.text;
       await tester.pump();
-      expect(find.byKey(const ValueKey("characterDrawTool-text")), findsOneWidget);
       // While drawing, the tip and the way out are at the bar's end -- not a
       // second bar.
       expect(find.byKey(const ValueKey("characterDrawHint")), findsOneWidget);
