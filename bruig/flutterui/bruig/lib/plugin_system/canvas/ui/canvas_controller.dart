@@ -3817,6 +3817,25 @@ class CanvasController extends ChangeNotifier {
         null => null,
       };
 
+  /// showPuppet lays the puppet over a sketched character to draw over --
+  /// see character_guide.dart. For this run of the app: what it changes is
+  /// the character's, and stays when it is put away.
+  bool get showPuppet => _showPuppet;
+  bool _showPuppet = false;
+  set showPuppet(bool on) {
+    if (_showPuppet == on) return;
+    _showPuppet = on;
+    notifyListeners();
+  }
+
+  /// puppetHandles is whether the puppet's handles and pins can be taken
+  /// hold of: always, but while drawing only with a select tool in hand,
+  /// so the pen and pencil draw across them.
+  bool get puppetHandles =>
+      drawingOn == null ||
+      _vectorTool == VectorTool.select ||
+      _vectorTool == VectorTool.selectShapes;
+
   /// _proxyOver and _proxyFrame are the character, as it was, and the frame
   /// the stand-in was laid out for: either changed -- a pose, a turn to
   /// another panel, the playhead moved -- and it is laid out again.

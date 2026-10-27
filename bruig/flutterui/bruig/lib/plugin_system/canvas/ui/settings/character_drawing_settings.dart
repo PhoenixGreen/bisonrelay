@@ -118,6 +118,23 @@ Widget characterDrawingSection(
                 },
               ),
             ]),
+        CanvasControlGroup(
+            key: const ValueKey("characterDrawingPuppet"),
+            label: "Puppet",
+            help: "A construction figure laid over the character to draw "
+                "over: the head as a ball with the lines the eyes, nose and "
+                "mouth sit on, the ribcage, the pelvis and the joints. Drag "
+                "its diamonds to change the proportions and its round pins "
+                "to pose it -- with a select tool in hand while drawing. "
+                "What it changes is the character's, on every panel.",
+            children: [
+              CanvasToggle(
+                key: const ValueKey("characterDrawingPuppetShow"),
+                label: "Show the puppet",
+                value: controller.showPuppet,
+                onChanged: (v) => controller.showPuppet = v,
+              ),
+            ]),
         // The drawing's own tools: picking one lays the drawing over the
         // character to draw on, and the one in hand again puts it down.
         ...vectorSettings(context, controller, drawingTarget(controller, e),

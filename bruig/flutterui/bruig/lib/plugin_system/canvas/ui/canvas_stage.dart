@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -124,6 +125,10 @@ enum _DragMode {
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
   characterPin,
+
+  /// characterGuide is one of the puppet's handles being dragged, changing
+  /// the character's proportions. See character_guide.dart.
+  characterGuide,
 
   /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
   /// Option held anywhere on the stage.
@@ -505,6 +510,13 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _characterPin is the pin a [_DragMode.characterPin] drag has hold of.
   CharacterPin _characterPin = CharacterPin.head;
+
+  /// _guideHandle is the puppet handle a [_DragMode.characterGuide] drag
+  /// has hold of, [_guideFrom] where, and [_guideStart] the character as it
+  /// was: each step is worked out from there.
+  GuideHandle _guideHandle = GuideHandle.headSize;
+  Offset _guideFrom = Offset.zero;
+  CharacterElement? _guideStart;
   bool _nodeHandleOut = false;
 
   StageHandle? _handle;
@@ -1840,6 +1852,31 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
+    // The puppet over a sketch -- its handles, then the pins -- before the
+    // drawing laid over it to draw on: they are what is aimed at. See
+    // character_guide.dart.
+    if (_guideCharacter() case var who? when !who.locked && controller.puppetHandles) {
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var placed = CharacterPlacement.of(who, controller.frame,
+          frameRate: document.frameRate, document: document);
+      if (guideUnder(placed, doc, reach) case var handle?) {
+        _guideHandle = handle;
+        _guideFrom = doc;
+        _guideStart = who;
+        _mode = _DragMode.characterGuide;
+        controller.beginInteraction();
+        return;
+      }
+      if (controller.drawingOn == who.id) {
+        if (placed.pinUnder(doc, reach) case var pin?) {
+          _characterPin = pin;
+          _mode = _DragMode.characterPin;
+          controller.beginInteraction();
+          return;
+        }
+      }
+    }
+
     // A drawing being edited takes the press first: its points and handles,
     // its shapes, and anywhere inside it. A press outside it finishes the
     // editing, and goes on to do whatever it would have done.
@@ -2314,6 +2351,23 @@ class CanvasStageState extends State<CanvasStage>
     if (controller.selection.length != 1) return null;
     var selected = controller.selected;
     return selected is CharacterElement && selected.visible ? selected : null;
+  }
+
+  /// _posedCharacter is the character whose pins are being dragged: the one
+  /// selected, or the one being drawn on.
+  CharacterElement? _posedCharacter() {
+    if (_selectedCharacter() case var who?) return who;
+    var id = controller.drawingOn;
+    var e = id == null ? null : document.elementById(id);
+    return e is CharacterElement && e.visible ? e : null;
+  }
+
+  /// _guideCharacter is the sketch the puppet is laid over, while it is
+  /// shown: the one being drawn on, or picked.
+  CharacterElement? _guideCharacter() {
+    if (!controller.showPuppet) return null;
+    var who = _posedCharacter();
+    return who != null && !who.body.inThreeD ? who : null;
   }
 
   PathElement? _selectedPath() {
@@ -5077,8 +5131,15 @@ class CanvasStageState extends State<CanvasStage>
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
               transient: true);
         }
+      case _DragMode.characterGuide:
+        if (_guideStart case var start?) {
+          controller.replaceElement(
+              guided(start, _guideHandle, _guideFrom, doc, controller.frame,
+                  frameRate: document.frameRate, document: document),
+              transient: true);
+        }
       case _DragMode.characterPin:
-        if (_selectedCharacter() case var who?) {
+        if (_posedCharacter() case var who?) {
           // Where it is seen -- on its stage, and on its model -- as the
           // pin was taken hold of.
           var posed = CharacterPlacement.of(who, controller.frame,
@@ -5773,6 +5834,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.characterPin ||
+        _mode == _DragMode.characterGuide ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
@@ -6244,7 +6306,13 @@ class CanvasStageState extends State<CanvasStage>
                                 document.size.rect)
                             : null,
                         selectedPath: _selectedPath(),
-                        selectedCharacter: _selectedCharacter(),
+                        selectedCharacter: _selectedCharacter() ??
+                            (controller.puppetHandles ? _guideCharacter() : null),
+                        guideCharacter: _guideCharacter(),
+                        guideHandles: controller.puppetHandles,
+                        guideHeld: _mode == _DragMode.characterGuide
+                            ? _guideHandle
+                            : null,
                         editingLayers: _layerBoxes(),
                         editingVector: switch (controller.editingVector) {
                           var v? => (

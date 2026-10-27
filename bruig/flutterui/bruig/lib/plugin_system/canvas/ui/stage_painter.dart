@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -220,6 +221,13 @@ class StagePainter extends CustomPainter {
   /// whose skeleton and pins are drawn over it.
   final CharacterElement? selectedCharacter;
 
+  /// guideCharacter is the sketch the puppet is laid over, when it is shown,
+  /// guideHandles whether its handles can be taken hold of, and guideHeld
+  /// the one being dragged. See character_guide.dart.
+  final CharacterElement? guideCharacter;
+  final bool guideHandles;
+  final GuideHandle? guideHeld;
+
   /// editingVector is the drawing being edited point by point, the shape of
   /// it picked and the point picked -- drawn in place of a selection box.
   final ({
@@ -359,6 +367,9 @@ class StagePainter extends CustomPainter {
     required this.snapped,
     required this.selectedPath,
     this.selectedCharacter,
+    this.guideCharacter,
+    this.guideHandles = true,
+    this.guideHeld,
     this.editingVector,
     this.editingLayers,
     required this.chartLabels,
@@ -842,6 +853,16 @@ class StagePainter extends CustomPainter {
 
     _paintChartLabels(canvas);
     _paintTableColumns(canvas);
+    // The puppet to draw over, under the pins that pose it.
+    if (guideCharacter case var who?) {
+      paintGuide(
+          canvas,
+          CharacterPlacement.of(who, frame,
+              frameRate: document.frameRate, document: document),
+          (doc) => doc * scale + origin,
+          handles: guideHandles,
+          held: guideHeld);
+    }
     if (selectedCharacter case var who?) _paintPuppet(canvas, who);
 
     // A selected path shows its points and handles instead of a box: the box
@@ -1854,6 +1875,9 @@ class StagePainter extends CustomPainter {
       old.flowDrag != flowDrag ||
       !identical(old.selectedPath, selectedPath) ||
       !identical(old.selectedCharacter, selectedCharacter) ||
+      !identical(old.guideCharacter, guideCharacter) ||
+      old.guideHandles != guideHandles ||
+      old.guideHeld != guideHeld ||
       old.editingVector != editingVector ||
       old.editingLayers != editingLayers ||
       old.editingText != editingText ||

@@ -120,6 +120,17 @@ class CharacterDrawBar extends StatelessWidget {
                   if (z != null) controller.zoomToCharacter(e.id, z);
                 },
               ),
+              const SizedBox(width: 4),
+              // The puppet to draw over: its proportions the character's.
+              CanvasIconButton(
+                key: const ValueKey("characterDrawPuppet"),
+                icon: Icons.accessibility_new,
+                tooltip: controller.showPuppet
+                    ? "Hide the puppet"
+                    : "Show the puppet",
+                active: controller.showPuppet,
+                onPressed: () => controller.showPuppet = !controller.showPuppet,
+              ),
               rule(),
               for (var tool in drawBarTools)
                 CanvasIconButton(
