@@ -245,7 +245,8 @@ class CharacterRig {
     // Longer legs or neck are made of the body between them: the feet stay
     // on the ground and the head on top, whatever is longer.
     var neckShare = _neck * (1 + 0.6 * lk[Look.neckLength]);
-    var legShare = 1 + 0.18 * lk[Look.legLength];
+    // Shorter goes further than longer: a cartoon animal's stubby legs.
+    var legShare = 1 + (lk[Look.legLength] < 0 ? 0.35 : 0.18) * lk[Look.legLength];
     var thigh = below * _thigh * legShare;
     var shin = below * _shin * legShare;
     var neckLength = below * neckShare;

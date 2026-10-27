@@ -956,9 +956,18 @@ class _Drawing {
       _mouthAt ??
       Offset(_across(0, w * 0.88), u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
 
+  /// _eyeKind is how the eyes are drawn: as the style draws them -- except
+  /// an animal's, where the style's are made for a person's face, which are
+  /// big, round and glossy instead.
+  _Eyes get _eyeKind => dna.species.animal &&
+          const {_Eyes.feature, _Eyes.real, _Eyes.fine, _Eyes.shonen, _Eyes.soft}
+              .contains(look.eyes)
+      ? _Eyes.glossy
+      : look.eyes;
+
   /// _eyeKit is how much wider and taller the style draws its eyes, and
   /// how much lower, in head units.
-  (double, double, double) get _eyeKit => switch (look.eyes) {
+  (double, double, double) get _eyeKit => switch (_eyeKind) {
         _Eyes.anime => (1.55, 1.3, 0.07),
         _Eyes.shojo => (1.35, 1.6, 0.04),
         _Eyes.shonen => (1.25, 0.85, 0.0),
@@ -1117,7 +1126,8 @@ class _Drawing {
   /// style's for a style that draws hair so -- see hairForStyle.
   late final HairRig? _hairRig = dna.hairRig ??
       (look.strokes && !dna.species.animal
-          ? hairForStyle(dna.hairStyle, rig.look, spiky: look.hair == _Hair.spiky)
+          ? hairForStyle(dna.hairStyle, rig.look,
+              spiky: look.hair == _Hair.spiky, headsTall: dna.headsTall)
           : null);
 
   /// _seed is a fixed number for [k], so freckles land in the same places
@@ -1346,7 +1356,30 @@ class _Drawing {
     for (var (_, p) in parts.skip(1)) {
       skin = Path.combine(PathOperation.union, skin, p);
     }
-    _inBody(BodyLayer.torso, () => _fill(skin, dna.skin));
+    _inBody(BodyLayer.torso, () {
+      _fill(skin, dna.skin);
+      _belly();
+    });
+  }
+
+  /// _belly is an animal's lighter fur down the front of its body, going
+  /// round with it as it turns.
+  void _belly() {
+    if (!dna.species.animal || bodyFacing < 0.15 || !_shows(CharacterRegion.torso)) {
+      return;
+    }
+    var side = math.sin(rig.yaw * math.pi / 180);
+    var centre = Offset.lerp(rig.chest, rig.hips, 0.58)! +
+        Offset(-side * rig.hipHalf * 0.45, 0);
+    var belly = Path()
+      ..addOval(Rect.fromCenter(
+          center: centre,
+          width: rig.hipHalf * 1.25 * bodyFacing,
+          height: (rig.hips - rig.chest).distance * 0.95));
+    canvas.save();
+    canvas.clipPath(_torsoPath(skin: true));
+    _solid(belly.getBounds(), dna.fur2, (p) => canvas.drawPath(belly, p));
+    canvas.restore();
   }
 
   BodyLayer _legLayer(CharacterLimb limb) =>
@@ -4759,7 +4792,7 @@ class _Drawing {
       double lookY, Paint lid) {
     const dark = Color(0xFF1B1512);
     var white = Paint()..color = const Color(0xFFFFFFFF);
-    var kind = look.eyes;
+    var kind = _eyeKind;
     if (kind == _Eyes.pie) {
       _pieEye(box, lookX, lookY, toward);
       return;
@@ -5028,7 +5061,7 @@ class _Drawing {
     var lashes = _a(Look.lashes);
     if (lashes <= 0 || toward < 0.35) return;
     var ink = look.ink ?? const Color(0xFF1B1512);
-    if (look.eyes == _Eyes.feature) {
+    if (_eyeKind == _Eyes.feature) {
       // Fine, curling out from the outer end of the lid line.
       var fine = _feature(u * 0.011 * (1 + 0.4 * lashes), ink);
       for (var k = 0; k < 3; k++) {

@@ -398,9 +398,11 @@ HairRig _spiky() => HairRig("Spiky", [
 
 /// hairForStyle is the hair a style that draws hair in strokes draws [style]
 /// as -- spiky in a style that spikes it -- grown as [look] says: fuller,
-/// longer, a longer fringe, parted further over. Null for hair a style
+/// longer, a longer fringe, parted further over -- and long hair as long
+/// for a body [headsTall] heads tall. Null for hair a style
 /// draws its own way: a bun, curls, none.
-HairRig? hairForStyle(HairStyle style, Appearance look, {bool spiky = false}) {
+HairRig? hairForStyle(HairStyle style, Appearance look,
+    {bool spiky = false, double headsTall = 6}) {
   var base = switch (style) {
     HairStyle.short => spiky ? _spiky() : _messy(),
     HairStyle.long => _long(),
@@ -408,7 +410,10 @@ HairRig? hairForStyle(HairStyle style, Appearance look, {bool spiky = false}) {
   };
   if (base == null) return null;
   var volume = 1 + 0.5 * look[Look.hairVolume];
-  var length = 1 + 0.6 * look[Look.hairLength];
+  // Long hair falls as far down the back on a short body as on a tall
+  // one: a chibi's is not as long as the rest of it.
+  var body = style == HairStyle.long ? ((headsTall - 1) / 5).clamp(0.3, 1.2) : 1.0;
+  var length = (1 + 0.6 * look[Look.hairLength]) * body;
   var fringe = 1 + 0.5 * look[Look.fringe];
   return HairRig(base.name, base.strokes, {
     for (var g in HairGroup.values)
@@ -436,13 +441,15 @@ HairRig _bob() => HairRig("Bob", [
     ]);
 
 HairRig _long() => HairRig("Long", [
+      // A small crown, lying flat: the rest of the top is the hair's volume.
+      const HairStroke(HairGroup.top, 0, 84,
+          length: 0.1, turn: 180, w0: 0.14, w1: 0.12, w2: 0.02),
       ..._fan(HairGroup.back, 11, 95, 265, 15, 2.2,
           lean: 0.3, curl: 0.2, w0: 0.2, w1: 0.22, w2: 0.05),
       ..._fan(HairGroup.sides, 3, -115, -70, 20, 1.9,
           lean: 0.2, curl: 0.25, w0: 0.16, w1: 0.17, w2: 0.04),
       ..._fan(HairGroup.sides, 3, 70, 115, 20, 1.9,
           lean: 0.2, curl: 0.25, w0: 0.16, w1: 0.17, w2: 0.04),
-      ..._fan(HairGroup.top, 2, -15, 15, 78, 0.35, w0: 0.18, w1: 0.18),
       ..._fan(HairGroup.fringe, 4, -55, -5, 55, 0.55,
           lean: 0.4, curl: 0.3, w0: 0.13, w1: 0.13, w2: 0.03),
       ..._fan(HairGroup.fringe, 4, 5, 55, 55, 0.55,

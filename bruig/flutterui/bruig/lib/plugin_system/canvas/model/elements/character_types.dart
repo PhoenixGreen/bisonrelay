@@ -286,7 +286,14 @@ enum CharacterType {
           ),
         fox => const CharacterDna(
             type: fox,
-            headsTall: 4,
+            headsTall: 3.2,
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,
+            }),
             build: 0.35,
             skin: Color(0xFFE8762C),
             hair: Color(0xFFE8762C),
@@ -299,7 +306,14 @@ enum CharacterType {
           ),
         rabbit => const CharacterDna(
             type: rabbit,
-            headsTall: 3.6,
+            headsTall: 3.1,
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,
+            }),
             build: 0.4,
             skin: Color(0xFFD8CFC4),
             hair: Color(0xFFBDB2A4),
@@ -312,7 +326,7 @@ enum CharacterType {
           ),
         bear => const CharacterDna(
             type: bear,
-            headsTall: 3.8,
+            headsTall: 3.0,
             build: 0.9,
             skin: Color(0xFF7A5234),
             hair: Color(0xFF5A3A22),
@@ -321,12 +335,24 @@ enum CharacterType {
             species: Species.bear,
             tail: TailKind.stub,
             fur2: Color(0xFFC9A37A),
-            look: Appearance({Look.belly: 0.6}),
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,Look.belly: 0.6}),
             wardrobe: [],
           ),
         mouse => const CharacterDna(
             type: mouse,
-            headsTall: 3.2,
+            headsTall: 2.9,
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,
+            }),
             build: 0.3,
             skin: Color(0xFF9E9A96),
             hair: Color(0xFF7A7672),
@@ -339,7 +365,7 @@ enum CharacterType {
           ),
         pig => const CharacterDna(
             type: pig,
-            headsTall: 3.4,
+            headsTall: 2.9,
             build: 0.8,
             skin: Color(0xFFF2A9B5),
             hair: Color(0xFFE08A9A),
@@ -348,12 +374,17 @@ enum CharacterType {
             species: Species.pig,
             tail: TailKind.curly,
             fur2: Color(0xFFF7C9D1),
-            look: Appearance({Look.belly: 0.7}),
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,Look.belly: 0.7}),
             wardrobe: [],
           ),
         hedgehog => const CharacterDna(
             type: hedgehog,
-            headsTall: 3,
+            headsTall: 2.7,
             build: 0.6,
             skin: Color(0xFFD9B48C),
             hair: Color(0xFF5A4030),
@@ -362,7 +393,12 @@ enum CharacterType {
             species: Species.hedgehog,
             spikes: true,
             fur2: Color(0xFFF2DEC4),
-            look: Appearance({Look.belly: 0.5}),
+            look: Appearance({
+              // A cartoon animal's body: short, thick limbs.
+              Look.legLength: -0.55,
+              Look.armLength: -0.3,
+              Look.armWidth: 0.5,
+              Look.legWidth: 0.8,Look.belly: 0.5}),
             wardrobe: [],
           ),
         horse => const CharacterDna(
