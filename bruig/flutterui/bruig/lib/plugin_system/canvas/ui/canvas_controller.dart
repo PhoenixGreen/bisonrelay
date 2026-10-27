@@ -28,6 +28,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
+    show characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
@@ -3899,6 +3901,37 @@ class CanvasController extends ChangeNotifier {
     _rigPick = null;
     notifyListeners();
     return true;
+  }
+
+  /// pickedCharacterLayer is the layer of a sketch picked in its Layers
+  /// -- see character_layers.dart -- whose settings are shown under them.
+  /// For this run of the app.
+  String? get pickedCharacterLayer => _pickedCharacterLayer;
+  String? _pickedCharacterLayer;
+  void pickCharacterLayer(String? layer) {
+    if (_pickedCharacterLayer == layer) return;
+    _pickedCharacterLayer = layer;
+    notifyListeners();
+  }
+
+  /// soloLayerOf is the layer of character [id] soloed -- drawn alone over
+  /// the rest, faint -- or null.
+  String? soloLayerOf(String id) => _layerSoloOf == id ? _layerSolo : null;
+  String? _layerSolo;
+  String? _layerSoloOf;
+
+  /// soloLayer solos [layer] of character [id], or -- with null, or the
+  /// layer already soloed -- stops.
+  void soloLayer(String id, String? layer) {
+    if (layer == null || (_layerSoloOf == id && _layerSolo == layer)) {
+      _layerSoloOf = null;
+      _layerSolo = null;
+    } else {
+      _layerSoloOf = id;
+      _layerSolo = layer;
+    }
+    characterSoloOf = _layerSoloOf == null ? null : (e) => e.id == _layerSoloOf ? _layerSolo : null;
+    notifyListeners();
   }
 
   /// editFace shows a sketch's face feature by feature, to set on the

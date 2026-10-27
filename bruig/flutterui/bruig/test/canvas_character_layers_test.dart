@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'dart:ui' show Canvas, PictureRecorder;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -8,7 +8,16 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dar
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // canvas_character_layers_test.dart is a sketch as a stack of layers: each
 // part of the body, face and hair and each garment drawn as its own, so it
@@ -109,5 +118,72 @@ void main() {
     expect(back.layerView().hidden, e.layerView().hidden);
     expect((e.withBase(x: 5) as CharacterElement).hiddenLayers, e.hiddenLayers);
     expect(e.withLayerShown(BodyLayer.ears.name, true).hiddenLayers, isEmpty);
+  });
+
+  group("the Layers section", () {
+    setUpAll(() => CanvasSection.openAll = true);
+    tearDownAll(() => CanvasSection.openAll = false);
+
+    testWidgets("shows, hides, solos and shapes each layer", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+          const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+          dna: dna)));
+      addTearDown(c.dispose);
+      addTearDown(() => c.soloLayer("c", null));
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(900, 12000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      CharacterElement get() => c.document.elementById("c")! as CharacterElement;
+      Future<void> tap(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.byKey(const ValueKey("characterLayerList")), findsOneWidget);
+      // Hidden from its eye; again, shown.
+      await tap("layerEye-${garmentLayer(hoodie)}");
+      expect(get().dna.wardrobe[hoodie].hidden, isTrue);
+      await tap("layerEye-${garmentLayer(hoodie)}");
+      expect(get().dna.wardrobe[hoodie].hidden, isFalse);
+      await tap("layerEye-${BodyLayer.ears.name}");
+      expect(get().hiddenLayers, {BodyLayer.ears.name});
+
+      // Picked: its own sliders, and only those.
+      await tap("layer-${BodyLayer.eyes.name}");
+      expect(c.pickedCharacterLayer, BodyLayer.eyes.name);
+      var look = find.byKey(const ValueKey("characterLayerLook-c-eyes"));
+      expect(look, findsOneWidget);
+      expect(find.descendant(of: look, matching: find.byKey(const ValueKey("appearancePart"))),
+          findsNothing);
+      expect(find.descendant(of: look, matching: find.byKey(const ValueKey("appearance-eyeSize"))),
+          findsOneWidget);
+
+      // Soloed: the painter is told.
+      await tap("layerSolo-${BodyLayer.eyes.name}");
+      expect(c.soloLayerOf("c"), BodyLayer.eyes.name);
+      expect(characterSoloOf?.call(get()), BodyLayer.eyes.name);
+      await tap("layerSolo-${BodyLayer.eyes.name}");
+      expect(c.soloLayerOf("c"), isNull);
+
+      // A garment picked: its own settings.
+      await tap("layer-${garmentLayer(hoodie)}");
+      expect(find.byKey(ValueKey("characterLayerGarment-c-$hoodie")), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

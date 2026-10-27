@@ -24,11 +24,16 @@ class AppearanceEditor extends StatefulWidget {
   final SettingsWrite write;
   final VoidCallback commit;
 
+  /// only is the one part shaped here, for a layer's settings -- see
+  /// character_layers_settings.dart -- with no Part to pick.
+  final AppearanceGroup? only;
+
   const AppearanceEditor({
     required this.controller,
     required this.character,
     required this.write,
     required this.commit,
+    this.only,
     super.key,
   });
 
@@ -53,7 +58,7 @@ class AppearanceEditorState extends State<AppearanceEditor> {
 
   CharacterElement get e => widget.character;
   CharacterDna get dna => e.dna;
-  AppearanceGroup get group => AppearanceEditor.tab;
+  AppearanceGroup get group => widget.only ?? AppearanceEditor.tab;
 
   void _dna(CharacterDna next, {bool live = false}) {
     widget.controller.beginInteraction();
@@ -87,7 +92,7 @@ class AppearanceEditorState extends State<AppearanceEditor> {
       _focus = focus;
       if (focus != null && groups.contains(focus)) AppearanceEditor.tab = focus;
     }
-    if (!groups.contains(group)) AppearanceEditor.tab = groups.first;
+    if (widget.only == null && !groups.contains(group)) AppearanceEditor.tab = groups.first;
     var drawn = "${dna.toJson()}|${e.style.name}";
     var presets = presetsFor(group);
     return Column(
@@ -114,7 +119,7 @@ class AppearanceEditorState extends State<AppearanceEditor> {
           ),
         // Which part the sliders below shape: one dropdown across the row,
         // with the settings it chooses between.
-        CanvasControlGroup(
+        if (widget.only == null) CanvasControlGroup(
             key: const ValueKey("appearanceTabs"),
             label: "Part",
             help: "Which part of the character to shape. Each starts from "

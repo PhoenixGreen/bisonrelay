@@ -25,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_layers_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -376,6 +377,9 @@ List<Widget> characterSettings(
               ]),
         ]),
     // Drawn on by hand, panel by panel: a sketch's, not a body in 3D.
+    // A sketch as a stack of layers, each shaped where it is picked.
+    if (!e.body.inThreeD)
+      characterLayersSection(context, controller, e, write, begin, commit),
     if (!e.body.inThreeD)
       characterDrawingSection(context, controller, e, write, begin, commit),
     section(e, "appearance",
@@ -1989,16 +1993,46 @@ Color _defaultColour(GarmentKind kind) => switch (kind.slot) {
 /// _WardrobeGroup is what the character wears: costumes to start from,
 /// garments to put on, what is worn and in what order, and the one picked,
 /// to change.
+/// GarmentEditor is one garment's settings -- the Wardrobe's own, for the
+/// garment at [index] -- as a layer's settings show them. See
+/// character_layers_settings.dart.
+class GarmentEditor extends StatelessWidget {
+  final CanvasController controller;
+  final CharacterElement character;
+  final int index;
+  final SettingsWrite write;
+  final VoidCallback commit;
+  const GarmentEditor(
+      {required this.controller,
+      required this.character,
+      required this.index,
+      required this.write,
+      required this.commit,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) => _WardrobeGroup(
+      controller: controller,
+      character: character,
+      write: write,
+      commit: commit,
+      only: index);
+}
+
 class _WardrobeGroup extends StatefulWidget {
   final CanvasController controller;
   final CharacterElement character;
   final SettingsWrite write;
   final VoidCallback commit;
+
+  /// only is the one garment edited, with nothing else of the wardrobe.
+  final int? only;
   const _WardrobeGroup(
       {required this.controller,
       required this.character,
       required this.write,
-      required this.commit});
+      required this.commit,
+      this.only});
 
   @override
   State<_WardrobeGroup> createState() => _WardrobeGroupState();
@@ -2044,6 +2078,12 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
   Widget build(BuildContext context) {
     var drawn = "${dna.toJson()}|${style.name}";
     var wardrobe = dna.wardrobe;
+    if (widget.only case var only? when only < wardrobe.length) {
+      _picked = only;
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _garmentEditor(wardrobe[only]));
+    }
     if (_picked >= wardrobe.length) _picked = -1;
     var picked = _picked >= 0 ? wardrobe[_picked] : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
