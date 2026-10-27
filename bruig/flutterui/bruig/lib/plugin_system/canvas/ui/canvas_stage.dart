@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
@@ -126,6 +127,10 @@ enum _DragMode {
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
   characterPin,
+
+  /// characterFace is one of a sketch's face features being dragged on the
+  /// panel seen. See character_face_rig_editor.dart.
+  characterFace,
 
   /// characterRig is one of a sketch's rig points being dragged: moved,
   /// thickened or turned. See character_rig_editor.dart.
@@ -524,6 +529,11 @@ class CanvasStageState extends State<CanvasStage>
   /// _rigHold is the rig point a [_DragMode.characterRig] drag has hold of,
   /// [_rigFrom] where, and [_rigStart] the character as it was.
   RigHold? _rigHold;
+
+  /// _faceHold is the feature a [_DragMode.characterFace] drag has hold of;
+  /// the drag starts from [_rigFrom] and [_faceStart].
+  FaceHold? _faceHold;
+  CharacterElement? _faceStart;
   Offset _rigFrom = Offset.zero;
   CharacterElement? _rigStart;
   Offset _guideFrom = Offset.zero;
@@ -1861,6 +1871,23 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.anchor;
       controller.beginInteraction();
       return;
+    }
+
+    // A sketch's face, feature by feature, while it is set: the smallest
+    // handles, so first.
+    if (controller.faceCharacter case var who? when !who.locked && controller.puppetHandles) {
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var view = FaceRigView.of(who, controller.frame,
+          frameRate: document.frameRate, document: document);
+      if (view.under(doc, _scale, reach * 0.8) case var hold?) {
+        controller.beginInteraction();
+        _faceHold = hold;
+        _faceStart = who;
+        _rigFrom = doc;
+        controller.pickFacePoint(hold.point);
+        _mode = _DragMode.characterFace;
+        return;
+      }
     }
 
     // A sketch's rig points, while they are edited: before the puppet and
@@ -5166,6 +5193,13 @@ class CanvasStageState extends State<CanvasStage>
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
               transient: true);
         }
+      case _DragMode.characterFace:
+        if ((_faceStart, _faceHold) case (var start?, var hold?)) {
+          controller.replaceElement(
+              faceDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
+                  frameRate: document.frameRate, document: document),
+              transient: true);
+        }
       case _DragMode.characterRig:
         if ((_rigStart, _rigHold) case (var start?, var hold?)) {
           controller.replaceElement(
@@ -5878,6 +5912,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.characterPin ||
         _mode == _DragMode.characterGuide ||
         _mode == _DragMode.characterRig ||
+        _mode == _DragMode.characterFace ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
@@ -6357,6 +6392,8 @@ class CanvasStageState extends State<CanvasStage>
                                     ? _guideCharacter()
                                     : null),
                         rigCharacter: controller.rigCharacter,
+                        faceCharacter: controller.faceCharacter,
+                        facePicked: controller.facePick,
                         rigPicked: controller.rigPick,
                         guideCharacter: _guideCharacter(),
                         guideHandles: controller.puppetHandles,

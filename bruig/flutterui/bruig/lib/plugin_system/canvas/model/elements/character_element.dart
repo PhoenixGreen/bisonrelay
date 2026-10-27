@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
@@ -13,6 +14,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 
 export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
@@ -1196,6 +1198,32 @@ class CharacterElement extends CanvasElement {
     return copyWith(drawings: next);
   }
 
+  /// faceRigs is the sketch's face set feature by feature, panel by panel
+  /// -- see character_face_rig.dart -- by panelKey.
+  final Map<String, FaceRig> faceRigs;
+
+  /// faceRigFor is the face set on the panel turned [turn] and tilted
+  /// [tilt]: its own, or the panel opposite's mirrored -- and whether it is
+  /// that mirror. See drawingFor.
+  (FaceRig, bool) faceRigFor(double turn, double tilt) {
+    if (faceRigs[panelKey(turn, tilt)] case var own?) return (own, false);
+    var opposite = turn.round() % 180 == 0 ? null : faceRigs[panelKey(-turn, tilt)];
+    if (opposite != null) return (opposite.mirrored, true);
+    return (FaceRig.none, false);
+  }
+
+  /// withFaceRig is this with [rig] on the panel turned [turn] and tilted
+  /// [tilt]; an empty one takes the panel's own away.
+  CharacterElement withFaceRig(double turn, double tilt, FaceRig rig) {
+    var next = {...faceRigs};
+    if (rig.isEmpty) {
+      next.remove(panelKey(turn, tilt));
+    } else {
+      next[panelKey(turn, tilt)] = rig;
+    }
+    return copyWith(faceRigs: next);
+  }
+
   const CharacterElement(
     super.base, {
     this.dna = const CharacterDna(),
@@ -1211,6 +1239,7 @@ class CharacterElement extends CanvasElement {
     this.animation = const ElementAnimation(),
     this.body = const CharacterBody(),
     this.drawings = const {},
+    this.faceRigs = const {},
   });
 
   /// restPose is a new character's stance: arms a little away from the body
@@ -1318,7 +1347,9 @@ class CharacterElement extends CanvasElement {
       shadow: shadow,
       depth: depth,
       animation: animation,
-      body: body);
+      body: body,
+      drawings: drawings,
+      faceRigs: faceRigs);
 
   CharacterElement copyWith({
     CharacterDna? dna,
@@ -1335,6 +1366,7 @@ class CharacterElement extends CanvasElement {
     ElementAnimation? animation,
     CharacterBody? body,
     Map<String, CharacterDrawing>? drawings,
+    Map<String, FaceRig>? faceRigs,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -1349,7 +1381,8 @@ class CharacterElement extends CanvasElement {
           depth: (depth ?? this.depth).clamp(0.0, 2.0),
           animation: animation ?? this.animation,
           body: body ?? this.body,
-          drawings: drawings ?? this.drawings);
+          drawings: drawings ?? this.drawings,
+          faceRigs: faceRigs ?? this.faceRigs);
 
   @override
   Map<String, dynamic> props() => {
@@ -1367,6 +1400,8 @@ class CharacterElement extends CanvasElement {
         if (body != const CharacterBody()) "body": body.toJson(),
         if (drawings.isNotEmpty)
           "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
+        if (faceRigs.isNotEmpty)
+          "faceRigs": {for (var e in faceRigs.entries) e.key: e.value.toJson()},
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -1400,5 +1435,11 @@ class CharacterElement extends CanvasElement {
               for (var e in raw.entries)
                 if (e.value is Map<String, dynamic>)
                   "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
+          },
+          faceRigs: {
+            if (json["faceRigs"] case Map raw)
+              for (var e in raw.entries)
+                if (FaceRig.fromJson(e.value) case var rig when !rig.isEmpty)
+                  "${e.key}": rig,
           });
 }

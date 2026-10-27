@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -1129,8 +1130,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void deleteSelected() {
-    // A rig's point picked goes before anything else.
-    if (deleteRigPoint()) return;
+    // A rig's point or a face's feature picked goes before anything else.
+    if (deleteRigPoint() || putFacePointBack()) return;
     // While a drawing is being edited, Delete takes out the points picked,
     // or the shape picked -- and with neither, nothing: never the drawing.
     if (editingVector != null) {
@@ -3885,6 +3886,51 @@ class CanvasController extends ChangeNotifier {
     if (pick == null || e == null) return false;
     replaceElement(withoutRigPoint(e, pick.$1, pick.$2));
     _rigPick = null;
+    notifyListeners();
+    return true;
+  }
+
+  /// editFace shows a sketch's face feature by feature, to set on the
+  /// panel it is seen from -- see character_face_rig_editor.dart. For this
+  /// run of the app.
+  bool get editFace => _editFace;
+  bool _editFace = false;
+  set editFace(bool on) {
+    if (_editFace == on) return;
+    _editFace = on;
+    _facePick = null;
+    notifyListeners();
+  }
+
+  /// faceCharacter is the sketch whose face is set: the one drawn on, or
+  /// picked alone.
+  CharacterElement? get faceCharacter {
+    if (!_editFace) return null;
+    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
+    var e = id == null ? null : _document.elementById(id);
+    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
+  }
+
+  /// facePick is the feature picked, while the face is set: what Delete
+  /// puts back. Picking another character is not picking its feature.
+  FacePoint? get facePick =>
+      _facePickOf != null && faceCharacter?.id == _facePickOf ? _facePick : null;
+  FacePoint? _facePick;
+  String? _facePickOf;
+  void pickFacePoint(FacePoint? p) {
+    _facePick = p;
+    _facePickOf = p == null ? null : faceCharacter?.id;
+    notifyListeners();
+  }
+
+  /// putFacePointBack puts the feature picked back as it was on the panel
+  /// seen, returning whether there was one.
+  bool putFacePointBack() {
+    var p = facePick, e = faceCharacter;
+    if (p == null || e == null) return false;
+    replaceElement(withFacePointBack(e, p, _frame,
+        frameRate: math.max(1, _document.frameRate)));
+    _facePick = null;
     notifyListeners();
     return true;
   }

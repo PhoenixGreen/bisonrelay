@@ -102,6 +102,22 @@ void main() {
     expect(e.drawingFor(-45, 0).$2, isFalse);
   });
 
+  test("kept when the character is moved, sized or turned", () {
+    var rig = CharacterRig.of(dna, rest, _box);
+    var e = CharacterElement(const ElementBase(id: "c", width: 160, height: 340), dna: dna)
+        .withDrawing(0, 0, shapesOnParts([_dot(rig.headCentre)], rig))
+        .withFaceRig(0, 0, FaceRig.none.withPoint(FacePoint.nose, const FaceAdjust(scale: 2)));
+    for (var moved in [
+      e.withBase(x: 40, y: 12),
+      e.withBase(width: 200, height: 400),
+      e.turnedTo(30),
+    ]) {
+      var c = moved as CharacterElement;
+      expect(c.drawings, e.drawings);
+      expect(c.faceRigs, e.faceRigs);
+    }
+  });
+
   test("is kept in the saved canvas", () {
     var rig = CharacterRig.of(dna, rest, _box);
     var drawn = shapesOnParts([_dot(rig.headCentre)], rig,

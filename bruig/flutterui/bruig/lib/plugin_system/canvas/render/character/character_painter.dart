@@ -78,7 +78,11 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       // What is drawn by hand on the panel it is seen from.
       drawing: e.body.inThreeD || e.drawings.isEmpty
           ? null
-          : e.drawingFor(pose.panelTurn, pose.panelTilt).$1);
+          : e.drawingFor(pose.panelTurn, pose.panelTilt).$1,
+      // The face as it is set on that panel.
+      faceRig: e.body.inThreeD || e.faceRigs.isEmpty
+          ? null
+          : e.faceRigFor(pose.panelTurn, pose.panelTilt).$1);
   if (light != null) canvas.restore();
 }
 
@@ -115,7 +119,8 @@ void paintCharacterFigure(
     CharacterBody body = const CharacterBody(),
     CanvasImageSource? images,
     CharacterStyle? bodyStyle,
-    CharacterDrawing? drawing}) {
+    CharacterDrawing? drawing,
+    FaceRig? faceRig}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -151,7 +156,8 @@ void paintCharacterFigure(
                     look: look,
                     images: images,
                     painted: buffers,
-                    hidden: drawing?.hidden ?? const {})
+                    hidden: drawing?.hidden ?? const {},
+                    faceRig: faceRig ?? FaceRig.none)
                 .draw();
             if (drawing != null) paintDrawing(flat, rig, drawing, box.inflate(box.height));
           },
@@ -167,11 +173,16 @@ void paintCharacterFigure(
                   style.name,
                   bare,
                   drawing?.toJson(),
+                  faceRig?.toJson(),
                 ]));
       if (lit) return;
     }
     _Drawing(onto, rig, dna, face, life,
-            bare: bare, look: look, images: images, hidden: drawing?.hidden ?? const {})
+            bare: bare,
+            look: look,
+            images: images,
+            hidden: drawing?.hidden ?? const {},
+            faceRig: faceRig ?? FaceRig.none)
         .draw();
     // Drawn by hand over it, each shape where its part is.
     if (drawing != null) paintDrawing(onto, rig, drawing, box.inflate(box.height));
@@ -713,7 +724,88 @@ class _Drawing {
       this.look = const _Look(),
       this.images,
       this.painted,
-      this.hidden = const {}});
+      this.hidden = const {},
+      this.faceRig = FaceRig.none});
+
+  /// faceRig is the face as it is set on the panel drawn -- see
+  /// character_face_rig.dart.
+  final FaceRig faceRig;
+
+  /// _setAbout sets the canvas for a feature drawn about [pivot], in the
+  /// head's own space, as [a] says: moved, turned and sized about it.
+  void _setAbout(FaceAdjust a, Offset pivot) {
+    if (a.isRest) return;
+    canvas.translate(pivot.dx + a.dx * u, pivot.dy + a.dy * u);
+    if (a.turn != 0) canvas.rotate(a.turn * math.pi / 180);
+    if (a.scale != 1) canvas.scale(math.max(a.scale, 1e-4));
+    canvas.translate(-pivot.dx, -pivot.dy);
+  }
+
+  /// _setFeature draws [what], the face's [p], about [pivot] as it is set.
+  void _setFeature(FacePoint p, Offset pivot, void Function() what) {
+    var a = faceRig[p];
+    if (a.isRest) return what();
+    canvas.save();
+    _setAbout(a, pivot);
+    what();
+    canvas.restore();
+  }
+
+  /// noseAt, browAt and the mouth's place are where each feature is set
+  /// about -- see facePivots.
+  Offset _noseAt(double w) =>
+      Offset(_across(0, w), u * 0.12 + _nodShift - _a(Look.noseHeight) * u * 0.05);
+  Offset _browAt(Offset eye) => Offset(eye.dx, eye.dy - u * 0.16);
+  Offset _mouthPlace(double w) =>
+      _mouthAt ??
+      Offset(_across(0, w * 0.88), u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+
+  /// _eyeKit is how much wider and taller the style draws its eyes, and
+  /// how much lower, in head units.
+  (double, double, double) get _eyeKit => switch (look.eyes) {
+        _Eyes.anime => (1.2, 1.45, 0.03),
+        _Eyes.shojo => (1.35, 1.6, 0.04),
+        _Eyes.shonen => (1.25, 0.85, 0.0),
+        _Eyes.soft => (0.8, 0.95, 0.0),
+        _Eyes.dot => (0.6, 0.75, 0.0),
+        _Eyes.fine => (1.15, 0.75, 0.0),
+        _Eyes.glossy => (1.3, 1.35, 0.02),
+        _Eyes.real => (1.05, 0.72, 0.0),
+        _Eyes.feature => (1.2, 0.92, 0.01),
+        _ => (1.0, 1.0, 0.0),
+      };
+
+  /// _facePivots is where each feature the face shows is set about, in the
+  /// head's own space, before it is set: what the face rig's handles are
+  /// drawn from. The corners of the mouth are where the resting mouth's
+  /// are, before the mouth itself is set.
+  Map<FacePoint, Offset> _facePivots() {
+    if (facing <= -0.15 || dna.species.animal) return const {};
+    var w = rig.headRadii.width;
+    var eyeY = u * 0.06 + _nodShift - _a(Look.eyeHeight) * u * 0.06 + u * _eyeKit.$3;
+    var out = <FacePoint, Offset>{};
+    if (dna.eyeCount != 1) {
+      for (var side in [-1.0, 1.0]) {
+        var phi = side * 0.42 * (1 + 0.22 * _a(Look.eyeSpacing));
+        if (_toward(phi) < 0.12) continue;
+        var c = Offset(_across(phi, w), eyeY);
+        out[side > 0 ? FacePoint.eyeL : FacePoint.eyeR] = c;
+        out[side > 0 ? FacePoint.browL : FacePoint.browR] = _browAt(c);
+      }
+    }
+    out[FacePoint.nose] = _noseAt(w);
+    var mouth = _mouthPlace(w);
+    out[FacePoint.mouth] = mouth;
+    var smile = (face[FaceControl.smile] + 0.4 * _a(Look.corners)).clamp(-1.0, 1.0);
+    var half = u * 0.1 * (1 + 0.4 * face[FaceControl.wide].clamp(-0.6, 1.0));
+    var across = (0.35 + 0.65 * facing.clamp(0.0, 1.0)) * (1 + 0.3 * _a(Look.mouthWidth));
+    out[FacePoint.cornerR] = mouth + Offset(-half * across, -smile * u * 0.05);
+    out[FacePoint.cornerL] = mouth + Offset(half * across, -smile * u * 0.05);
+    return out;
+  }
+
+  /// _mouthAcross is how far across the mouth is drawn, turned as it is.
+  double _mouthAcross = 1;
 
   /// hidden is where the generated drawing is left out, for a drawing by
   /// hand to take its place. See CharacterDrawing.hidden.
@@ -2878,7 +2970,9 @@ class _Drawing {
               ..color = _shade(dna.hair));
       }
     }
-    if (facing > -0.2 && !dna.species.animal) _nose(w, front: false);
+    if (facing > -0.2 && !dna.species.animal) {
+      _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: false));
+    }
     if (!dna.species.animal) {
       for (var phi in ears) {
         if (_toward(phi) >= 0.3) ear(phi);
@@ -3329,21 +3423,13 @@ class _Drawing {
         eh *= 1.6;
       }
       // Each style's eye its own size and shape.
-      var (kw, kh, drop) = switch (look.eyes) {
-        _Eyes.anime => (1.2, 1.45, 0.03),
-        _Eyes.shojo => (1.35, 1.6, 0.04),
-        _Eyes.shonen => (1.25, 0.85, 0.0),
-        _Eyes.soft => (0.8, 0.95, 0.0),
-        _Eyes.dot => (0.6, 0.75, 0.0),
-        _Eyes.fine => (1.15, 0.75, 0.0),
-        _Eyes.glossy => (1.3, 1.35, 0.02),
-        _Eyes.real => (1.05, 0.72, 0.0),
-        _Eyes.feature => (1.2, 0.92, 0.01),
-        _ => (1.0, 1.0, 0.0),
-      };
+      var (kw, kh, drop) = _eyeKit;
       ew *= kw;
       eh *= kh;
       c = c + Offset(0, u * drop);
+      // Set as the panel's face has it.
+      canvas.save();
+      if (side != 0) _setAbout(faceRig[side > 0 ? FacePoint.eyeL : FacePoint.eyeR], c);
       // Tipped up or down at the outer corner.
       canvas.save();
       if (_a(Look.eyeTilt) != 0 && side != 0) {
@@ -3366,7 +3452,11 @@ class _Drawing {
         _eye(box, c, side, toward, lookX, lookY, lid);
       }
       canvas.restore();
-      if (side != 0) _brow(c, side, toward);
+      canvas.restore();
+      if (side != 0) {
+        _setFeature(side > 0 ? FacePoint.browL : FacePoint.browR, _browAt(c),
+            () => _brow(c, side, toward));
+      }
       if (toward > 0.3) {
         canvas.drawOval(
             Rect.fromCenter(
@@ -3398,7 +3488,7 @@ class _Drawing {
     if (dna.species.animal) {
       _muzzle(w);
     } else {
-      _nose(w, front: true);
+      _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: true));
     }
     if (!dna.species.animal) _beard(w);
     // A beak is a bird's mouth.
@@ -4335,13 +4425,14 @@ class _Drawing {
   /// _mouth is a mouth shape when one is set -- speech -- or else the mouth
   /// the face's own controls make.
   void _mouth(double w) {
-    var at = _mouthAt ??
-        Offset(_across(0, w * 0.88),
-            u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+    var at = _mouthPlace(w);
     var across = (0.35 + 0.65 * facing.clamp(0.0, 1.0)) *
         (1 + 0.3 * _a(Look.mouthWidth));
+    _mouthAcross = across;
     canvas.save();
     canvas.translate(at.dx, at.dy);
+    // Set as the panel's face has it, about its middle.
+    _setAbout(faceRig[FacePoint.mouth], Offset.zero);
     canvas.scale(across, 1);
     if (face.mouth == MouthShape.rest) {
       _restMouth();
@@ -4364,6 +4455,13 @@ class _Drawing {
     var wide = face[FaceControl.wide];
     var half = u * 0.1 * (1 + 0.4 * wide.clamp(-0.6, 1.0));
     var corner = -smile * u * 0.05;
+    // Each corner where the panel's face puts it: the character's right on
+    // the reader's left. Across in head units, through the mouth's narrowing.
+    var cr = faceRig[FacePoint.cornerR], cl = faceRig[FacePoint.cornerL];
+    var k = _mouthAcross == 0 ? 1.0 : _mouthAcross;
+    var lc = Offset(-half + cr.dx * u / k, corner + cr.dy * u);
+    var rc = Offset(half + cl.dx * u / k, corner + cl.dy * u);
+    var midX = (lc.dx + rc.dx) / 2, midY = (lc.dy + rc.dy) / 2 - corner;
     if (jaw < 0.06) {
       if (wide < -0.5) {
         // Pursed.
@@ -4378,17 +4476,17 @@ class _Drawing {
       var lips = (_a(Look.upperLip) + _a(Look.lowerLip)) / 2;
       canvas.drawPath(
           Path()
-            ..moveTo(-half, corner)
-            ..quadraticBezierTo(0, smile * u * 0.1, half, corner),
+            ..moveTo(lc.dx, lc.dy)
+            ..quadraticBezierTo(midX, smile * u * 0.1 + midY, rc.dx, rc.dy),
           _feature(u * 0.032 * (1 + 0.45 * math.min(0.0, lips)), _lips));
       return;
     }
     var top = smile > 0 ? smile * u * 0.02 : smile * u * 0.03;
     var bottom = top + jaw * u * 0.24 + math.max(0, smile) * u * 0.05;
     var mouth = Path()
-      ..moveTo(-half, corner)
-      ..quadraticBezierTo(0, top, half, corner)
-      ..quadraticBezierTo(0, bottom * 1.3, -half, corner)
+      ..moveTo(lc.dx, lc.dy)
+      ..quadraticBezierTo(midX, top + midY, rc.dx, rc.dy)
+      ..quadraticBezierTo(midX, bottom * 1.3 + midY, lc.dx, lc.dy)
       ..close();
     canvas.drawPath(mouth, Paint()..color = _lips);
     canvas.save();
@@ -4494,3 +4592,12 @@ class _Drawing {
 /// _shade is [c] darkened by [by], for the edge drawn round it.
 Color _shade(Color c, [double by = 0.32]) =>
     Color.lerp(c, const Color(0xFF000000), by)!;
+
+/// facePivots is where each feature of [dna]'s face -- drawn as [style]
+/// draws it, making [face] -- is set about, in the head's own space: see
+/// character_face_rig.dart. [rig] is built from [dna] as the style has it.
+Map<FacePoint, Offset> facePivots(
+        CharacterRig rig, CharacterDna dna, CharacterFace face, CharacterStyle style) =>
+    _Drawing(Canvas(ui.PictureRecorder()), rig, dna, face, LifeAt.none,
+            look: _Look.of(style))
+        ._facePivots();

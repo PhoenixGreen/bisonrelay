@@ -136,6 +136,39 @@ Widget characterDrawingSection(
               ),
             ]),
         CanvasControlGroup(
+            key: const ValueKey("characterDrawingFace"),
+            label: "Face rig",
+            help: "Set the face as it is seen from this panel, feature by "
+                "feature: each eye, each brow, the nose, the mouth and each "
+                "corner of the mouth. Drag a feature's middle to move it, "
+                "its ring to size it and the knob on the ring to turn it. It "
+                "is set on top of every expression, on this panel only; the "
+                "panel seen from the other side mirrors it until it is set "
+                "itself. Delete puts the feature picked back.",
+            children: [
+              CanvasToggle(
+                key: const ValueKey("characterDrawingFaceShow"),
+                label: "Set the face",
+                value: controller.editFace,
+                onChanged: (v) => controller.editFace = v,
+              ),
+              if (controller.editFace && controller.facePick != null)
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingFaceBack"),
+                  label:
+                      "Put the ${controller.facePick!.label.toLowerCase()} back",
+                  icon: Icons.restart_alt,
+                  onPressed: controller.putFacePointBack,
+                ),
+              if (e.faceRigs.containsKey(panelKey(turn, tilt)))
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingFaceReset"),
+                  label: "Put this panel's face back",
+                  icon: Icons.restart_alt,
+                  onPressed: () => now(e.withFaceRig(turn, tilt, FaceRig.none)),
+                ),
+            ]),
+        CanvasControlGroup(
             key: const ValueKey("characterDrawingRig"),
             label: "Rig points",
             help: "Each arm and leg runs through its joints and any points "

@@ -137,6 +137,16 @@ class CharacterDrawBar extends StatelessWidget {
                     onPressed: () =>
                         controller.showPuppet = !controller.showPuppet,
                   ),
+                  // The face feature by feature, on the panel seen.
+                  CanvasIconButton(
+                    key: const ValueKey("characterDrawFace"),
+                    icon: Icons.face_retouching_natural,
+                    tooltip: controller.editFace
+                        ? "Put the face's handles away"
+                        : "Set the face on this panel",
+                    active: controller.editFace,
+                    onPressed: () => controller.editFace = !controller.editFace,
+                  ),
                   // The limbs point by point, to bend, thicken and turn.
                   CanvasIconButton(
                     key: const ValueKey("characterDrawRig"),

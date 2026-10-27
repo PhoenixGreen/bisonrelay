@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
@@ -232,6 +233,11 @@ class StagePainter extends CustomPainter {
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
   final CharacterElement? rigCharacter;
   final (CharacterLimb, RigPoint)? rigPicked;
+
+  /// faceCharacter is the sketch whose face is being set feature by
+  /// feature, and facePicked the feature picked.
+  final CharacterElement? faceCharacter;
+  final FacePoint? facePicked;
   final bool guideHandles;
   final GuideHandle? guideHeld;
 
@@ -377,6 +383,8 @@ class StagePainter extends CustomPainter {
     this.guideCharacter,
     this.rigCharacter,
     this.rigPicked,
+    this.faceCharacter,
+    this.facePicked,
     this.guideHandles = true,
     this.guideHeld,
     this.editingVector,
@@ -882,6 +890,16 @@ class StagePainter extends CustomPainter {
           (doc) => doc * scale + origin,
           scale,
           picked: rigPicked);
+    }
+    // The face's features, over everything.
+    if (faceCharacter case var who?) {
+      paintFaceRig(
+          canvas,
+          FaceRigView.of(who, frame,
+              frameRate: document.frameRate, document: document),
+          (doc) => doc * scale + origin,
+          scale,
+          picked: facePicked);
     }
 
     // A selected path shows its points and handles instead of a box: the box
@@ -1896,6 +1914,8 @@ class StagePainter extends CustomPainter {
       !identical(old.guideCharacter, guideCharacter) ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
+      !identical(old.faceCharacter, faceCharacter) ||
+      old.facePicked != facePicked ||
       old.guideHandles != guideHandles ||
       old.guideHeld != guideHeld ||
       old.editingVector != editingVector ||
