@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
@@ -1122,7 +1123,8 @@ class _Drawing {
   /// _solid draws something in [colour] by way of [draw], shaded as the
   /// style shades: a shadow on the side away from the light, which is above
   /// and to the left -- a band of darker colour, or dots.
-  void _solid(Rect bounds, Color colour, void Function(Paint) draw) {
+  void _solid(Rect bounds, Color colour, void Function(Paint) draw,
+      {double light = 1}) {
     var base = Paint()..color = colour;
     if (painted case var buffers? when !identical(canvas, _sink)) {
       // Laid into the light's buffers, drawing on each in turn, and drawn
@@ -1197,7 +1199,7 @@ class _Drawing {
     // own colour -- what is left showing of the shadow is a crescent on the
     // far side.
     canvas.save();
-    var d = u * 0.07;
+    var d = u * 0.07 * light;
     canvas.translate(-d, -d * 0.6);
     draw(Paint()
       ..color = colour
@@ -1574,20 +1576,14 @@ class _Drawing {
     );
   }
 
+  /// _foot draws the foot on the end of [limb] in [colour] -- see
+  /// character_extremities.dart: as it points, and its toes bent up at
+  /// the ball.
   void _foot(CharacterLimb limb, Color colour, {bool bareFoot = false}) {
-    var (centre, tip, length, drop) = _footBox(limb);
-    canvas.save();
-    canvas.translate(centre.dx, centre.dy);
-    canvas.rotate(tip);
-    var scale = bareFoot ? 0.86 : 0.95;
-    _fill(
-        Path()
-          ..addOval(Rect.fromCenter(
-              center: Offset.zero,
-              width: length * scale,
-              height: drop * 1.0 * scale)),
-        colour);
-    canvas.restore();
+    var size = rig.footSize(legWidth);
+    var shape = footShape(rig, limb, size,
+        scale: bareFoot ? 0.9 : 0.95, tall: bareFoot ? 0.86 : 0.95);
+    _fill(shape.path.shift(_end(limb)), colour);
   }
 
   void _shoe(CharacterLimb limb, Garment g, int i) {
@@ -1608,17 +1604,26 @@ class _Drawing {
     canvas.rotate(tip);
     switch (g.kind) {
       case GarmentKind.sandals:
-        // Straps over the foot, which shows between them.
+        // A sole under the foot and straps over it, which shows between
+        // them.
+        canvas.restore();
+        canvas.save();
+        var ankle = _end(limb);
+        var size = rig.footSize(legWidth);
+        _fill(footShape(rig, limb, size, scale: 0.98, sole: 0.16).path.shift(ankle),
+            colour);
         var strap = Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = drop * 0.28
+          ..strokeCap = StrokeCap.round
           ..color = colour;
-        for (var x in [-0.18, 0.15]) {
-          canvas.drawLine(Offset(length * x, -drop * 0.45),
-              Offset(length * x, drop * 0.45), strap);
+        for (var at in [0.35, 0.68]) {
+          canvas.drawPath(
+              Path()
+                ..addPolygon(
+                    [for (var q in strapAt(rig, limb, size, at)) ankle + q], false),
+              strap);
         }
-        canvas.drawLine(Offset(-length * 0.45, drop * 0.48),
-            Offset(length * 0.45, drop * 0.48), strap..strokeWidth = drop * 0.18);
       case GarmentKind.heels:
         // Where the ankle is in the foot's own frame, and how wide.
         var d = _end(limb) - centre;
@@ -1627,22 +1632,22 @@ class _Drawing {
         _heel(length, drop, colour, ankle,
             legWidth * 0.52 * (1 + 0.45 * _a(Look.ankles)) / 2);
       default:
-        var shoe = Path()
-          ..addOval(Rect.fromCenter(
-              center: Offset.zero, width: length, height: drop * 1.15));
-        _fill(shoe, colour);
-        if (g.kind == GarmentKind.trainers) {
-          // The sole, in the second colour.
-          canvas.save();
-          canvas.clipPath(shoe);
-          canvas.drawRect(
-              Rect.fromLTWH(-length, drop * 0.22, length * 2, drop),
-              Paint()..color = g.color2);
-          canvas.restore();
-          _outline(shoe, colour);
-        }
+        break;
     }
     canvas.restore();
+    if (g.kind == GarmentKind.sandals || g.kind == GarmentKind.heels) return;
+    // A shoe is the foot's shape a size up, and bends where it bends.
+    var ankle = _end(limb);
+    var size = rig.footSize(legWidth);
+    var shoe = footShape(rig, limb, size, scale: 1.05, tall: 1.1).path.shift(ankle);
+    _fill(shoe, colour);
+    if (g.kind == GarmentKind.trainers) {
+      // The sole, in the second colour.
+      var sole = footShape(rig, limb, size, scale: 1.08, sole: 0.32)
+          .path
+          .shift(ankle);
+      _fill(sole, g.color2);
+    }
   }
 
   /// _heel is a court shoe on a raised heel, about the foot's centre: from
@@ -2309,35 +2314,14 @@ class _Drawing {
         var cuff = wrist - (forward.distance == 0
             ? Offset.zero
             : forward / forward.distance * rig.handRadius * 0.2);
-        _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius * 1.35)),
-            const Color(0xFFFAFAFA));
+        _hand(limb, const Color(0xFFFAFAFA), size: 1.3);
         _fill(Path()..addOval(Rect.fromCircle(center: cuff, radius: rig.handRadius * 0.75)),
             const Color(0xFFFAFAFA));
       } else if (dna.species.animal || dna.fourLegs) {
         _fill(Path()..addOval(Rect.fromCircle(center: hand, radius: rig.handRadius)),
             dna.skin);
       } else {
-        // A hand: a palm longer than it is wide, along the forearm, and a
-        // thumb on the side towards the body.
-        var r = rig.handRadius;
-        var along = forward.distance == 0 ? 0.0 : math.atan2(forward.dy, forward.dx);
-        var inward = limb.onLeft ? 1.0 : -1.0;
-        canvas.save();
-        canvas.translate(hand.dx, hand.dy);
-        canvas.rotate(along - math.pi / 2);
-        // A slim hand, the fingers together and tapering to their tips.
-        var palm = Path()
-          ..moveTo(-r * 0.62, -r * 0.7)
-          ..quadraticBezierTo(-r * 0.78, r * 0.4, -r * 0.42, r * 1.25)
-          ..quadraticBezierTo(0, r * 1.75, r * 0.38, r * 1.3)
-          ..quadraticBezierTo(r * 0.72, r * 0.4, r * 0.6, -r * 0.7)
-          ..quadraticBezierTo(0, -r * 0.95, -r * 0.62, -r * 0.7)
-          ..close();
-        var thumb = Path()
-          ..addOval(Rect.fromCenter(
-              center: Offset(inward * r * 0.62, r * 0.05), width: r * 0.48, height: r * 1.05));
-        _fill(Path.combine(PathOperation.union, palm, thumb), dna.skin);
-        canvas.restore();
+        _hand(limb, dna.skin);
       }
       });
       for (var (i, g) in _wearing((g) => g.kind.hasSleeves)) {
@@ -2352,6 +2336,39 @@ class _Drawing {
             limb: limb);
       }
     }
+  }
+
+  /// _hand draws the hand on the end of [limb] in [colour], [size] times
+  /// as big -- see character_extremities.dart: its pieces as one shape,
+  /// the line round it, and a finer line round each piece where nothing
+  /// nearer covers it -- the fingers apart, one curled over the palm.
+  void _hand(CharacterLimb limb, Color colour, {double size = 1}) {
+    var wrist = _end(limb);
+    var paths = [
+      for (var p in handPieces(rig, limb, rig.handRadius * size))
+        Path()..addPolygon([for (var q in p.outline) wrist + q], true),
+    ];
+    var whole = paths.reduce((a, b) => Path.combine(PathOperation.union, a, b));
+    // Fingers are thin: a shadow as deep as the body's would swallow them.
+    _solid(whole.getBounds(), colour, (p) => canvas.drawPath(whole, p),
+        light: 0.3);
+    if (lined && painted == null) {
+      var fine = _edgePaint(colour)..strokeWidth = edge * 0.55;
+      // Nearest first, each line left out where a nearer piece lies.
+      Path? nearer;
+      for (var i = paths.length - 1; i >= 0; i--) {
+        canvas.save();
+        canvas.clipPath(nearer == null
+            ? whole
+            : Path.combine(PathOperation.difference, whole, nearer));
+        canvas.drawPath(paths[i], fine);
+        canvas.restore();
+        nearer = nearer == null
+            ? paths[i]
+            : Path.combine(PathOperation.union, nearer, paths[i]);
+      }
+    }
+    _outline(whole, colour);
   }
 
   // ---- what is worn on the head ----

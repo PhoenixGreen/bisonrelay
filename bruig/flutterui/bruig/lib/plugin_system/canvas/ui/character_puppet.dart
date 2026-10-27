@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 
@@ -26,17 +27,24 @@ enum CharacterPin {
   handL,
   handR,
   footL,
-  footR;
+  footR,
+
+  /// toeL and toeR are on the tips of the toes, which point the foot --
+  /// on a drawn body, which has a foot to point.
+  toeL,
+  toeR;
 
   /// limb is the arm or leg this pin is on the end of, or null for the head
   /// and chest.
   CharacterLimb? get limb => switch (this) {
         handL => CharacterLimb.armL,
         handR => CharacterLimb.armR,
-        footL => CharacterLimb.legL,
-        footR => CharacterLimb.legR,
+        footL || toeL => CharacterLimb.legL,
+        footR || toeR => CharacterLimb.legR,
         _ => null,
       };
+
+  bool get isToe => this == toeL || this == toeR;
 }
 
 /// CharacterPlacement is how a character's own drawing space lies on the
@@ -63,9 +71,12 @@ class CharacterPlacement {
   /// own length, not the rig's. Empty otherwise.
   final Map<RigJoint, ModelJoint> model;
 
+  /// bounds is the box the rig fills, in the drawing's own space.
+  final Rect bounds;
+
   CharacterPlacement._(this.element, this.frame, this.rig, this._box,
       this._centre, this._shift, this._anchor, this._turn, this._scale,
-      {this.turn = 0, this.model = const {}});
+      {this.turn = 0, this.model = const {}, this.bounds = Rect.zero});
 
   /// of places [e] on [frame], breathing as it does at [frameRate] -- the
   /// pins are on the joints as they are drawn, chest risen or not, and on
@@ -106,6 +117,7 @@ class CharacterPlacement {
           1,
           turn: at.turn,
           model: modelOf(rig, at.box),
+          bounds: at.box,
         );
       }
     }
@@ -127,6 +139,7 @@ class CharacterPlacement {
       pose.rotate * math.pi / 180,
       pose.scale,
       model: modelOf(rig, bounds),
+      bounds: bounds,
     );
   }
 
@@ -208,14 +221,49 @@ class CharacterPlacement {
   }
 
   /// pinAt is where [pin] is drawn, in the drawing's own space.
-  Offset localPin(CharacterPin pin) => _at(switch (pin) {
+  Offset localPin(CharacterPin pin) => pin.isToe
+      ? _toe(rig, pin.limb!)
+      : _at(switch (pin) {
         CharacterPin.head => RigJoint.head,
         CharacterPin.chest => RigJoint.chest,
         CharacterPin.handL => RigJoint.wristL,
         CharacterPin.handR => RigJoint.wristR,
         CharacterPin.footL => RigJoint.ankleL,
-        CharacterPin.footR => RigJoint.ankleR,
+        CharacterPin.footR || CharacterPin.toeR => RigJoint.ankleR,
+        CharacterPin.toeL => RigJoint.ankleL,
       });
+
+  /// _toe is where the tip of [leg]'s toes is in [r].
+  static Offset _toe(CharacterRig r, CharacterLimb leg) =>
+      r.end(leg) + footShape(r, leg, r.footSize()).tip;
+
+  /// _pointed is [seen] with [leg]'s foot pointed so its toes are towards
+  /// [target], as the ankle sees them: measured on the rig as it stands,
+  /// a few steps, the body lifted on to its toes as far as they go into the
+  /// floor -- see CharacterRig.of.
+  CharacterPose _pointed(CharacterPose seen, CharacterLimb leg, Offset target) {
+    var bone = ankleBone(leg.onLeft);
+    var dna = element.style.dnaOf(element.dna);
+    double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
+    double wrap(double d) => (d + 540) % 360 - 180;
+    double tipAngle(CharacterPose q) {
+      var r = CharacterRig.of(dna, element.inView(q), bounds);
+      return angle(_toe(r, leg) - r.end(leg));
+    }
+
+    var want = angle(target - rig.end(leg));
+    var p = seen;
+    for (var k = 0; k < 4; k++) {
+      var now = tipAngle(p);
+      var miss = wrap(want - now);
+      if (miss.abs() < 0.3) break;
+      var rate = wrap(tipAngle(p.withSwing(bone, p.swing(bone) + 1)) - now);
+      // Seen toes on, the tip hardly moves as the foot points.
+      if (rate.abs() < 0.05) break;
+      p = p.withSwing(bone, (p.swing(bone) + miss / rate).clamp(-40.0, 85.0));
+    }
+    return p;
+  }
 
   Offset pin(CharacterPin pin) => toPage(localPin(pin));
 
@@ -238,6 +286,8 @@ class CharacterPlacement {
           (RigJoint.kneeR, RigJoint.ankleR),
         ])
           (toPage(_at(a)), toPage(_at(b))),
+        for (var p in pins)
+          if (p.isToe) (pin(p.limb == CharacterLimb.legL ? CharacterPin.footL : CharacterPin.footR), pin(p)),
       ];
 
   /// posedBy is the pose that [pin] dragged to [page] asks for.
@@ -282,6 +332,8 @@ class CharacterPlacement {
               r.neckLength + r.unit * 0.5 * r.headScale)),
       CharacterPin.chest => r.solveLean(
           seen, _forRig(target, RigJoint.hips, const [RigJoint.chest], trunk)),
+      CharacterPin.toeL || CharacterPin.toeR =>
+        _pointed(seen, pin.limb!, target),
     };
     return solved.withTurn(pose.turn).withTilt(pose.tilt);
   }
@@ -290,9 +342,19 @@ class CharacterPlacement {
   List<CharacterPin> get pins => [
         for (var p in CharacterPin.values)
           if (!(element.dna.species.legless &&
-              (p == CharacterPin.footL || p == CharacterPin.footR)))
+                  (p == CharacterPin.footL || p == CharacterPin.footR)) &&
+              !(p.isToe && !_pointable))
             p,
       ];
+
+  /// _pointable is whether its feet point: drawn, and standing on two.
+  bool get _pointable {
+    var dna = element.dna;
+    return !element.body.inThreeD &&
+        !dna.species.legless &&
+        !dna.fourLegs &&
+        dna.species != Species.bird;
+  }
 
   /// pinUnder is the pin within [reach] of [page], nearest first, or null.
   CharacterPin? pinUnder(Offset page, double reach) {

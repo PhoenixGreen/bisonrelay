@@ -19,6 +19,7 @@ export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.d
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_hair.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_hands.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
@@ -67,10 +68,57 @@ enum CharacterBone {
 
   /// wings is how far wings are raised from folded, in degrees: what a
   /// flap moves. A bird's arms are its wings, and rise with it.
-  wings("Wing flap");
+  wings("Wing flap"),
+
+  /// The hands and feet -- see character_hands.dart. A wrist bends as any
+  /// bone does; a palm turns about the forearm, the back of the hand
+  /// towards the reader as it goes negative and the palm as it goes
+  /// positive. A finger's angle is how far it curls, at every knuckle, and
+  /// a spread how far apart the fingers fan. An ankle's swing points the
+  /// toes down -- up as it goes negative -- and its angle turns the foot
+  /// out; the toes' swing bends them up at the ball.
+  wristL("Left wrist", extremity: true),
+  palmL("Left palm turn", extremity: true, mirrors: false),
+  thumbL("Left thumb", extremity: true, mirrors: false),
+  indexL("Left index finger", extremity: true, mirrors: false),
+  middleL("Left middle finger", extremity: true, mirrors: false),
+  ringL("Left ring finger", extremity: true, mirrors: false),
+  littleL("Left little finger", extremity: true, mirrors: false),
+  spreadL("Left finger spread", extremity: true, mirrors: false),
+  wristR("Right wrist", extremity: true),
+  palmR("Right palm turn", extremity: true, mirrors: false),
+  thumbR("Right thumb", extremity: true, mirrors: false),
+  indexR("Right index finger", extremity: true, mirrors: false),
+  middleR("Right middle finger", extremity: true, mirrors: false),
+  ringR("Right ring finger", extremity: true, mirrors: false),
+  littleR("Right little finger", extremity: true, mirrors: false),
+  spreadR("Right finger spread", extremity: true, mirrors: false),
+  ankleL("Left ankle", extremity: true, mirrors: false),
+  toesL("Left toes", extremity: true, mirrors: false),
+  ankleR("Right ankle", extremity: true, mirrors: false),
+  toesR("Right toes", extremity: true, mirrors: false);
 
   final String label;
-  const CharacterBone(this.label);
+
+  /// extremity is whether it is of a hand or a foot, which a pose is not
+  /// told apart by -- see CharacterPose.near.
+  final bool extremity;
+
+  /// mirrors is whether its angle is a turn on the page, which a pose
+  /// mirrored left for right turns the other way. A curl, a spread, a palm
+  /// turned towards the reader and a foot turned out are the same either
+  /// side.
+  final bool mirrors;
+  const CharacterBone(this.label,
+      {this.extremity = false, this.mirrors = true});
+
+  /// partner is the bone on the other side of the body, or this one.
+  CharacterBone get partner {
+    var n = name;
+    if (n.endsWith("L")) return fromName("${n.substring(0, n.length - 1)}R") ?? this;
+    if (n.endsWith("R")) return fromName("${n.substring(0, n.length - 1)}L") ?? this;
+    return this;
+  }
 
   static CharacterBone? fromName(String? name) {
     for (var b in values) {
@@ -185,11 +233,13 @@ class CharacterPose {
   /// near is whether this pose is about [other]: every bone within a few
   /// degrees of it, on average -- what a view of a pose is drawn for.
   bool near(CharacterPose other, {double within = 8}) {
-    var sum = 0.0;
+    var sum = 0.0, n = 0;
     for (var b in CharacterBone.values) {
+      if (b.extremity) continue;
       sum += (this[b] - other[b]).abs() + (swing(b) - other.swing(b)).abs();
+      n++;
     }
-    return sum / CharacterBone.values.length <= within;
+    return sum / n <= within;
   }
 
   /// inViews is this pose seen from the nearest of [views] -- or its

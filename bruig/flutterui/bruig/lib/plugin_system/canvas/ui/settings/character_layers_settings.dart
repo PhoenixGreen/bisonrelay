@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_hair_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_hands_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -108,6 +109,15 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
               write: write,
               commit: commit,
             ),
+          // A person's hands and feet: their shape and stance.
+          if (BodyLayer.fromName(pickedRow.key) case var body?
+              when _hands(e) &&
+                  (body == BodyLayer.handL || body == BodyLayer.handR))
+            handEditor(controller, e, write, commit, body == BodyLayer.handL),
+          if (BodyLayer.fromName(pickedRow.key) case var body?
+              when _feet(e) &&
+                  (body == BodyLayer.footL || body == BodyLayer.footR))
+            footEditor(controller, e, write, commit, body == BodyLayer.footL),
           if (BodyLayer.fromName(pickedRow.key) case var body?)
             for (var group in appearanceOf(body, person: e.dna.kind.person))
               AppearanceEditor(
@@ -148,6 +158,13 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
         ),
       ]);
 }
+
+/// _hands and _feet are whether [e] has hands with fingers, and feet that
+/// stand: not paws, wings or fins.
+bool _hands(CharacterElement e) =>
+    !e.dna.species.animal && !e.dna.fourLegs && !e.dna.species.legless;
+bool _feet(CharacterElement e) =>
+    !e.dna.species.legless && !e.dna.fourLegs && e.dna.species != Species.bird;
 
 class _LayerList extends StatelessWidget {
   final List<LayerRow> rows;

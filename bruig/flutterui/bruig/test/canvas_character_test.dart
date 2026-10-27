@@ -1153,10 +1153,8 @@ ${rows.join("\n")}
       expect(get(c).pose[CharacterBone.upperArmL],
           posePresets[3].pose[CharacterBone.upperArmL]);
 
-      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
-      tester
-          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
-          .onChanged(AppearanceGroup.hair);
+      // A sketch's look is shaped in its layers: the hair in the hair's.
+      c.pickCharacterLayer(BodyLayer.hairFront.name);
       await tester.pumpAndSettle();
       await tap(tester, "characterHair-long");
       expect(get(c).dna.hairStyle, HairStyle.long);
@@ -1182,14 +1180,14 @@ ${rows.join("\n")}
       expect(get(c).dna.wardrobe.map((g) => g.kind), contains(GarmentKind.scarf));
       await tap(tester, "characterBareView");
       expect(get(c).bareView, isTrue);
+      // Taken off from its own layer.
+      c.pickCharacterLayer(garmentLayer(0));
+      await tester.pumpAndSettle();
       await tap(tester, "characterWornOff-0");
       expect(get(c).dna.wardrobe.first.kind, isNot(GarmentKind.briefs));
 
       // Appearance: a body type, the size, and a slider.
-      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
-      tester
-          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
-          .onChanged(AppearanceGroup.body);
+      c.pickCharacterLayer(BodyLayer.torso.name);
       await tester.pumpAndSettle();
       await tap(tester, "appearancePreset-body-Curvy");
       expect(get(c).dna.look[Look.hips], 0.8);
@@ -1199,10 +1197,7 @@ ${rows.join("\n")}
       tester.widget<CanvasSlider>(heads).onCommit?.call();
       await tester.pumpAndSettle();
       expect(get(c).dna.headsTall, 6);
-      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
-      tester
-          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
-          .onChanged(AppearanceGroup.eyes);
+      c.pickCharacterLayer(BodyLayer.eyes.name);
       await tester.pumpAndSettle();
       var eyes = find.byKey(const ValueKey("appearance-eyeSize"));
       await tester.ensureVisible(eyes);

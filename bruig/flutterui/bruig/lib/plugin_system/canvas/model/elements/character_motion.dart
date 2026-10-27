@@ -309,21 +309,11 @@ MotionMove _motion(MotionKind kind, double t) {
 /// _mirrored is [move] left for right: each bone's angles given to its
 /// partner on the other side, the spreads turned the other way.
 MotionMove _mirrored(MotionMove move) {
-  CharacterBone other(CharacterBone b) => switch (b) {
-        CharacterBone.upperArmL => CharacterBone.upperArmR,
-        CharacterBone.upperArmR => CharacterBone.upperArmL,
-        CharacterBone.foreArmL => CharacterBone.foreArmR,
-        CharacterBone.foreArmR => CharacterBone.foreArmL,
-        CharacterBone.thighL => CharacterBone.thighR,
-        CharacterBone.thighR => CharacterBone.thighL,
-        CharacterBone.shinL => CharacterBone.shinR,
-        CharacterBone.shinR => CharacterBone.shinL,
-        _ => b,
-      };
+  CharacterBone other(CharacterBone b) => b.partner;
   var p = move.pose;
   return (
     pose: CharacterPose({
-      for (var b in CharacterBone.values) other(b): -p[b],
+      for (var b in CharacterBone.values) other(b): b.mirrors ? -p[b] : p[b],
     }, {
       for (var b in CharacterBone.values) other(b): p.swing(b),
     }, -p.turn, p.lift),

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
 
 // character_rig.dart is where a character's joints are, for a pose: the one
 // answer the painter draws from and the stage puts its pins on.
@@ -130,6 +131,21 @@ class CharacterRig {
   final double tilt;
   final double ground;
 
+  /// frames is the frame each hand and foot is made on, in the body's
+  /// space, row by row -- see character_extremities.dart. A hand's: across
+  /// it to the thumb, along it to the fingers, and out of its back. A
+  /// foot's: out from the body, down, and forward to the toes.
+  final Map<CharacterLimb, List<double>> frames;
+
+  /// hands is how each hand is made: each finger's curl, the thumb first,
+  /// and how far they spread. toes is how far each foot's toes bend up.
+  final Map<CharacterLimb, List<double>> hands;
+  final Map<CharacterLimb, double> toes;
+
+  /// planted is how far the body is lifted to keep its feet on the ground
+  /// as they point: up on to the toes.
+  final double planted;
+
   const CharacterRig._({
     required this.unit,
     this.headScale = 1,
@@ -172,6 +188,10 @@ class CharacterRig {
     this.tilt = 0,
     this.ground = 0,
     this.look = Appearance.rest,
+    this.frames = const {},
+    this.hands = const {},
+    this.toes = const {},
+    this.planted = 0,
   });
 
   /// footDrop is how far below the ankle the sole is, as a share of the
@@ -335,6 +355,67 @@ class CharacterRig {
     var (kneeR3, ankleR3) =
         reach(hipR3, _M3.identity, CharacterLimb.legR, thigh, shin);
 
+    // The hands, on the end of the forearms: bent at the wrist, and turned
+    // so the back of the hand is half towards the reader at rest -- the
+    // palm towards the body, the thumb forward.
+    List<double> handFrame(CharacterLimb limb) {
+      var left = limb.onLeft;
+      var forearm = bone(limb.upper) * bone(limb.lower);
+      var turn = spine * forearm;
+      var wrist = wristBone(left);
+      var a = (45 + pose[palmBone(left)]) * math.pi / 180;
+      var c = math.cos(a), sn = math.sin(a);
+      var side = left ? 1.0 : -1.0;
+      // Columns: the thumb's way, along the hand, out of its back.
+      var rest = _M3([side * c, 0, -side * sn, 0, 1, 0, sn, 0, c]);
+      return (turn * bone(wrist) * rest).m;
+    }
+
+    // The feet: flat to the floor however the shin is turned, only tipping
+    // a little with it, or a kick would point the sole at the sky; then
+    // pointed at the ankle and turned out.
+    var feetLook = FootSize.of(legWidth, lk, below * footDrop);
+    _M3 footTurn(CharacterLimb limb, {bool posed = true}) {
+      var left = limb.onLeft;
+      var ankle = ankleBone(left);
+      var tip = _M3.z(0.25 * (pose[limb.upper] + pose[limb.lower])) *
+          _M3.x(0.25 * (pose.swing(limb.upper) + pose.swing(limb.lower)));
+      var side = left ? -1.0 : 1.0;
+      var outward = _M3([side, 0, 0, 0, 1, 0, 0, 0, 1]);
+      if (!posed) return tip * outward;
+      return tip *
+          _M3.y(side * pose[ankle]) *
+          _M3.x(-pose.swing(ankle)) *
+          outward;
+    }
+
+    // Kept on the ground: a foot pointed lower than it stood lifts the body
+    // as far as it goes into the floor -- on to the toes -- and no further,
+    // nor at all when it was off the ground already.
+    double lowest(CharacterLimb limb, _V3 ankle, bool posed) {
+      var turn = footTurn(limb, posed: posed);
+      var toes = posed ? pose.swing(toesBone(limb.onLeft)) : 0.0;
+      var low = -double.infinity;
+      for (var (x, y, z)
+          in footBottoms(feetLook, toes, legWidth * footOutward)) {
+        low = math.max(low, ankle.y + turn.on(_V3(x, y, z)).y);
+      }
+      return low;
+    }
+
+    var planted = 0.0;
+    if (!dna.species.legless && !dna.fourLegs && dna.species != Species.bird) {
+      var floor = ground;
+      double under(bool posed) => math.max(
+          0,
+          math.max(lowest(CharacterLimb.legL, ankleL3, posed),
+                  lowest(CharacterLimb.legR, ankleR3, posed)) -
+              floor);
+      planted = math.max(0.0, under(true) - under(false));
+      hipY -= planted;
+      ground += planted;
+    }
+
     var hips = page(origin), chest = page(chest3), neck = page(neck3);
     var headCentre = page(head3);
     double tilt(Offset from, Offset to) => from == to
@@ -413,8 +494,47 @@ class CharacterRig {
       footSwing: {
         for (var l in [CharacterLimb.legL, CharacterLimb.legR]) l: swingOf(l),
       },
+      frames: {
+        CharacterLimb.armL: handFrame(CharacterLimb.armL),
+        CharacterLimb.armR: handFrame(CharacterLimb.armR),
+        CharacterLimb.legL: footTurn(CharacterLimb.legL).m,
+        CharacterLimb.legR: footTurn(CharacterLimb.legR).m,
+      },
+      hands: {
+        for (var l in [CharacterLimb.armL, CharacterLimb.armR])
+          l: [
+            for (var f in Finger.values) pose[f.bone(l.onLeft)],
+            pose[spreadBone(l.onLeft)],
+          ],
+      },
+      toes: {
+        for (var l in [CharacterLimb.legL, CharacterLimb.legR])
+          l: pose.swing(toesBone(l.onLeft)),
+      },
+      planted: planted,
     );
   }
+
+  /// stepOnPage is a step in the body's own space as a step on the page:
+  /// turned with the body, and seen from above or below.
+  Offset stepOnPage(double x, double y, double z) {
+    var yr = yaw * math.pi / 180, tr = tilt * math.pi / 180;
+    var cy = math.cos(yr), sy = math.sin(yr);
+    var near = x * sy + z * cy;
+    return Offset(x * cy - z * sy, y * math.cos(tr) + near * math.sin(tr));
+  }
+
+  /// stepDepth is how much nearer the reader a step in the body's own space
+  /// takes a point.
+  double stepDepth(double x, double y, double z) {
+    var yr = yaw * math.pi / 180, tr = tilt * math.pi / 180;
+    var near = x * math.sin(yr) + z * math.cos(yr);
+    return -y * math.sin(tr) + near * math.cos(tr);
+  }
+
+  /// footSize is how big a foot is drawn under a leg [legWidth] thick.
+  FootSize footSize([double? width]) =>
+      FootSize.of(width ?? legWidth, look, below * footDrop);
 
   /// root, middle and end are a limb's three joints.
   Offset root(CharacterLimb limb) => switch (limb) {
@@ -580,6 +700,14 @@ class _M3 {
     if (degrees == 0) return identity;
     var r = degrees * math.pi / 180, c = math.cos(r), s = math.sin(r);
     return _M3([1, 0, 0, 0, c, -s, 0, s, c]);
+  }
+
+  /// y is a turn of [degrees] about the body's up, as seen from above:
+  /// towards the page's right facing the reader.
+  factory _M3.y(double degrees) {
+    if (degrees == 0) return identity;
+    var r = degrees * math.pi / 180, c = math.cos(r), s = math.sin(r);
+    return _M3([c, 0, s, 0, 1, 0, -s, 0, c]);
   }
 
   /// on is [v] turned by this.
