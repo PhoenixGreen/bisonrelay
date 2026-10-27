@@ -326,13 +326,17 @@ List<HairStroke> _fan(
 }
 
 HairRig _short() => HairRig("Short", [
-      ..._fan(HairGroup.back, 9, 100, 260, 20, 0.45,
-          lean: 0.15, w0: 0.16, w1: 0.17),
-      ..._fan(HairGroup.sides, 2, -95, -70, 25, 0.38, lean: 0.05),
-      ..._fan(HairGroup.sides, 2, 70, 95, 25, 0.38, lean: 0.05),
-      ..._fan(HairGroup.top, 3, -30, 30, 72, 0.32, w0: 0.16, w1: 0.16),
-      ..._fan(HairGroup.fringe, 5, -40, 40, 52, 0.28,
-          lean: 0.2, w0: 0.12, w1: 0.12),
+      ..._fan(HairGroup.back, 11, 100, 260, 28, 0.5,
+          lean: 0.15, w0: 0.26, w1: 0.24, w2: 0.04, jitter: 0.2, seed: 21),
+      ..._fan(HairGroup.sides, 2, -100, -72, 34, 0.42,
+          lean: 0.05, w0: 0.24, w1: 0.2, w2: 0.03, seed: 23),
+      ..._fan(HairGroup.sides, 2, 72, 100, 34, 0.42,
+          lean: 0.05, w0: 0.24, w1: 0.2, w2: 0.03, seed: 25),
+      // A small crown, lying flat: the rest of the top is the hair's volume.
+      const HairStroke(HairGroup.top, 0, 84,
+          length: 0.1, turn: 180, w0: 0.14, w1: 0.12, w2: 0.02),
+      ..._fan(HairGroup.fringe, 6, -48, 48, 60, 0.42,
+          lean: 0.22, w0: 0.22, w1: 0.2, w2: 0.03, jitter: 0.2, seed: 27),
     ]);
 
 /// _messy is the anime boy's: a full dome over the crown, a fringe of

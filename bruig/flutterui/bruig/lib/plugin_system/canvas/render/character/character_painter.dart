@@ -661,7 +661,8 @@ class _Look {
   final bool gloves;
 
   /// strokes is hair drawn as strokes when the character has none of its
-  /// own: anime's, which is clumps over a full crown -- see hairForStyle.
+  /// own -- clumps over a full crown, or combed into rounded locks; see
+  /// hairForStyle -- rather than the style's own way of drawing it.
   final bool strokes;
 
   /// heart is a heart-shaped face: a full brow and cheekbones tapering to
@@ -681,7 +682,7 @@ class _Look {
       this.hose = false,
       this.gloves = false,
       this.heart = false,
-      this.strokes = false});
+      this.strokes = true});
 
   static const _black = Color(0xFF151515);
 
@@ -694,12 +695,12 @@ class _Look {
             hair: _Hair.flowing,
             nose: _Nose.small,
             limbs: 0.92,
-            heart: true),
+            heart: true,
+            strokes: false),
         CharacterStyle.featureCartoon => const _Look(
             shading: _Shading.cel,
             eyes: _Eyes.feature,
-            hair: _Hair.soft,
-            strokes: true),
+            hair: _Hair.soft),
         CharacterStyle.anime => const _Look(
             line: 0.75,
             shading: _Shading.cel,
@@ -707,8 +708,7 @@ class _Look {
             eyes: _Eyes.anime,
             hair: _Hair.clumps,
             nose: _Nose.tick,
-            hatch: true,
-            strokes: true),
+            hatch: true),
         CharacterStyle.shojo => const _Look(
             line: 0.6,
             shading: _Shading.cel,
@@ -717,8 +717,7 @@ class _Look {
             hair: _Hair.clumps,
             nose: _Nose.tick,
             hatch: true,
-            limbs: 0.85,
-            strokes: true),
+            limbs: 0.85),
         CharacterStyle.shonen => const _Look(
             line: 1.3,
             ink: Color(0xFF1E1A22),
@@ -726,8 +725,7 @@ class _Look {
             shadowTint: Color(0xFF3A3A6A),
             eyes: _Eyes.shonen,
             hair: _Hair.spiky,
-            nose: _Nose.tick,
-            strokes: true),
+            nose: _Nose.tick),
         CharacterStyle.softFilm => const _Look(
             line: 0.85,
             ink: Color(0xFF6A4A36),
@@ -742,8 +740,7 @@ class _Look {
             eyes: _Eyes.shojo,
             hair: _Hair.clumps,
             nose: _Nose.none,
-            hatch: true,
-            strokes: true),
+            hatch: true),
         CharacterStyle.webtoon => const _Look(
             line: 0.5,
             shading: _Shading.soft,
@@ -757,8 +754,7 @@ class _Look {
             shading: _Shading.screentone,
             eyes: _Eyes.anime,
             hair: _Hair.clumps,
-            nose: _Nose.tick,
-            strokes: true),
+            nose: _Nose.tick),
         CharacterStyle.feature3d => const _Look(
             line: 0,
             shading: _Shading.soft,
@@ -793,7 +789,8 @@ class _Look {
             eyes: _Eyes.pie,
             limbs: 0.5,
             hose: true,
-            gloves: true),
+            gloves: true,
+            strokes: false),
         CharacterStyle.painterly => const _Look(
             line: 0.35,
             shading: _Shading.soft,
