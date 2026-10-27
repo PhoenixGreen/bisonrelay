@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 
 // character_hair.dart is a sketch's hair as strokes, as VRoid draws hair as
 // tufts and Moho bends a stroke of its own width: each one growing from a
@@ -294,7 +295,7 @@ class HairRig {
 }
 
 /// hairPresets are hair made of strokes to start from.
-List<HairRig> get hairPresets => [_short(), _messy(), _bob(), _long()];
+List<HairRig> get hairPresets => [_short(), _messy(), _spiky(), _bob(), _long()];
 
 List<HairStroke> _fan(
     HairGroup g, int n, double lonFrom, double lonTo, double lat, double length,
@@ -362,12 +363,10 @@ HairRig _messy() => HairRig("Messy", [
           w2: 0.0,
           jitter: 0.25,
           seed: 7),
-      ..._fan(HairGroup.top, 5, -70, 70, 70, 0.42,
-          w0: 0.3, w1: 0.26, w2: 0.02, jitter: 0.2, seed: 9),
       // A cowlick: one short tuft turned up off the crown.
       const HairStroke(HairGroup.top, 8, 86,
-          length: 0.2, curl: 0.6, turn: 170, w0: 0.07, w1: 0.06, w2: 0.0),
-      ..._fan(HairGroup.fringe, 7, -52, 52, 62, 0.72,
+          length: 0.15, curl: 0.6, turn: 170, w0: 0.045, w1: 0.04, w2: 0.0),
+      ..._fan(HairGroup.fringe, 7, -52, 52, 60, 0.72,
           lean: 0.2,
           curl: 0.12,
           w0: 0.22,
@@ -376,6 +375,53 @@ HairRig _messy() => HairRig("Messy", [
           jitter: 0.3,
           seed: 11),
     ]);
+
+/// _spiky is a shōnen lead's: the crown in points turned up and back, the
+/// fringe in a few sharp locks.
+HairRig _spiky() => HairRig("Spiky", [
+      ..._fan(HairGroup.back, 9, 100, 260, 30, 0.6,
+          lean: 0.3, w0: 0.26, w1: 0.2, w2: 0.0, jitter: 0.3, seed: 13),
+      for (var (i, lon) in [-80.0, -45.0, -15.0, 15.0, 45.0, 80.0].indexed)
+        HairStroke(HairGroup.top, lon, 66 + (i % 2) * 8,
+            length: 0.5 + 0.12 * ((i * 5) % 3),
+            turn: 180 - lon * 0.9,
+            w0: 0.24,
+            w1: 0.18,
+            w2: 0.0),
+      ..._fan(HairGroup.sides, 2, -105, -75, 32, 0.55,
+          lean: 0.1, w0: 0.22, w1: 0.16, w2: 0.0, seed: 15),
+      ..._fan(HairGroup.sides, 2, 75, 105, 32, 0.55,
+          lean: 0.1, w0: 0.22, w1: 0.16, w2: 0.0, seed: 17),
+      ..._fan(HairGroup.fringe, 5, -45, 45, 60, 0.62,
+          lean: 0.35, curl: 0.2, w0: 0.22, w1: 0.17, w2: 0.0, jitter: 0.3, seed: 19),
+    ]);
+
+/// hairForStyle is the hair a style that draws hair in strokes draws [style]
+/// as -- spiky in a style that spikes it -- grown as [look] says: fuller,
+/// longer, a longer fringe, parted further over. Null for hair a style
+/// draws its own way: a bun, curls, none.
+HairRig? hairForStyle(HairStyle style, Appearance look, {bool spiky = false}) {
+  var base = switch (style) {
+    HairStyle.short => spiky ? _spiky() : _messy(),
+    HairStyle.long => _long(),
+    _ => null,
+  };
+  if (base == null) return null;
+  var volume = 1 + 0.5 * look[Look.hairVolume];
+  var length = 1 + 0.6 * look[Look.hairLength];
+  var fringe = 1 + 0.5 * look[Look.fringe];
+  return HairRig(base.name, base.strokes, {
+    for (var g in HairGroup.values)
+      g: HairGroupLook(
+          volume: volume,
+          length: switch (g) {
+            HairGroup.back || HairGroup.sides => length,
+            HairGroup.fringe => fringe,
+            HairGroup.top => 1,
+          },
+          curl: g == HairGroup.fringe ? 0.4 * look[Look.parting] : 0),
+  });
+}
 
 HairRig _bob() => HairRig("Bob", [
       ..._fan(HairGroup.back, 9, 100, 260, 15, 0.95,

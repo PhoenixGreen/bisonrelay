@@ -132,10 +132,12 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
   var vol = g.volume;
   // How far out from the head it stands: the fringe off the forehead, the
   // sides and back close to the head they fall round.
+  // The sides and back full in the middle and tucked in towards the head
+  // at their tips, as hair hangs round a head rather than off it.
   var (lift, bulge) = switch (s.group) {
     HairGroup.fringe => (0.18, 0.32),
-    HairGroup.sides => (0.04, 0.14),
-    HairGroup.back => (0.08, 0.2),
+    HairGroup.sides => (-0.1, 0.2),
+    HairGroup.back => (-0.04, 0.24),
     HairGroup.top => (0.18, 0.3),
   };
   var out = lift * vol + (1 - fall) * 0.8;

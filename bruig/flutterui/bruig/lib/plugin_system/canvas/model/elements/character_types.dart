@@ -158,6 +158,8 @@ enum CharacterType {
             hairStyle: HairStyle.long,
             eyes: Color(0xFF3F5F2A),
             look: Appearance({
+              // A child's neck is short.
+              Look.neckLength: -0.5,
               Look.eyeSize: 0.5,
               Look.iris: 0.3,
               Look.cheeks: 0.4,
@@ -182,6 +184,8 @@ enum CharacterType {
             hairStyle: HairStyle.short,
             eyes: Color(0xFF2E2016),
             look: Appearance({
+              // A child's neck is short.
+              Look.neckLength: -0.5,
               Look.eyeSize: 0.45,
               Look.cheeks: 0.35,
               Look.noseLength: -0.5,
@@ -204,6 +208,8 @@ enum CharacterType {
             hairStyle: HairStyle.short,
             eyes: Color(0xFF3A5A7A),
             look: Appearance({
+              // A child's neck is short.
+              Look.neckLength: -0.5,
               Look.eyeSize: 0.7,
               Look.iris: 0.5,
               Look.cheeks: 0.9,
