@@ -46,6 +46,12 @@ class HairStroke {
   final double lean;
   final double curl;
 
+  /// turn is how far it is turned about where it grows, in degrees, as
+  /// that side of the head is seen face on: down, as hair falls, at nought,
+  /// and round -- towards the character's left on the front -- as it goes
+  /// positive. Spiky hair is strokes turned up.
+  final double turn;
+
   /// w0, w1 and w2 are its width at the root, the middle and the tip, in
   /// head heights.
   final double w0;
@@ -56,6 +62,7 @@ class HairStroke {
       {this.length = 0.5,
       this.lean = 0,
       this.curl = 0,
+      this.turn = 0,
       this.w0 = 0.12,
       this.w1 = 0.13,
       this.w2 = 0.02});
@@ -67,6 +74,7 @@ class HairStroke {
           double? length,
           double? lean,
           double? curl,
+          double? turn,
           double? w0,
           double? w1,
           double? w2}) =>
@@ -75,12 +83,19 @@ class HairStroke {
           length: (length ?? this.length).clamp(0.02, 6.0),
           lean: (lean ?? this.lean).clamp(-1.5, 1.5),
           curl: (curl ?? this.curl).clamp(-1.5, 1.5),
+          turn: _wrap(turn ?? this.turn),
           w0: (w0 ?? this.w0).clamp(0.0, 1.0),
           w1: (w1 ?? this.w1).clamp(0.0, 1.0),
           w2: (w2 ?? this.w2).clamp(0.0, 1.0));
 
   /// mirrored is it on the other side of the head.
-  HairStroke get mirrored => copyWith(lon: -lon, lean: -lean, curl: -curl);
+  HairStroke get mirrored =>
+      copyWith(lon: -lon, lean: -lean, curl: -curl, turn: -turn);
+
+  static double _wrap(double degrees) {
+    var d = degrees % 360;
+    return d > 180 ? d - 360 : d;
+  }
 
   Map<String, dynamic> toJson() => {
         "group": group.name,
@@ -89,6 +104,7 @@ class HairStroke {
         "length": _r(length),
         if (lean != 0) "lean": _r(lean),
         if (curl != 0) "curl": _r(curl),
+        if (turn != 0) "turn": _r(turn),
         "w": [_r(w0), _r(w1), _r(w2)],
       };
 
@@ -106,6 +122,7 @@ class HairStroke {
       length: jsonDouble(json["length"], 0.5),
       lean: jsonDouble(json["lean"], 0),
       curl: jsonDouble(json["curl"], 0),
+      turn: jsonDouble(json["turn"], 0),
       w0: wAt(0, 0.12),
       w1: wAt(1, 0.13),
       w2: wAt(2, 0.02),

@@ -10,13 +10,14 @@ import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 // canvas -- see character_hair.dart. A stroke is picked by clicking it.
 // The picked one has its root, which drags it round the scalp; its tip,
 // which sets how long it is and how it leans; and a ring at its root,
-// middle and tip, which makes it wider or narrower there. Pressing on the
+// middle and tip, which makes it wider or narrower there; and a knob
+// behind its root, which turns it about where it grows. Pressing on the
 // scalp where there is no stroke grows a new one there -- of the group
 // that part of the head grows -- and dragging out sets its tip. Delete
 // takes the picked one away.
 
 /// HairGrab is what of a stroke is taken hold of.
-enum HairGrab { body, root, tip, ring0, ring1, ring2 }
+enum HairGrab { body, root, tip, ring0, ring1, ring2, turn }
 
 /// HairHold is a stroke taken hold of, and what of it.
 class HairHold {
@@ -94,6 +95,17 @@ class HairView {
     );
   }
 
+  /// turnKnobAt is where stroke [i]'s turning knob is, in the head's space:
+  /// a little way behind its root, away from its tip, at [scale] screen
+  /// pixels to a page unit.
+  Offset turnKnobAt(int i, double scale) {
+    var s = shapes[i];
+    var away = s.root - s.middle[math.min(3, s.middle.length - 1)];
+    var l = away.distance;
+    var dir = l < 1e-9 ? const Offset(0, -1) : away / l;
+    return s.root + dir * (22 / (scale * (_scale == 0 ? 1 : _scale)));
+  }
+
   /// under is what is under [page] -- of the stroke [picked] first, its
   /// handles, then any stroke, nearest the reader first -- within [reach]
   /// page units.
@@ -104,6 +116,9 @@ class HairView {
       var s = shapes[picked];
       if ((s.tip - p).distance <= r) return HairHold(picked, HairGrab.tip);
       if ((s.root - p).distance <= r) return HairHold(picked, HairGrab.root);
+      if ((turnKnobAt(picked, scale) - p).distance <= r) {
+        return HairHold(picked, HairGrab.turn);
+      }
       for (var k = 0; k < 3; k++) {
         var (c, rad) = ringAt(picked, k, scale);
         if (((p - c).distance - rad).abs() <= r * 0.6) {
@@ -159,6 +174,8 @@ class HairView {
         next = s.copyWith(lon: at.$1, lat: at.$2);
       case HairGrab.tip:
         next = _reaching(s, shape.tip + step);
+      case HairGrab.turn:
+        next = _turnedBy(s, shape.root, headOf(from), headOf(to));
       case HairGrab.ring0 || HairGrab.ring1 || HairGrab.ring2:
         var k = hold.grab.index - HairGrab.ring0.index;
         var c = switch (k) { 0 => shape.root, 1 => shape.mid, _ => shape.tip };
@@ -173,6 +190,31 @@ class HairView {
     }
     return element.copyWith(
         dna: element.dna.copyWith(hairRig: hair.withStroke(i, next)));
+  }
+
+  /// _turnedBy is [s] turned about where it grows as far as a drag from
+  /// [from] to [to] goes round [root] on the page: however the scalp there
+  /// is seen, measured from the shape -- how far round its tip goes for a
+  /// degree of turn -- a few steps at a time.
+  HairStroke _turnedBy(HairStroke s, Offset root, Offset from, Offset to) {
+    double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
+    double wrap(double d) => (d + 540) % 360 - 180;
+    var want = wrap(angle(to - root) - angle(from - root));
+    var g = hair.lookOf(s.group);
+    double tipAngle(HairStroke t) =>
+        angle(hairStrokeShape(t, g, head).tip - root);
+    var next = s;
+    var goal = tipAngle(s) + want;
+    for (var k = 0; k < 8; k++) {
+      var now = tipAngle(next);
+      var miss = wrap(goal - now);
+      if (miss.abs() < 0.2) break;
+      var rate = wrap(tipAngle(next.copyWith(turn: next.turn + 1)) - now);
+      // Seen end on, the tip hardly moves: turn it as far as dragged.
+      if (rate.abs() < 0.05) rate = 1;
+      next = next.copyWith(turn: next.turn + (miss / rate).clamp(-30.0, 30.0));
+    }
+    return next;
   }
 
   /// _reaching is [s] made as long, and leaning as far, as takes its tip
@@ -243,6 +285,16 @@ void paintHairEditor(
   var root = p(s.root);
   canvas.drawRect(Rect.fromCenter(center: root, width: 10, height: 10), white);
   canvas.drawRect(Rect.fromCenter(center: root, width: 10, height: 10), line);
+  // The turning knob: a ring behind the root, joined to it.
+  var knob = p(view.turnKnobAt(picked, scale));
+  canvas.drawLine(root, knob, faint..color = hairColour.withValues(alpha: 0.7));
+  canvas.drawCircle(knob, 5, white);
+  canvas.drawCircle(knob, 5, line..color = hairColour);
+  canvas.drawArc(Rect.fromCircle(center: knob, radius: 2.4), -2.2, 4.4, false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = hairColour);
   var tip = p(s.tip);
   canvas.drawCircle(tip, 5.5, Paint()..color = hairColour);
   canvas.drawCircle(tip, 5.5, line..color = const Color(0xFFFFFFFF));

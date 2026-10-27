@@ -88,13 +88,37 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
   };
   var out = lift * vol + (1 - fall) * 0.8;
   var t = [math.cos(lon), 0.0, -math.sin(lon)];
+  // Turned about where it grows: which way it falls and leans, round the
+  // level line out of that side of the head -- a turn of the stroke in the
+  // view that looks at it face on, the front for the fringe and the side
+  // for the sides, going all the way round there.
+  var down = [0.0, -1.0, 0.0];
+  if (s.turn != 0) {
+    var a = s.turn * math.pi / 180, c = math.cos(a), sn = math.sin(a);
+    var axis = [math.sin(lon), 0.0, math.cos(lon)];
+    List<double> turned(List<double> v) {
+      var dot = axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2];
+      var cr = [
+        axis[1] * v[2] - axis[2] * v[1],
+        axis[2] * v[0] - axis[0] * v[2],
+        axis[0] * v[1] - axis[1] * v[0]
+      ];
+      return [
+        for (var i = 0; i < 3; i++)
+          v[i] * c + cr[i] * sn + axis[i] * dot * (1 - c)
+      ];
+    }
+
+    down = turned(down);
+    t = turned(t);
+  }
+  var up = [for (var v in down) -v];
   var curl = s.curl + g.curl;
   List<double> at(List<double> a, List<double> b, double k) =>
       [for (var i = 0; i < 3; i++) a[i] + b[i] * k];
-  var p1 = at(at(root, o, len * bulge * vol), [0, -1, 0], len * 0.1 * fall);
-  var tip =
-      at(at(at(root, o, len * out), [0, -1, 0], len * fall), t, len * s.lean);
-  var p2 = at(at(at(tip, o, len * lift * vol), [0, 1, 0], len * 0.3 * fall), t,
+  var p1 = at(at(root, o, len * bulge * vol), down, len * 0.1 * fall);
+  var tip = at(at(at(root, o, len * out), down, len * fall), t, len * s.lean);
+  var p2 = at(at(at(tip, o, len * lift * vol), up, len * 0.3 * fall), t,
       len * curl * 0.6);
   // Down the middle, finely, then out each side as wide as it is.
   var mid = <Offset>[];

@@ -183,7 +183,8 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
               : "Stroke ${HairStrokesEditor.stroke + 1} of ${strokes.length}",
           help: "One stroke of the group: where on the scalp it grows -- round "
               "the head from the front, and up from the middle -- how long it "
-              "is, how it leans and curls, and how wide it is at its root, its "
+              "is, how it leans and curls, which way it is turned about its "
+              "root, and how wide it is at its root, its "
               "middle and its tip.",
           children: [
             if (strokes.length > 1)
@@ -208,6 +209,8 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
                   (v) => setStroke(picked.$2.copyWith(lean: v))),
               slider("characterHairCurl", "Curl", picked.$2.curl, -1.5, 1.5,
                   (v) => setStroke(picked.$2.copyWith(curl: v))),
+              slider("characterHairTurn", "Turn", picked.$2.turn, -180, 180,
+                  (v) => setStroke(picked.$2.copyWith(turn: v))),
               slider("characterHairW0", "Root width", picked.$2.w0, 0, 0.5,
                   (v) => setStroke(picked.$2.copyWith(w0: v))),
               slider("characterHairW1", "Middle width", picked.$2.w1, 0, 0.5,

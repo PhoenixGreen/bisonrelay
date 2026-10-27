@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Canvas, PictureRecorder;
 
 import 'package:bruig/models/snackbar.dart';
@@ -6,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
@@ -126,6 +128,12 @@ void main() {
       expect(get().dna.hairRig?.name, "Messy");
       var fringe = get().dna.hairRig!.inGroup(HairGroup.fringe);
 
+      var turn = tester.widget<CanvasSlider>(find.byKey(const ValueKey("characterHairTurn")));
+      turn.onChanged(30);
+      turn.onCommit!();
+      await tester.pumpAndSettle();
+      expect(get().dna.hairRig!.strokes[fringe.first.$1].turn, 30);
+
       var length = tester.widget<CanvasSlider>(find.byKey(const ValueKey("characterHairLength")));
       length.onChanged(1.2);
       length.onCommit!();
@@ -174,6 +182,37 @@ void main() {
       expect(moved.dna.hairRig!.strokes[i].lon, isNot(messy.strokes[i].lon));
       var r2 = HairView.of(moved, 0)!;
       expect((r2.page(r2.shapes[i].root) - (root + const Offset(4, 0))).distance, lessThan(1));
+    });
+
+    test("turned about its root: by its knob, saved and mirrored", () {
+      var e = _sketch(hair: messy);
+      var view = HairView.of(e, 0)!;
+      // A stroke on the forehead: facing the reader, it turns on the page.
+      var i = messy.inGroup(HairGroup.fringe)[2].$1;
+      var s = messy.strokes[i];
+      var turned = s.copyWith(turn: 40);
+      expect(HairStroke.fromJson(turned.toJson())!.turn, 40);
+      expect(turned.mirrored.turn, -40);
+      expect(s.copyWith(turn: 200).turn, -160, reason: "kept within a turn");
+      var g = messy.lookOf(s.group);
+      expect(hairStrokeShape(turned, g, view.head).tip,
+          isNot(hairStrokeShape(s, g, view.head).tip));
+      expect(hairStrokeShape(turned, g, view.head).root,
+          hairStrokeShape(s, g, view.head).root, reason: "it grows where it did");
+
+      // The knob behind the root, dragged a quarter turn round it.
+      var knob = view.page(view.turnKnobAt(i, 3));
+      expect(view.under(knob, 3, 1.5, picked: i)?.grab, HairGrab.turn);
+      var root = view.page(view.shapes[i].root);
+      var arm = knob - root;
+      var to = root + Offset(-arm.dy, arm.dx);
+      var next = view.dragged(HairHold(i, HairGrab.turn), knob, to);
+      var after = HairView.of(next, 0)!;
+      double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
+      var before = angle(view.page(view.shapes[i].tip) - root);
+      var now = angle(after.page(after.shapes[i].tip) - root);
+      var swept = (now - before + 540) % 360 - 180;
+      expect(swept, closeTo(90, 12), reason: "its tip goes round as far as the knob");
     });
 
     test("a ring makes it wider; the bare scalp grows a new one, not the face", () {
