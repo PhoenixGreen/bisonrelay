@@ -208,10 +208,20 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
     left.add(mid[k] + n * width);
     right.add(mid[k] - n * width);
   }
+  // A round end where the tip is wide enough to have one.
+  var cap = <Offset>[];
+  if (widths.last > 0.01 * head.h) {
+    var d = mid.last - mid[steps - 1];
+    var a0 = math.atan2(d.dy, d.dx);
+    for (var k = 1; k < 8; k++) {
+      var a = a0 + math.pi / 2 - math.pi * k / 8;
+      cap.add(mid.last + Offset(math.cos(a), math.sin(a)) * widths.last);
+    }
+  }
   return HairStrokeShape(
       mid,
       widths,
-      Path()..addPolygon([...left, ...right.reversed], true),
+      Path()..addPolygon([...left, ...cap, ...right.reversed], true),
       depth,
       left,
       right,

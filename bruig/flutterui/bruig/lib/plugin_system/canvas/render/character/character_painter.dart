@@ -696,7 +696,10 @@ class _Look {
             limbs: 0.92,
             heart: true),
         CharacterStyle.featureCartoon => const _Look(
-            shading: _Shading.cel, eyes: _Eyes.feature, hair: _Hair.soft),
+            shading: _Shading.cel,
+            eyes: _Eyes.feature,
+            hair: _Hair.soft,
+            strokes: true),
         CharacterStyle.anime => const _Look(
             line: 0.75,
             shading: _Shading.cel,
@@ -1127,7 +1130,9 @@ class _Drawing {
   late final HairRig? _hairRig = dna.hairRig ??
       (look.strokes && !dna.species.animal
           ? hairForStyle(dna.hairStyle, rig.look,
-              spiky: look.hair == _Hair.spiky, headsTall: dna.headsTall)
+              spiky: look.hair == _Hair.spiky,
+              soft: look.hair != _Hair.clumps && look.hair != _Hair.spiky,
+              headsTall: dna.headsTall)
           : null);
 
   /// _seed is a fixed number for [k], so freckles land in the same places
@@ -1916,6 +1921,31 @@ class _Drawing {
       ));
     } else {
       used.add(at(hemT));
+      // Cloth hangs across the waist from the chest to the hem, rather than
+      // going in with it -- the looser, the straighter: a fitted top follows
+      // the waist some of the way in.
+      var hangs = (0.45 + (fit - 1) * 2).clamp(0.0, 1.0);
+      var chestAt = used.indexWhere((r) => r.$1 >= 0.3);
+      if (chestAt >= 0 && used.last.$1 > used[chestAt].$1 + 0.1) {
+        var a = used[chestAt], b = used.last;
+        used = [
+          for (var r in used)
+            if (r.$1 > a.$1 && r.$1 < b.$1)
+              (
+                r.$1,
+                r.$2 +
+                    (math.max(r.$2,
+                                (a.$2 + (b.$2 - a.$2) * (r.$1 - a.$1) / (b.$1 - a.$1)) *
+                                    0.97) -
+                            r.$2) *
+                        hangs,
+                r.$3,
+                r.$4
+              )
+            else
+              r,
+        ];
+      }
     }
     // Each oval's furthest left and right, seen as the body is turned:
     // across its width, and its front or back brought round towards the
@@ -3172,17 +3202,19 @@ class _Drawing {
     // it down to the ears, standing off the head as full as the hair is.
     var full = 1.06 + 0.06 * hair.lookOf(HairGroup.top).volume;
     var w = r.width, h = r.height;
+    // As high as the forehead goes; down to the hairline in front.
+    var brow = 0.12 * _a(Look.forehead);
     var dome = Path()
       ..addOval(Rect.fromCenter(
-          center: Offset(0, -h * 0.06 + _nodShift * 0.3),
+          center: Offset(0, -h * (0.06 + brow * 0.5) + _nodShift * 0.3),
           width: w * 2 * full,
-          height: h * 2 * full));
+          height: h * 2 * full * (1 + brow * 0.5)));
     var shell = Path.combine(
         PathOperation.intersect,
         dome,
         Path()
           ..addRect(Rect.fromLTRB(-w * 2, -h * 2, w * 2,
-              (front ? -h * 0.42 : h * 0.25) + _nodShift)));
+              (front ? -h * (0.42 - 0.15 * _a(Look.hairline)) : h * 0.25) + _nodShift)));
     if (shapes.isEmpty && !front) return;
     // One mass of hair, shaded and lined once round the outside -- the far
     // side a shade darker, for the depth -- not a bundle of strands.
@@ -3213,6 +3245,8 @@ class _Drawing {
       }
       canvas.restore();
     }
+    // Streaks of a second colour through it.
+    if (front) _highlights(whole, w, h);
     // Where one lock lies over another, a line down it from half way to
     // its point -- the parting between clumps -- left out under a nearer one.
     if (lined && painted == null) {
@@ -3417,10 +3451,40 @@ class _Drawing {
     canvas.restore();
   }
 
-  /// _headPath is the shape of the head [w] by [h] across its middle: an
+  /// _headPath is the head's outline: its oval as shaped, and -- turned
+  /// towards side on -- the face's own line down the front of it, out at
+  /// the mouth to a chin and back along the jaw to below the ear, which a
+  /// round head seen from the side has not got.
+  Path _headPath(double w, double h) {
+    var head = _headOval(w, h);
+    var side = math.sin(yaw);
+    var k = ((side.abs() - 0.3) / 0.55).clamp(0.0, 1.0);
+    if (k <= 0 || dna.species.animal) return head;
+    k = k * k * (3 - 2 * k);
+    var dir = side > 0 ? -1.0 : 1.0;
+    var front = _across(0, w);
+    var chinOut = 1 + 0.4 * _a(Look.chin) + 0.3 * _a(Look.chinLength);
+    var jawDeep = 1 + 0.3 * _a(Look.jaw);
+    var dy = _nodShift;
+    Offset at(double x, double y) => Offset(front + dir * x * w, y * h + dy);
+    var face = Path()
+      ..moveTo(at(-0.95, 0.05).dx, at(-0.95, 0.05).dy)
+      ..lineTo(at(-0.02, 0.05).dx, at(-0.02, 0.05).dy)
+      ..quadraticBezierTo(at(0.05 * k, 0.32).dx, at(0.05 * k, 0.32).dy,
+          at(0.0, 0.55).dx, at(0.0, 0.55).dy)
+      ..quadraticBezierTo(at(0.02 * k, 0.82 * chinOut).dx,
+          at(0.02 * k, 0.82 * chinOut).dy, at(-0.16, 0.92 + 0.08 * k * chinOut).dx,
+          at(-0.16, 0.92 + 0.08 * k * chinOut).dy)
+      ..quadraticBezierTo(at(-0.45, 1.0 * jawDeep).dx, at(-0.45, 1.0 * jawDeep).dy,
+          at(-0.8, 0.7).dx, at(-0.8, 0.7).dy)
+      ..close();
+    return Path.combine(PathOperation.union, head, face);
+  }
+
+  /// _headOval is the shape of the head [w] by [h] across its middle: an
   /// oval, made squarer at the jaw, sharper at the chin, higher at the
   /// brow, fuller at the cheeks, as the Head controls say.
-  Path _headPath(double w, double h) {
+  Path _headOval(double w, double h) {
     var jaw = _a(Look.jaw), chin = _a(Look.chin);
     var chinLong = _a(Look.chinLength), forehead = _a(Look.forehead);
     var bones = _a(Look.cheekbones), cheeks = _a(Look.cheeks);
@@ -3978,10 +4042,16 @@ class _Drawing {
       _fill(soft, dna.skin);
       return;
     }
+    // Down the bridge, curving out to a rounded tip, and back in under it
+    // to the lip.
+    out *= 0.8;
     var tip = Path()
-      ..moveTo(x, y - u * 0.04 * nl)
-      ..lineTo(x + dir * out, y + u * 0.1 * nl)
-      ..lineTo(x, y + u * 0.13 * nl)
+      ..moveTo(x, y - u * 0.06 * nl)
+      ..quadraticBezierTo(x + dir * out * 0.45, y + u * 0.02 * nl,
+          x + dir * out, y + u * 0.09 * nl)
+      ..quadraticBezierTo(x + dir * out * 1.05, y + u * 0.125 * nl,
+          x + dir * out * 0.55, y + u * 0.125 * nl)
+      ..quadraticBezierTo(x + dir * out * 0.2, y + u * 0.13 * nl, x, y + u * 0.15 * nl)
       ..close();
     _fill(tip, dna.skin);
   }

@@ -397,18 +397,41 @@ HairRig _spiky() => HairRig("Spiky", [
     ]);
 
 /// hairForStyle is the hair a style that draws hair in strokes draws [style]
-/// as -- spiky in a style that spikes it -- grown as [look] says: fuller,
+/// as -- spiky in a style that spikes it, combed into rounded locks in a
+/// [soft] one -- grown as [look] says: fuller,
 /// longer, a longer fringe, parted further over -- and long hair as long
 /// for a body [headsTall] heads tall. Null for hair a style
 /// draws its own way: a bun, curls, none.
 HairRig? hairForStyle(HairStyle style, Appearance look,
-    {bool spiky = false, double headsTall = 6}) {
+    {bool spiky = false, bool soft = false, double headsTall = 6}) {
   var base = switch (style) {
-    HairStyle.short => spiky ? _spiky() : _messy(),
+    HairStyle.short => spiky ? _spiky() : (soft ? _short() : _messy()),
     HairStyle.long => _long(),
     _ => null,
   };
   if (base == null) return null;
+  if (soft) {
+    // A cartoon's hair: the same locks with rounded ends, combed.
+    // The fringe shorter and swept over to one side, clear of the eyes.
+    base = HairRig(base.name, [
+      for (var s in base.strokes)
+        s.copyWith(
+            w2: math.max(s.w2, s.w1 * 0.3),
+            curl: s.curl * 0.5,
+            w0: s.w0 * 1.15,
+            w1: s.w1 * 1.15,
+            length: s.group == HairGroup.fringe ? s.length * 0.85 : null,
+            lean: s.group == HairGroup.fringe ? s.lean * 0.3 + 0.45 : null),
+    ]);
+  }
+  // A lower hairline grows the fringe from lower on the brow.
+  var hairline = look[Look.hairline];
+  if (hairline != 0) {
+    base = HairRig(base.name, [
+      for (var s in base.strokes)
+        s.group == HairGroup.fringe ? s.copyWith(lat: s.lat - 10 * hairline) : s,
+    ]);
+  }
   var volume = 1 + 0.5 * look[Look.hairVolume];
   // Long hair falls as far down the back on a short body as on a tall
   // one: a chibi's is not as long as the rest of it.
