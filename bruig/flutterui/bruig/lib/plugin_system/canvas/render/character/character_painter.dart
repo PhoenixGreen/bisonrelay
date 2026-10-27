@@ -3566,7 +3566,15 @@ class _Drawing {
     var chinOut = 1 + 0.4 * _a(Look.chin) + 0.3 * _a(Look.chinLength);
     var jawDeep = 1 + 0.3 * _a(Look.jaw);
     var dy = _nodShift;
-    Offset at(double x, double y) => Offset(front + dir * x * w, y * h + dy);
+    // The face's line runs round the head at each height -- nearer the
+    // middle low down, where a round head is narrower -- out to the line a
+    // face stands on only as it turns side on: three-quarters, the chin is
+    // on the head, not out past the cheek.
+    var flat = k * k * k;
+    Offset at(double x, double y) {
+      var round = math.sqrt(math.max(0.0, 1 - y.clamp(-1.0, 1.0) * y.clamp(-1.0, 1.0)));
+      return Offset(front * (round + (1 - round) * flat) + dir * x * w, y * h + dy);
+    }
     var face = Path()
       ..moveTo(at(-0.95, 0.05).dx, at(-0.95, 0.05).dy)
       ..lineTo(at(-0.02, -0.1).dx, at(-0.02, -0.1).dy)
