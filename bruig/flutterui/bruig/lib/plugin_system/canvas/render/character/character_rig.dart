@@ -567,7 +567,7 @@ class CharacterRig {
   double parentTurn(CharacterLimb limb) => limb.isArm ? bodyTurn : 0;
 
   /// handRadius is the size a hand is drawn.
-  double get handRadius => limbWidth * 0.62 * (1 + 0.3 * look[Look.hands]);
+  double get handRadius => limbWidth * 0.8 * (1 + 0.3 * look[Look.hands]);
 
   /// headRadii is the head's half width and half height.
   Size get headRadii => Size(

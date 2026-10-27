@@ -1641,8 +1641,8 @@ class StagePainter extends CustomPainter {
     var knob = Paint()..color = const Color(0xFFFFFFFF);
     for (var pin in placed.pins) {
       var p = at(placed.pin(pin));
-      // The toes' pins smaller, beside the ankles'.
-      var r = pin.isToe ? 4.5 : 6.0;
+      // The toes' and fingers' pins smaller, beside the ankles' and wrists'.
+      var r = pin.isTip ? 4.5 : 6.0;
       canvas.drawCircle(p, r, knob);
       canvas.drawCircle(
           p,
@@ -1651,7 +1651,7 @@ class StagePainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2
             ..color = fill.color);
-      canvas.drawCircle(p, pin.isToe ? 1.8 : 2.5, fill);
+      canvas.drawCircle(p, pin.isTip ? 1.8 : 2.5, fill);
     }
   }
 

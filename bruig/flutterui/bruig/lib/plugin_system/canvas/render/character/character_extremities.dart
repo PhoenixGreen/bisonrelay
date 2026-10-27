@@ -62,7 +62,7 @@ class FootSize {
     var slender = 0.75 + 0.25 * (1 + 0.45 * look[Look.ankles]);
     var big = 1 + 0.25 * look[Look.feet];
     return FootSize(
-        legWidth * 2.5 * slender * big, legWidth * 0.72 * slender * big, drop);
+        legWidth * 2.1 * slender * big, legWidth * 0.62 * slender * big, drop);
   }
 }
 
@@ -135,7 +135,7 @@ class FootShape {
 /// bare foot -- and [tall] times as tall; [sole] only the bottom of it, as
 /// deep as that share of the drop.
 FootShape footShape(CharacterRig rig, CharacterLimb leg, FootSize s,
-    {double scale = 1, double tall = 1, double? sole}) {
+    {double scale = 1, double tall = 1, double? sole, double above = 0}) {
   var frame = ExtremityFrame(rig, rig.frames[leg]!);
   var toes = rig.toes[leg] ?? 0;
   var out = rig.legWidth * footOutward;
@@ -148,7 +148,9 @@ FootShape footShape(CharacterRig rig, CharacterLimb leg, FootSize s,
       var half = s.half * w * scale;
       var height = s.drop * h * tall;
       if (sole != null) height = math.min(height, s.drop * sole);
-      var centre = s.drop - height / 2;
+      // Standing [above] the sole's share of the drop off the ground: a
+      // shoe's upper, on its sole.
+      var centre = s.drop * (1 - above) - height / 2;
       for (var k = 0; k < ring; k++) {
         var a = k / ring * math.pi * 2;
         var (ff, dd) = _toesTurned(f * s.length * scale,

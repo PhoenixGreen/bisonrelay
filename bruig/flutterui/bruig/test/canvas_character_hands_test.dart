@@ -189,6 +189,35 @@ void main() {
     expect(CharacterPlacement.of(_sketch(rest, dog.dna), 0).pins, isNot(contains(CharacterPin.toeL)));
   });
 
+  test("a hand goes where it is dragged, however the body is turned; the "
+      "fingers' pin bends it at the wrist", () {
+    for (var turn in [0.0, 30.0, 45.0, 60.0, 90.0]) {
+      var e = _sketch(rest.withTurn(turn));
+      var placed = CharacterPlacement.of(e, 0);
+      var hand = placed.pin(CharacterPin.handL);
+      var shoulder = placed.toPage(placed.rig.shoulderL);
+      // Out from the body and up, within reach.
+      var to = shoulder + (hand - shoulder) * 0.5 + const Offset(-25, -10);
+      var posed = placed.posedBy(CharacterPin.handL, to);
+      var after = CharacterPlacement.of(e.copyWith(pose: posed), 0);
+      expect((after.pin(CharacterPin.handL) - to).distance, lessThan(1.5),
+          reason: "turned $turn");
+    }
+    var e = _sketch(rest);
+    var placed = CharacterPlacement.of(e, 0);
+    expect(placed.pins, contains(CharacterPin.fingersL));
+    var wrist = placed.pin(CharacterPin.handL), tips = placed.pin(CharacterPin.fingersL);
+    var arm = tips - wrist;
+    var to = wrist + Offset(arm.dx * 0.5 - arm.distance * 0.8, arm.dy * 0.6);
+    var bent = placed.posedBy(CharacterPin.fingersL, to);
+    expect(bent[CharacterBone.wristL].abs(), greaterThan(10));
+    var after = CharacterPlacement.of(e.copyWith(pose: bent), 0);
+    expect(after.pin(CharacterPin.handL), wrist, reason: "the arm where it was");
+    var dog = characterCast.firstWhere((c) => c.dna.fourLegs);
+    expect(CharacterPlacement.of(_sketch(rest, dog.dna), 0).pins,
+        isNot(contains(CharacterPin.fingersL)), reason: "a paw has no fingers to bend");
+  });
+
   group("in the hand and foot layers' settings", () {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);

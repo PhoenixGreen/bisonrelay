@@ -32,19 +32,29 @@ enum CharacterPin {
   /// toeL and toeR are on the tips of the toes, which point the foot --
   /// on a drawn body, which has a foot to point.
   toeL,
-  toeR;
+  toeR,
+
+  /// fingersL and fingersR are on the tips of the fingers, which bend the
+  /// hand at the wrist -- on a drawn body, which has a hand to bend.
+  fingersL,
+  fingersR;
 
   /// limb is the arm or leg this pin is on the end of, or null for the head
   /// and chest.
   CharacterLimb? get limb => switch (this) {
-        handL => CharacterLimb.armL,
-        handR => CharacterLimb.armR,
+        handL || fingersL => CharacterLimb.armL,
+        handR || fingersR => CharacterLimb.armR,
         footL || toeL => CharacterLimb.legL,
         footR || toeR => CharacterLimb.legR,
         _ => null,
       };
 
   bool get isToe => this == toeL || this == toeR;
+  bool get isFingers => this == fingersL || this == fingersR;
+
+  /// isTip is whether it is on the tips of the toes or the fingers: a
+  /// small pin by the ankle's or the wrist's, which turns the end.
+  bool get isTip => isToe || isFingers;
 }
 
 /// CharacterPlacement is how a character's own drawing space lies on the
@@ -223,7 +233,9 @@ class CharacterPlacement {
   /// pinAt is where [pin] is drawn, in the drawing's own space.
   Offset localPin(CharacterPin pin) => pin.isToe
       ? _toe(rig, pin.limb!)
-      : _at(switch (pin) {
+      : pin.isFingers
+          ? _fingers(rig, pin.limb!)
+          : _at(switch (pin) {
         CharacterPin.head => RigJoint.head,
         CharacterPin.chest => RigJoint.chest,
         CharacterPin.handL => RigJoint.wristL,
@@ -231,7 +243,101 @@ class CharacterPlacement {
         CharacterPin.footL => RigJoint.ankleL,
         CharacterPin.footR || CharacterPin.toeR => RigJoint.ankleR,
         CharacterPin.toeL => RigJoint.ankleL,
+        CharacterPin.fingersL => RigJoint.wristL,
+        CharacterPin.fingersR => RigJoint.wristR,
       });
+
+  /// _fingers is where the tips of [arm]'s fingers are in [r].
+  static Offset _fingers(CharacterRig r, CharacterLimb arm) =>
+      r.end(arm) + handTip(r, arm, r.handRadius);
+
+  /// _bent is [seen] with [arm]'s hand bent at the wrist so its fingers
+  /// are towards [target]: across and forward, as the wrist sees them,
+  /// a few damped steps -- see _pointed.
+  CharacterPose _bent(CharacterPose seen, CharacterLimb arm, Offset target) {
+    var bone = wristBone(arm.onLeft);
+    var dna = element.style.dnaOf(element.dna);
+    Offset tipOf(double bend, double forward) {
+      var q = seen.withAngle(bone, bend).withSwing(bone, forward);
+      var r = CharacterRig.of(dna, element.inView(q), bounds);
+      return _fingers(r, arm) - r.end(arm);
+    }
+
+    var want = target - rig.end(arm);
+    var (bend, forward) = _solve2(tipOf, want, seen[bone], seen.swing(bone),
+        (-90.0, 90.0), (-90.0, 90.0));
+    return seen.withAngle(bone, bend).withSwing(bone, forward);
+  }
+
+  /// _solve2 is the two numbers -- from [a] and [b], kept within their
+  /// ranges -- that put [at] nearest [want]: damped least squares, a few
+  /// steps, each step's slopes measured a degree apart.
+  static (double, double) _solve2(Offset Function(double, double) at, Offset want,
+      double a, double b, (double, double) aRange, (double, double) bRange) {
+    for (var k = 0; k < 8; k++) {
+      var now = at(a, b);
+      var miss = want - now;
+      if (miss.distance < 0.05) break;
+      var da = at(a + 1, b) - now, db = at(a, b + 1) - now;
+      var aa = da.dx * da.dx + da.dy * da.dy, bb = db.dx * db.dx + db.dy * db.dy;
+      var ab = da.dx * db.dx + da.dy * db.dy;
+      var lambda = 0.02 * (aa + bb) + 1e-9;
+      var ra = da.dx * miss.dx + da.dy * miss.dy, rb = db.dx * miss.dx + db.dy * miss.dy;
+      var m11 = aa + lambda, m22 = bb + lambda, det = m11 * m22 - ab * ab;
+      if (det.abs() < 1e-12) break;
+      a = (a + ((m22 * ra - ab * rb) / det).clamp(-20.0, 20.0)).clamp(aRange.$1, aRange.$2);
+      b = (b + ((m11 * rb - ab * ra) / det).clamp(-20.0, 20.0)).clamp(bRange.$1, bRange.$2);
+    }
+    return (a, b);
+  }
+
+  /// _reached is [solved] -- [limb] bent to reach [target] as it is seen
+  /// face on or side on -- brought the rest of the way there, however the
+  /// body is turned: between the two, a limb spread across the body is
+  /// shorter on the page than it is, and misses. Its two bones' spread and
+  /// swing, a little at a time, as little as will do.
+  CharacterPose _reached(CharacterPose solved, CharacterLimb limb, Offset target) {
+    if (model.isNotEmpty) return solved;
+    var dna = element.style.dnaOf(element.dna);
+    Offset endOf(CharacterPose q) {
+      var r = CharacterRig.of(dna, element.inView(q), bounds);
+      return r.end(limb);
+    }
+
+    var bones = [limb.upper, limb.lower];
+    var p = solved;
+    for (var k = 0; k < 6; k++) {
+      var now = endOf(p);
+      var miss = target - now;
+      if (miss.distance < 0.1) break;
+      // Each of the four numbers' pull on the end, a degree apart.
+      var grads = <(bool, CharacterBone, Offset)>[
+        for (var b in bones) ...[
+          (false, b, endOf(p.withAngle(b, p[b] + 1)) - now),
+          (true, b, endOf(p.withSwing(b, p.swing(b) + 1)) - now),
+        ],
+      ];
+      // Damped least squares through the 2x2 JJᵀ: d = Jᵀ (JJᵀ + λI)⁻¹ miss.
+      var j11 = 0.0, j12 = 0.0, j22 = 0.0;
+      for (var (_, _, g) in grads) {
+        j11 += g.dx * g.dx;
+        j12 += g.dx * g.dy;
+        j22 += g.dy * g.dy;
+      }
+      var lambda = 0.05 * (j11 + j22) + 1e-9;
+      var m11 = j11 + lambda, m22 = j22 + lambda, det = m11 * m22 - j12 * j12;
+      if (det.abs() < 1e-12) break;
+      var y = Offset((m22 * miss.dx - j12 * miss.dy) / det, (m11 * miss.dy - j12 * miss.dx) / det);
+      for (var (swing, b, g) in grads) {
+        var d = (g.dx * y.dx + g.dy * y.dy).clamp(-15.0, 15.0);
+        p = swing ? p.withSwing(b, p.swing(b) + d) : p.withAngle(b, p[b] + d);
+      }
+    }
+    return endOf(p).distance.isFinite &&
+            (target - endOf(p)).distance < (target - endOf(solved)).distance
+        ? p
+        : solved;
+  }
 
   /// _toe is where the tip of [leg]'s toes is in [r].
   static Offset _toe(CharacterRig r, CharacterLimb leg) =>
@@ -254,36 +360,16 @@ class CharacterPlacement {
     }
 
     var want = target - rig.end(leg);
-    (double, double, double) solve(double point, double turn) {
-      for (var k = 0; k < 8; k++) {
-        var now = tipOf(point, turn);
-        var miss = want - now;
-        if (miss.distance < 0.05) break;
-        var a = tipOf(point + 1, turn) - now, b = tipOf(point, turn + 1) - now;
-        // Damped least squares: (JᵀJ + λI) d = Jᵀ miss.
-        var aa = a.dx * a.dx + a.dy * a.dy, bb = b.dx * b.dx + b.dy * b.dy;
-        var ab = a.dx * b.dx + a.dy * b.dy;
-        var lambda = 0.02 * (aa + bb) + 1e-9;
-        var ra = a.dx * miss.dx + a.dy * miss.dy, rb = b.dx * miss.dx + b.dy * miss.dy;
-        var m11 = aa + lambda, m22 = bb + lambda, det = m11 * m22 - ab * ab;
-        if (det.abs() < 1e-12) break;
-        point = (point + ((m22 * ra - ab * rb) / det).clamp(-20.0, 20.0))
-            .clamp(-40.0, 85.0);
-        turn = (turn + ((m11 * rb - ab * ra) / det).clamp(-20.0, 20.0))
-            .clamp(-60.0, 60.0);
-      }
-      return (point, turn, (want - tipOf(point, turn)).distance);
-    }
-
     // From where it is, and -- in case pointing further is what carried
     // the toes away, past where they start to come back -- from flat and
     // from half way: whichever lands nearest, where it is if all do.
-    var best = solve(seen.swing(bone), seen[bone]);
+    var best = _solve2(tipOf, want, seen.swing(bone), seen[bone], (-40.0, 85.0), (-60.0, 60.0));
+    double missOf((double, double) p) => (want - tipOf(p.$1, p.$2)).distance;
     for (var start in const [0.0, 45.0]) {
-      var tried = solve(start, seen[bone]);
-      if (tried.$3 < best.$3 - 0.05) best = tried;
+      var tried = _solve2(tipOf, want, start, seen[bone], (-40.0, 85.0), (-60.0, 60.0));
+      if (missOf(tried) < missOf(best) - 0.05) best = tried;
     }
-    var (point, turn, _) = best;
+    var (point, turn) = best;
     return seen.withSwing(bone, point).withAngle(bone, turn);
   }
 
@@ -309,7 +395,16 @@ class CharacterPlacement {
         ])
           (toPage(_at(a)), toPage(_at(b))),
         for (var p in pins)
-          if (p.isToe) (pin(p.limb == CharacterLimb.legL ? CharacterPin.footL : CharacterPin.footR), pin(p)),
+          if (p.isTip)
+            (
+              pin(switch (p.limb) {
+                CharacterLimb.legL => CharacterPin.footL,
+                CharacterLimb.legR => CharacterPin.footR,
+                CharacterLimb.armL => CharacterPin.handL,
+                _ => CharacterPin.handR,
+              }),
+              pin(p)
+            ),
       ];
 
   /// posedBy is the pose that [pin] dragged to [page] asks for.
@@ -321,7 +416,7 @@ class CharacterPlacement {
     var seen = pose.withTurn(pose.turn + turn);
     var r = rig;
     var trunk = r.torsoLength + r.neckLength;
-    var solved = switch (pin) {
+    CharacterPose solved = switch (pin) {
       CharacterPin.handL => r.solveLimb(
           seen,
           CharacterLimb.armL,
@@ -356,7 +451,11 @@ class CharacterPlacement {
           seen, _forRig(target, RigJoint.hips, const [RigJoint.chest], trunk)),
       CharacterPin.toeL || CharacterPin.toeR =>
         _pointed(seen, pin.limb!, target),
+      CharacterPin.fingersL || CharacterPin.fingersR =>
+        _bent(seen, pin.limb!, target),
     };
+    // A hand or a foot taken the rest of the way to where it is dragged.
+    if (pin.limb != null && !pin.isTip) solved = _reached(solved, pin.limb!, target);
     return solved.withTurn(pose.turn).withTilt(pose.tilt);
   }
 
@@ -365,7 +464,8 @@ class CharacterPlacement {
         for (var p in CharacterPin.values)
           if (!(element.dna.species.legless &&
                   (p == CharacterPin.footL || p == CharacterPin.footR)) &&
-              !(p.isToe && !_pointable))
+              !(p.isToe && !_pointable) &&
+              !(p.isFingers && !_fingered))
             p,
       ];
 
@@ -376,6 +476,16 @@ class CharacterPlacement {
         !dna.species.legless &&
         !dna.fourLegs &&
         dna.species != Species.bird;
+  }
+
+  /// _fingered is whether its hands have fingers to bend: drawn, and a
+  /// person's or a creature's, not a paw, a wing or a fin.
+  bool get _fingered {
+    var dna = element.dna;
+    return !element.body.inThreeD &&
+        !dna.species.animal &&
+        !dna.fourLegs &&
+        !dna.species.legless;
   }
 
   /// pinUnder is the pin within [reach] of [page], nearest first, or null.

@@ -1697,17 +1697,22 @@ class _Drawing {
     var ankle = _end(limb);
     var size = rig.footSize(legWidth);
     var trainers = g.kind == GarmentKind.trainers;
-    var shoe = footShape(rig, limb, size, scale: trainers ? 1.12 : 1.05, tall: trainers ? 1.45 : 1.1)
+    // The sole, in the second colour, behind the upper -- showing only
+    // round its edge -- unless the bottom of the foot is turned to the
+    // reader, a foot kicked up behind.
+    var sole = trainers
+        ? footShape(rig, limb, size, scale: 1.15, sole: 0.42).path.shift(ankle)
+        : null;
+    var soleNear = ExtremityFrame(rig, rig.frames[limb]!).depth(0, 1, 0) > 0.3;
+    if (sole != null && !soleNear) _fill(sole, g.color2);
+    var shoe = footShape(rig, limb, size,
+            scale: trainers ? 1.12 : 1.05,
+            tall: trainers ? 1.3 : 1.1,
+            above: trainers ? 0.3 : 0)
         .path
         .shift(ankle);
     _fill(shoe, colour);
-    if (trainers) {
-      // The sole, in the second colour.
-      var sole = footShape(rig, limb, size, scale: 1.15, sole: 0.42)
-          .path
-          .shift(ankle);
-      _fill(sole, g.color2);
-    }
+    if (sole != null && soleNear) _fill(sole, g.color2);
   }
 
   /// _heel is a court shoe on a raised heel, about the foot's centre: from
