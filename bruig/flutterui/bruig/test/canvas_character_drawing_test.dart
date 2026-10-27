@@ -249,6 +249,31 @@ void main() {
       expect(c.selection, {"c"});
     });
 
+    testWidgets("a narrow canvas takes the bar onto two lines, not past its edge",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+          const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+          dna: dna)));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(520, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(c));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      var bar = tester.getRect(find.byKey(const ValueKey("characterDrawBar")));
+      expect(bar.right, lessThanOrEqualTo(520));
+      for (var tool in drawBarTools) {
+        var r = tester.getRect(find.byKey(ValueKey("characterDrawTool-${tool.name}")));
+        expect(bar.contains(r.center), isTrue, reason: "${tool.name} is on the bar");
+      }
+      await tester.tap(find.byKey(const ValueKey("characterDrawPuppet")));
+      await tester.pump();
+      expect(c.showPuppet, isTrue);
+    });
+
     testWidgets("a region hidden on one panel only", (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(

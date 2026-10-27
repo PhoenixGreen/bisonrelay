@@ -76,79 +76,85 @@ class CharacterDrawBar extends StatelessWidget {
                     offset: Offset(0, 4)),
               ],
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              // Going round it, panel to panel.
-              CanvasOrbitPad(
-                key: const ValueKey("characterDrawOrbit"),
-                turn: pose.turn,
-                tilt: pose.tilt,
-                onStart: controller.beginInteraction,
-                onChanged: (turn, tilt) => write(controller.characterPosed(
-                    e,
-                    e
-                        .poseAtFrame(controller.frame)
-                        .withTurn(turn)
-                        .withTilt(tilt)
-                        .inPanel)),
-                onEnd: controller.endInteraction,
-              ),
-              const SizedBox(width: 6),
-              CanvasDropdown<String>(
-                key: const ValueKey("characterDrawPanel"),
-                label: "Panel",
-                width: 190,
-                grow: false,
-                value: panelKey(pose.panelTurn, pose.panelTilt),
-                options: panelOptions(e),
-                onChanged: (key) {
-                  write(showPanel(controller, e, key));
-                  controller.endInteraction();
-                },
-              ),
-              const SizedBox(width: 6),
-              CanvasDropdown<CharacterZoom?>(
-                key: const ValueKey("characterDrawZoom"),
-                label: "Zoom",
-                width: 130,
-                grow: false,
-                value: null,
-                options: [
-                  (null, "Zoom to…"),
-                  for (var z in CharacterZoom.values) (z, z.label),
-                ],
-                onChanged: (z) {
-                  if (z != null) controller.zoomToCharacter(e.id, z);
-                },
-              ),
-              const SizedBox(width: 4),
-              // The puppet to draw over: its proportions the character's.
-              CanvasIconButton(
-                key: const ValueKey("characterDrawPuppet"),
-                icon: Icons.accessibility_new,
-                tooltip: controller.showPuppet
-                    ? "Hide the puppet"
-                    : "Show the puppet",
-                active: controller.showPuppet,
-                onPressed: () => controller.showPuppet = !controller.showPuppet,
-              ),
-              rule(),
-              for (var tool in drawBarTools)
-                CanvasIconButton(
-                  key: ValueKey("characterDrawTool-${tool.name}"),
-                  icon: vectorToolIcon(tool),
-                  tooltip: tool.label,
-                  active: drawing && controller.vectorTool == tool,
-                  onPressed: () {
-                    // The one in hand again puts the drawing down.
-                    if (drawing && controller.vectorTool == tool) {
-                      controller.stopDrawingOnCharacter();
-                      return;
-                    }
-                    controller.drawOnCharacter(e.id);
-                    controller.vectorTool = tool;
-                  },
-                ),
-            ]),
+            // On as many lines as the canvas has room for: a narrow window
+            // takes the tools onto a second line rather than cutting them off.
+            child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 4,
+                children: [
+                  // Going round it, panel to panel.
+                  CanvasOrbitPad(
+                    key: const ValueKey("characterDrawOrbit"),
+                    turn: pose.turn,
+                    tilt: pose.tilt,
+                    onStart: controller.beginInteraction,
+                    onChanged: (turn, tilt) => write(controller.characterPosed(
+                        e,
+                        e
+                            .poseAtFrame(controller.frame)
+                            .withTurn(turn)
+                            .withTilt(tilt)
+                            .inPanel)),
+                    onEnd: controller.endInteraction,
+                  ),
+                  const SizedBox(width: 6),
+                  CanvasDropdown<String>(
+                    key: const ValueKey("characterDrawPanel"),
+                    label: "Panel",
+                    width: 190,
+                    grow: false,
+                    value: panelKey(pose.panelTurn, pose.panelTilt),
+                    options: panelOptions(e),
+                    onChanged: (key) {
+                      write(showPanel(controller, e, key));
+                      controller.endInteraction();
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  CanvasDropdown<CharacterZoom?>(
+                    key: const ValueKey("characterDrawZoom"),
+                    label: "Zoom",
+                    width: 130,
+                    grow: false,
+                    value: null,
+                    options: [
+                      (null, "Zoom to…"),
+                      for (var z in CharacterZoom.values) (z, z.label),
+                    ],
+                    onChanged: (z) {
+                      if (z != null) controller.zoomToCharacter(e.id, z);
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                  // The puppet to draw over: its proportions the character's.
+                  CanvasIconButton(
+                    key: const ValueKey("characterDrawPuppet"),
+                    icon: Icons.accessibility_new,
+                    tooltip: controller.showPuppet
+                        ? "Hide the puppet"
+                        : "Show the puppet",
+                    active: controller.showPuppet,
+                    onPressed: () =>
+                        controller.showPuppet = !controller.showPuppet,
+                  ),
+                  rule(),
+                  for (var tool in drawBarTools)
+                    CanvasIconButton(
+                      key: ValueKey("characterDrawTool-${tool.name}"),
+                      icon: vectorToolIcon(tool),
+                      tooltip: tool.label,
+                      active: drawing && controller.vectorTool == tool,
+                      onPressed: () {
+                        // The one in hand again puts the drawing down.
+                        if (drawing && controller.vectorTool == tool) {
+                          controller.stopDrawingOnCharacter();
+                          return;
+                        }
+                        controller.drawOnCharacter(e.id);
+                        controller.vectorTool = tool;
+                      },
+                    ),
+                ]),
           );
         },
       );
