@@ -153,6 +153,10 @@ class CharacterDrawing {
   /// of their own drawing: layers taken apart on the panel.
   final Set<String> hiddenLayers;
 
+  /// keyed is the layers of the panel shaped by a slider through drawings
+  /// kept at its values -- see LayerKeys -- by layer.
+  final Map<String, LayerKeys> keyed;
+
   const CharacterDrawing(
       {this.shapes = const [],
       this.parts = const [],
@@ -160,7 +164,8 @@ class CharacterDrawing {
       this.order = const [],
       this.replaces = false,
       this.layers = const [],
-      this.hiddenLayers = const {}});
+      this.hiddenLayers = const {},
+      this.keyed = const {}});
 
   /// layerOf is the layer shape [i] is drawn as, or null.
   String? layerOf(int i) => i < layers.length ? layers[i] : null;
@@ -173,7 +178,7 @@ class CharacterDrawing {
   static const CharacterDrawing empty = CharacterDrawing();
 
   bool get isEmpty =>
-      shapes.isEmpty && hidden.isEmpty && !replaces && hiddenLayers.isEmpty;
+      shapes.isEmpty && hidden.isEmpty && !replaces && hiddenLayers.isEmpty && keyed.isEmpty;
 
   CharacterDrawing copyWith(
           {List<VectorShape>? shapes,
@@ -182,7 +187,8 @@ class CharacterDrawing {
           List<double>? order,
           bool? replaces,
           List<String?>? layers,
-          Set<String>? hiddenLayers}) =>
+          Set<String>? hiddenLayers,
+          Map<String, LayerKeys>? keyed}) =>
       CharacterDrawing(
           shapes: shapes ?? this.shapes,
           parts: parts ?? this.parts,
@@ -190,7 +196,8 @@ class CharacterDrawing {
           order: order ?? this.order,
           replaces: replaces ?? this.replaces,
           layers: layers ?? this.layers,
-          hiddenLayers: hiddenLayers ?? this.hiddenLayers);
+          hiddenLayers: hiddenLayers ?? this.hiddenLayers,
+          keyed: keyed ?? this.keyed);
 
   /// mirrored is this drawing seen from the other side: each shape flipped
   /// across its bone and put on the part opposite.
@@ -202,6 +209,7 @@ class CharacterDrawing {
         replaces: replaces,
         layers: [for (var l in layers) l == null ? null : _mirroredLayer(l)],
         hiddenLayers: {for (var l in hiddenLayers) _mirroredLayer(l)},
+        keyed: {for (var e in keyed.entries) _mirroredLayer(e.key): e.value.mirrored},
       );
 
   static String _mirroredLayer(String l) =>
@@ -215,6 +223,8 @@ class CharacterDrawing {
         if (replaces) "replaces": true,
         if (layers.any((l) => l != null)) "layers": layers,
         if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
+        if (keyed.isNotEmpty)
+          "keyed": {for (var e in keyed.entries) e.key: e.value.toJson()},
       };
 
   factory CharacterDrawing.fromJson(Map<String, dynamic> json) {
@@ -238,6 +248,11 @@ class CharacterDrawing {
       for (var l in json["layers"] as List? ?? const []) l is String ? l : null,
     ];
     return CharacterDrawing(
+      keyed: {
+        if (json["keyed"] case Map raw)
+          for (var e in raw.entries)
+            if (LayerKeys.fromJson(e.value) case var k?) "${e.key}": k,
+      },
       layers: layers.length == shapes.length ? layers : const [],
       hiddenLayers: {
         for (var l in json["hiddenLayers"] as List? ?? const [])
@@ -334,4 +349,155 @@ Map<String, CharacterDrawing> withPanelDrawing(Map<String, CharacterDrawing> dra
     next[panelKey(turn, tilt)] = drawing;
   }
   return next;
+}
+
+/// LayerKeys is a layer of a panel shaped by a slider through drawings:
+/// its shapes as drawn at each of the slider's values kept -- keyforms, as
+/// Live2D calls them -- blended between, point by point, at any value in
+/// between, and held beyond the first and the last.
+///
+/// Every keyform starts as a copy of the shapes at the value it is made at,
+/// so they have the same shapes and the same points, and blend.
+class LayerKeys {
+  /// look is the slider, by its Look name.
+  final String look;
+
+  /// keys is each value kept and the layer's shapes there, lowest first --
+  /// each a drawing of that layer's shapes alone.
+  final List<(double, CharacterDrawing)> keys;
+  const LayerKeys(this.look, [this.keys = const []]);
+
+  /// at is the layer's shapes at [value]: the keyform there, or the two
+  /// either side blended.
+  CharacterDrawing at(double value) {
+    if (keys.isEmpty) return CharacterDrawing.empty;
+    if (value <= keys.first.$1) return keys.first.$2;
+    if (value >= keys.last.$1) return keys.last.$2;
+    for (var i = 0; i + 1 < keys.length; i++) {
+      var (a, da) = keys[i];
+      var (b, db) = keys[i + 1];
+      if (value <= b) return blendDrawings(da, db, b == a ? 0 : (value - a) / (b - a));
+    }
+    return keys.last.$2;
+  }
+
+  /// keyAt is the index of the keyform at [value], or -1.
+  int keyAt(double value) => keys.indexWhere((k) => (k.$1 - value).abs() < 0.005);
+
+  /// withKey is this with [d] kept at [value]: in place of the keyform
+  /// there, or added. A shape added or taken away goes for every keyform:
+  /// shapes added are given to the others as they are; with shapes taken
+  /// away, the others are made as this one.
+  LayerKeys withKey(double value, CharacterDrawing d) {
+    var next = <(double, CharacterDrawing)>[];
+    for (var (v, k) in keys) {
+      if ((v - value).abs() < 0.005) continue;
+      if (k.shapes.length < d.shapes.length) {
+        var extra = d.shapes.length - k.shapes.length;
+        k = k.copyWith(
+          shapes: [...k.shapes, ...d.shapes.skip(d.shapes.length - extra)],
+          parts: [...k.parts, ...d.parts.skip(d.parts.length - extra)],
+          order: [
+            for (var i = 0; i < k.shapes.length; i++) k.orderOf(i, 2e6),
+            ...d.order.skip(d.order.length - extra),
+          ],
+          layers: [
+            for (var i = 0; i < k.shapes.length; i++) k.layerOf(i),
+            ...d.layers.skip(d.layers.length - extra),
+          ],
+        );
+      } else if (k.shapes.length > d.shapes.length) {
+        k = d;
+      }
+      next.add((v, k));
+    }
+    next.add((value, d));
+    next.sort((a, b) => a.$1.compareTo(b.$1));
+    return LayerKeys(look, next);
+  }
+
+  /// without is this without the keyform at [value].
+  LayerKeys without(double value) =>
+      LayerKeys(look, [for (var k in keys) if ((k.$1 - value).abs() >= 0.005) k]);
+
+  LayerKeys get mirrored => LayerKeys(look, [for (var (v, d) in keys) (v, d.mirrored)]);
+
+  Map<String, dynamic> toJson() => {
+        "look": look,
+        "keys": [
+          for (var (v, d) in keys) {"at": v, "drawing": d.toJson()}
+        ],
+      };
+
+  static LayerKeys? fromJson(Object? json) {
+    if (json is! Map<String, dynamic> || json["look"] is! String) return null;
+    return LayerKeys(json["look"] as String, [
+      for (var k in json["keys"] as List? ?? const [])
+        if (k is Map<String, dynamic> && k["at"] is num && k["drawing"] is Map<String, dynamic>)
+          ((k["at"] as num).toDouble(),
+              CharacterDrawing.fromJson(k["drawing"] as Map<String, dynamic>)),
+    ]..sort((a, b) => a.$1.compareTo(b.$1)));
+  }
+}
+
+/// blendDrawings is [a] and [b] mixed [t] of the way from one to the other,
+/// point by point: each shape's points where the two have the same points,
+/// and the nearer's shape where they do not.
+CharacterDrawing blendDrawings(CharacterDrawing a, CharacterDrawing b, double t) {
+  if (t <= 0) return a;
+  if (t >= 1) return b;
+  if (a.shapes.length != b.shapes.length) return t < 0.5 ? a : b;
+  double mix(double x, double y) => x + (y - x) * t;
+  VectorShape shape(VectorShape sa, VectorShape sb) {
+    if (sa.paths.length != sb.paths.length) return t < 0.5 ? sa : sb;
+    var paths = <VectorPath>[];
+    for (var (i, pa) in sa.paths.indexed) {
+      var pb = sb.paths[i];
+      if (pa.nodes.length != pb.nodes.length) return t < 0.5 ? sa : sb;
+      paths.add(pa.copyWith(nodes: [
+        for (var (j, na) in pa.nodes.indexed)
+          na.copyWith(
+            x: mix(na.x, pb.nodes[j].x),
+            y: mix(na.y, pb.nodes[j].y),
+            inX: mix(na.inX, pb.nodes[j].inX),
+            inY: mix(na.inY, pb.nodes[j].inY),
+            outX: mix(na.outX, pb.nodes[j].outX),
+            outY: mix(na.outY, pb.nodes[j].outY),
+          ),
+      ]));
+    }
+    return (t < 0.5 ? sa : sb).copyWith(
+        paths: paths, strokeWidth: mix(sa.strokeWidth, sb.strokeWidth));
+  }
+
+  return (t < 0.5 ? a : b).copyWith(shapes: [
+    for (var (i, sa) in a.shapes.indexed) shape(sa, b.shapes[i]),
+  ]);
+}
+
+/// keyedAt is [d] with each keyed layer's shapes as its keyforms make them
+/// at the slider's value -- [valueOf] a Look's value by its name.
+CharacterDrawing keyedAt(CharacterDrawing d, double Function(String look) valueOf) {
+  if (d.keyed.isEmpty) return d;
+  var shapes = <VectorShape>[];
+  var parts = <CharacterPart>[];
+  var order = <double>[];
+  var layers = <String?>[];
+  for (var i = 0; i < d.shapes.length; i++) {
+    if (d.keyed.containsKey(d.layerOf(i))) continue;
+    shapes.add(d.shapes[i]);
+    parts.add(d.parts[i]);
+    order.add(d.orderOf(i, 2e6));
+    layers.add(d.layerOf(i));
+  }
+  for (var MapEntry(key: layer, value: k) in d.keyed.entries) {
+    var at = k.at(valueOf(k.look));
+    for (var i = 0; i < at.shapes.length; i++) {
+      shapes.add(at.shapes[i]);
+      parts.add(at.parts[i]);
+      order.add(at.orderOf(i, 2e6));
+      layers.add(layer);
+    }
+  }
+  return d.copyWith(shapes: shapes, parts: parts, order: order, layers: layers);
 }

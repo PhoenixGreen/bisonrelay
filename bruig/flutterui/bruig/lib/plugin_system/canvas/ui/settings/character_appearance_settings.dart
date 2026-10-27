@@ -28,12 +28,16 @@ class AppearanceEditor extends StatefulWidget {
   /// character_layers_settings.dart -- with no Part to pick.
   final AppearanceGroup? only;
 
+  /// keyed is the sliders a layer's keyforms follow, marked so.
+  final Set<Look> keyed;
+
   const AppearanceEditor({
     required this.controller,
     required this.character,
     required this.write,
     required this.commit,
     this.only,
+    this.keyed = const {},
     super.key,
   });
 
@@ -145,9 +149,10 @@ class AppearanceEditorState extends State<AppearanceEditor> {
               for (var l in Look.inGroup(group))
                 CanvasSlider(
                   key: ValueKey("appearance-${l.name}"),
-                  label: l.needs != null && dna.look[l.needs!] == 0
-                      ? "${l.label} (with a ${l.needs!.label.toLowerCase()})"
-                      : l.label,
+                  label: (l.needs != null && dna.look[l.needs!] == 0
+                          ? "${l.label} (with a ${l.needs!.label.toLowerCase()})"
+                          : l.label) +
+                      (widget.keyed.contains(l) ? " ◆ keyed" : ""),
                   value: dna.look[l] * 100,
                   min: l.min * 100,
                   max: 100,

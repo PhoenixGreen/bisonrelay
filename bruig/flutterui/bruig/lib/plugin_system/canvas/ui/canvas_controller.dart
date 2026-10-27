@@ -4085,6 +4085,38 @@ class CanvasController extends ChangeNotifier {
     replaceElement(takeApartLayer(c, layer, _frame, math.max(1, _document.frameRate)));
   }
 
+  /// keyCharacterLayer shapes [layer] of character [id] by slider [look]
+  /// through keyforms on the panel seen -- see LayerKeys -- or, with null,
+  /// stops. addKeyform keeps one at the slider's value now; removeKeyform
+  /// takes the one at [value] away; goToKeyform sets the slider to it.
+  void keyCharacterLayer(String id, String layer, String? look) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    var rate = math.max(1, _document.frameRate);
+    replaceElement(look == null
+        ? unkeyLayer(c, layer, _frame, rate)
+        : keyLayer(unkeyLayer(c, layer, _frame, rate), layer, look, _frame, rate));
+  }
+
+  void addKeyform(String id, String layer) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    replaceElement(withKeyform(c, layer, _frame, math.max(1, _document.frameRate)));
+  }
+
+  void removeKeyform(String id, String layer, double value) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    replaceElement(withoutKeyform(c, layer, value, _frame, math.max(1, _document.frameRate)));
+  }
+
+  void goToKeyform(String id, String look, double value) {
+    var c = _document.elementById(id);
+    var l = Look.fromName(look);
+    if (c is! CharacterElement || l == null) return;
+    replaceElement(c.copyWith(dna: c.dna.copyWith(look: c.dna.look.withValue(l, value))));
+  }
+
   void putCharacterLayerBack(String id, String layer) {
     var c = _document.elementById(id);
     if (c is! CharacterElement) return;

@@ -1188,6 +1188,20 @@ class CharacterElement extends CanvasElement {
     return (CharacterDrawing.empty, false);
   }
 
+  /// lookValue is the value of the Appearance slider named [look].
+  double lookValue(String look) => switch (Look.fromName(look)) {
+        var l? => dna.look[l],
+        null => 0,
+      };
+
+  /// drawingShown is the panel's drawing as it is drawn: its keyed layers
+  /// as their keyforms make them at the sliders' values -- see LayerKeys --
+  /// and whether it is the other side's, mirrored.
+  (CharacterDrawing, bool) drawingShown(double turn, double tilt) {
+    var (d, mirrored) = drawingFor(turn, tilt);
+    return (keyedAt(d, lookValue), mirrored);
+  }
+
   /// withDrawing is this with [drawing] on the panel turned [turn] and
   /// tilted [tilt]; an empty one takes the panel's own drawing away.
   CharacterElement withDrawing(double turn, double tilt, CharacterDrawing drawing) {

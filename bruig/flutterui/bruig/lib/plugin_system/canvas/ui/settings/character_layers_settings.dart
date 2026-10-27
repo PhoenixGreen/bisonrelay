@@ -1,4 +1,5 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
@@ -93,6 +94,9 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
         ),
         if (pickedRow != null) ...[
           _onThisView(controller, e, pickedRow),
+          if (BodyLayer.fromName(pickedRow.key) case var body?
+              when controller.layerTakenApart(e.id, pickedRow.key))
+            _keyforms(controller, e, pickedRow, body),
           if (BodyLayer.fromName(pickedRow.key) case var body?)
             for (var group in appearanceOf(body, person: e.dna.kind.person))
               AppearanceEditor(
@@ -103,6 +107,12 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
                 write: write,
                 commit: commit,
                 only: group,
+                keyed: {
+                  if (keysOf(e, pickedRow.key, controller.frame,
+                          controller.document.frameRate)
+                      case var k?)
+                    if (Look.fromName(k.look) case var l?) l,
+                },
               )
           else if (garmentOfLayer(pickedRow.key) case var i?)
             GarmentEditor(
@@ -280,5 +290,64 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
                 icon: Icons.scatter_plot_outlined,
                 onPressed: () => controller.takeApartCharacterLayer(e.id, row.key),
               ),
+      ]);
+}
+
+/// _keyforms is the picked layer -- taken apart on this view -- shaped by a
+/// slider through drawings kept at its values: which slider, the keyforms,
+/// and keeping another where the slider is now. See LayerKeys.
+Widget _keyforms(CanvasController controller, CharacterElement e, LayerRow row, BodyLayer body) {
+  var keys = keysOf(e, row.key, controller.frame, controller.document.frameRate);
+  var looks = [
+    for (var g in appearanceOf(body, person: e.dna.kind.person)) ...Look.inGroup(g),
+  ];
+  var look = keys == null ? null : Look.fromName(keys.look);
+  var value = look == null ? 0.0 : e.dna.look[look];
+  var onKey = keys != null && keys.keyAt(value) >= 0;
+  String pc(double v) => "${(v * 100).round()}%";
+  return CanvasControlGroup(
+      key: const ValueKey("characterLayerKeys"),
+      label: "Keyforms",
+      help: "Shape this layer by one of its sliders through your own drawings: "
+          "keep a keyform at a value, move the slider, keep another, and draw "
+          "each as it should look. In between, the drawings blend point by "
+          "point; past the first or last, they hold. With the slider on a "
+          "keyform, drawing on the layer changes it; anywhere else, drawing "
+          "keeps a new one there.",
+      children: [
+        CanvasDropdown<Look?>(
+          key: const ValueKey("characterLayerKeyLook"),
+          label: "Shaped by",
+          value: look,
+          options: [
+            (null, "No slider"),
+            for (var l in looks) (l, l.label),
+          ],
+          onChanged: (l) => controller.keyCharacterLayer(e.id, row.key, l?.name),
+        ),
+        if (keys != null) ...[
+          for (var (v, _) in keys.keys) ...[
+            const CanvasLineBreak(),
+            CanvasTextButton(
+              key: ValueKey("characterLayerKey-${pc(v)}"),
+              label: "${(v - value).abs() < 0.005 ? "◆ " : ""}At ${pc(v)}",
+              primary: (v - value).abs() < 0.005,
+              onPressed: () => controller.goToKeyform(e.id, keys.look, v),
+            ),
+            CanvasIconButton(
+              key: ValueKey("characterLayerKeyOff-${pc(v)}"),
+              icon: Icons.close,
+              tooltip: "Remove this keyform",
+              onPressed: () => controller.removeKeyform(e.id, row.key, v),
+            ),
+          ],
+          const CanvasLineBreak(),
+          CanvasTextButton(
+            key: const ValueKey("characterLayerKeyAdd"),
+            label: onKey ? "A keyform is here" : "Keep a keyform at ${pc(value)}",
+            icon: Icons.add,
+            onPressed: onKey ? null : () => controller.addKeyform(e.id, row.key),
+          ),
+        ],
       ]);
 }

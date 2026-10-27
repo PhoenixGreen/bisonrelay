@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -277,7 +278,7 @@ VectorElement drawingProxy(CharacterElement e, int frame, int frameRate,
     {int? garment, String? layer}) {
   var (rig, turn, tilt) = drawnRig(e, frame, frameRate);
   var (drawing, _) = _garmentOf(e, garment)?.drawingFor(turn, tilt) ??
-      e.drawingFor(turn, tilt);
+      e.drawingShown(turn, tilt);
   if (layer != null) drawing = _only(drawing, layer).$1;
   return VectorElement(
     // Where the character is, and moved as it is moved.
@@ -325,7 +326,7 @@ CharacterElement drawnFromProxy(
   var g = _garmentOf(e, garment);
   // A mirrored panel's drawing is laid out mirrored, parts and all: what is
   // drawn on it is kept as it is shown, and is its own from then on.
-  var (whole, _) = g?.drawingFor(turn, tilt) ?? e.drawingFor(turn, tilt);
+  var (whole, _) = g?.drawingFor(turn, tilt) ?? e.drawingShown(turn, tilt);
   var (old, mine) = layer == null
       ? (whole, [for (var i = 0; i < whole.shapes.length; i++) i])
       : _only(whole, layer);
@@ -388,10 +389,90 @@ CharacterElement drawnFromProxy(
     order: [for (var i in others) whole.orderOf(i, base), for (var o in order) o!],
     layers: [for (var i in others) whole.layerOf(i), ...layers],
   );
-  if (g == null) return e.withDrawing(turn, tilt, drawing);
+  if (g == null) return e.withDrawing(turn, tilt, _keptAsKeyed(e, drawing, layer));
   var wardrobe = [...e.dna.wardrobe];
   wardrobe[garment!] = g.withDrawing(turn, tilt, drawing);
   return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+}
+
+/// _keptAsKeyed is [drawing] -- edited where the sliders are now -- with
+/// each keyed layer's shapes kept as its keyform at the slider's value: the
+/// keyform there changed, or one added. With [only], that layer alone; for
+/// the rest, only those changed.
+CharacterDrawing _keptAsKeyed(CharacterElement e, CharacterDrawing drawing, String? only) {
+  if (drawing.keyed.isEmpty) return drawing;
+  var keyed = {...drawing.keyed};
+  for (var MapEntry(key: layer, value: k) in drawing.keyed.entries) {
+    if (only != null && layer != only) continue;
+    var v = e.lookValue(k.look);
+    var (mine, _) = _only(drawing, layer);
+    if (only == null && _sameShapes(mine, k.at(v))) continue;
+    keyed[layer] = k.withKey(v, mine);
+  }
+  return drawing.copyWith(keyed: keyed);
+}
+
+bool _sameShapes(CharacterDrawing a, CharacterDrawing b) {
+  if (a.shapes.length != b.shapes.length) return false;
+  for (var i = 0; i < a.shapes.length; i++) {
+    if (a.parts[i] != b.parts[i]) return false;
+    if (jsonEncode(a.shapes[i].toJson()) != jsonEncode(b.shapes[i].toJson())) return false;
+  }
+  return true;
+}
+
+/// keyLayer is [e] with [layer] -- taken apart on the panel seen on
+/// [frame] -- shaped by the slider [look] through keyforms, its first kept
+/// at the slider's value now: its shapes as they are.
+CharacterElement keyLayer(
+    CharacterElement e, String layer, String look, int frame, int frameRate) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (d, _) = e.drawingShown(turn, tilt);
+  var (mine, _) = _only(d, layer);
+  if (mine.shapes.isEmpty) return e;
+  return e.withDrawing(turn, tilt,
+      d.copyWith(keyed: {...d.keyed, layer: LayerKeys(look).withKey(e.lookValue(look), mine)}));
+}
+
+/// unkeyLayer is [e] with [layer] no longer keyed on the panel seen on
+/// [frame]: its shapes kept as they are at the slider's value now.
+CharacterElement unkeyLayer(CharacterElement e, String layer, int frame, int frameRate) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (d, _) = e.drawingShown(turn, tilt);
+  return e.withDrawing(turn, tilt, d.copyWith(keyed: {...d.keyed}..remove(layer)));
+}
+
+/// withKeyform is [e] with a keyform of [layer] kept at its slider's value
+/// now -- its shapes as they are there, to edit -- and withoutKeyform
+/// without the one at [value].
+CharacterElement withKeyform(CharacterElement e, String layer, int frame, int frameRate) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (d, _) = e.drawingShown(turn, tilt);
+  var k = d.keyed[layer];
+  if (k == null) return e;
+  var v = e.lookValue(k.look);
+  return e.withDrawing(turn, tilt, d.copyWith(keyed: {...d.keyed, layer: k.withKey(v, k.at(v))}));
+}
+
+CharacterElement withoutKeyform(
+    CharacterElement e, String layer, double value, int frame, int frameRate) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  var (d, _) = e.drawingShown(turn, tilt);
+  var k = d.keyed[layer];
+  if (k == null) return e;
+  var next = k.without(value);
+  // The last gone, it is shaped by no slider: as it is.
+  return e.withDrawing(
+      turn,
+      tilt,
+      d.copyWith(
+          keyed: next.keys.isEmpty ? ({...d.keyed}..remove(layer)) : {...d.keyed, layer: next}));
+}
+
+/// keysOf is [layer]'s keyforms on the panel seen on [frame], or null.
+LayerKeys? keysOf(CharacterElement e, String layer, int frame, int frameRate) {
+  var (_, turn, tilt) = drawnRig(e, frame, frameRate);
+  return e.drawingFor(turn, tilt).$1.keyed[layer];
 }
 
 /// _orderBase is where the shapes of a drawing kept without an order go:
@@ -579,6 +660,8 @@ CharacterElement takeApartLayer(
           ...taken.layers,
         ],
         hiddenLayers: {...kept.hiddenLayers, layer},
+        // Taken afresh: keyforms of the shapes before no longer fit.
+        keyed: {...kept.keyed}..remove(layer),
       ));
 }
 
@@ -592,8 +675,12 @@ CharacterElement putLayerBack(
   var (_, turn, tilt) = drawnRig(e, frame, frameRate);
   var (own, _) = e.drawingFor(turn, tilt);
   var kept = _without(own, {layer});
-  return e.withDrawing(turn, tilt,
-      kept.copyWith(hiddenLayers: {...kept.hiddenLayers}..remove(layer)));
+  return e.withDrawing(
+      turn,
+      tilt,
+      kept.copyWith(
+          hiddenLayers: {...kept.hiddenLayers}..remove(layer),
+          keyed: {...kept.keyed}..remove(layer)));
 }
 
 /// takeApartGarment is [e] with garment [garment] of its wardrobe taken

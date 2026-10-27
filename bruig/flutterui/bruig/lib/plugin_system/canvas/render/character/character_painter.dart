@@ -142,6 +142,14 @@ void paintCharacterFigure(
   // one -- for a preview of a style drawn on the body already made, rather
   // than making one of its own.
   var bodyDna = bodyStyle?.dnaOf(dna);
+  // Its keyed layers as their keyforms make them at the sliders' values.
+  if (drawing != null && drawing.keyed.isNotEmpty) {
+    var look = dna.look;
+    drawing = keyedAt(drawing, (name) => switch (Look.fromName(name)) {
+          var l? => look[l],
+          null => 0,
+        });
+  }
   dna = style.dnaOf(dna);
   // A sketch is drawn in panels -- see CharacterPose.inPanel -- so however
   // it is turned, it is drawn from the nearest one.
