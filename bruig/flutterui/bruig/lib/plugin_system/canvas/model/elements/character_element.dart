@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_hair.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
@@ -17,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_hair.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
@@ -799,6 +801,10 @@ class CharacterDna {
   /// character_rig_points.dart.
   final RigPoints rigPoints;
 
+  /// hairRig is a sketch's hair as strokes -- see character_hair.dart -- or
+  /// null for hair drawn as its style draws it.
+  final HairRig? hairRig;
+
   /// type is what kind of character this is -- a woman, a boy, a dog --
   /// which decides what the panel offers it. Null for one saved before
   /// types, which is told by its species and size; see typeOf.
@@ -828,6 +834,7 @@ class CharacterDna {
     this.hairModel = "",
     this.browModel = "",
     this.rigPoints = RigPoints.none,
+    this.hairRig,
   });
 
   /// kind is [type], or what a character saved before types most likely is.
@@ -875,6 +882,8 @@ class CharacterDna {
     String? hairModel,
     String? browModel,
     RigPoints? rigPoints,
+    HairRig? hairRig,
+    bool noHairRig = false,
   }) =>
       CharacterDna(
         headsTall: (headsTall ?? this.headsTall).clamp(minHeads, maxHeads),
@@ -900,6 +909,7 @@ class CharacterDna {
         hairModel: hairModel ?? this.hairModel,
         browModel: browModel ?? this.browModel,
         rigPoints: rigPoints ?? this.rigPoints,
+        hairRig: noHairRig ? null : (hairRig ?? this.hairRig),
       );
 
   Map<String, dynamic> toJson() => {
@@ -926,6 +936,7 @@ class CharacterDna {
         if (hairModel.isNotEmpty) "hairModel": hairModel,
         if (browModel.isNotEmpty) "browModel": browModel,
         if (!rigPoints.isEmpty) "rigPoints": rigPoints.toJson(),
+        if (hairRig != null) "hairRig": hairRig!.toJson(),
       };
 
   factory CharacterDna.fromJson(Map<String, dynamic> json) {
@@ -960,6 +971,7 @@ class CharacterDna {
       hairModel: jsonString(json["hairModel"], ""),
       browModel: jsonString(json["browModel"], ""),
       rigPoints: RigPoints.fromJson(json["rigPoints"]),
+      hairRig: HairRig.fromJson(json["hairRig"]),
     );
   }
 

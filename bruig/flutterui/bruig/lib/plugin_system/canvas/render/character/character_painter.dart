@@ -1235,7 +1235,12 @@ class _Drawing {
     // Long hair hangs behind the head, until the head turns away and it is
     // the thing in front -- see _head.
     var head = _shows(CharacterRegion.head);
-    if (head && _hangingHair && facing >= -0.3) {
+    // Hair made of strokes: those growing on the far side of the head,
+    // behind it and the body.
+    if (head && dna.hairRig != null) {
+      _inBody(BodyLayer.hairBack, () => _inHead(() => _hairStrokes(front: false)));
+    }
+    if (head && dna.hairRig == null && _hangingHair && facing >= -0.3) {
       _inBody(BodyLayer.hairBack, () => _inHead(_backHair));
     }
     // A cape hangs behind the body, until the body turns away from the
@@ -2920,6 +2925,92 @@ class _Drawing {
           dna.hairStyle != HairStyle.long &&
           _a(Look.hairLength) > 0.35);
 
+  /// _hairStrokes draws the hair made of strokes -- see character_hair.dart
+  /// -- in the head's own space: with [front], those growing on the side
+  /// of the head towards the reader, nearest last; without, the rest.
+  ///
+  /// Each grows from its root on the scalp, as a ball, out and down -- or,
+  /// on the top, out and up -- turned and tipped with the head, and is
+  /// drawn as wide as it is along it.
+  void _hairStrokes({required bool front}) {
+    var hair = dna.hairRig;
+    if (hair == null) return;
+    var r = rig.headRadii;
+    var w = r.width, h = r.height;
+    var cy = math.cos(yaw), sy = math.sin(yaw);
+    var pitch = rig.tilt * math.pi / 180;
+    var cp = math.cos(pitch), sp = math.sin(pitch);
+    // A point on or off the head, in its radii, as seen: where on the page
+    // and how far towards the reader.
+    (Offset, double) seen(double x, double y, double z) {
+      var x1 = x * cy - z * sy, z1 = z * cy + x * sy;
+      var y2 = y * cp - z1 * sp, z2 = z1 * cp + y * sp;
+      return (Offset(x1 * w, -y2 * h + _nodShift), z2);
+    }
+
+    var drawn = <(double, Path, Color)>[];
+    for (var s in hair.strokes) {
+      var g = hair.lookOf(s.group);
+      var lon = s.lon * math.pi / 180, lat = s.lat * math.pi / 180;
+      var o = [math.cos(lat) * math.sin(lon), math.sin(lat), math.cos(lat) * math.cos(lon)];
+      var root = [for (var v in o) v * 1.02];
+      var (_, depth) = seen(root[0], root[1], root[2]);
+      if ((depth >= -0.1) != front) continue;
+      // The top grows up and out; everything else falls.
+      var fall = s.group == HairGroup.top ? 0.15 : 0.95;
+      var len = s.length * 2 * g.length;
+      var vol = g.volume;
+      // How far out from the head it stands: the fringe off the forehead,
+      // the sides and back close to the head they fall round.
+      var (lift, bulge) = switch (s.group) {
+        HairGroup.fringe => (0.18, 0.32),
+        HairGroup.sides => (0.04, 0.14),
+        HairGroup.back => (0.08, 0.2),
+        HairGroup.top => (0.18, 0.3),
+      };
+      var out = lift * vol + (1 - fall) * 0.8;
+      var t = [math.cos(lon), 0.0, -math.sin(lon)];
+      var curl = s.curl + g.curl;
+      List<double> at(List<double> a, List<double> b, double k) =>
+          [for (var i = 0; i < 3; i++) a[i] + b[i] * k];
+      var p1 = at(at(root, o, len * bulge * vol), [0, -1, 0], len * 0.1 * fall);
+      var tip = at(at(at(root, o, len * out), [0, -1, 0], len * fall), t, len * s.lean);
+      var p2 = at(at(at(tip, o, len * lift * vol), [0, 1, 0], len * 0.3 * fall), t, len * curl * 0.6);
+      // Down the middle, finely, then out each side as wide as it is.
+      var mid = <Offset>[];
+      const steps = 20;
+      for (var k = 0; k <= steps; k++) {
+        var q = k / steps, u0 = 1 - q;
+        var b = [
+          for (var i = 0; i < 3; i++)
+            u0 * u0 * u0 * root[i] +
+                3 * u0 * u0 * q * p1[i] +
+                3 * u0 * q * q * p2[i] +
+                q * q * q * tip[i]
+        ];
+        mid.add(seen(b[0], b[1], b[2]).$1);
+      }
+      var left = <Offset>[], right = <Offset>[];
+      for (var k = 0; k <= steps; k++) {
+        var q = k / steps;
+        var d = mid[math.min(steps, k + 1)] - mid[math.max(0, k - 1)];
+        var l = d.distance;
+        var n = l < 1e-9 ? const Offset(1, 0) : Offset(-d.dy / l, d.dx / l);
+        var width = (q < 0.5 ? s.w0 + (s.w1 - s.w0) * q * 2 : s.w1 + (s.w2 - s.w1) * (q - 0.5) * 2) *
+            g.width * h;
+        left.add(mid[k] + n * width);
+        right.add(mid[k] - n * width);
+      }
+      var path = Path()..addPolygon([...left, ...right.reversed], true);
+      // The far side a shade darker, for the depth.
+      drawn.add((depth, path, front ? dna.hair : _shade(dna.hair, 0.12)));
+    }
+    drawn.sort((a, b) => a.$1.compareTo(b.$1));
+    for (var (_, path, colour) in drawn) {
+      _fill(path, colour);
+    }
+  }
+
   void _backHair() {
     var r = rig.headRadii;
     var len = _a(Look.hairLength);
@@ -2996,6 +3087,7 @@ class _Drawing {
   /// in a gentle wave, with strands drawn through it. Drawn over the body
   /// and under the arms. Turned, only the lock on the near side shows.
   void _frontHair() {
+    if (dna.hairRig != null) return;
     var len = _a(Look.hairLength);
     if (dna.hairStyle != HairStyle.long || len < 0.2 || facing < 0) return;
     var hs = rig.headScale == 0 ? 1.0 : rig.headScale;
@@ -3247,7 +3339,13 @@ class _Drawing {
       canvas.restore();
       _glasses(w);
     }
-    if (_hangingHair && facing < -0.3) _inBody(BodyLayer.hairBack, _backHair);
+    if (dna.hairRig == null && _hangingHair && facing < -0.3) {
+      _inBody(BodyLayer.hairBack, _backHair);
+    }
+    // Hair made of strokes: those growing on the near side, over the face.
+    if (dna.hairRig != null) {
+      _inBody(BodyLayer.hairFront, () => _hairStrokes(front: true));
+    }
     _hats(w, h);
   }
 
@@ -3314,6 +3412,7 @@ class _Drawing {
   static const double _hairline = 1.85;
 
   void _hair(Size r) {
+    if (dna.hairRig != null) return;
     if (dna.hairStyle == HairStyle.bald) return;
     var w = r.width, h = r.height;
     var behind = Rect.fromCenter(

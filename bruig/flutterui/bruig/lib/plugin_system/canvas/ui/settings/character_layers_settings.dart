@@ -3,6 +3,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_hair_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -97,6 +98,16 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
           if (BodyLayer.fromName(pickedRow.key) case var body?
               when controller.layerTakenApart(e.id, pickedRow.key))
             _keyforms(controller, e, pickedRow, body),
+          // The hair, as strokes or as its style draws it.
+          if (pickedRow.key == BodyLayer.hairFront.name ||
+              pickedRow.key == BodyLayer.hairBack.name)
+            HairStrokesEditor(
+              key: ValueKey("characterHairStrokes-${e.id}"),
+              controller: controller,
+              character: e,
+              write: write,
+              commit: commit,
+            ),
           if (BodyLayer.fromName(pickedRow.key) case var body?)
             for (var group in appearanceOf(body, person: e.dna.kind.person))
               AppearanceEditor(
