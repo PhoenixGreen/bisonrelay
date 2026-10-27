@@ -271,8 +271,9 @@ List<MouthKey> mouthsFromLoudness(Float32List peaks, double seconds,
 
 /// tidyMouths is [keys] in order, led by [feel.lead] frames, with every
 /// mouth held for at least [feel.shortest] -- a mouth too short is dropped,
-/// unless it closes the lips, in which case the one before it gives way --
-/// and the same shape twice in a row made one.
+/// unless it closes the lips, in which case the one before it gives way, or
+/// it is the rest, which waits its turn -- and the same shape twice in a row
+/// made one.
 List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
   var sorted = [
     for (var k in keys) (frame: math.max(0, k.frame - feel.lead), shape: k.shape),
@@ -288,8 +289,11 @@ List<MouthKey> tidyMouths(List<MouthKey> keys, LipSyncFeel feel) {
       if (k.shape == MouthShape.closed && out.last.shape != MouthShape.closed) {
         // The closure stays; the shape it cut short goes.
         out.removeLast();
-      } else if (out.last.shape == MouthShape.closed) {
-        // Let the closure be held its frames: this one starts after it.
+      } else if (out.last.shape == MouthShape.closed ||
+          k.shape == MouthShape.rest) {
+        // Let the closure be held its frames: this one starts after it. And
+        // a rest is never lost -- the end of a phrase must close the mouth
+        // -- only put off until the shape before it has had its time.
         k = (frame: out.last.frame + feel.shortest, shape: k.shape);
       } else {
         continue;

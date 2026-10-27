@@ -87,11 +87,12 @@ class CharacterPlacement {
     // nothing of its own box: see paintElement.
     if (document != null && e.onStage != null) {
       if (staging(e, document.elements, frame) case var at?) {
-        var rig = CharacterRig.of(e.style.dnaOf(e.dna),
-            performed
-                .withTurn(performed.turn + at.turn)
-                .withTilt((performed.tilt + at.tilt).clamp(-85.0, 85.0)),
-            at.box,
+        var seen = performed
+            .withTurn(performed.turn + at.turn)
+            .withTilt((performed.tilt + at.tilt).clamp(-85.0, 85.0));
+        // A sketch from the panel it is drawn from -- see paintCharacterFigure.
+        var rig = CharacterRig.of(
+            e.style.dnaOf(e.dna), e.body.inThreeD ? seen : seen.inPanel, at.box,
             breath: breath);
         return CharacterPlacement._(
           e,
@@ -112,7 +113,8 @@ class CharacterPlacement {
     var bounds = characterBox(e, frame, e.bounds);
     // As it is drawn: in its style's proportions, and on the frame its
     // style shows -- see paintCharacter.
-    var rig = CharacterRig.of(e.style.dnaOf(e.dna), performed, bounds,
+    var rig = CharacterRig.of(e.style.dnaOf(e.dna),
+        e.body.inThreeD ? performed : performed.inPanel, bounds,
         breath: breath);
     return CharacterPlacement._(
       e,

@@ -388,6 +388,41 @@ void main() {
       expect(led.first.frame, 9, reason: "a frame ahead of the voice");
     });
 
+    test("a sketch is seen from eight turns and four heights", () {
+      const p = CharacterPose();
+      expect(p.withTurn(30).panelTurn, 45);
+      expect(p.withTurn(-100).panelTurn, -90);
+      expect(p.withTurn(170).panelTurn, 180);
+      expect(p.withTurn(-170).panelTurn, 180);
+      expect(p.withTilt(20).panelTilt, 0);
+      expect(p.withTilt(30).panelTilt, 45);
+      expect(p.withTilt(80).panelTilt, 85, reason: "from the top");
+      expect(p.withTurn(30).withTilt(-60).inPanel.turn, 45);
+      expect(CharacterPose.panelTurns.length, 8);
+      expect(CharacterPose.panelTilts.length, 4);
+    });
+
+    test("every phrase ends on the rest mouth, however quick its last word", () {
+      // Words spoken fast, their last shapes right up against their ends,
+      // with pauses between the phrases.
+      var words = const [
+        SpokenWord(text: "go", frame: 0, end: 3),
+        SpokenWord(text: "hello", frame: 20, end: 25),
+        SpokenWord(text: "wow", frame: 40, end: 42),
+      ];
+      for (var lead in [0, 1]) {
+        var keys = mouthsFromWords(words,
+            frameRate: 24, feel: LipSyncFeel(lead: lead));
+        expect(keys.last.shape, MouthShape.rest, reason: "closed at the end");
+        // A rest after each phrase, before the next begins.
+        for (var start in [20, 40]) {
+          var before = keys.where((k) => k.frame < start - lead).lastOrNull;
+          expect(before?.shape, MouthShape.rest,
+              reason: "resting before the phrase at $start");
+        }
+      }
+    });
+
     test("a short word keeps its closures and its vowels", () {
       var keys = mouthsFromWords(
           const [SpokenWord(text: "bumps", frame: 0, end: 4)],
@@ -1118,7 +1153,11 @@ ${rows.join("\n")}
       expect(get(c).pose[CharacterBone.upperArmL],
           posePresets[3].pose[CharacterBone.upperArmL]);
 
-      await tap(tester, "appearanceTab-hair");
+      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
+      tester
+          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
+          .onChanged(AppearanceGroup.hair);
+      await tester.pumpAndSettle();
       await tap(tester, "characterHair-long");
       expect(get(c).dna.hairStyle, HairStyle.long);
       // Wardrobe: a dress put on in place of the top and the trousers.
@@ -1147,7 +1186,11 @@ ${rows.join("\n")}
       expect(get(c).dna.wardrobe.first.kind, isNot(GarmentKind.briefs));
 
       // Appearance: a body type, the size, and a slider.
-      await tap(tester, "appearanceTab-body");
+      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
+      tester
+          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
+          .onChanged(AppearanceGroup.body);
+      await tester.pumpAndSettle();
       await tap(tester, "appearancePreset-body-Curvy");
       expect(get(c).dna.look[Look.hips], 0.8);
       var heads = find.byKey(const ValueKey("characterHeads"));
@@ -1156,7 +1199,11 @@ ${rows.join("\n")}
       tester.widget<CanvasSlider>(heads).onCommit?.call();
       await tester.pumpAndSettle();
       expect(get(c).dna.headsTall, 6);
-      await tap(tester, "appearanceTab-eyes");
+      await tester.ensureVisible(find.byKey(const ValueKey("appearancePart")));
+      tester
+          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
+          .onChanged(AppearanceGroup.eyes);
+      await tester.pumpAndSettle();
       var eyes = find.byKey(const ValueKey("appearance-eyeSize"));
       await tester.ensureVisible(eyes);
       tester.widget<CanvasSlider>(eyes).onChanged(40);

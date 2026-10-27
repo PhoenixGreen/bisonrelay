@@ -75,22 +75,6 @@ class AppearanceEditorState extends State<AppearanceEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CanvasControlGroup(
-            key: const ValueKey("appearanceTabs"),
-            label: "Part",
-            help: "Which part of the character to shape. Each starts from "
-                "how the character's type has it; Reset on a part puts it "
-                "back.",
-            children: [
-              for (var g in groups)
-                CanvasTextButton(
-                  key: ValueKey("appearanceTab-${g.name}"),
-                  label: g.label,
-                  primary: g == group,
-                  grow: false,
-                  onPressed: () => setState(() => AppearanceEditor.tab = g),
-                ),
-            ]),
         if (presets.isNotEmpty)
           CanvasTiles<int>(
             label: group == AppearanceGroup.body ? "Body type" : "Start from",
@@ -110,6 +94,23 @@ class AppearanceEditorState extends State<AppearanceEditor> {
             keyOf: (i) => "appearancePreset-${group.name}-${presets[i].name}",
             onPick: (i) => _dna(_withPreset(presets[i])),
           ),
+        // Which part the sliders below shape: one dropdown across the row,
+        // with the settings it chooses between.
+        CanvasControlGroup(
+            key: const ValueKey("appearanceTabs"),
+            label: "Part",
+            help: "Which part of the character to shape. Each starts from "
+                "how the character's type has it; Reset on a part puts it "
+                "back.",
+            children: [
+              CanvasDropdown<AppearanceGroup>(
+                key: const ValueKey("appearancePart"),
+                label: "Part",
+                value: group,
+                options: [for (var g in groups) (g, g.label)],
+                onChanged: (g) => setState(() => AppearanceEditor.tab = g),
+              ),
+            ]),
         ..._extras(drawn),
         CanvasControlGroup(
             key: ValueKey("appearanceSliders-${group.name}"),

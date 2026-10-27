@@ -116,6 +116,9 @@ void paintCharacterFigure(
   // than making one of its own.
   var bodyDna = bodyStyle?.dnaOf(dna);
   dna = style.dnaOf(dna);
+  // A sketch is drawn in panels -- see CharacterPose.inPanel -- so however
+  // it is turned, it is drawn from the nearest one.
+  if (!body.inThreeD) pose = pose.inPanel;
   var rig = CharacterRig.of(dna, pose, box, breath: life.breath);
   var look = _Look.of(style);
   void drawOn(Canvas onto) {

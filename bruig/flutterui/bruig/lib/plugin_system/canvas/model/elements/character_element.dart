@@ -150,6 +150,26 @@ class CharacterPose {
   CharacterPose withTilt(double degrees) =>
       CharacterPose(angles, swings, turn, lift, degrees);
 
+  /// panelTurns and panelTilts are the views a sketched character is drawn
+  /// in -- a panel each: round it every 45 degrees, and seen from a little
+  /// below, level, a little above and from the top.
+  static const List<double> panelTurns = [-135, -90, -45, 0, 45, 90, 135, 180];
+  static const List<double> panelTilts = [-45, 0, 45, 85];
+
+  /// panelTurn and panelTilt are the panel nearest this pose's view.
+  double get panelTurn {
+    var t = ((turn % 360) + 360) % 360;
+    var snapped = (t / 45).round() * 45 % 360;
+    return snapped > 180 ? snapped - 360.0 : snapped.toDouble();
+  }
+
+  double get panelTilt => panelTilts.reduce(
+      (a, b) => (tilt - a).abs() <= (tilt - b).abs() ? a : b);
+
+  /// inPanel is this pose seen from the panel nearest its view.
+  CharacterPose get inPanel =>
+      CharacterPose(angles, swings, panelTurn, lift, panelTilt);
+
   /// lerp is this pose [t] of the way to [other], bone by bone.
   CharacterPose lerp(CharacterPose other, double t) {
     if (t <= 0) return this;

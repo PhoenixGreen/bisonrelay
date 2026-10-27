@@ -487,8 +487,8 @@ void main() {
       addTearDown(() => HumanBody.instance.useWearForTest(const {}));
       // Further down than the panel scrolls to here: pressed as it would be.
       tester
-          .widget<CanvasTextButton>(find.byKey(const ValueKey("appearanceTab-hair")))
-          .onPressed!();
+          .widget<CanvasDropdown<AppearanceGroup>>(find.byKey(const ValueKey("appearancePart")))
+          .onChanged(AppearanceGroup.hair);
       await tester.pumpAndSettle();
       var hair = find.byKey(const ValueKey("characterHairModel"));
       await tester.ensureVisible(hair);

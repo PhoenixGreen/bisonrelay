@@ -76,80 +76,8 @@ List<Widget> characterSettings(
     section(e, "character",
         icon: Icons.person_outline,
         title: "Type",
-        summary: "${dna.kind.label} · ${shortNumber(dna.headsTall)} heads tall",
-        initiallyOpen: true,
-        children: [
-          for (var family in TypeFamily.values)
-            CanvasTiles<CharacterType>(
-              label: family.label,
-              help: family == TypeFamily.people
-                  ? "What kind of character this is. A type sets the body, "
-                      "the face and the proportions, and what the panel "
-                      "offers below; everything about it is still yours to "
-                      "change in Appearance. Between people, the colours "
-                      "and the clothes are kept."
-                  : "",
-              columns: 6,
-              previewHeight: 60,
-              tiles: [
-                for (var t in CharacterType.values)
-                  if (t.family == family)
-                    CanvasTile(t, t.label,
-                        drawnFrom: "${t.name}|${style.name}",
-                        paint: (canvas, size) =>
-                            _typeTile(canvas, size, t, style)),
-              ],
-              selected: (t) => dna.kind == t,
-              keyOf: (t) => "characterType-${t.name}",
-              onPick: (t) {
-                var next = e.copyWith(dna: t.becomes(dna));
-                // Renamed with it, unless it has a name of its own.
-                var named = e.base.name.isEmpty ||
-                    characterCast.any((c) => c.name == e.base.name) ||
-                    CharacterType.values.any((x) => x.label == e.base.name);
-                now(named
-                    ? next.withBase(name: t.label) as CharacterElement
-                    : next);
-              },
-            ),
-          if (characterCast.any((c) => c.dna.kind == dna.kind))
-            CanvasTiles<int>(
-              label: "Ready-made",
-              help: "Someone of this type to start from. Their look is "
-                  "copied onto this character, and from then on it is this "
-                  "character's own to change.",
-              columns: 5,
-              previewHeight: 64,
-              tiles: [
-                for (var (i, who) in characterCast.indexed)
-                  if (who.dna.kind == dna.kind)
-                    CanvasTile(i, who.name,
-                        drawnFrom: "${who.dna.toJson()}|${style.name}",
-                        paint: (canvas, size) => _figureTile(canvas, size,
-                            who.dna, CharacterElement.restPose, style)),
-              ],
-              selected: (i) =>
-                  characterCast[i].dna.toJson().toString() ==
-                  dna.toJson().toString(),
-              keyOf: (i) => "characterCast-${characterCast[i].name}",
-              onPick: (i) {
-                var who = characterCast[i];
-                var next = e.copyWith(dna: who.dna);
-                var named = e.base.name.isEmpty ||
-                    characterCast.any((c) => c.name == e.base.name) ||
-                    CharacterType.values.any((x) => x.label == e.base.name);
-                now(named
-                    ? next.withBase(name: who.name) as CharacterElement
-                    : next);
-              },
-            ),
-        ]),
-    section(e, "madeOf",
-        icon: Icons.view_in_ar_outlined,
-        title: "Made of",
-        summary: e.body.kind == BodyKind.model && e.body.modelName.isNotEmpty
-            ? e.body.modelName
-            : e.body.kind.label,
+        summary: "${e.body.kind.label} · ${dna.kind.label} · "
+            "${shortNumber(dna.headsTall)} heads tall",
         initiallyOpen: true,
         children: [
           CanvasTiles<BodyKind>(
@@ -231,6 +159,70 @@ List<Widget> characterSettings(
                 key: ValueKey("characterModel-${e.id}"),
                 controller: controller,
                 character: e),
+          for (var family in TypeFamily.values)
+            CanvasTiles<CharacterType>(
+              label: family.label,
+              help: family == TypeFamily.people
+                  ? "What kind of character this is. A type sets the body, "
+                      "the face and the proportions, and what the panel "
+                      "offers below; everything about it is still yours to "
+                      "change in Appearance. Between people, the colours "
+                      "and the clothes are kept."
+                  : "",
+              columns: 6,
+              previewHeight: 60,
+              tiles: [
+                for (var t in CharacterType.values)
+                  if (t.family == family)
+                    CanvasTile(t, t.label,
+                        drawnFrom: "${t.name}|${style.name}",
+                        paint: (canvas, size) =>
+                            _typeTile(canvas, size, t, style)),
+              ],
+              selected: (t) => dna.kind == t,
+              keyOf: (t) => "characterType-${t.name}",
+              onPick: (t) {
+                var next = e.copyWith(dna: t.becomes(dna));
+                // Renamed with it, unless it has a name of its own.
+                var named = e.base.name.isEmpty ||
+                    characterCast.any((c) => c.name == e.base.name) ||
+                    CharacterType.values.any((x) => x.label == e.base.name);
+                now(named
+                    ? next.withBase(name: t.label) as CharacterElement
+                    : next);
+              },
+            ),
+          if (characterCast.any((c) => c.dna.kind == dna.kind))
+            CanvasTiles<int>(
+              label: "Ready-made",
+              help: "Someone of this type to start from. Their look is "
+                  "copied onto this character, and from then on it is this "
+                  "character's own to change.",
+              columns: 5,
+              previewHeight: 64,
+              tiles: [
+                for (var (i, who) in characterCast.indexed)
+                  if (who.dna.kind == dna.kind)
+                    CanvasTile(i, who.name,
+                        drawnFrom: "${who.dna.toJson()}|${style.name}",
+                        paint: (canvas, size) => _figureTile(canvas, size,
+                            who.dna, CharacterElement.restPose, style)),
+              ],
+              selected: (i) =>
+                  characterCast[i].dna.toJson().toString() ==
+                  dna.toJson().toString(),
+              keyOf: (i) => "characterCast-${characterCast[i].name}",
+              onPick: (i) {
+                var who = characterCast[i];
+                var next = e.copyWith(dna: who.dna);
+                var named = e.base.name.isEmpty ||
+                    characterCast.any((c) => c.name == e.base.name) ||
+                    CharacterType.values.any((x) => x.label == e.base.name);
+                now(named
+                    ? next.withBase(name: who.name) as CharacterElement
+                    : next);
+              },
+            ),
         ]),
     section(e, "style",
         icon: Icons.brush_outlined,
@@ -284,35 +276,6 @@ List<Widget> characterSettings(
             keyOf: (st) => "characterStyle-${st.name}",
             onPick: (st) => now(e.copyWith(style: st)),
           ),
-        ]),
-    section(e, "appearance",
-        icon: Icons.face_retouching_natural_outlined,
-        title: "Appearance",
-        summary: dna.look.isRest
-            ? "As the type is"
-            : "${dna.look.values.length} change${dna.look.values.length == 1 ? "" : "s"}",
-        changes: dna.look.values.length,
-        onReset: () => dnaNow(dna.copyWith(look: dna.kind.dna.look)),
-        initiallyOpen: true,
-        children: [
-          AppearanceEditor(
-            key: ValueKey("characterAppearance-${e.id}"),
-            controller: controller,
-            character: e,
-            write: write,
-            commit: commit,
-          ),
-        ]),
-    section(e, "creature",
-        icon: Icons.pets_outlined,
-        title: "Creature",
-        summary: [
-          dna.species.label,
-          if (dna.fourLegs) "four legs",
-          if (dna.tail != TailKind.none) "${dna.tail.label.toLowerCase()} tail",
-          if (dna.wings != WingKind.none) "wings",
-        ].join(" · "),
-        children: [
           CanvasTiles<Species>(
             label: "Species",
             help: "What kind of creature: its ears, muzzle and nose. Skin is "
@@ -410,6 +373,24 @@ List<Widget> characterSettings(
                   onChanged: (h) => dnaNow(dna.copyWith(horns: h)),
                 ),
               ]),
+        ]),
+    section(e, "appearance",
+        icon: Icons.face_retouching_natural_outlined,
+        title: "Appearance",
+        summary: dna.look.isRest
+            ? "As the type is"
+            : "${dna.look.values.length} change${dna.look.values.length == 1 ? "" : "s"}",
+        changes: dna.look.values.length,
+        onReset: () => dnaNow(dna.copyWith(look: dna.kind.dna.look)),
+        initiallyOpen: true,
+        children: [
+          AppearanceEditor(
+            key: ValueKey("characterAppearance-${e.id}"),
+            controller: controller,
+            character: e,
+            write: write,
+            commit: commit,
+          ),
         ]),
     section(e, "wardrobe",
         icon: Icons.checkroom_outlined,
@@ -1343,8 +1324,13 @@ class _WalkGroupState extends State<_WalkGroup> {
 Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
   var pose = e.poseAtFrame(controller.frame);
+  // A sketch is drawn in panels: round it every 45 degrees, and from four
+  // heights. Its orbit goes from one to the next.
+  var panels = !e.body.inThreeD;
   void orbit(double turn, double tilt, {bool live = true}) {
-    write(controller.characterPosed(e, pose.withTurn(turn).withTilt(tilt)));
+    var next = pose.withTurn(turn).withTilt(tilt);
+    if (panels) next = next.inPanel;
+    write(controller.characterPosed(e, next));
     if (!live) commit();
   }
 
@@ -1369,10 +1355,10 @@ Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
         CanvasStepper(
           key: const ValueKey("characterOrbitTurn"),
           label: "Turn",
-          value: pose.turn,
+          value: panels ? pose.panelTurn : pose.turn,
           min: -180,
           max: 180,
-          step: 15,
+          step: panels ? 45 : 15,
           suffix: "°",
           defaultValue: 0,
           onChanged: (v) {
@@ -1381,21 +1367,38 @@ Widget characterOrbitGroup(CanvasController controller, CharacterElement e,
           },
           onCommit: commit,
         ),
-        CanvasStepper(
-          key: const ValueKey("characterOrbitTilt"),
-          label: "Tilt",
-          value: pose.tilt,
-          min: -85,
-          max: 85,
-          step: 5,
-          suffix: "°",
-          defaultValue: 0,
-          onChanged: (v) {
-            begin();
-            orbit(pose.turn, v);
-          },
-          onCommit: commit,
-        ),
+        if (panels)
+          CanvasDropdown<double>(
+            key: const ValueKey("characterOrbitTilt"),
+            label: "Tilt",
+            value: pose.panelTilt,
+            options: const [
+              (-45.0, "From below"),
+              (0.0, "Level"),
+              (45.0, "From above"),
+              (85.0, "From the top"),
+            ],
+            onChanged: (v) {
+              begin();
+              orbit(pose.turn, v, live: false);
+            },
+          )
+        else
+          CanvasStepper(
+            key: const ValueKey("characterOrbitTilt"),
+            label: "Tilt",
+            value: pose.tilt,
+            min: -85,
+            max: 85,
+            step: 5,
+            suffix: "°",
+            defaultValue: 0,
+            onChanged: (v) {
+              begin();
+              orbit(pose.turn, v);
+            },
+            onCommit: commit,
+          ),
       ]);
 }
 
