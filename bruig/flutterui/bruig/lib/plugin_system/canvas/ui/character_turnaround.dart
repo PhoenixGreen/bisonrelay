@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
-import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart'
+    show turnedToView;
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:flutter/painting.dart';
@@ -92,25 +93,9 @@ class Turnaround {
 
   /// shownAs is the character as a panel draws it: at [rect], seen from the
   /// view [key] names, as it stands on this frame.
-  CharacterElement shownAs(String key, Rect rect) {
-    var at = key.indexOf("@");
-    var panel = at < 0 ? key : key.substring(0, at);
-    var parts = panel.split(",");
-    var turn = double.tryParse(parts.first) ?? 0;
-    var tilt = parts.length > 1 ? double.tryParse(parts[1]) ?? 0 : 0.0;
-    var pose = character.poseAtFrame(frame);
-    if (at >= 0) {
-      var name = key.substring(at + 1);
-      for (var v in character.views) {
-        if (v.pose == name && v.posed != null) pose = v.posed!;
-      }
-    }
-    pose = pose.withTurn(turn).withTilt(tilt);
-    // Its own still pose, not the timeline's, which would turn it back.
-    var moved = character.withBase(x: rect.left, y: rect.top, track: ElementTrack.empty)
-        as CharacterElement;
-    return moved.copyWith(pose: character.inView(pose));
-  }
+  CharacterElement shownAs(String key, Rect rect) =>
+      turnedToView(character, key, frame).withBase(x: rect.left, y: rect.top)
+          as CharacterElement;
 
   /// neighbour is the view next round from the one it is seen from: what a
   /// light table shows faintly over it.

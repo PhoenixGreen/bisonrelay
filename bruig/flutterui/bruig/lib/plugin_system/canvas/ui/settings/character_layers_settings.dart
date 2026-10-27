@@ -405,7 +405,9 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
           "Take it apart -- or click its pencil -- to edit its outline point "
           "by point here: the other views stay as they are. Its sliders go on "
           "shaping it, your edits carried along on top. Draw on it to add "
-          "shapes that go with it.",
+          "shapes that go with it. Copy edits to another view to make the "
+          "same change there -- laid on the layer as that view draws it -- "
+          "or mirror them to the side turned the other way.",
       children: [
         CanvasStatus(apart
             ? "Edited on this view. Its sliders still shape it here, with your edits on top."
@@ -419,6 +421,32 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
               ? controller.stopDrawingOnCharacter()
               : controller.drawOnCharacter(e.id, layer: row.key),
         ),
+        if (apart) ...[
+          // The same edit on the other views: each as that view draws it.
+          CanvasDropdown<String>(
+            key: const ValueKey("characterLayerCopyTo"),
+            label: "Copy edits to",
+            value: "",
+            options: [
+              ("", "Pick a view…"),
+              for (var (k, label) in panelOptions(e, adding: false))
+                if (k != drawnKey(e, controller.frame, controller.document.frameRate))
+                  (k, label.split(" · ").first),
+              ("*", "Every view"),
+            ],
+            onChanged: (k) {
+              if (k.isEmpty) return;
+              controller.copyCharacterLayerEdits(e.id, row.key, k);
+            },
+          ),
+          if (oppositeKey(drawnKey(e, controller.frame, controller.document.frameRate)) != null)
+            CanvasTextButton(
+              key: const ValueKey("characterLayerMirror"),
+              label: "Mirror to the other side",
+              icon: Icons.flip,
+              onPressed: () => controller.mirrorCharacterLayer(e.id, row.key),
+            ),
+        ],
         apart
             ? CanvasTextButton(
                 key: const ValueKey("characterLayerPutBack"),

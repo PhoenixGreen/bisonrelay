@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_live.dart' show carried;
 import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
@@ -868,4 +870,157 @@ RigPoint rigPointFor(
     }
   }
   return RigPoint(best.$1, best.$2);
+}
+
+/// turnedToView is [e] seen from the view [key] names -- turned, and, for a
+/// view of a pose, in that pose -- as it stands on [frame], held there: its
+/// timeline left off, which would turn it back.
+CharacterElement turnedToView(CharacterElement e, String key, int frame) {
+  var at = key.indexOf("@");
+  var panel = at < 0 ? key : key.substring(0, at);
+  var parts = panel.split(",");
+  var turn = double.tryParse(parts.first) ?? 0;
+  var tilt = parts.length > 1 ? double.tryParse(parts[1]) ?? 0 : 0.0;
+  var pose = e.poseAtFrame(frame);
+  if (at >= 0) {
+    var name = key.substring(at + 1);
+    for (var v in e.views) {
+      if (v.pose == name && v.posed != null) pose = v.posed!;
+    }
+  }
+  pose = pose.withTurn(turn).withTilt(tilt);
+  var held = e.withBase(track: ElementTrack.empty) as CharacterElement;
+  return held.copyWith(pose: e.inView(pose));
+}
+
+/// _layerAt is the drawing [layer] is drawn by on the view [key]: a
+/// garment's own, or the character's.
+(CharacterDrawing, bool) _layerAt(CharacterElement e, String layer, String key) {
+  if (garmentOfLayer(layer) case var gi?) {
+    return _garmentOf(e, gi)?.drawingAt(key) ?? (CharacterDrawing.empty, false);
+  }
+  return e.drawingAt(key);
+}
+
+CharacterElement _withLayerAt(
+    CharacterElement e, String layer, String key, CharacterDrawing d) {
+  if (garmentOfLayer(layer) case var gi?) {
+    var g = _garmentOf(e, gi);
+    if (g == null) return e;
+    var wardrobe = [...e.dna.wardrobe];
+    wardrobe[gi] = g.withDrawingAt(key, d);
+    return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
+  }
+  return e.withDrawingAt(key, d);
+}
+
+/// layerEditedAt is whether [layer] is drawn by its own shapes on the view
+/// [key]: taken apart there, edited or not.
+bool layerEditedAt(CharacterElement e, String layer, String key) {
+  var (d, mirrored) = _layerAt(e, layer, key);
+  if (mirrored) return false;
+  return garmentOfLayer(layer) != null ? d.replaces : d.hiddenLayers.contains(layer);
+}
+
+/// copyLayerEdits is [e] with what was done to [layer] on the view [from]
+/// done to it on the view [to] as well: taken apart there, and each of its
+/// shapes moved as the shape it began as was moved on [from] -- the same
+/// edit, laid on the layer as that view draws it, not the other view's
+/// drawing pasted over it. A shape drawn by hand on [from] is copied as it
+/// is, on the same part of the body. What [layer] was on [to] before is
+/// replaced.
+CharacterElement copyLayerEdits(CharacterElement e, String layer, String from,
+    String to, int frame, int frameRate) {
+  if (from == to) return e;
+  var (src, _) = _layerAt(e, layer, from);
+  var srcBase = src.bases[layer];
+  var mine = [
+    for (var i = 0; i < src.shapes.length; i++)
+      if (src.layerOf(i) == layer) i,
+  ];
+  if (mine.isEmpty) return e;
+  // The layer taken apart on [to], as that view draws it.
+  var there = takeApartLayer(turnedToView(e, to, frame), layer, frame, frameRate);
+  var (tgt, _) = _layerAt(there, layer, to);
+  var tgtBase = tgt.bases[layer];
+  var matched = srcBase != null &&
+      tgtBase != null &&
+      srcBase.shapes.length == tgtBase.shapes.length;
+  var kept = _without(tgt, {layer});
+  var top = panelOrderTop(e, to);
+  var shapes = <VectorShape>[], parts = <CharacterPart>[], order = <double>[];
+  // The layer's own shapes first, in the order that view draws them in.
+  var order0 = [
+    for (var i = 0; i < tgt.shapes.length; i++)
+      if (tgt.layerOf(i) == layer) tgt.orderOf(i, top),
+  ];
+  for (var i in mine) {
+    var s = src.shapes[i];
+    var j = int.tryParse(s.origin ?? "");
+    if (matched && j != null && j >= 0 && j < tgtBase.shapes.length) {
+      shapes.add(carried(s, srcBase.shapes[j], tgtBase.shapes[j]).copyWith(origin: "$j"));
+      parts.add(tgtBase.parts[j]);
+      order.add(j < order0.length ? order0[j] : top + 1 + i);
+    } else {
+      shapes.add(s.copyWith(clearOrigin: true));
+      parts.add(src.parts[i]);
+      order.add(top + 1 + i);
+    }
+  }
+  // Begun as shapes it has no counterpart for there: those not edited
+  // here are as that view draws them.
+  if (!matched) {
+    for (var i = 0; i < tgt.shapes.length; i++) {
+      if (tgt.layerOf(i) != layer) continue;
+      shapes.add(tgt.shapes[i]);
+      parts.add(tgt.parts[i]);
+      order.add(tgt.orderOf(i, top));
+    }
+  }
+  var next = kept.copyWith(
+    shapes: [...kept.shapes, ...shapes],
+    parts: [...kept.parts, ...parts],
+    order: [for (var i = 0; i < kept.shapes.length; i++) kept.orderOf(i, 2e6), ...order],
+    layers: [for (var i = 0; i < kept.shapes.length; i++) kept.layerOf(i), for (var _ in shapes) layer],
+    hiddenLayers: garmentOfLayer(layer) == null ? {...kept.hiddenLayers, layer} : null,
+    replaces: garmentOfLayer(layer) != null ? true : null,
+    bases: {...kept.bases, if (tgtBase != null) layer: tgtBase},
+  );
+  return _withLayerAt(e, layer, to, next);
+}
+
+/// mirrorLayerEdits is [e] with [layer] on the view [from] mirrored onto
+/// the view turned the other way -- a left side's onto the right -- as the
+/// other way is drawn until it is drawn on, but its own from now on; a
+/// layer of one side, a hand or an eye, going to its partner's. The rest of
+/// what is shown there stays as it is shown.
+CharacterElement mirrorLayerEdits(CharacterElement e, String layer, String from) {
+  var to = oppositeKey(from);
+  if (to == null) return e;
+  var (src, _) = _layerAt(e, layer, from);
+  var flipped = src.mirrored;
+  var other = BodyLayer.fromName(layer)?.mirrored.name ?? layer;
+  var (shown, _) = _layerAt(e, other, to);
+  var kept = _without(shown, {other});
+  var theirs = [
+    for (var i = 0; i < flipped.shapes.length; i++)
+      if (flipped.layerOf(i) == other) i,
+  ];
+  if (theirs.isEmpty) return e;
+  var next = kept.copyWith(
+    shapes: [...kept.shapes, for (var i in theirs) flipped.shapes[i]],
+    parts: [...kept.parts, for (var i in theirs) flipped.parts[i]],
+    order: [
+      for (var i = 0; i < kept.shapes.length; i++) kept.orderOf(i, 2e6),
+      for (var i in theirs) flipped.orderOf(i, 2e6),
+    ],
+    layers: [
+      for (var i = 0; i < kept.shapes.length; i++) kept.layerOf(i),
+      for (var _ in theirs) other,
+    ],
+    hiddenLayers: garmentOfLayer(other) == null ? {...kept.hiddenLayers, other} : null,
+    replaces: garmentOfLayer(other) != null ? true : null,
+    bases: {...kept.bases, if (flipped.bases[other] case var b?) other: b},
+  );
+  return _withLayerAt(e, other, to, next);
 }

@@ -3980,6 +3980,42 @@ class CanvasController extends ChangeNotifier {
     return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
   }
 
+  /// copyCharacterLayerEdits does what was done to [layer] of sketch [id] on
+  /// the view it is seen from to it on the view [to] as well -- or on every
+  /// other view, with "*" -- as one step to undo. See copyLayerEdits.
+  void copyCharacterLayerEdits(String id, String layer, String to) {
+    var e = _document.elementById(id);
+    if (e is! CharacterElement) return;
+    var rate = math.max(1, _document.frameRate);
+    var from = drawnKey(e, _frame, rate);
+    var targets = to == "*"
+        ? [
+            for (var v in e.views) ...[
+              v.key,
+              if (oppositeKey(v.key) case var o?) o,
+            ],
+          ].where((k) => k != from).toList()
+        : [to];
+    var next = e;
+    for (var k in targets) {
+      next = copyLayerEdits(next, layer, from, k, _frame, rate);
+    }
+    beginInteraction();
+    replaceElement(next);
+    endInteraction();
+  }
+
+  /// mirrorCharacterLayer mirrors [layer] of sketch [id], on the view it is
+  /// seen from, onto the view turned the other way. See mirrorLayerEdits.
+  void mirrorCharacterLayer(String id, String layer) {
+    var e = _document.elementById(id);
+    if (e is! CharacterElement) return;
+    var from = drawnKey(e, _frame, math.max(1, _document.frameRate));
+    beginInteraction();
+    replaceElement(mirrorLayerEdits(e, layer, from));
+    endInteraction();
+  }
+
   /// showCharacterView turns sketch [id] to the view [key] names -- see
   /// showPanel -- as one step to undo; drawn on, it goes on being drawn on
   /// there, the same layer or garment.
