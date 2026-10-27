@@ -181,7 +181,16 @@ void main() {
       var moved = view.dragged(HairHold(i, HairGrab.root), root, root + const Offset(4, 0));
       expect(moved.dna.hairRig!.strokes[i].lon, isNot(messy.strokes[i].lon));
       var r2 = HairView.of(moved, 0)!;
-      expect((r2.page(r2.shapes[i].root) - (root + const Offset(4, 0))).distance, lessThan(1));
+      var shift = r2.page(r2.shapes[i].root) - root;
+      expect((shift - const Offset(4, 0)).distance, lessThan(1));
+      // Its shape as it was: every point carried the same way.
+      for (var k = 0; k < view.shapes[i].middle.length; k++) {
+        expect((r2.page(r2.shapes[i].middle[k]) - view.page(view.shapes[i].middle[k]) - shift).distance,
+            lessThan(0.01));
+      }
+      var saved = HairStroke.fromJson(moved.dna.hairRig!.strokes[i].toJson())!.shapedAt!;
+      expect(saved.$1, closeTo(moved.dna.hairRig!.strokes[i].shapedAt!.$1, 1e-3));
+      expect(saved.$2, closeTo(moved.dna.hairRig!.strokes[i].shapedAt!.$2, 1e-3));
     });
 
     test("turned about its root: by its knob, saved and mirrored", () {
@@ -200,33 +209,84 @@ void main() {
       expect(hairStrokeShape(turned, g, view.head).root,
           hairStrokeShape(s, g, view.head).root, reason: "it grows where it did");
 
-      // The knob behind the root, dragged a quarter turn round it.
-      var knob = view.page(view.turnKnobAt(i, 3));
-      expect(view.under(knob, 3, 1.5, picked: i)?.grab, HairGrab.turn);
+      // The ring round the root, dragged a quarter turn round it: the
+      // whole stroke goes round with it, its shape as it was.
+      var (rc, rr) = view.turnRingAt(i, 3);
       var root = view.page(view.shapes[i].root);
-      var arm = knob - root;
-      var to = root + Offset(-arm.dy, arm.dx);
-      var next = view.dragged(HairHold(i, HairGrab.turn), knob, to);
-      var after = HairView.of(next, 0)!;
-      double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
-      var before = angle(view.page(view.shapes[i].tip) - root);
-      var now = angle(after.page(after.shapes[i].tip) - root);
-      var swept = (now - before + 540) % 360 - 180;
-      expect(swept, closeTo(90, 12), reason: "its tip goes round as far as the knob");
+      var grab = view.page(rc + Offset(rr, 0));
+      expect(view.under(grab, 3, 1.5, picked: i)?.grab, HairGrab.turn);
+      var arm = grab - root;
+      for (var quarter in [1, 2, 3, 4]) {
+        var a = quarter * math.pi / 2;
+        var to = root + Offset(arm.dx * math.cos(a) - arm.dy * math.sin(a),
+            arm.dx * math.sin(a) + arm.dy * math.cos(a));
+        var next = view.dragged(HairHold(i, HairGrab.turn), grab, to);
+        var after = HairView.of(next, 0)!;
+        double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
+        var before = angle(view.page(view.shapes[i].tip) - root);
+        var now = angle(after.page(after.shapes[i].tip) - root);
+        var swept = (now - before - quarter * 90 + 540) % 360 - 180;
+        expect(swept, closeTo(0, 1), reason: "${quarter * 90} degrees round");
+        // Every point as far from the root, and from each other, as it was.
+        for (var k = 0; k < view.shapes[i].middle.length; k += 5) {
+          expect((after.page(after.shapes[i].middle[k]) - root).distance,
+              closeTo((view.page(view.shapes[i].middle[k]) - root).distance, 0.02));
+          expect(after.shapes[i].widths[k], closeTo(view.shapes[i].widths[k], 1e-9));
+        }
+      }
+      var spun = view.dragged(HairHold(i, HairGrab.turn), grab, root + Offset(-arm.dy, arm.dx));
+      var back = HairStroke.fromJson(spun.dna.hairRig!.strokes[i].toJson())!;
+      expect(back.spin[0], closeTo(spun.dna.hairRig!.strokes[i].spin[0], 1e-4));
+      expect(spun.dna.hairRig!.strokes[i].mirrored.mirrored.spin,
+          spun.dna.hairRig!.strokes[i].spin);
     });
 
-    test("a ring makes it wider; the bare scalp grows a new one, not the face", () {
+    test("its edge's knobs widen it; its ring's knob scales it; its handles bend it; "
+        "the bare scalp grows a new one, not the face", () {
       var e = _sketch(hair: messy);
+      // A fringe stroke, facing the reader.
+      var i = messy.inGroup(HairGroup.fringe)[3].$1;
       var view = HairView.of(e, 0)!;
-      var i = messy.inGroup(HairGroup.back)[0].$1;
-      var (c, r) = view.ringAt(i, 0, 3);
-      var from = view.page(c + Offset(r, 0)), to = view.page(c + Offset(r * 2, 0));
-      var wider = view.dragged(HairHold(i, HairGrab.ring0), from, to);
-      expect(wider.dna.hairRig!.strokes[i].w0, closeTo(messy.strokes[i].w0 * 2, 1e-6));
+      var s0 = view.shapes[i];
+      // The edge at the middle dragged out: that far wider there, and its
+      // knob where it was dropped.
+      var (knob, dir) = view.widthKnobAt(i, 1, 3);
+      expect(view.under(view.page(knob), 3, 1.5, picked: i)?.grab, HairGrab.width1);
+      var out = view.dragged(HairHold(i, HairGrab.width1), view.page(knob),
+          view.page(knob + dir * (s0.widths[s0.middle.length ~/ 2] * 0.5)));
+      var v1 = HairView.of(out, 0)!;
+      var m = s0.middle.length ~/ 2;
+      expect(v1.shapes[i].widths[m], closeTo(s0.widths[m] * 1.5, s0.widths[m] * 0.01));
+      expect(v1.shapes[i].tip, s0.tip, reason: "only wider");
+      // Scaled by the ring's knob: half as far again from the root, half
+      // as big again, the same shape.
+      var sk = view.scaleKnobAt(i, 3);
+      expect(view.under(view.page(sk), 3, 1.5, picked: i)?.grab, HairGrab.scale);
+      var big = view.dragged(HairHold(i, HairGrab.scale), view.page(sk),
+          view.page(s0.root + (sk - s0.root) * 1.5));
+      var v2 = HairView.of(big, 0)!;
+      expect((v2.shapes[i].tip - s0.root).distance,
+          closeTo((s0.tip - s0.root).distance * 1.5, 0.01));
+      expect(v2.shapes[i].widths[m], closeTo(s0.widths[m] * 1.5, 1e-6));
+      // The tip's handle pulled aside: the curve bends, the tip stays, and
+      // the handle is where it was dropped -- saved, and turned with it.
+      var h = s0.handles.$2;
+      expect(view.under(view.page(h), 3, 1.0, picked: i)?.grab, HairGrab.bend1);
+      var bent = view.dragged(HairHold(i, HairGrab.bend1), view.page(h),
+          view.page(h + Offset(view.head.h * 0.3, 0)));
+      var v3 = HairView.of(bent, 0)!;
+      expect((v3.shapes[i].handles.$2 - (h + Offset(view.head.h * 0.3, 0))).distance,
+          lessThan(1e-6));
+      expect((v3.shapes[i].tip - s0.tip).distance, lessThan(1e-6));
+      expect(v3.shapes[i].mid, isNot(s0.mid));
+      var stroke = bent.dna.hairRig!.strokes[i];
+      expect(HairStroke.fromJson(stroke.toJson())!.bend[3], closeTo(stroke.bend[3], 1e-3));
+      expect(stroke.mirrored.bend[3], -stroke.bend[3]);
       // On the crown: the top. On the cheek: nothing.
       var r0 = e.dna.hairRig;
       expect(r0, isNotNull);
       var crown = view.page(Offset(0, -view.head.h * 0.97));
+      expect(view.grownAt(view.page(s0.root)), isNotNull);
       expect(view.grownAt(crown)?.group, HairGroup.top);
       var cheek = view.page(Offset(view.head.w * 0.3, view.head.h * 0.3));
       expect(view.grownAt(cheek), isNull);

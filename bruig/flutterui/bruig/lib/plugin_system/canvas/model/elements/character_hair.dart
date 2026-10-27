@@ -58,6 +58,27 @@ class HairStroke {
   final double w1;
   final double w2;
 
+  /// shapedAt is where on the scalp its shape was made for -- lon and lat
+  /// -- when it has been moved from there: moved, a stroke keeps its shape
+  /// and only grows from somewhere else. Null for where it grows.
+  final (double, double)? shapedAt;
+
+  /// spin is how it has been turned about its root as a whole, a rotation
+  /// in the head's space as a quaternion -- w, then x, y, z -- so it turns
+  /// all the way round, as seen from wherever it was turned, keeping its
+  /// shape.
+  final List<double> spin;
+
+  static const List<double> noSpin = [1, 0, 0, 0];
+
+  /// bend is how far its curve's two handles -- off the root and off the
+  /// tip -- are pulled from where its length, lean and curl put them, as
+  /// steps in the head's space before it is turned: x, y, z for the root's,
+  /// then the tip's. Pulled by hand on the canvas.
+  final List<double> bend;
+
+  static const List<double> noBend = [0, 0, 0, 0, 0, 0];
+
   const HairStroke(this.group, this.lon, this.lat,
       {this.length = 0.5,
       this.lean = 0,
@@ -65,7 +86,10 @@ class HairStroke {
       this.turn = 0,
       this.w0 = 0.12,
       this.w1 = 0.13,
-      this.w2 = 0.02});
+      this.w2 = 0.02,
+      this.shapedAt,
+      this.spin = noSpin,
+      this.bend = noBend});
 
   HairStroke copyWith(
           {HairGroup? group,
@@ -77,7 +101,10 @@ class HairStroke {
           double? turn,
           double? w0,
           double? w1,
-          double? w2}) =>
+          double? w2,
+          (double, double)? shapedAt,
+          List<double>? spin,
+          List<double>? bend}) =>
       HairStroke(group ?? this.group, lon ?? this.lon,
           (lat ?? this.lat).clamp(-80.0, 90.0),
           length: (length ?? this.length).clamp(0.02, 6.0),
@@ -86,11 +113,33 @@ class HairStroke {
           turn: _wrap(turn ?? this.turn),
           w0: (w0 ?? this.w0).clamp(0.0, 1.0),
           w1: (w1 ?? this.w1).clamp(0.0, 1.0),
-          w2: (w2 ?? this.w2).clamp(0.0, 1.0));
+          w2: (w2 ?? this.w2).clamp(0.0, 1.0),
+          shapedAt: shapedAt ?? this.shapedAt,
+          spin: spin == null ? this.spin : _unit(spin),
+          bend: bend == null || bend.length != 6 ? this.bend : bend);
 
-  /// mirrored is it on the other side of the head.
-  HairStroke get mirrored =>
-      copyWith(lon: -lon, lean: -lean, curl: -curl, turn: -turn);
+  /// mirrored is it on the other side of the head: a turn the other way
+  /// round, seen in a mirror.
+  HairStroke get mirrored => HairStroke(group, -lon, lat,
+      length: length,
+      lean: -lean,
+      curl: -curl,
+      turn: -turn,
+      w0: w0,
+      w1: w1,
+      w2: w2,
+      shapedAt: shapedAt == null ? null : (-shapedAt!.$1, shapedAt!.$2),
+      spin: [spin[0], spin[1], -spin[2], -spin[3]],
+      bend: [-bend[0], bend[1], bend[2], -bend[3], bend[4], bend[5]]);
+
+  static List<double> _unit(List<double> q) {
+    if (q.length != 4) return noSpin;
+    var n = math.sqrt(q.fold(0.0, (a, v) => a + v * v));
+    return n < 1e-9 ? noSpin : [for (var v in q) v / n];
+  }
+
+  bool get _spun =>
+      (spin[0] - 1).abs() > 1e-9 || spin[1] != 0 || spin[2] != 0 || spin[3] != 0;
 
   static double _wrap(double degrees) {
     var d = degrees % 360;
@@ -106,6 +155,9 @@ class HairStroke {
         if (curl != 0) "curl": _r(curl),
         if (turn != 0) "turn": _r(turn),
         "w": [_r(w0), _r(w1), _r(w2)],
+        if (shapedAt case var at?) "shapedAt": [_r(at.$1), _r(at.$2)],
+        if (_spun) "spin": [for (var v in spin) (v * 100000).round() / 100000],
+        if (bend.any((v) => v != 0)) "bend": [for (var v in bend) _r(v)],
       };
 
   static double _r(double v) => (v * 1000).round() / 1000;
@@ -126,6 +178,24 @@ class HairStroke {
       w0: wAt(0, 0.12),
       w1: wAt(1, 0.13),
       w2: wAt(2, 0.02),
+      shapedAt: switch (json["shapedAt"]) {
+        [num a, num b] => (a.toDouble(), b.toDouble()),
+        _ => null,
+      },
+      bend: json["bend"] is List &&
+              (json["bend"] as List).length == 6 &&
+              (json["bend"] as List).every((v) => v is num)
+          ? [for (var v in json["bend"] as List) (v as num).toDouble()]
+          : null,
+      spin: switch (json["spin"]) {
+        [num a, num b, num c, num d] => [
+            a.toDouble(),
+            b.toDouble(),
+            c.toDouble(),
+            d.toDouble()
+          ],
+        _ => null,
+      },
     );
   }
 }
@@ -264,43 +334,46 @@ HairRig _short() => HairRig("Short", [
           lean: 0.2, w0: 0.12, w1: 0.12),
     ]);
 
-/// _messy is the anime boy's: a pointed fringe over the eyes, spiky at the
-/// back and sides, a cowlick on the crown.
+/// _messy is the anime boy's: a full dome over the crown, a fringe of
+/// pointed clumps down to the eyes, the sides to the jaw and a cowlick
+/// turned up off the crown.
 HairRig _messy() => HairRig("Messy", [
-      ..._fan(HairGroup.back, 11, 95, 265, 15, 0.55,
-          lean: 0.35,
-          curl: 0.2,
-          w0: 0.17,
-          w1: 0.15,
-          w2: 0.0,
-          jitter: 0.5,
-          seed: 3),
-      ..._fan(HairGroup.sides, 3, -105, -65, 22, 0.5,
-          lean: 0.1,
-          curl: 0.2,
-          w0: 0.14,
-          w1: 0.12,
-          w2: 0.0,
-          jitter: 0.3,
-          seed: 5),
-      ..._fan(HairGroup.sides, 3, 65, 105, 22, 0.5,
-          lean: 0.1,
-          curl: 0.2,
-          w0: 0.14,
-          w1: 0.12,
-          w2: 0.0,
-          jitter: 0.3,
-          seed: 7),
-      // A cowlick: one short tuft standing up off the crown.
-      ..._fan(HairGroup.top, 2, -10, 15, 84, 0.16,
-          lean: 0.6, curl: 0.5, w0: 0.06, w1: 0.05, w2: 0.0),
-      ..._fan(HairGroup.fringe, 7, -48, 48, 55, 0.58,
-          lean: 0.25,
-          curl: 0.15,
-          w0: 0.14,
-          w1: 0.12,
+      ..._fan(HairGroup.back, 13, 95, 265, 28, 0.72,
+          lean: 0.22,
+          curl: 0.1,
+          w0: 0.27,
+          w1: 0.22,
           w2: 0.0,
           jitter: 0.35,
+          seed: 3),
+      ..._fan(HairGroup.sides, 3, -112, -68, 34, 0.7,
+          lean: 0.08,
+          curl: 0.15,
+          w0: 0.24,
+          w1: 0.2,
+          w2: 0.0,
+          jitter: 0.25,
+          seed: 5),
+      ..._fan(HairGroup.sides, 3, 68, 112, 34, 0.7,
+          lean: 0.08,
+          curl: 0.15,
+          w0: 0.24,
+          w1: 0.2,
+          w2: 0.0,
+          jitter: 0.25,
+          seed: 7),
+      ..._fan(HairGroup.top, 5, -70, 70, 70, 0.42,
+          w0: 0.3, w1: 0.26, w2: 0.02, jitter: 0.2, seed: 9),
+      // A cowlick: one short tuft turned up off the crown.
+      const HairStroke(HairGroup.top, 8, 86,
+          length: 0.2, curl: 0.6, turn: 170, w0: 0.07, w1: 0.06, w2: 0.0),
+      ..._fan(HairGroup.fringe, 7, -52, 52, 62, 0.72,
+          lean: 0.2,
+          curl: 0.12,
+          w0: 0.22,
+          w1: 0.19,
+          w2: 0.0,
+          jitter: 0.3,
           seed: 11),
     ]);
 
