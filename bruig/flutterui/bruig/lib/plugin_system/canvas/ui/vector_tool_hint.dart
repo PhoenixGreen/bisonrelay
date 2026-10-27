@@ -32,12 +32,15 @@ String vectorToolLine(VectorTool tool) => switch (tool) {
       VectorTool.selectShapes => "Click shapes to pick them · Shift adds",
       VectorTool.pen => "Click to put points down · drag to curve",
       VectorTool.scale => "Drag right to thicken the line, left to thin it",
-      VectorTool.tint => "Paint over the drawing to tint it · Alt rubs off",
+      VectorTool.tint =>
+        "Paint over the drawing to tint it -- only the shapes picked, if any · Alt rubs off",
       VectorTool.boolean => "Pick shapes, then combine them",
       VectorTool.align => "Line up what the last select tool picked",
       VectorTool.corner => "Click a point to round or cut its corner",
-      VectorTool.pencil => "Draw freehand",
-      VectorTool.eraser => "Rub out what the eraser goes over",
+      VectorTool.pencil =>
+        "Draw freehand · on a picked shape, in its colour, it adds to it",
+      VectorTool.eraser =>
+        "Rub out what the eraser goes over -- only the shapes picked, if any",
       VectorTool.shapes => "Drag a shape out · a click puts one down",
       VectorTool.knife => "Draw a line through a shape to cut it",
       VectorTool.text => "Click to start text, or click text to type into it",

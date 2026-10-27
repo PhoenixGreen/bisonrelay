@@ -62,6 +62,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart' show vectorPathsOf;
+import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
+    show vectorLinePath, vectorShapePath;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_text_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
@@ -3249,12 +3252,67 @@ class CanvasStageState extends State<CanvasStage>
     }
     var space = VectorSpace(e);
     _vectorBefore = e;
+    _penInto = controller.vectorSelectedShapes;
     _penWidth = controller.vectorBrush.size / _scale * space.unitsPer;
     _penSamples = [_penSample(doc)];
     _penRuns = [_penSamples];
     controller.beginInteraction();
     _drawPencil();
     _mode = _DragMode.vectorPencil;
+  }
+
+  /// _penInto is the shapes picked as the pencil went down: one filled
+  /// shape, and what is drawn in its colour is added to it rather than
+  /// drawn as a shape of its own.
+  Set<int> _penInto = const {};
+
+  /// _mergePencil adds what the pencil has just drawn to the one filled
+  /// shape picked, where it touches it -- as a blob brush adds to a shape
+  /// -- so a part of a drawing is drawn bigger, not drawn over.
+  void _mergePencil() {
+    var before = _vectorBefore, e = controller.editingVector;
+    if (before == null || e == null || _penInto.length != 1) return;
+    var was = before.shapes ?? const <VectorShape>[];
+    var now = e.shapes ?? const <VectorShape>[];
+    var base = _penInto.first;
+    if (now.length <= was.length || base >= was.length) return;
+    if (groupMembers(before, base).length != 1) return;
+    var target = was[base];
+    // Only in its own colour, as a blob brush merges: a line drawn in
+    // another -- an eye on a face -- is a shape of its own on it.
+    var fill = target.fill, ink = controller.vectorPencilColour;
+    if (fill == null ||
+        (fill.r - ink.r).abs() > 0.01 ||
+        (fill.g - ink.g).abs() > 0.01 ||
+        (fill.b - ink.b).abs() > 0.01) {
+      return;
+    }
+    // What was drawn, as the area it covers: its line, as wide as it is
+    // drawn, and its fill.
+    Path area(VectorShape s) {
+      var out = Path();
+      if (s.fill != null) out = Path.combine(PathOperation.union, out, vectorShapePath(s));
+      if (s.stroke != null) out = Path.combine(PathOperation.union, out, vectorLinePath(s));
+      return out;
+    }
+
+    var added = now.sublist(was.length);
+    if (added.isEmpty) return;
+    var into = vectorShapePath(target);
+    var stroke = added.map(area).reduce((a, b) => Path.combine(PathOperation.union, a, b));
+    // Not touching it: a shape of its own, as drawn.
+    if (Path.combine(PathOperation.intersect, into, stroke).getBounds().isEmpty) {
+      return;
+    }
+    var merged = Path.combine(PathOperation.union, into, stroke);
+    var paths = vectorPathsOf(merged,
+        tolerance: 0.35 * VectorSpace(before).unitsPer);
+    if (paths.isEmpty) return;
+    controller.replaceElement(
+        before.copyWith(shapes: [
+          for (var (i, s) in was.indexed) i == base ? s.copyWith(paths: paths) : s,
+        ]),
+        transient: true);
   }
 
   void _applyPencil(Offset doc) {
@@ -3655,10 +3713,18 @@ class CanvasStageState extends State<CanvasStage>
         line: like.line,
         fill: like.fill,
         erase: like.erase);
-    _strokeOn = shapesUnder(e, at, like.width / 2);
+    _strokeOn = _onPicked(shapesUnder(e, at, like.width / 2));
     controller.replaceElement(
         withStrokeOn(e, _strokeOn, _stroke!, rubOut: rubOut),
         transient: true);
+  }
+
+  /// _onPicked is [under] -- the shapes a brush goes over -- kept to the
+  /// shapes picked, where any are: a tint or a rub-out stays inside what is
+  /// selected, however far over its edge the brush goes.
+  Set<int> _onPicked(Set<int> under) {
+    var picked = controller.vectorSelectedShapes;
+    return picked.isEmpty ? under : under.intersection(picked);
   }
 
   void _carryStroke(Offset doc) {
@@ -3669,7 +3735,7 @@ class CanvasStageState extends State<CanvasStage>
     // stroke is a few hundred points, not one for every pixel crossed.
     if ((at - stroke.points.last).distance < stroke.width / 10) return;
     _stroke = stroke.withPoint(at);
-    _strokeOn = {..._strokeOn, ...shapesUnder(before, at, stroke.width / 2)};
+    _strokeOn = {..._strokeOn, ..._onPicked(shapesUnder(before, at, stroke.width / 2))};
     controller.replaceElement(
         withStrokeOn(before, _strokeOn, _stroke!, rubOut: _strokeRubs),
         transient: true);
@@ -5909,6 +5975,8 @@ class CanvasStageState extends State<CanvasStage>
           controller.pickVectorShape(was.length);
         }
       }
+      if (_mode == _DragMode.vectorPencil) _mergePencil();
+      _penInto = const {};
       _stroke = null;
       _strokeOn = {};
       if (_mode == _DragMode.vectorScale && _scaleLetsGo && !_travelled) {

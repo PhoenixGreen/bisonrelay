@@ -1665,6 +1665,71 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets("with a shape picked, the tint brush paints only it", (tester) async {
+      var two = '<path d="M10 10 L45 10 L45 90 L10 90 Z" fill="red"/>'
+          '<path d="M55 10 L90 10 L90 90 L55 90 Z" fill="blue"/>';
+      var (c, view) = await stage(tester, element: drawing(two));
+      await open(tester, c, view, const Offset(150, 150));
+      c.pickVectorShape(1);
+      c.vectorTool = VectorTool.tint;
+      c.vectorBrushSize = 20;
+      await settle(tester);
+      var scale = view.pageRect.width / c.document.size.size.width;
+      // Right across both.
+      await tester.dragFrom(
+          onScreen(view, c, const Offset(115, 150)), Offset(70 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes![0].tints, isEmpty, reason: "not picked: left alone");
+      expect(now(c).shapes![1].tints, hasLength(1));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("with a filled shape picked, the pencil in its colour adds to it",
+        (tester) async {
+      var (c, view) = await stage(tester, element: drawing(square));
+      await open(tester, c, view, const Offset(150, 150));
+      c.pickVectorShape(0);
+      c.vectorTool = VectorTool.pencil;
+      c.vectorPencilColour = const Color(0xFFFF0000);
+      await settle(tester);
+      var before = now(c).shapes!.single;
+      var scale = view.pageRect.width / c.document.size.size.width;
+      // From inside it out past its right edge.
+      var g = await tester.startGesture(onScreen(view, c, const Offset(170, 150)));
+      for (var k = 1; k <= 10; k++) {
+        await g.moveTo(onScreen(view, c, const Offset(170, 150)) + Offset(k * 5 * scale, 0));
+        await tester.pump();
+      }
+      await g.up();
+      await tester.pumpAndSettle();
+      var shapes = now(c).shapes!;
+      expect(shapes, hasLength(1), reason: "drawn into it, not as a shape of its own");
+      expect(shapes.single.fill, before.fill);
+      double right(VectorShape s) => [
+            for (var p in s.paths)
+              for (var n in p.nodes) n.x
+          ].reduce(math.max);
+      expect(right(shapes.single), greaterThan(right(before) + 5), reason: "grown where drawn");
+      c.undo();
+      expect(now(c).shapes!.single.paths.single.nodes.length,
+          before.paths.single.nodes.length, reason: "one undo");
+      // In another colour -- a detail on it -- a stroke of its own.
+      c.vectorPencilColour = const Color(0xFF000000);
+      await settle(tester);
+      await tester.dragFrom(onScreen(view, c, const Offset(130, 130)), Offset(20 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes, hasLength(2));
+      c.undo();
+      // Nothing picked: a stroke of its own.
+      c.vectorPencilColour = const Color(0xFFFF0000);
+      c.pickVectorShape(-1);
+      await settle(tester);
+      await tester.dragFrom(onScreen(view, c, const Offset(130, 130)), Offset(20 * scale, 0));
+      await tester.pumpAndSettle();
+      expect(now(c).shapes, hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets("the pen taken out with a point picked carries on from it",
         (tester) async {
       var (c, view) = await stage(tester,

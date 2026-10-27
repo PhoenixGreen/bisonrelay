@@ -4363,6 +4363,21 @@ class CanvasController extends ChangeNotifier {
     replaceElement(withItemsAligned(e, items, how));
   }
 
+  /// vectorSelectedShapes is the shapes picked -- each the first of its
+  /// run of combined shapes -- whichever select tool picked them: what the
+  /// tint, the rub-out and the pencil work on, where any are. Empty for
+  /// none, when they work on whatever they go over.
+  Set<int> get vectorSelectedShapes {
+    var e = editingVector;
+    if (e == null) return const {};
+    var items = vectorItems;
+    if (items.isNotEmpty) return {for (var i in items) groupOf(e, i.shape)};
+    if (_vectorShape >= 0 && _vectorShape < (e.shapes?.length ?? 0)) {
+      return {groupOf(e, _vectorShape)};
+    }
+    return const {};
+  }
+
   void pickVectorShape(int shape) {
     if (_vectorShape == shape && _vectorPicks.isEmpty) return;
     _vectorShape = shape;
