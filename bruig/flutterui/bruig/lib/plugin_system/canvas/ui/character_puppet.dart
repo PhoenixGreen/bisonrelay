@@ -237,32 +237,54 @@ class CharacterPlacement {
   static Offset _toe(CharacterRig r, CharacterLimb leg) =>
       r.end(leg) + footShape(r, leg, r.footSize()).tip;
 
-  /// _pointed is [seen] with [leg]'s foot pointed so its toes are towards
-  /// [target], as the ankle sees them: measured on the rig as it stands,
-  /// a few steps, the body lifted on to its toes as far as they go into the
-  /// floor -- see CharacterRig.of.
+  /// _pointed is [seen] with [leg]'s foot pointed and turned so the tips
+  /// of its toes are where [target] is, as the ankle sees them: up and down
+  /// is how far it points, across how far it turns -- whichever way it is
+  /// seen, each measured on the rig as it stands, the body lifted on to its
+  /// toes as far as they go into the floor (see CharacterRig.of). Solved a
+  /// few damped steps at a time, so a foot seen toes on -- where pointing
+  /// it hardly moves the tip -- turns rather than sticks.
   CharacterPose _pointed(CharacterPose seen, CharacterLimb leg, Offset target) {
     var bone = ankleBone(leg.onLeft);
     var dna = element.style.dnaOf(element.dna);
-    double angle(Offset v) => math.atan2(v.dy, v.dx) * 180 / math.pi;
-    double wrap(double d) => (d + 540) % 360 - 180;
-    double tipAngle(CharacterPose q) {
+    Offset tipOf(double point, double turn) {
+      var q = seen.withSwing(bone, point).withAngle(bone, turn);
       var r = CharacterRig.of(dna, element.inView(q), bounds);
-      return angle(_toe(r, leg) - r.end(leg));
+      return _toe(r, leg) - r.end(leg);
     }
 
-    var want = angle(target - rig.end(leg));
-    var p = seen;
-    for (var k = 0; k < 4; k++) {
-      var now = tipAngle(p);
-      var miss = wrap(want - now);
-      if (miss.abs() < 0.3) break;
-      var rate = wrap(tipAngle(p.withSwing(bone, p.swing(bone) + 1)) - now);
-      // Seen toes on, the tip hardly moves as the foot points.
-      if (rate.abs() < 0.05) break;
-      p = p.withSwing(bone, (p.swing(bone) + miss / rate).clamp(-40.0, 85.0));
+    var want = target - rig.end(leg);
+    (double, double, double) solve(double point, double turn) {
+      for (var k = 0; k < 8; k++) {
+        var now = tipOf(point, turn);
+        var miss = want - now;
+        if (miss.distance < 0.05) break;
+        var a = tipOf(point + 1, turn) - now, b = tipOf(point, turn + 1) - now;
+        // Damped least squares: (JᵀJ + λI) d = Jᵀ miss.
+        var aa = a.dx * a.dx + a.dy * a.dy, bb = b.dx * b.dx + b.dy * b.dy;
+        var ab = a.dx * b.dx + a.dy * b.dy;
+        var lambda = 0.02 * (aa + bb) + 1e-9;
+        var ra = a.dx * miss.dx + a.dy * miss.dy, rb = b.dx * miss.dx + b.dy * miss.dy;
+        var m11 = aa + lambda, m22 = bb + lambda, det = m11 * m22 - ab * ab;
+        if (det.abs() < 1e-12) break;
+        point = (point + ((m22 * ra - ab * rb) / det).clamp(-20.0, 20.0))
+            .clamp(-40.0, 85.0);
+        turn = (turn + ((m11 * rb - ab * ra) / det).clamp(-20.0, 20.0))
+            .clamp(-60.0, 60.0);
+      }
+      return (point, turn, (want - tipOf(point, turn)).distance);
     }
-    return p;
+
+    // From where it is, and -- in case pointing further is what carried
+    // the toes away, past where they start to come back -- from flat and
+    // from half way: whichever lands nearest, where it is if all do.
+    var best = solve(seen.swing(bone), seen[bone]);
+    for (var start in const [0.0, 45.0]) {
+      var tried = solve(start, seen[bone]);
+      if (tried.$3 < best.$3 - 0.05) best = tried;
+    }
+    var (point, turn, _) = best;
+    return seen.withSwing(bone, point).withAngle(bone, turn);
   }
 
   Offset pin(CharacterPin pin) => toPage(localPin(pin));

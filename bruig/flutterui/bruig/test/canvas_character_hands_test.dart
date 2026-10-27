@@ -168,6 +168,22 @@ void main() {
     expect(posed.swing(CharacterBone.ankleR), 0, reason: "the other foot as it was");
     var after = CharacterPlacement.of(e.copyWith(pose: posed), 0);
     expect(after.rig.planted, greaterThan(0), reason: "up on its toes");
+    // Seen from the front -- toes on -- dragged across, the foot turns;
+    // pointed right down, dragged back up, it comes back up.
+    var front = _sketch(rest);
+    var fp = CharacterPlacement.of(front, 0);
+    var t0 = fp.pin(CharacterPin.toeL), a0 = fp.pin(CharacterPin.footL);
+    var aside = t0 + Offset(-(t0 - a0).distance * 1.5, 0);
+    var across = fp.posedBy(CharacterPin.toeL, aside);
+    expect(across[CharacterBone.ankleL].abs(), greaterThan(15), reason: "turned");
+    expect(across.swing(CharacterBone.ankleL).abs(), lessThan(15), reason: "not pointed");
+    var turned = CharacterPlacement.of(front.copyWith(pose: across), 0);
+    expect((turned.pin(CharacterPin.toeL) - turned.pin(CharacterPin.footL) - (aside - a0)).distance,
+        lessThan(0.3), reason: "the toes where they were dropped");
+    var pointed = front.copyWith(pose: rest.withSwing(CharacterBone.ankleL, 85));
+    var pp = CharacterPlacement.of(pointed, 0);
+    var up = pp.posedBy(CharacterPin.toeL, pp.pin(CharacterPin.footL) + (t0 - a0));
+    expect(up.swing(CharacterBone.ankleL), lessThan(20), reason: "not stuck pointing down");
     // No toes to point on four legs.
     var dog = characterCast.firstWhere((c) => c.dna.fourLegs);
     expect(CharacterPlacement.of(_sketch(rest, dog.dna), 0).pins, isNot(contains(CharacterPin.toeL)));

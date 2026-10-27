@@ -138,7 +138,8 @@ Widget footEditor(CanvasController controller, CharacterElement e,
       help: "How the foot stands: pointed, its toes bent at the ball, and "
           "turned out. It stays on the ground -- pointing it lifts the body "
           "on to its toes -- unless the character is off the ground already. "
-          "Drag the dot on the toes on the canvas to point it.",
+          "Drag the dot on the toes on the canvas: up and down to point it, "
+          "across to turn it in or out.",
       children: [
         CanvasDropdown<String>(
           key: const ValueKey("characterFootStancePick"),
@@ -163,7 +164,7 @@ Widget footEditor(CanvasController controller, CharacterElement e,
         _slider("characterToes$side", "Toes", pose.swing(toesBone(left)), -30,
             60, (v) => at.swing(toesBone(left), v), commit),
         _slider("characterFootTurn$side", "Turn out", pose[ankleBone(left)],
-            -30, 45, (v) => at.angle(ankleBone(left), v), commit),
+            -60, 60, (v) => at.angle(ankleBone(left), v), commit),
         _both(controller, "Both feet"),
       ]);
 }
