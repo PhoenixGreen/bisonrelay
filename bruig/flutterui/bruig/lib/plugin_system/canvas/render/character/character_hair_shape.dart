@@ -147,11 +147,15 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
           parts.fold(0.0, (a, p) => a + p.$1[i] * p.$2)
       ];
   // Its shape, as steps from the root.
-  var p1 = sum([(o, len * bulge * vol), (down, len * 0.1 * fall)]);
-  var tip = sum([(o, len * out), (down, len * fall), (t, len * s.lean)]);
+  // How far it stands off the head is the head's business, not the
+  // length's: long hair falls close down the back rather than bowing out a
+  // head's width from it.
+  double off(double k) => k.sign * math.min(k.abs() * len, 0.32 + 0.1 * k.abs() * len);
+  var p1 = sum([(o, off(bulge * vol)), (down, len * 0.1 * fall)]);
+  var tip = sum([(o, off(out)), (down, len * fall), (t, len * s.lean)]);
   var p2 = sum([
     (tip, 1),
-    (o, len * lift * vol),
+    (o, off(lift * vol)),
     (down, -len * 0.3 * fall),
     (t, len * curl * 0.6)
   ]);
@@ -179,9 +183,11 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
   var b = s.bend;
   p1 = [p1[0] + b[0], p1[1] + b[1], p1[2] + b[2]];
   p2 = [p2[0] + b[3], p2[1] + b[4], p2[2] + b[5]];
-  p1 = turned(p1);
-  tip = turned(tip);
-  p2 = turned(p2);
+  // As big as it is as a whole.
+  var size = s.size;
+  p1 = [for (var v in turned(p1)) v * size];
+  tip = [for (var v in turned(tip)) v * size];
+  p2 = [for (var v in turned(p2)) v * size];
   // Down the middle, finely, then out each side as wide as it is.
   var mid = <Offset>[];
   const steps = 20;
@@ -203,6 +209,7 @@ HairStrokeShape hairStrokeShape(HairStroke s, HairGroupLook g, HeadView head) {
             ? s.w0 + (s.w1 - s.w0) * q * 2
             : s.w1 + (s.w2 - s.w1) * (q - 0.5) * 2) *
         g.width *
+        size *
         head.h;
     widths.add(width);
     left.add(mid[k] + n * width);

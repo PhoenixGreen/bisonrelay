@@ -118,8 +118,16 @@ Paint _shadowPaint(CharacterShadow kind, double size, {double strength = 1}) {
 
 /// characterBox is where [e] is drawn in its own [box] on [frame]: as it
 /// is, or -- with depth -- nearer and bigger for having moved down the
-/// page, further and smaller for having moved up it, about its feet.
+/// page, further and smaller for having moved up it, about its feet. Its
+/// head stands a little below the top of the box, so the hair over it --
+/// as full as it is -- is inside the element's frame and can be taken
+/// hold of with it.
 Rect characterBox(CharacterElement e, int frame, Rect box) {
+  if (!e.body.inThreeD) {
+    var heads = e.style.dnaOf(e.dna).headsTall;
+    var room = box.height * 0.2 / math.max(1.0, heads);
+    box = Rect.fromLTRB(box.left, box.top + room, box.right, box.bottom);
+  }
   if (e.depth == 0) return box;
   var dy = e.poseAt(frame).dy;
   var f = (1 + e.depth * dy / math.max(1.0, e.height)).clamp(0.25, 4.0);
@@ -954,7 +962,19 @@ class _Drawing {
       u * (0.06 + 0.105 * _eyeKit.$2 * (1 + 0.3 * _a(Look.eyeSize))));
   Offset _mouthPlace(double w) =>
       _mouthAt ??
-      Offset(_across(0, w * 0.88), u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+      Offset(
+          _across(0, w * 0.88) +
+              (math.sin(yaw) > 0 ? -1.0 : 1.0) * w * 0.1 * _faceForward,
+          u * 0.3 + _nodShift - _a(Look.mouthHeight) * u * 0.05);
+
+  /// _faceForward is how far the face's own line stands forward of the
+  /// round of the head -- nothing face on, all of it side on: see
+  /// _headPath.
+  double get _faceForward {
+    if (dna.species.animal) return 0;
+    var k = ((math.sin(yaw).abs() - 0.3) / 0.55).clamp(0.0, 1.0);
+    return k * k * (3 - 2 * k);
+  }
 
   /// _eyeKind is how the eyes are drawn: as the style draws them -- except
   /// an animal's, where the style's are made for a person's face, which are
@@ -1639,14 +1659,47 @@ class _Drawing {
   /// _foot draws the foot on the end of [limb] in [colour] -- see
   /// character_extremities.dart: as it points, and its toes bent up at
   /// the ball.
-  void _foot(CharacterLimb limb, Color colour, {bool bareFoot = false}) {
+  void _foot(CharacterLimb limb, Color colour, {bool bareFoot = false}) =>
+      _behindLeg(limb, () => _footIn(limb, colour, bareFoot: bareFoot));
+
+  /// _behindLeg draws [draw] -- a foot, a shoe -- with the leg above it in
+  /// front, where the foot is turned so it is behind the leg: toes away
+  /// from the reader, or the heel lifted up the back of the leg as it
+  /// points. The leg is drawn first, so it is left out of the foot instead.
+  void _behindLeg(CharacterLimb limb, void Function() draw) {
+    var frame = ExtremityFrame(rig, rig.frames[limb]!);
+    var away = frame.depth(0, 0, 1) < -0.1;
+    var pointed = frame.down(0, 0, 1) > 0.25;
+    if (!away && !pointed) {
+      draw();
+      return;
+    }
+    var fit = 1.0;
+    for (var (_, g) in _wearing((g) => g.kind.coversLegs)) {
+      fit = math.max(fit, g.fitOr * 1.12);
+    }
+    var leg = _limbShape(_along(limb, 0.5, 0.95), legWidth * fit,
+        t0: 0.5, t1: 0.95, leg: true, limb: limb);
+    canvas.save();
+    canvas.clipPath(Path.combine(PathOperation.difference,
+        Path()..addRect(leg.getBounds().inflate(rig.unit * 4)), leg));
+    draw();
+    canvas.restore();
+  }
+
+  void _footIn(CharacterLimb limb, Color colour, {bool bareFoot = false}) {
     var size = rig.footSize(legWidth);
     var shape = footShape(rig, limb, size,
         scale: bareFoot ? 0.9 : 0.95, tall: bareFoot ? 0.86 : 0.95);
     _fill(shape.path.shift(_end(limb)), colour);
   }
 
-  void _shoe(CharacterLimb limb, Garment g, int i) {
+  // A boot comes up the leg: none of it is behind the leg.
+  void _shoe(CharacterLimb limb, Garment g, int i) => g.kind == GarmentKind.boots
+      ? _shoeIn(limb, g, i)
+      : _behindLeg(limb, () => _shoeIn(limb, g, i));
+
+  void _shoeIn(CharacterLimb limb, Garment g, int i) {
     var (centre, tip, length, drop) = _footBox(limb);
     var colour = faded(g.color, g.condition.fade);
     if (g.kind == GarmentKind.boots) {
@@ -2283,27 +2336,30 @@ class _Drawing {
         // The hood, rolled round behind the neck: a band thickest at the
         // back of the neck, thinning to the shoulders, the neck in front of
         // it, its opening a shade darker inside.
+        // Up behind the neck from the shoulders, its two edges coming down
+        // either side of the neck to a small V at the front.
         var hood = Path()
-          ..moveTo(off(0.66, -0.02).dx, off(0.66, -0.02).dy)
-          ..quadraticBezierTo(off(0.5, 0.4).dx, off(0.5, 0.4).dy,
-              off(0, 0.42).dx, off(0, 0.42).dy)
-          ..quadraticBezierTo(off(-0.5, 0.4).dx, off(-0.5, 0.4).dy,
-              off(-0.66, -0.02).dx, off(-0.66, -0.02).dy)
-          ..quadraticBezierTo(off(-0.3, -0.16).dx, off(-0.3, -0.16).dy,
-              off(0, -0.1).dx, off(0, -0.1).dy)
-          ..quadraticBezierTo(off(0.3, -0.16).dx, off(0.3, -0.16).dy,
-              off(0.66, -0.02).dx, off(0.66, -0.02).dy)
+          ..moveTo(off(0.6, 0.02).dx, off(0.6, 0.02).dy)
+          ..quadraticBezierTo(off(0.5, -0.3).dx, off(0.5, -0.3).dy,
+              off(0, -0.32).dx, off(0, -0.32).dy)
+          ..quadraticBezierTo(off(-0.5, -0.3).dx, off(-0.5, -0.3).dy,
+              off(-0.6, 0.02).dx, off(-0.6, 0.02).dy)
+          ..quadraticBezierTo(off(-0.3, 0.0).dx, off(-0.3, 0.0).dy,
+              off(0, 0.14).dx, off(0, 0.14).dy)
+          ..quadraticBezierTo(off(0.3, 0.0).dx, off(0.3, 0.0).dy,
+              off(0.6, 0.02).dx, off(0.6, 0.02).dy)
           ..close();
         // The neck, where it is on the page: the front is drawn moved
         // round with the turn.
         hood = Path.combine(PathOperation.difference, hood,
             _neckPath().shift(Offset(side * half * 0.4, 0)));
         _fill(hood, Color.lerp(colour, const Color(0xFF000000), 0.04)!);
+        // The V where its edges cross.
         canvas.drawPath(
             Path()
-              ..moveTo(off(0.42, 0.05).dx, off(0.42, 0.05).dy)
-              ..quadraticBezierTo(off(0, -0.05).dx, off(0, -0.05).dy,
-                  off(-0.42, 0.05).dx, off(-0.42, 0.05).dy),
+              ..moveTo(off(0.16, -0.06).dx, off(0.16, -0.06).dy)
+              ..lineTo(off(0, 0.12).dx, off(0, 0.12).dy)
+              ..lineTo(off(-0.08, 0.04).dx, off(-0.08, 0.04).dy),
             line..strokeWidth = edge * 1.2);
         var pocket = Offset.lerp(rig.chest, rig.hips, 0.72)!;
         canvas.drawRRect(
@@ -2317,7 +2373,7 @@ class _Drawing {
           ..color = g.color2.withValues(alpha: 0.85);
         // The drawstrings, out of the hood's opening, each with a tip.
         for (var s in [-1.0, 1.0]) {
-          var from = off(s * 0.2, -0.08);
+          var from = off(s * 0.12, -0.02);
           var to = from - up * (u * 0.42) + across * (s * u * 0.02);
           canvas.drawLine(from, to, string);
           canvas.drawLine(to, to - up * (u * 0.05), string..strokeWidth = edge * 2.2);
@@ -3496,9 +3552,8 @@ class _Drawing {
   Path _headPath(double w, double h) {
     var head = _headOval(w, h);
     var side = math.sin(yaw);
-    var k = ((side.abs() - 0.3) / 0.55).clamp(0.0, 1.0);
-    if (k <= 0 || dna.species.animal) return head;
-    k = k * k * (3 - 2 * k);
+    var k = _faceForward;
+    if (k <= 0) return head;
     var dir = side > 0 ? -1.0 : 1.0;
     var front = _across(0, w);
     var chinOut = 1 + 0.4 * _a(Look.chin) + 0.3 * _a(Look.chinLength);
@@ -3512,11 +3567,12 @@ class _Drawing {
       // which leaves the eye set back in from the face's line.
       ..quadraticBezierTo(at(0.14 * k, 0.2).dx, at(0.14 * k, 0.2).dy,
           at(0.1 * k, 0.55).dx, at(0.1 * k, 0.55).dy)
-      ..quadraticBezierTo(at(0.06 * k, 0.82 * chinOut).dx,
-          at(0.06 * k, 0.82 * chinOut).dy, at(-0.12, 0.92 + 0.08 * k * chinOut).dx,
-          at(-0.12, 0.92 + 0.08 * k * chinOut).dy)
-      ..quadraticBezierTo(at(-0.45, 1.0 * jawDeep).dx, at(-0.45, 1.0 * jawDeep).dy,
-          at(-0.8, 0.7).dx, at(-0.8, 0.7).dy)
+      // A small soft chin, and the jaw running back up under the ear.
+      ..quadraticBezierTo(at(0.04 * k, 0.8 * chinOut).dx,
+          at(0.04 * k, 0.8 * chinOut).dy, at(-0.16, 0.88 + 0.06 * k * chinOut).dx,
+          at(-0.16, 0.88 + 0.06 * k * chinOut).dy)
+      ..quadraticBezierTo(at(-0.42, 0.92 * jawDeep).dx, at(-0.42, 0.92 * jawDeep).dy,
+          at(-0.8, 0.62).dx, at(-0.8, 0.62).dy)
       ..close();
     return Path.combine(PathOperation.union, head, face);
   }
@@ -4064,9 +4120,10 @@ class _Drawing {
       return;
     }
     if (front) return;
-    // In profile: a point past the outline, which way the face is turned.
+    // In profile: a point past the outline, which way the face is turned --
+    // the face's own line, which stands forward of the round of the head.
     var dir = side > 0 ? -1.0 : 1.0;
-    var x = _across(0, w * 0.97);
+    var x = _across(0, w * 0.97) + dir * w * 0.11 * _faceForward;
     var out = u * 0.13 * (side.abs() - 0.45).clamp(0.0, 0.55) / 0.55 *
         (1 + 0.5 * _a(Look.noseBridge)) * nl;
     // A style that draws the nose as a tick from the front gives it a

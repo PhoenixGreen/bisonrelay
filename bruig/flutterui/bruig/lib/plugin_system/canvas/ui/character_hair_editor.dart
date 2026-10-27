@@ -223,7 +223,7 @@ class HairView {
         var k = hold.grab.index - HairGrab.width0.index;
         var (_, dir) = widthKnobAt(i, k, 1);
         var moved = step.dx * dir.dx + step.dy * dir.dy;
-        var per = hair.lookOf(s.group).width * head.h;
+        var per = hair.lookOf(s.group).width * s.size * head.h;
         if (per <= 0) return element;
         var dw = moved / per;
         next = switch (k) {
@@ -234,7 +234,7 @@ class HairView {
       case HairGrab.bend0 || HairGrab.bend1:
         // The handle pulled across the page, kept as it was before the
         // stroke was turned, so it turns with it.
-        var d = unturned(s, head.unstep(step));
+        var d = [for (var v in unturned(s, head.unstep(step))) v / s.size];
         var b = [...s.bend];
         var o = hold.grab == HairGrab.bend0 ? 0 : 3;
         for (var k = 0; k < 3; k++) {
@@ -246,8 +246,7 @@ class HairView {
         var r0 = (headOf(from) - shape.root).distance;
         if (r0 < 1e-6) return element;
         var f = (headOf(to) - shape.root).distance / r0;
-        next = s.copyWith(
-            length: s.length * f, w0: s.w0 * f, w1: s.w1 * f, w2: s.w2 * f);
+        next = s.copyWith(size: s.size * f);
     }
     return element.copyWith(
         dna: element.dna.copyWith(hairRig: hair.withStroke(i, next)));

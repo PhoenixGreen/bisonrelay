@@ -213,6 +213,32 @@ void main() {
       await tap("characterWornOff-$cap");
       expect(get().dna.wardrobe.any((g) => g.kind == GarmentKind.cap), isFalse);
       expect(c.pickedCharacterLayer, isNull);
+
+      // A layer's settings open right under it, between it and the next.
+      await tap("layer-${BodyLayer.eyes.name}");
+      var detail = find.byKey(ValueKey("layerDetail-${BodyLayer.eyes.name}"));
+      expect(detail, findsOneWidget);
+      expect(find.descendant(of: detail, matching: find.byKey(const ValueKey("characterLayerLook-c-eyes"))),
+          findsOneWidget);
+      var below = tester.getTopLeft(detail).dy;
+      expect(below, greaterThan(tester.getTopLeft(find.byKey(ValueKey("layer-${BodyLayer.eyes.name}"))).dy));
+      expect(below, lessThan(tester.getTopLeft(find.byKey(ValueKey("layer-${BodyLayer.nose.name}"))).dy));
+
+      // The pencil: taken apart on this view, and the drawing tools on it.
+      await tap("layerDraw-${BodyLayer.mouth.name}");
+      expect(c.drawingOn, "c");
+      expect(c.drawingLayer, BodyLayer.mouth.name);
+      expect(c.layerTakenApart("c", BodyLayer.mouth.name), isTrue);
+      expect(c.pickedCharacterLayer, BodyLayer.mouth.name);
+      await tap("layerDraw-${BodyLayer.mouth.name}");
+      expect(c.drawingOn, isNull, reason: "its pencil again: done");
+
+      // The views, side by side: one picked turns it to that view.
+      expect(find.byKey(const ValueKey("characterViewStrip")), findsOneWidget);
+      await tap("characterView-90,0");
+      expect(get().pose.turn, 90);
+      await tap("characterView-0,0");
+      expect(get().pose.turn, 0);
       expect(tester.takeException(), isNull);
     });
   });

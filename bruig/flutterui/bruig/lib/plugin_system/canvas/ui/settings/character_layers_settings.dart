@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -80,12 +85,19 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
       ].join(" · "),
       initiallyOpen: true,
       children: [
+        _viewStrip(controller, e, write, begin, commit),
         _LayerList(
           key: const ValueKey("characterLayerList"),
           rows: rows,
           hidden: hidden,
           picked: picked,
           solo: solo,
+          drawingOn: controller.drawingOn == e.id
+              ? (controller.drawingLayer ??
+                  (controller.drawingGarment == null
+                      ? null
+                      : garmentLayer(controller.drawingGarment!)))
+              : null,
           onPick: (key) => controller.pickCharacterLayer(picked == key ? null : key),
           onShow: (key, shown) {
             begin();
@@ -93,8 +105,25 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
             commit();
           },
           onSolo: (key) => controller.soloLayer(e.id, key),
-        ),
-        if (pickedRow != null) ...[
+          onDraw: (key) {
+            // Drawing on it already: done. Otherwise, taken apart on this
+            // view -- its own shapes, to edit -- and the tools on it.
+            if (controller.drawingOn == e.id &&
+                (controller.drawingLayer == key ||
+                    (controller.drawingGarment != null &&
+                        garmentLayer(controller.drawingGarment!) == key))) {
+              controller.stopDrawingOnCharacter();
+              return;
+            }
+            controller.pickCharacterLayer(key);
+            if (!controller.layerTakenApart(e.id, key)) {
+              controller.takeApartCharacterLayer(e.id, key);
+            }
+            controller.drawOnCharacter(e.id, layer: key);
+          },
+          detail: pickedRow == null
+              ? null
+              : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _onThisView(controller, e, pickedRow),
           if (BodyLayer.fromName(pickedRow.key) case var body?
               when controller.layerTakenApart(e.id, pickedRow.key))
@@ -144,10 +173,13 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
               write: write,
               commit: commit,
             ),
-        ] else
+              ]),
+        ),
+        if (pickedRow == null)
           const CanvasHint(
-              "Pick a layer to shape it here. The eye shows or hides it; S solos it, "
-              "drawing everything else faint behind it."),
+              "Pick a layer to shape it: its settings open under it. The eye "
+              "shows or hides it; the pencil edits it with the drawing tools; "
+              "S solos it, drawing everything else faint behind it."),
         // Clothes put on as layers of their own.
         WardrobeAdder(
           key: ValueKey("characterLayerAdd-${e.id}"),
@@ -157,6 +189,47 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
           commit: commit,
         ),
       ]);
+}
+
+/// _viewStrip is the character from each of its views, side by side --
+/// what a change to a layer does on every one of them -- the view it is
+/// seen from lit, and a tap on another showing that one.
+Widget _viewStrip(CanvasController controller, CharacterElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  var frame = controller.frame;
+  var now = e.viewKey(e.inView(e.poseAtFrame(frame)));
+  var views = panelOptions(e, adding: false);
+  return CanvasTiles<String>(
+    key: const ValueKey("characterViewStrip"),
+    label: "Views",
+    help: "The character from each of its views, as it is drawn there: what "
+        "changing a layer does on every one. Pick one to see it from there "
+        "on the canvas -- and to draw on it.",
+    scrolls: true,
+    tileWidth: 64,
+    previewHeight: 96,
+    tiles: [
+      for (var (key, label) in views)
+        CanvasTile(key, label.split(" · ").first,
+            drawnFrom: "${identityHashCode(e)}|$key|$frame",
+            paint: (canvas, size) {
+              var shown = showPanel(controller, e, key);
+              var b = e.bounds;
+              var k = math.min(size.width / b.width, size.height / b.height);
+              canvas.translate((size.width - b.width * k) / 2, (size.height - b.height * k) / 2);
+              canvas.scale(k);
+              canvas.translate(-b.left, -b.top);
+              paintElement(canvas, shown, frame);
+            }),
+    ],
+    selected: (key) => key == now,
+    keyOf: (key) => "characterView-$key",
+    onPick: (key) {
+      begin();
+      write(showPanel(controller, e, key));
+      commit();
+    },
+  );
 }
 
 /// _hands and _feet are whether [e] has hands with fingers, and feet that
@@ -174,6 +247,14 @@ class _LayerList extends StatelessWidget {
   final ValueChanged<String> onPick;
   final void Function(String key, bool shown) onShow;
   final ValueChanged<String> onSolo;
+
+  /// drawingOn is the layer being edited with the drawing tools, and onDraw
+  /// what its pencil does.
+  final String? drawingOn;
+  final ValueChanged<String> onDraw;
+
+  /// detail is the picked layer's settings, opened under it.
+  final Widget? detail;
   const _LayerList(
       {required this.rows,
       required this.hidden,
@@ -182,6 +263,9 @@ class _LayerList extends StatelessWidget {
       required this.onPick,
       required this.onShow,
       required this.onSolo,
+      required this.onDraw,
+      this.drawingOn,
+      this.detail,
       super.key});
 
   @override
@@ -243,6 +327,17 @@ class _LayerList extends StatelessWidget {
                 ),
               ),
             ),
+            IconButton(
+              key: ValueKey("layerDraw-${r.key}"),
+              tooltip: drawingOn == r.key
+                  ? "Stop editing ${r.label}"
+                  : "Edit ${r.label} with the drawing tools",
+              iconSize: 16,
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onDraw(r.key),
+              icon: Icon(drawingOn == r.key ? Icons.edit : Icons.edit_outlined,
+                  color: drawingOn == r.key ? c.primary : c.onSurfaceVariant),
+            ),
             Tooltip(
               message: soloed ? "Stop soloing" : "Solo ${r.label}",
               child: InkWell(
@@ -270,6 +365,18 @@ class _LayerList extends StatelessWidget {
           ]),
         ),
       ));
+      // The picked layer's settings, right under it.
+      if (on && detail != null) {
+        children.add(Container(
+          key: ValueKey("layerDetail-${r.key}"),
+          margin: const EdgeInsets.fromLTRB(10, 2, 0, 8),
+          padding: const EdgeInsets.only(left: 8),
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: c.primary.withValues(alpha: 0.5), width: 2)),
+          ),
+          child: detail,
+        ));
+      }
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
   }

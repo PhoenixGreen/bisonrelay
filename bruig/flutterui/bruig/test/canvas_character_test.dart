@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart' show characterBox;
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -951,7 +952,7 @@ ${rows.join("\n")}
       var e = juno().copyWith(style: CharacterStyle.chibi);
       var at = CharacterPlacement.of(e, 0);
       var styled = CharacterRig.of(
-          CharacterStyle.chibi.dnaOf(e.dna), e.pose, e.bounds);
+          CharacterStyle.chibi.dnaOf(e.dna), e.pose, characterBox(e, 0, e.bounds));
       expectNear(at.pin(CharacterPin.handR), styled.wristR);
     });
   });

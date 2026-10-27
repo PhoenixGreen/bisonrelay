@@ -181,10 +181,16 @@ void main() {
       var e = who("a", on: "").copyWith(depth: 1).withBase(
           track: ElementTrack(const [Keyframe(frame: 0, dy: -210)])) as CharacterElement;
       var box = characterBox(e, 0, e.bounds);
-      expect(box.height, closeTo(210, 1e-6));
+      // Half as tall as it is drawn at its own place, about its feet.
+      var still = characterBox(e.copyWith(depth: 0), 0, e.bounds);
+      expect(box.height, closeTo(still.height * 0.5, 1e-6));
       expect(box.bottom, e.bounds.bottom);
+      // At its own place: the box, with room at the top for its hair.
       var flat = who("b", on: "");
-      expect(characterBox(flat, 0, flat.bounds), flat.bounds);
+      var drawn = characterBox(flat, 0, flat.bounds);
+      expect(drawn.bottom, flat.bounds.bottom);
+      expect(drawn.top, greaterThan(flat.bounds.top));
+      expect(drawn.top - flat.bounds.top, lessThan(flat.bounds.height * 0.1));
     });
 
     test("a shadow is drawn, or not", () async {

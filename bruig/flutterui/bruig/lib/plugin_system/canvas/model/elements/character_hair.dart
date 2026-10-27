@@ -80,6 +80,10 @@ class HairStroke {
 
   static const List<double> noBend = [0, 0, 0, 0, 0, 0];
 
+  /// size is how big it is as a whole -- every part of it, long and wide
+  /// -- however it is shaped: what its scale knob changes.
+  final double size;
+
   const HairStroke(this.group, this.lon, this.lat,
       {this.length = 0.5,
       this.lean = 0,
@@ -90,7 +94,8 @@ class HairStroke {
       this.w2 = 0.02,
       this.shapedAt,
       this.spin = noSpin,
-      this.bend = noBend});
+      this.bend = noBend,
+      this.size = 1});
 
   HairStroke copyWith(
           {HairGroup? group,
@@ -105,7 +110,8 @@ class HairStroke {
           double? w2,
           (double, double)? shapedAt,
           List<double>? spin,
-          List<double>? bend}) =>
+          List<double>? bend,
+          double? size}) =>
       HairStroke(group ?? this.group, lon ?? this.lon,
           (lat ?? this.lat).clamp(-80.0, 90.0),
           length: (length ?? this.length).clamp(0.02, 6.0),
@@ -117,7 +123,8 @@ class HairStroke {
           w2: (w2 ?? this.w2).clamp(0.0, 1.0),
           shapedAt: shapedAt ?? this.shapedAt,
           spin: spin == null ? this.spin : _unit(spin),
-          bend: bend == null || bend.length != 6 ? this.bend : bend);
+          bend: bend == null || bend.length != 6 ? this.bend : bend,
+          size: (size ?? this.size).clamp(0.1, 8.0));
 
   /// mirrored is it on the other side of the head: a turn the other way
   /// round, seen in a mirror.
@@ -131,7 +138,8 @@ class HairStroke {
       w2: w2,
       shapedAt: shapedAt == null ? null : (-shapedAt!.$1, shapedAt!.$2),
       spin: [spin[0], spin[1], -spin[2], -spin[3]],
-      bend: [-bend[0], bend[1], bend[2], -bend[3], bend[4], bend[5]]);
+      bend: [-bend[0], bend[1], bend[2], -bend[3], bend[4], bend[5]],
+      size: size);
 
   static List<double> _unit(List<double> q) {
     if (q.length != 4) return noSpin;
@@ -159,6 +167,7 @@ class HairStroke {
         if (shapedAt case var at?) "shapedAt": [_r(at.$1), _r(at.$2)],
         if (_spun) "spin": [for (var v in spin) (v * 100000).round() / 100000],
         if (bend.any((v) => v != 0)) "bend": [for (var v in bend) _r(v)],
+        if (size != 1) "size": _r(size),
       };
 
   static double _r(double v) => (v * 1000).round() / 1000;
@@ -183,6 +192,7 @@ class HairStroke {
         [num a, num b] => (a.toDouble(), b.toDouble()),
         _ => null,
       },
+      size: jsonDouble(json["size"], 1),
       bend: json["bend"] is List &&
               (json["bend"] as List).length == 6 &&
               (json["bend"] as List).every((v) => v is num)
