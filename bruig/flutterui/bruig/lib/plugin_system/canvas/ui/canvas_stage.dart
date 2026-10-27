@@ -1900,7 +1900,8 @@ class CanvasStageState extends State<CanvasStage>
       if (view.under(doc, _scale, reach) case var hold?) {
         controller.beginInteraction();
         if (hold.added) {
-          who = withRigPoint(who, hold.limb, hold.point);
+          who = withRigPoint(who, hold.limb, hold.point,
+              mirror: controller.mirrorEdits);
           controller.replaceElement(who, transient: true);
           hold = RigHold(hold.limb, hold.point, RigGrab.centre);
         }
@@ -5207,14 +5208,14 @@ class CanvasStageState extends State<CanvasStage>
         if ((_faceStart, _faceHold) case (var start?, var hold?)) {
           controller.replaceElement(
               faceDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate, document: document),
+                  frameRate: document.frameRate, document: document, mirror: controller.mirrorEdits),
               transient: true);
         }
       case _DragMode.characterRig:
         if ((_rigStart, _rigHold) case (var start?, var hold?)) {
           controller.replaceElement(
               rigDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate, document: document),
+                  frameRate: document.frameRate, document: document, mirror: controller.mirrorEdits),
               transient: true);
         }
       case _DragMode.characterGuide:

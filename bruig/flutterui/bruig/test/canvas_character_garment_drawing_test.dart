@@ -177,7 +177,11 @@ void main() {
           reason: "in place of the shoes worn");
       expect(c.drawingOn, "c");
       expect(c.drawingGarment, mine);
-      expect(find.text("Drawing: My shoes"), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("characterDrawGarment")),
+              matching: find.text("My shoes")),
+          findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

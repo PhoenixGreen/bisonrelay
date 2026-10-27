@@ -2142,6 +2142,10 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   final T value;
   final List<(T, String)> options;
   final double width;
+  /// stepped puts an arrow either side to step through the options, as a
+  /// dropdown in a card has, wherever it is: in a floating bar, say.
+  final bool stepped;
+
   final ValueChanged<T> onChanged;
 
   /// onPreview is told of each option the pointer passes over while the list
@@ -2207,6 +2211,7 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
     this.tight = false,
     this.enabled = true,
     this.grow = true,
+    this.stepped = false,
     this.marked = const {},
     this.onRemove,
     this.removeTip,
@@ -2335,7 +2340,8 @@ class CanvasDropdown<T> extends StatelessWidget implements CanvasGrowable {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var card = CanvasCards.on(context) && !CanvasControlScope.isInline(context);
+    var card = stepped ||
+        CanvasCards.on(context) && !CanvasControlScope.isInline(context);
     // A bare DropdownButton rather than a DropdownButtonFormField, which
     // is a FormField and keeps its own copy of the value. In a settings
     // bar the value changes from outside constantly -- a different element

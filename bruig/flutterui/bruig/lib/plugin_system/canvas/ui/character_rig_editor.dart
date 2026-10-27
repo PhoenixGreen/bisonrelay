@@ -124,28 +124,53 @@ double _toSegment(Offset p, Offset a, Offset b) {
   return (p - (a + ab * t)).distance;
 }
 
-/// withRigPoint is [e] with [point] on [limb].
+/// oppositeLimb is the arm or leg on the other side.
+CharacterLimb oppositeLimb(CharacterLimb limb) => switch (limb) {
+      CharacterLimb.armL => CharacterLimb.armR,
+      CharacterLimb.armR => CharacterLimb.armL,
+      CharacterLimb.legL => CharacterLimb.legR,
+      CharacterLimb.legR => CharacterLimb.legL,
+    };
+
+/// mirroredRigPoint is [p] on the limb opposite: at the same spot, moved
+/// the same way along its bone and the other way across it, turned the
+/// other way.
+RigPoint mirroredRigPoint(RigPoint p) => RigPoint(p.bone, p.f,
+    along: p.along, across: -p.across, scale: p.scale, turn: -p.turn);
+
+/// withRigPoint is [e] with [point] on [limb] -- and, with [mirror], its
+/// mirror on the limb opposite.
 CharacterElement withRigPoint(
-        CharacterElement e, CharacterLimb limb, RigPoint point) =>
-    e.copyWith(
-        dna: e.dna
-            .copyWith(rigPoints: e.dna.rigPoints.withPoint(limb.name, point)));
+    CharacterElement e, CharacterLimb limb, RigPoint point,
+    {bool mirror = false}) {
+  var points = e.dna.rigPoints.withPoint(limb.name, point);
+  if (mirror) {
+    points = points.withPoint(oppositeLimb(limb).name, mirroredRigPoint(point));
+  }
+  return e.copyWith(dna: e.dna.copyWith(rigPoints: points));
+}
 
 /// withoutRigPoint is [e] with the point at [point]'s spot on [limb] taken
-/// away, or -- a joint -- put back as it was.
+/// away, or -- a joint -- put back as it was; with [mirror], on the limb
+/// opposite as well.
 CharacterElement withoutRigPoint(
-        CharacterElement e, CharacterLimb limb, RigPoint point) =>
-    e.copyWith(
-        dna: e.dna
-            .copyWith(rigPoints: e.dna.rigPoints.without(limb.name, point)));
+    CharacterElement e, CharacterLimb limb, RigPoint point,
+    {bool mirror = false}) {
+  var points = e.dna.rigPoints.without(limb.name, point);
+  if (mirror) points = points.without(oppositeLimb(limb).name, point);
+  return e.copyWith(dna: e.dna.copyWith(rigPoints: points));
+}
 
 /// rigDragged is [start] -- as it was when [hold] was taken at [from], a
 /// point on the page -- with it dragged to [to]. [scale] is screen pixels
-/// to a unit of the page, which the ring is drawn at.
+/// to a unit of the page, which the ring is drawn at. With [mirror], the
+/// point on the limb opposite goes the mirror of the way it does.
 CharacterElement rigDragged(CharacterElement start, RigHold hold, Offset from,
     Offset to, int frame, double scale,
-    {int frameRate = 12, CanvasDocument? document}) {
-  var e = hold.added ? withRigPoint(start, hold.limb, hold.point) : start;
+    {int frameRate = 12, CanvasDocument? document, bool mirror = false}) {
+  var e = hold.added
+      ? withRigPoint(start, hold.limb, hold.point, mirror: mirror)
+      : start;
   var view = RigView.of(e, frame, frameRate: frameRate, document: document);
   var p = _find(view.limbs[hold.limb] ?? const [], hold.point);
   if (p == null) return start;
@@ -173,7 +198,7 @@ CharacterElement rigDragged(CharacterElement start, RigHold hold, Offset from,
       turn = (turn + 180) % 360 - 180;
       point = point.copyWith(turn: turn);
   }
-  return withRigPoint(e, hold.limb, point);
+  return withRigPoint(e, hold.limb, point, mirror: mirror);
 }
 
 /// rigColour is the rig's colour: apart from the pins' blue and the

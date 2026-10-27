@@ -52,7 +52,11 @@ class VectorToolHint extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: controller,
         builder: (context, _) {
-          if (controller.editingVector == null || controller.playing) {
+          // A character drawn on has its own bar, with this at its end --
+          // see character_draw_bar.dart.
+          if (controller.editingVector == null ||
+              controller.playing ||
+              controller.drawingOn != null) {
             return const SizedBox.shrink();
           }
           var theme = ThemeNotifier.of(context);

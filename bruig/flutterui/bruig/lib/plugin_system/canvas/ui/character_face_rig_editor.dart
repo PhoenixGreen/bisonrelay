@@ -104,7 +104,8 @@ class FaceRigView {
   /// with it.
   Offset knob(FacePoint p, double scale) =>
       handle(p) +
-      _turned(Offset(ring(p, scale), 0), rig[p].turn + placed.rig.headTurn - 45);
+      _turned(
+          Offset(ring(p, scale), 0), rig[p].turn + placed.rig.headTurn - 45);
 
   /// under is the feature under [page], and what of it, within [reach].
   FaceHold? under(Offset page, double scale, double reach) {
@@ -129,8 +130,11 @@ class FaceRigView {
 
   /// dragged is the element with [hold] dragged from [from] to [to] on the
   /// page -- on this panel, its own from then on.
-  CharacterElement dragged(
-      FaceHold hold, Offset from, Offset to, double scale) {
+  ///
+  /// With [mirror], the feature on the other side -- the other eye, brow
+  /// or corner -- is set as its mirror.
+  CharacterElement dragged(FaceHold hold, Offset from, Offset to, double scale,
+      {bool mirror = false}) {
     var a = placed.toLocal(from), b = placed.toLocal(to);
     var p = hold.point;
     var adj = rig[p];
@@ -156,25 +160,35 @@ class FaceRigView {
         var by = (angle(b - c) - angle(a - c)) * 180 / math.pi;
         adj = adj.copyWith(turn: (adj.turn + by + 180) % 360 - 180);
     }
-    return element.withFaceRig(turn, tilt, rig.withPoint(p, adj));
+    return element.withFaceRig(
+        turn, tilt, withFacePoint(rig, p, adj, mirror: mirror));
   }
+}
+
+/// withFacePoint is [rig] with [p] set as [a] -- and, with [mirror], the
+/// feature on the other side set as its mirror.
+FaceRig withFacePoint(FaceRig rig, FacePoint p, FaceAdjust a,
+    {bool mirror = false}) {
+  var next = rig.withPoint(p, a);
+  if (mirror && p.mirrored != p) next = next.withPoint(p.mirrored, a.mirrored);
+  return next;
 }
 
 /// faceDragged is [start] -- as it was when [hold] was taken at [from] --
 /// with it dragged to [to].
 CharacterElement faceDragged(CharacterElement start, FaceHold hold, Offset from,
         Offset to, int frame, double scale,
-        {int frameRate = 12, CanvasDocument? document}) =>
+        {int frameRate = 12, CanvasDocument? document, bool mirror = false}) =>
     FaceRigView.of(start, frame, frameRate: frameRate, document: document)
-        .dragged(hold, from, to, scale);
+        .dragged(hold, from, to, scale, mirror: mirror);
 
 /// withFacePointBack is [e] with [p] put back as it was on the panel seen
 /// on [frame].
 CharacterElement withFacePointBack(CharacterElement e, FacePoint p, int frame,
-    {int frameRate = 12}) {
+    {int frameRate = 12, bool mirror = false}) {
   var view = FaceRigView.of(e, frame, frameRate: frameRate);
-  return e.withFaceRig(
-      view.turn, view.tilt, view.rig.withPoint(p, FaceAdjust.rest));
+  return e.withFaceRig(view.turn, view.tilt,
+      withFacePoint(view.rig, p, FaceAdjust.rest, mirror: mirror));
 }
 
 /// faceColour is the face rig's colour, apart from the limbs' green.

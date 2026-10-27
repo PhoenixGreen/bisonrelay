@@ -52,6 +52,19 @@ void main() {
     });
   }
 
+  test("mirrored: the other brow is raised with it", () {
+    var e = _sketch();
+    var view = FaceRigView.of(e, 0);
+    var at = view.placed.toPage(view.handle(FacePoint.browL));
+    var next = faceDragged(e, const FaceHold(FacePoint.browL, RigGrab.centre), at,
+        at + const Offset(1, -1), 0, _scale, mirror: true);
+    var rig = next.faceRigFor(0, 0).$1;
+    expect(rig[FacePoint.browR].dy, closeTo(rig[FacePoint.browL].dy, 1e-9));
+    expect(rig[FacePoint.browR].dx, closeTo(-rig[FacePoint.browL].dx, 1e-9));
+    var back = withFacePointBack(next, FacePoint.browL, 0, mirror: true);
+    expect(back.faceRigs, isEmpty);
+  });
+
   test("a corner goes with the mouth as it is set", () {
     var e = _sketch().withFaceRig(
         0,

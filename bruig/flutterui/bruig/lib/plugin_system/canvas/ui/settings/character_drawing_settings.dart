@@ -152,6 +152,12 @@ Widget characterDrawingSection(
                 value: controller.editFace,
                 onChanged: (v) => controller.editFace = v,
               ),
+              CanvasToggle(
+                key: const ValueKey("characterDrawingFaceMirror"),
+                label: "Mirror left and right",
+                value: controller.mirrorEdits,
+                onChanged: (v) => controller.mirrorEdits = v,
+              ),
               if (controller.editFace && controller.facePick != null)
                 CanvasTextButton(
                   key: const ValueKey("characterDrawingFaceBack"),
@@ -184,6 +190,12 @@ Widget characterDrawingSection(
                 label: "Reshape the limbs",
                 value: controller.editRig,
                 onChanged: (v) => controller.editRig = v,
+              ),
+              CanvasToggle(
+                key: const ValueKey("characterDrawingMirror"),
+                label: "Mirror left and right",
+                value: controller.mirrorEdits,
+                onChanged: (v) => controller.mirrorEdits = v,
               ),
               if (controller.editRig && controller.rigPick != null)
                 CanvasTextButton(

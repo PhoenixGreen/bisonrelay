@@ -1,6 +1,7 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
@@ -71,8 +72,8 @@ List<Widget> appearanceRigControls(
   var pose = e.poseAtFrame(controller.frame).inPanel;
   var turn = pose.panelTurn, tilt = pose.panelTilt;
   var (rig, mirrored) = e.faceRigFor(turn, tilt);
-  void set(FacePoint p, FaceAdjust a) =>
-      live(e.withFaceRig(turn, tilt, rig.withPoint(p, a)));
+  void set(FacePoint p, FaceAdjust a) => live(e.withFaceRig(
+      turn, tilt, withFacePoint(rig, p, a, mirror: controller.mirrorEdits)));
 
   return [
     CanvasControlGroup(
@@ -88,6 +89,12 @@ List<Widget> appearanceRigControls(
             label: "Set the face on the canvas",
             value: controller.editFace,
             onChanged: (v) => controller.editFace = v,
+          ),
+          CanvasToggle(
+            key: const ValueKey("appearanceFaceMirror"),
+            label: "Mirror left and right",
+            value: controller.mirrorEdits,
+            onChanged: (v) => controller.mirrorEdits = v,
           ),
           CanvasTextButton(
             key: const ValueKey("appearanceZoomHead"),
@@ -200,7 +207,8 @@ List<Widget> _bodyControls(
       if (p.sameSpot(pick.$2)) point = p;
     }
   }
-  void set(RigPoint next) => live(withRigPoint(e, pick!.$1, next));
+  void set(RigPoint next) =>
+      live(withRigPoint(e, pick!.$1, next, mirror: controller.mirrorEdits));
   var reshaped = [
     for (var l in CharacterLimb.values)
       if (e.dna.rigPoints.edited(l.name)) _limbLabel(l).toLowerCase(),
@@ -227,6 +235,12 @@ List<Widget> _bodyControls(
             label: "Reshape the limbs",
             value: controller.editRig,
             onChanged: (v) => controller.editRig = v,
+          ),
+          CanvasToggle(
+            key: const ValueKey("appearanceRigMirror"),
+            label: "Mirror left and right",
+            value: controller.mirrorEdits,
+            onChanged: (v) => controller.mirrorEdits = v,
           ),
           if (!e.dna.rigPoints.isEmpty)
             CanvasTextButton(
@@ -296,7 +310,8 @@ List<Widget> _bodyControls(
               icon: Icons.delete_outline,
               grow: false,
               onPressed: () {
-                now(withoutRigPoint(e, pick.$1, point!));
+                now(withoutRigPoint(e, pick.$1, point!,
+                    mirror: controller.mirrorEdits));
                 controller.pickRigPoint(null);
               },
             ),

@@ -119,6 +119,31 @@ void main() {
     expect(await _pixels(back), await _pixels(e));
   });
 
+  test("mirrored: the other arm's elbow goes the mirror of the way", () {
+    var e = _sketch();
+    var view = RigView.of(e, 0);
+    var elbow = view.limbs[CharacterLimb.armR]![1];
+    var at = view.placed.toPage(elbow.at);
+    var hold = view.under(at, _scale, 4)!;
+    var next = rigDragged(e, hold, at, at + const Offset(7, -3), 0, _scale, mirror: true);
+    var after = RigView.of(next, 0);
+    Offset moved(CharacterLimb l) {
+      var before = view.limbs[l]![1], now = after.limbs[l]![1];
+      return after.placed.toPage(now.at) - view.placed.toPage(before.at);
+    }
+
+    var r = moved(CharacterLimb.armR), l = moved(CharacterLimb.armL);
+    expect(r.dx, closeTo(7, 0.01));
+    expect(l.dx, closeTo(-7, 0.05), reason: "across the other way");
+    expect(l.dy, closeTo(-3, 0.05), reason: "up the same");
+    // Taken away, from both.
+    var back = withoutRigPoint(next, CharacterLimb.armR, RigPoint.middle, mirror: true);
+    expect(back.dna.rigPoints.isEmpty, isTrue);
+    // Unmirrored, the other arm is left alone.
+    var one = rigDragged(e, hold, at, at + const Offset(7, -3), 0, _scale);
+    expect(one.dna.rigPoints.edited("armL"), isFalse);
+  });
+
   test("a joint is put back, not taken away", () {
     var e = withRigPoint(
         _sketch(), CharacterLimb.armL, RigPoint.middle.copyWith(scale: 0.5));

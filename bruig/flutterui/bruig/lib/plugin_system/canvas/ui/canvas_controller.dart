@@ -3870,6 +3870,17 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// mirrorEdits makes an edit to one side of a sketch -- a point of an arm
+  /// or a leg, an eye, a brow, a corner of the mouth -- the same, mirrored,
+  /// on the other. On until it is switched off, for this run of the app.
+  bool get mirrorEdits => _mirrorEdits;
+  bool _mirrorEdits = true;
+  set mirrorEdits(bool on) {
+    if (_mirrorEdits == on) return;
+    _mirrorEdits = on;
+    notifyListeners();
+  }
+
   /// rigCharacter is the sketch whose rig is edited: the one drawn on, or
   /// picked alone.
   CharacterElement? get rigCharacter {
@@ -3884,7 +3895,7 @@ class CanvasController extends ChangeNotifier {
   bool deleteRigPoint() {
     var pick = rigPick, e = rigCharacter;
     if (pick == null || e == null) return false;
-    replaceElement(withoutRigPoint(e, pick.$1, pick.$2));
+    replaceElement(withoutRigPoint(e, pick.$1, pick.$2, mirror: _mirrorEdits));
     _rigPick = null;
     notifyListeners();
     return true;
@@ -3928,7 +3939,7 @@ class CanvasController extends ChangeNotifier {
   bool putFacePointBack() {
     var p = facePick, e = faceCharacter;
     if (p == null || e == null) return false;
-    replaceElement(withFacePointBack(e, p, _frame,
+    replaceElement(withFacePointBack(e, p, _frame, mirror: _mirrorEdits,
         frameRate: math.max(1, _document.frameRate)));
     _facePick = null;
     notifyListeners();
@@ -5317,6 +5328,7 @@ class CanvasController extends ChangeNotifier {
   // ------------------------------------------------------------------------
 
   set zoom(double value) {
+    _characterZoom = null;
     var next = value.clamp(minZoom, maxZoom);
     if (next == _zoom) return;
     _zoom = next;
@@ -5328,6 +5340,7 @@ class CanvasController extends ChangeNotifier {
   }
 
   void resetZoom() {
+    _characterZoom = null;
     _zoom = 1;
     _pan = const Offset2(0, 0);
     _notifyView();
@@ -5348,6 +5361,12 @@ class CanvasController extends ChangeNotifier {
 
   void zoomBy(double factor) => zoom = _zoom * factor;
 
+  /// characterZoom is the stretch of a character's body last zoomed onto
+  /// -- what the bar's zoom steps on from -- until the view is zoomed some
+  /// other way.
+  CharacterZoom? get characterZoom => _characterZoom;
+  CharacterZoom? _characterZoom;
+
   /// zoomToRect zooms onto [r], a stretch of the canvas, in its middle and
   /// filling most of the view.
   void zoomToRect(Rect r) {
@@ -5366,6 +5385,7 @@ class CanvasController extends ChangeNotifier {
   void zoomToCharacter(String id, CharacterZoom zoom) {
     var c = _document.elementById(id);
     if (c is! CharacterElement) return;
+    _characterZoom = zoom;
     var (rig, _, _) = drawnRig(c, _frame, math.max(1, _document.frameRate));
     var pose = c.poseAt(_frame);
     var box = c.bounds.shift(Offset(pose.dx, pose.dy));

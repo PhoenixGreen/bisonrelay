@@ -708,7 +708,6 @@ class _CanvasScreenState extends State<CanvasScreen> {
                         // A sketched character's: going round it, its
                         // panels, the zoom and the drawing tools.
                         CharacterDrawBar(controller: _controller),
-                        const SizedBox(height: 6),
                         VectorToolHint(controller: _controller),
                       ])),
                     ),

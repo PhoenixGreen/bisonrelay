@@ -13,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
@@ -228,6 +230,7 @@ void main() {
               home: Scaffold(
                   body: Column(children: [
             CharacterDrawBar(controller: c),
+            VectorToolHint(controller: c),
             Expanded(child: SizedBox(width: 420, child: CanvasDesignPanel(controller: c))),
           ]))),
         );
@@ -265,7 +268,7 @@ void main() {
       expect(c.selection, {"c"});
     });
 
-    testWidgets("a narrow canvas takes the bar onto two lines, not past its edge",
+    testWidgets("the bar is one line, three tools at a time, the tip at its end",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
@@ -278,16 +281,73 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+      expect(tester.takeException(), isNull, reason: "a narrow canvas scrolls it");
       var bar = tester.getRect(find.byKey(const ValueKey("characterDrawBar")));
+      expect(bar.height, lessThan(60), reason: "one line");
       expect(bar.right, lessThanOrEqualTo(520));
-      for (var tool in drawBarTools) {
-        var r = tester.getRect(find.byKey(ValueKey("characterDrawTool-${tool.name}")));
-        expect(bar.contains(r.center), isTrue, reason: "${tool.name} is on the bar");
-      }
-      await tester.tap(find.byKey(const ValueKey("characterDrawPuppet")));
+      int shown() => [
+            for (var t in drawBarTools)
+              if (find.byKey(ValueKey("characterDrawTool-${t.name}")).evaluate().isNotEmpty) t
+          ].length;
+      expect(shown(), drawBarShown);
+      expect(find.byKey(const ValueKey("characterDrawTool-select")), findsOneWidget);
+      // The arrow steps on to the rest.
+      var next = find.byKey(const ValueKey("characterDrawToolsNext"));
+      await tester.ensureVisible(next);
+      await tester.tap(next);
+      await tester.pump();
+      expect(find.byKey(const ValueKey("characterDrawTool-select")), findsNothing);
+      expect(find.byKey(const ValueKey("characterDrawTool-shapes")), findsOneWidget);
+      // A tool picked elsewhere comes into view.
+      c.drawOnCharacter("c");
+      c.vectorTool = VectorTool.text;
+      await tester.pump();
+      expect(find.byKey(const ValueKey("characterDrawTool-text")), findsOneWidget);
+      // While drawing, the tip and the way out are at the bar's end -- not a
+      // second bar.
+      expect(find.byKey(const ValueKey("characterDrawHint")), findsOneWidget);
+      expect(find.byKey(const ValueKey("vectorToolHint")), findsNothing);
+      var done = find.byKey(const ValueKey("characterDrawPoints"));
+      await tester.ensureVisible(done);
+      await tester.tap(done);
+      await tester.pump();
+      expect(c.vectorTool, VectorTool.select);
+      await tester.ensureVisible(find.byKey(const ValueKey("characterDrawDone")));
+      await tester.tap(find.byKey(const ValueKey("characterDrawDone")));
+      await tester.pump();
+      expect(c.drawingOn, isNull);
+      var puppet = find.byKey(const ValueKey("characterDrawPuppet"));
+      await tester.ensureVisible(puppet);
+      await tester.tap(puppet);
       await tester.pump();
       expect(c.showPuppet, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("Zoom's arrows step through the parts of the body", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+          const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+          dna: dna)));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(1400, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(c));
+      await tester.pumpAndSettle();
+      var zoom = tester.widget<CanvasDropdown<CharacterZoom?>>(
+          find.byKey(const ValueKey("characterDrawZoom")));
+      expect(zoom.stepped, isTrue);
+      zoom.onChanged(CharacterZoom.head);
+      await tester.pump();
+      expect(c.characterZoom, CharacterZoom.head);
+      zoom = tester.widget<CanvasDropdown<CharacterZoom?>>(
+          find.byKey(const ValueKey("characterDrawZoom")));
+      expect(zoom.value, CharacterZoom.head);
+      expect(zoom.options.any((o) => o.$1 == null), isFalse, reason: "no placeholder now");
+      expect(tester.widget<CanvasDropdown<String>>(
+              find.byKey(const ValueKey("characterDrawPanel"))).stepped, isTrue);
     });
 
     testWidgets("a region hidden on one panel only", (tester) async {
