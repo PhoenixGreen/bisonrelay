@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_live.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart';
@@ -52,6 +53,9 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
     bool editing = false,
     Staging? staged,
     CanvasImageSource? images}) {
+  // What is drawn on it carried onto it as it is made now -- see
+  // character_live.dart -- so its sliders go on shaping layers drawn on.
+  e = liveCharacter(e, frame, frameRate);
   // A style on twos holds each drawing for two frames, as stop motion does.
   frame = e.style.frameOf(frame);
   var life = lifeAt(e, frame, frameRate);

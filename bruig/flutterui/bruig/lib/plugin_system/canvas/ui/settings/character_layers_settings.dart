@@ -396,12 +396,13 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
       key: const ValueKey("characterLayerView"),
       label: "${row.label} on this view",
       help: "Seen from the ${viewLabel(pose.panelTurn, pose.panelTilt).toLowerCase()}. "
-          "Take it apart to edit its outline point by point here: the "
-          "other views, and the rest of the figure, stay as they are made. "
-          "Draw on it to add shapes that go with it.",
+          "Take it apart -- or click its pencil -- to edit its outline point "
+          "by point here: the other views stay as they are. Its sliders go on "
+          "shaping it, your edits carried along on top. Draw on it to add "
+          "shapes that go with it.",
       children: [
         CanvasStatus(apart
-            ? "Drawn by its own shapes on this view. Its sliders change the other views."
+            ? "Edited on this view. Its sliders still shape it here, with your edits on top."
             : "Drawn from its sliders on this view."),
         CanvasTextButton(
           key: const ValueKey("characterLayerDraw"),

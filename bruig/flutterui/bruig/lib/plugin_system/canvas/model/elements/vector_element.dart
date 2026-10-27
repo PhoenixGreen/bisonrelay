@@ -333,6 +333,12 @@ class VectorShape {
   final bool hidden;
   final bool locked;
 
+  /// origin is what made this shape, where something did and keeps track
+  /// of it: for a character's drawing, which of a layer's shapes as the
+  /// character drew it this began as -- see character_live.dart. Null for
+  /// a shape drawn by hand. Kept through every edit.
+  final String? origin;
+
   const VectorShape({
     required this.paths,
     this.fill,
@@ -354,6 +360,7 @@ class VectorShape {
     this.text,
     this.hidden = false,
     this.locked = false,
+    this.origin,
   });
 
   VectorShape copyWith({
@@ -385,6 +392,8 @@ class VectorShape {
     bool clearText = false,
     bool? hidden,
     bool? locked,
+    String? origin,
+    bool clearOrigin = false,
   }) =>
       VectorShape(
         paths: paths ?? this.paths,
@@ -408,6 +417,7 @@ class VectorShape {
         text: clearText ? null : text ?? this.text,
         hidden: hidden ?? this.hidden,
         locked: locked ?? this.locked,
+        origin: clearOrigin ? null : origin ?? this.origin,
       );
 
   /// tapered is whether its line is thicker or thinner at some points than
@@ -470,6 +480,7 @@ class VectorShape {
         if (liveText case var t?) "text": t.toJson(),
         if (hidden) "hid": true,
         if (locked) "lock": true,
+        if (origin != null) "from": origin,
       };
 
   /// liveText is [text] while this shape is still the letters it was laid
@@ -545,6 +556,7 @@ class VectorShape {
       animation: _animationFromJson(json),
       hidden: json["hid"] == true,
       locked: json["lock"] == true,
+      origin: json["from"] is String ? json["from"] as String : null,
       // Kept before the parts were told apart: all of them its own.
       owns: json["animOwn"] is List
           ? {

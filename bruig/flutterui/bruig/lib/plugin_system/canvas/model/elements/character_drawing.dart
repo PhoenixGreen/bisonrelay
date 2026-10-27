@@ -157,6 +157,13 @@ class CharacterDrawing {
   /// kept at its values -- see LayerKeys -- by layer.
   final Map<String, LayerKeys> keyed;
 
+  /// bases is each layer taken apart here as the character drew it then,
+  /// by layer: what its shapes -- each marked with which of these it began
+  /// as, see VectorShape.origin -- have been edited from. The character
+  /// drawn as it is now, the edits are carried onto it, so its sliders go
+  /// on shaping a layer drawn on. See character_live.dart.
+  final Map<String, CharacterDrawing> bases;
+
   const CharacterDrawing(
       {this.shapes = const [],
       this.parts = const [],
@@ -165,7 +172,8 @@ class CharacterDrawing {
       this.replaces = false,
       this.layers = const [],
       this.hiddenLayers = const {},
-      this.keyed = const {}});
+      this.keyed = const {},
+      this.bases = const {}});
 
   /// layerOf is the layer shape [i] is drawn as, or null.
   String? layerOf(int i) => i < layers.length ? layers[i] : null;
@@ -188,7 +196,8 @@ class CharacterDrawing {
           bool? replaces,
           List<String?>? layers,
           Set<String>? hiddenLayers,
-          Map<String, LayerKeys>? keyed}) =>
+          Map<String, LayerKeys>? keyed,
+          Map<String, CharacterDrawing>? bases}) =>
       CharacterDrawing(
           shapes: shapes ?? this.shapes,
           parts: parts ?? this.parts,
@@ -197,7 +206,8 @@ class CharacterDrawing {
           replaces: replaces ?? this.replaces,
           layers: layers ?? this.layers,
           hiddenLayers: hiddenLayers ?? this.hiddenLayers,
-          keyed: keyed ?? this.keyed);
+          keyed: keyed ?? this.keyed,
+          bases: bases ?? this.bases);
 
   /// mirrored is this drawing seen from the other side: each shape flipped
   /// across its bone and put on the part opposite.
@@ -210,6 +220,7 @@ class CharacterDrawing {
         layers: [for (var l in layers) l == null ? null : _mirroredLayer(l)],
         hiddenLayers: {for (var l in hiddenLayers) _mirroredLayer(l)},
         keyed: {for (var e in keyed.entries) _mirroredLayer(e.key): e.value.mirrored},
+        bases: {for (var e in bases.entries) _mirroredLayer(e.key): e.value.mirrored},
       );
 
   static String _mirroredLayer(String l) =>
@@ -225,6 +236,8 @@ class CharacterDrawing {
         if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
         if (keyed.isNotEmpty)
           "keyed": {for (var e in keyed.entries) e.key: e.value.toJson()},
+        if (bases.isNotEmpty)
+          "bases": {for (var e in bases.entries) e.key: e.value.toJson()},
       };
 
   factory CharacterDrawing.fromJson(Map<String, dynamic> json) {
@@ -248,6 +261,12 @@ class CharacterDrawing {
       for (var l in json["layers"] as List? ?? const []) l is String ? l : null,
     ];
     return CharacterDrawing(
+      bases: {
+        if (json["bases"] case Map raw)
+          for (var e in raw.entries)
+            if (e.value is Map<String, dynamic>)
+              "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
+      },
       keyed: {
         if (json["keyed"] case Map raw)
           for (var e in raw.entries)

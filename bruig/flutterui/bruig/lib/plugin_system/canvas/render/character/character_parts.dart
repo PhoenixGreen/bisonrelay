@@ -597,14 +597,17 @@ CharacterElement takeApartPanel(CharacterElement e, int frame, int frameRate) {
   var kept = ownMirrored ? CharacterDrawing.empty : own;
   kept = _without(kept, kept.hiddenLayers).copyWith(hiddenLayers: const {});
   var next = e.withDrawingAt(key,
-      _taken(rig, body, kept, top).copyWith(hidden: CharacterRegion.values.toSet()));
+      _withBases(_taken(rig, body, kept, top), body.length)
+          .copyWith(hidden: CharacterRegion.values.toSet()));
   var wardrobe = [...next.dna.wardrobe];
   for (var gi in garments) {
     var g = wardrobe[gi];
     var (d, mirrored) = g.drawingAt(key);
     var keep = mirrored || d.replaces ? CharacterDrawing.empty : d;
     wardrobe[gi] = g.withDrawingAt(key,
-        _taken(rig, worn[gi] ?? const [], keep, top, among: g.kind.covers)
+        _withBases(
+                _taken(rig, worn[gi] ?? const [], keep, top, among: g.kind.covers),
+                (worn[gi] ?? const []).length)
             .copyWith(replaces: true));
   }
   return next.copyWith(dna: next.dna.copyWith(wardrobe: wardrobe));
@@ -622,7 +625,29 @@ CharacterDrawing _without(CharacterDrawing d, Set<String> layers) {
     parts: [for (var i in keep) d.parts[i]],
     order: [for (var i in keep) d.orderOf(i, 2e6)],
     layers: [for (var i in keep) d.layerOf(i)],
+    bases: {...d.bases}..removeWhere((l, _) => layers.contains(l)),
   );
+}
+
+/// _withBases is [d] with its first [count] shapes -- just taken apart --
+/// kept as their layers' bases, each marked with which of its layer's base
+/// it is: what edits to them are measured from. See character_live.dart.
+CharacterDrawing _withBases(CharacterDrawing d, int count) {
+  var shapes = [...d.shapes];
+  var bases = <String, CharacterDrawing>{...d.bases};
+  var byLayer = <String, List<int>>{};
+  for (var i = 0; i < count && i < shapes.length; i++) {
+    if (d.layerOf(i) case var l?) (byLayer[l] ??= []).add(i);
+  }
+  for (var MapEntry(key: l, value: at) in byLayer.entries) {
+    bases[l] = CharacterDrawing(
+        shapes: [for (var i in at) d.shapes[i].copyWith(clearOrigin: true)],
+        parts: [for (var i in at) d.parts[i]]);
+    for (var (j, i) in at.indexed) {
+      shapes[i] = shapes[i].copyWith(origin: "$j");
+    }
+  }
+  return d.copyWith(shapes: shapes, bases: bases);
 }
 
 /// takeApartLayer is [e] with [layer] taken apart on the panel it is seen
@@ -647,14 +672,16 @@ CharacterElement takeApartLayer(
     var keep = mirrored || d.replaces ? CharacterDrawing.empty : d;
     var wardrobe = [...e.dna.wardrobe];
     wardrobe[gi] = g.withDrawingAt(key,
-        _taken(rig, mine, keep, top, among: g.kind.covers).copyWith(replaces: true));
+        _withBases(_taken(rig, mine, keep, top, among: g.kind.covers), mine.length)
+            .copyWith(replaces: true));
     return e.copyWith(dna: e.dna.copyWith(wardrobe: wardrobe));
   }
   // As shown -- a mirror is kept as it is, its own from now on -- without
   // this layer's shapes from before.
   var (own, _) = e.drawingAt(key);
   var kept = _without(own, {layer});
-  var taken = _taken(rig, mine, CharacterDrawing.empty, top, layer: layer);
+  var taken = _withBases(
+      _taken(rig, mine, CharacterDrawing.empty, top, layer: layer), mine.length);
   return e.withDrawingAt(key,
       kept.copyWith(
         shapes: [...kept.shapes, ...taken.shapes],
@@ -670,6 +697,7 @@ CharacterElement takeApartLayer(
         hiddenLayers: {...kept.hiddenLayers, layer},
         // Taken afresh: keyforms of the shapes before no longer fit.
         keyed: {...kept.keyed}..remove(layer),
+        bases: {...kept.bases, ...taken.bases},
       ));
 }
 
@@ -686,7 +714,8 @@ CharacterElement putLayerBack(
   return e.withDrawingAt(key,
       kept.copyWith(
           hiddenLayers: {...kept.hiddenLayers}..remove(layer),
-          keyed: {...kept.keyed}..remove(layer)));
+          keyed: {...kept.keyed}..remove(layer),
+          bases: {...kept.bases}..remove(layer)));
 }
 
 /// takeApartGarment is [e] with garment [garment] of its wardrobe taken

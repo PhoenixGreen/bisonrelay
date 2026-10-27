@@ -31,6 +31,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
     show characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_live.dart'
+    show rebasedCharacter;
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -4083,9 +4085,12 @@ class CanvasController extends ChangeNotifier {
     _fitEditedVector();
     _drawingGarment = garment;
     _drawingLayer = layer;
+    // What is drawn on it taken as it is shown -- its edits carried onto
+    // the character as it is now -- for the tools to edit what is seen.
+    c = rebasedCharacter(c, _frame, math.max(1, _document.frameRate));
     var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate),
         garment: garment, layer: layer);
-    var next = _document.removeElement(proxy.id).addElement(proxy);
+    var next = _document.withElement(c).removeElement(proxy.id).addElement(proxy);
     next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
     _vectorEditing = proxy.id;
     _resetVectorEditing();
