@@ -5,11 +5,13 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
 export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
 // character_element.dart is a person, an animal or a monster on a canvas: a
@@ -1157,6 +1159,32 @@ class CharacterElement extends CanvasElement {
   /// body is whether it is drawn or in 3D, and in 3D what from.
   final CharacterBody body;
 
+  /// drawings is what is drawn by hand on the sketch, panel by panel -- see
+  /// character_drawing.dart -- by panelKey.
+  final Map<String, CharacterDrawing> drawings;
+
+  /// drawingFor is what is drawn on the panel turned [turn] and tilted
+  /// [tilt]: its own drawing, or, where it has none, the panel opposite's
+  /// mirrored. The second is whether it is that mirror.
+  (CharacterDrawing, bool) drawingFor(double turn, double tilt) {
+    if (drawings[panelKey(turn, tilt)] case var own?) return (own, false);
+    var opposite = turn.round() % 180 == 0 ? null : drawings[panelKey(-turn, tilt)];
+    if (opposite != null) return (opposite.mirrored, true);
+    return (CharacterDrawing.empty, false);
+  }
+
+  /// withDrawing is this with [drawing] on the panel turned [turn] and
+  /// tilted [tilt]; an empty one takes the panel's own drawing away.
+  CharacterElement withDrawing(double turn, double tilt, CharacterDrawing drawing) {
+    var next = {...drawings};
+    if (drawing.isEmpty) {
+      next.remove(panelKey(turn, tilt));
+    } else {
+      next[panelKey(turn, tilt)] = drawing;
+    }
+    return copyWith(drawings: next);
+  }
+
   const CharacterElement(
     super.base, {
     this.dna = const CharacterDna(),
@@ -1171,6 +1199,7 @@ class CharacterElement extends CanvasElement {
     this.depth = 0,
     this.animation = const ElementAnimation(),
     this.body = const CharacterBody(),
+    this.drawings = const {},
   });
 
   /// restPose is a new character's stance: arms a little away from the body
@@ -1294,6 +1323,7 @@ class CharacterElement extends CanvasElement {
     double? depth,
     ElementAnimation? animation,
     CharacterBody? body,
+    Map<String, CharacterDrawing>? drawings,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -1307,7 +1337,8 @@ class CharacterElement extends CanvasElement {
           shadow: shadow ?? this.shadow,
           depth: (depth ?? this.depth).clamp(0.0, 2.0),
           animation: animation ?? this.animation,
-          body: body ?? this.body);
+          body: body ?? this.body,
+          drawings: drawings ?? this.drawings);
 
   @override
   Map<String, dynamic> props() => {
@@ -1323,6 +1354,8 @@ class CharacterElement extends CanvasElement {
         if (depth != 0) "depth": depth,
         if (animation.any) "anim": animation.toJson(),
         if (body != const CharacterBody()) "body": body.toJson(),
+        if (drawings.isNotEmpty)
+          "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -1350,5 +1383,11 @@ class CharacterElement extends CanvasElement {
           ],
           animation: jsonSpec(json["anim"], ElementAnimation.fromJson,
               const ElementAnimation()),
-          body: CharacterBody.fromJson(json["body"]));
+          body: CharacterBody.fromJson(json["body"]),
+          drawings: {
+            if (json["drawings"] case Map raw)
+              for (var e in raw.entries)
+                if (e.value is Map<String, dynamic>)
+                  "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
+          });
 }

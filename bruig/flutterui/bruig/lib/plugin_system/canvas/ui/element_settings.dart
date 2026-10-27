@@ -72,6 +72,13 @@ List<Widget> elementSettings(
   void commit() => controller.endInteraction();
   void begin() => controller.beginInteraction();
 
+  // A character being drawn on has its drawing picked, laid over it -- see
+  // CanvasController.drawOnCharacter -- and its own settings shown, the
+  // drawing's tools in its Drawing section.
+  if (drawnCharacterOf(element.id) case var id?) {
+    if (controller.document.elementById(id) case CharacterElement c) element = c;
+  }
+
   // A sound on the timeline is not on the canvas: no place on it, no presets
   // for a speaker, no speaker. What it has is its files, how it plays, and
   // where on the timeline -- the same as a backdrop's sound.

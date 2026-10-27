@@ -9,6 +9,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dar
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/render/character/painted_light.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
@@ -73,7 +74,11 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       bare: editing && e.bareView,
       style: e.style,
       body: e.body,
-      images: images);
+      images: images,
+      // What is drawn by hand on the panel it is seen from.
+      drawing: e.body.inThreeD || e.drawings.isEmpty
+          ? null
+          : e.drawingFor(pose.panelTurn, pose.panelTilt).$1);
   if (light != null) canvas.restore();
 }
 
@@ -109,7 +114,8 @@ void paintCharacterFigure(
     CharacterStyle style = CharacterStyle.featureCartoon,
     CharacterBody body = const CharacterBody(),
     CanvasImageSource? images,
-    CharacterStyle? bodyStyle}) {
+    CharacterStyle? bodyStyle,
+    CharacterDrawing? drawing}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -139,9 +145,16 @@ void paintCharacterFigure(
             ink: look.ink ?? const Color(0xFF6B4636),
             reach: unit * 0.09,
           ),
-          (flat, buffers) => _Drawing(flat, rig, dna, face, life,
-                  bare: bare, look: look, images: images, painted: buffers)
-              .draw(),
+          (flat, buffers) {
+            _Drawing(flat, rig, dna, face, life,
+                    bare: bare,
+                    look: look,
+                    images: images,
+                    painted: buffers,
+                    hidden: drawing?.hidden ?? const {})
+                .draw();
+            if (drawing != null) paintDrawing(flat, rig, drawing, box.inflate(box.height));
+          },
           // A garment's picture print comes from the images, which are not
           // part of this: a figure wearing one is drawn afresh each time.
           key: dna.worn.any((g) => g.printId.isNotEmpty)
@@ -153,11 +166,15 @@ void paintCharacterFigure(
                   [life.blink, life.breath, life.lookX, life.lookY],
                   style.name,
                   bare,
+                  drawing?.toJson(),
                 ]));
       if (lit) return;
     }
-    _Drawing(onto, rig, dna, face, life, bare: bare, look: look, images: images)
+    _Drawing(onto, rig, dna, face, life,
+            bare: bare, look: look, images: images, hidden: drawing?.hidden ?? const {})
         .draw();
+    // Drawn by hand over it, each shape where its part is.
+    if (drawing != null) paintDrawing(onto, rig, drawing, box.inflate(box.height));
   }
 
   void draw(Canvas onto) => CanvasPerf.time("character", () => drawOn(onto));
@@ -692,7 +709,24 @@ class _Drawing {
   final CanvasImageSource? images;
 
   _Drawing(this.canvas, this.rig, this.dna, this.face, this.life,
-      {this.bare = false, this.look = const _Look(), this.images, this.painted});
+      {this.bare = false,
+      this.look = const _Look(),
+      this.images,
+      this.painted,
+      this.hidden = const {}});
+
+  /// hidden is where the generated drawing is left out, for a drawing by
+  /// hand to take its place. See CharacterDrawing.hidden.
+  final Set<CharacterRegion> hidden;
+
+  bool _shows(CharacterRegion r) => !hidden.contains(r);
+
+  CharacterRegion _regionOf(CharacterLimb limb) => switch (limb) {
+        CharacterLimb.armL => CharacterRegion.armL,
+        CharacterLimb.armR => CharacterRegion.armR,
+        CharacterLimb.legL => CharacterRegion.legL,
+        CharacterLimb.legR => CharacterRegion.legR,
+      };
 
   /// painted is where, for painted light, each solid shape is laid down as
   /// well as drawn: drawn then as flat colour, with no line, for the shader
@@ -923,7 +957,8 @@ class _Drawing {
   void draw() {
     // Long hair hangs behind the head, until the head turns away and it is
     // the thing in front -- see _head.
-    if (_hangingHair && facing >= -0.3) _inHead(_backHair);
+    var head = _shows(CharacterRegion.head);
+    if (head && _hangingHair && facing >= -0.3) _inHead(_backHair);
     // A cape hangs behind the body, until the body turns away from the
     // reader and it is the thing in front.
     if (bodyFacing >= -0.2) _capes();
@@ -942,8 +977,10 @@ class _Drawing {
       _arms(far: true, near: near);
       _bodySkin();
       _legs();
-      _skirts();
-      _torso();
+      if (_shows(CharacterRegion.torso)) {
+        _skirts();
+        _torso();
+      }
     } else {
       _legs();
       _skirts();
@@ -951,15 +988,15 @@ class _Drawing {
       _neck();
       _torso();
     }
-    _neckwear();
-    _frontHair();
+    if (_shows(CharacterRegion.torso)) _neckwear();
+    if (head) _frontHair();
     _arms(far: false, near: near);
     if (bodyFacing < -0.2) {
       _capes();
       _wings();
       _tail();
     }
-    _inHead(_head);
+    if (head) _inHead(_head);
   }
 
   // ---- the body ----
@@ -974,12 +1011,19 @@ class _Drawing {
 
   /// _bodySkin is the neck, the body and both legs as one shape.
   void _bodySkin() {
-    var skin = Path.combine(PathOperation.union, _torsoPath(skin: true), _neckPath());
-    for (var limb in [CharacterLimb.legL, CharacterLimb.legR]) {
-      skin = Path.combine(PathOperation.union, skin,
-          _limbShape(_along(limb, 0, 1), legWidth, leg: true));
+    Path? skin;
+    void add(Path p) =>
+        skin = skin == null ? p : Path.combine(PathOperation.union, skin!, p);
+    if (_shows(CharacterRegion.torso)) {
+      add(_torsoPath(skin: true));
+      add(_neckPath());
     }
-    _fill(skin, dna.skin);
+    for (var limb in [CharacterLimb.legL, CharacterLimb.legR]) {
+      if (_shows(_regionOf(limb))) {
+        add(_limbShape(_along(limb, 0, 1), legWidth, leg: true));
+      }
+    }
+    if (skin case var s?) _fill(s, dna.skin);
   }
 
   double get _leg => rig.thigh + rig.shin;
@@ -1012,6 +1056,7 @@ class _Drawing {
       ..sort((a, b) => rig.depths[a]!.compareTo(rig.depths[b]!));
     var seated = <(int, Garment)>[];
     for (var limb in legs) {
+      if (!_shows(_regionOf(limb))) continue;
       if (dna.species == Species.bird) {
         // Thin legs and three toes, in the beak's colour.
         _stroke(_along(limb, 0.45, 1), legWidth * 0.32, dna.fur2);
@@ -1806,6 +1851,7 @@ class _Drawing {
   /// arm can be and still count as in front -- each with its sleeves.
   void _arms({required bool far, required double near}) {
     for (var limb in [CharacterLimb.armL, CharacterLimb.armR]) {
+      if (!_shows(_regionOf(limb))) continue;
       if ((rig.depths[limb]! < near) != far) continue;
       var shoulder = rig.root(limb), elbow = rig.middle(limb);
       var wrist = rig.end(limb);

@@ -1294,7 +1294,11 @@ class CanvasDocument {
       "frameRate": frameRate,
       if (actions.isNotEmpty)
         "actions": actions.map((a) => a.toJson()).toList(),
-      "elements": elements.map((e) => e.toJson()).toList(),
+      // A stand-in for drawing on a character is the editor's, never saved.
+      "elements": [
+        for (var e in elements)
+          if (!isDrawingProxy(e.id)) e.toJson()
+      ],
       if (targets.isNotEmpty) "targets": targets,
       if (cues.isNotEmpty) "cues": [for (var c in cues) c.toJson()],
       if (words.isNotEmpty) "words": [for (var w in words) w.toJson()],

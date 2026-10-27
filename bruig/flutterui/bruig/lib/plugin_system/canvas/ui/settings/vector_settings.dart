@@ -96,7 +96,8 @@ List<Widget> vectorSettings(
     VectorElement e,
     SettingsWrite write,
     VoidCallback begin,
-    VoidCallback commit) {
+    VoidCallback commit,
+    {bool toolsOnly = false}) {
   void now(VectorElement next) {
     begin();
     write(next);
@@ -163,6 +164,62 @@ List<Widget> vectorSettings(
     ])
       (tool, vectorToolIcon(tool), short[tool]!),
   ];
+  var drawing = <Widget>[
+    // The tools, as a picture's mask tools are: picking one opens the
+    // drawing to work on with it, and pressing the one in hand again
+    // puts the drawing down.
+    CanvasToolTiles<VectorTool>(
+      key: const ValueKey("vectorTools"),
+      help: editing
+          ? _toolHint(controller.vectorTool)
+          : "Pick a tool to edit the drawing's points, handles and "
+              "colours -- or, with no drawing in it yet, to draw one. "
+              "Double-clicking the drawing opens it too. A drawing from "
+              "a file is drawn exactly as the file draws it until then. "
+              "Pick the tool in hand again to stop editing.",
+      idle: "Pick a tool to edit the drawing.",
+      tools: tools,
+      active: editing ? controller.vectorTool : null,
+      alsoActive: (tool) => editing && tool == lit,
+      onPick: (tool) async {
+        if (tool == null) {
+          controller.editVector(null);
+          return;
+        }
+        if (!editing) {
+          await startVectorEditing(context, controller, e);
+          if (controller.vectorEditing != e.id) return;
+        }
+        controller.vectorTool = tool;
+      },
+      keyOf: (tool) => "vectorTool-${tool.name}",
+      tooltipOf: (tool) => "${tool.label} (${_toolKey(tool)})",
+      settings: editing
+          ? [
+              ..._toolSettings(e, controller),
+              ..._toolMore(controller),
+            ]
+          : const [],
+    ),
+    // The picked layer's colours -- or every shape's, with none
+    // picked -- with the tools that make and change them.
+    if (e.edited && shown != null)
+      _shapeGroup(e, shapes, picked, one, shown, change, commit,
+          points: editing ? controller.vectorPicks : const {},
+          onPoints: (which, edit) {
+        var next = e;
+        // A joint is one point: every end lying there takes it.
+        for (var pick in joinedTo(e, which)) {
+          if (vectorNodeAt(next, pick) case var n?) {
+            next = withVectorNode(next, pick, edit(n));
+          }
+        }
+        now(next);
+      }),
+  ];
+  // The tools alone, for a character's Drawing section -- see
+  // character_drawing_settings.dart.
+  if (toolsOnly) return drawing;
   return [
     section(e, "drawing",
         icon: Icons.draw_outlined,
@@ -175,59 +232,7 @@ List<Widget> vectorSettings(
         ].join(" · "),
         initiallyOpen: true,
         forceOpen: editing,
-        children: [
-          // The tools, as a picture's mask tools are: picking one opens the
-          // drawing to work on with it, and pressing the one in hand again
-          // puts the drawing down.
-          CanvasToolTiles<VectorTool>(
-            key: const ValueKey("vectorTools"),
-            help: editing
-                ? _toolHint(controller.vectorTool)
-                : "Pick a tool to edit the drawing's points, handles and "
-                    "colours -- or, with no drawing in it yet, to draw one. "
-                    "Double-clicking the drawing opens it too. A drawing from "
-                    "a file is drawn exactly as the file draws it until then. "
-                    "Pick the tool in hand again to stop editing.",
-            idle: "Pick a tool to edit the drawing.",
-            tools: tools,
-            active: editing ? controller.vectorTool : null,
-            alsoActive: (tool) => editing && tool == lit,
-            onPick: (tool) async {
-              if (tool == null) {
-                controller.editVector(null);
-                return;
-              }
-              if (!editing) {
-                await startVectorEditing(context, controller, e);
-                if (controller.vectorEditing != e.id) return;
-              }
-              controller.vectorTool = tool;
-            },
-            keyOf: (tool) => "vectorTool-${tool.name}",
-            tooltipOf: (tool) => "${tool.label} (${_toolKey(tool)})",
-            settings: editing
-                ? [
-                    ..._toolSettings(e, controller),
-                    ..._toolMore(controller),
-                  ]
-                : const [],
-          ),
-          // The picked layer's colours -- or every shape's, with none
-          // picked -- with the tools that make and change them.
-          if (e.edited && shown != null)
-            _shapeGroup(e, shapes, picked, one, shown, change, commit,
-                points: editing ? controller.vectorPicks : const {},
-                onPoints: (which, edit) {
-              var next = e;
-              // A joint is one point: every end lying there takes it.
-              for (var pick in joinedTo(e, which)) {
-                if (vectorNodeAt(next, pick) case var n?) {
-                  next = withVectorNode(next, pick, edit(n));
-                }
-              }
-              now(next);
-            }),
-        ]),
+        children: drawing),
     CanvasSection(
       key: const ValueKey("elementSection-animation"),
       icon: Icons.play_circle_outline,

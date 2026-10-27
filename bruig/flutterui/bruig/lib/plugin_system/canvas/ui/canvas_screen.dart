@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
@@ -704,6 +705,10 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           child:
                               Column(mainAxisSize: MainAxisSize.min, children: [
                         ImageToolHint(controller: _controller),
+                        // A sketched character's: going round it, its
+                        // panels, the zoom and the drawing tools.
+                        CharacterDrawBar(controller: _controller),
+                        const SizedBox(height: 6),
                         VectorToolHint(controller: _controller),
                       ])),
                     ),

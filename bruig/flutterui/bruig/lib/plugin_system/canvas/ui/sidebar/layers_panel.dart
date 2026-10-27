@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -82,8 +83,9 @@ class CanvasLayersPanel extends StatelessWidget {
         // frontmost; a list showing that order literally reads upside down to
         // anybody looking at the canvas.
         for (var i = elements.length - 1; i >= 0; i--)
-          // Sounds on the timeline are on its channels, not the canvas.
-          if (!isTimelineSound(elements[i]))
+          // Sounds on the timeline are on its channels, not the canvas; a
+          // character's drawing is the character's.
+          if (!isTimelineSound(elements[i]) && !isDrawingProxy(elements[i].id))
             CanvasLayerRow(
               controller: controller,
               element: elements[i],

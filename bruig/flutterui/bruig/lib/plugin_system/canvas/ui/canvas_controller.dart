@@ -25,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
@@ -443,6 +444,7 @@ class CanvasController extends ChangeNotifier {
       _vectorEditing = null;
       _resetVectorEditing();
     }
+    _keepDrawingProxy();
     // And a picture's layers, by the same rule.
     var picture = _imageEditing;
     if (picture != null &&
@@ -967,6 +969,7 @@ class CanvasController extends ChangeNotifier {
       _redo.clear();
     }
 
+    next = _drawnOnCharacter(next);
     _document = next;
     _dirty = true;
     scheduleAutosave();
@@ -3803,6 +3806,99 @@ class CanvasController extends ChangeNotifier {
     replaceElement(withoutTints(e));
   }
 
+  // ---- drawing on a character ---------------------------------------------
+
+  /// drawingOn is the character being drawn on, by id, or null. It is drawn
+  /// on with the drawing tools, through a drawing laid over it that they
+  /// edit as they edit any -- see drawingProxy -- and what is drawn on that
+  /// goes into the panel the character is seen from as it is drawn.
+  String? get drawingOn => switch (_vectorEditing) {
+        var id? => drawnCharacterOf(id),
+        null => null,
+      };
+
+  /// _proxyOver and _proxyFrame are the character, as it was, and the frame
+  /// the stand-in was laid out for: either changed -- a pose, a turn to
+  /// another panel, the playhead moved -- and it is laid out again.
+  CharacterElement? _proxyOver;
+  int _proxyFrame = -1;
+
+  /// drawOnCharacter starts drawing on the sketched character [id], on the
+  /// panel it is seen from where the playhead is.
+  void drawOnCharacter(String id) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement || c.body.inThreeD) return;
+    if (drawingOn == id) return;
+    stopVectorTyping();
+    _fitEditedVector();
+    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate));
+    var next = _document.removeElement(proxy.id).addElement(proxy);
+    next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
+    _vectorEditing = proxy.id;
+    _resetVectorEditing();
+    _vectorTool = VectorTool.pen;
+    _selection = {proxy.id};
+    _backgroundSelected = false;
+    _proxyOver = c;
+    _proxyFrame = _frame;
+    // Not a change of its own to undo: only what is drawn is.
+    apply(next, transient: true);
+    notifyListeners();
+  }
+
+  /// stopDrawingOnCharacter puts the drawing tools down, the character
+  /// picked again.
+  void stopDrawingOnCharacter() {
+    var id = drawingOn;
+    if (id == null) return;
+    selectOnly(id);
+  }
+
+  /// _drawnOnCharacter is [next] with what was drawn on the stand-in since
+  /// the document before it taken into the character.
+  CanvasDocument _drawnOnCharacter(CanvasDocument next) {
+    var id = _vectorEditing;
+    var cid = id == null ? null : drawnCharacterOf(id);
+    if (id == null || cid == null) return next;
+    var proxy = next.elementById(id), before = _document.elementById(id);
+    var c = next.elementById(cid);
+    if (proxy is! VectorElement || before is! VectorElement || c is! CharacterElement) {
+      return next;
+    }
+    if (identical(proxy, before) || proxy.shapes == before.shapes) return next;
+    var drawn = drawnFromProxy(c, proxy, _frame, math.max(1, _document.frameRate),
+        before: before);
+    _proxyOver = drawn;
+    _proxyFrame = _frame;
+    return next.withElement(drawn);
+  }
+
+  /// _keepDrawingProxy keeps the stand-in for the character being drawn on
+  /// laid over it as it is, and takes away any left with nothing being
+  /// drawn: a drawing put down, or an undo back to while it was.
+  void _keepDrawingProxy() {
+    var id = _vectorEditing;
+    var cid = id == null ? null : drawnCharacterOf(id);
+    if (cid == null) {
+      if (_document.elements.any((e) => isDrawingProxy(e.id))) {
+        _document = _document.copyWith(
+            elements: [for (var e in _document.elements) if (!isDrawingProxy(e.id)) e]);
+      }
+      _proxyOver = null;
+      return;
+    }
+    var c = _document.elementById(cid);
+    if (c is! CharacterElement) return;
+    if (identical(c, _proxyOver) && _frame == _proxyFrame) return;
+    var at = _document.elementById(id!);
+    var proxy = drawingProxy(c, _frame, math.max(1, _document.frameRate));
+    if (at is VectorElement) {
+      _document = _document.withElement(proxy);
+    }
+    _proxyOver = c;
+    _proxyFrame = _frame;
+  }
+
   /// editingVector is the drawing being edited, where there is one and it has
   /// been taken apart -- which editing it always has. See startVectorEditing.
   VectorElement? get editingVector {
@@ -3814,6 +3910,14 @@ class CanvasController extends ChangeNotifier {
   /// editVector starts editing the drawing [id], or stops with null.
   void editVector(String? id) {
     if (_vectorEditing == id) return;
+    // A character's drawing is laid over it to be edited -- see
+    // drawOnCharacter -- and put down, the character is picked again.
+    var drawn = id == null ? null : drawnCharacterOf(id);
+    if (drawn != null && _document.elementById(id!) == null) {
+      drawOnCharacter(drawn);
+      return;
+    }
+    var putDown = id == null ? drawingOn : null;
     stopVectorTyping();
     _fitEditedVector();
     _vectorEditing = id;
@@ -3822,6 +3926,9 @@ class CanvasController extends ChangeNotifier {
     // so the settings beside it are its own. See notifyListeners.
     if (id != null) {
       _selection = {id};
+      _backgroundSelected = false;
+    } else if (putDown != null && _document.elementById(putDown) != null) {
+      _selection = {putDown};
       _backgroundSelected = false;
     }
     notifyListeners();
@@ -3974,7 +4081,8 @@ class CanvasController extends ChangeNotifier {
   /// round all of it. See boxedToDrawing.
   void _fitEditedVector() {
     var e = editingVector;
-    if (e == null) return;
+    // A character's stand-in is its box exactly, and is thrown away.
+    if (e == null || isDrawingProxy(e.id)) return;
     var fitted = boxedToDrawing(e);
     if (identical(fitted, e)) return;
     apply(_document.withElement(fitted));
@@ -5087,6 +5195,47 @@ class CanvasController extends ChangeNotifier {
   }
 
   void zoomBy(double factor) => zoom = _zoom * factor;
+
+  /// zoomToRect zooms onto [r], a stretch of the canvas, in its middle and
+  /// filling most of the view.
+  void zoomToRect(Rect r) {
+    var size = _document.size.size;
+    if (r.width <= 0 || r.height <= 0 || size.width <= 0) return;
+    _zoom = (math.min(size.width / r.width, size.height / r.height) * 0.9)
+        .clamp(minZoom, maxZoom);
+    var scale = _fitScale * _zoom;
+    _pan = Offset2(scale * (size.width / 2 - r.center.dx),
+        scale * (size.height / 2 - r.center.dy));
+    _notifyView();
+  }
+
+  /// zoomToCharacter zooms onto the stretch of character [id]'s body that
+  /// [zoom] names, as it is where the playhead is.
+  void zoomToCharacter(String id, CharacterZoom zoom) {
+    var c = _document.elementById(id);
+    if (c is! CharacterElement) return;
+    var (rig, _, _) = drawnRig(c, _frame, math.max(1, _document.frameRate));
+    var pose = c.poseAt(_frame);
+    var box = c.bounds.shift(Offset(pose.dx, pose.dy));
+    var local = zoomRect(rig, zoom).shift(box.topLeft);
+    // Turned with the character, about its middle.
+    var turn = c.rotationAt(_frame) * math.pi / 180;
+    var cs = math.cos(turn), sn = math.sin(turn);
+    Offset turned(Offset p) {
+      var d = p - box.center;
+      return box.center + Offset(d.dx * cs - d.dy * sn, d.dx * sn + d.dy * cs);
+    }
+
+    var corners = [
+      for (var p in [local.topLeft, local.topRight, local.bottomLeft, local.bottomRight])
+        turned(p)
+    ];
+    var r = Rect.fromPoints(corners[0], corners[0]);
+    for (var p in corners.skip(1)) {
+      r = r.expandToInclude(Rect.fromPoints(p, p));
+    }
+    zoomToRect(r);
+  }
 
   set pan(Offset2 value) {
     _pan = value;

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Color, Offset, Rect;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -821,7 +822,11 @@ class CanvasScene {
   Map<String, dynamic> toJson() => {
         "id": id,
         if (name.isNotEmpty) "name": name,
-        "elements": [for (var e in elements) e.toJson()],
+        // A stand-in for drawing on a character is the editor's, never saved.
+        "elements": [
+          for (var e in elements)
+            if (!isDrawingProxy(e.id)) e.toJson()
+        ],
         "frames": frames,
         if (actions.isNotEmpty) "actions": [for (var a in actions) a.toJson()],
         if (holds) "holds": true,
