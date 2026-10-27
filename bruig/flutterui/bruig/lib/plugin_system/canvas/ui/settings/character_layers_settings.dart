@@ -86,6 +86,12 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
       initiallyOpen: true,
       children: [
         _viewStrip(controller, e, write, begin, commit),
+        CanvasToggle(
+          key: const ValueKey("characterTurnaroundToggle"),
+          label: "Lay the views out on the canvas",
+          value: controller.showTurnaround,
+          onChanged: (v) => controller.showTurnaround = v,
+        ),
         _LayerList(
           key: const ValueKey("characterLayerList"),
           rows: rows,

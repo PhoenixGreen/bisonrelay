@@ -31,6 +31,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
     show characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
+    show showPanel;
 import 'package:bruig/plugin_system/canvas/render/character/character_live.dart'
     show rebasedCharacter;
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -3947,6 +3949,50 @@ class CanvasController extends ChangeNotifier {
     if (_editHair == on) return;
     _editHair = on;
     _hairPick = null;
+    notifyListeners();
+  }
+
+  /// showTurnaround is whether the sketch drawn on -- or picked alone --
+  /// has its other views laid out beside it on the canvas, with lines
+  /// across them at the heights a turn keeps: see character_turnaround.dart.
+  /// onionSkin is whether the view next round is shown faintly over it.
+  bool get showTurnaround => _showTurnaround;
+  bool _showTurnaround = false;
+  set showTurnaround(bool on) {
+    if (_showTurnaround == on) return;
+    _showTurnaround = on;
+    notifyListeners();
+  }
+
+  bool get onionSkin => _onionSkin;
+  bool _onionSkin = false;
+  set onionSkin(bool on) {
+    if (_onionSkin == on) return;
+    _onionSkin = on;
+    notifyListeners();
+  }
+
+  /// turnaroundCharacter is the sketch whose turnaround is shown, or null.
+  CharacterElement? get turnaroundCharacter {
+    if (!_showTurnaround) return null;
+    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
+    var e = id == null ? null : _document.elementById(id);
+    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
+  }
+
+  /// showCharacterView turns sketch [id] to the view [key] names -- see
+  /// showPanel -- as one step to undo; drawn on, it goes on being drawn on
+  /// there, the same layer or garment.
+  void showCharacterView(String id, String key) {
+    var e = _document.elementById(id);
+    if (e is! CharacterElement) return;
+    var drawing = drawingOn == id;
+    var garment = _drawingGarment, layer = _drawingLayer;
+    if (drawing) stopDrawingOnCharacter();
+    beginInteraction();
+    replaceElement(showPanel(this, _document.elementById(id) as CharacterElement, key));
+    endInteraction();
+    if (drawing) drawOnCharacter(id, garment: garment, layer: layer);
     notifyListeners();
   }
 

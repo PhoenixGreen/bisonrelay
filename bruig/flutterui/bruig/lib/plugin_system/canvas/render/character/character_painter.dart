@@ -5466,6 +5466,20 @@ class _Drawing {
 Color _shade(Color c, [double by = 0.32]) =>
     Color.lerp(c, const Color(0xFF000000), by)!;
 
+/// styleHairOf is the hair [style] draws [dna] with as strokes -- its own,
+/// or the style's for its hair style -- or null for hair drawn otherwise.
+/// What shaping a sketch's hair by its strokes starts from.
+HairRig? styleHairOf(CharacterDna dna, CharacterStyle style) {
+  if (dna.hairRig case var own?) return own;
+  var look = _Look.of(style);
+  if (!look.strokes || dna.species.animal) return null;
+  var styled = style.dnaOf(dna);
+  return hairForStyle(styled.hairStyle, styled.look,
+      spiky: look.hair == _Hair.spiky,
+      soft: look.hair != _Hair.clumps && look.hair != _Hair.spiky,
+      headsTall: styled.headsTall);
+}
+
 /// facePivots is where each feature of [dna]'s face -- drawn as [style]
 /// draws it, making [face] -- is set about, in the head's own space: see
 /// character_face_rig.dart. [rig] is built from [dna] as the style has it.

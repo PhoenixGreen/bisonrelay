@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
+    show panelOptions;
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
@@ -1884,6 +1887,17 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.anchor;
       controller.beginInteraction();
       return;
+    }
+
+    // A panel of a sketch's turnaround: the character turned to that view.
+    if (controller.turnaroundCharacter case var who?) {
+      var sheet = Turnaround.of(who, controller.frame, document.frameRate,
+          panelOptions(who, adding: false));
+      if (sheet.panelAt(doc) case var panel?) {
+        controller.showCharacterView(who.id, panel.key);
+        _mode = _DragMode.none;
+        return;
+      }
     }
 
     // A sketch's hair strokes, while they are shaped: a handle of the one
@@ -6527,6 +6541,12 @@ class CanvasStageState extends State<CanvasStage>
                         rigCharacter: controller.rigCharacter,
                         faceCharacter: controller.faceCharacter,
                         hairCharacter: controller.hairCharacter,
+                        turnaround: switch (controller.turnaroundCharacter) {
+                          var who? => Turnaround.of(who, controller.frame,
+                              document.frameRate, panelOptions(who, adding: false)),
+                          null => null,
+                        },
+                        onionSkin: controller.onionSkin,
                         hairPicked: controller.hairPick,
                         garmentArea: _garmentArea(),
                         facePicked: controller.facePick,

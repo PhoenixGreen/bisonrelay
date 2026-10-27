@@ -1,4 +1,6 @@
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
+    show styleHairOf;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
@@ -156,6 +158,25 @@ class CharacterDrawBar extends StatelessWidget {
                 if (z != null) controller.zoomToCharacter(e.id, z);
               },
             ),
+            // Every view at once, laid out beside it, and the one next round
+            // faintly over it.
+            toggle(
+                "characterDrawTurnaround",
+                Icons.view_week_outlined,
+                controller.showTurnaround,
+                controller.showTurnaround
+                    ? "Put the turnaround away"
+                    : "Show every view beside it, lined up",
+                () => controller.showTurnaround = !controller.showTurnaround),
+            if (controller.showTurnaround)
+              toggle(
+                  "characterDrawOnion",
+                  Icons.flip_to_back_outlined,
+                  controller.onionSkin,
+                  controller.onionSkin
+                      ? "Hide the view next round"
+                      : "Show the view next round faintly over this one",
+                  () => controller.onionSkin = !controller.onionSkin),
             rule(),
             toggle(
                 "characterDrawPuppet",
@@ -179,8 +200,9 @@ class CharacterDrawBar extends StatelessWidget {
                     ? "Put the rig's points away"
                     : "Reshape the limbs point by point",
                 () => controller.editRig = !controller.editRig),
-            // The hair stroke by stroke, when it is made of them.
-            if (e.dna.hairRig != null)
+            // The hair stroke by stroke, when it is made of them -- its own,
+            // or its style's, which shaping makes its own.
+            if (styleHairOf(e.dna, e.style) != null)
               toggle(
                   "characterDrawHair",
                   Icons.gesture,
@@ -188,7 +210,15 @@ class CharacterDrawBar extends StatelessWidget {
                   controller.editHair
                       ? "Put the hair's handles away"
                       : "Shape the hair stroke by stroke",
-                  () => controller.editHair = !controller.editHair),
+                  () {
+                    if (!controller.editHair && e.dna.hairRig == null) {
+                      controller.beginInteraction();
+                      controller.replaceElement(e.copyWith(
+                          dna: e.dna.copyWith(hairRig: styleHairOf(e.dna, e.style))));
+                      controller.endInteraction();
+                    }
+                    controller.editHair = !controller.editHair;
+                  }),
             rule(),
             _ToolRow(controller: controller, character: e, drawing: drawing),
             // The tool in hand and the way out, at the end of the line.

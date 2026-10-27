@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
@@ -246,6 +247,12 @@ class StagePainter extends CustomPainter {
   final CharacterElement? hairCharacter;
   final int? hairPicked;
 
+  /// turnaround is the sheet of a sketch's views laid out beside it, when
+  /// it is shown, and onionSkin whether the view next round is shown faintly
+  /// over it. See character_turnaround.dart.
+  final Turnaround? turnaround;
+  final bool onionSkin;
+
   /// garmentArea is the character a garment is being drawn on and the
   /// parts of its body the garment covers, washed over it.
   final (CharacterElement, Set<CharacterPart>)? garmentArea;
@@ -397,6 +404,8 @@ class StagePainter extends CustomPainter {
     this.faceCharacter,
     this.facePicked,
     this.hairCharacter,
+    this.turnaround,
+    this.onionSkin = false,
     this.hairPicked,
     this.garmentArea,
     this.guideHandles = true,
@@ -893,6 +902,11 @@ class StagePainter extends CustomPainter {
           parts,
           (doc) => doc * scale + origin,
           scale);
+    }
+    // The turnaround's views beside it, under everything that edits it.
+    if (turnaround case var sheet?) {
+      paintTurnaround(canvas, sheet, (doc) => doc * scale + origin, scale, origin,
+          onion: onionSkin);
     }
     // The puppet to draw over, under the pins that pose it.
     if (guideCharacter case var who?) {
@@ -1951,6 +1965,9 @@ class StagePainter extends CustomPainter {
       !identical(old.faceCharacter, faceCharacter) ||
       old.facePicked != facePicked ||
       !identical(old.hairCharacter, hairCharacter) ||
+      !identical(old.turnaround?.character, turnaround?.character) ||
+      old.turnaround?.frame != turnaround?.frame ||
+      old.onionSkin != onionSkin ||
       old.hairPicked != hairPicked ||
       old.garmentArea?.$1 != garmentArea?.$1 ||
       old.guideHandles != guideHandles ||
