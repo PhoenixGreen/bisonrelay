@@ -1020,7 +1020,7 @@ class _Drawing {
     }
     for (var limb in [CharacterLimb.legL, CharacterLimb.legR]) {
       if (_shows(_regionOf(limb))) {
-        add(_limbShape(_along(limb, 0, 1), legWidth, leg: true));
+        add(_limbShape(_along(limb, 0, 1), legWidth, leg: true, limb: limb));
       }
     }
     if (skin case var s?) _fill(s, dna.skin);
@@ -1030,7 +1030,96 @@ class _Drawing {
 
   /// _along is the stretch of [limb] from [from] to [to] of its length,
   /// as the joints it passes through.
+  /// _points is [limb]'s points as they are reshaped -- see
+  /// character_rig_points.dart -- or null where it is as it was made.
+  List<PlacedRigPoint>? _points(CharacterLimb limb) => _placed.putIfAbsent(
+      limb,
+      () => dna.rigPoints.edited(limb.name)
+          ? placedRigPoints(rig, limb, dna.rigPoints)
+          : null);
+  final Map<CharacterLimb, List<PlacedRigPoint>?> _placed = {};
+
+  /// _curve is the line down the middle of a reshaped [limb], finely, each
+  /// step with how far down the limb it is: through its points, smoothly
+  /// along each bone and turning at the joint between as it always has.
+  List<(double, Offset)>? _curve(CharacterLimb limb) => _curves.putIfAbsent(limb, () {
+        var pts = _points(limb);
+        if (pts == null) return null;
+        var line = <(double, Offset)>[(pts.first.t, pts.first.at)];
+        // Bone by bone: its joints and the points between.
+        var start = 0;
+        for (var i = 1; i < pts.length; i++) {
+          if (!pts[i].point.isJoint) continue;
+          var run = pts.sublist(start, i + 1);
+          for (var j = 0; j + 1 < run.length; j++) {
+            var p0 = run[j].at, p1 = run[j + 1].at;
+            // Square to the curve at the points between, and along the
+            // bone at its joints.
+            var m0 = j == 0 ? p1 - p0 : (p1 - run[j - 1].at) / 2;
+            var m1 = j + 2 == run.length ? p1 - p0 : (run[j + 2].at - p0) / 2;
+            const steps = 8;
+            for (var k = 1; k <= steps; k++) {
+              var x = k / steps;
+              var x2 = x * x, x3 = x2 * x;
+              var p = p0 * (2 * x3 - 3 * x2 + 1) +
+                  m0 * (x3 - 2 * x2 + x) +
+                  p1 * (-2 * x3 + 3 * x2) +
+                  m1 * (x3 - x2);
+              line.add((run[j].t + (run[j + 1].t - run[j].t) * x, p));
+            }
+          }
+          start = i;
+        }
+        return line;
+      });
+  final Map<CharacterLimb, List<(double, Offset)>?> _curves = {};
+
+  /// _end is where [limb] ends -- the wrist or the ankle -- and _beforeEnd
+  /// the point before it, which says the way it ends.
+  Offset _end(CharacterLimb limb) => _points(limb)?.last.at ?? rig.end(limb);
+  Offset _beforeEnd(CharacterLimb limb) => switch (_points(limb)) {
+        var pts? => pts[pts.length - 2].at,
+        null => rig.middle(limb),
+      };
+
+  /// _profile is [of] of [limb]'s points at [t] down it, eased from one
+  /// point to the next.
+  double _profile(List<PlacedRigPoint> pts, double t, double Function(RigPoint) of) {
+    for (var i = 0; i + 1 < pts.length; i++) {
+      var p = pts[i], q = pts[i + 1];
+      if (t <= q.t || i + 2 == pts.length) {
+        var k = q.t == p.t ? 0.0 : ((t - p.t) / (q.t - p.t)).clamp(0.0, 1.0);
+        k = k * k * (3 - 2 * k);
+        return of(p.point) + (of(q.point) - of(p.point)) * k;
+      }
+    }
+    return of(pts.last.point);
+  }
+
   List<Offset> _along(CharacterLimb limb, double from, double to) {
+    // Reshaped: through every point, curving through those between the
+    // joints -- a bend, not a break.
+    if (_curve(limb) case var line?) {
+      Offset at(double t) {
+        for (var i = 0; i + 1 < line.length; i++) {
+          var (ta, a) = line[i];
+          var (tb, b) = line[i + 1];
+          if (t <= tb || i + 2 == line.length) {
+            var k = tb == ta ? 0.0 : ((t - ta) / (tb - ta)).clamp(0.0, 1.0);
+            return Offset.lerp(a, b, k)!;
+          }
+        }
+        return line.last.$2;
+      }
+
+      var hi = math.max(from, to);
+      return [
+        at(from),
+        for (var (t, p) in line)
+          if (t > from + 1e-6 && t < hi - 1e-6) p,
+        at(hi),
+      ];
+    }
     var a = rig.root(limb), b = rig.middle(limb), c = rig.end(limb);
     var (upper, lower) = rig.lengths(limb);
     var whole = upper + lower;
@@ -1064,7 +1153,9 @@ class _Drawing {
         continue;
       }
       // The leg's skin is drawn already, with the body's, as one person.
-      if (!_oneSkin) _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true);
+      if (!_oneSkin) {
+        _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true, limb: limb);
+      }
       // A bare foot, unless a shoe covers it all.
       if (!_wearing((g) =>
               g.kind.shape == GarmentShape.shoes && g.kind != GarmentKind.sandals)
@@ -1079,7 +1170,8 @@ class _Drawing {
             part: limb.index,
             hem: true,
             span: (from, math.min(1, to)),
-            leg: true);
+            leg: true,
+            limb: limb);
         if (g.kind == GarmentKind.socks) _foot(limb, g.color);
         if (from == 0 && !dna.fourLegs && !seated.any((s) => s.$1 == i)) {
           seated.add((i, g));
@@ -1142,8 +1234,8 @@ class _Drawing {
   /// _footBox is where a foot is drawn: its middle, how it tips, and how
   /// long it is -- longer side on, where it points the way the body faces.
   (Offset, double, double, double) _footBox(CharacterLimb limb) {
-    var ankle = rig.end(limb);
-    var shinTurn = turnOf(rig.end(limb) - rig.middle(limb));
+    var ankle = _end(limb);
+    var shinTurn = turnOf(_end(limb) - _beforeEnd(limb));
     var drop = rig.below * CharacterRig.footDrop;
     var outward = limb.onLeft ? -1.0 : 1.0;
     var turned = rig.yaw * math.pi / 180;
@@ -1189,7 +1281,9 @@ class _Drawing {
           line: _along(limb, 1 - g.lengthOr * 0.5, 1),
           width: legWidth * 1.2,
           part: 20 + limb.index,
-          span: (1 - g.lengthOr * 0.5, 1));
+          span: (1 - g.lengthOr * 0.5, 1),
+          leg: true,
+          limb: limb);
     }
     canvas.save();
     canvas.translate(centre.dx, centre.dy);
@@ -1209,7 +1303,7 @@ class _Drawing {
             Offset(length * 0.45, drop * 0.48), strap..strokeWidth = drop * 0.18);
       case GarmentKind.heels:
         // Where the ankle is in the foot's own frame, and how wide.
-        var d = rig.end(limb) - centre;
+        var d = _end(limb) - centre;
         var c = math.cos(-tip), sn = math.sin(-tip);
         var ankle = Offset(d.dx * c - d.dy * sn, d.dx * sn + d.dy * c);
         _heel(length, drop, colour, ankle,
@@ -1863,7 +1957,10 @@ class _Drawing {
         _fin(shoulder, elbow);
         continue;
       }
-      _limb([shoulder, elbow, wrist], armWidth, dna.skin);
+      _limb(_along(limb, 0, 1), armWidth, dna.skin, limb: limb);
+      // The hand where the arm ends, reshaped or not.
+      elbow = _beforeEnd(limb);
+      wrist = _end(limb);
       if (dna.fourLegs) {
         // Front legs: whatever is worn on the legs is worn on these too.
         for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
@@ -1923,7 +2020,8 @@ class _Drawing {
             width: armWidth * 1.14 * g.fitOr,
             part: 60 + limb.index,
             hem: true,
-            span: (0, math.min(0.97, sleeve)));
+            span: (0, math.min(0.97, sleeve)),
+            limb: limb);
       }
     }
   }
@@ -2078,12 +2176,13 @@ class _Drawing {
   /// _limb is an arm or a leg through [points]: thicker at the root than at
   /// the end, a little fuller near the top where the muscle is, rounded at
   /// every joint -- as a figure is drawn, rather than a tube.
-  void _limb(List<Offset> points, double width, Color colour, {bool leg = false}) {
+  void _limb(List<Offset> points, double width, Color colour,
+      {bool leg = false, CharacterLimb? limb}) {
     if (look.hose || points.length < 2) {
       _stroke(points, width, colour);
       return;
     }
-    var shape = _limbShape(points, width, leg: leg);
+    var shape = _limbShape(points, width, leg: leg, limb: limb);
     _solid(shape.getBounds(), colour, (p) => canvas.drawPath(shape, p));
     // No line where it joins the body: the shoulder or the hip and the
     // limb are one form, not a limb stuck on.
@@ -2100,7 +2199,10 @@ class _Drawing {
   /// at the usual -- or of the stretch of it from [t0] to [t1] of its
   /// length, for a sleeve or a trouser leg, which narrows as the limb does.
   Path _limbShape(List<Offset> points, double width,
-      {double t0 = 0, double t1 = 1, bool leg = false}) {
+      {double t0 = 0, double t1 = 1, bool leg = false, CharacterLimb? limb}) {
+    // Reshaped point by point: thicker or thinner, its cross-section
+    // turned, where each point says.
+    var pts = limb == null ? null : _points(limb);
     var lengths = <double>[0];
     for (var i = 1; i < points.length; i++) {
       lengths.add(lengths.last + (points[i] - points[i - 1]).distance);
@@ -2136,7 +2238,9 @@ class _Drawing {
         if (t <= tb || i + 2 == profile.length) {
           var k = ((t - ta) / (tb - ta)).clamp(0.0, 1.0);
           k = k * k * (3 - 2 * k);
-          return width * (wa + (wb - wa) * k);
+          return width *
+              (wa + (wb - wa) * k) *
+              (pts == null ? 1 : _profile(pts, t, (p) => p.scale));
         }
       }
       return width;
@@ -2167,6 +2271,13 @@ class _Drawing {
       if (len < 1e-6) d = middle.last - middle.first;
       len = d.distance == 0 ? 1.0 : d.distance;
       var n = Offset(-d.dy / len, d.dx / len);
+      if (pts != null) {
+        var turn = _profile(pts, t0 + (t1 - t0) * at[k], (p) => p.turn) * math.pi / 180;
+        if (turn != 0) {
+          var c = math.cos(turn), sn = math.sin(turn);
+          n = Offset(n.dx * c - n.dy * sn, n.dx * sn + n.dy * c);
+        }
+      }
       var w = widthAt(at[k]) / 2;
       left.add(middle[k] + n * w);
       right.add(middle[k] - n * w);
@@ -2174,7 +2285,15 @@ class _Drawing {
     var shape = Path()..addPolygon([...left, ...right.reversed], true);
     // Round at the root and the end; round at the joint on the outside of
     // the bend.
-    for (var i in [0, points.length - 1, if (points.length == 3) 1]) {
+    for (var i in [
+      0,
+      points.length - 1,
+      if (points.length == 3 && pts == null) 1,
+      // Reshaped, at its own points -- not every step of the curve.
+      if (pts != null)
+        for (var j = 1; j < points.length - 1; j++)
+          if (pts.any((p) => (p.at - points[j]).distance < 1e-6)) j,
+    ]) {
       var w = widthAt(lengths[i] / total) / 2;
       shape = Path.combine(PathOperation.union, shape,
           Path()..addOval(Rect.fromCircle(center: points[i], radius: w)));
@@ -2227,10 +2346,11 @@ class _Drawing {
       int part = 0,
       bool hem = false,
       (double, double)? span,
-      bool leg = false}) {
+      bool leg = false,
+      CharacterLimb? limb}) {
     // Down a limb, as the limb narrows.
     if (shape == null && line != null && span != null && !look.hose) {
-      shape = _limbShape(line, width, t0: span.$1, t1: span.$2, leg: leg);
+      shape = _limbShape(line, width, t0: span.$1, t1: span.$2, leg: leg, limb: limb);
     }
     var c = g.condition;
     var seed = g.seed + i * 7919 + g.kind.index * 104729 + part * 31337;
@@ -3763,7 +3883,7 @@ class _Drawing {
 
   /// _toes are a bird's three toes, spread on the ground.
   void _toes(CharacterLimb limb) {
-    var ankle = rig.end(limb);
+    var ankle = _end(limb);
     var drop = rig.below * CharacterRig.footDrop;
     var side = math.sin(rig.yaw * math.pi / 180);
     var forward = side.abs() > 0.5 ? -side.sign : 0.0;

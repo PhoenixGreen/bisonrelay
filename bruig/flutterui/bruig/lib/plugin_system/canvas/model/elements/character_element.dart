@@ -6,12 +6,14 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
 export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
 // character_element.dart is a person, an animal or a monster on a canvas: a
@@ -770,6 +772,10 @@ class CharacterDna {
   final String hairModel;
   final String browModel;
 
+  /// rigPoints is how a sketch's limbs are reshaped point by point -- see
+  /// character_rig_points.dart.
+  final RigPoints rigPoints;
+
   /// type is what kind of character this is -- a woman, a boy, a dog --
   /// which decides what the panel offers it. Null for one saved before
   /// types, which is told by its species and size; see typeOf.
@@ -798,6 +804,7 @@ class CharacterDna {
     this.type,
     this.hairModel = "",
     this.browModel = "",
+    this.rigPoints = RigPoints.none,
   });
 
   /// kind is [type], or what a character saved before types most likely is.
@@ -844,6 +851,7 @@ class CharacterDna {
     CharacterType? type,
     String? hairModel,
     String? browModel,
+    RigPoints? rigPoints,
   }) =>
       CharacterDna(
         headsTall: (headsTall ?? this.headsTall).clamp(minHeads, maxHeads),
@@ -868,6 +876,7 @@ class CharacterDna {
         type: type ?? this.type,
         hairModel: hairModel ?? this.hairModel,
         browModel: browModel ?? this.browModel,
+        rigPoints: rigPoints ?? this.rigPoints,
       );
 
   Map<String, dynamic> toJson() => {
@@ -893,6 +902,7 @@ class CharacterDna {
         if (type != null) "type": type!.name,
         if (hairModel.isNotEmpty) "hairModel": hairModel,
         if (browModel.isNotEmpty) "browModel": browModel,
+        if (!rigPoints.isEmpty) "rigPoints": rigPoints.toJson(),
       };
 
   factory CharacterDna.fromJson(Map<String, dynamic> json) {
@@ -926,6 +936,7 @@ class CharacterDna {
       type: CharacterType.fromName(json["type"] as String?),
       hairModel: jsonString(json["hairModel"], ""),
       browModel: jsonString(json["browModel"], ""),
+      rigPoints: RigPoints.fromJson(json["rigPoints"]),
     );
   }
 

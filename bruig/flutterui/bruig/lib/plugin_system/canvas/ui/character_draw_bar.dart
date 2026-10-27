@@ -137,6 +137,16 @@ class CharacterDrawBar extends StatelessWidget {
                     onPressed: () =>
                         controller.showPuppet = !controller.showPuppet,
                   ),
+                  // The limbs point by point, to bend, thicken and turn.
+                  CanvasIconButton(
+                    key: const ValueKey("characterDrawRig"),
+                    icon: Icons.polyline_outlined,
+                    tooltip: controller.editRig
+                        ? "Put the rig's points away"
+                        : "Reshape the limbs point by point",
+                    active: controller.editRig,
+                    onPressed: () => controller.editRig = !controller.editRig,
+                  ),
                   rule(),
                   for (var tool in drawBarTools)
                     CanvasIconButton(

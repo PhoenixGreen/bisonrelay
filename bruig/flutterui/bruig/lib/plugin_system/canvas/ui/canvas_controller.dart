@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
 import 'dart:io' show File;
@@ -1127,6 +1129,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   void deleteSelected() {
+    // A rig's point picked goes before anything else.
+    if (deleteRigPoint()) return;
     // While a drawing is being edited, Delete takes out the points picked,
     // or the shape picked -- and with neither, nothing: never the drawing.
     if (editingVector != null) {
@@ -1859,8 +1863,7 @@ class CanvasController extends ChangeNotifier {
       [CharacterPose? pose, CharacterFace? face]) {
     var track = e.track ?? ElementTrack.empty;
     if (!e.posedOnTimeline && _frame != 0) {
-      track = _pinnedAt(
-          track, 0, {...e.pose.channels, ...e.face.channels});
+      track = _pinnedAt(track, 0, {...e.pose.channels, ...e.face.channels});
     }
     replaceElement(e.withBase(
         track: _pinnedAt(track, _frame, {
@@ -1920,11 +1923,18 @@ class CanvasController extends ChangeNotifier {
       keys = mouthsFromWords(said, frameRate: rate, feel: feel);
     } else {
       if (length <= 0) {
-        return (problem: "That recording's length is not known yet.", mouths: 0);
+        return (
+          problem: "That recording's length is not known yet.",
+          mouths: 0
+        );
       }
-      var file = await CanvasMedia.existingPath(MediaKind.audio, source.assetId);
+      var file =
+          await CanvasMedia.existingPath(MediaKind.audio, source.assetId);
       if (file == null) {
-        return (problem: "The recording is missing from the library.", mouths: 0);
+        return (
+          problem: "The recording is missing from the library.",
+          mouths: 0
+        );
       }
       // A hundred readings a second: the timeline's own waveform is spread
       // over the whole file, too thin for a mouth on a long recording.
@@ -1953,7 +1963,8 @@ class CanvasController extends ChangeNotifier {
   }
 
   /// clearLipSync takes every mouth off [e]'s track.
-  void clearLipSync(CharacterElement e) => replaceElement(e.withMouths(const []));
+  void clearLipSync(CharacterElement e) =>
+      replaceElement(e.withMouths(const []));
 
   /// recordPins is whether dragging a character's pins while the scene
   /// plays records the movement: a pose keyed on each frame the drag passes
@@ -2007,8 +2018,8 @@ class CanvasController extends ChangeNotifier {
   /// until the camera has been keyed, and from then on this frame's key --
   /// the rule a character's pose follows.
   StageElement stageFilmed(StageElement stage, StageCamera camera) {
-    var keyed = stage.track?.keys.any((k) =>
-            k.values.keys.any((c) => c.startsWith("cam."))) ??
+    var keyed = stage.track?.keys
+            .any((k) => k.values.keys.any((c) => c.startsWith("cam."))) ??
         false;
     if (!keyed) return stage.copyWith(camera: camera);
     return stage.withBase(
@@ -2021,8 +2032,8 @@ class CanvasController extends ChangeNotifier {
   /// camera was.
   void keyCamera(StageElement stage) {
     var track = stage.track ?? ElementTrack.empty;
-    var keyed = track.keys.any((k) =>
-        k.values.keys.any((c) => c.startsWith("cam.")));
+    var keyed =
+        track.keys.any((k) => k.values.keys.any((c) => c.startsWith("cam.")));
     if (!keyed && _frame != 0) {
       track = _pinnedAt(track, 0, stage.camera.channels);
     }
@@ -2032,7 +2043,11 @@ class CanvasController extends ChangeNotifier {
 
   /// hasCameraKey is whether the camera is keyed on this frame.
   bool hasCameraKey(StageElement stage) =>
-      stage.track?.keyAt(_frame)?.values.keys.any((c) => c.startsWith("cam.")) ??
+      stage.track
+          ?.keyAt(_frame)
+          ?.values
+          .keys
+          .any((c) => c.startsWith("cam.")) ??
       false;
 
   /// clearCameraKey takes the camera off this frame's keyframe.
@@ -2075,8 +2090,8 @@ class CanvasController extends ChangeNotifier {
           ]),
           transient: transient);
 
-  void removeMotion(CharacterElement e, String id) => replaceElement(
-      e.copyWith(motions: [
+  void removeMotion(CharacterElement e, String id) =>
+      replaceElement(e.copyWith(motions: [
         for (var m in e.motions)
           if (m.id != id) m,
       ]));
@@ -2085,8 +2100,8 @@ class CanvasController extends ChangeNotifier {
   /// frame, the way [direction] says -- -1 to the left, 1 to the right:
   /// it turns to face the way it is going, goes the distance its legs would
   /// take it, and turns back to the reader at the end. One undo step.
-  void walkAcross(CharacterElement e, MotionKind kind, int direction,
-      double seconds) {
+  void walkAcross(
+      CharacterElement e, MotionKind kind, int direction, double seconds) {
     var rate = math.max(1, _document.frameRate);
     var frames = math.max(4, (seconds * rate).round());
     var start = _frame, end = _frame + frames;
@@ -3828,6 +3843,52 @@ class CanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// editRig shows a sketch's limbs point by point, to reshape on the
+  /// canvas -- see character_rig_editor.dart. For this run of the app.
+  bool get editRig => _editRig;
+  bool _editRig = false;
+  set editRig(bool on) {
+    if (_editRig == on) return;
+    _editRig = on;
+    _rigPick = null;
+    notifyListeners();
+  }
+
+  /// rigPick is the limb's point picked while the rig is edited: what
+  /// Delete takes away.
+  (CharacterLimb, RigPoint)? get rigPick =>
+      _rigPickOf != null && rigCharacter?.id == _rigPickOf ? _rigPick : null;
+  (CharacterLimb, RigPoint)? _rigPick;
+
+  /// _rigPickOf is whose point is picked: picking another character is not
+  /// picking its point at the same spot.
+  String? _rigPickOf;
+  void pickRigPoint(CharacterLimb? limb, [RigPoint? point]) {
+    _rigPick = limb == null || point == null ? null : (limb, point);
+    _rigPickOf = _rigPick == null ? null : rigCharacter?.id;
+    notifyListeners();
+  }
+
+  /// rigCharacter is the sketch whose rig is edited: the one drawn on, or
+  /// picked alone.
+  CharacterElement? get rigCharacter {
+    if (!_editRig) return null;
+    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
+    var e = id == null ? null : _document.elementById(id);
+    return e is CharacterElement && !e.body.inThreeD && e.visible ? e : null;
+  }
+
+  /// deleteRigPoint takes away the point picked -- or puts the joint
+  /// picked back as it was -- returning whether there was one.
+  bool deleteRigPoint() {
+    var pick = rigPick, e = rigCharacter;
+    if (pick == null || e == null) return false;
+    replaceElement(withoutRigPoint(e, pick.$1, pick.$2));
+    _rigPick = null;
+    notifyListeners();
+    return true;
+  }
+
   /// puppetHandles is whether the puppet's handles and pins can be taken
   /// hold of: always, but while drawing only with a select tool in hand,
   /// so the pen and pencil draw across them.
@@ -3881,11 +3942,14 @@ class CanvasController extends ChangeNotifier {
     if (id == null || cid == null) return next;
     var proxy = next.elementById(id), before = _document.elementById(id);
     var c = next.elementById(cid);
-    if (proxy is! VectorElement || before is! VectorElement || c is! CharacterElement) {
+    if (proxy is! VectorElement ||
+        before is! VectorElement ||
+        c is! CharacterElement) {
       return next;
     }
     if (identical(proxy, before) || proxy.shapes == before.shapes) return next;
-    var drawn = drawnFromProxy(c, proxy, _frame, math.max(1, _document.frameRate),
+    var drawn = drawnFromProxy(
+        c, proxy, _frame, math.max(1, _document.frameRate),
         before: before);
     _proxyOver = drawn;
     _proxyFrame = _frame;
@@ -3900,8 +3964,10 @@ class CanvasController extends ChangeNotifier {
     var cid = id == null ? null : drawnCharacterOf(id);
     if (cid == null) {
       if (_document.elements.any((e) => isDrawingProxy(e.id))) {
-        _document = _document.copyWith(
-            elements: [for (var e in _document.elements) if (!isDrawingProxy(e.id)) e]);
+        _document = _document.copyWith(elements: [
+          for (var e in _document.elements)
+            if (!isDrawingProxy(e.id)) e
+        ]);
       }
       _proxyOver = null;
       return;
@@ -5246,7 +5312,12 @@ class CanvasController extends ChangeNotifier {
     }
 
     var corners = [
-      for (var p in [local.topLeft, local.topRight, local.bottomLeft, local.bottomRight])
+      for (var p in [
+        local.topLeft,
+        local.topRight,
+        local.bottomLeft,
+        local.bottomRight
+      ])
         turned(p)
     ];
     var r = Rect.fromPoints(corners[0], corners[0]);

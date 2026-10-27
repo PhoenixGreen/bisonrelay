@@ -322,3 +322,68 @@ Rect zoomRect(CharacterRig rig, CharacterZoom zoom) {
     CharacterZoom.feet => round(feet, foot),
   };
 }
+
+/// PlacedRigPoint is one of a limb's points where the rig puts it: see
+/// character_rig_points.dart.
+class PlacedRigPoint {
+  final RigPoint point;
+
+  /// at is where it is drawn, and on where it would be unmoved: on its bone.
+  final Offset at;
+  final Offset on;
+
+  /// dir is the way its bone runs.
+  final Offset dir;
+
+  /// t is how far down the whole limb it is, root 0 to end 1.
+  final double t;
+  const PlacedRigPoint(this.point, this.at, this.on, this.dir, this.t);
+
+  Offset get across => Offset(-dir.dy, dir.dx);
+}
+
+/// placedRigPoints is [limb]'s points, root to end, where [rig] puts them,
+/// as [points] has them changed.
+List<PlacedRigPoint> placedRigPoints(CharacterRig rig, CharacterLimb limb, RigPoints points) {
+  var a = rig.root(limb), b = rig.middle(limb), c = rig.end(limb);
+  var (upper, lower) = rig.lengths(limb);
+  var whole = upper + lower;
+  var u = rig.unit;
+  return [
+    for (var p in points.of(limb.name))
+      () {
+        var (from, to) = p.bone == 0 ? (a, b) : (b, c);
+        var dir = _unit(to - from, p.bone == 0 ? _unit(c - b) : _unit(b - a));
+        var on = Offset.lerp(from, to, p.f)!;
+        var across = Offset(-dir.dy, dir.dx);
+        var t = whole == 0 ? 0.0 : (p.bone == 0 ? p.f * upper : upper + p.f * lower) / whole;
+        return PlacedRigPoint(p, on + dir * (p.along * u) + across * (p.across * u), on, dir, t);
+      }(),
+  ];
+}
+
+/// rigPointFor is the point a limb would have at [page] -- a click on its
+/// line -- unmoved: on the bone nearest, how far along it.
+RigPoint rigPointFor(CharacterRig rig, CharacterLimb limb, RigPoints points, Offset page) {
+  var placed = placedRigPoints(rig, limb, points);
+  var best = (0, 0.5);
+  var bestD = double.infinity;
+  for (var i = 0; i + 1 < placed.length; i++) {
+    var p = placed[i], q = placed[i + 1];
+    var ab = q.at - p.at;
+    var len2 = ab.dx * ab.dx + ab.dy * ab.dy;
+    var k = len2 < 1e-9
+        ? 0.0
+        : (((page - p.at).dx * ab.dx + (page - p.at).dy * ab.dy) / len2).clamp(0.0, 1.0);
+    var d = (page - (p.at + ab * k)).distance;
+    if (d < bestD) {
+      bestD = d;
+      // Along the limb, between the two -- on the bone they share, or
+      // across the joint between.
+      var order = p.point.order + (q.point.order - p.point.order) * k;
+      var bone = order >= 1 ? 1 : 0;
+      best = (bone, (order - bone).clamp(0.02, 0.98));
+    }
+  }
+  return RigPoint(best.$1, best.$2);
+}

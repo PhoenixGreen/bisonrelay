@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
@@ -225,6 +227,11 @@ class StagePainter extends CustomPainter {
   /// guideHandles whether its handles can be taken hold of, and guideHeld
   /// the one being dragged. See character_guide.dart.
   final CharacterElement? guideCharacter;
+
+  /// rigCharacter is the sketch whose limbs are being reshaped point by
+  /// point, and rigPicked the point picked. See character_rig_editor.dart.
+  final CharacterElement? rigCharacter;
+  final (CharacterLimb, RigPoint)? rigPicked;
   final bool guideHandles;
   final GuideHandle? guideHeld;
 
@@ -368,6 +375,8 @@ class StagePainter extends CustomPainter {
     required this.selectedPath,
     this.selectedCharacter,
     this.guideCharacter,
+    this.rigCharacter,
+    this.rigPicked,
     this.guideHandles = true,
     this.guideHeld,
     this.editingVector,
@@ -864,6 +873,16 @@ class StagePainter extends CustomPainter {
           held: guideHeld);
     }
     if (selectedCharacter case var who?) _paintPuppet(canvas, who);
+    // The rig's points, over both.
+    if (rigCharacter case var who?) {
+      paintRig(
+          canvas,
+          RigView.of(who, frame,
+              frameRate: document.frameRate, document: document),
+          (doc) => doc * scale + origin,
+          scale,
+          picked: rigPicked);
+    }
 
     // A selected path shows its points and handles instead of a box: the box
     // round a curve is a rectangle nobody drew and cannot be usefully dragged,
@@ -1553,14 +1572,13 @@ class StagePainter extends CustomPainter {
   /// the same blue as a path's points: they are taken hold of the same way.
   void _paintPuppet(Canvas canvas, CharacterElement who) {
     Offset at(Offset doc) => doc * scale + origin;
-    var placed =
-        CharacterPlacement.of(who, frame,
-            frameRate: document.frameRate,
-            document: document,
-            models: switch (images) {
-              CanvasModelSource m => m,
-              _ => null,
-            });
+    var placed = CharacterPlacement.of(who, frame,
+        frameRate: document.frameRate,
+        document: document,
+        models: switch (images) {
+          CanvasModelSource m => m,
+          _ => null,
+        });
     var bone = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
@@ -1876,6 +1894,8 @@ class StagePainter extends CustomPainter {
       !identical(old.selectedPath, selectedPath) ||
       !identical(old.selectedCharacter, selectedCharacter) ||
       !identical(old.guideCharacter, guideCharacter) ||
+      !identical(old.rigCharacter, rigCharacter) ||
+      old.rigPicked != rigPicked ||
       old.guideHandles != guideHandles ||
       old.guideHeld != guideHeld ||
       old.editingVector != editingVector ||

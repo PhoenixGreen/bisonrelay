@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
@@ -125,6 +126,10 @@ enum _DragMode {
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
   characterPin,
+
+  /// characterRig is one of a sketch's rig points being dragged: moved,
+  /// thickened or turned. See character_rig_editor.dart.
+  characterRig,
 
   /// characterGuide is one of the puppet's handles being dragged, changing
   /// the character's proportions. See character_guide.dart.
@@ -515,6 +520,12 @@ class CanvasStageState extends State<CanvasStage>
   /// has hold of, [_guideFrom] where, and [_guideStart] the character as it
   /// was: each step is worked out from there.
   GuideHandle _guideHandle = GuideHandle.headSize;
+
+  /// _rigHold is the rig point a [_DragMode.characterRig] drag has hold of,
+  /// [_rigFrom] where, and [_rigStart] the character as it was.
+  RigHold? _rigHold;
+  Offset _rigFrom = Offset.zero;
+  CharacterElement? _rigStart;
   Offset _guideFrom = Offset.zero;
   CharacterElement? _guideStart;
   bool _nodeHandleOut = false;
@@ -1852,10 +1863,34 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
+    // A sketch's rig points, while they are edited: before the puppet and
+    // the drawing. A line taken hold of has a point put on it there.
+    if (controller.rigCharacter case var who?
+        when !who.locked && controller.puppetHandles) {
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var view = RigView.of(who, controller.frame,
+          frameRate: document.frameRate, document: document);
+      if (view.under(doc, _scale, reach) case var hold?) {
+        controller.beginInteraction();
+        if (hold.added) {
+          who = withRigPoint(who, hold.limb, hold.point);
+          controller.replaceElement(who, transient: true);
+          hold = RigHold(hold.limb, hold.point, RigGrab.centre);
+        }
+        _rigHold = hold;
+        _rigFrom = doc;
+        _rigStart = who;
+        controller.pickRigPoint(hold.limb, hold.point);
+        _mode = _DragMode.characterRig;
+        return;
+      }
+    }
+
     // The puppet over a sketch -- its handles, then the pins -- before the
     // drawing laid over it to draw on: they are what is aimed at. See
     // character_guide.dart.
-    if (_guideCharacter() case var who? when !who.locked && controller.puppetHandles) {
+    if (_guideCharacter() case var who?
+        when !who.locked && controller.puppetHandles) {
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
       var placed = CharacterPlacement.of(who, controller.frame,
           frameRate: document.frameRate, document: document);
@@ -1901,14 +1936,14 @@ class CanvasStageState extends State<CanvasStage>
 
     // A selected character's pins, before the character itself: like a
     // path's points, they are drawn on top and are what is being aimed at.
-    if (_selectedCharacter() case var who? when !who.locked) {
+    if (_selectedCharacter() case var who?
+        when !who.locked && !controller.editRig) {
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
-      var pin =
-          CharacterPlacement.of(who, controller.frame,
-                  frameRate: document.frameRate,
-                  document: document,
-                  models: controller.images)
-              .pinUnder(doc, reach);
+      var pin = CharacterPlacement.of(who, controller.frame,
+              frameRate: document.frameRate,
+              document: document,
+              models: controller.images)
+          .pinUnder(doc, reach);
       if (pin != null) {
         _characterPin = pin;
         _mode = _DragMode.characterPin;
@@ -5131,6 +5166,13 @@ class CanvasStageState extends State<CanvasStage>
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
               transient: true);
         }
+      case _DragMode.characterRig:
+        if ((_rigStart, _rigHold) case (var start?, var hold?)) {
+          controller.replaceElement(
+              rigDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
+                  frameRate: document.frameRate, document: document),
+              transient: true);
+        }
       case _DragMode.characterGuide:
         if (_guideStart case var start?) {
           controller.replaceElement(
@@ -5835,6 +5877,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.characterPin ||
         _mode == _DragMode.characterGuide ||
+        _mode == _DragMode.characterRig ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
@@ -6306,8 +6349,15 @@ class CanvasStageState extends State<CanvasStage>
                                 document.size.rect)
                             : null,
                         selectedPath: _selectedPath(),
-                        selectedCharacter: _selectedCharacter() ??
-                            (controller.puppetHandles ? _guideCharacter() : null),
+                        // The pins, unless the rig's points are out.
+                        selectedCharacter: controller.editRig
+                            ? null
+                            : _selectedCharacter() ??
+                                (controller.puppetHandles
+                                    ? _guideCharacter()
+                                    : null),
+                        rigCharacter: controller.rigCharacter,
+                        rigPicked: controller.rigPick,
                         guideCharacter: _guideCharacter(),
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide

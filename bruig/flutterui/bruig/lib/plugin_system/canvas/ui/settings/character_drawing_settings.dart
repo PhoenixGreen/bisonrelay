@@ -135,6 +135,41 @@ Widget characterDrawingSection(
                 onChanged: (v) => controller.showPuppet = v,
               ),
             ]),
+        CanvasControlGroup(
+            key: const ValueKey("characterDrawingRig"),
+            label: "Rig points",
+            help: "Each arm and leg runs through its joints and any points "
+                "put on it. Drag a point's middle to move it and bend the "
+                "limb there, its ring to make it thicker or thinner -- down "
+                "to nothing -- and the knob on the ring to turn it. Drag a "
+                "line to put a point on it and bend it. Delete takes the "
+                "point picked away, or puts a joint back as it was. What is "
+                "changed is the character's, on every panel.",
+            children: [
+              CanvasToggle(
+                key: const ValueKey("characterDrawingRigShow"),
+                label: "Reshape the limbs",
+                value: controller.editRig,
+                onChanged: (v) => controller.editRig = v,
+              ),
+              if (controller.editRig && controller.rigPick != null)
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingRigDelete"),
+                  label: controller.rigPick!.$2.isJoint
+                      ? "Put the joint back"
+                      : "Delete the point",
+                  icon: Icons.delete_outline,
+                  onPressed: controller.deleteRigPoint,
+                ),
+              if (!e.dna.rigPoints.isEmpty)
+                CanvasTextButton(
+                  key: const ValueKey("characterDrawingRigReset"),
+                  label: "Put every limb back",
+                  icon: Icons.restart_alt,
+                  onPressed: () => now(e.copyWith(
+                      dna: e.dna.copyWith(rigPoints: RigPoints.none))),
+                ),
+            ]),
         // The drawing's own tools: picking one lays the drawing over the
         // character to draw on, and the one in hand again puts it down.
         ...vectorSettings(context, controller, drawingTarget(controller, e),
