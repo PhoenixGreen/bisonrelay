@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_painter.da
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,16 @@ class AppearanceEditor extends StatefulWidget {
 }
 
 class AppearanceEditorState extends State<AppearanceEditor> {
+  /// _focus is what was picked on the canvas when last seen: picking
+  /// something new there opens its part here.
+  AppearanceGroup? _focus;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus = appearanceFocus(widget.controller);
+  }
+
   CharacterElement get e => widget.character;
   CharacterDna get dna => e.dna;
   AppearanceGroup get group => AppearanceEditor.tab;
@@ -69,6 +80,13 @@ class AppearanceEditorState extends State<AppearanceEditor> {
   @override
   Widget build(BuildContext context) {
     var groups = _groups;
+    // A feature of the face or a point of a limb picked on the canvas opens
+    // the part it is shaped in.
+    var focus = appearanceFocus(widget.controller);
+    if (focus != _focus) {
+      _focus = focus;
+      if (focus != null && groups.contains(focus)) AppearanceEditor.tab = focus;
+    }
     if (!groups.contains(group)) AppearanceEditor.tab = groups.first;
     var drawn = "${dna.toJson()}|${e.style.name}";
     var presets = presetsFor(group);
@@ -142,6 +160,10 @@ class AppearanceEditorState extends State<AppearanceEditor> {
                 onPressed: () => _dna(_resetGroup()),
               ),
             ]),
+        // What the canvas shapes it with: the face rig of the panel seen,
+        // the puppet and the limbs' points.
+        ...appearanceRigControls(
+            widget.controller, e, group, widget.write, widget.commit),
       ],
     );
   }
