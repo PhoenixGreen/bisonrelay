@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
@@ -127,6 +128,10 @@ enum _DragMode {
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
   characterPin,
+
+  /// characterHair is a sketch's hair stroke being dragged: moved round the
+  /// scalp, drawn out, or made wider. See character_hair_editor.dart.
+  characterHair,
 
   /// characterFace is one of a sketch's face features being dragged on the
   /// panel seen. See character_face_rig_editor.dart.
@@ -529,6 +534,11 @@ class CanvasStageState extends State<CanvasStage>
   /// _rigHold is the rig point a [_DragMode.characterRig] drag has hold of,
   /// [_rigFrom] where, and [_rigStart] the character as it was.
   RigHold? _rigHold;
+
+  /// _hairHold is the stroke a [_DragMode.characterHair] drag has hold of,
+  /// and _hairStart the character as it was.
+  HairHold? _hairHold;
+  CharacterElement? _hairStart;
 
   /// _faceHold is the feature a [_DragMode.characterFace] drag has hold of;
   /// the drag starts from [_rigFrom] and [_faceStart].
@@ -1871,6 +1881,41 @@ class CanvasStageState extends State<CanvasStage>
       _mode = _DragMode.anchor;
       controller.beginInteraction();
       return;
+    }
+
+    // A sketch's hair strokes, while they are shaped: a handle of the one
+    // picked, a stroke, or -- on the bare scalp -- a new one grown there.
+    if (controller.hairCharacter case var who? when !who.locked && controller.puppetHandles) {
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var view = HairView.of(who, controller.frame,
+          frameRate: document.frameRate, document: document);
+      if (view != null) {
+        var hold = view.under(doc, _scale, reach, picked: controller.hairPick);
+        if (hold == null) {
+          if (view.grownAt(doc) case var grown?) {
+            controller.beginInteraction();
+            var hair = view.hair;
+            who = who.copyWith(
+                dna: who.dna.copyWith(hairRig: HairRig(hair.name, [...hair.strokes, grown], hair.groups)));
+            controller.replaceElement(who, transient: true);
+            hold = HairHold(hair.strokes.length, HairGrab.tip);
+            _hairStart = who;
+            _hairHold = hold;
+            _rigFrom = doc;
+            controller.pickHair(hold.index);
+            _mode = _DragMode.characterHair;
+            return;
+          }
+        } else {
+          controller.beginInteraction();
+          _hairStart = who;
+          _hairHold = hold;
+          _rigFrom = doc;
+          controller.pickHair(hold.index);
+          _mode = _DragMode.characterHair;
+          return;
+        }
+      }
     }
 
     // A sketch's face, feature by feature, while it is set: the smallest
@@ -5204,6 +5249,14 @@ class CanvasStageState extends State<CanvasStage>
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
               transient: true);
         }
+      case _DragMode.characterHair:
+        if ((_hairStart, _hairHold) case (var start?, var hold?)) {
+          var view = HairView.of(start, controller.frame,
+              frameRate: document.frameRate, document: document);
+          if (view != null) {
+            controller.replaceElement(view.dragged(hold, _rigFrom, doc), transient: true);
+          }
+        }
       case _DragMode.characterFace:
         if ((_faceStart, _faceHold) case (var start?, var hold?)) {
           controller.replaceElement(
@@ -5924,6 +5977,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.characterGuide ||
         _mode == _DragMode.characterRig ||
         _mode == _DragMode.characterFace ||
+        _mode == _DragMode.characterHair ||
         _mode == _DragMode.stageOrbit ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
@@ -6404,6 +6458,8 @@ class CanvasStageState extends State<CanvasStage>
                                     : null),
                         rigCharacter: controller.rigCharacter,
                         faceCharacter: controller.faceCharacter,
+                        hairCharacter: controller.hairCharacter,
+                        hairPicked: controller.hairPick,
                         garmentArea: _garmentArea(),
                         facePicked: controller.facePick,
                         rigPicked: controller.rigPick,

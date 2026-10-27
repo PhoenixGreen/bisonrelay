@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_hair_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -150,6 +152,105 @@ void main() {
           .onChanged("");
       await tester.pumpAndSettle();
       expect(get().dna.hairRig, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("shaped on the canvas", () {
+    test("the tip goes where it is dragged; the root round the scalp", () {
+      var e = _sketch(hair: messy);
+      var view = HairView.of(e, 0)!;
+      var i = messy.inGroup(HairGroup.fringe)[2].$1;
+      var tip = view.page(view.shapes[i].tip);
+      expect(view.under(tip, 3, 1.5, picked: i)?.grab, HairGrab.tip);
+      var to = tip + const Offset(3, 6);
+      var next = view.dragged(HairHold(i, HairGrab.tip), tip, to);
+      var after = HairView.of(next, 0)!;
+      expect((after.page(after.shapes[i].tip) - to).distance, lessThan(0.5));
+      expect(next.dna.hairRig!.strokes[i].length, greaterThan(messy.strokes[i].length));
+
+      var root = view.page(view.shapes[i].root);
+      var moved = view.dragged(HairHold(i, HairGrab.root), root, root + const Offset(4, 0));
+      expect(moved.dna.hairRig!.strokes[i].lon, isNot(messy.strokes[i].lon));
+      var r2 = HairView.of(moved, 0)!;
+      expect((r2.page(r2.shapes[i].root) - (root + const Offset(4, 0))).distance, lessThan(1));
+    });
+
+    test("a ring makes it wider; the bare scalp grows a new one, not the face", () {
+      var e = _sketch(hair: messy);
+      var view = HairView.of(e, 0)!;
+      var i = messy.inGroup(HairGroup.back)[0].$1;
+      var (c, r) = view.ringAt(i, 0, 3);
+      var from = view.page(c + Offset(r, 0)), to = view.page(c + Offset(r * 2, 0));
+      var wider = view.dragged(HairHold(i, HairGrab.ring0), from, to);
+      expect(wider.dna.hairRig!.strokes[i].w0, closeTo(messy.strokes[i].w0 * 2, 1e-6));
+      // On the crown: the top. On the cheek: nothing.
+      var r0 = e.dna.hairRig;
+      expect(r0, isNotNull);
+      var crown = view.page(Offset(0, -view.head.h * 0.97));
+      expect(view.grownAt(crown)?.group, HairGroup.top);
+      var cheek = view.page(Offset(view.head.w * 0.3, view.head.h * 0.3));
+      expect(view.grownAt(cheek), isNull);
+    });
+
+    testWidgets("picked by a click; a stroke grown on the scalp; Delete takes it",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      // Big, so the strokes are apart.
+      var c = CanvasController(const CanvasDocument().addElement(CharacterElement(
+          const ElementBase(id: "c", x: 300, y: 20, width: 380, height: 1040),
+          dna: characterCast.first.dna.copyWith(hairRig: messy))));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      c.editHair = true;
+      tester.view.physicalSize = const Size(1600, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(body: CanvasStage(key: const ValueKey("stage"), controller: c))),
+      ));
+      await tester.pumpAndSettle();
+      var stage = tester.state<CanvasStageState>(find.byKey(const ValueKey("stage")));
+      var page = stage.pageRect;
+      var scale = page.width / c.document.size.size.width;
+      Offset onScreen(Offset doc) =>
+          tester.getTopLeft(find.byKey(const ValueKey("stage"))) + page.topLeft + doc * scale;
+      CharacterElement get() => c.document.elementById("c") as CharacterElement;
+      var view = HairView.of(get(), 0)!;
+      var i = messy.inGroup(HairGroup.fringe)[3].$1;
+      var mid = view.page(view.shapes[i].middle[12]);
+      await tester.tapAt(onScreen(mid));
+      await tester.pumpAndSettle();
+      expect(c.hairPick, isNotNull);
+      var count = get().dna.hairRig!.strokes.length;
+      // Grown on the bare scalp and drawn out.
+      c.pickHair(null);
+      await tester.pump();
+      Offset? crown;
+      for (var y = -0.95; y < 0.2 && crown == null; y += 0.05) {
+        for (var x = -0.9; x <= 0.9 && crown == null; x += 0.05) {
+          var at = view.page(Offset(view.head.w * x, view.head.h * y));
+          if (view.grownAt(at) != null && view.under(at, scale, 12 / scale) == null) crown = at;
+        }
+      }
+      expect(crown, isNotNull, reason: "somewhere bare on the scalp");
+      await tester.dragFrom(onScreen(crown!), const Offset(10, -12));
+      await tester.pumpAndSettle();
+      expect(get().dna.hairRig!.strokes.length, count + 1);
+      expect(c.hairPick, count);
+      c.undo();
+      expect(get().dna.hairRig!.strokes.length, count, reason: "grown and drawn out: one step");
+      c.pickHair(i);
+      c.deleteSelected();
+      await tester.pump();
+      expect(get().dna.hairRig!.strokes.length, count - 1);
+      expect(c.document.elementById("c"), isNotNull);
       expect(tester.takeException(), isNull);
     });
   });

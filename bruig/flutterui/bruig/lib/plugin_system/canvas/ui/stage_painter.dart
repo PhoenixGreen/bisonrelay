@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
@@ -240,6 +241,11 @@ class StagePainter extends CustomPainter {
   final CharacterElement? faceCharacter;
   final FacePoint? facePicked;
 
+  /// hairCharacter is the sketch whose hair strokes are being shaped, and
+  /// hairPicked the stroke picked.
+  final CharacterElement? hairCharacter;
+  final int? hairPicked;
+
   /// garmentArea is the character a garment is being drawn on and the
   /// parts of its body the garment covers, washed over it.
   final (CharacterElement, Set<CharacterPart>)? garmentArea;
@@ -390,6 +396,8 @@ class StagePainter extends CustomPainter {
     this.rigPicked,
     this.faceCharacter,
     this.facePicked,
+    this.hairCharacter,
+    this.hairPicked,
     this.garmentArea,
     this.guideHandles = true,
     this.guideHeld,
@@ -906,6 +914,14 @@ class StagePainter extends CustomPainter {
           (doc) => doc * scale + origin,
           scale,
           picked: rigPicked);
+    }
+    // The hair's strokes.
+    if (hairCharacter case var who?) {
+      if (HairView.of(who, frame, frameRate: document.frameRate, document: document)
+          case var view?) {
+        paintHairEditor(canvas, view, (doc) => doc * scale + origin, scale,
+            picked: hairPicked);
+      }
     }
     // The face's features, over everything.
     if (faceCharacter case var who?) {
@@ -1932,6 +1948,8 @@ class StagePainter extends CustomPainter {
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||
       old.facePicked != facePicked ||
+      !identical(old.hairCharacter, hairCharacter) ||
+      old.hairPicked != hairPicked ||
       old.garmentArea?.$1 != garmentArea?.$1 ||
       old.guideHandles != guideHandles ||
       old.guideHeld != guideHeld ||

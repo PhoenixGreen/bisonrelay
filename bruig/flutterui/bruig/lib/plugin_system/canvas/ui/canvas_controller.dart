@@ -1133,7 +1133,7 @@ class CanvasController extends ChangeNotifier {
 
   void deleteSelected() {
     // A rig's point or a face's feature picked goes before anything else.
-    if (deleteRigPoint() || putFacePointBack()) return;
+    if (deleteRigPoint() || putFacePointBack() || deleteHairStroke()) return;
     // While a drawing is being edited, Delete takes out the points picked,
     // or the shape picked -- and with neither, nothing: never the drawing.
     if (editingVector != null) {
@@ -3934,6 +3934,50 @@ class CanvasController extends ChangeNotifier {
     }
     characterSoloOf = _layerSoloOf == null ? null : (e) => e.id == _layerSoloOf ? _layerSolo : null;
     notifyListeners();
+  }
+
+  /// editHair shows a sketch's hair strokes to shape on the canvas -- see
+  /// character_hair_editor.dart -- and hairPick is the stroke picked, by
+  /// index, for the character it was picked on. For this run of the app.
+  bool get editHair => _editHair;
+  bool _editHair = false;
+  set editHair(bool on) {
+    if (_editHair == on) return;
+    _editHair = on;
+    _hairPick = null;
+    notifyListeners();
+  }
+
+  CharacterElement? get hairCharacter {
+    if (!_editHair) return null;
+    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
+    var e = id == null ? null : _document.elementById(id);
+    return e is CharacterElement && !e.body.inThreeD && e.visible && e.dna.hairRig != null
+        ? e
+        : null;
+  }
+
+  int? get hairPick =>
+      _hairPickOf != null && hairCharacter?.id == _hairPickOf ? _hairPick : null;
+  int? _hairPick;
+  String? _hairPickOf;
+  void pickHair(int? i) {
+    _hairPick = i;
+    _hairPickOf = i == null ? null : hairCharacter?.id;
+    if (i != null) _pickedCharacterLayer = BodyLayer.hairFront.name;
+    notifyListeners();
+  }
+
+  /// deleteHairStroke takes the stroke picked away, returning whether there
+  /// was one.
+  bool deleteHairStroke() {
+    var i = hairPick, e = hairCharacter;
+    var hair = e?.dna.hairRig;
+    if (i == null || e == null || hair == null || i >= hair.strokes.length) return false;
+    replaceElement(e.copyWith(dna: e.dna.copyWith(hairRig: hair.without(i))));
+    _hairPick = null;
+    notifyListeners();
+    return true;
   }
 
   /// editFace shows a sketch's face feature by feature, to set on the

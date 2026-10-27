@@ -36,10 +36,15 @@ class HairStrokesEditor extends StatefulWidget {
 class _HairStrokesEditorState extends State<HairStrokesEditor> {
   CharacterElement get e => widget.character;
 
+  /// _seen is the stroke picked on the canvas when last seen.
+  int? _seen;
+
   void _rig(HairRig? rig, {bool live = false}) {
     widget.controller.beginInteraction();
     widget.write(e.copyWith(
-        dna: rig == null ? e.dna.copyWith(noHairRig: true) : e.dna.copyWith(hairRig: rig)));
+        dna: rig == null
+            ? e.dna.copyWith(noHairRig: true)
+            : e.dna.copyWith(hairRig: rig)));
     if (!live) widget.commit();
   }
 
@@ -58,28 +63,50 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
           CanvasDropdown<String>(
             key: const ValueKey("characterHairPreset"),
             label: "Hair",
-            value: rig == null ? "" : (presets.any((p) => p.name == rig.name) ? rig.name : "*"),
+            value: rig == null
+                ? ""
+                : (presets.any((p) => p.name == rig.name) ? rig.name : "*"),
             options: [
               ("", "As its style draws it"),
               for (var p in presets) (p.name, "Strokes: ${p.name}"),
-              if (rig != null && !presets.any((p) => p.name == rig.name)) ("*", "Strokes: ${rig.name}"),
+              if (rig != null && !presets.any((p) => p.name == rig.name))
+                ("*", "Strokes: ${rig.name}"),
             ],
             onChanged: (name) {
               if (name == "*") return;
-              _rig(name.isEmpty ? null : presets.firstWhere((p) => p.name == name));
+              _rig(name.isEmpty
+                  ? null
+                  : presets.firstWhere((p) => p.name == name));
             },
           ),
+          if (rig != null)
+            CanvasToggle(
+              key: const ValueKey("characterHairEdit"),
+              label: "Shape it on the canvas",
+              value: widget.controller.editHair,
+              onChanged: (v) => widget.controller.editHair = v,
+            ),
         ]);
     if (rig == null) return made;
 
+    // A stroke picked on the canvas: its group and it, here.
+    if (widget.controller.hairPick case var i?
+        when i != _seen && i < rig.strokes.length) {
+      HairStrokesEditor.group = rig.strokes[i].group;
+      HairStrokesEditor.stroke =
+          rig.inGroup(rig.strokes[i].group).indexWhere((s) => s.$1 == i);
+    }
+    _seen = widget.controller.hairPick;
     var group = HairStrokesEditor.group;
     var strokes = rig.inGroup(group);
-    if (HairStrokesEditor.stroke >= strokes.length) HairStrokesEditor.stroke = 0;
+    if (HairStrokesEditor.stroke >= strokes.length) {
+      HairStrokesEditor.stroke = 0;
+    }
     var picked = strokes.isEmpty ? null : strokes[HairStrokesEditor.stroke];
     var look = rig.lookOf(group);
 
-    Widget slider(String key, String label, double value, double min, double max,
-            void Function(double) set) =>
+    Widget slider(String key, String label, double value, double min,
+            double max, void Function(double) set) =>
         CanvasSlider(
           key: ValueKey(key),
           label: label,
@@ -92,7 +119,8 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
           onCommit: widget.commit,
         );
 
-    void setStroke(HairStroke s) => _rig(rig.withStroke(picked!.$1, s), live: true);
+    void setStroke(HairStroke s) =>
+        _rig(rig.withStroke(picked!.$1, s), live: true);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       made,
@@ -107,25 +135,52 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
               label: "Group",
               value: group,
               options: [
-                for (var g in HairGroup.values) (g, "${g.label} · ${rig.inGroup(g).length}"),
+                for (var g in HairGroup.values)
+                  (g, "${g.label} · ${rig.inGroup(g).length}"),
               ],
               onChanged: (g) => setState(() {
                 HairStrokesEditor.group = g;
                 HairStrokesEditor.stroke = 0;
               }),
             ),
-            slider("characterHairGroupLength", "Length", look.length, 0.1, 4,
-                (v) => _rig(rig.withGroup(group, look.copyWith(length: v)), live: true)),
-            slider("characterHairGroupVolume", "Volume", look.volume, 0, 3,
-                (v) => _rig(rig.withGroup(group, look.copyWith(volume: v)), live: true)),
-            slider("characterHairGroupCurl", "Curl", look.curl, -1, 1,
-                (v) => _rig(rig.withGroup(group, look.copyWith(curl: v)), live: true)),
-            slider("characterHairGroupWidth", "Width", look.width, 0.2, 3,
-                (v) => _rig(rig.withGroup(group, look.copyWith(width: v)), live: true)),
+            slider(
+                "characterHairGroupLength",
+                "Length",
+                look.length,
+                0.1,
+                4,
+                (v) => _rig(rig.withGroup(group, look.copyWith(length: v)),
+                    live: true)),
+            slider(
+                "characterHairGroupVolume",
+                "Volume",
+                look.volume,
+                0,
+                3,
+                (v) => _rig(rig.withGroup(group, look.copyWith(volume: v)),
+                    live: true)),
+            slider(
+                "characterHairGroupCurl",
+                "Curl",
+                look.curl,
+                -1,
+                1,
+                (v) => _rig(rig.withGroup(group, look.copyWith(curl: v)),
+                    live: true)),
+            slider(
+                "characterHairGroupWidth",
+                "Width",
+                look.width,
+                0.2,
+                3,
+                (v) => _rig(rig.withGroup(group, look.copyWith(width: v)),
+                    live: true)),
           ]),
       CanvasControlGroup(
           key: const ValueKey("characterHairStroke"),
-          label: picked == null ? "No strokes" : "Stroke ${HairStrokesEditor.stroke + 1} of ${strokes.length}",
+          label: picked == null
+              ? "No strokes"
+              : "Stroke ${HairStrokesEditor.stroke + 1} of ${strokes.length}",
           help: "One stroke of the group: where on the scalp it grows -- round "
               "the head from the front, and up from the middle -- how long it "
               "is, how it leans and curls, and how wide it is at its root, its "
@@ -139,11 +194,12 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
                 min: 1,
                 max: strokes.length.toDouble(),
                 step: 1,
-                onChanged: (v) => setState(() => HairStrokesEditor.stroke = v.round() - 1),
+                onChanged: (v) =>
+                    setState(() => HairStrokesEditor.stroke = v.round() - 1),
               ),
             if (picked != null) ...[
-              slider("characterHairLon", "Round the head", picked.$2.lon, -180, 180,
-                  (v) => setStroke(picked.$2.copyWith(lon: v))),
+              slider("characterHairLon", "Round the head", picked.$2.lon, -180,
+                  180, (v) => setStroke(picked.$2.copyWith(lon: v))),
               slider("characterHairLat", "Up the head", picked.$2.lat, -60, 90,
                   (v) => setStroke(picked.$2.copyWith(lat: v))),
               slider("characterHairLength", "Length", picked.$2.length, 0.02, 3,
@@ -165,7 +221,8 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
               icon: Icons.add,
               onPressed: () {
                 if (picked == null) {
-                  _rig(HairRig(rig.name, [...rig.strokes, HairStroke(group, 0, 40)], rig.groups));
+                  _rig(HairRig(rig.name,
+                      [...rig.strokes, HairStroke(group, 0, 40)], rig.groups));
                   return;
                 }
                 var (next, _) = rig.withAdded(picked.$1);
@@ -187,8 +244,8 @@ class _HairStrokesEditorState extends State<HairStrokesEditor> {
                 key: const ValueKey("characterHairMirror"),
                 label: "Mirror to the other side",
                 icon: Icons.flip,
-                onPressed: () => _rig(HairRig(
-                    rig.name, [...rig.strokes, picked.$2.mirrored], rig.groups)),
+                onPressed: () => _rig(HairRig(rig.name,
+                    [...rig.strokes, picked.$2.mirrored], rig.groups)),
               ),
             ],
           ]),

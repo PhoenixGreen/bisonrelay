@@ -179,6 +179,16 @@ class CharacterDrawBar extends StatelessWidget {
                     ? "Put the rig's points away"
                     : "Reshape the limbs point by point",
                 () => controller.editRig = !controller.editRig),
+            // The hair stroke by stroke, when it is made of them.
+            if (e.dna.hairRig != null)
+              toggle(
+                  "characterDrawHair",
+                  Icons.gesture,
+                  controller.editHair,
+                  controller.editHair
+                      ? "Put the hair's handles away"
+                      : "Shape the hair stroke by stroke",
+                  () => controller.editHair = !controller.editHair),
             rule(),
             _ToolRow(controller: controller, character: e, drawing: drawing),
             // The tool in hand and the way out, at the end of the line.
