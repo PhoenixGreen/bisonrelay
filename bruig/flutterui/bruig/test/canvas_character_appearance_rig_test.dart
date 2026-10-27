@@ -67,7 +67,8 @@ void main() {
       tester.widget<CanvasSlider>(find.byKey(ValueKey(key)));
 
   testWidgets("Part sits under the body types it chooses between", (tester) async {
-    await open(tester, _sketch());
+    // A body in 3D's Appearance; a sketch's parts are its layers.
+    await open(tester, _sketch(body: BodyKind.mannequin));
     var tiles = tester.getRect(find.byKey(const ValueKey("appearancePreset-body-Slim")).first);
     var part = tester.getRect(find.byKey(const ValueKey("appearancePart")));
     expect(part.top, greaterThan(tiles.bottom));
@@ -79,7 +80,7 @@ void main() {
     c.editFace = true;
     c.pickFacePoint(FacePoint.browL);
     await tester.pumpAndSettle();
-    expect(AppearanceEditor.tab, AppearanceGroup.brows);
+    expect(c.pickedCharacterLayer, BodyLayer.brows.name, reason: "its layer, picked");
     expect(find.byKey(const ValueKey("appearanceFace-browL")), findsOneWidget);
     expect(find.byKey(const ValueKey("appearanceFace-nose")), findsNothing);
 
@@ -95,7 +96,7 @@ void main() {
     // The mouth has its corners, which only move.
     c.pickFacePoint(FacePoint.cornerR);
     await tester.pumpAndSettle();
-    expect(AppearanceEditor.tab, AppearanceGroup.mouth);
+    expect(c.pickedCharacterLayer, BodyLayer.mouth.name);
     expect(find.byKey(const ValueKey("appearanceFace-cornerR-across")), findsOneWidget);
     expect(find.byKey(const ValueKey("appearanceFace-cornerR-size")), findsNothing);
     expect(find.byKey(const ValueKey("appearanceFace-mouth-size")), findsOneWidget);
@@ -108,7 +109,7 @@ void main() {
     c.editRig = true;
     c.pickRigPoint(CharacterLimb.armR, RigPoint.middle);
     await tester.pumpAndSettle();
-    expect(AppearanceEditor.tab, AppearanceGroup.body);
+    expect(c.pickedCharacterLayer, BodyLayer.armR.name);
     expect(find.text("Right arm: elbow"), findsOneWidget);
     slider(tester, "appearanceRigPoint-scale").onChanged(50);
     slider(tester, "appearanceRigPoint-scale").onCommit!();

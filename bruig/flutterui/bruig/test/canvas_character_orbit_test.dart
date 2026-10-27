@@ -252,10 +252,10 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      // The top picked from what is worn.
+      // The top picked from its layers.
       var top = get().dna.wardrobe.lastIndexWhere((g) =>
           g.kind.slot == GarmentSlot.top || g.kind.slot == GarmentSlot.outer);
-      await tap("characterWorn-$top");
+      await tap("layer-${garmentLayer(top)}");
       await tap("characterGarmentShape-Collar");
       var shaped = get().dna.wardrobe[top];
       expect(shaped.outline, hasLength(outlineShapes.first.$2.length));

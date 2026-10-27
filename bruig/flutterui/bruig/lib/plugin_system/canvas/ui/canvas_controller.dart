@@ -3868,6 +3868,8 @@ class CanvasController extends ChangeNotifier {
   String? _rigPickOf;
   void pickRigPoint(CharacterLimb? limb, [RigPoint? point]) {
     _rigPick = limb == null || point == null ? null : (limb, point);
+    // Its limb's layer picked, for its settings beside it.
+    if (limb != null && point != null) _pickedCharacterLayer = limb.name;
     _rigPickOf = _rigPick == null ? null : rigCharacter?.id;
     notifyListeners();
   }
@@ -3964,6 +3966,15 @@ class CanvasController extends ChangeNotifier {
   void pickFacePoint(FacePoint? p) {
     _facePick = p;
     _facePickOf = p == null ? null : faceCharacter?.id;
+    // Its layer picked, for its settings beside it.
+    if (p != null) {
+      _pickedCharacterLayer = switch (p) {
+        FacePoint.eyeL || FacePoint.eyeR => BodyLayer.eyes.name,
+        FacePoint.browL || FacePoint.browR => BodyLayer.brows.name,
+        FacePoint.nose => BodyLayer.nose.name,
+        _ => BodyLayer.mouth.name,
+      };
+    }
     notifyListeners();
   }
 

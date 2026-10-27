@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_life.dart'
 import 'package:bruig/models/snackbar.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -183,6 +184,35 @@ void main() {
       // A garment picked: its own settings.
       await tap("layer-${garmentLayer(hoodie)}");
       expect(find.byKey(ValueKey("characterLayerGarment-c-$hoodie")), findsOneWidget);
+
+      // A sketch's look and clothes are its layers': no sections of their own.
+      expect(find.byKey(const ValueKey("elementSection-appearance")), findsNothing);
+      expect(find.byKey(const ValueKey("elementSection-wardrobe")), findsNothing);
+      // The head carries the skin and the beard.
+      await tap("layer-${BodyLayer.head.name}");
+      expect(find.byKey(const ValueKey("characterLayerLook-c-head")), findsOneWidget);
+      expect(find.byKey(const ValueKey("characterLayerLook-c-head-skin")), findsOneWidget);
+      expect(find.byKey(const ValueKey("characterLayerLook-c-head-facialHair")), findsOneWidget);
+
+      // Put on from the Layers: its layer picked as it goes on.
+      tester.widget<CanvasDropdown<GarmentSlot>>(find.byKey(const ValueKey("characterSlot")))
+          .onChanged(GarmentSlot.head);
+      await tester.pumpAndSettle();
+      await tap("characterGarment-${GarmentKind.cap.name}");
+      var cap = get().dna.wardrobe.indexWhere((g) => g.kind == GarmentKind.cap);
+      expect(cap, greaterThanOrEqualTo(0));
+      expect(c.pickedCharacterLayer, garmentLayer(cap));
+      expect(find.byKey(ValueKey("characterLayerGarment-c-$cap")), findsOneWidget);
+      // Worn further in, its layer following; then off.
+      if (cap > 0) {
+        await tap("characterWornIn-$cap");
+        expect(get().dna.wardrobe[cap - 1].kind, GarmentKind.cap);
+        expect(c.pickedCharacterLayer, garmentLayer(cap - 1));
+        cap--;
+      }
+      await tap("characterWornOff-$cap");
+      expect(get().dna.wardrobe.any((g) => g.kind == GarmentKind.cap), isFalse);
+      expect(c.pickedCharacterLayer, isNull);
       expect(tester.takeException(), isNull);
     });
   });

@@ -382,7 +382,10 @@ List<Widget> characterSettings(
       characterLayersSection(context, controller, e, write, begin, commit),
     if (!e.body.inThreeD)
       characterDrawingSection(context, controller, e, write, begin, commit),
-    section(e, "appearance",
+    // A sketch's appearance and clothes are its layers' -- see
+    // character_layers_settings.dart. A body in 3D has them here.
+    if (e.body.inThreeD) ...[
+      section(e, "appearance",
         icon: Icons.face_retouching_natural_outlined,
         title: "Appearance",
         summary: dna.look.isRest
@@ -400,7 +403,7 @@ List<Widget> characterSettings(
             commit: commit,
           ),
         ]),
-    section(e, "wardrobe",
+      section(e, "wardrobe",
         icon: Icons.checkroom_outlined,
         title: "Wardrobe",
         summary: [
@@ -415,6 +418,7 @@ List<Widget> characterSettings(
               write: write,
               commit: commit),
         ]),
+    ],
     section(e, "pose",
         icon: Icons.accessibility_new,
         title: "Pose",
@@ -2019,20 +2023,47 @@ class GarmentEditor extends StatelessWidget {
       only: index);
 }
 
+/// WardrobeAdder is putting clothes on, as the Layers have it: a costume,
+/// a garment from the catalogue, or one drawn by hand -- each a layer of
+/// its own, picked as it goes on. See character_layers_settings.dart.
+class WardrobeAdder extends StatelessWidget {
+  final CanvasController controller;
+  final CharacterElement character;
+  final SettingsWrite write;
+  final VoidCallback commit;
+  const WardrobeAdder(
+      {required this.controller,
+      required this.character,
+      required this.write,
+      required this.commit,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) => _WardrobeGroup(
+      controller: controller,
+      character: character,
+      write: write,
+      commit: commit,
+      adding: true);
+}
+
 class _WardrobeGroup extends StatefulWidget {
   final CanvasController controller;
   final CharacterElement character;
   final SettingsWrite write;
   final VoidCallback commit;
 
-  /// only is the one garment edited, with nothing else of the wardrobe.
+  /// only is the one garment edited, with nothing else of the wardrobe;
+  /// adding, putting clothes on alone, with nothing of what is worn.
   final int? only;
+  final bool adding;
   const _WardrobeGroup(
       {required this.controller,
       required this.character,
       required this.write,
       required this.commit,
-      this.only});
+      this.only,
+      this.adding = false});
 
   @override
   State<_WardrobeGroup> createState() => _WardrobeGroupState();
@@ -2082,7 +2113,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
       _picked = only;
       return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: _garmentEditor(wardrobe[only]));
+          children: [_wornOrder(only), ..._garmentEditor(wardrobe[only])]);
     }
     if (_picked >= wardrobe.length) _picked = -1;
     var picked = _picked >= 0 ? wardrobe[_picked] : null;
@@ -2183,9 +2214,11 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
           var next = putOn(wardrobe, g);
           _picked = next.indexOf(g);
           _wear(next);
+          // Its layer picked, for its settings.
+          if (widget.adding) widget.controller.pickCharacterLayer(garmentLayer(_picked));
         },
       ),
-      CanvasControlGroup(
+      if (!widget.adding) CanvasControlGroup(
           label: "Worn, inside to outside",
           help: "Everything worn, the innermost first. Click one to change "
               "it below. The arrows move it in or out -- which is worn over "
@@ -2232,8 +2265,47 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
               ),
             ],
           ]),
-      if (picked != null) ..._garmentEditor(picked),
+      if (!widget.adding && picked != null) ..._garmentEditor(picked),
     ]);
+  }
+
+  /// _wornOrder is garment [i] worn further in or out, or taken off -- as
+  /// the Wardrobe's list has them -- its layer following it.
+  Widget _wornOrder(int i) {
+    var wardrobe = dna.wardrobe;
+    void moveTo(int j) {
+      _wear(moved(wardrobe, i, j - i));
+      widget.controller.pickCharacterLayer(garmentLayer(j));
+    }
+
+    return CanvasControlGroup(
+        key: const ValueKey("characterGarmentOrder"),
+        label: "Worn",
+        help: "Which is worn over which: further in goes under what is worn "
+            "over it, further out over it.",
+        children: [
+          CanvasIconButton(
+            key: ValueKey("characterWornIn-$i"),
+            icon: Icons.arrow_upward,
+            tooltip: "Wear it further in",
+            onPressed: i == 0 ? null : () => moveTo(i - 1),
+          ),
+          CanvasIconButton(
+            key: ValueKey("characterWornOut-$i"),
+            icon: Icons.arrow_downward,
+            tooltip: "Wear it further out",
+            onPressed: i == wardrobe.length - 1 ? null : () => moveTo(i + 1),
+          ),
+          CanvasIconButton(
+            key: ValueKey("characterWornOff-$i"),
+            icon: Icons.close,
+            tooltip: "Take it off",
+            onPressed: () {
+              widget.controller.pickCharacterLayer(null);
+              _wear([...wardrobe]..removeAt(i));
+            },
+          ),
+        ]);
   }
 
   /// _newDrawn puts on a garment of its own where the slot picked is, with
@@ -2249,6 +2321,7 @@ class _WardrobeGroupState extends State<_WardrobeGroup> {
     var next = putOn(dna.wardrobe, g);
     _picked = next.indexOf(g);
     _wear(next);
+    if (widget.adding) widget.controller.pickCharacterLayer(garmentLayer(_picked));
     widget.controller.drawOnCharacter(e.id, garment: _picked);
   }
 

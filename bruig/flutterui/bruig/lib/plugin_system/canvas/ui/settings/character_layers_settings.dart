@@ -40,17 +40,23 @@ List<LayerRow> layerRows(CharacterElement e) {
   ]..sort((a, b) => a.group.index.compareTo(b.group.index));
 }
 
-/// appearanceOf is the part of the Appearance editor that shapes body
-/// layer [l].
-AppearanceGroup appearanceOf(BodyLayer l) => switch (l) {
-      BodyLayer.hairFront || BodyLayer.hairBack => AppearanceGroup.hair,
-      BodyLayer.brows => AppearanceGroup.brows,
-      BodyLayer.eyes => AppearanceGroup.eyes,
-      BodyLayer.nose => AppearanceGroup.nose,
-      BodyLayer.mouth => AppearanceGroup.mouth,
-      BodyLayer.head => AppearanceGroup.head,
-      BodyLayer.ears => AppearanceGroup.ears,
-      _ => AppearanceGroup.body,
+/// appearanceOf is the parts of the Appearance editor that shape body
+/// layer [l]: its own, and the skin with the head and the body, and the
+/// beard with the head.
+List<AppearanceGroup> appearanceOf(BodyLayer l, {bool person = true}) => switch (l) {
+      BodyLayer.hairFront || BodyLayer.hairBack => [AppearanceGroup.hair],
+      BodyLayer.brows => [AppearanceGroup.brows],
+      BodyLayer.eyes => [AppearanceGroup.eyes],
+      BodyLayer.nose => [AppearanceGroup.nose],
+      BodyLayer.mouth => [AppearanceGroup.mouth],
+      BodyLayer.head => [
+          AppearanceGroup.head,
+          AppearanceGroup.skin,
+          if (person) AppearanceGroup.facialHair,
+        ],
+      BodyLayer.ears => [AppearanceGroup.ears],
+      BodyLayer.torso => [AppearanceGroup.body, AppearanceGroup.skin],
+      _ => [AppearanceGroup.body],
     };
 
 Widget characterLayersSection(BuildContext context, CanvasController controller,
@@ -88,14 +94,16 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
         if (pickedRow != null) ...[
           _onThisView(controller, e, pickedRow),
           if (BodyLayer.fromName(pickedRow.key) case var body?)
-            AppearanceEditor(
-              key: ValueKey("characterLayerLook-${e.id}-${body.name}"),
-              controller: controller,
-              character: e,
-              write: write,
-              commit: commit,
-              only: appearanceOf(body),
-            )
+            for (var group in appearanceOf(body, person: e.dna.kind.person))
+              AppearanceEditor(
+                key: ValueKey("characterLayerLook-${e.id}-${body.name}"
+                    "${group == appearanceOf(body).first ? "" : "-${group.name}"}"),
+                controller: controller,
+                character: e,
+                write: write,
+                commit: commit,
+                only: group,
+              )
           else if (garmentOfLayer(pickedRow.key) case var i?)
             GarmentEditor(
               key: ValueKey("characterLayerGarment-${e.id}-$i"),
@@ -109,6 +117,14 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
           const CanvasHint(
               "Pick a layer to shape it here. The eye shows or hides it; S solos it, "
               "drawing everything else faint behind it."),
+        // Clothes put on as layers of their own.
+        WardrobeAdder(
+          key: ValueKey("characterLayerAdd-${e.id}"),
+          controller: controller,
+          character: e,
+          write: write,
+          commit: commit,
+        ),
       ]);
 }
 
