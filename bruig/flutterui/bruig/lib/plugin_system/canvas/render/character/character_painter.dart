@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui';
 import 'dart:ui' as ui;
 
@@ -28,6 +29,15 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 // edged a shade darker than itself, which is what makes the Feature cartoon
 // style read as one drawing rather than coloured shapes laid on top of one
 // another.
+
+/// characterSoloOf is the layer of [CharacterElement] soloed while it is
+/// edited, set by the editor -- as vectorSoloOf is for a drawing's layers.
+/// Null draws every layer.
+String? Function(CharacterElement e)? characterSoloOf;
+
+/// _Pass is which of the two drawings of a soloed layer this is: the rest,
+/// faint, or the layer alone over them. All for a figure soloing nothing.
+enum _Pass { all, others, solo }
 
 /// paintCharacter draws [e] as it is on [frame]: posed, its face set, and
 /// blinking and breathing at [frameRate].
@@ -83,7 +93,11 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       // The face as it is set on that panel.
       faceRig: e.body.inThreeD || e.faceRigs.isEmpty
           ? null
-          : e.faceRigFor(pose.panelTurn, pose.panelTilt).$1);
+          : e.faceRigFor(pose.panelTurn, pose.panelTilt).$1,
+      // Its layers as shown -- and, while it is edited, the one soloed.
+      layers: e.body.inThreeD
+          ? LayerView.all
+          : e.layerView(solo: editing ? characterSoloOf?.call(e) : null));
   if (light != null) canvas.restore();
 }
 
@@ -121,7 +135,8 @@ void paintCharacterFigure(
     CanvasImageSource? images,
     CharacterStyle? bodyStyle,
     CharacterDrawing? drawing,
-    FaceRig? faceRig}) {
+    FaceRig? faceRig,
+    LayerView layers = LayerView.all}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -143,6 +158,8 @@ void paintCharacterFigure(
     if (!bare) {
       for (var (gi, g) in dna.worn.indexed) {
         if (g.drawings.isEmpty) continue;
+        // A garment's layer hidden: what is drawn on it too.
+        if (!layers.shows(garmentLayer(dna.wardrobe.indexOf(g)))) continue;
         var (d, _) = g.drawingFor(pose.panelTurn, pose.panelTilt);
         if (d.replaces) replaced.add(g);
         for (var i = 0; i < d.shapes.length; i++) {
@@ -166,6 +183,26 @@ void paintCharacterFigure(
     }
     // Painted light: drawn as flat colour and lit -- or, before its shader
     // is loaded, drawn as it is.
+    // A layer soloed: everything else faint, then the layer alone over it,
+    // as flat colour -- a view for working on it, not the finished look.
+    if (layers.solo != null) {
+      _Drawing pass(_Pass p) => _Drawing(onto, rig, dna, face, life,
+          bare: bare,
+          look: look,
+          images: images,
+          hidden: drawing?.hidden ?? const {},
+          faceRig: faceRig ?? FaceRig.none,
+          replaced: replaced,
+          layers: layers,
+          pass: p);
+      onto.saveLayer(box.inflate(box.height),
+          Paint()..color = const Color(0x2E000000));
+      pass(_Pass.others).draw();
+      drawn(onto);
+      onto.restore();
+      pass(_Pass.solo).draw();
+      return;
+    }
     if (look.shading == _Shading.painted) {
       var unit = box.height / dna.headsTall;
       var lit = paintPainted(
@@ -184,7 +221,8 @@ void paintCharacterFigure(
                     painted: buffers,
                     hidden: drawing?.hidden ?? const {},
                     faceRig: faceRig ?? FaceRig.none,
-                    replaced: replaced)
+                    replaced: replaced,
+                    layers: layers)
                 .draw();
             drawn(flat);
           },
@@ -201,6 +239,7 @@ void paintCharacterFigure(
                   bare,
                   drawing?.toJson(),
                   faceRig?.toJson(),
+                  layers.key,
                 ]));
       if (lit) return;
     }
@@ -210,7 +249,8 @@ void paintCharacterFigure(
             images: images,
             hidden: drawing?.hidden ?? const {},
             faceRig: faceRig ?? FaceRig.none,
-            replaced: replaced)
+            replaced: replaced,
+            layers: layers)
         .draw();
     // Drawn by hand over it, each shape where its part is.
     drawn(onto);
@@ -754,7 +794,10 @@ class _Drawing {
       this.painted,
       this.hidden = const {},
       this.faceRig = FaceRig.none,
-      this.replaced = const {}});
+      this.replaced = const {},
+      this.layers = LayerView.all,
+      this.pass = _Pass.all})
+      : _real = canvas;
 
   /// replaced is what it wears that is taken apart on this panel, and drawn
   /// by its shapes instead -- see CharacterDrawing.replaces.
@@ -763,6 +806,78 @@ class _Drawing {
   /// faceRig is the face as it is set on the panel drawn -- see
   /// character_face_rig.dart.
   final FaceRig faceRig;
+
+  /// layers is which layers are drawn -- see character_layers.dart -- and
+  /// pass, for a layer soloed, which half of the two drawings this is.
+  final LayerView layers;
+  final _Pass pass;
+
+  /// _real is the canvas the figure is drawn onto; _sink one that keeps
+  /// nothing, for what is left out. A layer is drawn onto one or the other
+  /// as it is shown, whatever layer it is drawn inside.
+  final Canvas _real;
+  late final Canvas _sink = Canvas(ui.PictureRecorder());
+  final List<String> _layerStack = [];
+
+  bool _drawnHere(String layer) {
+    if (!layers.shows(layer)) return false;
+    return switch (pass) {
+      _Pass.all => true,
+      _Pass.others => layer != layers.solo,
+      _Pass.solo => layer == layers.solo,
+    };
+  }
+
+  /// _in draws [draw] as layer [layer]: onto the figure if it is shown,
+  /// into nothing if not -- carrying over where the canvas is placed, so a
+  /// layer inside one left out is drawn where it would have been.
+  void _in(String layer, void Function() draw) {
+    if (_layerStack.isNotEmpty && _layerStack.last == layer) return draw();
+    var from = canvas;
+    var to = _drawnHere(layer) ? _real : _sink;
+    var switched = !identical(from, to);
+    if (switched) _carry(from, to);
+    canvas = to;
+    _layerStack.add(layer);
+    if (to case CaptureCanvas c) c.layer = layer;
+    try {
+      draw();
+    } finally {
+      _layerStack.removeLast();
+      if (switched) to.restore();
+      canvas = from;
+      if (from case CaptureCanvas c) {
+        c.layer = _layerStack.isEmpty ? null : _layerStack.last;
+      }
+    }
+  }
+
+  void _inBody(BodyLayer layer, void Function() draw) => _in(layer.name, draw);
+
+  /// _inGarment draws [draw] as garment [g]'s layer.
+  void _inGarment(Garment g, void Function() draw) =>
+      _in(garmentLayer(dna.wardrobe.indexOf(g)), draw);
+
+  /// _carry places [to] as [from] is placed, from a save to restore after.
+  static void _carry(Canvas from, Canvas to) {
+    to.save();
+    var a = from.getTransform(), b = to.getTransform();
+    // b⁻¹ · a, as two-dimensional affine maps.
+    var det = b[0] * b[5] - b[1] * b[4];
+    if (det.abs() < 1e-12) return;
+    var i0 = b[5] / det, i1 = -b[1] / det, i4 = -b[4] / det, i5 = b[0] / det;
+    var i12 = -(i0 * b[12] + i4 * b[13]), i13 = -(i1 * b[12] + i5 * b[13]);
+    var m = Float64List(16);
+    m[0] = i0 * a[0] + i4 * a[1];
+    m[1] = i1 * a[0] + i5 * a[1];
+    m[4] = i0 * a[4] + i4 * a[5];
+    m[5] = i1 * a[4] + i5 * a[5];
+    m[12] = i0 * a[12] + i4 * a[13] + i12;
+    m[13] = i1 * a[12] + i5 * a[13] + i13;
+    m[10] = 1;
+    m[15] = 1;
+    to.transform(m);
+  }
 
   /// _setAbout sets the canvas for a feature drawn about [pivot], in the
   /// head's own space, as [a] says: moved, turned and sized about it.
@@ -977,7 +1092,7 @@ class _Drawing {
   /// and to the left -- a band of darker colour, or dots.
   void _solid(Rect bounds, Color colour, void Function(Paint) draw) {
     var base = Paint()..color = colour;
-    if (painted case var buffers?) {
+    if (painted case var buffers? when !identical(canvas, _sink)) {
       // Laid into the light's buffers, drawing on each in turn, and drawn
       // as flat colour for it to light.
       var main = canvas;
@@ -1089,15 +1204,19 @@ class _Drawing {
     // Long hair hangs behind the head, until the head turns away and it is
     // the thing in front -- see _head.
     var head = _shows(CharacterRegion.head);
-    if (head && _hangingHair && facing >= -0.3) _inHead(_backHair);
+    if (head && _hangingHair && facing >= -0.3) {
+      _inBody(BodyLayer.hairBack, () => _inHead(_backHair));
+    }
     // A cape hangs behind the body, until the body turns away from the
     // reader and it is the thing in front.
     if (bodyFacing >= -0.2) _capes();
     // A tail and wings grow from the back: behind the body, until the body
     // turns away from the reader.
     if (bodyFacing >= -0.2) {
-      _wings();
-      _tail();
+      _inBody(BodyLayer.extras, () {
+        _wings();
+        _tail();
+      });
     }
     // An arm turned away goes behind the body, an arm towards the reader in
     // front of it. Facing the reader both are a hair in front.
@@ -1110,24 +1229,26 @@ class _Drawing {
       _legs();
       if (_shows(CharacterRegion.torso)) {
         _skirts();
-        _torso();
+        _inBody(BodyLayer.torso, _torso);
       }
     } else {
       _legs();
       _skirts();
       _arms(far: true, near: near);
-      _neck();
-      _torso();
+      _inBody(BodyLayer.neck, _neck);
+      _inBody(BodyLayer.torso, _torso);
     }
     if (_shows(CharacterRegion.torso)) _neckwear();
-    if (head) _frontHair();
+    if (head) _inBody(BodyLayer.hairFront, _frontHair);
     _arms(far: false, near: near);
     if (bodyFacing < -0.2) {
       _capes();
-      _wings();
-      _tail();
+      _inBody(BodyLayer.extras, () {
+        _wings();
+        _tail();
+      });
     }
-    if (head) _inHead(_head);
+    if (head) _inBody(BodyLayer.head, () => _inHead(_head));
   }
 
   // ---- the body ----
@@ -1142,20 +1263,39 @@ class _Drawing {
 
   /// _bodySkin is the neck, the body and both legs as one shape.
   void _bodySkin() {
-    Path? skin;
-    void add(Path p) =>
-        skin = skin == null ? p : Path.combine(PathOperation.union, skin!, p);
-    if (_shows(CharacterRegion.torso)) {
-      add(_torsoPath(skin: true));
-      add(_neckPath());
-    }
-    for (var limb in [CharacterLimb.legL, CharacterLimb.legR]) {
-      if (_shows(_regionOf(limb))) {
-        add(_limbShape(_along(limb, 0, 1), legWidth, leg: true, limb: limb));
+    var parts = <(BodyLayer, Path)>[
+      if (_shows(CharacterRegion.torso)) ...[
+        (BodyLayer.torso, _torsoPath(skin: true)),
+        (BodyLayer.neck, _neckPath()),
+      ],
+      for (var limb in [CharacterLimb.legL, CharacterLimb.legR])
+        if (_shows(_regionOf(limb)))
+          (_legLayer(limb), _limbShape(_along(limb, 0, 1), legWidth, leg: true, limb: limb)),
+    ];
+    if (parts.isEmpty) return;
+    // Each part its own where a layer is picked out -- hidden or soloed --
+    // so one can go without the rest.
+    if (!layers.isAll) {
+      for (var (layer, path) in parts) {
+        _inBody(layer, () => _fill(path, dna.skin));
       }
+      return;
     }
-    if (skin case var s?) _fill(s, dna.skin);
+    var skin = parts.first.$2;
+    for (var (_, p) in parts.skip(1)) {
+      skin = Path.combine(PathOperation.union, skin, p);
+    }
+    _inBody(BodyLayer.torso, () => _fill(skin, dna.skin));
   }
+
+  BodyLayer _legLayer(CharacterLimb limb) =>
+      limb == CharacterLimb.legL ? BodyLayer.legL : BodyLayer.legR;
+  BodyLayer _footLayer(CharacterLimb limb) =>
+      limb == CharacterLimb.legL ? BodyLayer.footL : BodyLayer.footR;
+  BodyLayer _armLayer(CharacterLimb limb) =>
+      limb == CharacterLimb.armL ? BodyLayer.armL : BodyLayer.armR;
+  BodyLayer _handLayer(CharacterLimb limb) =>
+      limb == CharacterLimb.armL ? BodyLayer.handL : BodyLayer.handR;
 
   double get _leg => rig.thigh + rig.shin;
 
@@ -1279,13 +1419,16 @@ class _Drawing {
       if (!_shows(_regionOf(limb))) continue;
       if (dna.species == Species.bird) {
         // Thin legs and three toes, in the beak's colour.
-        _stroke(_along(limb, 0.45, 1), legWidth * 0.32, dna.fur2);
-        _toes(limb);
+        _inBody(_legLayer(limb), () {
+          _stroke(_along(limb, 0.45, 1), legWidth * 0.32, dna.fur2);
+          _toes(limb);
+        });
         continue;
       }
       // The leg's skin is drawn already, with the body's, as one person.
       if (!_oneSkin) {
-        _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true, limb: limb);
+        _inBody(_legLayer(limb),
+            () => _limb(_along(limb, 0, 1), legWidth, dna.skin, leg: true, limb: limb));
       }
       // A bare foot, unless a shoe covers it all -- one drawn by hand as
       // well: what is drawn is the shoe.
@@ -1296,7 +1439,7 @@ class _Drawing {
               dna.worn.any((g) =>
                   (g.drawnOnly && g.drawings.isNotEmpty || replaced.contains(g)) &&
                   g.kind.shape == GarmentShape.shoes))) {
-        _foot(limb, dna.skin, bareFoot: true);
+        _inBody(_footLayer(limb), () => _foot(limb, dna.skin, bareFoot: true));
       }
       for (var (i, g) in _wearing((g) => g.kind.coversLegs)) {
         var from = g.kind.from, to = math.max(from + 0.02, g.lengthOr);
@@ -1308,13 +1451,15 @@ class _Drawing {
             span: (from, math.min(1, to)),
             leg: true,
             limb: limb);
-        if (g.kind == GarmentKind.socks) _foot(limb, g.color);
+        if (g.kind == GarmentKind.socks) {
+          _inGarment(g, () => _foot(limb, g.color));
+        }
         if (from == 0 && !dna.fourLegs && !seated.any((s) => s.$1 == i)) {
           seated.add((i, g));
         }
       }
       for (var (i, g) in _wearing((g) => g.kind.shape == GarmentShape.shoes)) {
-        _shoe(limb, g, i);
+        _inGarment(g, () => _shoe(limb, g, i));
       }
     }
     // The seat, so trousers meet between the legs instead of leaving the
@@ -1811,6 +1956,7 @@ class _Drawing {
       _fill(_torsoPath(), dna.skin);
     }
     for (var (i, g) in garments.indexed) {
+      _inGarment(g, () {
       switch (g.kind.shape) {
         case GarmentShape.torso:
           _cloth(_torsoPath(fit: g.fitOr, length: g.lengthOr), g, i,
@@ -1854,6 +2000,7 @@ class _Drawing {
       }
       // A shape of the garment's own, laid on over it.
       if (g.outline.length >= 3) _cloth(_outlinePath(g.outline), g, i, part: 32);
+          });
     }
   }
 
@@ -1881,7 +2028,9 @@ class _Drawing {
   /// _frontOf is what is on the front of a garment -- a hood and pocket, a
   /// collar and buttons, a front left open -- going round with the body,
   /// and not there from behind, except a hood, which hangs down the back.
-  void _frontOf(Garment g) {
+  void _frontOf(Garment g) => _inGarment(g, () => _frontOfIn(g));
+
+  void _frontOfIn(Garment g) {
     var (across, up, half, _) = _torsoFrame;
     var colour = faded(g.color, g.condition.fade);
     var line = Paint()
@@ -2010,6 +2159,7 @@ class _Drawing {
         ? Offset.lerp(rig.neck, rig.chest, 0.4)!
         : rig.chest + up * (u * 0.02);
     for (var (i, g) in _wearing((g) => g.kind.shape == GarmentShape.neck)) {
+      _inGarment(g, () {
       var colour = faded(g.color, g.condition.fade);
       switch (g.kind) {
         case GarmentKind.tie:
@@ -2072,6 +2222,7 @@ class _Drawing {
         default:
           break;
       }
+          });
     }
     canvas.restore();
   }
@@ -2086,14 +2237,16 @@ class _Drawing {
       var shoulder = rig.root(limb), elbow = rig.middle(limb);
       var wrist = rig.end(limb);
       if (dna.species == Species.bird) {
-        _birdWing(shoulder, elbow, wrist, limb.onLeft ? -1 : 1);
+        _inBody(_armLayer(limb),
+            () => _birdWing(shoulder, elbow, wrist, limb.onLeft ? -1 : 1));
         continue;
       }
       if (dna.species.legless) {
-        _fin(shoulder, elbow);
+        _inBody(_armLayer(limb), () => _fin(shoulder, elbow));
         continue;
       }
-      _limb(_along(limb, 0, 1), armWidth, dna.skin, limb: limb);
+      _inBody(_armLayer(limb),
+          () => _limb(_along(limb, 0, 1), armWidth, dna.skin, limb: limb));
       // The hand where the arm ends, reshaped or not.
       elbow = _beforeEnd(limb);
       wrist = _end(limb);
@@ -2108,6 +2261,7 @@ class _Drawing {
               hem: true);
         }
       }
+      _inBody(_handLayer(limb), () {
       var forward = wrist - elbow;
       var hand = wrist +
           (forward.distance == 0
@@ -2148,6 +2302,7 @@ class _Drawing {
         _fill(Path.combine(PathOperation.union, palm, thumb), dna.skin);
         canvas.restore();
       }
+      });
       for (var (i, g) in _wearing((g) => g.kind.hasSleeves)) {
         var sleeve = g.sleeveOr;
         if (sleeve <= 0) continue;
@@ -2166,6 +2321,7 @@ class _Drawing {
 
   void _glasses(double w) {
     for (var (_, g) in _wearing((g) => g.kind.shape == GarmentShape.glasses)) {
+      _inGarment(g, () {
       var frame = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = u * 0.025
@@ -2195,11 +2351,13 @@ class _Drawing {
         canvas.drawLine(Offset(lenses[0].right, eyeY - u * 0.02),
             Offset(lenses[1].left, eyeY - u * 0.02), frame);
       }
+          });
     }
   }
 
   void _hats(double w, double h) {
     for (var (i, g) in _wearing((g) => g.kind.shape == GarmentShape.hat)) {
+      _inGarment(g, () {
       var colour = faded(g.color, g.condition.fade);
       var shift = _across(0, w) * 0.3;
       switch (g.kind) {
@@ -2278,6 +2436,7 @@ class _Drawing {
         default:
           break;
       }
+          });
     }
   }
 
@@ -2477,6 +2636,25 @@ class _Drawing {
   /// two pieces of one garment from wearing the same way; [hem] says its
   /// lower edge is a hem, which frays.
   void _cloth(Path? shape, Garment g, int i,
+          {List<Offset>? line,
+          double width = 0,
+          int part = 0,
+          bool hem = false,
+          (double, double)? span,
+          bool leg = false,
+          CharacterLimb? limb}) =>
+      _inGarment(
+          g,
+          () => _clothIn(shape, g, i,
+              line: line,
+              width: width,
+              part: part,
+              hem: hem,
+              span: span,
+              leg: leg,
+              limb: limb));
+
+  void _clothIn(Path? shape, Garment g, int i,
       {List<Offset>? line,
       double width = 0,
       int part = 0,
@@ -2990,12 +3168,12 @@ class _Drawing {
               ..color = _shade(dna.skin, 0.25));
       }
     }
-    if (dna.spikes) _spikes(w, h);
+    if (dna.spikes) _inBody(BodyLayer.extras, () => _spikes(w, h));
     if (dna.species.animal) {
-      _animalEars(w, h);
+      _inBody(BodyLayer.ears, () => _animalEars(w, h));
     } else {
       for (var phi in ears) {
-        if (_toward(phi) < 0.3) ear(phi);
+        if (_toward(phi) < 0.3) _inBody(BodyLayer.ears, () => ear(phi));
       }
     }
     var head = _headPath(w, h);
@@ -3005,25 +3183,28 @@ class _Drawing {
     // half the head side on, all of it from behind.
     if (dna.hairStyle != HairStyle.bald) {
       if (_backOfHead(w, h) case var back?) {
-        _solid(back.getBounds(), dna.hair, (p) => canvas.drawPath(back, p));
-        canvas.drawPath(
-            head,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = edge
-              ..color = _shade(dna.hair));
+        _inBody(BodyLayer.hairBack, () {
+          _solid(back.getBounds(), dna.hair, (p) => canvas.drawPath(back, p));
+          canvas.drawPath(
+              head,
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = edge
+                ..color = _shade(dna.hair));
+        });
       }
     }
     if (facing > -0.2 && !dna.species.animal) {
-      _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: false));
+      _inBody(BodyLayer.nose,
+          () => _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: false)));
     }
     if (!dna.species.animal) {
       for (var phi in ears) {
-        if (_toward(phi) >= 0.3) ear(phi);
+        if (_toward(phi) >= 0.3) _inBody(BodyLayer.ears, () => ear(phi));
       }
     }
-    _hair(r);
-    _horns(w, h);
+    _inBody(BodyLayer.hairFront, () => _hair(r));
+    _inBody(BodyLayer.extras, () => _horns(w, h));
     if (facing > -0.15) {
       // Kept on the face: an eye turned to the far side of the head goes
       // round it, not off its edge.
@@ -3035,7 +3216,7 @@ class _Drawing {
       canvas.restore();
       _glasses(w);
     }
-    if (_hangingHair && facing < -0.3) _backHair();
+    if (_hangingHair && facing < -0.3) _inBody(BodyLayer.hairBack, _backHair);
     _hats(w, h);
   }
 
@@ -3471,6 +3652,7 @@ class _Drawing {
       ew *= kw;
       eh *= kh;
       c = c + Offset(0, u * drop);
+      _inBody(BodyLayer.eyes, () {
       // Set as the panel's face has it.
       canvas.save();
       if (side != 0) _setAbout(faceRig[side > 0 ? FacePoint.eyeL : FacePoint.eyeR], c);
@@ -3497,9 +3679,12 @@ class _Drawing {
       }
       canvas.restore();
       canvas.restore();
+      });
       if (side != 0) {
-        _setFeature(side > 0 ? FacePoint.browL : FacePoint.browR, _browAt(c),
-            () => _brow(c, side, toward));
+        _inBody(
+            BodyLayer.brows,
+            () => _setFeature(side > 0 ? FacePoint.browL : FacePoint.browR, _browAt(c),
+                () => _brow(c, side, toward)));
       }
       if (toward > 0.3) {
         canvas.drawOval(
@@ -3525,20 +3710,21 @@ class _Drawing {
     }
     // On a head in 3D, its own nose, skin and beard are already there.
     if (onModel) {
-      _mouth(w);
+      _inBody(BodyLayer.mouth, () => _mouth(w));
       return;
     }
     if (!dna.species.animal) _skinMarks(w);
     if (dna.species.animal) {
       _muzzle(w);
     } else {
-      _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: true));
+      _inBody(BodyLayer.nose,
+          () => _setFeature(FacePoint.nose, _noseAt(w), () => _nose(w, front: true)));
     }
     if (!dna.species.animal) _beard(w);
     // A beak is a bird's mouth.
-    if (dna.species != Species.bird) _mouth(w);
+    if (dna.species != Species.bird) _inBody(BodyLayer.mouth, () => _mouth(w));
     if (!dna.species.animal) _moustache(w);
-    if (dna.fangs) _fangs(w);
+    if (dna.fangs) _inBody(BodyLayer.mouth, () => _fangs(w));
   }
 
   /// _skinMarks are freckles, the lines of age and the shine on the skin.

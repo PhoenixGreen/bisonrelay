@@ -17,7 +17,11 @@ import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 class CapturedShape {
   final VectorShape shape;
   final String key;
-  const CapturedShape(this.shape, this.key);
+
+  /// layer is the layer it was drawn in -- see character_layers.dart --
+  /// or null for one drawn in none.
+  final String? layer;
+  const CapturedShape(this.shape, this.key, {this.layer});
 }
 
 /// CaptureCanvas is a canvas that draws nothing, and keeps what it is
@@ -32,6 +36,10 @@ class CaptureCanvas implements Canvas {
   /// _clip is what is drawn kept to, on the page: a shape drawn inside it
   /// is cut to it, as it would have been drawn.
   Path? _clip;
+
+  /// layer is the layer being drawn now: what each shape kept is marked
+  /// with. The drawing sets it as it goes.
+  String? layer;
 
   /// tolerance is how far a shape's points may stray from its outline.
   final double tolerance;
@@ -189,7 +197,8 @@ class CaptureCanvas implements Canvas {
               strokeWidth: paint.strokeWidth * _scale,
               cap: paint.strokeCap,
               join: paint.strokeJoin),
-          last.key));
+          last.key,
+          layer: last.layer));
       return;
     }
     var paths = vectorPathsOf(at, tolerance: tolerance);
@@ -205,7 +214,8 @@ class CaptureCanvas implements Canvas {
     var b = at.getBounds();
     String r(double v) => (v * 2).round().toString();
     _shapes.add(CapturedShape(shape,
-        "${paint.color.toARGB32()}|${stroke ? "s" : "f"}|${r(b.left)},${r(b.top)},${r(b.right)},${r(b.bottom)}"));
+        "${paint.color.toARGB32()}|${stroke ? "s" : "f"}|${r(b.left)},${r(b.top)},${r(b.right)},${r(b.bottom)}",
+        layer: layer));
     _sources.add(path);
   }
 

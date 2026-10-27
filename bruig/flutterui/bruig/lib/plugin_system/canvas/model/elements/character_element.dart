@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
@@ -15,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart
 export 'package:bruig/plugin_system/canvas/model/elements/character_appearance.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_drawing.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_face_rig.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
 
@@ -1198,6 +1200,31 @@ class CharacterElement extends CanvasElement {
     return copyWith(drawings: next);
   }
 
+  /// hiddenLayers is the body layers left out of the drawing -- see
+  /// character_layers.dart -- by BodyLayer name. A garment's is its own:
+  /// Garment.hidden.
+  final Set<String> hiddenLayers;
+
+  /// layerView is what of the sketch is drawn: every layer not hidden,
+  /// and with [solo], that one alone, the rest faint behind it.
+  LayerView layerView({String? solo}) => LayerView(hidden: {
+        ...hiddenLayers,
+        for (var (i, g) in dna.wardrobe.indexed)
+          if (g.hidden) garmentLayer(i),
+      }, solo: solo);
+
+  /// withLayerShown is this with [layer] shown or hidden.
+  CharacterElement withLayerShown(String layer, bool shown) {
+    if (garmentOfLayer(layer) case var i? when i < dna.wardrobe.length) {
+      var wardrobe = [...dna.wardrobe];
+      wardrobe[i] = wardrobe[i].copyWith(hidden: !shown);
+      return copyWith(dna: dna.copyWith(wardrobe: wardrobe));
+    }
+    var next = {...hiddenLayers};
+    shown ? next.remove(layer) : next.add(layer);
+    return copyWith(hiddenLayers: next);
+  }
+
   /// faceRigs is the sketch's face set feature by feature, panel by panel
   /// -- see character_face_rig.dart -- by panelKey.
   final Map<String, FaceRig> faceRigs;
@@ -1240,6 +1267,7 @@ class CharacterElement extends CanvasElement {
     this.body = const CharacterBody(),
     this.drawings = const {},
     this.faceRigs = const {},
+    this.hiddenLayers = const {},
   });
 
   /// restPose is a new character's stance: arms a little away from the body
@@ -1349,7 +1377,8 @@ class CharacterElement extends CanvasElement {
       animation: animation,
       body: body,
       drawings: drawings,
-      faceRigs: faceRigs);
+      faceRigs: faceRigs,
+      hiddenLayers: hiddenLayers);
 
   CharacterElement copyWith({
     CharacterDna? dna,
@@ -1367,6 +1396,7 @@ class CharacterElement extends CanvasElement {
     CharacterBody? body,
     Map<String, CharacterDrawing>? drawings,
     Map<String, FaceRig>? faceRigs,
+    Set<String>? hiddenLayers,
   }) =>
       CharacterElement(base,
           dna: dna ?? this.dna,
@@ -1382,7 +1412,8 @@ class CharacterElement extends CanvasElement {
           animation: animation ?? this.animation,
           body: body ?? this.body,
           drawings: drawings ?? this.drawings,
-          faceRigs: faceRigs ?? this.faceRigs);
+          faceRigs: faceRigs ?? this.faceRigs,
+          hiddenLayers: hiddenLayers ?? this.hiddenLayers);
 
   @override
   Map<String, dynamic> props() => {
@@ -1402,6 +1433,7 @@ class CharacterElement extends CanvasElement {
           "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
         if (faceRigs.isNotEmpty)
           "faceRigs": {for (var e in faceRigs.entries) e.key: e.value.toJson()},
+        if (hiddenLayers.isNotEmpty) "hiddenLayers": hiddenLayers.toList()..sort(),
       };
 
   factory CharacterElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -1441,5 +1473,10 @@ class CharacterElement extends CanvasElement {
               for (var e in raw.entries)
                 if (FaceRig.fromJson(e.value) case var rig when !rig.isEmpty)
                   "${e.key}": rig,
+          },
+          hiddenLayers: {
+            if (json["hiddenLayers"] case List raw)
+              for (var l in raw)
+                if (BodyLayer.fromName(l as String?) case var layer?) layer.name,
           });
 }

@@ -379,6 +379,10 @@ class Garment {
   /// to be the garment: how a garment made from new is.
   final bool drawnOnly;
 
+  /// hidden is its layer hidden: worn, but not drawn. See
+  /// character_layers.dart.
+  final bool hidden;
+
   /// title is what it is called in the wardrobe.
   String get title => name.isEmpty ? kind.label : name;
 
@@ -406,6 +410,7 @@ class Garment {
     this.name = "",
     this.drawings = const {},
     this.drawnOnly = false,
+    this.hidden = false,
   });
 
   double get lengthOr => length ?? kind.length;
@@ -428,6 +433,7 @@ class Garment {
     String? name,
     Map<String, CharacterDrawing>? drawings,
     bool? drawnOnly,
+    bool? hidden,
   }) =>
       Garment(
         kind ?? this.kind,
@@ -452,6 +458,7 @@ class Garment {
         name: name ?? this.name,
         drawings: drawings ?? this.drawings,
         drawnOnly: drawnOnly ?? this.drawnOnly,
+        hidden: hidden ?? this.hidden,
       );
 
   Map<String, dynamic> toJson() => {
@@ -474,6 +481,7 @@ class Garment {
         if (drawings.isNotEmpty)
           "drawings": {for (var e in drawings.entries) e.key: e.value.toJson()},
         if (drawnOnly) "drawnOnly": true,
+        if (hidden) "hidden": true,
       };
 
   static double _round(double v) => (v * 1000).round() / 1000;
@@ -511,6 +519,7 @@ class Garment {
               "${e.key}": CharacterDrawing.fromJson(e.value as Map<String, dynamic>),
       },
       drawnOnly: jsonBool(json["drawnOnly"], false),
+      hidden: jsonBool(json["hidden"], false),
     );
   }
 }
