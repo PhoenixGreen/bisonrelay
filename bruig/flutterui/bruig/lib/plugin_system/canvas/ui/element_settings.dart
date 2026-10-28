@@ -24,6 +24,8 @@ import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/procedural_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/tile_map_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/button_settings.dart';
@@ -216,6 +218,8 @@ List<Widget> elementSettings(
             stageSettings(context, controller, e, write, begin, commit),
           SpriteElement e =>
             spriteSettings(context, controller, e, write, begin, commit),
+          TileMapElement e =>
+            tileMapSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
         presetsPanelSection(context, controller, element, extra: [

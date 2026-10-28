@@ -18,6 +18,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -1530,6 +1531,8 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return StageElement.fromJson(json, base);
     case ElementKind.sprite:
       return SpriteElement.fromJson(json, base);
+    case ElementKind.tileMap:
+      return TileMapElement.fromJson(json, base);
   }
 }
 

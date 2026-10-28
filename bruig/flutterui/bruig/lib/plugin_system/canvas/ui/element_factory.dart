@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -84,6 +85,8 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     // A square: a sprite's frames are mostly as wide as they are tall, and
     // the box takes a frame's own shape once there is a sheet.
     ElementKind.sprite => Size(short * 0.3, short * 0.3),
+    // Most of the page: a map is the scene, its box a window onto it.
+    ElementKind.tileMap => Size(wide * 0.8, short * 0.8),
   };
 }
 
@@ -286,6 +289,9 @@ CanvasElement newElement(
 
     case ElementKind.sprite:
       return SpriteElement(base.copyWith(lockAspect: true));
+
+    case ElementKind.tileMap:
+      return TileMapElement(base.copyWith(name: "Tile map"));
 
     case ElementKind.stage:
       return StageElement(base.copyWith(

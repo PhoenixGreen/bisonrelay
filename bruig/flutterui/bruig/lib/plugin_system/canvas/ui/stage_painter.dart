@@ -255,6 +255,10 @@ class StagePainter extends CustomPainter {
   /// its pixels are not the document's until the pen lifts.
   final int spritePaintTick;
 
+  /// tilePaintTick changes with each change to a map being painted: the
+  /// stroke under way, the cell under the pointer.
+  final int tilePaintTick;
+
   /// rigCharacter is the sketch whose limbs are being reshaped point by
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
   final CharacterElement? rigCharacter;
@@ -431,6 +435,7 @@ class StagePainter extends CustomPainter {
     this.dollCharacter,
     this.dollPicked,
     this.spritePaintTick = -1,
+    this.tilePaintTick = -1,
     this.rigCharacter,
     this.rigPicked,
     this.faceCharacter,
@@ -1946,6 +1951,7 @@ class StagePainter extends CustomPainter {
       !identical(old.dollCharacter, dollCharacter) ||
       old.dollPicked != dollPicked ||
       old.spritePaintTick != spritePaintTick ||
+      old.tilePaintTick != tilePaintTick ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||

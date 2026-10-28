@@ -19,6 +19,8 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_effects.dart';
@@ -931,6 +933,9 @@ void paintElement(
         paintStage(canvas, bounds, e, frame);
       case SpriteElement e:
         paintSprite(canvas, bounds, e, frame,
+            frameRate: frameRate, images: images, editing: editing);
+      case TileMapElement e:
+        paintTileMap(canvas, bounds, e, frame,
             frameRate: frameRate, images: images, editing: editing);
       case CharacterElement e:
         arriving(canvas, bounds, e.animation, pose,

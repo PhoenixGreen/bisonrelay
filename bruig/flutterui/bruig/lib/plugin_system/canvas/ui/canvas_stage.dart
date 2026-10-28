@@ -136,6 +136,9 @@ enum _DragMode {
   /// sprite_painting.dart.
   spritePaint,
 
+  /// tilePaint is a Tile map being painted -- see tile_painting.dart.
+  tilePaint,
+
   /// dollJoint, dollRing and dollFinger are the doll's joint, a picked
   /// joint's ring and a fingertip being dragged -- see
   /// character_doll_pose.dart.
@@ -2070,6 +2073,14 @@ class CanvasStageState extends State<CanvasStage>
       if (session.sprite case var e? when !e.locked && e.bounds.contains(doc)) {
         _mode = _DragMode.spritePaint;
         unawaited(session.strokeStart(doc));
+        return;
+      }
+    }
+    // So does a map being painted: a brush on its cells.
+    if (controller.tilePaint case var session?) {
+      if (session.map case var e? when !e.locked && e.bounds.contains(doc)) {
+        _mode = _DragMode.tilePaint;
+        session.strokeStart(doc);
         return;
       }
     }
@@ -5500,6 +5511,8 @@ class CanvasStageState extends State<CanvasStage>
         }
       case _DragMode.spritePaint:
         if (controller.spritePaint case var session?) unawaited(session.strokeTo(doc));
+      case _DragMode.tilePaint:
+        controller.tilePaint?.strokeTo(doc);
       case _DragMode.dollJoint || _DragMode.dollRing || _DragMode.dollFinger:
         if (_dollCharacter() case var who?) {
           var placed = CharacterPlacement.of(who, controller.frame,
@@ -6198,6 +6211,7 @@ class CanvasStageState extends State<CanvasStage>
     if (_mode == _DragMode.spritePaint) {
       if (controller.spritePaint case var session?) unawaited(session.strokeEnd());
     }
+    if (_mode == _DragMode.tilePaint) controller.tilePaint?.strokeEnd();
     if (_mode == _DragMode.vectorKnife) _finishKnife();
     if (_mode == _DragMode.vectorItemsBox) {
       var box = _marquee;
@@ -6268,6 +6282,8 @@ class CanvasStageState extends State<CanvasStage>
   /// _updateHover keeps the renderer told which button is under the pointer.
   void _updateHover(Offset stage) {
     _hoverAt = stage;
+    // The tile to be laid follows the pointer over a map being painted.
+    controller.tilePaint?.hoverAt(_toDocument(stage));
     // The brush's ring follows the pointer.
     if (controller.editingImage != null &&
         (controller.imageTool == ImageTool.brush ||
@@ -6765,6 +6781,7 @@ class CanvasStageState extends State<CanvasStage>
                         dollCharacter: _dollCharacter(),
                         dollPicked: controller.dollJoint,
                         spritePaintTick: controller.spritePaint?.tick ?? -1,
+                        tilePaintTick: controller.tilePaint?.tick ?? -1,
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide
                             ? _guideHandle

@@ -31,6 +31,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart' show tileMapEditingOf;
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
     show characterDollLook, characterDollOf, characterSoloOf;
@@ -3883,6 +3885,21 @@ class CanvasController extends ChangeNotifier {
     spritePaintingOf = _spritePaint == null
         ? null
         : (e) => e.id == _spritePaint?.id ? _spritePaint!.view(e) : null;
+    notifyListeners();
+  }
+
+  /// tilePaint is the Tile map being painted on the canvas, when one is --
+  /// see tile_painting.dart -- and paintTiles starts painting one, or with
+  /// null stops.
+  TilePaintSession? get tilePaint => _tilePaint;
+  TilePaintSession? _tilePaint;
+  void paintTiles(String? id) {
+    if (_tilePaint?.id == id) return;
+    _tilePaint?.removeListener(notifyListeners);
+    _tilePaint?.dispose();
+    _tilePaint = id == null ? null : (TilePaintSession(this, id)..addListener(notifyListeners));
+    tileMapEditingOf =
+        _tilePaint == null ? null : (e) => e.id == _tilePaint?.id ? _tilePaint!.view(e) : null;
     notifyListeners();
   }
 
@@ -8771,6 +8788,11 @@ class CanvasController extends ChangeNotifier {
       _spritePaint!.dispose();
       _spritePaint = null;
       spritePaintingOf = null;
+    }
+    if (_tilePaint != null) {
+      _tilePaint!.dispose();
+      _tilePaint = null;
+      tileMapEditingOf = null;
     }
     _disposedForWaveform = true;
     _autosave?.cancel();

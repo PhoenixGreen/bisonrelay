@@ -50,7 +50,10 @@ enum ElementKind {
   stage("3D stage"),
   // A figure played from a sprite sheet: its frames, its actions, the way
   // it faces. See SpriteElement.
-  sprite("Sprite");
+  sprite("Sprite"),
+  // A scene painted from tile sets onto a grid, in layers. See
+  // TileMapElement.
+  tileMap("Tile map");
 
   final String label;
   const ElementKind(this.label);
