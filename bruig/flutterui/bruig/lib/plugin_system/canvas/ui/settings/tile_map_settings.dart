@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -16,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_packs.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_tiles.dart';
+import 'package:bruig/plugin_system/canvas/storage/tiled_maps.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
@@ -179,6 +181,11 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
         summary: "${e.layers.length} · ${e.tileCount} tiles",
         initiallyOpen: true,
         children: [TileLayersEditor(controller: controller, map: e, write: write, commit: commit)]),
+    section(e, "tileMapScene",
+        icon: Icons.wb_twilight_outlined,
+        title: "Light and Tiled",
+        summary: e.light == null ? "Daylight" : (e.lightTo == null ? "Lit" : "Changing light"),
+        children: [TileSceneGroup(key: ValueKey("tileScene-${e.id}"), controller: controller, map: e, now: now)]),
   ];
 }
 
@@ -770,6 +777,11 @@ class TileSetAdderState extends State<TileSetAdder> {
   List<TileSheetOffer> _offers = const [];
   int _offer = 0;
 
+  /// _maps is the pack's own sample maps, Tiled's, and _sample the one
+  /// picked.
+  List<String> _maps = const [];
+  int _sample = 0;
+
   @override
   void initState() {
     super.initState();
@@ -786,6 +798,7 @@ class TileSetAdderState extends State<TileSetAdder> {
       _kept = kept;
       _archive = null;
       _offers = const [];
+      _maps = const [];
     });
     if (kept) await _open(p);
   }
@@ -796,11 +809,17 @@ class TileSetAdderState extends State<TileSetAdder> {
       var bytes = await (await kenneyFile(p)).readAsBytes();
       var archive = ZipDecoder().decodeBytes(bytes);
       var offers = tileSheetsIn(archive);
+      var maps = [
+        for (var f in archive.files)
+          if (f.isFile && !f.name.contains("__MACOSX") && RegExp(r"\.tm[xj]$").hasMatch(f.name.toLowerCase())) f.name,
+      ]..sort();
       if (!mounted || p != _pack) return;
       setState(() {
         _archive = archive;
         _offers = offers;
         _offer = 0;
+        _maps = maps;
+        _sample = 0;
         _said = offers.isEmpty ? "No tiles in this pack." : "";
       });
     } catch (_) {
@@ -846,6 +865,25 @@ class TileSetAdderState extends State<TileSetAdder> {
     c.endInteraction();
     if (c.tilePaint?.id != m.id) c.paintTiles(m.id);
     c.tilePaint!.set(brush: TileRef.of(next.sources.length - 1, 0), tool: TileTool.paint);
+  }
+
+  /// _openSample opens the pack's sample map picked, in place of the map.
+  Future<void> _openSample() async {
+    var archive = _archive;
+    if (archive == null || _maps.isEmpty) return;
+    var name = _maps[_sample];
+    setState(() => _busy = true);
+    var read = await readTiledMap(utf8.decode(archive.findFile(name)!.content as List<int>, allowMalformed: true),
+        json: name.toLowerCase().endsWith(".tmj"), file: (p) async {
+      var f = archive.findFile(path.normalize(path.join(path.dirname(name), p)).replaceAll("\\", "/"));
+      return f == null ? null : Uint8List.fromList(f.content as List<int>);
+    });
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _said = read == null ? "That map could not be read." : "";
+    });
+    if (read != null) openTiledMap(widget.controller, widget.map.id, read);
   }
 
   Future<void> _addOffer() async {
@@ -975,6 +1013,21 @@ class TileSetAdderState extends State<TileSetAdder> {
             icon: Icons.add,
             primary: widget.map.sources.isEmpty,
             onPressed: _busy ? null : _addOffer,
+          ),
+        ],
+        if (_maps.isNotEmpty) ...[
+          CanvasDropdown<int>(
+            key: const ValueKey("tileMapKenneyMap"),
+            label: "His sample maps",
+            value: _sample.clamp(0, _maps.length - 1),
+            options: [for (var (i, m) in _maps.indexed) (i, path.basenameWithoutExtension(m))],
+            onChanged: (i) => setState(() => _sample = i),
+          ),
+          CanvasTextButton(
+            key: const ValueKey("tileMapKenneyOpenMap"),
+            label: "Open it in place of this map",
+            icon: Icons.map_outlined,
+            onPressed: _busy ? null : _openSample,
           ),
         ],
         if (_busy) const LinearProgressIndicator(minHeight: 2),
@@ -1153,6 +1206,44 @@ class TileLayersEditor extends StatelessWidget {
             onChanged: (c) => now(e.withLayer(
                 picked, c.toARGB32() == 0xFFFFFFFF ? layer.copyWith(noTint: true) : layer.copyWith(tint: c))),
           ),
+          CanvasStepper(
+            key: const ValueKey("tileLayerParallax"),
+            label: "With the camera",
+            value: layer.parallax * 100,
+            min: 0,
+            max: 200,
+            step: 10,
+            suffix: " %",
+            defaultValue: 100,
+            onChanged: (v) => write(e.withLayer(picked, layer.copyWith(parallax: v / 100))),
+            onCommit: commit,
+          ),
+          if (!layer.isObjects)
+            CanvasDropdown<TileRepeat>(
+              key: const ValueKey("tileLayerRepeat"),
+              label: "Goes on for ever",
+              value: layer.repeat,
+              options: [for (var r in TileRepeat.values) (r, r.label)],
+              onChanged: (r) => now(e.withLayer(picked, layer.copyWith(repeat: r))),
+            ),
+          for (var (key, label, across) in [("tileLayerDriftX", "Drifts across", true), ("tileLayerDriftY", "Drifts down", false)])
+            CanvasStepper(
+              key: ValueKey(key),
+              label: label,
+              value: across ? layer.drift.dx : layer.drift.dy,
+              min: -20,
+              max: 20,
+              step: 0.25,
+              decimals: 2,
+              suffix: " tiles/s",
+              defaultValue: 0,
+              onChanged: (v) => write(e.withLayer(
+                  picked, layer.copyWith(drift: across ? Offset(v, layer.drift.dy) : Offset(layer.drift.dx, v)))),
+              onCommit: commit,
+            ),
+          const CanvasStatus("How far it moves when the scene's camera does: less for a far hill, "
+              "none for the sky, more for leaves in front. A layer that goes on for ever "
+              "and drifts makes clouds go by."),
         ],
       ),
       if (layer.isObjects) _figuresGroup(controller, e, picked, now),
@@ -1419,6 +1510,163 @@ class TerrainsGroup extends StatelessWidget {
             ]));
           },
         ),
+      ],
+    );
+  }
+}
+
+/// openTiledMap puts [read] -- a Tiled map read -- in place of map [id]'s
+/// tile sets and layers, its box the map's size: one change.
+void openTiledMap(CanvasController c, String id, TiledRead read) {
+  var m = c.document.elementById(id);
+  if (m is! TileMapElement) return;
+  var first = read.sources.firstOrNull;
+  var cell = first == null ? m.cell : (first.tileW <= 32 ? first.tileW * 2.0 : first.tileW.toDouble());
+  var next = m.copyWith(
+      sources: read.sources,
+      layers: read.layers.isEmpty ? const [TileLayer(name: "Ground")] : read.layers,
+      cell: cell,
+      pixelArt: first == null ? null : first.tileW <= 32,
+      patterns: const []);
+  var cs = next.cellSize;
+  pickedTileSource[id] = 0;
+  pickedTileLayer.remove(id);
+  c.beginInteraction();
+  c.replaceElement(next.rebase(next.base.copyWith(width: read.width * cs.width, height: read.height * cs.height, lockAspect: false)));
+  c.endInteraction();
+  c.tilePaint?.set(tiles: true);
+}
+
+/// TileSceneGroup is the map as a scene: the light it is lit by, and that
+/// light turning to another over the scene -- day into night -- and the
+/// map to and from Tiled's own files.
+class TileSceneGroup extends StatefulWidget {
+  final CanvasController controller;
+  final TileMapElement map;
+  final void Function(TileMapElement) now;
+  const TileSceneGroup({required this.controller, required this.map, required this.now, super.key});
+
+  @override
+  State<TileSceneGroup> createState() => TileSceneGroupState();
+}
+
+class TileSceneGroupState extends State<TileSceneGroup> {
+  String _said = "";
+
+  /// open opens the Tiled map at [file] in place of this map.
+  Future<void> open(String file) async {
+    try {
+      var read = await readTiledMap(await File(file).readAsString(), json: !file.toLowerCase().endsWith(".tmx"),
+          file: (p) async {
+        var f = File(path.normalize(path.join(path.dirname(file), p)));
+        return await f.exists() ? await f.readAsBytes() : null;
+      });
+      if (read == null) {
+        if (mounted) setState(() => _said = "That is not a Tiled map this can read.");
+        return;
+      }
+      openTiledMap(widget.controller, widget.map.id, read);
+      if (mounted) {
+        setState(() => _said = read.left.isEmpty ? "" : "Left out: ${read.left.join("; ")}.");
+      }
+    } on FileSystemException {
+      if (mounted) setState(() => _said = "That file could not be opened.");
+    }
+  }
+
+  /// save writes the map as a Tiled .tmj at [file], each tile set's sheet a
+  /// picture beside it.
+  Future<void> save(String file) async {
+    var e = widget.map;
+    var to = file.toLowerCase().endsWith(".tmj") ? file : "$file.tmj";
+    var stem = path.basenameWithoutExtension(to);
+    var names = [
+      for (var (i, s) in e.sources.indexed)
+        "$stem ${(s.name.isEmpty ? "tiles ${i + 1}" : s.name).replaceAll(RegExp(r'[\\/:*?"<>|]'), "_")}.png",
+    ];
+    for (var (i, s) in e.sources.indexed) {
+      var bytes = await CanvasAssets.load(s.sheet);
+      if (bytes == null) continue;
+      // Written as a PNG, whatever it was stored as.
+      var png = bytes.length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50
+          ? bytes
+          : (await (await (await ui.instantiateImageCodec(Uint8List.fromList(bytes))).getNextFrame())
+                  .image
+                  .toByteData(format: ui.ImageByteFormat.png))!
+              .buffer
+              .asUint8List();
+      await File(path.join(path.dirname(to), names[i])).writeAsBytes(png);
+    }
+    await File(to).writeAsString(writeTiledMap(e, names));
+    if (mounted) setState(() => _said = "Saved as ${path.basename(to)}, its tiles beside it.");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var e = widget.map;
+    return CanvasControlGroup(
+      key: const ValueKey("tileMapSceneGroup"),
+      label: "Light",
+      help: "The colour the whole map, and the figures on it, are lit by -- "
+          "dusk, night, a cave -- and, if you like, the colour it has turned to "
+          "by the end of the scene: day into night.",
+      children: [
+        CanvasToggle(
+          key: const ValueKey("tileMapLit"),
+          label: "Lit by a colour",
+          value: e.light != null,
+          onChanged: (v) => widget.now(v ? e.copyWith(light: const Color(0xFFFFD9A8)) : e.copyWith(noLight: true)),
+        ),
+        if (e.light != null) ...[
+          CanvasColorButton(
+            key: const ValueKey("tileMapLight"),
+            label: "Light",
+            color: e.light!,
+            onChanged: (c) => widget.now(e.copyWith(light: c)),
+          ),
+          CanvasToggle(
+            key: const ValueKey("tileMapLightTurns"),
+            label: "Turning to another by the end of the scene",
+            value: e.lightTo != null,
+            onChanged: (v) => widget.now(v ? e.copyWith(lightTo: const Color(0xFF4A5A9A)) : e.copyWith(noLightTo: true)),
+          ),
+          if (e.lightTo != null)
+            CanvasColorButton(
+              key: const ValueKey("tileMapLightTo"),
+              label: "By the end",
+              color: e.lightTo!,
+              onChanged: (c) => widget.now(e.copyWith(lightTo: c)),
+            ),
+        ],
+        const CanvasLineBreak(),
+        CanvasTextButton(
+          key: const ValueKey("tileMapOpenTiled"),
+          label: "Open a Tiled map…",
+          icon: Icons.file_open_outlined,
+          onPressed: () async {
+            var picked = await FilePicker.platform.pickFiles(
+                type: FileType.custom, allowedExtensions: const ["tmx", "tmj", "json"], withData: false);
+            var file = picked?.files.singleOrNull?.path;
+            if (file != null) await open(file);
+          },
+        ),
+        if (e.sources.isNotEmpty)
+          CanvasTextButton(
+            key: const ValueKey("tileMapSaveTiled"),
+            label: "Save as a Tiled map…",
+            icon: Icons.ios_share,
+            onPressed: () async {
+              var to = await FilePicker.platform.saveFile(
+                  fileName: "${e.name.isEmpty ? "Map" : e.name}.tmj",
+                  type: FileType.custom,
+                  allowedExtensions: const ["tmj"]);
+              if (to != null) await save(to);
+            },
+          ),
+        CanvasStatus(_said.isNotEmpty
+            ? _said
+            : "Tiled's own files, which Godot and most engines take maps in. Opening "
+                "one puts it in place of this map."),
       ],
     );
   }

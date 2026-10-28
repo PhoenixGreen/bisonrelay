@@ -259,7 +259,13 @@ void paintCanvasDocument(
     canvas.translate(rect.center.dx, rect.center.dy);
     canvas.scale(zoom);
     canvas.translate(-focus.dx, -focus.dy);
-    paint();
+    // A tile map's far layers lag the camera by how far it has moved.
+    tileCameraShift = focus - rect.center;
+    try {
+      paint();
+    } finally {
+      tileCameraShift = null;
+    }
     canvas.restore();
   }
 
@@ -946,6 +952,7 @@ void paintElement(
         // feet, rather than where they come in the canvas's order.
         paintTileMap(canvas, bounds, e, frame,
             frameRate: frameRate,
+            frames: document?.frames ?? 0,
             images: images,
             editing: editing,
             figures: document == null

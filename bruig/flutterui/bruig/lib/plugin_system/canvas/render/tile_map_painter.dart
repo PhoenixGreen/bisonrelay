@@ -33,6 +33,12 @@ typedef TileEditView = ({
 /// by it; null for one not being painted.
 TileEditView? Function(TileMapElement e)? tileMapEditingOf;
 
+/// tileCameraShift is how far the scene's camera has moved off the middle
+/// of the page while a scene is drawn through it, in the page's own units
+/// -- set by the renderer -- or null when it is drawn as it is. A layer
+/// with less parallax than the map lags behind it. See paintCanvasDocument.
+Offset? tileCameraShift;
+
 /// TileFigure is a figure on a map, found by its id: where its feet are,
 /// down the canvas, and how it is drawn -- or null, when there is none.
 typedef TileFigure = (double, void Function())? Function(String id);
@@ -40,8 +46,10 @@ typedef TileFigure = (double, void Function())? Function(String id);
 /// paintTileMap draws [e] in [box] on [frame]; [figures] finds the figures
 /// on its objects layers. [editing], one being painted is shown as its
 /// painter has it, ruled into cells.
+///
+/// [frames] is how long the scene is, for a light that changes over it.
 void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
-    {int frameRate = 12, CanvasImageSource? images, bool editing = false, TileFigure? figures}) {
+    {int frameRate = 12, int frames = 0, CanvasImageSource? images, bool editing = false, TileFigure? figures}) {
   var view = editing ? tileMapEditingOf?.call(e) : null;
   var m = view?.working ?? e;
   if (m.tileCount == 0 && m.figureIds.isEmpty && view == null) {
@@ -50,20 +58,57 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
   }
   var seconds = frame / math.max(1, frameRate);
   var sheets = [for (var s in m.sources) images?.resolve(s.sheet, const BackgroundRemoval())];
+  var light = m.lightAt(frames > 1 ? frame / (frames - 1) : 0);
+  // Lit, the whole map is drawn into a layer of its own and the light laid
+  // over it: what is under the map is not lit by it.
+  if (light != null) canvas.saveLayer(null, Paint());
+  var cs = m.cellSize;
   for (var layer in m.layers) {
     if (!layer.visible) continue;
     var layered = layer.opacity < 1;
     if (layered) {
       canvas.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, layer.opacity));
     }
+    // How far it has moved: lagging the camera, and drifting by itself.
+    var shift = (tileCameraShift ?? Offset.zero) * (1 - layer.parallax) +
+        Offset(layer.drift.dx * cs.width, layer.drift.dy * cs.height) * seconds;
     if (layer.cells.isNotEmpty) {
       canvas.save();
       canvas.clipRect(box);
-      paintTileCells(canvas, box, m, layer.cells, sheets, tint: layer.tint, seconds: seconds);
+      var extent = layer.extent!;
+      var (c0, r0, c1, r1) = extent;
+      var period = Offset((c1 - c0 + 1) * cs.width, (r1 - r0 + 1) * cs.height);
+      // A layer that goes on for ever is drawn again a whole of it along,
+      // as many times as it takes to fill the box.
+      int from(double at, double first, double each) => ((at - first) / each).floor() - 1;
+      var kx = layer.repeat.x ? (from(box.left, box.left + shift.dx + c0 * cs.width, period.dx), from(box.right, box.left + shift.dx + c0 * cs.width, period.dx) + 1) : (0, 0);
+      var ky = layer.repeat.y ? (from(box.top, box.top + shift.dy + r0 * cs.height, period.dy), from(box.bottom, box.top + shift.dy + r0 * cs.height, period.dy) + 1) : (0, 0);
+      for (var i = kx.$1; i <= kx.$2; i++) {
+        for (var j = ky.$1; j <= ky.$2; j++) {
+          var at = box.shift(shift + Offset(i * period.dx, j * period.dy));
+          paintTileCells(canvas, at, m, layer.cells, sheets,
+              tint: layer.tint,
+              seconds: seconds,
+              window: shift == Offset.zero && i == 0 && j == 0 ? null : extent);
+        }
+      }
       canvas.restore();
     }
-    if (layer.isObjects) _paintObjects(canvas, box, m, layer, sheets, seconds, figures);
+    if (layer.isObjects) {
+      canvas.save();
+      canvas.translate(shift.dx, shift.dy);
+      _paintObjects(canvas, box.shift(-shift), m, layer, sheets, seconds, figures, unshift: shift);
+      canvas.restore();
+    }
     if (layered) canvas.restore();
+  }
+  if (light != null) {
+    canvas.drawRect(
+        box.inflate(math.max(box.width, box.height)),
+        Paint()
+          ..color = light
+          ..blendMode = BlendMode.modulate);
+    canvas.restore();
   }
   if (view != null) {
     canvas.save();
@@ -103,8 +148,11 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
 /// _paintObjects draws [layer]'s things and figures, the furthest up the
 /// page first. Its things are cut to the map's box; a figure is not -- it
 /// is an element of the canvas, walking where it likes.
+///
+/// [unshift] is how far the layer has been moved: its figures, elements of
+/// the canvas, are drawn where they are all the same.
 void _paintObjects(Canvas canvas, Rect box, TileMapElement m, TileLayer layer, List<ui.Image?> sheets,
-    double seconds, TileFigure? figures) {
+    double seconds, TileFigure? figures, {Offset unshift = Offset.zero}) {
   var drawn = <(double, void Function())>[
     for (var o in layer.objects)
       (
@@ -118,7 +166,16 @@ void _paintObjects(Canvas canvas, Rect box, TileMapElement m, TileLayer layer, L
       ),
     if (figures != null)
       for (var id in layer.figures)
-        if (figures(id) case var f?) f,
+        if (figures(id) case (var feet, var draw))
+          (
+            feet - unshift.dy,
+            () {
+              canvas.save();
+              canvas.translate(-unshift.dx, -unshift.dy);
+              draw();
+              canvas.restore();
+            }
+          ),
   ];
   // Stable: two at the same height keep the order they were put down in.
   var order = [for (var i = 0; i < drawn.length; i++) i]

@@ -415,6 +415,21 @@ class TileStamp {
   }
 }
 
+/// TileRepeat is which ways a layer's painted cells go on for ever: a sky,
+/// a far range of hills.
+enum TileRepeat {
+  none("No"),
+  across("Across"),
+  down("Down"),
+  both("Both ways");
+
+  final String label;
+  const TileRepeat(this.label);
+
+  bool get x => this == across || this == both;
+  bool get y => this == down || this == both;
+}
+
 /// TileLayer is one layer of a map: its cells painted, and how it is laid
 /// over the ones under it.
 class TileLayer {
@@ -437,6 +452,16 @@ class TileLayer {
   final double opacity;
   final Color? tint;
 
+  /// parallax is how far it moves when the scene's camera does, as much as
+  /// the rest of the map: 1 with it, less further off -- a far hill -- 0
+  /// not at all, the sky; more nearer, the leaves in front.
+  final double parallax;
+
+  /// repeat is which ways its cells go on for ever, and drift how far it
+  /// moves by itself, in cells a second: clouds going by.
+  final TileRepeat repeat;
+  final Offset drift;
+
   const TileLayer({
     this.name = "Layer",
     this.cells = const {},
@@ -447,7 +472,23 @@ class TileLayer {
     this.locked = false,
     this.opacity = 1,
     this.tint,
+    this.parallax = 1,
+    this.repeat = TileRepeat.none,
+    this.drift = Offset.zero,
   });
+
+  /// extent is its cells' first and last column and row, or null with none.
+  (int, int, int, int)? get extent {
+    if (cells.isEmpty) return null;
+    var c0 = 1 << 20, r0 = 1 << 20, c1 = -(1 << 20), r1 = -(1 << 20);
+    for (var k in cells.keys) {
+      c0 = math.min(c0, colOf(k));
+      c1 = math.max(c1, colOf(k));
+      r0 = math.min(r0, rowOf(k));
+      r1 = math.max(r1, rowOf(k));
+    }
+    return (c0, r0, c1, r1);
+  }
 
   TileRef? at(int col, int row) {
     var w = cells[cellKey(col, row)];
@@ -464,8 +505,14 @@ class TileLayer {
     double? opacity,
     Color? tint,
     bool noTint = false,
+    double? parallax,
+    TileRepeat? repeat,
+    Offset? drift,
   }) =>
       TileLayer(
+        parallax: (parallax ?? this.parallax).clamp(0.0, 4.0),
+        repeat: repeat ?? this.repeat,
+        drift: drift ?? this.drift,
         name: name ?? this.name,
         cells: cells ?? this.cells,
         isObjects: isObjects,
@@ -490,6 +537,9 @@ class TileLayer {
         if (locked) "locked": true,
         if (opacity != 1) "opacity": opacity,
         if (tint != null) "tint": colorToJson(tint!),
+        if (parallax != 1) "parallax": parallax,
+        if (repeat != TileRepeat.none) "repeat": repeat.name,
+        if (drift != Offset.zero) "drift": [drift.dx, drift.dy],
       };
 
   static TileLayer fromJson(Object? json) {
@@ -519,6 +569,12 @@ class TileLayer {
       locked: jsonBool(json["locked"], false),
       opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
       tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
+      parallax: jsonDouble(json["parallax"], 1).clamp(0.0, 4.0),
+      repeat: TileRepeat.values.where((r) => r.name == json["repeat"]).firstOrNull ?? TileRepeat.none,
+      drift: switch (json["drift"]) {
+        [num x, num y] => Offset(x.toDouble(), y.toDouble()),
+        _ => Offset.zero,
+      },
     );
   }
 }
@@ -541,6 +597,13 @@ class TileMapElement extends CanvasElement {
   /// patterns is the stamps kept with the map, to paint with again.
   final List<TileStamp> patterns;
 
+  /// light is the colour the whole map -- and the figures on it -- is lit
+  /// by, laid over it, as Godot's CanvasModulate: dusk, night, a cave; and
+  /// lightTo the colour it has become by the end of the scene, day turning
+  /// to night. Null, it is as it is.
+  final Color? light;
+  final Color? lightTo;
+
   const TileMapElement(
     super.base, {
     this.sources = const [],
@@ -548,7 +611,17 @@ class TileMapElement extends CanvasElement {
     this.cell = 32,
     this.pixelArt = true,
     this.patterns = const [],
+    this.light,
+    this.lightTo,
   });
+
+  /// lightAt is its light [t] of the way through the scene.
+  Color? lightAt(double t) {
+    var from = light;
+    if (from == null) return null;
+    var to = lightTo;
+    return to == null ? from : Color.lerp(from, to, t.clamp(0.0, 1.0));
+  }
 
   @override
   ElementKind get kind => ElementKind.tileMap;
@@ -557,8 +630,14 @@ class TileMapElement extends CanvasElement {
   Set<String> get assetIds => {for (var s in sources) s.sheet};
 
   @override
-  CanvasElement rebase(ElementBase base) =>
-      TileMapElement(base, sources: sources, layers: layers, cell: cell, pixelArt: pixelArt, patterns: patterns);
+  CanvasElement rebase(ElementBase base) => TileMapElement(base,
+      sources: sources,
+      layers: layers,
+      cell: cell,
+      pixelArt: pixelArt,
+      patterns: patterns,
+      light: light,
+      lightTo: lightTo);
 
   /// scale is how many of the canvas's pixels a tile's pixel is drawn.
   double get scale => sources.isEmpty ? 1 : cell / sources.first.tileW;
@@ -630,13 +709,19 @@ class TileMapElement extends CanvasElement {
           List<TileLayer>? layers,
           double? cell,
           bool? pixelArt,
-          List<TileStamp>? patterns}) =>
+          List<TileStamp>? patterns,
+          Color? light,
+          Color? lightTo,
+          bool noLight = false,
+          bool noLightTo = false}) =>
       TileMapElement(base,
           sources: sources ?? this.sources,
           layers: layers ?? this.layers,
           cell: (cell ?? this.cell).clamp(2.0, 512.0),
           pixelArt: pixelArt ?? this.pixelArt,
-          patterns: patterns ?? this.patterns);
+          patterns: patterns ?? this.patterns,
+          light: noLight ? null : (light ?? this.light),
+          lightTo: noLight || noLightTo ? null : (lightTo ?? this.lightTo));
 
   TileMapElement withLayer(int i, TileLayer layer) =>
       copyWith(layers: [for (var (k, l) in layers.indexed) k == i ? layer : l]);
@@ -673,6 +758,8 @@ class TileMapElement extends CanvasElement {
         "cell": cell,
         if (!pixelArt) "pixelArt": false,
         if (patterns.isNotEmpty) "patterns": [for (var p in patterns) p.toJson()],
+        if (light != null) "light": colorToJson(light!),
+        if (lightTo != null) "lightTo": colorToJson(lightTo!),
       };
 
   factory TileMapElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -695,6 +782,8 @@ class TileMapElement extends CanvasElement {
           for (var p in raw)
             if (TileStamp.fromJson(p) case var stamp?) stamp,
       ],
+      light: json["light"] is num ? colorFromJson(json["light"]) : null,
+      lightTo: json["lightTo"] is num ? colorFromJson(json["lightTo"]) : null,
     );
   }
 }

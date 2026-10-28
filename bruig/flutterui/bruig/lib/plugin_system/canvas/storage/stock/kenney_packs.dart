@@ -76,6 +76,18 @@ const List<KenneyPack> kenneyPacks = [
   KenneyPack("jumper-pack", "Jumper", KenneyKind.tiles, "$_oga/JumperPack_Kenney.zip"),
   KenneyPack("1-bit-pack", "1-bit", KenneyKind.tiles, "$_oga/1bitpack_kenney_1.1.zip"),
   KenneyPack("roguelikerpg-pack-1700-tiles", "Roguelike RPG", KenneyKind.tiles, "$_oga/Roguelike%20pack.zip"),
+  KenneyPack("roguelike-indoor-pack", "Roguelike indoors", KenneyKind.tiles, "$_oga/Roguelike%20Indoor%20pack.zip"),
+  KenneyPack("roguelike-modern-city-pack", "Roguelike city", KenneyKind.tiles,
+      "$_oga/Roguelike%20Modern%20City%20pack.zip"),
+  KenneyPack("tiny-town", "Tiny town", KenneyKind.tiles, "$_oga/kenney_tiny-town.zip"),
+  KenneyPack("tiny-dungeon", "Tiny dungeon", KenneyKind.tiles, "$_oga/kenney_tinydungeon.zip"),
+  KenneyPack("rpg-urban-pack", "RPG urban", KenneyKind.tiles, "$_oga/kenney_RPGurbanPack.zip"),
+  KenneyPack("topdown-shooter", "Top-down shooter", KenneyKind.tiles, "$_oga/topdown-shooter.zip"),
+  KenneyPack("tower-defense-top-down", "Tower defence", KenneyKind.tiles,
+      "$_oga/Tower%20Defense%20%28top-down%29.zip"),
+  KenneyPack("abstract-platformer", "Abstract platformer", KenneyKind.tiles,
+      "$_oga/Abstract%20Platformer%20%28370%20assets%29.zip"),
+  KenneyPack("sokoban-100-tiles", "Sokoban", KenneyKind.tiles, "$_oga/kenney_sokobanPack.zip"),
 ];
 
 /// kenneyMaxBytes is the most a pack is fetched to.

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -67,7 +68,7 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
   var has = names.toSet();
   String text(String name) {
     var f = archive.findFile(name);
-    return f == null ? "" : String.fromCharCodes(f.content as List<int>);
+    return f == null ? "" : utf8.decode(f.content as List<int>, allowMalformed: true);
   }
 
   var sheets = <String, TileSheetOffer>{};
@@ -80,19 +81,29 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
           file: file, tileW: t.tileW, tileH: t.tileH, margin: t.margin, spacing: t.spacing);
     }
   }
-  // Kenney's line of text beside a sheet: "16 x 16px, 1px margin" -- his
-  // margin is the gap between tiles.
+  // Kenney's notes in a line or two of text, in the three ways he has
+  // written them: "16 x 16px, 1px margin" -- his margin then the gap
+  // between tiles -- "Tile size 16px × 16px, Space between tiles 1px",
+  // and "Tile width: 16px, Margin: 0px, Spacing: 1px". Beside his sheets,
+  // or by itself at the top with them in a folder of their own.
+  bool aSheet(String p) =>
+      p.toLowerCase().endsWith(".png") && !RegExp(r"preview|sample", caseSensitive: false).hasMatch(path.basename(p));
+  bool inSheetFolder(String p) =>
+      RegExp(r"tilemap|tilesheet|tileset|spritesheet", caseSensitive: false).hasMatch(path.basename(path.dirname(p)));
   for (var n in names.where((n) => n.toLowerCase().endsWith(".txt"))) {
-    var t = text(n);
-    var size = RegExp(r"(\d+)\s*x\s*(\d+)\s*px", caseSensitive: false).firstMatch(t);
-    if (size == null) continue;
-    var gap = RegExp(r"(\d+)\s*px\s*margin|margin:\s*(\d+)", caseSensitive: false).firstMatch(t);
-    var spacing = int.tryParse(gap?.group(1) ?? gap?.group(2) ?? "") ?? 0;
-    for (var p in names.where((p) => path.dirname(p) == path.dirname(n) && p.toLowerCase().endsWith(".png"))) {
+    var notes = readKenneyNotes(text(n));
+    if (notes == null) continue;
+    var beside = names.where((p) => path.dirname(p) == path.dirname(n) && aSheet(p)).toList();
+    if (beside.isEmpty) beside = names.where((p) => aSheet(p) && inSheetFolder(p)).toList();
+    for (var p in beside) {
       sheets.putIfAbsent(
           p,
           () => TileSheetOffer(_pretty(path.basenameWithoutExtension(p)),
-              file: p, tileW: int.parse(size.group(1)!), tileH: int.parse(size.group(2)!), spacing: spacing));
+              file: p,
+              tileW: notes.tileW,
+              tileH: notes.tileH,
+              margin: notes.margin,
+              spacing: p.toLowerCase().contains("packed") ? 0 : notes.spacing));
     }
   }
   // The other sheets in a folder of sheets, sliced as the pack's others
@@ -101,7 +112,7 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
     for (var p in names) {
       var folder = path.basename(path.dirname(p)).toLowerCase();
       if (!p.toLowerCase().endsWith(".png") || sheets.containsKey(p)) continue;
-      if (!(folder.contains("tilesheet") || folder.contains("tileset"))) continue;
+      if (!(folder.contains("tilesheet") || folder.contains("tileset") || folder.contains("tilemap"))) continue;
       sheets[p] = TileSheetOffer(_pretty(path.basenameWithoutExtension(p)),
           file: p,
           tileW: known.tileW,
@@ -110,9 +121,10 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
     }
   }
   // Folders of tiles, a picture each.
+  // A sheet already offered is not a tile of its folder as well.
   var folders = <String, List<String>>{};
   for (var g in spriteGroups(names)) {
-    (folders[g.folder] ??= []).addAll(g.files);
+    (folders[g.folder] ??= []).addAll(g.files.where((f) => !sheets.containsKey(f)));
   }
   // A folder's name, and its parent's too where two have the same one.
   var called = {for (var f in folders.keys) f: f == "." ? "Pictures" : path.basename(f)};
@@ -130,6 +142,29 @@ List<TileSheetOffer> tileSheetsIn(Archive archive, {int most = 512}) {
         TileSheetOffer("${_pretty(nameOf(e.key))} (${math.min(e.value.length, most)} tiles)",
             files: ([...e.value]..sort()).take(most).toList()),
   ];
+}
+
+/// readKenneyNotes reads the size of the tiles, and how far in and apart
+/// they are, from [text]: Kenney's notes on a sheet, or null when it says
+/// nothing of their size.
+({int tileW, int tileH, int margin, int spacing})? readKenneyNotes(String text) {
+  int? n(String pattern) => int.tryParse(
+      RegExp(pattern, caseSensitive: false).firstMatch(text)?.groups([1]).firstOrNull ?? "");
+  var w = n(r"tile\s*width\s*:\s*(\d+)"), h = n(r"tile\s*height\s*:\s*(\d+)");
+  if (w == null || h == null) {
+    // The size given as one across the other, on a line that says size,
+    // or the first such: "16 x 16px", "16px × 16px".
+    var across = RegExp(r"(\d+)\s*(?:px)?\s*[x×]\s*(\d+)", caseSensitive: false);
+    var line = text.split("\n").where((l) => l.toLowerCase().contains("size") || l.toLowerCase().contains("tiles are"));
+    var m = line.map(across.firstMatch).whereType<RegExpMatch>().firstOrNull ?? across.firstMatch(text);
+    if (m == null) return null;
+    (w, h) = (int.parse(m.group(1)!), int.parse(m.group(2)!));
+  }
+  var spacing = n(r"spacing\s*:\s*(\d+)") ?? n(r"space between tiles\D*(\d+)");
+  var margin = n(r"margin\s*:\s*(\d+)") ?? n(r"(\d+)\s*px\s*margin");
+  // Where no gap is named, his "margin" was the gap between tiles.
+  if (spacing == null) return (tileW: w, tileH: h, margin: 0, spacing: margin ?? 0);
+  return (tileW: w, tileH: h, margin: margin ?? 0, spacing: spacing);
 }
 
 String _pretty(String s) {
