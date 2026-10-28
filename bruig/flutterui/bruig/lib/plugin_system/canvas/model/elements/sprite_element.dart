@@ -146,6 +146,14 @@ class SpriteElement extends CanvasElement {
   /// face -- a figure's -- or one run each, whichever way: a flame's.
   final bool directions;
 
+  /// glow draws it as light: lightening what is under it, its black
+  /// nothing -- a flame or a spark drawn white on black.
+  final bool glow;
+
+  /// tint is the colour its frames are drawn in, laid over their own -- as
+  /// Godot's modulate -- or null for their own.
+  final Color? tint;
+
   const SpriteElement(
     super.base, {
     this.sheet = "",
@@ -164,6 +172,8 @@ class SpriteElement extends CanvasElement {
     this.mirrorSides = true,
     this.facing = SpriteFacing.front,
     this.directions = false,
+    this.glow = false,
+    this.tint,
   });
 
   @override
@@ -193,7 +203,9 @@ class SpriteElement extends CanvasElement {
       pixelArt: pixelArt,
       mirrorSides: mirrorSides,
       facing: facing,
-      directions: directions);
+      directions: directions,
+      glow: glow,
+      tint: tint);
 
   /// frameCount is how many frames the sheet is sliced into.
   int get frameCount => rects.isNotEmpty ? rects.length : columns * rows;
@@ -275,6 +287,9 @@ class SpriteElement extends CanvasElement {
     bool? mirrorSides,
     SpriteFacing? facing,
     bool? directions,
+    bool? glow,
+    Color? tint,
+    bool noTint = false,
   }) =>
       SpriteElement(
         base,
@@ -294,6 +309,8 @@ class SpriteElement extends CanvasElement {
         mirrorSides: mirrorSides ?? this.mirrorSides,
         facing: facing ?? this.facing,
         directions: directions ?? this.directions,
+        glow: glow ?? this.glow,
+        tint: noTint ? null : (tint ?? this.tint),
       );
 
   /// withAction is this with [a] in place of the action of its name -- or
@@ -331,6 +348,8 @@ class SpriteElement extends CanvasElement {
         if (!mirrorSides) "mirrorSides": false,
         if (facing != SpriteFacing.front) "facing": facing.name,
         if (directions) "directions": true,
+        if (glow) "glow": true,
+        if (tint != null) "tint": colorToJson(tint!),
       };
 
   factory SpriteElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -373,6 +392,8 @@ class SpriteElement extends CanvasElement {
       mirrorSides: jsonBool(json["mirrorSides"], true),
       facing: facingOf(json["facing"]) ?? SpriteFacing.front,
       directions: jsonBool(json["directions"], false),
+      glow: jsonBool(json["glow"], false),
+      tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
     );
   }
 }

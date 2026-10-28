@@ -203,6 +203,18 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
               value: e.pixelArt,
               onChanged: (v) => now(e.copyWith(pixelArt: v)),
             ),
+            CanvasToggle(
+              key: const ValueKey("spriteGlow"),
+              label: "Glow: its black clear, the rest light",
+              value: e.glow,
+              onChanged: (v) => now(e.copyWith(glow: v)),
+            ),
+            CanvasColorButton(
+              key: const ValueKey("spriteTint"),
+              label: "Tint",
+              color: e.tint ?? const Color(0xFFFFFFFF),
+              onChanged: (c) => now(c.toARGB32() == 0xFFFFFFFF ? e.copyWith(noTint: true) : e.copyWith(tint: c)),
+            ),
           ],
         ]),
     section(e, "spriteActions",

@@ -50,9 +50,17 @@ void paintSprite(Canvas canvas, Rect box, SpriteElement e, int frame,
     canvas.scale(-1, 1);
     canvas.translate(-dst.center.dx, 0);
   }
-  canvas.drawImageRect(image, src, dst,
-      Paint()..filterQuality = e.pixelArt ? FilterQuality.none : FilterQuality.medium);
+  canvas.drawImageRect(image, src, dst, spritePaint(e));
   canvas.restore();
+}
+
+/// spritePaint is how [e]'s frames are laid on: square pixels or smooth,
+/// tinted, and as light when it glows.
+Paint spritePaint(SpriteElement e) {
+  var p = Paint()..filterQuality = e.pixelArt ? FilterQuality.none : FilterQuality.medium;
+  if (e.tint case var t?) p.colorFilter = ColorFilter.mode(t, BlendMode.modulate);
+  if (e.glow) p.blendMode = BlendMode.screen;
+  return p;
 }
 
 /// _paintPainted shows [e] being painted: the frame painted, still, on a

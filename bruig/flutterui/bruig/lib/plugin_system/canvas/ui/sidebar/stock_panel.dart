@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/storage/stock/stock_sources.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/kenney_browser.dart';
 import 'package:bruig/plugin_system/canvas/ui/stock_import.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -41,6 +42,9 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/assets_panel.dart';
 // see stock_import.dart.
 
 const _sourceKey = "canvasStock.source";
+
+/// _kenneyKey is what the library is saved as when it is Kenney's sprites.
+const _kenneyKey = "kenney";
 const _filtersKey = "canvasStock.filters";
 
 /// _previewMaxBytes bounds a preview. Jamendo's is the whole track as a
@@ -61,6 +65,10 @@ class StockPanel extends StatefulWidget {
 
 class _StockPanelState extends State<StockPanel> {
   StockSource _source = StockSource.pixabayPictures;
+
+  /// _kenney is whether Kenney's free sprites are shown in place of a
+  /// library to search -- see kenney_browser.dart.
+  bool _kenney = false;
   final Map<StockSource, Map<String, String>> _filters = {};
   final TextEditingController _search = TextEditingController();
   final TextEditingController _key = TextEditingController();
@@ -111,8 +119,9 @@ class _StockPanelState extends State<StockPanel> {
 
   Future<void> _restore() async {
     var proxied = await networkIsProxied();
-    var source =
-        StockSource.fromName(await StorageManager.readString(_sourceKey));
+    var saved = await StorageManager.readString(_sourceKey);
+    var kenney = saved == _kenneyKey;
+    var source = StockSource.fromName(kenney ? null : saved);
     try {
       var saved = jsonDecode(await StorageManager.readString(_filtersKey));
       if (saved is Map) {
@@ -132,6 +141,7 @@ class _StockPanelState extends State<StockPanel> {
       _proxied = proxied;
       _source = source;
       _hasKey = hasKey;
+      _kenney = kenney;
     });
   }
 
@@ -142,7 +152,11 @@ class _StockPanelState extends State<StockPanel> {
       }));
 
   Future<void> _choose(StockSource source) async {
-    if (source == _source) return;
+    if (_kenney) setState(() => _kenney = false);
+    if (source == _source) {
+      StorageManager.saveString(_sourceKey, source.name);
+      return;
+    }
     _previewer.stop();
     StorageManager.saveString(_sourceKey, source.name);
     var hasKey = await StockKeys.has(source);
@@ -322,18 +336,40 @@ class _StockPanelState extends State<StockPanel> {
     var visual = _source.kind != AssetKind.audio;
     var keyed = _hasKey == true && !_editingKey;
 
+    // The libraries to search, and Kenney's free sprites: no key, no
+    // search, a pack picked and its sprites shown.
+    var library = CanvasDropdown<String>(
+      key: const ValueKey("stockSource"),
+      label: "Library",
+      value: _kenney ? _kenneyKey : _source.name,
+      width: 160,
+      options: [
+        for (var s in StockSource.values) (s.name, s.label),
+        (_kenneyKey, "Kenney's sprites"),
+      ],
+      onChanged: (v) {
+        if (v == _kenneyKey) {
+          _previewer.stop();
+          StorageManager.saveString(_sourceKey, _kenneyKey);
+          setState(() => _kenney = true);
+        } else {
+          _choose(StockSource.fromName(v));
+        }
+      },
+    );
+    if (_kenney) {
+      return ListView(padding: const EdgeInsets.fromLTRB(8, 6, 8, 8), children: [
+        CanvasWrap(children: [library]),
+        const SizedBox(height: 6),
+        KenneyBrowser(controller: widget.controller),
+      ]);
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       children: [
         CanvasWrap(children: [
-          CanvasDropdown<StockSource>(
-            key: const ValueKey("stockSource"),
-            label: "Library",
-            value: _source,
-            width: 160,
-            options: [for (var s in StockSource.values) (s, s.label)],
-            onChanged: _choose,
-          ),
+          library,
           if (keyed) ...[
             CanvasIconButton(
               key: const ValueKey("stockChangeKey"),
