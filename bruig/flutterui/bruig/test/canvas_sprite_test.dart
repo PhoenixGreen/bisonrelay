@@ -12,6 +12,10 @@ import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/sprite_export.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -291,6 +295,58 @@ void main() {
       expect(view.onion, 1, reason: "the frame before it, faintly");
       c.paintSprite(null);
       expect(spritePaintingOf, isNull);
+    });
+
+    test("saved out: a row an animation, its notes read back; an animation as a GIF", () async {
+      var sheet = await _sheet();
+      var e = (await spriteFromSheet(_sprite(), "sheet", "Hero", sheet)).copyWith(
+          directions: true,
+          actions: const [
+            SpriteAction("Walk", frames: {SpriteFacing.front: [0, 1, 2], SpriteFacing.right: [4, 5]}, fps: 5),
+            SpriteAction("Idle", frames: {SpriteFacing.front: [3]}),
+          ],
+          action: "Walk");
+      var rows = exportRows(e);
+      expect(rows.map((r) => r.name), ["Walk front", "Walk back", "Walk left", "Walk right", "Idle front",
+        "Idle back", "Idle left", "Idle right"]);
+      expect(rows[2].frames, [(4, true), (5, true)], reason: "the left, the right flipped");
+      var (png, notes) = (await exportSheet(e, sheet, image: "hero.png"))!;
+      var read = SheetNotes.read(notes)!;
+      expect(read.image, "hero.png");
+      expect(read.frames.length, rows.fold<int>(0, (n, r) => n + r.frames.length));
+      expect(read.actions.first.name, "Walk front");
+      expect(read.actions.first.fps, closeTo(5, 0.01));
+      var decoded = await (await ui.instantiateImageCodec(png)).getNextFrame();
+      expect((decoded.image.width, decoded.image.height), (read.width, read.height));
+      var gif = (await exportGif(e, sheet, "Walk"))!;
+      expect(String.fromCharCodes(gif.take(6)), "GIF89a");
+      var codec = await ui.instantiateImageCodec(gif);
+      expect(codec.frameCount, 3);
+      expect((await codec.getNextFrame()).duration, const Duration(milliseconds: 200));
+    });
+
+    test("made from a character: its frames from the playhead, turned each way", () async {
+      var who = CharacterElement(const ElementBase(id: "c", x: 0, y: 0, width: 100, height: 200),
+          dna: CharacterType.boy.dna, pose: posePresets[1].pose);
+      var made = (await spriteFromCharacter(_sprite(), who, from: 0, count: 3, directions: true, cell: 64))!;
+      expect((made.columns, made.rows, made.frameCount), (3, 4, 12));
+      expect(made.directions, isTrue);
+      expect(made.actions.single.frames[SpriteFacing.back], [6, 7, 8]);
+      // Something drawn in each row.
+      var p = await SpritePixels.of((await (await ui.instantiateImageCodec(
+              await File((await CanvasAssets.pathOf(made.sheet))!).readAsBytes()))
+          .getNextFrame())
+          .image);
+      for (var r = 0; r < 4; r++) {
+        var cell = made.frameRect(r * 3);
+        var any = false;
+        for (var y = cell.top.toInt(); y < cell.bottom && !any; y += 2) {
+          for (var x = cell.left.toInt(); x < cell.right && !any; x += 2) {
+            if (p!.at(x, y).a > 0) any = true;
+          }
+        }
+        expect(any, isTrue, reason: "row $r drawn");
+      }
     });
   });
 }

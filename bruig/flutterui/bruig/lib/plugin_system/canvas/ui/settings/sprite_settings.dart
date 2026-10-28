@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/sprite_export.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -144,6 +145,7 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
         children: [
           SpriteSheetPicker(key: ValueKey("spriteImport-${e.id}"), controller: controller, sprite: e),
           if (!e.hasSheet) BlankSheetMaker(key: ValueKey("spriteBlank-${e.id}"), controller: controller, sprite: e),
+          CharacterSpriteMaker(key: ValueKey("spriteFromCharacter-${e.id}"), controller: controller, sprite: e),
           if (e.hasSheet) ...[
             SpriteSheetView(
               key: const ValueKey("spriteSheetView"),
@@ -240,6 +242,12 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
           title: "Paint",
           summary: painting == null ? "Off" : "Frame ${painting.frame + 1} · ${painting.tool.label}",
           children: [_paintGroup(controller, e, painting)]),
+    if (e.hasSheet && e.actions.isNotEmpty)
+      section(e, "spriteExport",
+          icon: Icons.ios_share,
+          title: "Save it out",
+          summary: "Sheet and notes, or a GIF",
+          children: [SpriteExportGroup(key: ValueKey("spriteExport-${e.id}"), controller: controller, sprite: e)]),
     if (e.hasSheet && e.actions.isNotEmpty)
       section(e, "spriteCues",
           icon: Icons.schedule,
