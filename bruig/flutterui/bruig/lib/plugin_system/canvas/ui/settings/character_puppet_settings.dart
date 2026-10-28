@@ -4,6 +4,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
@@ -129,6 +130,8 @@ Widget characterPuppetSection(BuildContext context, CanvasController controller,
                       (v) => form.copyWith(look: form.look.withValue(l, v))),
               ],
             ),
+          if (controller.dollJoint case var joint?)
+            _jointGroup(controller, e, joint, write, commit),
           CanvasControlGroup(
             key: const ValueKey("puppetShown"),
             label: "Shown",
@@ -184,4 +187,74 @@ void _dollTile(ui.Canvas canvas, Size size, CharacterDna dna, double? feminine) 
   var box = Rect.fromCenter(center: size.center(Offset.zero), width: h * 0.45, height: h);
   paintDoll(canvas, CharacterRig.of(dna, CharacterElement.restPose, box), dna,
       look: const DollLook(lines: false), feminine: feminine);
+}
+
+/// _jointGroup is the doll's joint picked on the canvas, set by number: the
+/// bone below it bent in the picture and swung towards the reader -- and,
+/// a wrist, the hand's shape and each finger's curl.
+Widget _jointGroup(CanvasController controller, CharacterElement e, DollJoint joint,
+    SettingsWrite write, VoidCallback commit) {
+  var pose = e.poseAtFrame(controller.frame);
+  var bone = joint.bone;
+  void posed(CharacterPose next) => write(controller.characterPosed(e, next));
+  Widget degrees(String key, String label, double value, double min, double max,
+          void Function(double) set) =>
+      CanvasStepper(
+        key: ValueKey(key),
+        label: label,
+        value: value,
+        min: min,
+        max: max,
+        step: 5,
+        suffix: "°",
+        defaultValue: 0,
+        onChanged: set,
+        onCommit: commit,
+      );
+
+  var arm = joint.hand;
+  var left = arm == CharacterLimb.armL;
+  var shape = arm == null ? null : HandShape.of(pose, left);
+  return CanvasControlGroup(
+    key: const ValueKey("puppetJoint"),
+    label: joint.label,
+    help: "The joint picked on the doll. Drag round its blue ring to bend "
+        "it, along its orange ring to swing it towards you or away, or set "
+        "them here. On a wrist, drag a fingertip to curl that finger.",
+    children: [
+      degrees("puppetJointBend", "Bend", pose[bone], -180, 180,
+          (v) => posed(pose.withAngle(bone, v))),
+      degrees("puppetJointSwing", "Swing", pose.swing(bone), -170, 170,
+          (v) => posed(pose.withSwing(bone, v))),
+      CanvasTextButton(
+        key: const ValueKey("puppetJointStraighten"),
+        label: "Straighten",
+        icon: Icons.straighten,
+        onPressed: () {
+          posed(pose.withAngle(bone, 0).withSwing(bone, 0));
+          commit();
+        },
+      ),
+      if (shape != null) ...[
+        CanvasDropdown<String>(
+          key: const ValueKey("puppetHandShape"),
+          label: "Hand",
+          value: handShapes.firstWhere((h) => h.same(shape), orElse: () => const HandShape("", [], 0)).name,
+          options: [
+            if (!handShapes.any((h) => h.same(shape))) ("", "As posed"),
+            for (var h in handShapes) (h.name, h.name),
+          ],
+          onChanged: (name) {
+            for (var h in handShapes) {
+              if (h.name == name) posed(h.on(pose, left));
+            }
+            commit();
+          },
+        ),
+        for (var f in Finger.values)
+          degrees("puppetFinger-${f.name}", f.label, pose[f.bone(left)], -30, 110,
+              (v) => posed(pose.withAngle(f.bone(left), v))),
+      ],
+    ],
+  );
 }

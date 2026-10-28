@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart'
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
@@ -218,6 +219,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(c.dollLines, isFalse);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("the Puppet section's joint", () {
+    setUpAll(() => CanvasSection.openAll = true);
+    tearDownAll(() => CanvasSection.openAll = false);
+
+    testWidgets("the joint picked, set by number; a wrist's hand and fingers", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      c.showPuppet = true;
+      c.puppet3D = true;
+      tester.view.physicalSize = const Size(900, 7000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("puppetJoint")), findsNothing, reason: "none picked");
+      c.dollJoint = DollJoint.wristL;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("puppetJoint")), findsOneWidget);
+      expect(find.byKey(const ValueKey("puppetJointBend")), findsOneWidget);
+      for (var f in Finger.values) {
+        expect(find.byKey(ValueKey("puppetFinger-${f.name}")), findsOneWidget);
+      }
+      // A hand shape from the chart.
+      var fist = handShapes.firstWhere((h) => h.curls.every((x) => x > 40));
+      var pose = fist.on((c.document.elementById("c") as CharacterElement).pose, true);
+      c.replaceElement((c.document.elementById("c") as CharacterElement).copyWith(pose: pose));
+      await tester.pumpAndSettle();
+      expect(HandShape.of((c.document.elementById("c") as CharacterElement).pose, true).same(fist),
+          isTrue);
+      expect(tester.takeException(), isNull);
+      c.dollJoint = DollJoint.kneeR;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("puppetHandShape")), findsNothing, reason: "a knee has none");
     });
   });
 

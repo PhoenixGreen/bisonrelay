@@ -10,6 +10,7 @@ import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_guide.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -130,6 +131,13 @@ enum _DragMode {
   player,
   node,
   handle,
+
+  /// dollJoint, dollRing and dollFinger are the doll's joint, a picked
+  /// joint's ring and a fingertip being dragged -- see
+  /// character_doll_pose.dart.
+  dollJoint,
+  dollRing,
+  dollFinger,
 
   /// characterPin is one of a selected character's pins being dragged,
   /// bending the arm or leg it is on the end of. See character_puppet.dart.
@@ -531,6 +539,14 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _characterPin is the pin a [_DragMode.characterPin] drag has hold of.
   CharacterPin _characterPin = CharacterPin.head;
+
+  /// _dollHeld, _dollRing and _dollFinger are what a doll drag has hold
+  /// of; _dollFrom where it started, and _dollPose the pose then.
+  DollJoint _dollHeld = DollJoint.waist;
+  DollRing _dollRing = DollRing.bend;
+  int _dollFinger = 0;
+  Offset _dollFrom = Offset.zero;
+  CharacterPose _dollPose = CharacterElement.restPose;
 
   /// _guideHandle is the puppet handle a [_DragMode.characterGuide] drag
   /// has hold of, [_guideFrom] where, and [_guideStart] the character as it
@@ -2044,6 +2060,47 @@ class CanvasStageState extends State<CanvasStage>
       }
     }
 
+    // The doll's fingertips, the rings round its picked joint, and its
+    // joints -- over the drawing laid on it, and over its pins.
+    if (_dollCharacter() case var who?) {
+      var placed = CharacterPlacement.of(who, controller.frame,
+          frameRate: document.frameRate, document: document);
+      var reach = (handleSize / 2 + handleHitSlop) / _scale;
+      var picked = controller.dollJoint;
+      var start = who.poseAtFrame(controller.frame);
+      if (picked?.hand case var arm?) {
+        for (var (i, tip) in placed.fingerTips(arm).indexed) {
+          if ((tip - doc).distance <= reach * 0.8) {
+            _dollHeld = picked!;
+            _dollFinger = i;
+            _mode = _DragMode.dollFinger;
+            controller.beginInteraction();
+            return;
+          }
+        }
+      }
+      if (picked != null) {
+        if (dollRingUnder(placed.dollJoint(picked), dollRingRadius / _scale, doc,
+                handleHitSlop / _scale) case var ring?) {
+          _dollHeld = picked;
+          _dollRing = ring;
+          _dollFrom = doc;
+          _dollPose = start;
+          _mode = _DragMode.dollRing;
+          controller.beginInteraction();
+          return;
+        }
+      }
+      if (placed.dollJointUnder(doc, reach) case var j?) {
+        controller.dollJoint = j;
+        _dollHeld = j;
+        _dollFrom = doc;
+        _mode = _DragMode.dollJoint;
+        controller.beginInteraction();
+        return;
+      }
+    }
+
     // A drawing being edited takes the press first: its points and handles,
     // its shapes, and anywhere inside it. A press outside it finishes the
     // editing, and goes on to do whatever it would have done.
@@ -2537,6 +2594,13 @@ class CanvasStageState extends State<CanvasStage>
     var who = _posedCharacter();
     if (who == null || g >= who.dna.wardrobe.length) return null;
     return (who, who.dna.wardrobe[g].kind.covers);
+  }
+
+  /// _dollCharacter is the sketch whose doll is out to pose, when it is.
+  CharacterElement? _dollCharacter() {
+    if (!controller.dollShown) return null;
+    var who = _posedCharacter();
+    return who != null && !who.body.inThreeD && !who.locked ? who : null;
   }
 
   /// _guideCharacter is the sketch the puppet is laid over, while it is
@@ -5420,6 +5484,22 @@ class CanvasStageState extends State<CanvasStage>
                   frameRate: document.frameRate, document: document),
               transient: true);
         }
+      case _DragMode.dollJoint || _DragMode.dollRing || _DragMode.dollFinger:
+        if (_dollCharacter() case var who?) {
+          var placed = CharacterPlacement.of(who, controller.frame,
+              frameRate: document.frameRate, document: document);
+          CharacterPose? posed = switch (_mode) {
+            _DragMode.dollFinger => placed.curledTo(_dollHeld.hand!, _dollFinger, doc),
+            _DragMode.dollRing => _dollRing == DollRing.bend
+                ? placed.bentTo(_dollHeld, doc)
+                // Up the swing ring brings the bone towards the reader.
+                : placed.swungBy(_dollHeld, _dollPose, (_dollFrom.dy - doc.dy) * _scale * 0.7),
+            // A joint pressed is picked; dragged, it moves.
+            _ when (doc - _dollFrom).distance * _scale < 3 => null,
+            _ => placed.movedTo(_dollHeld, doc),
+          };
+          if (posed != null) controller.setCharacterPose(who, posed, transient: true);
+        }
       case _DragMode.characterPin:
         if (_posedCharacter() case var who?) {
           // Where it is seen -- on its stage, and on its model -- as the
@@ -6118,6 +6198,9 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.rotate ||
         _mode == _DragMode.chartLabel ||
         _mode == _DragMode.characterPin ||
+        _mode == _DragMode.dollJoint ||
+        _mode == _DragMode.dollRing ||
+        _mode == _DragMode.dollFinger ||
         _mode == _DragMode.characterGuide ||
         _mode == _DragMode.characterRig ||
         _mode == _DragMode.characterFace ||
@@ -6660,6 +6743,8 @@ class CanvasStageState extends State<CanvasStage>
                         guideCharacter: _guideCharacter(),
                         dollShown: controller.dollShown,
                         dollLook: controller.dollLook,
+                        dollCharacter: _dollCharacter(),
+                        dollPicked: controller.dollJoint,
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide
                             ? _guideHandle

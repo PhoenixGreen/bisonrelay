@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
@@ -85,6 +86,10 @@ class StageFraming {
   const StageFraming(this.image, this.src, this.dst, this.frame, this.rotation,
       {this.pivot, this.flipX = false, this.flipY = false});
 }
+
+/// dollRingRadius is how far round a picked joint of the doll its rings
+/// are, in the stage's own pixels.
+const double dollRingRadius = 46;
 
 /// StagePainter draws the document, the page edge, the handles and the
 /// marquee.
@@ -240,6 +245,11 @@ class StagePainter extends CustomPainter {
 
   /// dollLook is how it is shown, for the same.
   final DollLook dollLook;
+
+  /// dollCharacter is the sketch whose doll's joints are shown to pose,
+  /// and dollPicked the joint picked, with its rings round it.
+  final CharacterElement? dollCharacter;
+  final DollJoint? dollPicked;
 
   /// rigCharacter is the sketch whose limbs are being reshaped point by
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
@@ -414,6 +424,8 @@ class StagePainter extends CustomPainter {
     this.guideCharacter,
     this.dollShown = false,
     this.dollLook = const DollLook(),
+    this.dollCharacter,
+    this.dollPicked,
     this.rigCharacter,
     this.rigPicked,
     this.faceCharacter,
@@ -935,6 +947,8 @@ class StagePainter extends CustomPainter {
           held: guideHeld);
     }
     if (selectedCharacter case var who?) _paintPuppet(canvas, who);
+    // The doll's joints, over its pins: what turns it bone by bone.
+    if (dollCharacter case var who?) _paintDollJoints(canvas, who);
     // The rig's points, over both.
     if (rigCharacter case var who?) {
       paintRig(
@@ -1685,6 +1699,52 @@ class StagePainter extends CustomPainter {
     }
   }
 
+  /// _paintDollJoints draws a knob on each of [who]'s doll's joints and,
+  /// round the one picked, the rings that turn its bone -- and, on a
+  /// wrist, a knob on each fingertip. See character_doll_pose.dart.
+  void _paintDollJoints(Canvas canvas, CharacterElement who) {
+    Offset at(Offset doc) => doc * scale + origin;
+    var placed = CharacterPlacement.of(who, frame,
+        frameRate: document.frameRate, document: document);
+    var rig = placed.dollRig();
+    const ink = Color(0xFFE8742A);
+    void knob(Offset p, double r, {bool filled = false}) {
+      canvas.drawCircle(p, r, Paint()..color = filled ? ink : const Color(0xFFFFFFFF));
+      canvas.drawCircle(
+          p,
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.6
+            ..color = filled ? const Color(0xFFFFFFFF) : ink);
+    }
+
+    for (var j in DollJoint.values) {
+      if (j != dollPicked) knob(at(placed.dollJoint(j, rig)), 4.5);
+    }
+    var picked = dollPicked;
+    if (picked == null) return;
+    var c = at(placed.dollJoint(picked, rig));
+    var stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    // The bone it turns, out to its far end.
+    canvas.drawLine(c, at(placed.dollTip(picked, rig)),
+        stroke..color = const Color(0x99E8742A));
+    // Round it in the picture, to bend; upright, to swing towards the
+    // reader or away.
+    canvas.drawCircle(c, dollRingRadius, stroke..color = const Color(0xFF3D7EFF));
+    canvas.drawOval(
+        Rect.fromCenter(center: c, width: dollRingRadius * 0.9, height: dollRingRadius * 2),
+        stroke..color = ink);
+    knob(c, 5.5, filled: true);
+    if (picked.hand case var arm?) {
+      for (var tip in placed.fingerTips(arm, rig)) {
+        knob(at(tip), 3.8);
+      }
+    }
+  }
+
   /// _paintFraming shows the rest of the picture while it is being moved
   /// about inside its frame.
   ///
@@ -1878,6 +1938,8 @@ class StagePainter extends CustomPainter {
       !identical(old.guideCharacter, guideCharacter) ||
       old.dollShown != dollShown ||
       !identical(old.dollLook, dollLook) ||
+      !identical(old.dollCharacter, dollCharacter) ||
+      old.dollPicked != dollPicked ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||

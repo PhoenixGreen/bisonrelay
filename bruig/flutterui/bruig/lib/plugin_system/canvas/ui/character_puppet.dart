@@ -158,8 +158,10 @@ class CharacterPlacement {
   Offset _at(RigJoint j) => model[j]?.page ?? _rigAt(j);
 
   /// _rigAt is where the rig's [j] is.
-  Offset _rigAt(RigJoint j) {
-    var r = rig;
+  Offset _rigAt(RigJoint j) => rigJoint(rig, j);
+
+  /// rigJoint is where rig [r]'s [j] is, in the drawing's own space.
+  static Offset rigJoint(CharacterRig r, RigJoint j) {
     return switch (j) {
       RigJoint.hips => r.hips,
       RigJoint.chest => r.chest,
@@ -340,6 +342,8 @@ class CharacterPlacement {
   }
 
   /// _toe is where the tip of [leg]'s toes is in [r].
+  static Offset toeOf(CharacterRig r, CharacterLimb leg) => _toe(r, leg);
+
   static Offset _toe(CharacterRig r, CharacterLimb leg) =>
       r.end(leg) + footShape(r, leg, r.footSize()).tip;
 

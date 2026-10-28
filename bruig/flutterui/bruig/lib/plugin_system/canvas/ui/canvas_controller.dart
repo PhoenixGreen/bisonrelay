@@ -29,6 +29,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
     show characterDollLook, characterDollOf, characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
@@ -3866,6 +3867,17 @@ class CanvasController extends ChangeNotifier {
 
   /// dollShown is whether the doll is out.
   bool get dollShown => _showPuppet && _puppet3D;
+
+  /// dollJoint is the doll's joint picked to turn, with its rings round
+  /// it on the canvas -- see character_doll_pose.dart. For this run of
+  /// the app.
+  DollJoint? get dollJoint => dollShown ? _dollJoint : null;
+  DollJoint? _dollJoint;
+  set dollJoint(DollJoint? j) {
+    if (_dollJoint == j) return;
+    _dollJoint = j;
+    notifyListeners();
+  }
 
   /// dollLens is how strongly the doll is seen in perspective -- nought
   /// for flat, one for a camera close up -- and dollLines whether its
