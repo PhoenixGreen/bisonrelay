@@ -47,7 +47,10 @@ enum ElementKind {
   character("Character"),
   // A 3D set -- a floor and a wall seen through a camera -- that characters
   // stand on. See StageElement.
-  stage("3D stage");
+  stage("3D stage"),
+  // A figure played from a sprite sheet: its frames, its actions, the way
+  // it faces. See SpriteElement.
+  sprite("Sprite");
 
   final String label;
   const ElementKind(this.label);

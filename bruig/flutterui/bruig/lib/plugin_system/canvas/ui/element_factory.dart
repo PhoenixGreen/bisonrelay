@@ -11,6 +11,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -80,6 +81,9 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.character => Size(short * 0.34, short * 0.7),
     // The whole page: a stage is the set the scene is played on.
     ElementKind.stage => Size(wide, short),
+    // A square: a sprite's frames are mostly as wide as they are tall, and
+    // the box takes a frame's own shape once there is a sheet.
+    ElementKind.sprite => Size(short * 0.3, short * 0.3),
   };
 }
 
@@ -279,6 +283,9 @@ CanvasElement newElement(
       var p = pitches.first;
       return team.linkedTo(p.link,
           pitch: p.sport, reference: p.reference, area: p.area);
+
+    case ElementKind.sprite:
+      return SpriteElement(base.copyWith(lockAspect: true));
 
     case ElementKind.stage:
       return StageElement(base.copyWith(
