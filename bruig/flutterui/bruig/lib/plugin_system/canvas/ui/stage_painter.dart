@@ -253,6 +253,10 @@ class StagePainter extends CustomPainter {
   final Turnaround? turnaround;
   final bool onionSkin;
 
+  /// rulersApart leaves the rulers to a layer of their own over the page:
+  /// see paintStageRulers.
+  final bool rulersApart;
+
   /// garmentArea is the character a garment is being drawn on and the
   /// parts of its body the garment covers, washed over it.
   final (CharacterElement, Set<CharacterPart>)? garmentArea;
@@ -406,6 +410,7 @@ class StagePainter extends CustomPainter {
     this.hairCharacter,
     this.turnaround,
     this.onionSkin = false,
+    this.rulersApart = false,
     this.hairPicked,
     this.garmentArea,
     this.guideHandles = true,
@@ -1824,10 +1829,150 @@ class StagePainter extends CustomPainter {
   /// own spacing, so every figure on the ruler has a line under it and the two
   /// are read together rather than against each other.
   void _paintRulers(Canvas canvas, Size size) {
+    // Over a page that scrolls, the stage draws them in a layer that does
+    // not -- see paintStageRulers.
+    if (rulersApart) return;
+    paintStageRulers(canvas, size, guides, document.size.size, scale, origin, page);
+  }
+
+  @override
+  bool shouldRepaint(StagePainter old) =>
+      old.drafting != drafting ||
+      old.guides != guides ||
+      !identical(old.snapped, snapped) ||
+      !identical(old.framing, framing) ||
+      old.document != document ||
+      old.frame != frame ||
+      old.previewAt != previewAt ||
+      old.previewing != previewing ||
+      !listEquals(old.anchors, anchors) ||
+      !identical(old.knife, knife) ||
+      old.caret != caret ||
+      old.scale != scale ||
+      old.origin != origin ||
+      old.page != page ||
+      old.view != view ||
+      old.facing != facing ||
+      old.facingFrame != facingFrame ||
+      old.facingOnLeft != facingOnLeft ||
+      old.facingShown != facingShown ||
+      old.showHelpers != showHelpers ||
+      old.showHandles != showHandles ||
+      old.flowGrips != flowGrips ||
+      !listEquals(old.flowLines, flowLines) ||
+      old.showAllBounds != showAllBounds ||
+      old.flowDrag != flowDrag ||
+      !identical(old.selectedPath, selectedPath) ||
+      !identical(old.selectedCharacter, selectedCharacter) ||
+      !identical(old.guideCharacter, guideCharacter) ||
+      !identical(old.rigCharacter, rigCharacter) ||
+      old.rigPicked != rigPicked ||
+      !identical(old.faceCharacter, faceCharacter) ||
+      old.facePicked != facePicked ||
+      !identical(old.hairCharacter, hairCharacter) ||
+      !identical(old.turnaround?.character, turnaround?.character) ||
+      old.turnaround?.frame != turnaround?.frame ||
+      old.onionSkin != onionSkin ||
+      old.rulersApart != rulersApart ||
+      old.hairPicked != hairPicked ||
+      old.garmentArea?.$1 != garmentArea?.$1 ||
+      old.guideHandles != guideHandles ||
+      old.guideHeld != guideHeld ||
+      old.editingVector != editingVector ||
+      old.editingLayers != editingLayers ||
+      old.editingText != editingText ||
+      old.editingItem != editingItem ||
+      !identical(old.preview, preview) ||
+      old.previewOn != previewOn ||
+      old.liveStroke.length != liveStroke.length ||
+      old.liveStrokeKeeps != liveStrokeKeeps ||
+      old.hoveredButton != hoveredButton ||
+      old.counterTick != counterTick ||
+      old.audioRevision != audioRevision ||
+      old.selection != selection ||
+      old.selectionBounds != selectionBounds ||
+      old.selectionSkew != selectionSkew ||
+      old.marquee != marquee;
+}
+
+/// StageWarp is a warp grid as the stage draws it -- see StageLayers.warp.
+class StageWarp {
+  final List<List<Offset>> lines;
+  final List<Offset> points;
+  final Set<int> picks;
+  final List<Offset>? box;
+  final Offset? knob;
+  const StageWarp(
+      {required this.lines,
+      required this.points,
+      required this.picks,
+      this.box,
+      this.knob});
+}
+
+/// StageLayers is what the stage draws over a picture whose layers are being
+/// edited, in document units: the corners of every picture layer not picked,
+/// and the picked one's corners, handles and turning knob. A picked base
+/// picture has its frame as its corners and no handles -- the frame is
+/// resized as the element.
+class StageLayers {
+  final List<List<Offset>> others;
+  final List<Offset>? picked;
+
+  /// chosen are the layers picked with [picked], outlined as it is but with
+  /// no handles: they move with it, and are lined up with it.
+  final List<List<Offset>> chosen;
+  final List<Offset> handles;
+  final Offset? knob;
+
+  /// masking is the layer whose mask a mask tool is working on, and how the
+  /// mask is to be shown; ring is the brush, centre and radius.
+  final ({ImageElement element, String layer, MaskView view})? masking;
+  final (Offset, double)? ring;
+
+  /// trail is a quick-select stroke being drawn: its points, its radius,
+  /// and whether it takes away.
+  final (List<Offset>, double, bool)? trail;
+
+  /// marker is where the clone tool copies from.
+  final Offset? marker;
+
+  /// lasso is the outline of a lasso being drawn, in document units: the
+  /// shape it will close on, shown as it is drawn.
+  final List<Offset>? lasso;
+
+  /// warp is a picture's warp grid being worked on, in document units: its
+  /// lines, curved as the picture bends; its points and which are picked;
+  /// and, with two or more picked, the box round them -- four corners to
+  /// size them by, and a knob to turn them by. See ImageWarp.
+  final StageWarp? warp;
+
+  const StageLayers(
+      {this.others = const [],
+      this.picked,
+      this.chosen = const [],
+      this.handles = const [],
+      this.knob,
+      this.masking,
+      this.ring,
+      this.trail,
+      this.marker,
+      this.lasso,
+      this.warp});
+}
+
+
+/// paintStageRulers draws the rulers [guides] asks for: a strip along each
+/// edge of [page] that is asked for, kept inside a view [size] across,
+/// numbered from the page's top-left at [scale] screen pixels to a unit of
+/// a sheet [sheet] big whose top-left is at [origin]. What the stage draws
+/// along its page -- and, over a page that scrolls, in a layer of its own
+/// that does not, so the rulers stay at the edges of the window.
+void paintStageRulers(Canvas canvas, Size size, CanvasGuides guides, Size sheet,
+    double scale, Offset origin, Rect page) {
     if (!guides.rulers.any || !guides.showRulers) return;
     var bands = rulerBandsFor(page, size, guides.rulers);
     var step = rulerStep(scale, guides.gridSize);
-    var sheet = document.size.size;
 
     var strip = Paint()..color = const Color(0xF01A1A1E);
     var edge = Paint()
@@ -1929,128 +2074,3 @@ class StagePainter extends CustomPainter {
       canvas.restore();
     }
   }
-
-  @override
-  bool shouldRepaint(StagePainter old) =>
-      old.drafting != drafting ||
-      old.guides != guides ||
-      !identical(old.snapped, snapped) ||
-      !identical(old.framing, framing) ||
-      old.document != document ||
-      old.frame != frame ||
-      old.previewAt != previewAt ||
-      old.previewing != previewing ||
-      !listEquals(old.anchors, anchors) ||
-      !identical(old.knife, knife) ||
-      old.caret != caret ||
-      old.scale != scale ||
-      old.origin != origin ||
-      old.page != page ||
-      old.view != view ||
-      old.facing != facing ||
-      old.facingFrame != facingFrame ||
-      old.facingOnLeft != facingOnLeft ||
-      old.facingShown != facingShown ||
-      old.showHelpers != showHelpers ||
-      old.showHandles != showHandles ||
-      old.flowGrips != flowGrips ||
-      !listEquals(old.flowLines, flowLines) ||
-      old.showAllBounds != showAllBounds ||
-      old.flowDrag != flowDrag ||
-      !identical(old.selectedPath, selectedPath) ||
-      !identical(old.selectedCharacter, selectedCharacter) ||
-      !identical(old.guideCharacter, guideCharacter) ||
-      !identical(old.rigCharacter, rigCharacter) ||
-      old.rigPicked != rigPicked ||
-      !identical(old.faceCharacter, faceCharacter) ||
-      old.facePicked != facePicked ||
-      !identical(old.hairCharacter, hairCharacter) ||
-      !identical(old.turnaround?.character, turnaround?.character) ||
-      old.turnaround?.frame != turnaround?.frame ||
-      old.onionSkin != onionSkin ||
-      old.hairPicked != hairPicked ||
-      old.garmentArea?.$1 != garmentArea?.$1 ||
-      old.guideHandles != guideHandles ||
-      old.guideHeld != guideHeld ||
-      old.editingVector != editingVector ||
-      old.editingLayers != editingLayers ||
-      old.editingText != editingText ||
-      old.editingItem != editingItem ||
-      !identical(old.preview, preview) ||
-      old.previewOn != previewOn ||
-      old.liveStroke.length != liveStroke.length ||
-      old.liveStrokeKeeps != liveStrokeKeeps ||
-      old.hoveredButton != hoveredButton ||
-      old.counterTick != counterTick ||
-      old.audioRevision != audioRevision ||
-      old.selection != selection ||
-      old.selectionBounds != selectionBounds ||
-      old.selectionSkew != selectionSkew ||
-      old.marquee != marquee;
-}
-
-/// StageWarp is a warp grid as the stage draws it -- see StageLayers.warp.
-class StageWarp {
-  final List<List<Offset>> lines;
-  final List<Offset> points;
-  final Set<int> picks;
-  final List<Offset>? box;
-  final Offset? knob;
-  const StageWarp(
-      {required this.lines,
-      required this.points,
-      required this.picks,
-      this.box,
-      this.knob});
-}
-
-/// StageLayers is what the stage draws over a picture whose layers are being
-/// edited, in document units: the corners of every picture layer not picked,
-/// and the picked one's corners, handles and turning knob. A picked base
-/// picture has its frame as its corners and no handles -- the frame is
-/// resized as the element.
-class StageLayers {
-  final List<List<Offset>> others;
-  final List<Offset>? picked;
-
-  /// chosen are the layers picked with [picked], outlined as it is but with
-  /// no handles: they move with it, and are lined up with it.
-  final List<List<Offset>> chosen;
-  final List<Offset> handles;
-  final Offset? knob;
-
-  /// masking is the layer whose mask a mask tool is working on, and how the
-  /// mask is to be shown; ring is the brush, centre and radius.
-  final ({ImageElement element, String layer, MaskView view})? masking;
-  final (Offset, double)? ring;
-
-  /// trail is a quick-select stroke being drawn: its points, its radius,
-  /// and whether it takes away.
-  final (List<Offset>, double, bool)? trail;
-
-  /// marker is where the clone tool copies from.
-  final Offset? marker;
-
-  /// lasso is the outline of a lasso being drawn, in document units: the
-  /// shape it will close on, shown as it is drawn.
-  final List<Offset>? lasso;
-
-  /// warp is a picture's warp grid being worked on, in document units: its
-  /// lines, curved as the picture bends; its points and which are picked;
-  /// and, with two or more picked, the box round them -- four corners to
-  /// size them by, and a knob to turn them by. See ImageWarp.
-  final StageWarp? warp;
-
-  const StageLayers(
-      {this.others = const [],
-      this.picked,
-      this.chosen = const [],
-      this.handles = const [],
-      this.knob,
-      this.masking,
-      this.ring,
-      this.trail,
-      this.marker,
-      this.lasso,
-      this.warp});
-}

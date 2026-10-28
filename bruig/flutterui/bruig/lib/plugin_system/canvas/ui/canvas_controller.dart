@@ -5648,6 +5648,10 @@ class CanvasController extends ChangeNotifier {
     _characterZoom = null;
     var next = value.clamp(minZoom, maxZoom);
     if (next == _zoom) return;
+    // About the middle of what is looked at: the view scaled with the page,
+    // so the point in the middle of the window stays there.
+    var f = next / _zoom;
+    _pan = Offset2(_pan.dx * f, _pan.dy * f);
     _zoom = next;
     // Coming back to the whole canvas re-centres it. Left alone, a pan made
     // while zoomed in would push the fitted canvas off to one side, where it
@@ -5735,6 +5739,11 @@ class CanvasController extends ChangeNotifier {
     _pan = value;
     _notifyView();
   }
+
+  /// followPan is the view where the page has been scrolled to by hand --
+  /// the scroll bars, two fingers, the wheel -- kept so the zoom zooms about
+  /// it. Nothing is drawn again for it: the page has moved already.
+  void followPan(Offset2 value) => _pan = value;
 
   // ------------------------------------------------------------------------
   // Playback

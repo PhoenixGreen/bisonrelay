@@ -135,7 +135,7 @@ void main() {
     expect(page.width, lessThan(viewport.width));
   });
 
-  testWidgets("zooming enlarges what is inside the frame, not the frame",
+  testWidgets("zooming in enlarges the page and scrolls it both ways",
       (tester) async {
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
@@ -144,40 +144,69 @@ void main() {
 
     expect(stage.contentRect.width, closeTo(frame.width, 1),
         reason: "at zoom 1 the document exactly fills its frame");
+    expect(find.byType(Scrollbar), findsNothing, reason: "nothing to scroll");
 
     controller.zoom = 3;
     await tester.pumpAndSettle();
 
-    expect(stage.pageRect, frame,
-        reason: "the border must stay exactly where it was");
-    expect(stage.contentRect.width, closeTo(frame.width * 3, 1));
+    expect(stage.pageRect.width, closeTo(frame.width * 3, 1),
+        reason: "the page itself is three times as big");
+    expect(find.byType(Scrollbar), findsNWidgets(2),
+        reason: "a bar down the side and one along the bottom");
+    // Zoomed about the middle: the middle of the page still in the middle
+    // of the window.
+    expect(stage.pageRect.center.dx, closeTo(viewport.width / 2, 1));
+    expect(stage.pageRect.center.dy, closeTo(viewport.height / 2, 1));
   });
 
-  testWidgets("the frame is on screen whole at every zoom", (tester) async {
-    // What the fixed frame is for: the edge of the canvas is always visible,
-    // so there is never any doubt where the design stops.
+  testWidgets("the zoom buttons zoom about what is looked at", (tester) async {
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
     var stage = await pump(tester, controller);
-
-    for (var zoom in [minZoom, 1.0, 4.0, maxZoom]) {
-      controller.zoom = zoom;
-      controller.pan = const Offset2(9999, 9999);
-      await tester.pumpAndSettle();
-
-      var page = stage.pageRect;
-      expect(page.left, greaterThanOrEqualTo(-0.5));
-      expect(page.top, greaterThanOrEqualTo(-0.5));
-      expect(page.right, lessThanOrEqualTo(viewport.width + 0.5));
-      expect(page.bottom, lessThanOrEqualTo(viewport.height + 0.5));
+    controller.zoom = 3;
+    await tester.pumpAndSettle();
+    // Scrolled to the top left by hand.
+    var bars = tester
+        .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+        .map((v) => v.controller!)
+        .toList();
+    for (var b in bars) {
+      b.jumpTo(0);
     }
+    await tester.pumpAndSettle();
+    var middle = Offset(viewport.width / 2, viewport.height / 2);
+    var looked = stage.toDocumentPoint(middle);
+    controller.zoomBy(1.5);
+    await tester.pumpAndSettle();
+    var after = stage.toDocumentPoint(middle);
+    expect(after.dx, closeTo(looked.dx, 2), reason: "the same point in the middle");
+    expect(after.dy, closeTo(looked.dy, 2));
   });
 
-  testWidgets("a zoomed canvas cannot be panned away from the frame",
+  testWidgets("a pinch on the trackpad zooms about the fingers", (tester) async {
+    var controller = CanvasController(const CanvasDocument());
+    addTearDown(controller.dispose);
+    var stage = await pump(tester, controller);
+    var at = Offset(viewport.width * 0.3, viewport.height * 0.35);
+    var under = stage.toDocumentPoint(at);
+    var fingers = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+    await fingers.panZoomStart(at);
+    await fingers.panZoomUpdate(at, scale: 1.5);
+    await tester.pump();
+    await fingers.panZoomUpdate(at, scale: 2);
+    await fingers.panZoomEnd();
+    await tester.pumpAndSettle();
+    expect(controller.zoom, closeTo(2, 1e-6));
+    var still = stage.toDocumentPoint(at);
+    expect(still.dx, closeTo(under.dx, 2), reason: "the point under the fingers stays");
+    expect(still.dy, closeTo(under.dy, 2));
+    expect(find.byType(Scrollbar), findsNWidgets(2));
+  });
+
+  testWidgets("a zoomed canvas scrolls no further than its edges",
       (tester) async {
-    // The pan is bounded by exactly the overhang, so the frame is always full.
-    // Left unbounded, the document could be dragged out of its own border and
-    // leave an empty rectangle.
+    // The view is bounded by exactly how far the page sticks out of the
+    // window, so the page always fills it.
     var controller = CanvasController(const CanvasDocument());
     addTearDown(controller.dispose);
     var stage = await pump(tester, controller);
@@ -186,12 +215,12 @@ void main() {
     controller.pan = const Offset2(99999, -99999);
     await tester.pumpAndSettle();
 
-    var page = stage.pageRect;
+    // As far as the margin round the page, and no further.
     var content = stage.contentRect;
-    expect(content.left, lessThanOrEqualTo(page.left + 0.5));
-    expect(content.top, lessThanOrEqualTo(page.top + 0.5));
-    expect(content.right, greaterThanOrEqualTo(page.right - 0.5));
-    expect(content.bottom, greaterThanOrEqualTo(page.bottom - 0.5));
+    expect(content.left, lessThanOrEqualTo(24.5));
+    expect(content.top, lessThanOrEqualTo(24.5));
+    expect(content.right, greaterThanOrEqualTo(viewport.width - 24.5));
+    expect(content.bottom, greaterThanOrEqualTo(viewport.height - 24.5));
   });
 
   testWidgets("at zoom 1 there is nothing to pan", (tester) async {
@@ -297,8 +326,11 @@ void main() {
           .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
           .controller!
           .offset;
+      // Two fingers on a trackpad: a drag on the page itself is the
+      // canvas's, to draw, move and pick with.
       await tester.drag(
-          find.byType(SingleChildScrollView), const Offset(0, -120));
+          find.byType(SingleChildScrollView), const Offset(0, -120),
+          kind: PointerDeviceKind.trackpad);
       await tester.pumpAndSettle();
       var after = tester
           .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
@@ -336,7 +368,8 @@ void main() {
       var unscrolled = stage.toDocumentPoint(const Offset(200, 100));
 
       await tester.drag(
-          find.byType(SingleChildScrollView), const Offset(0, -150));
+          find.byType(SingleChildScrollView), const Offset(0, -150),
+          kind: PointerDeviceKind.trackpad);
       await tester.pumpAndSettle();
       var scrolled = stage.toDocumentPoint(const Offset(200, 100));
 

@@ -600,18 +600,25 @@ class CanvasStageState extends State<CanvasStage>
   /// _visible is the room on screen: what the stage was laid out into.
   Size _visible = Size.zero;
 
-  /// _viewport is the box the canvas is drawn into, which is [_visible] except
-  /// in [CanvasFit.width], where the canvas can be taller than the window and
-  /// the difference is scrolled.
+  /// _viewport is the box the canvas is drawn into, which is [_visible] while
+  /// the page fits in it, and bigger -- by as much as the page sticks out,
+  /// down, across or both -- once it is zoomed in past the window, or fitted
+  /// to its width and taller than it; the difference is scrolled.
   ///
   /// Everything else in this file works in this box's coordinates, and so do
-  /// the pointer events -- the Listener is inside the scroll view, so what it
-  /// reports is already scrolled. The one exception is [toDocumentPoint],
-  /// which is called from outside with widget coordinates; see there.
+  /// the pointer events -- the Listener is inside the scroll views, so what
+  /// it reports is already scrolled. The exceptions are [toDocumentPoint] and
+  /// the getters for the tests, which are in widget coordinates; see there.
   Size _viewport = Size.zero;
 
-  /// _scroll drives the vertical scroll in [CanvasFit.width].
+  /// _scroll and _scrollX scroll the page down and across, where it is
+  /// bigger than the window.
   final ScrollController _scroll = ScrollController();
+  final ScrollController _scrollX = ScrollController();
+
+  /// _scrolled is how far the page is scrolled, down and across.
+  Offset get _scrolled => Offset(_scrollX.hasClients ? _scrollX.offset : 0,
+      _scroll.hasClients ? _scroll.offset : 0);
 
   /// _stageMargin is the gap kept around the canvas when it is showing whole,
   /// so the page reads as a sheet with room around it rather than as a region
@@ -644,6 +651,10 @@ class CanvasStageState extends State<CanvasStage>
     TabletInput.instance.start();
     controller.addListener(_onChanged);
     controller.images.addListener(_onChanged);
+    // Scrolled by hand -- a scroll bar, two fingers, the wheel -- the view
+    // is where it is scrolled to: see _followScroll.
+    _scroll.addListener(_followScroll);
+    _scrollX.addListener(_followScroll);
     // Counters that say they start running do. A clock on a canvas should be
     // going when the canvas is opened; a stopwatch says it is not and waits
     // to be started.
@@ -682,6 +693,7 @@ class CanvasStageState extends State<CanvasStage>
     _legendHold?.cancel();
     _backgrounds.dispose();
     _scroll.dispose();
+    _scrollX.dispose();
     controller.removeListener(_onChanged);
     controller.images.removeListener(_onChanged);
     VideoKey.ready.removeListener(_onChanged);
@@ -786,15 +798,16 @@ class CanvasStageState extends State<CanvasStage>
 
   /// _contentSize is how much room the canvas and its margins need.
   ///
-  /// The same as the visible box whenever the canvas fits in it. In fit-width
-  /// it can be taller, and the excess is what scrolls.
+  /// The same as the visible box whenever the canvas fits in it. Zoomed in,
+  /// or fitted to the width, it can be wider or taller, and the excess is
+  /// what scrolls.
   Size _contentSize(Size visible) {
     if (visible.width <= 0 || visible.height <= 0) return visible;
-    var wanted = document.size.size.height *
-            _fitScale *
-            (controller.showOverspill ? 1 + _overspillFraction * 2 : 1) +
-        _stageMargin * 2;
-    return Size(visible.width, math.max(visible.height, wanted));
+    var spill = controller.showOverspill ? 1 + _overspillFraction * 2 : 1.0;
+    var page = document.size.size * _scale;
+    var wide = page.width * spill * (_spreadShown ? 2 : 1) + _stageMargin * 2;
+    var tall = page.height * spill + _stageMargin * 2;
+    return Size(math.max(visible.width, wide), math.max(visible.height, tall));
   }
 
   /// _facingPage is the page drawn beside the one being worked on, or null
@@ -865,7 +878,7 @@ class CanvasStageState extends State<CanvasStage>
   /// itself, which meant the borders went off screen and there was nothing
   /// left to tell you where the canvas ended.
   Rect get _pageRect {
-    var size = document.size.size * _fitScale;
+    var size = document.size.size * _scale;
     // The *spread* is what sits in the middle of the window, and the page
     // being edited takes its own half of it. Centring the edited page
     // instead put the spread half a leaf off to one side -- and moved the
@@ -905,44 +918,69 @@ class CanvasStageState extends State<CanvasStage>
   /// than the frame it is being drawn inside.
   Size get _scaledSize => document.size.size * _scale;
 
-  /// _origin is where the document's top-left corner sits in stage space.
-  Offset get _origin {
-    var size = _scaledSize;
-    var pan = _clampedPan;
-    var page = _pageRect;
+  /// _origin is where the document's top-left corner sits in stage space:
+  /// the page's own, now the page is as big as it is drawn and the view is
+  /// moved over it by scrolling.
+  Offset get _origin => _pageRect.topLeft;
+
+  /// _clampedPan is where the view is, as CanvasController.pan says it: how
+  /// far the middle of the page is from the middle of the window, in screen
+  /// pixels, as it is scrolled.
+  Offset get _clampedPan {
+    var page = _pageRect.center;
+    var at = _scrolled + Offset(_visible.width / 2, _visible.height / 2);
+    return page - at;
+  }
+
+  /// _scrollFor is how far to scroll, down and across, to put the view at
+  /// [pan], within how far the page can be scrolled.
+  Offset _scrollFor(Offset pan) {
+    var page = _pageRect.center;
+    var want = page - Offset(_visible.width / 2, _visible.height / 2) - pan;
     return Offset(
-      page.center.dx - size.width / 2 + pan.dx,
-      page.center.dy - size.height / 2 + pan.dy,
+      want.dx.clamp(0.0, math.max(0.0, _viewport.width - _visible.width)).toDouble(),
+      want.dy.clamp(0.0, math.max(0.0, _viewport.height - _visible.height)).toDouble(),
     );
   }
 
-  /// _clampPan keeps the frame full.
-  ///
-  /// The pan is bounded by exactly how much the zoomed document overhangs the
-  /// frame, so the far edge can be brought to the edge of the frame and no
-  /// further. At zoom 1 the overhang is nothing and the pan is pinned to zero,
-  /// which is what makes the whole canvas sit exactly in its border with no
-  /// way to knock it out of alignment.
-  ///
-  /// Without this it was possible to drag a zoomed canvas entirely out of the
-  /// frame and be left looking at an empty rectangle.
-  Offset _clampPan(Offset pan) {
-    var size = _scaledSize;
-    var page = _pageRect;
-    var slackX = math.max(0.0, (size.width - page.width) / 2);
-    var slackY = math.max(0.0, (size.height - page.height) / 2);
-    return Offset(
-      pan.dx.clamp(-slackX, slackX),
-      pan.dy.clamp(-slackY, slackY),
-    );
-  }
-
-  Offset get _clampedPan =>
-      _clampPan(Offset(controller.pan.dx, controller.pan.dy));
-
+  /// _setPan moves the view to [pan], as near it as the page can be
+  /// scrolled.
   void _setPan(Offset pan) {
-    var clamped = _clampPan(pan);
-    controller.pan = Offset2(clamped.dx, clamped.dy);
+    var to = _scrollFor(pan);
+    _jumpTo(to);
+    var page = _pageRect.center;
+    var at = page - Offset(_visible.width / 2, _visible.height / 2) - to;
+    controller.pan = Offset2(at.dx, at.dy);
+  }
+
+  /// _syncing is set while the scroll views are moved to match the view, so
+  /// _followScroll does not take the move back as a scroll by hand.
+  bool _syncing = false;
+
+  void _jumpTo(Offset to) {
+    _syncing = true;
+    if (_scrollX.hasClients && (_scrollX.offset - to.dx).abs() > 0.5) {
+      _scrollX.jumpTo(to.dx.clamp(0.0, _scrollX.position.maxScrollExtent));
+    }
+    if (_scroll.hasClients && (_scroll.offset - to.dy).abs() > 0.5) {
+      _scroll.jumpTo(to.dy.clamp(0.0, _scroll.position.maxScrollExtent));
+    }
+    _syncing = false;
+  }
+
+  /// _followScroll keeps the view where the page has been scrolled to by
+  /// hand, so the zoom buttons zoom about what is looked at.
+  void _followScroll() {
+    if (_syncing || !mounted) return;
+    var pan = _clampedPan;
+    controller.followPan(Offset2(pan.dx, pan.dy));
+  }
+
+  /// _syncScroll scrolls to where the view is, after the page is laid out
+  /// at its size: zoomed by the buttons, by a pinch, or onto a character.
+  void _syncScroll() {
+    if (!mounted) return;
+    _jumpTo(_scrollFor(Offset(controller.pan.dx, controller.pan.dy)));
   }
 
   Offset _toDocument(Offset stage) =>
@@ -957,8 +995,7 @@ class CanvasStageState extends State<CanvasStage>
   /// whole widget while everything in here works in the scrolled content's
   /// coordinates. Without it, an element dropped on a scrolled fit-width canvas
   /// lands as far up the page as the view had been scrolled down.
-  Offset toDocumentPoint(Offset local) =>
-      _toDocument(local + Offset(0, _scroll.hasClients ? _scroll.offset : 0));
+  Offset toDocumentPoint(Offset local) => _toDocument(local + _scrolled);
 
   /// pageRect is the canvas's frame, in this widget's coordinates.
   ///
@@ -968,17 +1005,17 @@ class CanvasStageState extends State<CanvasStage>
   /// are invisible to a widget test otherwise -- the canvas is painted, not
   /// laid out, so there is no render box to measure.
   @visibleForTesting
-  Rect get pageRect => _pageRect;
+  Rect get pageRect => _pageRect.shift(-_scrolled);
 
   /// contentRect is the document as drawn inside that frame.
   @visibleForTesting
-  Rect get contentRect => _origin & _scaledSize;
+  Rect get contentRect => (_origin & _scaledSize).shift(-_scrolled);
 
   /// spreadRect is the frame the page and the leaf beside it fill together,
   /// which is what sits in the middle of the window while facing pages are
   /// showing. The page's own frame where there is no leaf beside it.
   @visibleForTesting
-  Rect get spreadRect => _viewRect;
+  Rect get spreadRect => _viewRect.shift(-_scrolled);
 
   /// flowGrips is where a selected text box's overflow dots are and what they
   /// say, for the tests that drag one onto another box. Painted rather than
@@ -994,7 +1031,7 @@ class CanvasStageState extends State<CanvasStage>
   /// toStagePoint is where a point of the document is on screen, for the same
   /// tests: a drag has to start and end somewhere real.
   @visibleForTesting
-  Offset toStagePoint(Offset doc) => _toStage(doc);
+  Offset toStagePoint(Offset doc) => _toStage(doc) - _scrolled;
 
   /// handleAt is where the selection's [handle] is on screen, for the tests
   /// that drag one: turned and slanted, it is not at the box's corner.
@@ -4802,7 +4839,9 @@ class CanvasStageState extends State<CanvasStage>
     if (!document.guides.showRulers) return null;
     var rulers = document.guides.rulers;
     if (!rulers.any) return null;
-    return rulerBandsFor(_pageRect, _viewport, rulers).axisAt(stage);
+    // The strips are at the window's edges, the page scrolled under them.
+    return rulerBandsFor(_pageRect.shift(-_scrolled), _visible, rulers)
+        .axisAt(stage - _scrolled);
   }
 
   /// _applyGuide moves the guide being dragged to where the pointer is.
@@ -6199,12 +6238,47 @@ class CanvasStageState extends State<CanvasStage>
     // Zoom about the pointer rather than about the middle, so scrolling in on
     // a corner of the pitch keeps that corner where it is instead of sending
     // it off screen.
-    var before = _toDocument(event.localPosition);
-    controller.zoomBy(event.scrollDelta.dy > 0 ? 0.9 : 1.1);
-    var after = _toDocument(event.localPosition);
-    var shift = (after - before) * _scale;
-    _setPan(Offset(controller.pan.dx + shift.dx, controller.pan.dy + shift.dy));
+    _zoomAbout(event.localPosition,
+        controller.zoom * (event.scrollDelta.dy > 0 ? 0.9 : 1.1));
   }
+
+  /// _zoomAbout zooms to [zoom], keeping the point of the page under
+  /// [stage] where it is on screen.
+  void _zoomAbout(Offset stage, double zoom,
+      {Offset? doc, Offset? pan, double? scale}) {
+    var under = doc ?? _toDocument(stage);
+    var was = pan ?? _clampedPan;
+    var before = scale ?? _scale;
+    controller.zoom = zoom;
+    var after = _fitScale * controller.zoom;
+    var middle = Offset(document.size.width / 2, document.size.height / 2);
+    var next = was + (under - middle) * (before - after);
+    controller.pan = Offset2(next.dx, next.dy);
+  }
+
+  /// _pinch is a pinch on the trackpad under way: the zoom, the view, the
+  /// scale and the point of the page under the fingers it started from.
+  ({double zoom, Offset pan, double scale, Offset doc})? _pinch;
+
+  void _onPinchStart(PointerPanZoomStartEvent e) {
+    _pinch = (
+      zoom: controller.zoom,
+      pan: _clampedPan,
+      scale: _scale,
+      doc: _toDocument(e.localPosition),
+    );
+  }
+
+  /// _onPinchUpdate zooms as the fingers spread or close, about where they
+  /// are. A two-finger slide alone is the scroll views' to scroll.
+  void _onPinchUpdate(PointerPanZoomUpdateEvent e) {
+    var p = _pinch;
+    if (p == null || (e.scale - 1).abs() < 0.01) return;
+    _zoomAbout(e.localPosition, p.zoom * e.scale,
+        doc: p.doc, pan: p.pan, scale: p.scale);
+  }
+
+  void _onPinchEnd(PointerPanZoomEndEvent e) => _pinch = null;
 
   // ------------------------------------------------------------------------
 
@@ -6478,6 +6552,8 @@ class CanvasStageState extends State<CanvasStage>
           _visible = Size(constraints.maxWidth, constraints.maxHeight);
           var content = _contentSize(_visible);
           _viewport = content;
+          // Scrolled to where the view is, once laid out at this size.
+          WidgetsBinding.instance.addPostFrameCallback((_) => _syncScroll());
           // How much the canvas had to shrink to fit, which is half of what
           // the percentage on the band means.
           _tellControllerTheScale();
@@ -6498,6 +6574,9 @@ class CanvasStageState extends State<CanvasStage>
                   _moveBrush(e.localPosition);
                 },
                 onPointerSignal: _onPointerSignal,
+                onPointerPanZoomStart: _onPinchStart,
+                onPointerPanZoomUpdate: _onPinchUpdate,
+                onPointerPanZoomEnd: _onPinchEnd,
                 child: MouseRegion(
                   cursor: _cursor(),
                   // Clipped to the stage's own box as well as to the frame
@@ -6563,6 +6642,10 @@ class CanvasStageState extends State<CanvasStage>
                         rigCharacter: controller.rigCharacter,
                         faceCharacter: controller.faceCharacter,
                         hairCharacter: controller.hairCharacter,
+                        // Over a page that scrolls, the rulers are drawn in a
+                        // layer that does not.
+                        rulersApart: _viewport.width > _visible.width + 0.5 ||
+                            _viewport.height > _visible.height + 0.5,
                         turnaround: switch (controller.turnaroundCharacter) {
                           var who? => Turnaround.of(who, controller.frame,
                               document.frameRate, panelOptions(who, adding: false)),
@@ -6676,10 +6759,36 @@ class CanvasStageState extends State<CanvasStage>
             ]),
           );
 
-          // Only scrollable when there is something to scroll. A scroll view
-          // that never scrolls still claims the wheel, and the wheel is how
-          // the pan tool zooms.
-          if (content.height > _visible.height) {
+          // Only scrollable when there is something to scroll -- down,
+          // across, or both. A scroll view that never scrolls still claims
+          // the wheel, and the wheel is how the pan tool zooms. Both ways,
+          // the bar that runs down is the inner view's, drawn at the edge of
+          // the window rather than of the page.
+          var down = content.height > _visible.height + 0.5;
+          var across = content.width > _visible.width + 0.5;
+          if (down && across) {
+            painter = Scrollbar(
+              controller: _scroll,
+              thumbVisibility: true,
+              notificationPredicate: (n) => n.depth == 1,
+              child: Scrollbar(
+                controller: _scrollX,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _scrollX,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: content.width,
+                    height: _visible.height,
+                    child: SingleChildScrollView(
+                      controller: _scroll,
+                      child: painter,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          } else if (down) {
             painter = Scrollbar(
               controller: _scroll,
               thumbVisibility: true,
@@ -6688,6 +6797,49 @@ class CanvasStageState extends State<CanvasStage>
                 child: painter,
               ),
             );
+          } else if (across) {
+            painter = Scrollbar(
+              controller: _scrollX,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _scrollX,
+                scrollDirection: Axis.horizontal,
+                child: painter,
+              ),
+            );
+          }
+          // A drag on the page -- a finger's, a pen's, a mouse's -- is the
+          // canvas's: drawing, moving, picking. The page is scrolled by its
+          // bars, the wheel and two fingers on a trackpad.
+          if (down || across) {
+            painter = ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context)
+                  .copyWith(dragDevices: {PointerDeviceKind.trackpad}),
+              child: painter,
+            );
+          }
+          // Over a page that scrolls, the rulers in a layer that does not.
+          if ((down || across) &&
+              document.guides.showRulers &&
+              document.guides.rulers.any) {
+            painter = Stack(children: [
+              Positioned.fill(child: painter),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_scroll, _scrollX]),
+                    builder: (context, _) => CustomPaint(
+                      painter: _RulerLayer(
+                          guides: document.guides,
+                          sheet: document.size.size,
+                          scale: _scale,
+                          origin: _origin - _scrolled,
+                          page: _pageRect.shift(-_scrolled)),
+                    ),
+                  ),
+                ),
+              ),
+            ]);
           }
 
           return Focus(focusNode: _focus, onKeyEvent: _onKey, child: painter);
@@ -6937,4 +7089,32 @@ class CanvasStageState extends State<CanvasStage>
     }
     return SystemMouseCursors.basic;
   }
+}
+
+/// _RulerLayer draws the stage's rulers over a page that scrolls, at the
+/// edges of the window: see paintStageRulers.
+class _RulerLayer extends CustomPainter {
+  final CanvasGuides guides;
+  final Size sheet;
+  final double scale;
+  final Offset origin;
+  final Rect page;
+  const _RulerLayer(
+      {required this.guides,
+      required this.sheet,
+      required this.scale,
+      required this.origin,
+      required this.page});
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintStageRulers(canvas, size, guides, sheet, scale, origin, page);
+
+  @override
+  bool shouldRepaint(_RulerLayer old) =>
+      old.guides != guides ||
+      old.sheet != sheet ||
+      old.scale != scale ||
+      old.origin != origin ||
+      old.page != page;
 }
