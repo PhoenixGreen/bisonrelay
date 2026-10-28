@@ -97,7 +97,7 @@ void main() {
     expect(e.drawings.keys, [panelKey(0, 0)]);
   });
 
-  testWidgets("the bar picks a view, or adds one", (tester) async {
+  testWidgets("the bar picks among its views, and no others", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
     addTearDown(c.dispose);
@@ -117,12 +117,11 @@ void main() {
     CharacterElement get() => c.document.elementById("c") as CharacterElement;
     var views = tester.widget<CanvasDropdown<String>>(find.byKey(const ValueKey("characterDrawPanel")));
     var keys = views.options.map((o) => o.$1).toList();
-    expect(keys.take(4), [panelKey(0, 0), panelKey(90, 0), panelKey(-90, 0), panelKey(180, 0)]);
-    expect(keys, contains("add:${panelKey(45, 0)}"));
-    views.onChanged("add:${panelKey(45, 0)}");
+    expect(keys, [panelKey(0, 0), panelKey(90, 0), panelKey(-90, 0), panelKey(180, 0)],
+        reason: "only the views it has: more are added in its Layers");
+    views.onChanged(panelKey(180, 0));
     await tester.pumpAndSettle();
-    expect(get().views, contains(const CharacterView(45, 0)));
-    expect(get().inView(get().pose).turn, 45);
+    expect(get().inView(get().pose).turn, 180);
     expect(tester.takeException(), isNull);
   });
 
@@ -169,7 +168,8 @@ void main() {
       expect(await _pixels(e), isNot(await _pixels(waving(_sketch()).withView(view))));
     });
 
-    testWidgets("added from the Drawing section, in that pose", (tester) async {
+    testWidgets("added from the Layers' views, in that pose; a view added there",
+        (tester) async {
       SharedPreferences.setMockInitialValues({});
       CanvasSection.openAll = true;
       addTearDown(() => CanvasSection.openAll = false);
@@ -195,10 +195,16 @@ void main() {
       var e = c.document.elementById("c") as CharacterElement;
       expect(e.views, contains(view));
       expect(e.viewKey(e.poseAtFrame(0)), "0,0@Wave", reason: "in the pose, seen from its view");
-      var pick = tester.widget<CanvasDropdown<String>>(
-          find.byKey(const ValueKey("characterDrawingPanelPick")));
-      expect(pick.value, "0,0@Wave");
-      expect(pick.options.map((o) => o.$1), contains(panelKey(0, 0)));
+      // A view of an angle, added: turned to it.
+      var add = tester.widget<CanvasDropdown<String>>(
+          find.byKey(const ValueKey("characterViewAdd")));
+      expect(add.options.map((o) => o.$1), isNot(contains(panelKey(0, 0))),
+          reason: "only views it has not got");
+      add.onChanged(panelKey(45, 0));
+      await tester.pumpAndSettle();
+      e = c.document.elementById("c") as CharacterElement;
+      expect(e.views, contains(const CharacterView(45, 0)));
+      expect(e.inView(e.poseAtFrame(0)).turn, 45);
       expect(tester.takeException(), isNull);
     });
   });

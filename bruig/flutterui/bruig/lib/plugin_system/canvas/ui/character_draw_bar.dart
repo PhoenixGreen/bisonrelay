@@ -19,26 +19,6 @@ import 'package:flutter/material.dart';
 // A narrow canvas scrolls it sideways rather than taking it onto a second
 // line.
 
-/// drawBarTools are the drawing tools the bar steps through, the ones for
-/// drawing first.
-const List<VectorTool> drawBarTools = [
-  VectorTool.select,
-  VectorTool.pen,
-  VectorTool.pencil,
-  VectorTool.shapes,
-  VectorTool.eraser,
-  VectorTool.selectShapes,
-  VectorTool.knife,
-  VectorTool.corner,
-  VectorTool.scale,
-  VectorTool.boolean,
-  VectorTool.align,
-  VectorTool.tint,
-  VectorTool.shadow,
-  VectorTool.highlight,
-  VectorTool.text,
-];
-
 /// drawBarCharacter is the character the bar is for: the one drawn on, or
 /// the sketch picked alone.
 CharacterElement? drawBarCharacter(CanvasController controller) {
@@ -139,7 +119,14 @@ class CharacterDrawBar extends StatelessWidget {
               grow: false,
               stepped: true,
               value: panelKey(pose.panelTurn, pose.panelTilt),
-              options: panelOptions(e),
+              // Only the views it has: more are added in its Layers' views.
+              options: [
+                ...panelOptions(e, adding: false),
+                if (!panelOptions(e, adding: false)
+                    .any((o) => o.$1 == panelKey(pose.panelTurn, pose.panelTilt)))
+                  (panelKey(pose.panelTurn, pose.panelTilt),
+                      viewLabel(pose.panelTurn, pose.panelTilt)),
+              ],
               onChanged: (key) {
                 write(showPanel(controller, e, key));
                 controller.endInteraction();
@@ -230,9 +217,9 @@ class CharacterDrawBar extends StatelessWidget {
                       ? "Stop drawing new locks"
                       : "Draw new locks: press where one grows, drag to its tip",
                   () => controller.hairAddLocks = !controller.hairAddLocks),
-            rule(),
-            _ToolRow(controller: controller, character: e, drawing: drawing),
-            // The tool in hand and the way out, at the end of the line.
+            // The tool in hand and the way out, at the end of the line. The
+            // tools themselves are in the layer drawn on -- see
+            // character_layers_settings.dart.
             if (drawing) ...[
               rule(),
               _Tip(controller: controller),
@@ -268,41 +255,6 @@ class CharacterDrawBar extends StatelessWidget {
       );
 }
 
-/// _ToolRow is every drawing tool, side by side: one click to any of them.
-class _ToolRow extends StatelessWidget {
-  final CanvasController controller;
-  final CharacterElement character;
-  final bool drawing;
-  const _ToolRow(
-      {required this.controller,
-      required this.character,
-      required this.drawing});
-
-  @override
-  Widget build(BuildContext context) {
-    var inHand = drawing ? controller.vectorTool : null;
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var tool in drawBarTools)
-        CanvasIconButton(
-          key: ValueKey("characterDrawTool-${tool.name}"),
-          icon: vectorToolIcon(tool),
-          tooltip: tool.label,
-          active: inHand == tool,
-          onPressed: () {
-            // The one in hand again puts the drawing down.
-            if (inHand == tool) {
-              controller.stopDrawingOnCharacter();
-              return;
-            }
-            controller.drawOnCharacter(character.id,
-                garment: controller.drawingGarment);
-            controller.vectorTool = tool;
-          },
-        ),
-    ]);
-  }
-}
-
 /// _Tip is what to do with the tool in hand, and the way back out: to the
 /// points tool, then out of drawing altogether -- as Escape steps.
 class _Tip extends StatelessWidget {
@@ -314,39 +266,15 @@ class _Tip extends StatelessWidget {
     var theme = ThemeNotifier.of(context);
     var tool = controller.vectorTool;
     var points = tool == VectorTool.select;
-    // With a select tool in hand and nothing of the panel's own to pick
-    // yet: its drawing can be taken apart into shapes to edit.
-    var offer = (points || tool == VectorTool.selectShapes) &&
-        !controller.drawnTakenApart;
     var muted = TextStyle(fontSize: 12, color: theme.colors.onSurfaceVariant);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       ConstrainedBox(
         key: const ValueKey("characterDrawHint"),
         constraints: const BoxConstraints(maxWidth: 230),
-        child: Text(
-            offer
-                ? (controller.drawingGarment == null
-                    ? "Take the panel apart to edit its outline"
-                    : "Take it apart to edit its outline")
-                : vectorToolLine(tool),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: muted),
+        child: Text(vectorToolLine(tool),
+            maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
       ),
       const SizedBox(width: 8),
-      if (offer) ...[
-        _Pill(
-          key: const ValueKey("characterDrawTakeApart"),
-          label: "Take apart",
-          onTap: () {
-            if (controller.drawingOn case var id?) {
-              controller.takeApartCharacter(id,
-                  garment: controller.drawingGarment);
-            }
-          },
-        ),
-        const SizedBox(width: 6),
-      ],
       if (!points) ...[
         _Pill(
           key: const ValueKey("characterDrawPoints"),

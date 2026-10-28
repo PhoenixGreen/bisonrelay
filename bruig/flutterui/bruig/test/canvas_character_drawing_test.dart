@@ -238,7 +238,7 @@ void main() {
     setUpAll(() => CanvasSection.openAll = true);
     tearDownAll(() => CanvasSection.openAll = false);
 
-    testWidgets("a tool on the bar draws on the character; again puts it down",
+    testWidgets("a layer's pencil draws on it, the tools in the layer; again puts it down",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
@@ -246,29 +246,43 @@ void main() {
           dna: dna)));
       addTearDown(c.dispose);
       c.selectOnly("c");
-      tester.view.physicalSize = const Size(1200, 3000);
+      tester.view.physicalSize = const Size(1200, 4000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(host(c));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey("characterDrawBar")), findsOneWidget);
-      expect(find.byKey(const ValueKey("elementSection-drawing")), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey("characterDrawTool-pencil")));
+      // No Drawing section, and no tools until drawing.
+      expect(find.byKey(const ValueKey("elementSection-drawing")), findsNothing);
+      expect(find.byKey(const ValueKey("vectorTools")), findsNothing);
+      var pencil = find.byKey(ValueKey("layerDraw-${BodyLayer.head.name}"));
+      await tester.ensureVisible(pencil);
+      await tester.tap(pencil);
       await tester.pumpAndSettle();
       expect(c.drawingOn, "c");
-      expect(c.vectorTool, VectorTool.pencil);
-      // The character's own settings are still shown, the tools in them.
-      expect(find.byKey(const ValueKey("elementSection-drawing")), findsOneWidget);
-      expect(find.byKey(const ValueKey("vectorTools")), findsOneWidget);
+      expect(c.vectorTool, VectorTool.select, reason: "ready to pick");
+      // The tools, under the layer drawn on.
+      var tools = find.byKey(const ValueKey("vectorTools"));
+      expect(tools, findsOneWidget);
+      expect(find.descendant(of: find.byKey(ValueKey("layerDetail-${BodyLayer.head.name}")),
+              matching: tools),
+          findsOneWidget);
+      var pen = find.byKey(const ValueKey("vectorTool-pen"));
+      await tester.ensureVisible(pen);
+      await tester.tap(pen);
+      await tester.pumpAndSettle();
+      expect(c.vectorTool, VectorTool.pen);
 
-      await tester.tap(find.byKey(const ValueKey("characterDrawTool-pencil")));
+      await tester.ensureVisible(pencil);
+      await tester.tap(pencil);
       await tester.pumpAndSettle();
       expect(c.drawingOn, isNull);
       expect(c.selection, {"c"});
+      expect(find.byKey(const ValueKey("vectorTools")), findsNothing);
     });
 
-    testWidgets("the bar is one line, every tool on it, the tip at its end",
+    testWidgets("the bar is one line, no tools on it, the tip at its end",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
       var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
@@ -285,12 +299,10 @@ void main() {
       var bar = tester.getRect(find.byKey(const ValueKey("characterDrawBar")));
       expect(bar.height, lessThan(60), reason: "one line");
       expect(bar.right, lessThanOrEqualTo(520));
-      int shown() => [
-            for (var t in drawBarTools)
-              if (find.byKey(ValueKey("characterDrawTool-${t.name}")).evaluate().isNotEmpty) t
-          ].length;
-      expect(shown(), drawBarTools.length, reason: "every tool, no arrows");
-      expect(find.byKey(const ValueKey("characterDrawToolsNext")), findsNothing);
+      for (var t in VectorTool.values) {
+        expect(find.byKey(ValueKey("characterDrawTool-${t.name}")), findsNothing,
+            reason: "the tools are in the layer drawn on");
+      }
       c.drawOnCharacter("c");
       c.vectorTool = VectorTool.text;
       await tester.pump();
@@ -339,27 +351,6 @@ void main() {
       expect(zoom.options.any((o) => o.$1 == null), isFalse, reason: "no placeholder now");
       expect(tester.widget<CanvasDropdown<String>>(
               find.byKey(const ValueKey("characterDrawPanel"))).stepped, isTrue);
-    });
-
-    testWidgets("a region hidden on one panel only", (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
-          const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
-          dna: dna)));
-      addTearDown(c.dispose);
-      c.selectOnly("c");
-      tester.view.physicalSize = const Size(1200, 3000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(host(c));
-      await tester.pumpAndSettle();
-      var f = find.byKey(const ValueKey("characterDrawingHide-head"));
-      await tester.ensureVisible(f);
-      await tester.tap(f);
-      await tester.pumpAndSettle();
-      var e = c.document.elementById("c") as CharacterElement;
-      expect(e.drawingFor(0, 0).$1.hidden, {CharacterRegion.head});
-      expect(e.drawingFor(90, 0).$1.hidden, isEmpty);
     });
 
     testWidgets("zoom onto the head", (tester) async {

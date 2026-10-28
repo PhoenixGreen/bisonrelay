@@ -127,41 +127,4 @@ void main() {
     var top = panelOrderTop(e, panelKey(0, 0));
     expect(added.order.last, greaterThan(top - 1e-9));
   });
-
-  group("the bar", () {
-    testWidgets("offers to take the panel apart with the points tool", (tester) async {
-      SharedPreferences.setMockInitialValues({});
-      var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch()));
-      addTearDown(c.dispose);
-      c.selectOnly("c");
-      c.drawOnCharacter("c");
-      c.vectorTool = VectorTool.select;
-      tester.view.physicalSize = const Size(1600, 400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-          ChangeNotifierProvider<CanvasPreferences>(
-              create: (c) => CanvasPreferences()),
-        ],
-        child: MaterialApp(home: Scaffold(body: CharacterDrawBar(controller: c))),
-      ));
-      await tester.pumpAndSettle();
-      var take = find.byKey(const ValueKey("characterDrawTakeApart"));
-      expect(take, findsOneWidget);
-      await tester.ensureVisible(take);
-      await tester.tap(take);
-      await tester.pumpAndSettle();
-      expect(c.drawnTakenApart, isTrue);
-      expect(find.byKey(const ValueKey("characterDrawTakeApart")), findsNothing);
-      // The pen draws; nothing to offer.
-      c.vectorTool = VectorTool.pen;
-      await tester.pump();
-      expect(find.byKey(const ValueKey("characterDrawTakeApart")), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-  });
 }

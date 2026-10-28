@@ -4196,7 +4196,8 @@ class CanvasController extends ChangeNotifier {
     next = next.reorder(next.elements.length - 1, next.indexOf(id) + 1);
     _vectorEditing = proxy.id;
     _resetVectorEditing();
-    _vectorTool = VectorTool.pen;
+    // Ready to pick: what is drawn there is the thing to work on first.
+    _vectorTool = VectorTool.select;
     _selection = {proxy.id};
     _backgroundSelected = false;
     _proxyOver = c;

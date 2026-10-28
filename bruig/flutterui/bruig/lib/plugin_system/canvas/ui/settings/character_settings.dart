@@ -24,7 +24,6 @@ import 'package:bruig/plugin_system/canvas/ui/image_picking.dart';
 import 'package:bruig/plugin_system/canvas/ui/model_picking.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_appearance_settings.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_layers_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -380,8 +379,6 @@ List<Widget> characterSettings(
     // A sketch as a stack of layers, each shaped where it is picked.
     if (!e.body.inThreeD)
       characterLayersSection(context, controller, e, write, begin, commit),
-    if (!e.body.inThreeD)
-      characterDrawingSection(context, controller, e, write, begin, commit),
     // A sketch's appearance and clothes are its layers' -- see
     // character_layers_settings.dart. A body in 3D has them here.
     if (e.body.inThreeD) ...[

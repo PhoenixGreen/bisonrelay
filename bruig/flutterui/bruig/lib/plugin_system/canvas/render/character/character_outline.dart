@@ -43,7 +43,16 @@ class CaptureCanvas implements Canvas {
 
   /// tolerance is how far a shape's points may stray from its outline.
   final double tolerance;
-  CaptureCanvas({this.tolerance = 0.35});
+
+  /// counting is whether it only counts the shapes it would keep, each
+  /// layer's, rather than keeping them: see countOf.
+  final bool counting;
+  final Map<String?, int> _counts = {};
+  CaptureCanvas({this.tolerance = 0.35, this.counting = false});
+
+  /// countOf is how many shapes have been drawn as [layer] so far.
+  int countOf(String? layer) =>
+      counting ? _counts[layer] ?? 0 : _shapes.where((s) => s.layer == layer).length;
 
   List<CapturedShape> get shapes => List.unmodifiable(_shapes);
 
@@ -190,6 +199,7 @@ class CaptureCanvas implements Canvas {
       if (at.getBounds().isEmpty) return;
     }
     if (stroke && _sources.isNotEmpty && identical(_sources.last, path)) {
+      if (counting) return;
       var last = _shapes.removeLast();
       _shapes.add(CapturedShape(
           last.shape.copyWith(
@@ -199,6 +209,11 @@ class CaptureCanvas implements Canvas {
               join: paint.strokeJoin),
           last.key,
           layer: last.layer));
+      return;
+    }
+    if (counting) {
+      _counts[layer] = (_counts[layer] ?? 0) + 1;
+      _sources.add(path);
       return;
     }
     var paths = vectorPathsOf(at, tolerance: tolerance);

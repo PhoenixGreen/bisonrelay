@@ -180,6 +180,9 @@ void paintCharacterFigure(
   var onPanel = <(double, CharacterDrawing, int, String?)>[];
   // A garment taken apart on the panel is drawn by its shapes alone.
   var replaced = <Garment>{};
+  // A layer taken apart alone -- the body's, or a garment's -- is drawn by
+  // its shapes where the figure draws it, among the rest as it is made.
+  var standing = <String>{...?drawing?.hiddenLayers};
   if (!body.inThreeD) {
     if (!bare) {
       for (var (gi, g) in dna.worn.indexed) {
@@ -188,7 +191,11 @@ void paintCharacterFigure(
         var key = garmentLayer(dna.wardrobe.indexOf(g));
         if (!layers.shows(key)) continue;
         var (d, _) = g.drawingAt(viewKey ?? panelKey(pose.panelTurn, pose.panelTilt));
-        if (d.replaces) replaced.add(g);
+        if (d.replaces) {
+          // The whole panel taken apart, the body too: all by its shapes.
+          var alone = d.bases.isNotEmpty && (drawing?.hidden.isEmpty ?? true);
+          alone ? standing.add(key) : replaced.add(g);
+        }
         for (var i = 0; i < d.shapes.length; i++) {
           onPanel.add((d.orderOf(i, 1e6 + gi * 1e4), d, i, key));
         }
@@ -205,19 +212,60 @@ void paintCharacterFigure(
   }
   // A layer taken apart on the panel is drawn by its shapes, not its own
   // drawing.
-  var generated = drawing == null || drawing.hiddenLayers.isEmpty
+  var generated = standing.isEmpty
       ? layers
-      : LayerView(hidden: {...layers.hidden, ...drawing.hiddenLayers}, solo: layers.solo);
-  // The shapes drawn: all of them, or -- a layer soloed -- the rest's or
-  // its own.
-  void drawn(Canvas onto, {bool? soloed}) => paintPanelShapes(
-      onto,
-      rig,
-      [
-        for (var (o, d, i, layer) in onPanel)
-          if (soloed == null || (layer == layers.solo) == soloed) (o, d, i)
-      ],
-      box.inflate(box.height));
+      : LayerView(hidden: {...layers.hidden, ...standing}, solo: layers.solo);
+  var shapeRoom = box.inflate(box.height);
+  // The shapes drawn by one drawing of the figure -- all of them, or, a
+  // layer soloed, the rest's or its own: a layer standing in for its own
+  // drawing as the figure reaches it, the rest over it all after.
+  (void Function(Canvas, String, int), void Function(Canvas)) shapesOf({bool? soloed}) {
+    var waiting = <String, List<(int, (double, CharacterDrawing, int))>>{};
+    var over = <(double, CharacterDrawing, int)>[];
+    for (var (o, d, i, layer) in onPanel) {
+      if (soloed != null && (layer == layers.solo) != soloed) continue;
+      if (layer != null && standing.contains(layer)) {
+        (waiting[layer] ??= []).add((0, (o, d, i)));
+      } else {
+        over.add((o, d, i));
+      }
+    }
+    // Each shape after the one it was taken from -- or, one drawn, the
+    // one before it -- in its layer's order: the figure has drawn that
+    // many of the layer's own by then.
+    for (var list in waiting.values) {
+      list.sort((a, b) => a.$2.$1.compareTo(b.$2.$1));
+      var last = 0;
+      for (var (k, (_, x)) in list.indexed) {
+        if (int.tryParse(x.$2.shapes[x.$3].origin ?? "") case var j?) {
+          last = math.max(last, j);
+        }
+        list[k] = (last, x);
+      }
+    }
+    var done = <String, int>{};
+    void at(Canvas onto, String layer, int count) {
+      var list = waiting[layer];
+      if (list == null) return;
+      var from = done[layer] ?? 0, to = from;
+      while (to < list.length && list[to].$1 < count) {
+        to++;
+      }
+      done[layer] = to;
+      paintPanelShapes(onto, rig, [for (var (_, x) in list.sublist(from, to)) x], shapeRoom);
+    }
+
+    void rest(Canvas onto) => paintPanelShapes(
+        onto,
+        rig,
+        [
+          ...over,
+          for (var MapEntry(key: l, value: list) in waiting.entries)
+            for (var (_, x) in list.skip(done[l] ?? 0)) x,
+        ],
+        shapeRoom);
+    return (at, rest);
+  }
 
   void drawOn(Canvas onto) {
     if (body.inThreeD) {
@@ -230,22 +278,28 @@ void paintCharacterFigure(
     // A layer soloed: everything else faint, then the layer alone over it,
     // as flat colour -- a view for working on it, not the finished look.
     if (layers.solo != null) {
-      _Drawing pass(_Pass p) => _Drawing(onto, rig, dna, face, life,
-          bare: bare,
-          look: look,
-          images: images,
-          hidden: drawing?.hidden ?? const {},
-          faceRig: faceRig ?? FaceRig.none,
-          replaced: replaced,
-          layers: generated,
-          pass: p);
+      void pass(_Pass p) {
+        var (at, rest) = shapesOf(soloed: p == _Pass.solo);
+        _Drawing(onto, rig, dna, face, life,
+                bare: bare,
+                look: look,
+                images: images,
+                hidden: drawing?.hidden ?? const {},
+                faceRig: faceRig ?? FaceRig.none,
+                replaced: replaced,
+                layers: generated,
+                pass: p,
+                standing: standing,
+                standIn: at)
+            .draw();
+        rest(onto);
+      }
+
       onto.saveLayer(box.inflate(box.height),
           Paint()..color = const Color(0x2E000000));
-      pass(_Pass.others).draw();
-      drawn(onto, soloed: false);
+      pass(_Pass.others);
       onto.restore();
-      pass(_Pass.solo).draw();
-      drawn(onto, soloed: true);
+      pass(_Pass.solo);
       return;
     }
     if (look.shading == _Shading.painted) {
@@ -259,6 +313,7 @@ void paintCharacterFigure(
             reach: unit * 0.09,
           ),
           (flat, buffers) {
+            var (at, rest) = shapesOf();
             _Drawing(flat, rig, dna, face, life,
                     bare: bare,
                     look: look,
@@ -267,9 +322,11 @@ void paintCharacterFigure(
                     hidden: drawing?.hidden ?? const {},
                     faceRig: faceRig ?? FaceRig.none,
                     replaced: replaced,
-                    layers: generated)
+                    layers: generated,
+                    standing: standing,
+                    standIn: at)
                 .draw();
-            drawn(flat);
+            rest(flat);
           },
           // A garment's picture print comes from the images, which are not
           // part of this: a figure wearing one is drawn afresh each time.
@@ -288,6 +345,7 @@ void paintCharacterFigure(
                 ]));
       if (lit) return;
     }
+    var (at, rest) = shapesOf();
     _Drawing(onto, rig, dna, face, life,
             bare: bare,
             look: look,
@@ -295,10 +353,12 @@ void paintCharacterFigure(
             hidden: drawing?.hidden ?? const {},
             faceRig: faceRig ?? FaceRig.none,
             replaced: replaced,
-            layers: generated)
+            layers: generated,
+            standing: standing,
+            standIn: at)
         .draw();
     // Drawn by hand over it, each shape where its part is.
-    drawn(onto);
+    rest(onto);
   }
 
   void draw(Canvas onto) => CanvasPerf.time("character", () => drawOn(onto));
@@ -851,8 +911,23 @@ class _Drawing {
       this.faceRig = FaceRig.none,
       this.replaced = const {},
       this.layers = LayerView.all,
-      this.pass = _Pass.all})
-      : _real = canvas;
+      this.pass = _Pass.all,
+      this.standing = const {},
+      this.standIn})
+      : _real = canvas,
+        _base = standIn == null ? null : canvas.getTransform();
+
+  /// standing is the layers taken apart on the panel, whose shapes stand
+  /// in for their own drawing there; standIn draws them where the figure
+  /// draws that layer, onto the canvas as the figure is placed on it: as
+  /// many of [layer]'s as the figure has drawn of it by then.
+  final Set<String> standing;
+  final void Function(Canvas canvas, String layer, int count)? standIn;
+  final Float64List? _base;
+
+  /// _counted is what a layer standing in for is drawn onto instead: what
+  /// counts how far through it the figure is.
+  late final CaptureCanvas _counted = CaptureCanvas(counting: true);
 
   /// replaced is what it wears that is taken apart on this panel, and drawn
   /// by its shapes instead -- see CharacterDrawing.replaces.
@@ -889,8 +964,12 @@ class _Drawing {
   void _in(String layer, void Function() draw) {
     if (_layerStack.isNotEmpty && _layerStack.last == layer) return draw();
     var from = canvas;
-    var to = _drawnHere(layer) ? _real : _sink;
+    var stands = standIn != null && standing.contains(layer);
+    var to = _drawnHere(layer) ? _real : (stands ? _counted : _sink);
     var switched = !identical(from, to);
+    // A layer drawn inside one standing in for its own drawing: the
+    // shapes of that one, up to here, under it.
+    if (switched && identical(from, _counted)) _standIn(_layerStack.last);
     if (switched) _carry(from, to);
     canvas = to;
     _layerStack.add(layer);
@@ -904,7 +983,18 @@ class _Drawing {
       if (from case CaptureCanvas c) {
         c.layer = _layerStack.isEmpty ? null : _layerStack.last;
       }
+      // Its shapes, as far as the figure has drawn it.
+      if (stands && identical(to, _counted)) _standIn(layer);
     }
+  }
+
+  /// _standIn draws [layer]'s shapes, standing in for its own drawing, as
+  /// far as the figure has drawn it -- placed as the figure is.
+  void _standIn(String layer) {
+    _real.save();
+    _carryTo(_base!, _real);
+    standIn!(_real, layer, _counted.countOf(layer));
+    _real.restore();
   }
 
   void _inBody(BodyLayer layer, void Function() draw) => _in(layer.name, draw);
@@ -916,7 +1006,12 @@ class _Drawing {
   /// _carry places [to] as [from] is placed, from a save to restore after.
   static void _carry(Canvas from, Canvas to) {
     to.save();
-    var a = from.getTransform(), b = to.getTransform();
+    _carryTo(from.getTransform(), to);
+  }
+
+  /// _carryTo sets [to] to transform [a], from the transform it has.
+  static void _carryTo(Float64List a, Canvas to) {
+    var b = to.getTransform();
     // b⁻¹ · a, as two-dimensional affine maps.
     var det = b[0] * b[5] - b[1] * b[4];
     if (det.abs() < 1e-12) return;

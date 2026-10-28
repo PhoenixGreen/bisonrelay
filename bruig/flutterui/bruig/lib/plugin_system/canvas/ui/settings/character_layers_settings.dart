@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/vector_settings.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
@@ -75,6 +77,13 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
   if (picked != null && !rows.any((r) => r.key == picked)) picked = null;
   var solo = controller.soloLayerOf(e.id);
   var pickedRow = rows.where((r) => r.key == picked).firstOrNull;
+  // The layer the drawing tools are on, if any.
+  var drawingKey = controller.drawingOn == e.id
+      ? (controller.drawingLayer ??
+          (controller.drawingGarment == null
+              ? null
+              : garmentLayer(controller.drawingGarment!)))
+      : null;
   return section(e, "layers",
       icon: Icons.layers_outlined,
       title: "Layers",
@@ -86,24 +95,17 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
       initiallyOpen: true,
       children: [
         _viewStrip(controller, e, write, begin, commit),
-        CanvasToggle(
-          key: const ValueKey("characterTurnaroundToggle"),
-          label: "Lay the views out on the canvas",
-          value: controller.showTurnaround,
-          onChanged: (v) => controller.showTurnaround = v,
-        ),
+        _views(controller, e, write, begin, commit),
+        // The face and the limbs, while they are being set on the canvas.
+        if (controller.editFace || controller.editRig)
+          _rigging(controller, e, write, begin, commit),
         _LayerList(
           key: const ValueKey("characterLayerList"),
           rows: rows,
           hidden: hidden,
           picked: picked,
           solo: solo,
-          drawingOn: controller.drawingOn == e.id
-              ? (controller.drawingLayer ??
-                  (controller.drawingGarment == null
-                      ? null
-                      : garmentLayer(controller.drawingGarment!)))
-              : null,
+          drawingOn: drawingKey,
           onPick: (key) => controller.pickCharacterLayer(picked == key ? null : key),
           onShow: (key, shown) {
             begin();
@@ -130,6 +132,12 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
           detail: pickedRow == null
               ? null
               : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Drawing on it: the drawing tools first, where the layer is --
+          // not in another panel to go back and forth to.
+          if (drawingKey == pickedRow.key)
+            ...vectorSettings(context, controller, drawingTarget(controller, e),
+                write, begin, commit,
+                toolsOnly: true),
           _onThisView(controller, e, pickedRow),
           if (BodyLayer.fromName(pickedRow.key) case var body?
               when controller.layerTakenApart(e.id, pickedRow.key))
@@ -236,6 +244,157 @@ Widget _viewStrip(CanvasController controller, CharacterElement e,
       commit();
     },
   );
+}
+
+/// _views is what is done with the views themselves: laid out on the
+/// canvas, added -- of the twenty a sketch can have, the ones it has not --
+/// or of a pose; the one it is seen from taken away, or put back as it is
+/// made.
+Widget _views(CanvasController controller, CharacterElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  void now(CharacterElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  var frame = controller.frame, rate = controller.document.frameRate;
+  var pose = e.inView(e.poseAtFrame(frame));
+  var turn = pose.panelTurn, tilt = pose.panelTilt;
+  var key = e.viewKey(e.poseAtFrame(frame));
+  var (own, mirrored) = e.drawingAt(key);
+  var edited = (!mirrored && !own.isEmpty) ||
+      e.dna.wardrobe.any((g) => !g.drawingAt(key).$2 && !g.drawingAt(key).$1.isEmpty);
+  return CanvasControlGroup(
+      key: const ValueKey("characterViews"),
+      label: "On the views",
+      help: "A sketch starts with three views -- front, side and back -- and "
+          "is drawn from the nearest one however it turns. Add others as "
+          "they are wanted: three-quarters, from above, from below, from the "
+          "top -- or a view of a pose, drawn when it is in that pose. A side "
+          "turned the other way is its mirror until it is drawn on.",
+      children: [
+        CanvasToggle(
+          key: const ValueKey("characterTurnaroundToggle"),
+          label: "Lay them out on the canvas",
+          value: controller.showTurnaround,
+          onChanged: (v) => controller.showTurnaround = v,
+        ),
+        CanvasDropdown<String>(
+          key: const ValueKey("characterViewAdd"),
+          label: "Add a view",
+          value: "",
+          options: [
+            ("", "Pick a view…"),
+            for (var v in CharacterView.all)
+              if (!e.views.contains(v)) (v.key, v.label),
+          ],
+          onChanged: (k) {
+            if (k.isEmpty) return;
+            now(showPanel(controller, e, "add:$k"));
+          },
+        ),
+        // A view of a pose: drawn when it is in that pose, from here.
+        CanvasDropdown<String?>(
+          key: const ValueKey("characterDrawingPoseView"),
+          label: "Add a pose view",
+          value: null,
+          options: [
+            (null, "Pick a pose…"),
+            ("", "The pose it is in now"),
+            for (var p in posePresets) (p.name, p.name),
+          ],
+          onChanged: (name) {
+            if (name == null) return;
+            var now0 = e.poseAtFrame(frame);
+            var posed =
+                name.isEmpty ? now0 : posePresets.firstWhere((p) => p.name == name).pose;
+            if (name.isEmpty) {
+              var n = 1;
+              while (e.views.any((v) => v.pose == "Pose $n")) {
+                n++;
+              }
+              name = "Pose $n";
+            }
+            var base = CharacterView.of(turn, tilt);
+            var view = CharacterView(base.turn, base.tilt, pose: name, posed: posed);
+            var next = e.withView(base).withView(view);
+            now(controller.characterPosed(next, next.inView(posed.withTurn(turn).withTilt(tilt))));
+          },
+        ),
+        // Front, side and back stay: a character needs a view, and these
+        // are where a turnaround starts.
+        if (e.views.length > 1)
+          CanvasTextButton(
+            key: const ValueKey("characterDrawingViewRemove"),
+            label: "Remove this view",
+            icon: Icons.remove_circle_outline,
+            onPressed: () => now(e.withView(viewOfKey(e, key), on: false)),
+          ),
+        if (edited)
+          CanvasTextButton(
+            key: const ValueKey("characterViewPutBack"),
+            label: "Put this view back",
+            icon: Icons.restart_alt,
+            onPressed: () => now(putPanelBack(e, frame, rate)),
+          ),
+      ]);
+}
+
+/// _rigging is the face set feature by feature, or the limbs reshaped
+/// point by point, while either is: one side mirrored on the other, and
+/// putting back what is picked, or all of it.
+Widget _rigging(CanvasController controller, CharacterElement e,
+    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
+  void now(CharacterElement next) {
+    begin();
+    write(next);
+    commit();
+  }
+
+  var key = e.viewKey(e.poseAtFrame(controller.frame));
+  return CanvasControlGroup(
+      key: const ValueKey("characterRigging"),
+      label: controller.editFace ? "Setting the face" : "Reshaping the limbs",
+      help: "Drag a handle's middle to move it, its ring to size it and the "
+          "knob on the ring to turn it. The face is set on this view only; "
+          "the limbs on every view. Delete puts back what is picked.",
+      children: [
+        CanvasToggle(
+          key: const ValueKey("characterDrawingMirror"),
+          label: "Mirror left and right",
+          value: controller.mirrorEdits,
+          onChanged: (v) => controller.mirrorEdits = v,
+        ),
+        if (controller.editFace && controller.facePick != null)
+          CanvasTextButton(
+            key: const ValueKey("characterDrawingFaceBack"),
+            label: "Put the ${controller.facePick!.label.toLowerCase()} back",
+            icon: Icons.restart_alt,
+            onPressed: controller.putFacePointBack,
+          ),
+        if (controller.editFace && e.faceRigs.containsKey(key))
+          CanvasTextButton(
+            key: const ValueKey("characterDrawingFaceReset"),
+            label: "Put this view's face back",
+            icon: Icons.restart_alt,
+            onPressed: () => now(e.withFaceRigAt(key, FaceRig.none)),
+          ),
+        if (controller.editRig && controller.rigPick != null)
+          CanvasTextButton(
+            key: const ValueKey("characterDrawingRigDelete"),
+            label: controller.rigPick!.$2.isJoint ? "Put the joint back" : "Delete the point",
+            icon: Icons.delete_outline,
+            onPressed: controller.deleteRigPoint,
+          ),
+        if (controller.editRig && !e.dna.rigPoints.isEmpty)
+          CanvasTextButton(
+            key: const ValueKey("characterDrawingRigReset"),
+            label: "Put every limb back",
+            icon: Icons.restart_alt,
+            onPressed: () => now(e.copyWith(dna: e.dna.copyWith(rigPoints: RigPoints.none))),
+          ),
+      ]);
 }
 
 /// _hands and _feet are whether [e] has hands with fingers, and feet that

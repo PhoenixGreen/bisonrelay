@@ -144,6 +144,34 @@ void main() {
     expect(await pixels(jawed), isNot(await pixels(e)));
   });
 
+  test("taken apart, a layer lies where it did: under the eyes, the hair", () async {
+    // Painted, how many points of [a] and [b] are plainly not alike.
+    Future<int> apart(CharacterElement a, CharacterElement b) async {
+      Future<List<int>> pixels(CharacterElement e) async {
+        var rec = PictureRecorder();
+        paintElement(Canvas(rec), e, 0);
+        var img = await rec.endRecording().toImage(200, 380);
+        return (await img.toByteData())!.buffer.asUint8List();
+      }
+
+      var pa = await pixels(a), pb = await pixels(b);
+      var n = 0;
+      for (var i = 0; i < pa.length; i += 4) {
+        var d = (pa[i] - pb[i]).abs() + (pa[i + 1] - pb[i + 1]).abs() + (pa[i + 2] - pb[i + 2]).abs();
+        if (d > 90) n++;
+      }
+      return n;
+    }
+
+    var e = _sketch();
+    var head = takeApartLayer(e, BodyLayer.head.name, 0, 12);
+    expect(await apart(e, head), lessThan(300), reason: "the head under its face, not over it");
+    // A garment, and the hair over it.
+    var more = takeApartLayer(takeApartLayer(head, garmentLayer(0), 0, 12),
+        BodyLayer.hairFront.name, 0, 12);
+    expect(await apart(e, more), lessThan(300));
+  });
+
   test("an edit copied to another view is that edit, on that view's own shape", () {
     var e = takeApartLayer(_sketch(), BodyLayer.head.name, 0, 12);
     var (i, shape) = _head(e);
