@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_terrain.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/stock/kenney_packs.dart';
@@ -150,7 +151,7 @@ Future<TileSource?> tileSourceFrom(TileSheetOffer offer, Archive archive) async 
     var id = await CanvasAssets.save(bytes);
     if (id == null) return null;
     await CanvasLibrary.addPicture(id, offer.name, bytes);
-    return TileSource(
+    var made = TileSource(
         sheet: id,
         name: offer.name,
         sheetW: img.width,
@@ -159,6 +160,15 @@ Future<TileSource?> tileSourceFrom(TileSheetOffer offer, Archive archive) async 
         tileH: offer.tileH,
         margin: offer.margin,
         spacing: offer.spacing);
+    var rgba = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (rgba == null) return made;
+    ui.Color pixel(int x, int y) {
+      if (x < 0 || y < 0 || x >= img.width || y >= img.height) return const ui.Color(0x00000000);
+      var i = (y * img.width + x) * 4;
+      return ui.Color.fromARGB(rgba.getUint8(i + 3), rgba.getUint8(i), rgba.getUint8(i + 1), rgba.getUint8(i + 2));
+    }
+
+    return made.copyWith(terrains: kenneyTerrains(offer.file, made, pixel));
   }
   var tiles = <ui.Image>[];
   for (var f in offer.files) {
@@ -189,4 +199,33 @@ Future<(ui.Image, int, int)> packTiles(List<ui.Image> tiles, {int across = 16}) 
         ui.Paint());
   }
   return (await rec.endRecording().toImage(cols * tw, rows * th), tw, th);
+}
+
+/// kenneyTerrains is the terrain sets [file] -- one of Kenney's sheets, as
+/// [s] -- comes with: those of its blocks that are drawn as terrains, each
+/// tagged from its colours as anyone's would be. Checked by eye: his
+/// roguelike sheet's pond, grass round water, is one; its dirt and stone
+/// patches are shapes to lay by hand, and are not.
+List<TerrainSet> kenneyTerrains(String file, TileSource s, ui.Color Function(int x, int y) pixel) {
+  var name = path.basename(file).toLowerCase();
+  if (name.startsWith("roguelikesheet") && s.tileW == 16 && s.columns == 57) {
+    int at(int c, int r) => r * s.columns + c;
+    var set = TerrainSet("Grass and water", terrains: [
+      Terrain("Grass", const ui.Color(0xFF6DBE45), sample: at(5, 0)),
+      Terrain("Water", const ui.Color(0xFF3FA7D6), sample: at(0, 0)),
+    ]);
+    return [
+      tagByColour(
+          set,
+          s,
+          [
+            for (var r = 0; r < 3; r++)
+              for (var c = 0; c < 5; c++) at(c, r),
+            at(5, 0),
+            at(5, 1),
+          ],
+          pixel),
+    ];
+  }
+  return const [];
 }

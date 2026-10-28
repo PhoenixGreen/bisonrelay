@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_terrain.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
@@ -20,6 +21,10 @@ import 'package:flutter/foundation.dart';
 // stamp put down where it is pressed -- on the grid, or not -- and moved
 // till the pen lifts; one under the pen rubbed out or moved; or a spread of
 // them scattered about where the pen goes, each a little apart.
+//
+// Painted with a terrain in place of tiles, each cell the pen lays takes
+// the terrain, and it and the cells round it the tiles that match -- see
+// tile_terrain.dart.
 
 /// TileTool is what painting a map does with the pen.
 enum TileTool {
@@ -70,6 +75,10 @@ class TilePaintSession extends ChangeNotifier {
   math.Random rng = math.Random();
   bool grid = true;
 
+  /// terrain is the terrain painted in place of tiles, when one is: its
+  /// tile set, the terrain set in it, and the terrain.
+  ({int source, int set, int terrain})? terrain;
+
   /// snap stands a thing on the grid: its feet on a line between cells,
   /// its stamp's tiles in line with the cells.
   bool snap = true;
@@ -105,8 +114,12 @@ class TilePaintSession extends ChangeNotifier {
       bool? grid,
       bool? snap,
       double? spread,
-      double? apart}) {
+      double? apart,
+      ({int source, int set, int terrain})? terrain,
+      bool tiles = false}) {
     if (tool != null) this.tool = tool;
+    if (terrain != null) this.terrain = terrain;
+    if (tiles || brush != null || stamp != null) this.terrain = null;
     if (snap != null) this.snap = snap;
     if (spread != null) this.spread = spread.clamp(0.5, 20.0);
     if (apart != null) this.apart = apart.clamp(0.25, 20.0);
@@ -175,7 +188,7 @@ class TilePaintSession extends ChangeNotifier {
   /// view is what the renderer shows of [e] while it is painted.
   TileEditView view(TileMapElement e) {
     var ghost = <(int, int, TileRef)>[];
-    if (hover case (var c, var r) when _from == null && tool == TileTool.paint) {
+    if (hover case (var c, var r) when _from == null && tool == TileTool.paint && terrain == null) {
       if (random) {
         ghost.add((c, r, brush));
       } else {
@@ -253,6 +266,7 @@ class TilePaintSession extends ChangeNotifier {
         math.max(a.$2, b.$2));
     if (picked == null) return;
     stamp = picked;
+    terrain = null;
     tool = TileTool.paint;
   }
 
@@ -263,6 +277,7 @@ class TilePaintSession extends ChangeNotifier {
     if (tool == TileTool.picker) {
       if (hit != null) {
         stamp = l.objects[hit].stamp;
+        terrain = null;
         tool = TileTool.paint;
       }
       _shown();
@@ -374,6 +389,10 @@ class TilePaintSession extends ChangeNotifier {
   /// _dab is the pen in cell ([c], [r]): a whole stamp laid in its place
   /// on the stamp's grid from where the stroke began; or one tile.
   void _dab(int c, int r) {
+    if (_terrainOf(map) != null && tool != TileTool.erase) {
+      _laidTerrain([(c, r)], _cells!);
+      return;
+    }
     if (tool == TileTool.erase || random || stamp.cells.length == 1) {
       _put(c, r);
       return;
@@ -390,6 +409,26 @@ class TilePaintSession extends ChangeNotifier {
   /// again over the layer as the stroke found it; anything else, one cell.
   void _lay(TileMapElement m, (int, int) from, (int, int) at) {
     var cells = _cells!;
+    if (_terrainOf(m) != null && tool != TileTool.erase && tool != TileTool.paint) {
+      // The cells a line, a box or a fill takes, laid as the terrain over
+      // the layer as the stroke found it.
+      var (c0, r0, c1, r1) = m.window;
+      var taken = switch (tool) {
+        TileTool.line => cellsAlong(from, at),
+        TileTool.rect => [
+            for (var r = math.min(from.$2, at.$2); r <= math.max(from.$2, at.$2); r++)
+              for (var c = math.min(from.$1, at.$1); c <= math.max(from.$1, at.$1); c++) (c, r)
+          ],
+        TileTool.fill => [for (var k in floodCells(_before, at, (c0, r0, c1, r1))) (colOf(k), rowOf(k))],
+        _ => <(int, int)>[],
+      };
+      cells
+        ..clear()
+        ..addAll(_before);
+      _laidTerrain(taken, cells);
+      _show(m);
+      return;
+    }
     switch (tool) {
       case TileTool.line:
         cells
@@ -437,6 +476,25 @@ class TilePaintSession extends ChangeNotifier {
     var (w, h) = (stamp.width, stamp.height);
     var t = stamp.at((c - _origin.$1) % w, (r - _origin.$2) % h);
     if (t != null) _cells![k] = t.word;
+  }
+
+  /// _terrainOf is the terrain painted with on [m], when there is one
+  /// still to paint with.
+  (int, TerrainSet, int)? _terrainOf(TileMapElement? m) {
+    var t = terrain;
+    if (t == null || m == null || t.source >= m.sources.length) return null;
+    var sets = m.sources[t.source].terrains;
+    if (t.set >= sets.length || t.terrain >= sets[t.set].terrains.length) return null;
+    return (t.source, sets[t.set], t.terrain);
+  }
+
+  /// _laidTerrain lays the terrain in [at], into [cells].
+  void _laidTerrain(List<(int, int)> at, Map<int, int> cells) {
+    var (source, set, t) = _terrainOf(map)!;
+    var next = paintTerrain(cells, source: source, set: set, terrain: t, at: at, rng: rng);
+    cells
+      ..clear()
+      ..addAll(next);
   }
 
   void _show(TileMapElement m) {

@@ -79,6 +79,10 @@ class TileSource {
   /// shows in turn, and how many a second -- water, a torch, a flag.
   final Map<int, TileAnimation> animations;
 
+  /// terrains is its terrain sets: tiles told apart by what they are at
+  /// their corners and sides, so a terrain painted finds its own edges.
+  final List<TerrainSet> terrains;
+
   const TileSource({
     required this.sheet,
     this.name = "",
@@ -89,6 +93,7 @@ class TileSource {
     this.margin = 0,
     this.spacing = 0,
     this.animations = const {},
+    this.terrains = const [],
   });
 
   /// shownAt is the tile [index] shows [seconds] in: itself, or the frame
@@ -128,9 +133,11 @@ class TileSource {
           int? tileH,
           int? margin,
           int? spacing,
-          Map<int, TileAnimation>? animations}) =>
+          Map<int, TileAnimation>? animations,
+          List<TerrainSet>? terrains}) =>
       TileSource(
         animations: animations ?? this.animations,
+        terrains: terrains ?? this.terrains,
         sheet: sheet ?? this.sheet,
         name: name ?? this.name,
         sheetW: sheetW ?? this.sheetW,
@@ -152,6 +159,7 @@ class TileSource {
         if (spacing != 0) "spacing": spacing,
         if (animations.isNotEmpty)
           "animations": {for (var e in animations.entries) "${e.key}": e.value.toJson()},
+        if (terrains.isNotEmpty) "terrains": [for (var t in terrains) t.toJson()],
       };
 
   static TileSource? fromJson(Object? json) {
@@ -172,6 +180,114 @@ class TileSource {
         if (json["animations"] case Map raw)
           for (var e in raw.entries)
             if ((int.tryParse("${e.key}"), TileAnimation.fromJson(e.value)) case (var k?, var a?)) k: a,
+      },
+      terrains: [
+        if (json["terrains"] case List raw)
+          for (var t in raw)
+            if (TerrainSet.fromJson(t) case var set?) set,
+      ],
+    );
+  }
+}
+
+/// TerrainMode is what a terrain set's tiles are told apart by, as Godot's
+/// are: their corners -- ponds, patches, the grass round them -- their
+/// sides -- a path, a fence -- or both, a set of 47 that join every way.
+enum TerrainMode {
+  corners("Corners"),
+  sides("Sides"),
+  both("Corners and sides");
+
+  final String label;
+  const TerrainMode(this.label);
+}
+
+/// The places on a tile a terrain is told by, in a tag: its middle, then
+/// round it from the top, clockwise.
+const int tagCentre = 0, tagTop = 1, tagTopRight = 2, tagRight = 3, tagBottomRight = 4;
+const int tagBottom = 5, tagBottomLeft = 6, tagLeft = 7, tagTopLeft = 8;
+
+/// tagCorners and tagSides are the corners and the sides, clockwise from
+/// the top; tagStep is the way to the cell each one looks to.
+const List<int> tagCorners = [tagTopRight, tagBottomRight, tagBottomLeft, tagTopLeft];
+const List<int> tagSides = [tagTop, tagRight, tagBottom, tagLeft];
+const List<(int, int)> tagStep = [(0, 0), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
+
+/// Terrain is one terrain of a set: grass, water, a path; and the tile that
+/// is all of it, its colour told from.
+class Terrain {
+  final String name;
+  final Color color;
+  final int? sample;
+  const Terrain(this.name, this.color, {this.sample});
+
+  Map<String, dynamic> toJson() => {"name": name, "color": colorToJson(color), if (sample != null) "sample": sample};
+
+  static Terrain? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return Terrain(json["name"] as String? ?? "Terrain",
+        json["color"] is num ? colorFromJson(json["color"]) : const Color(0xFF888888),
+        sample: (json["sample"] as num?)?.toInt());
+  }
+}
+
+/// TerrainSet is terrains whose tiles join one another, and what each
+/// tile of them is where: by the tile, nine terrains -- its middle, then
+/// round it from the top, clockwise; -1 where it is nothing.
+class TerrainSet {
+  final String name;
+  final TerrainMode mode;
+  final List<Terrain> terrains;
+  final Map<int, List<int>> tags;
+  const TerrainSet(this.name, {this.mode = TerrainMode.corners, this.terrains = const [], this.tags = const {}});
+
+  /// places is the places on a tile its mode tells tiles apart by.
+  List<int> get places => switch (mode) {
+        TerrainMode.corners => tagCorners,
+        TerrainMode.sides => [tagCentre, ...tagSides],
+        TerrainMode.both => [tagCentre, ...tagSides, ...tagCorners],
+      };
+
+  TerrainSet copyWith({String? name, TerrainMode? mode, List<Terrain>? terrains, Map<int, List<int>>? tags}) =>
+      TerrainSet(name ?? this.name,
+          mode: mode ?? this.mode, terrains: terrains ?? this.terrains, tags: tags ?? this.tags);
+
+  /// tagged is it with tile [tile]'s place [place] made terrain [t] -- or,
+  /// with every place nothing, the tile untagged.
+  TerrainSet tagged(int tile, int place, int t) {
+    var tag = [...(tags[tile] ?? List.filled(9, -1))];
+    tag[place] = t;
+    var next = {...tags};
+    if (tag.every((x) => x < 0)) {
+      next.remove(tile);
+    } else {
+      next[tile] = tag;
+    }
+    return copyWith(tags: next);
+  }
+
+  Map<String, dynamic> toJson() => {
+        "name": name,
+        "mode": mode.name,
+        "terrains": [for (var t in terrains) t.toJson()],
+        "tags": {for (var e in tags.entries) "${e.key}": e.value},
+      };
+
+  static TerrainSet? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return TerrainSet(
+      json["name"] as String? ?? "Terrain",
+      mode: TerrainMode.values.where((m) => m.name == json["mode"]).firstOrNull ?? TerrainMode.corners,
+      terrains: [
+        if (json["terrains"] case List raw)
+          for (var t in raw)
+            if (Terrain.fromJson(t) case var terrain?) terrain,
+      ],
+      tags: {
+        if (json["tags"] case Map raw)
+          for (var e in raw.entries)
+            if ((int.tryParse("${e.key}"), e.value) case (var k?, List v) when v.length == 9)
+              k: [for (var x in v) x is num ? x.toInt() : -1],
       },
     );
   }

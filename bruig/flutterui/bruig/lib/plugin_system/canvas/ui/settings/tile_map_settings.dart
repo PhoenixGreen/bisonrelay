@@ -8,7 +8,9 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/tile_terrain.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_network.dart';
@@ -36,6 +38,31 @@ import 'package:provider/provider.dart';
 
 /// pickedTileSource is the tile set shown in each map's settings, by id.
 final Map<String, int> pickedTileSource = {};
+
+/// terrainUi is, for each map's tile set -- "id/set" -- the terrain set
+/// shown, the terrain picked in it, and whether its tags are being set.
+final Map<String, ({int set, int terrain, bool tagging})> terrainUi = {};
+
+/// _terrainEditing is the terrain set of [e]'s tile set [s] shown, with
+/// its place and the terrain picked; null when it has none.
+({TerrainSet set, int index, int terrain, bool tagging})? _terrainEditing(TileMapElement e, int s) {
+  var sets = e.sources[s].terrains;
+  if (sets.isEmpty) return null;
+  var ui = terrainUi["${e.id}/$s"] ?? (set: 0, terrain: 0, tagging: false);
+  var i = ui.set.clamp(0, sets.length - 1);
+  return (set: sets[i], index: i, terrain: ui.terrain.clamp(-1, sets[i].terrains.length - 1), tagging: ui.tagging);
+}
+
+/// _withTerrainSet is [e] with terrain set [si] of tile set [s] made [set].
+TileMapElement _withTerrainSet(TileMapElement e, int s, int si, TerrainSet set) => e.copyWith(sources: [
+      for (var (i, x) in e.sources.indexed)
+        i == s ? x.copyWith(terrains: [for (var (j, t) in x.terrains.indexed) j == si ? set : t]) : x
+    ]);
+
+/// terrainColours is the colours new terrains are given, in turn.
+const List<Color> terrainColours = [
+  Color(0xFF6DBE45), Color(0xFF3FA7D6), Color(0xFFB07A4A), Color(0xFFE8D27A), Color(0xFF9AA3AD), Color(0xFFD65F8A),
+];
 
 List<Widget> tileMapSettings(BuildContext context, CanvasController controller, TileMapElement e,
     SettingsWrite write, VoidCallback begin, VoidCallback commit) {
@@ -81,7 +108,18 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
                 var p = controller.tilePaint!;
                 p.set(stamp: t, tool: p.tool == TileTool.erase || p.tool == TileTool.picker ? TileTool.paint : null);
               },
+              terrains: _terrainEditing(e, s)?.set,
+              onTag: switch (_terrainEditing(e, s)) {
+                (set: var ts, index: var si, terrain: var t, tagging: true) => (tile, place) {
+                    if (!ts.places.contains(place)) return;
+                    // A place already the terrain picked is made nothing.
+                    var was = (ts.tags[tile] ?? List.filled(9, -1))[place];
+                    now(_withTerrainSet(e, s, si, ts.tagged(tile, place, was == t ? -1 : t)));
+                  },
+                _ => null,
+              },
             ),
+            TerrainsGroup(key: ValueKey("tileTerrains-${e.id}-$s"), controller: controller, map: e, source: s, now: now),
             if (painting != null && painting.stamp.cells.length == 1 && painting.brush.source == s)
               _animateGroup(e, s, painting.brush.index, now),
             CanvasControlGroup(
@@ -185,6 +223,31 @@ Widget _paintGroup(
           keyOf: (t) => "tileMapTool-${t.name}",
           onPick: (t) => painting.set(tool: t),
         ),
+        if (!painting.onObjects && e.sources.any((x) => x.terrains.any((t) => t.terrains.isNotEmpty)))
+          CanvasDropdown<String>(
+            key: const ValueKey("tileMapPaintWith"),
+            label: "Paint with",
+            value: switch (painting.terrain) {
+              (source: var a, set: var b, terrain: var c) => "$a/$b/$c",
+              null => "tiles",
+            },
+            options: [
+              ("tiles", "The tiles picked"),
+              for (var (a, x) in e.sources.indexed)
+                for (var (b, set) in x.terrains.indexed)
+                  for (var (c, t) in set.terrains.indexed) ("$a/$b/$c", "${set.name} · ${t.name}"),
+            ],
+            onChanged: (v) {
+              if (v == "tiles") {
+                painting.set(tiles: true);
+                return;
+              }
+              var n = [for (var x in v.split("/")) int.parse(x)];
+              painting.set(
+                  terrain: (source: n[0], set: n[1], terrain: n[2]),
+                  tool: painting.tool.forCells ? null : TileTool.paint);
+            },
+          ),
         if (painting.onObjects) ...[
           CanvasStatus("An objects layer: things stood anywhere, the nearer the "
               "reader in front, and the figures put on it among them."),
@@ -454,12 +517,19 @@ class TilePalette extends StatefulWidget {
   final int source;
   final TileStamp? picked;
   final ValueChanged<TileStamp> onPick;
+
+  /// terrains is the terrain set whose tags are shown on the tiles, and
+  /// onTag -- while tagging -- what a click on a place of a tile does.
+  final TerrainSet? terrains;
+  final void Function(int tile, int place)? onTag;
   const TilePalette(
       {required this.controller,
       required this.map,
       required this.source,
       required this.picked,
       required this.onPick,
+      this.terrains,
+      this.onTag,
       super.key});
 
   @override
@@ -545,6 +615,19 @@ class TilePaletteState extends State<TilePalette> {
                       onPointerDown: (d) {
                         var at = _cellOf(s, d.localPosition, k);
                         if (at == null) return;
+                        if (widget.onTag case var tag?) {
+                          // Which ninth of the tile: a corner, a side, the middle.
+                          var r = s.tileRect(at.$2 * s.columns + at.$1);
+                          var p = d.localPosition / k;
+                          var zx = ((p.dx - r.left) / r.width * 3).floor().clamp(0, 2);
+                          var zy = ((p.dy - r.top) / r.height * 3).floor().clamp(0, 2);
+                          tag(at.$2 * s.columns + at.$1, const [
+                            [tagTopLeft, tagTop, tagTopRight],
+                            [tagLeft, tagCentre, tagRight],
+                            [tagBottomLeft, tagBottom, tagBottomRight],
+                          ][zy][zx]);
+                          return;
+                        }
                         var shift = HardwareKeyboard.instance.isShiftPressed;
                         setState(() {
                           _from = shift && _last != null ? _last : at;
@@ -569,7 +652,8 @@ class TilePaletteState extends State<TilePalette> {
                       onPointerCancel: (_) => setState(() => _from = _to = null),
                       child: CustomPaint(
                         size: Size(w, h),
-                        painter: _PalettePainter(s, sheet, k, widget.map.pixelArt, lit, theme.colors.primary),
+                        painter: _PalettePainter(s, sheet, k, widget.map.pixelArt, widget.onTag == null ? lit : const {},
+                            theme.colors.primary, widget.terrains),
                       ),
                     ),
                   ),
@@ -600,7 +684,8 @@ class _PalettePainter extends CustomPainter {
   final bool pixelArt;
   final Set<int> lit;
   final Color accent;
-  _PalettePainter(this.s, this.sheet, this.k, this.pixelArt, this.lit, this.accent);
+  final TerrainSet? terrains;
+  _PalettePainter(this.s, this.sheet, this.k, this.pixelArt, this.lit, this.accent, this.terrains);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -613,6 +698,38 @@ class _PalettePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..color = accent;
+    // Each tagged tile's terrains, a dot of each one's colour at its place.
+    if (terrains case var set?) {
+      for (var e in set.tags.entries) {
+        if (e.key >= s.count) continue;
+        var r = s.tileRect(e.key);
+        var box = Rect.fromLTWH(r.left * k, r.top * k, r.width * k, r.height * k);
+        var d = box.width / 3;
+        for (var place in set.places) {
+          var t = e.value[place];
+          var (dc, dr) = tagStep[place];
+          var dot = Rect.fromCenter(
+              center: box.center + Offset(dc * d, dr * d), width: d * 0.62, height: d * 0.62);
+          if (t < 0) {
+            canvas.drawRect(
+                dot,
+                Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = 1
+                  ..color = const Color(0x99FFFFFF));
+            continue;
+          }
+          var colour = t < set.terrains.length ? set.terrains[t].color : const Color(0xFF888888);
+          canvas.drawRect(dot, Paint()..color = colour.withValues(alpha: 0.85));
+          canvas.drawRect(
+              dot,
+              Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1
+                ..color = const Color(0xCC000000));
+        }
+      }
+    }
     for (var i in lit) {
       var r = s.tileRect(i);
       var box = Rect.fromLTWH(r.left * k, r.top * k, r.width * k, r.height * k);
@@ -623,7 +740,11 @@ class _PalettePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PalettePainter old) =>
-      !identical(old.sheet, sheet) || old.k != k || !setEquals(old.lit, lit) || !identical(old.s, s);
+      !identical(old.sheet, sheet) ||
+      old.k != k ||
+      !setEquals(old.lit, lit) ||
+      !identical(old.s, s) ||
+      !identical(old.terrains, terrains);
 }
 
 /// TileSetAdder adds a tile set to the map: a sheet brought in -- a
@@ -1088,4 +1209,217 @@ Widget _figuresGroup(CanvasController controller, TileMapElement e, int i, void 
         const CanvasStatus("Add a Sprite element to the canvas to stand it here."),
     ],
   );
+}
+
+/// TerrainsGroup is a tile set's terrain sets, as Godot's TileSet editor
+/// has them: a set's terrains -- grass, water -- and what it tells its
+/// tiles apart by; each tile's corners, sides and middle tagged with a
+/// terrain on the tiles above, or a block of them tagged from their
+/// colours; and a terrain picked to paint with.
+class TerrainsGroup extends StatelessWidget {
+  final CanvasController controller;
+  final TileMapElement map;
+  final int source;
+  final void Function(TileMapElement) now;
+  const TerrainsGroup({required this.controller, required this.map, required this.source, required this.now, super.key});
+
+  void _ui({int? set, int? terrain, bool? tagging}) {
+    var key = "${map.id}/$source";
+    var was = terrainUi[key] ?? (set: 0, terrain: 0, tagging: false);
+    terrainUi[key] = (set: set ?? was.set, terrain: terrain ?? was.terrain, tagging: tagging ?? was.tagging);
+    controller.notifyListeners();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var e = map;
+    var src = e.sources[source];
+    var editing = _terrainEditing(e, source);
+    var painting = controller.tilePaint?.id == e.id ? controller.tilePaint : null;
+    var picked = [
+      if (painting != null)
+        for (var (_, _, t) in painting.stamp.cells)
+          if (t.source == source && painting.terrain == null) t.index,
+    ];
+    void addSet() {
+      var sets = [...src.terrains, TerrainSet("Terrains ${src.terrains.length + 1}")];
+      _ui(set: sets.length - 1, terrain: 0);
+      now(e.copyWith(sources: [for (var (i, x) in e.sources.indexed) i == source ? x.copyWith(terrains: sets) : x]));
+    }
+
+    if (editing == null) {
+      return CanvasControlGroup(
+        key: const ValueKey("tileTerrains"),
+        label: "Terrains",
+        help: "Tell the tiles apart by what is at their corners and sides -- "
+            "grass, water, a path -- and paint a terrain: the tiles round it "
+            "are chosen to match, so a pond finds its own shore.",
+        children: [
+          CanvasTextButton(
+            key: const ValueKey("tileTerrainAddSet"),
+            label: "Add a terrain set",
+            icon: Icons.terrain_outlined,
+            onPressed: addSet,
+          ),
+        ],
+      );
+    }
+    var (set: ts, index: si, terrain: t, tagging: tagging) = editing;
+    void write(TerrainSet next) => now(_withTerrainSet(e, source, si, next));
+    return CanvasControlGroup(
+      key: const ValueKey("tileTerrains"),
+      label: "Terrains",
+      help: "Tell the tiles apart by what is at their corners and sides -- "
+          "grass, water, a path -- and paint a terrain: the tiles round it "
+          "are chosen to match, so a pond finds its own shore.",
+      children: [
+        CanvasDropdown<int>(
+          key: const ValueKey("tileTerrainSet"),
+          label: "Terrain set",
+          value: si,
+          options: [for (var (i, x) in src.terrains.indexed) (i, x.name)],
+          onChanged: (i) => _ui(set: i, terrain: 0),
+        ),
+        CanvasDropdown<TerrainMode>(
+          key: const ValueKey("tileTerrainMode"),
+          label: "Told apart by",
+          value: ts.mode,
+          options: [for (var m in TerrainMode.values) (m, m.label)],
+          onChanged: (m) => write(ts.copyWith(mode: m)),
+        ),
+        CanvasTextField(
+          key: ValueKey("tileTerrainSetName-${e.id}-$source-$si"),
+          label: "Name",
+          value: ts.name,
+          onChanged: (v) => write(ts.copyWith(name: v)),
+        ),
+        const CanvasLineBreak(),
+        for (var (i, x) in ts.terrains.indexed)
+          CanvasChip(
+            key: ValueKey("tileTerrainChip-$i"),
+            label: "${x.name}${x.sample == null ? "" : " ·"}",
+            here: i == t,
+            onRemove: () {
+              // Its tags go with it; the ones after it move up one.
+              int moved(int v) => v == i ? -1 : (v > i ? v - 1 : v);
+              write(ts.copyWith(
+                terrains: [...ts.terrains]..removeAt(i),
+                tags: {
+                  for (var e in ts.tags.entries)
+                    if (e.value.map(moved).any((v) => v >= 0)) e.key: [for (var v in e.value) moved(v)],
+                },
+              ));
+            },
+          ),
+        const CanvasLineBreak(),
+        if (ts.terrains.isNotEmpty)
+          CanvasDropdown<int>(
+            key: const ValueKey("tileTerrainPick"),
+            label: "Terrain",
+            value: t,
+            options: [
+              for (var (i, x) in ts.terrains.indexed) (i, x.name),
+              (-1, "Nothing"),
+            ],
+            onChanged: (i) => _ui(terrain: i),
+          ),
+        if (t >= 0 && t < ts.terrains.length)
+          CanvasTextField(
+            key: ValueKey("tileTerrainName-${e.id}-$source-$si-$t"),
+            label: "Its name",
+            value: ts.terrains[t].name,
+            onChanged: (v) => write(ts.copyWith(terrains: [
+              for (var (i, x) in ts.terrains.indexed) i == t ? Terrain(v, x.color, sample: x.sample) : x
+            ])),
+          ),
+        CanvasTextButton(
+          key: const ValueKey("tileTerrainAdd"),
+          label: picked.length == 1 ? "Add a terrain: the tile picked" : "Add a terrain",
+          icon: Icons.add,
+          onPressed: () {
+            write(ts.copyWith(terrains: [
+              ...ts.terrains,
+              Terrain("Terrain ${ts.terrains.length + 1}", terrainColours[ts.terrains.length % terrainColours.length],
+                  sample: picked.length == 1 ? picked.single : null),
+            ]));
+            _ui(terrain: ts.terrains.length);
+          },
+        ),
+        if (t >= 0 && t < ts.terrains.length && picked.length == 1)
+          CanvasTextButton(
+            key: const ValueKey("tileTerrainSample"),
+            label: "Its tile: the one picked",
+            icon: Icons.colorize,
+            onPressed: () => write(ts.copyWith(terrains: [
+              for (var (i, x) in ts.terrains.indexed) i == t ? Terrain(x.name, x.color, sample: picked.single) : x
+            ])),
+          ),
+        CanvasToggle(
+          key: const ValueKey("tileTerrainTagging"),
+          label: "Tag the tiles above: click a corner, a side or the middle",
+          value: tagging,
+          onChanged: (v) => _ui(tagging: v),
+        ),
+        if (picked.isNotEmpty) ...[
+          CanvasTextButton(
+            key: const ValueKey("tileTerrainByColour"),
+            label: "Tag the ${picked.length} picked by colour",
+            icon: Icons.auto_fix_high,
+            onPressed: ts.terrains.every((x) => x.sample == null)
+                ? null
+                : () async {
+                    var image = controller.images.resolve(src.sheet, const BackgroundRemoval());
+                    if (image == null) return;
+                    var px = await SpritePixels.of(image);
+                    if (px == null) return;
+                    // The sheet as measured, read off the picture as stored.
+                    var sx = image.width / src.sheetW, sy = image.height / src.sheetH;
+                    write(tagByColour(ts, src, picked, (x, y) => px.at((x * sx).floor(), (y * sy).floor())));
+                  },
+          ),
+          CanvasTextButton(
+            key: const ValueKey("tileTerrainUntag"),
+            label: "Untag the picked",
+            icon: Icons.label_off_outlined,
+            onPressed: () => write(ts.copyWith(tags: {...ts.tags}..removeWhere((k, _) => picked.contains(k)))),
+          ),
+        ],
+        if (painting != null && t >= 0 && t < ts.terrains.length)
+          CanvasTextButton(
+            key: const ValueKey("tileTerrainPaint"),
+            label: "Paint ${ts.terrains[t].name}",
+            icon: Icons.format_paint_outlined,
+            primary: true,
+            onPressed: ts.tags.isEmpty
+                ? null
+                : () => painting.set(
+                    terrain: (source: source, set: si, terrain: t),
+                    tool: painting.tool.forCells && painting.tool != TileTool.picker ? null : TileTool.paint),
+          ),
+        CanvasStatus(ts.tags.isEmpty
+            ? "Give each terrain its tile -- the one that is all of it -- then pick a "
+                "block of tiles above and tag them by colour, or tag them a place at a time."
+            : "${ts.tags.length} tiles tagged. Paint a patch like dirt on a layer above the ground."),
+        CanvasTextButton(
+          key: const ValueKey("tileTerrainAddSet"),
+          label: "Add another terrain set",
+          icon: Icons.terrain_outlined,
+          onPressed: addSet,
+        ),
+        CanvasTextButton(
+          key: const ValueKey("tileTerrainRemoveSet"),
+          label: "Take this set out",
+          icon: Icons.delete_outline,
+          onPressed: () {
+            _ui(set: math.max(0, si - 1), terrain: 0, tagging: false);
+            if (painting?.terrain?.source == source) painting!.set(tiles: true);
+            now(e.copyWith(sources: [
+              for (var (i, x) in e.sources.indexed)
+                i == source ? x.copyWith(terrains: [...x.terrains]..removeAt(si)) : x
+            ]));
+          },
+        ),
+      ],
+    );
+  }
 }
