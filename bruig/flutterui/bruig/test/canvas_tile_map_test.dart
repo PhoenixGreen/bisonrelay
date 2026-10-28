@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
@@ -105,6 +106,21 @@ void main() {
       expect(newElement(ElementKind.tileMap, CanvasDocument(frames: 10)), isA<TileMapElement>());
     });
 
+    test("a stamp flipped and turned whole; kept with the map", () {
+      var stamp = TileStamp([(0, 0, TileRef.of(0, 0)), (1, 0, TileRef.of(0, 1))]);
+      expect(stamp.flippedX().cells, [(1, 0, TileRef.of(0, 0, flipX: true)), (0, 0, TileRef.of(0, 1, flipX: true))]);
+      var turned = stamp.turnedRight();
+      expect((turned.width, turned.height), (1, 2));
+      expect(turned.at(0, 1), TileRef.of(0, 1).turnedRight());
+      expect(stamp.turnedRight().turnedRight().turnedRight().turnedRight(), stamp);
+      var other = TileStamp([(0, 0, TileRef.of(1, 4))]);
+      var e = TileMapElement(_box, sources: [_set, _set.copyWith(sheet: "b")], patterns: [stamp, other]);
+      var back = TileMapElement.fromJson(e.props(), _box);
+      expect(back.patterns, [stamp, other]);
+      expect(e.withoutSource(0).patterns, [TileStamp([(0, 0, TileRef.of(0, 4))])],
+          reason: "a pattern of the set taken out goes with it");
+    });
+
     test("a line touches each cell after the last; a fill stops at the window", () {
       expect(cellsAlong((0, 0), (3, 1)), [(0, 0), (1, 0), (2, 1), (3, 1)]);
       expect(cellsAlong((2, 2), (2, 2)), [(2, 2)]);
@@ -179,6 +195,7 @@ void main() {
       addTearDown(c.dispose);
       s.set(tool: TileTool.picker);
       s.strokeStart(at(2, 1));
+      s.strokeEnd();
       expect((s.brush, s.tool), (TileRef.of(0, 1, flipY: true), TileTool.paint));
       pickedTileLayer["m"] = 1;
       addTearDown(() => pickedTileLayer.remove("m"));
@@ -186,6 +203,69 @@ void main() {
       s.strokeEnd();
       expect(get(c).tileCount, 2, reason: "nothing laid on a locked layer");
       expect(c.canUndo, isFalse);
+    });
+
+    test("a stamp laid whole, on its own grid from where the stroke began", () {
+      var (c, s) = start();
+      addTearDown(c.dispose);
+      var stamp = TileStamp([(0, 0, TileRef.of(0, 0)), (1, 0, TileRef.of(0, 1)), (0, 1, TileRef.of(0, 1))]);
+      s.set(stamp: stamp);
+      s.strokeStart(at(1, 1));
+      s.strokeTo(at(5, 1));
+      s.strokeEnd();
+      var l = get(c).layers.first;
+      expect(l.cells.length, 9, reason: "three stamps of three, at columns 1, 3 and 5");
+      expect((l.at(3, 1), l.at(4, 1), l.at(3, 2), l.at(4, 2)),
+          (TileRef.of(0, 0), TileRef.of(0, 1), TileRef.of(0, 1), null));
+      // A box of it repeats it, from the box's first corner.
+      c.undo();
+      s.set(tool: TileTool.rect);
+      s.strokeStart(at(2, 0));
+      s.strokeTo(at(5, 1));
+      s.strokeEnd();
+      l = get(c).layers.first;
+      expect([for (var col = 2; col <= 5; col++) l.at(col, 0)],
+          [TileRef.of(0, 0), TileRef.of(0, 1), TileRef.of(0, 0), TileRef.of(0, 1)]);
+      expect(l.at(3, 1), isNull, reason: "where the stamp has nothing, nothing");
+    });
+
+    test("at random, from the stamp's tiles, some cells left empty", () {
+      var (c, s) = start();
+      addTearDown(c.dispose);
+      s.rng = math.Random(7);
+      s.set(stamp: TileStamp([(0, 0, TileRef.of(0, 0)), (1, 0, TileRef.of(0, 1))]), random: true, tool: TileTool.rect);
+      s.strokeStart(at(0, 0));
+      s.strokeTo(at(9, 4));
+      s.strokeEnd();
+      var words = get(c).layers.first.cells.values.toSet();
+      expect(words, {TileRef.of(0, 0).word, TileRef.of(0, 1).word});
+      expect(get(c).tileCount, 50);
+      c.undo();
+      s.set(gaps: 0.5);
+      s.strokeStart(at(0, 0));
+      s.strokeTo(at(9, 4));
+      s.strokeEnd();
+      expect(get(c).tileCount, inInclusiveRange(15, 35));
+    });
+
+    test("a box dragged out with the picker taken up, from every layer showing", () {
+      var (c, s) = start(
+          map: _map(layers: [
+        TileLayer(name: "Ground", cells: {cellKey(2, 1): 1, cellKey(3, 1): 1, cellKey(3, 2): 0}),
+        TileLayer(name: "Top", cells: {cellKey(2, 1): TileRef.of(0, 0, flipX: true).word}),
+      ]));
+      addTearDown(c.dispose);
+      s.set(tool: TileTool.picker);
+      s.strokeStart(at(1, 0));
+      s.strokeTo(at(3, 2));
+      expect(s.view(get(c)).box, (1, 0, 3, 2));
+      s.strokeEnd();
+      expect(s.stamp.cells, [
+        (0, 0, TileRef.of(0, 0, flipX: true)),
+        (1, 0, TileRef.of(0, 1)),
+        (1, 1, TileRef.of(0, 0)),
+      ]);
+      expect(s.tool, TileTool.paint);
     });
 
     test("the tile to be laid shown under the pointer", () {
@@ -309,6 +389,21 @@ void main() {
       await tester.tap(find.byKey(const ValueKey("tileLayerShown-1")));
       await tester.pumpAndSettle();
       expect(get().layers[1].visible, isFalse);
+      // Both tiles, dragged across: a stamp, kept as a pattern.
+      await tester.ensureVisible(find.byKey(const ValueKey("tilePaletteSheet")));
+      await tester.pumpAndSettle();
+      var from = tester.getTopLeft(find.byKey(const ValueKey("tilePaletteSheet"))) + const Offset(6, 6);
+      var drag = await tester.startGesture(from, kind: ui.PointerDeviceKind.mouse);
+      await drag.moveTo(from + const Offset(36, 0));
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(c.tilePaint!.stamp.cells.length, 2);
+      await tester.ensureVisible(find.byKey(const ValueKey("tileMapKeepPattern")));
+      await tester.tap(find.byKey(const ValueKey("tileMapKeepPattern")));
+      await tester.pumpAndSettle();
+      expect(get().patterns.single, c.tilePaint!.stamp);
+      expect(find.byKey(const ValueKey("tileMapDropPattern")), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey("tileMapPaintOn")));
       await tester.tap(find.byKey(const ValueKey("tileMapPaintOn")));
       await tester.pumpAndSettle();
       expect(c.tilePaint, isNull);

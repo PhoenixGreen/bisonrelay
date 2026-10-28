@@ -8,9 +8,12 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/foundation.dart';
 
 // tile_painting.dart is painting a Tile map element on the canvas, as
-// Godot's tile map editor does: a tile picked from a set, laid in the cells
-// the pen goes over, along a line, over a box, or poured into the cells
-// like the one pressed; rubbed out; or picked up off the map. The tile to
+// Godot's tile map editor does: a tile picked from a set -- or several, a
+// stamp -- laid in the cells the pen goes over, along a line, over a box,
+// or poured into the cells like the one pressed; rubbed out; or picked up
+// off the map, a box of it dragged out to paint with. A stamp of several
+// is laid whole, repeating from where the stroke began; painted at random,
+// each cell takes one of its tiles, some left empty if asked. The tile to
 // be laid shows faintly under the pointer. Each stroke is one undo.
 
 /// TileTool is what painting a map does with the pen.
@@ -38,8 +41,19 @@ class TilePaintSession extends ChangeNotifier {
 
   TileTool tool = TileTool.paint;
 
-  /// brush is the tile laid: from the set and turned as picked.
-  TileRef brush = TileRef.of(0, 0);
+  /// stamp is what is laid: one tile, or several -- from the set and
+  /// turned as picked.
+  TileStamp stamp = TileStamp.one(TileRef.of(0, 0));
+
+  /// brush is the stamp's first tile; set, the stamp is that one tile.
+  TileRef get brush => stamp.first;
+
+  /// random lays one of the stamp's tiles in each cell, picked at random,
+  /// in place of the stamp as it is laid out; gaps is how many cells, of
+  /// every one, are left empty.
+  bool random = false;
+  double gaps = 0;
+  math.Random rng = math.Random();
   bool grid = true;
 
   /// hover is the cell under the pointer, when it is over the map.
@@ -59,9 +73,12 @@ class TilePaintSession extends ChangeNotifier {
     return m == null ? 0 : i.clamp(0, math.max(0, m.layers.length - 1)).toInt();
   }
 
-  void set({TileTool? tool, TileRef? brush, bool? grid}) {
+  void set({TileTool? tool, TileRef? brush, TileStamp? stamp, bool? random, double? gaps, bool? grid}) {
     if (tool != null) this.tool = tool;
-    if (brush != null) this.brush = brush;
+    if (brush != null) this.stamp = TileStamp.one(brush);
+    if (stamp != null && stamp.cells.isNotEmpty) this.stamp = stamp;
+    if (random != null) this.random = random;
+    if (gaps != null) this.gaps = gaps.clamp(0.0, 0.95);
     if (grid != null) this.grid = grid;
     _shown();
   }
@@ -78,13 +95,33 @@ class TilePaintSession extends ChangeNotifier {
   Map<int, int> _before = const {};
   (int, int)? _from;
 
+  /// _origin is where the stroke began: a stamp repeats from it.
+  (int, int) _origin = (0, 0);
+
+  /// _laid is the stamps laid whole this stroke, by their top left: each
+  /// laid once, however long the pen stays in it.
+  final Set<(int, int)> _laid = {};
+
+  /// _picking is the box being dragged out with the picker.
+  (int, int)? _pickFrom;
+
   /// view is what the renderer shows of [e] while it is painted.
   TileEditView view(TileMapElement e) {
     var ghost = <(int, int, TileRef)>[];
     if (hover case (var c, var r) when _from == null && tool == TileTool.paint) {
-      ghost.add((c, r, brush));
+      if (random) {
+        ghost.add((c, r, brush));
+      } else {
+        for (var (dc, dr, t) in stamp.cells) {
+          ghost.add((c + dc, r + dr, t));
+        }
+      }
     }
-    return (working: _working, grid: grid, hover: hover, ghost: ghost);
+    (int, int, int, int)? box;
+    if ((_pickFrom, hover) case ((var a, var b), (var c, var d))) {
+      box = (math.min(a, c), math.min(b, d), math.max(a, c), math.max(b, d));
+    }
+    return (working: _working, grid: grid, hover: hover, ghost: ghost, box: box);
   }
 
   /// hoverAt follows the pointer at [doc]: the cell under it lit.
@@ -104,15 +141,8 @@ class TilePaintSession extends ChangeNotifier {
     var l = m.layers[layer];
     var at = m.cellAt(doc);
     if (tool == TileTool.picker) {
-      // The top tile showing there, on whichever layer.
-      for (var layer in m.layers.reversed) {
-        var t = layer.visible ? layer.at(at.$1, at.$2) : null;
-        if (t != null) {
-          brush = t;
-          tool = TileTool.paint;
-          break;
-        }
-      }
+      _pickFrom = at;
+      hover = at;
       _shown();
       return;
     }
@@ -120,19 +150,39 @@ class TilePaintSession extends ChangeNotifier {
     _before = l.cells;
     _cells = Map.of(l.cells);
     _from = at;
+    _origin = at;
+    _laid.clear();
     _lay(m, at, at);
+  }
+
+  /// _pick takes up the tiles from cell [a] to [b] -- the top one showing
+  /// in each, on whichever layer -- to paint with.
+  void _pick(TileMapElement m, (int, int) a, (int, int) b) {
+    var shown = <int, int>{};
+    for (var l in m.layers) {
+      if (l.visible) shown.addAll(l.cells);
+    }
+    var picked = TileStamp.of(shown, math.min(a.$1, b.$1), math.min(a.$2, b.$2), math.max(a.$1, b.$1),
+        math.max(a.$2, b.$2));
+    if (picked == null) return;
+    stamp = picked;
+    tool = TileTool.paint;
   }
 
   /// strokeTo carries the pen on to [doc].
   void strokeTo(ui.Offset doc) {
     var m = map, from = _from;
+    if (m != null && _pickFrom != null) {
+      _pickTo(m, doc);
+      return;
+    }
     if (m == null || from == null || _cells == null) return;
     var at = m.cellAt(doc);
     hover = at;
     switch (tool) {
       case TileTool.paint || TileTool.erase:
         for (var (c, r) in cellsAlong(from, at)) {
-          _put(c, r);
+          _dab(c, r);
         }
         _from = at;
         _show(m);
@@ -140,6 +190,29 @@ class TilePaintSession extends ChangeNotifier {
         _lay(m, from, at);
       case TileTool.fill || TileTool.picker:
         return;
+    }
+  }
+
+  /// _pickTo carries the picker's box on to [doc].
+  void _pickTo(TileMapElement m, ui.Offset doc) {
+    var at = m.cellAt(doc);
+    if (at == hover) return;
+    hover = at;
+    _shown();
+  }
+
+  /// _dab is the pen in cell ([c], [r]): a whole stamp laid in its place
+  /// on the stamp's grid from where the stroke began; or one tile.
+  void _dab(int c, int r) {
+    if (tool == TileTool.erase || random || stamp.cells.length == 1) {
+      _put(c, r);
+      return;
+    }
+    var (w, h) = (stamp.width, stamp.height);
+    var anchor = (_origin.$1 + ((c - _origin.$1) / w).floor() * w, _origin.$2 + ((r - _origin.$2) / h).floor() * h);
+    if (!_laid.add(anchor)) return;
+    for (var (dc, dr, t) in stamp.cells) {
+      _cells![cellKey(anchor.$1 + dc, anchor.$2 + dr)] = t.word;
     }
   }
 
@@ -170,19 +243,30 @@ class TilePaintSession extends ChangeNotifier {
           _put(colOf(k), rowOf(k));
         }
       case TileTool.paint || TileTool.erase:
-        _put(at.$1, at.$2);
+        _dab(at.$1, at.$2);
       case TileTool.picker:
         break;
     }
     _show(m);
   }
 
+  /// _put lays in cell ([c], [r]) the tile that goes there: the stamp's
+  /// at its place on the stamp's grid from where the stroke began -- none,
+  /// where the stamp has none -- or one at random; or rubs it out.
   void _put(int c, int r) {
+    var k = cellKey(c, r);
     if (tool == TileTool.erase) {
-      _cells!.remove(cellKey(c, r));
-    } else {
-      _cells![cellKey(c, r)] = brush.word;
+      _cells!.remove(k);
+      return;
     }
+    if (random) {
+      if (gaps > 0 && rng.nextDouble() < gaps) return;
+      _cells![k] = stamp.cells[rng.nextInt(stamp.cells.length)].$3.word;
+      return;
+    }
+    var (w, h) = (stamp.width, stamp.height);
+    var t = stamp.at((c - _origin.$1) % w, (r - _origin.$2) % h);
+    if (t != null) _cells![k] = t.word;
   }
 
   void _show(TileMapElement m) {
@@ -190,8 +274,16 @@ class TilePaintSession extends ChangeNotifier {
     _shown();
   }
 
-  /// strokeEnd lifts the pen: what was laid kept, as one change.
+  /// strokeEnd lifts the pen: what was laid kept, as one change -- or the
+  /// box dragged out with the picker taken up.
   void strokeEnd() {
+    if (_pickFrom case var from?) {
+      _pickFrom = null;
+      var m = map;
+      if (m != null) _pick(m, from, hover ?? from);
+      _shown();
+      return;
+    }
     var done = _working;
     _working = null;
     _cells = null;

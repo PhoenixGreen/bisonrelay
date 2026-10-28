@@ -148,6 +148,86 @@ class TileSource {
   }
 }
 
+/// TileStamp is tiles laid together -- a pattern: a doorway, a tree of
+/// four tiles, a stretch of fence -- each at its place from the stamp's top
+/// left; or, painted at random, the tiles picked from.
+class TileStamp {
+  final List<(int, int, TileRef)> cells;
+  const TileStamp(this.cells);
+
+  TileStamp.one(TileRef t) : cells = [(0, 0, t)];
+
+  int get width => cells.isEmpty ? 1 : cells.map((c) => c.$1).reduce(math.max) + 1;
+  int get height => cells.isEmpty ? 1 : cells.map((c) => c.$2).reduce(math.max) + 1;
+  TileRef get first => cells.isEmpty ? TileRef.of(0, 0) : cells.first.$3;
+
+  TileRef? at(int col, int row) {
+    for (var (c, r, t) in cells) {
+      if (c == col && r == row) return t;
+    }
+    return null;
+  }
+
+  /// of is the tiles in [cells] -- by [cellKey] -- from column [c0] to
+  /// [c1] and row [r0] to [r1], as a stamp from its first painted cell's
+  /// row and column; null with none.
+  static TileStamp? of(Map<int, int> cells, int c0, int r0, int c1, int r1) {
+    var found = <(int, int, TileRef)>[];
+    for (var r = r0; r <= r1; r++) {
+      for (var c = c0; c <= c1; c++) {
+        if (cells[cellKey(c, r)] case var w?) found.add((c, r, TileRef(w)));
+      }
+    }
+    if (found.isEmpty) return null;
+    var left = found.map((f) => f.$1).reduce(math.min), top = found.map((f) => f.$2).reduce(math.min);
+    return TileStamp([for (var (c, r, t) in found) (c - left, r - top, t)]);
+  }
+
+  TileStamp flippedX() {
+    var w = width;
+    return TileStamp([for (var (c, r, t) in cells) (w - 1 - c, r, t.flippedX())]);
+  }
+
+  TileStamp flippedY() {
+    var h = height;
+    return TileStamp([for (var (c, r, t) in cells) (c, h - 1 - r, t.flippedY())]);
+  }
+
+  /// turnedRight is the stamp turned a quarter round clockwise, each tile
+  /// in it turned with it.
+  TileStamp turnedRight() {
+    var h = height;
+    return TileStamp([for (var (c, r, t) in cells) (h - 1 - r, c, t.turnedRight())]);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! TileStamp || other.cells.length != cells.length) return false;
+    for (var i = 0; i < cells.length; i++) {
+      if (other.cells[i] != cells[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(cells);
+
+  /// toJson is flat, three numbers a tile: column, row, tile.
+  List<int> toJson() => [
+        for (var (c, r, t) in cells) ...[c, r, t.word]
+      ];
+
+  static TileStamp? fromJson(Object? json) {
+    if (json is! List) return null;
+    var cells = <(int, int, TileRef)>[];
+    for (var i = 0; i + 2 < json.length; i += 3) {
+      var (c, r, w) = (json[i], json[i + 1], json[i + 2]);
+      if (c is num && r is num && w is num) cells.add((c.toInt(), r.toInt(), TileRef(w.toInt())));
+    }
+    return cells.isEmpty ? null : TileStamp(cells);
+  }
+}
+
 /// TileLayer is one layer of a map: its cells painted, and how it is laid
 /// over the ones under it.
 class TileLayer {
@@ -240,12 +320,16 @@ class TileMapElement extends CanvasElement {
   /// pixelArt draws the tiles' pixels square, not smoothed.
   final bool pixelArt;
 
+  /// patterns is the stamps kept with the map, to paint with again.
+  final List<TileStamp> patterns;
+
   const TileMapElement(
     super.base, {
     this.sources = const [],
     this.layers = const [TileLayer(name: "Ground")],
     this.cell = 32,
     this.pixelArt = true,
+    this.patterns = const [],
   });
 
   @override
@@ -256,7 +340,7 @@ class TileMapElement extends CanvasElement {
 
   @override
   CanvasElement rebase(ElementBase base) =>
-      TileMapElement(base, sources: sources, layers: layers, cell: cell, pixelArt: pixelArt);
+      TileMapElement(base, sources: sources, layers: layers, cell: cell, pixelArt: pixelArt, patterns: patterns);
 
   /// scale is how many of the canvas's pixels a tile's pixel is drawn.
   double get scale => sources.isEmpty ? 1 : cell / sources.first.tileW;
@@ -302,12 +386,18 @@ class TileMapElement extends CanvasElement {
   /// tileCount is how many cells are painted, on every layer.
   int get tileCount => layers.fold(0, (n, l) => n + l.cells.length);
 
-  TileMapElement copyWith({List<TileSource>? sources, List<TileLayer>? layers, double? cell, bool? pixelArt}) =>
+  TileMapElement copyWith(
+          {List<TileSource>? sources,
+          List<TileLayer>? layers,
+          double? cell,
+          bool? pixelArt,
+          List<TileStamp>? patterns}) =>
       TileMapElement(base,
           sources: sources ?? this.sources,
           layers: layers ?? this.layers,
           cell: (cell ?? this.cell).clamp(2.0, 512.0),
-          pixelArt: pixelArt ?? this.pixelArt);
+          pixelArt: pixelArt ?? this.pixelArt,
+          patterns: patterns ?? this.patterns);
 
   TileMapElement withLayer(int i, TileLayer layer) =>
       copyWith(layers: [for (var (k, l) in layers.indexed) k == i ? layer : l]);
@@ -315,8 +405,13 @@ class TileMapElement extends CanvasElement {
   /// withoutSource is it with tile set [s] taken out, and every tile of it
   /// rubbed out; the sets after it move up one.
   TileMapElement withoutSource(int s) {
+    TileRef moved(TileRef t) => t.source > s ? TileRef(t.word - (1 << 20)) : t;
     return copyWith(
       sources: [for (var (k, x) in sources.indexed) if (k != s) x],
+      patterns: [
+        for (var p in patterns)
+          if (p.cells.every((c) => c.$3.source != s)) TileStamp([for (var (c, r, t) in p.cells) (c, r, moved(t))]),
+      ],
       layers: [
         for (var l in layers)
           l.copyWith(cells: {
@@ -334,6 +429,7 @@ class TileMapElement extends CanvasElement {
         "layers": [for (var l in layers) l.toJson()],
         "cell": cell,
         if (!pixelArt) "pixelArt": false,
+        if (patterns.isNotEmpty) "patterns": [for (var p in patterns) p.toJson()],
       };
 
   factory TileMapElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -351,6 +447,11 @@ class TileMapElement extends CanvasElement {
       layers: layers.isEmpty ? const [TileLayer(name: "Ground")] : layers,
       cell: jsonDouble(json["cell"], 32).clamp(2.0, 512.0),
       pixelArt: jsonBool(json["pixelArt"], true),
+      patterns: [
+        if (json["patterns"] case List raw)
+          for (var p in raw)
+            if (TileStamp.fromJson(p) case var stamp?) stamp,
+      ],
     );
   }
 }

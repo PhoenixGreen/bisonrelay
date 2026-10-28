@@ -13,9 +13,16 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 // draw a set; a turned or flipped one is drawn on its own.
 
 /// TileEditView is what the renderer shows of a map being painted: the
-/// map as the stroke under way has it, the grid, and the cell under the
-/// pointer with the tile that would go there. See tile_painting.dart.
-typedef TileEditView = ({TileMapElement? working, bool grid, (int, int)? hover, List<(int, int, TileRef)> ghost});
+/// map as the stroke under way has it, the grid, the cell under the
+/// pointer with the tiles that would go there, and a box being dragged out
+/// to pick tiles up from. See tile_painting.dart.
+typedef TileEditView = ({
+  TileMapElement? working,
+  bool grid,
+  (int, int)? hover,
+  List<(int, int, TileRef)> ghost,
+  (int, int, int, int)? box,
+});
 
 /// tileMapEditingOf is how a map being painted in the editor is shown, set
 /// by it; null for one not being painted.
@@ -50,7 +57,16 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
       canvas.restore();
     }
     if (view.grid) _paintGrid(canvas, box, m);
-    if (view.hover case (var c, var r)) {
+    if (view.box case (var c0, var r0, var c1, var r1)) {
+      var r = m.cellRect(c0, r0).expandToInclude(m.cellRect(c1, r1));
+      canvas.drawRect(r, Paint()..color = const Color(0x223D7EFF));
+      canvas.drawRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = const Color(0xCC3D7EFF));
+    } else if (view.hover case (var c, var r)) {
       canvas.drawRect(
           m.cellRect(c, r),
           Paint()

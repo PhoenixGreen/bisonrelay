@@ -22,7 +22,9 @@ import 'package:bruig/plugin_system/canvas/ui/settings/sprite_settings.dart' sho
 import 'package:bruig/plugin_system/canvas/ui/tile_painting.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:path/path.dart' as path;
 import 'package:provider/provider.dart';
 
@@ -72,10 +74,11 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
               controller: controller,
               map: e,
               source: s,
-              picked: painting?.brush,
+              picked: painting?.stamp,
               onPick: (t) {
                 if (controller.tilePaint?.id != e.id) controller.paintTiles(e.id);
-                controller.tilePaint!.set(brush: t, tool: TileTool.paint);
+                var p = controller.tilePaint!;
+                p.set(stamp: t, tool: p.tool == TileTool.erase || p.tool == TileTool.picker ? TileTool.paint : null);
               },
             ),
             CanvasControlGroup(
@@ -178,28 +181,53 @@ Widget _paintGroup(
         ),
         SizedBox(
           key: const ValueKey("tileMapBrush"),
-          width: 44,
+          width: 88,
           height: 44,
-          child: CustomPaint(painter: _BrushPainter(controller, e, painting.brush)),
+          child: CustomPaint(painter: _StampPainter(controller, e, painting.stamp)),
         ),
         CanvasIconButton(
           key: const ValueKey("tileMapFlipX"),
           icon: Icons.flip,
           tooltip: "Flip across",
-          onPressed: () => painting.set(brush: painting.brush.flippedX()),
+          onPressed: () => painting.set(stamp: painting.stamp.flippedX()),
         ),
         CanvasIconButton(
           key: const ValueKey("tileMapFlipY"),
           icon: Icons.flip_camera_android_outlined,
           tooltip: "Flip down",
-          onPressed: () => painting.set(brush: painting.brush.flippedY()),
+          onPressed: () => painting.set(stamp: painting.stamp.flippedY()),
         ),
         CanvasIconButton(
           key: const ValueKey("tileMapTurn"),
           icon: Icons.rotate_right,
           tooltip: "Turn a quarter round",
-          onPressed: () => painting.set(brush: painting.brush.turnedRight()),
+          onPressed: () => painting.set(stamp: painting.stamp.turnedRight()),
         ),
+        CanvasStatus(painting.stamp.cells.length > 1
+            ? painting.random
+                ? "Each cell takes one of these ${painting.stamp.cells.length} tiles, at random."
+                : "A stamp of ${painting.stamp.cells.length} tiles, laid whole, repeating from where you start."
+            : "Drag across the tiles above, or shift-click, to pick several: a stamp. "
+                "With the picker, drag a box on the map to pick up what is there."),
+        CanvasToggle(
+          key: const ValueKey("tileMapRandom"),
+          label: "At random, from the tiles picked",
+          value: painting.random,
+          onChanged: (v) => painting.set(random: v),
+        ),
+        if (painting.random)
+          CanvasStepper(
+            key: const ValueKey("tileMapGaps"),
+            label: "Left empty",
+            value: (painting.gaps * 100).roundToDouble(),
+            min: 0,
+            max: 90,
+            step: 5,
+            suffix: " %",
+            defaultValue: 0,
+            onChanged: (v) => painting.set(gaps: v / 100),
+          ),
+        _patternsGroup(controller, e, painting, now),
         CanvasToggle(
           key: const ValueKey("tileMapPaintGrid"),
           label: "Show the grid",
@@ -234,45 +262,96 @@ Widget _paintGroup(
   );
 }
 
-/// _BrushPainter is the tile laid, turned as it will be.
-class _BrushPainter extends CustomPainter {
+/// _patternsGroup is the stamps kept with the map: one picked to paint
+/// with, the stamp painted with kept, and the picked one taken out.
+Widget _patternsGroup(
+    CanvasController controller, TileMapElement e, TilePaintSession painting, void Function(TileMapElement) now) {
+  var kept = e.patterns.indexOf(painting.stamp);
+  return CanvasControlGroup(
+    key: const ValueKey("tileMapPatterns"),
+    label: "Patterns",
+    help: "Stamps kept with the map -- a doorway, a tree of four tiles -- to "
+        "paint with again.",
+    children: [
+      if (e.patterns.isNotEmpty)
+        CanvasTiles<int>(
+          key: const ValueKey("tileMapPatternTiles"),
+          columns: 4,
+          previewHeight: 44,
+          tiles: [
+            for (var (i, p) in e.patterns.indexed)
+              CanvasTile(i, "${p.width}×${p.height}",
+                  drawnFrom: (identityHashCode(p), e.sources.map((x) => controller.images.resolve(x.sheet, const BackgroundRemoval()) != null).join()),
+                  paint: (canvas, size) => paintStamp(canvas, size, controller, e, p)),
+          ],
+          selected: (i) => i == kept,
+          keyOf: (i) => "tileMapPattern-$i",
+          onPick: (i) => painting.set(stamp: e.patterns[i], tool: TileTool.paint),
+        ),
+      if (kept < 0 && painting.stamp.cells.length > 1)
+        CanvasTextButton(
+          key: const ValueKey("tileMapKeepPattern"),
+          label: "Keep this stamp",
+          icon: Icons.bookmark_add_outlined,
+          onPressed: () => now(e.copyWith(patterns: [...e.patterns, painting.stamp])),
+        ),
+      if (kept >= 0)
+        CanvasTextButton(
+          key: const ValueKey("tileMapDropPattern"),
+          label: "Take this pattern out",
+          icon: Icons.bookmark_remove_outlined,
+          onPressed: () => now(e.copyWith(patterns: [...e.patterns]..removeAt(kept))),
+        ),
+    ],
+  );
+}
+
+/// paintStamp draws [stamp] of [map]'s tiles as big as fits [size], in the
+/// middle.
+void paintStamp(Canvas canvas, Size size, CanvasController controller, TileMapElement map, TileStamp stamp) {
+  if (map.sources.isEmpty) return;
+  var first = map.sources.first;
+  var k = math.min(size.width / (stamp.width * first.tileW), size.height / (stamp.height * first.tileH));
+  var one = TileMapElement(
+      map.base.copyWith(x: 0, y: 0, width: stamp.width * first.tileW * k, height: stamp.height * first.tileH * k),
+      sources: map.sources,
+      cell: first.tileW * k,
+      pixelArt: map.pixelArt);
+  canvas.save();
+  canvas.translate((size.width - one.width) / 2, (size.height - one.height) / 2);
+  paintTileCells(canvas, Offset.zero & Size(one.width, one.height), one,
+      {for (var (c, r, t) in stamp.cells) cellKey(c, r): t.word},
+      [for (var x in map.sources) controller.images.resolve(x.sheet, const BackgroundRemoval())]);
+  canvas.restore();
+}
+
+/// _StampPainter is what is laid, turned as it will be.
+class _StampPainter extends CustomPainter {
   final CanvasController controller;
   final TileMapElement map;
-  final TileRef brush;
-  _BrushPainter(this.controller, this.map, this.brush);
+  final TileStamp stamp;
+  _StampPainter(this.controller, this.map, this.stamp);
 
   @override
   void paint(Canvas canvas, Size size) {
-    var box = Offset.zero & size;
-    canvas.drawRect(box, Paint()..color = const Color(0x14000000));
-    if (brush.source >= map.sources.length) return;
-    var s = map.sources[brush.source];
-    var sheet = controller.images.resolve(s.sheet, const BackgroundRemoval());
-    if (sheet == null) return;
-    var k = math.min(size.width / s.tileW, size.height / s.tileH);
-    var one = TileMapElement(map.base.copyWith(x: 0, y: 0, width: size.width, height: size.height),
-        sources: map.sources, cell: s.tileW * k * (map.sources.first.tileW / s.tileW), pixelArt: map.pixelArt);
-    // Drawn as a map of one cell, in the middle of the box.
-    var cs = one.cellSize;
-    canvas.save();
-    canvas.translate((size.width - cs.width) / 2, (size.height - cs.height) / 2);
-    paintTileCells(canvas, Offset.zero & cs, one, {cellKey(0, 0): brush.word},
-        [for (var x in map.sources) controller.images.resolve(x.sheet, const BackgroundRemoval())]);
-    canvas.restore();
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0x14000000));
+    paintStamp(canvas, size, controller, map, stamp);
   }
 
   @override
-  bool shouldRepaint(_BrushPainter old) => old.brush != brush || !identical(old.map, map);
+  bool shouldRepaint(_StampPainter old) => old.stamp != stamp || !identical(old.map, map);
 }
 
 /// TilePalette is a tile set's sheet, its tiles to pick from: big enough
-/// to see, scrolled when it is bigger than the room, the one picked lit.
+/// to see, scrolled when it is bigger than the room, those picked lit. A
+/// click picks one; a drag across them, or a shift-click from the last,
+/// picks a block of them -- a stamp.
 class TilePalette extends StatefulWidget {
   final CanvasController controller;
   final TileMapElement map;
   final int source;
-  final TileRef? picked;
-  final ValueChanged<TileRef> onPick;
+  final TileStamp? picked;
+  final ValueChanged<TileStamp> onPick;
   const TilePalette(
       {required this.controller,
       required this.map,
@@ -291,11 +370,34 @@ class TilePaletteState extends State<TilePalette> {
 
   final ScrollController _down = ScrollController(), _across = ScrollController();
 
+  /// _from is where a pick began, and _to where it has got to, as the
+  /// sheet's columns and rows; _last the last one picked, for a shift-click.
+  (int, int)? _from, _to, _last;
+
   @override
   void dispose() {
     _down.dispose();
     _across.dispose();
     super.dispose();
+  }
+
+  (int, int)? _cellOf(TileSource s, Offset local, double k) {
+    var p = local / k;
+    if (p.dx < 0 || p.dy < 0 || p.dx > s.sheetW || p.dy > s.sheetH) return null;
+    return (
+      ((p.dx - s.margin) / (s.tileW + s.spacing)).floor().clamp(0, s.columns - 1),
+      ((p.dy - s.margin) / (s.tileH + s.spacing)).floor().clamp(0, s.rows - 1),
+    );
+  }
+
+  /// _block is the tiles from [a] to [b] on [s], a stamp.
+  TileStamp _block(TileSource s, (int, int) a, (int, int) b) {
+    var (c0, r0) = (math.min(a.$1, b.$1), math.min(a.$2, b.$2));
+    var (c1, r1) = (math.max(a.$1, b.$1), math.max(a.$2, b.$2));
+    return TileStamp([
+      for (var r = r0; r <= r1; r++)
+        for (var c = c0; c <= c1; c++) (c - c0, r - r0, TileRef.of(widget.source, r * s.columns + c)),
+    ]);
   }
 
   @override
@@ -304,6 +406,13 @@ class TilePaletteState extends State<TilePalette> {
     var s = widget.map.sources[widget.source];
     var k = shown / s.tileW;
     var w = s.sheetW * k, h = s.sheetH * k;
+    var lit = <int>{
+      if ((_from, _to) case ((var a, var b), (var c, var d)))
+        for (var (_, _, t) in _block(s, (a, b), (c, d)).cells) t.index
+      else if (widget.picked case var p?)
+        for (var (_, _, t) in p.cells)
+          if (t.source == widget.source) t.index,
+    };
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ListenableBuilder(
         listenable: widget.controller.images,
@@ -327,16 +436,38 @@ class TilePaletteState extends State<TilePalette> {
                   child: SingleChildScrollView(
                     controller: _across,
                     scrollDirection: Axis.horizontal,
-                    child: GestureDetector(
+                    // The pointer itself, not a gesture: a drag across the
+                    // tiles picks them rather than scrolling.
+                    child: Listener(
                       key: const ValueKey("tilePaletteSheet"),
-                      onTapUp: (d) {
-                        var i = s.tileAt(d.localPosition / k);
-                        if (i != null) widget.onPick(TileRef.of(widget.source, i));
+                      onPointerDown: (d) {
+                        var at = _cellOf(s, d.localPosition, k);
+                        if (at == null) return;
+                        var shift = HardwareKeyboard.instance.isShiftPressed;
+                        setState(() {
+                          _from = shift && _last != null ? _last : at;
+                          _to = at;
+                        });
                       },
+                      onPointerMove: (d) {
+                        if (_from == null) return;
+                        var at = _cellOf(s, d.localPosition, k);
+                        if (at != null && at != _to) setState(() => _to = at);
+                      },
+                      onPointerUp: (_) {
+                        var (from, to) = (_from, _to);
+                        if (from == null || to == null) return;
+                        setState(() {
+                          _from = _to = null;
+                          // A shift-click goes on from where the block began.
+                          if (!HardwareKeyboard.instance.isShiftPressed) _last = from;
+                        });
+                        widget.onPick(_block(s, from, to));
+                      },
+                      onPointerCancel: (_) => setState(() => _from = _to = null),
                       child: CustomPaint(
                         size: Size(w, h),
-                        painter: _PalettePainter(s, sheet, k, widget.map.pixelArt,
-                            widget.picked?.source == widget.source ? widget.picked!.index : null, theme.colors.primary),
+                        painter: _PalettePainter(s, sheet, k, widget.map.pixelArt, lit, theme.colors.primary),
                       ),
                     ),
                   ),
@@ -365,9 +496,9 @@ class _PalettePainter extends CustomPainter {
   final ui.Image? sheet;
   final double k;
   final bool pixelArt;
-  final int? picked;
+  final Set<int> lit;
   final Color accent;
-  _PalettePainter(this.s, this.sheet, this.k, this.pixelArt, this.picked, this.accent);
+  _PalettePainter(this.s, this.sheet, this.k, this.pixelArt, this.lit, this.accent);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -375,22 +506,22 @@ class _PalettePainter extends CustomPainter {
       canvas.drawImageRect(img, Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()), Offset.zero & size,
           Paint()..filterQuality = pixelArt ? FilterQuality.none : FilterQuality.medium);
     }
-    if (picked case var i?) {
+    var on = Paint()..color = accent.withValues(alpha: 0.25);
+    var edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = accent;
+    for (var i in lit) {
       var r = s.tileRect(i);
       var box = Rect.fromLTWH(r.left * k, r.top * k, r.width * k, r.height * k);
-      canvas.drawRect(box, Paint()..color = accent.withValues(alpha: 0.25));
-      canvas.drawRect(
-          box,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = accent);
+      canvas.drawRect(box, on);
+      canvas.drawRect(box, edge);
     }
   }
 
   @override
   bool shouldRepaint(_PalettePainter old) =>
-      !identical(old.sheet, sheet) || old.k != k || old.picked != picked || !identical(old.s, s);
+      !identical(old.sheet, sheet) || old.k != k || !setEquals(old.lit, lit) || !identical(old.s, s);
 }
 
 /// TileSetAdder adds a tile set to the map: a sheet brought in -- a
