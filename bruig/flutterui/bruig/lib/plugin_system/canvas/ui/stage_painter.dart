@@ -5,6 +5,7 @@ import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_turnaround.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_body_area.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
@@ -237,6 +238,9 @@ class StagePainter extends CustomPainter {
   /// draw again when it comes and goes.
   final bool dollShown;
 
+  /// dollLook is how it is shown, for the same.
+  final DollLook dollLook;
+
   /// rigCharacter is the sketch whose limbs are being reshaped point by
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
   final CharacterElement? rigCharacter;
@@ -409,6 +413,7 @@ class StagePainter extends CustomPainter {
     this.selectedCharacter,
     this.guideCharacter,
     this.dollShown = false,
+    this.dollLook = const DollLook(),
     this.rigCharacter,
     this.rigPicked,
     this.faceCharacter,
@@ -1872,6 +1877,7 @@ class StagePainter extends CustomPainter {
       !identical(old.selectedCharacter, selectedCharacter) ||
       !identical(old.guideCharacter, guideCharacter) ||
       old.dollShown != dollShown ||
+      !identical(old.dollLook, dollLook) ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||

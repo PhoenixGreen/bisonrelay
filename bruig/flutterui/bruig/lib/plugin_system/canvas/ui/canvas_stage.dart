@@ -6659,6 +6659,7 @@ class CanvasStageState extends State<CanvasStage>
                         rigPicked: controller.rigPick,
                         guideCharacter: _guideCharacter(),
                         dollShown: controller.dollShown,
+                        dollLook: controller.dollLook,
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide
                             ? _guideHandle

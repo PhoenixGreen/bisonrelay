@@ -30,7 +30,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
-    show characterDollOf, characterSoloOf;
+    show characterDollLook, characterDollOf, characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
     show showPanel;
@@ -3867,9 +3867,31 @@ class CanvasController extends ChangeNotifier {
   /// dollShown is whether the doll is out.
   bool get dollShown => _showPuppet && _puppet3D;
 
+  /// dollLens is how strongly the doll is seen in perspective -- nought
+  /// for flat, one for a camera close up -- and dollLines whether its
+  /// guide lines are drawn. For this run of the app.
+  double get dollLens => _dollLook.lens;
+  DollLook get dollLook => _dollLook;
+  bool get dollLines => _dollLook.lines;
+  DollLook _dollLook = const DollLook();
+  set dollLens(double lens) {
+    if (lens == _dollLook.lens) return;
+    _dollLook = DollLook(lens: lens, lines: _dollLook.lines);
+    _syncDoll();
+    notifyListeners();
+  }
+
+  set dollLines(bool on) {
+    if (on == _dollLook.lines) return;
+    _dollLook = DollLook(lens: _dollLook.lens, lines: on);
+    _syncDoll();
+    notifyListeners();
+  }
+
   void _syncDoll() {
     if (dollShown) {
       characterDollOf = _dollOf;
+      characterDollLook = _dollLook;
     } else if (characterDollOf == _dollOf) {
       characterDollOf = null;
     }

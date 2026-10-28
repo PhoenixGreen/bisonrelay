@@ -17,10 +17,19 @@ import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
 /// see the pose through the drawing.
 enum DollGuide { none, under, over }
 
+/// DollLook is how the doll is seen: [lens] how strongly in perspective,
+/// nought for not at all; [lines] whether its guide lines are drawn.
+class DollLook {
+  final double lens;
+  final bool lines;
+  const DollLook({this.lens = 0, this.lines = true});
+}
+
 /// paintDoll draws the doll as [rig] has the body, made as [dna] is,
 /// [opacity] of the way to solid.
-void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna, {double opacity = 1}) {
-  var pieces = dollPieces(rig, dna);
+void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
+    {double opacity = 1, DollLook look = const DollLook()}) {
+  var pieces = dollPieces(rig, dna, lens: look.lens, lines: look.lines);
   var bounds = meshBounds(pieces, rig.hips);
   if (bounds == null) return;
   var faint = opacity < 1;

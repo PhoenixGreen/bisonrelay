@@ -80,6 +80,33 @@ void main() {
     expect(await _pixels(child), isNot(rest), reason: "a bigger head on a shorter body");
   });
 
+  test("its guide lines and its lens", () async {
+    DollGuide under(CharacterElement e) => DollGuide.under;
+    characterDollOf = under;
+    addTearDown(() {
+      characterDollOf = null;
+      characterDollLook = const DollLook();
+    });
+    var e = _empty().copyWith(pose: posePresets[1].pose.withTurn(30));
+    int orange(List<int> px) {
+      var n = 0;
+      for (var i = 0; i < px.length; i += 4) {
+        if (px[i + 3] > 200 && px[i] > 180 && px[i + 2] < 120) n++;
+      }
+      return n;
+    }
+
+    characterDollLook = const DollLook(lines: false);
+    var plain = await _pixels(e);
+    expect(orange(plain), 0);
+    characterDollLook = const DollLook();
+    var lined = await _pixels(e);
+    expect(orange(lined), greaterThan(150), reason: "the middle drawn down it");
+    characterDollLook = const DollLook(lens: 0.9);
+    var close = await _pixels(e);
+    expect(close, isNot(lined), reason: "what is nearer, bigger");
+  });
+
   testWidgets("the bar's puppet is flat or a doll", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
@@ -101,6 +128,14 @@ void main() {
     await tester.tap(doll);
     await tester.pumpAndSettle();
     expect(c.dollShown, isTrue);
+    // Its lines and its lens, while it is out.
+    await tester.tap(find.byKey(const ValueKey("characterDollLines")));
+    await tester.pumpAndSettle();
+    expect(c.dollLines, isFalse);
+    expect(characterDollLook.lines, isFalse);
+    expect(find.byKey(const ValueKey("characterDollLens")), findsOneWidget);
+    c.dollLens = 0.65;
+    expect(characterDollLook.lens, 0.65);
     await tester.tap(doll);
     await tester.pumpAndSettle();
     expect(c.dollShown, isFalse);

@@ -19,6 +19,16 @@ import 'package:flutter/material.dart';
 // A narrow canvas scrolls it sideways rather than taking it onto a second
 // line.
 
+/// dollLenses is how strongly the doll can be seen in perspective: flat,
+/// as most drawing is, to a camera close up, the near hand reaching out
+/// big.
+const List<(double, String)> dollLenses = [
+  (0, "Flat"),
+  (0.35, "Natural"),
+  (0.65, "Wide"),
+  (0.9, "Close up"),
+];
+
 /// drawBarCharacter is the character the bar is for: the one drawn on, or
 /// the sketch picked alone.
 CharacterElement? drawBarCharacter(CanvasController controller) {
@@ -183,6 +193,27 @@ class CharacterDrawBar extends StatelessWidget {
                       ? "Show the flat puppet, with its handles"
                       : "Show the puppet as a doll in 3D",
                   () => controller.puppet3D = !controller.puppet3D),
+            if (controller.dollShown) ...[
+              toggle(
+                  "characterDollLines",
+                  Icons.architecture,
+                  controller.dollLines,
+                  controller.dollLines
+                      ? "Hide the doll's guide lines"
+                      : "Show the doll's guide lines: its middle, and rings round it",
+                  () => controller.dollLines = !controller.dollLines),
+              CanvasDropdown<double>(
+                key: const ValueKey("characterDollLens"),
+                label: "Lens",
+                width: 130,
+                grow: false,
+                value: dollLenses.any((l) => l.$1 == controller.dollLens)
+                    ? controller.dollLens
+                    : dollLenses.first.$1,
+                options: dollLenses,
+                onChanged: (v) => controller.dollLens = v,
+              ),
+            ],
             toggle(
                 "characterDrawFace",
                 Icons.face_retouching_natural,

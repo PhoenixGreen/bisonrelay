@@ -174,8 +174,8 @@ class _Builder {
   /// same number round -- closed at both ends: a body swept through its
   /// cross sections.
   /// [sortAt] is where it is sorted from, near or far, when not its middle.
-  void loft(Color color, List<List<_V>> rings, {_V? sortAt}) {
-    if (rings.length < 2) return;
+  int loft(Color color, List<List<_V>> rings, {_V? sortAt}) {
+    if (rings.length < 2) return -1;
     var sides = rings.first.length;
     _V centreOf(List<_V> ring) =>
         _mul(ring.fold<_V>(const [0.0, 0.0, 0.0], _add), 1 / ring.length);
@@ -214,12 +214,48 @@ class _Builder {
         idx.addAll([at, r * sides + k, r * sides + (k + 1) % sides]);
       }
     }
+    return last;
+  }
+
+  /// stripe is a line [width] wide in [color] drawn on shape [on] through
+  /// its points [along] -- indices into them -- standing just off its
+  /// surface: a guide line, hidden where that surface is.
+  void stripe(int on, List<int> along, Color color, double width,
+      {bool closed = false}) {
+    if (on < 0 || along.length < 2) return;
+    var base = _shapes[on];
+    _V point(int i) => [base.pts[i * 3], base.pts[i * 3 + 1], base.pts[i * 3 + 2]];
+    _V normal(int i) => [base.nrm[i * 3], base.nrm[i * 3 + 1], base.nrm[i * 3 + 2]];
+    var path = [...along, if (closed) along.first];
+    sittingOn(on, () {
+      var shape = _start(color, base.centre);
+      for (var (k, i) in path.indexed) {
+        var p = point(i), n = normal(i);
+        var t = _sub(point(path[math.min(k + 1, path.length - 1)]),
+            point(path[math.max(k - 1, 0)]));
+        var side = _mul(_unit(_cross(t, n), const [1, 0, 0]), width / 2);
+        var lift = _mul(n, width * 0.4);
+        shape.pts
+          ..addAll(_add(_add(p, lift), side))
+          ..addAll(_sub(_add(p, lift), side));
+        shape.nrm
+          ..addAll(n)
+          ..addAll(n);
+      }
+      for (var k = 0; k + 1 < path.length; k++) {
+        var a = k * 2;
+        shape.idx.addAll([a, a + 1, a + 2, a + 1, a + 3, a + 2]);
+      }
+    }, always: true);
   }
 
   /// limb is one smooth piece through [joints], [radii] round at each --
   /// a whole arm or leg, bending at its middle joint with no seam there --
   /// its ends rounded off.
-  void limb(Color color, List<_V> joints, List<double> radii,
+  ///
+  /// It is the shape it adds, and which of its rings -- [sides] points
+  /// each -- the first of its points along it is: four to a bone after.
+  (int, int) limb(Color color, List<_V> joints, List<double> radii,
       {int sides = 16, _V? sortAt}) {
     // Points along it, a few to each bone, each with its radius.
     var along = <(_V, double)>[];
@@ -265,12 +301,16 @@ class _Builder {
       var (p, r) = along.last;
       rings.add(ringAt(_add(p, _mul(tn, r * math.sin(a))), tn, r * math.cos(a)));
     }
-    loft(color, rings, sortAt: sortAt);
+    return (loft(color, rings, sortAt: sortAt), cap);
   }
 
   /// pieces is everything built, seen turned [yaw] degrees away from the
   /// reader, in pixels from the hips.
-  List<MeshPiece> pieces(double yaw, {double tilt = 0, double ground = 0}) {
+  ///
+  /// [lens], when more than nought, is how far from the hips the eye is:
+  /// what is nearer it drawn bigger, and what is further, smaller.
+  List<MeshPiece> pieces(double yaw,
+      {double tilt = 0, double ground = 0, double lens = 0}) {
     var r = yaw * math.pi / 180, cy = math.cos(r), sy = math.sin(r);
     var t = tilt * math.pi / 180, ct = math.cos(t), st = math.sin(t);
     // Turned and tipped as CharacterRig turns a body onto the page, and y
@@ -300,8 +340,9 @@ class _Builder {
       var points = Float32List(n * 3), normals = Float32List(n * 3);
       for (var i = 0; i < n; i++) {
         var p = seen(pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2], ground);
-        points[i * 3] = p[0];
-        points[i * 3 + 1] = p[1];
+        var near = lens > 0 ? lens / math.max(lens * 0.15, lens - p[2]) : 1.0;
+        points[i * 3] = p[0] * near;
+        points[i * 3 + 1] = p[1] * near;
         points[i * 3 + 2] = p[2];
         var n = seen(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2], 0);
         normals[i * 3] = n[0];
@@ -589,6 +630,40 @@ List<MeshPiece> mannequinPieces(
   return b.pieces(rig.yaw, tilt: rig.tilt, ground: rig.ground);
 }
 
+/// dollCentreLine and dollRingLine are the colours of the doll's guide
+/// lines: the middle of each part, and the rings round it.
+const Color dollCentreLine = Color(0xFFE8742A);
+const Color dollRingLine = Color(0xFF8C8F98);
+
+/// _limbLines draws guide lines on limb [shape], its points along it
+/// starting at ring [first], [sides] to a ring: down its front -- the
+/// side nearest [forward] where it starts -- and round it at the middle
+/// of each bone and at the joint between.
+void _limbLines(_Builder b, int shape, int first, int sides, _V forward, double width) {
+  if (shape < 0) return;
+  var s = b._shapes[shape];
+  var rings = s.pts.length ~/ 3 ~/ sides;
+  var along = [for (var r = first; r <= first + 8 && r < rings; r++) r];
+  _V at(int i) => [s.pts[i * 3], s.pts[i * 3 + 1], s.pts[i * 3 + 2]];
+  var mid = _mul([for (var k = 0; k < sides; k++) at(first * sides + k)]
+      .fold<_V>(const [0.0, 0.0, 0.0], _add), 1 / sides);
+  var front = 0;
+  var best = -double.infinity;
+  for (var k = 0; k < sides; k++) {
+    var d = _dot(_sub(at(first * sides + k), mid), forward);
+    if (d > best) {
+      best = d;
+      front = k;
+    }
+  }
+  b.stripe(shape, [for (var r in along) r * sides + front], dollCentreLine, width * 0.85);
+  for (var r in [first + 2, first + 4, first + 6]) {
+    if (r >= rings) continue;
+    b.stripe(shape, [for (var k = 0; k < sides; k++) r * sides + k], dollRingLine,
+        width * 0.6, closed: true);
+  }
+}
+
 /// _frameAlong is a frame pointing down [along], facing as near
 /// [forward] as it can.
 _Frame _frameAlong(_V along, _V forward) {
@@ -605,7 +680,12 @@ const Color dollColour = Color(0xFFDADBDF);
 /// grey body with no face, its proportions and its pose the rig's, its
 /// hands and feet made as the drawn ones are. In pixels from the rig's
 /// hips, for paintMeshes.
-List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
+///
+/// [lens] is how strongly it is seen in perspective, nought for not at
+/// all to one for a camera close up; [lines] draws the guide lines round
+/// it -- the middle down its front and back, and rings round its parts.
+List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna,
+    {double lens = 0, bool lines = false}) {
   var j = rig.joints3;
   _V at(RigJoint k) => j[k] ?? const [0.0, 0.0, 0.0];
   var u = rig.unit;
@@ -634,7 +714,9 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
           _add(centre, f.on(w * math.sin(2 * math.pi * k / sides), 0,
               d * math.cos(2 * math.pi * k / sides))),
       ];
-  b.loft(c, [
+  // Never under a pixel and a bit, where a line breaks into dashes.
+  var line = math.max(u * 0.022, 1.6);
+  var torso = b.loft(c, [
     for (var (a, w, d, f) in [
       (-0.2, neckR, neckR * 0.95, 0.0),
       (-0.12, neckR * 1.7, neckR * 1.35, -0.02),
@@ -652,6 +734,15 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
     ])
       ring(_add(chest, trunk.on(0, a * length, f * sh)), trunk, w, d),
   ]);
+  if (lines) {
+    // Down the middle, front and back; round the chest, waist and hips.
+    b.stripe(torso, [for (var r = 0; r < 13; r++) r * 20], dollCentreLine, line);
+    b.stripe(torso, [for (var r = 0; r < 13; r++) r * 20 + 10], dollCentreLine, line);
+    for (var r in [4, 7, 9]) {
+      b.stripe(torso, [for (var k = 0; k < 20; k++) r * 20 + k], dollRingLine, line * 0.7,
+          closed: true);
+    }
+  }
 
   // The neck and the head: an egg, narrowing to the chin, with no face.
   var skull = _Frame.of(rig.headBasis);
@@ -681,6 +772,16 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
       }(),
   ]);
   var headShape = b.last;
+  if (lines) {
+    // The face's cross: down its middle and over the head, and round it
+    // at the eyes.
+    b.stripe(headShape, [
+      for (var r = 0; r < 13; r++) r * 18,
+      for (var r = 12; r >= 0; r--) r * 18 + 9,
+    ], dollCentreLine, line, closed: true);
+    b.stripe(headShape, [for (var k = 0; k < 18; k++) 6 * 18 + k], dollRingLine, line * 0.7,
+        closed: true);
+  }
   for (var side in [-1.0, 1.0]) {
     b.sittingOn(headShape, () => b.ellipsoid(c,
         _add(headAt, skull.on(side * rx * 0.97, ry * 0.08, -rz * 0.05)), skull,
@@ -695,7 +796,9 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
     (CharacterLimb.armL, RigJoint.shoulderL, RigJoint.elbowL, RigJoint.wristL),
     (CharacterLimb.armR, RigJoint.shoulderR, RigJoint.elbowR, RigJoint.wristR),
   ]) {
-    b.limb(c, [at(s), at(e), at(w)], [arm * 1.25, arm * 0.92, arm * 0.7]);
+    var (armShape, armFirst) =
+        b.limb(c, [at(s), at(e), at(w)], [arm * 1.25, arm * 0.92, arm * 0.7]);
+    if (lines) _limbLines(b, armShape, armFirst, 16, forward, line);
     var m = rig.frames[limb];
     if (m == null) continue;
     var frame = ExtremityFrame(rig, m);
@@ -734,16 +837,21 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna) {
     var middle = _mul(_add(at(h), at(k)), 0.5);
     var lifted = math.max(0.0,
         _dot(_sub(at(k), at(h)), forward) - hip * 0.6);
-    b.limb(c, [at(h), at(k), at(a)], [leg * 1.45, leg * 0.98, leg * 0.66],
+    var (legShape, legFirst) = b.limb(c, [at(h), at(k), at(a)],
+        [leg * 1.45, leg * 0.98, leg * 0.66],
         sides: 18,
         sortAt: _add(
             _add(trunkMiddle, _mul(_sub(middle, trunkMiddle), 0.05)),
             _mul(forward, lifted * 2 - hip * 0.5)));
+    if (lines) _limbLines(b, legShape, legFirst, 18, forward, line);
     if (rig.frames[limb] == null) continue;
     b.loft(c, [
       for (var r in footRings(rig, limb, foot))
         [for (var (x, y, z) in r) _add(at(a), [x, y, z])],
     ]);
   }
-  return b.pieces(rig.yaw, tilt: rig.tilt, ground: rig.ground);
+  return b.pieces(rig.yaw,
+      tilt: rig.tilt,
+      ground: rig.ground,
+      lens: lens <= 0 ? 0 : u * dna.headsTall * (6 - 4.8 * lens.clamp(0.0, 1.0)));
 }

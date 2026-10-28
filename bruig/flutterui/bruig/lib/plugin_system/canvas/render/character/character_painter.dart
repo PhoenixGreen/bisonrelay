@@ -44,6 +44,9 @@ String? Function(CharacterElement e)? characterSoloOf;
 /// draws none.
 DollGuide Function(CharacterElement e)? characterDollOf;
 
+/// characterDollLook is how the editor shows the doll.
+DollLook characterDollLook = const DollLook();
+
 /// _Pass is which of the two drawings of a soloed layer this is: the rest,
 /// faint, or the layer alone over them. All for a figure soloing nothing.
 enum _Pass { all, others, solo }
@@ -115,7 +118,8 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       viewKey: e.body.inThreeD ? null : e.viewKey(pose),
       doll: editing && !e.body.inThreeD
           ? characterDollOf?.call(e) ?? DollGuide.none
-          : DollGuide.none);
+          : DollGuide.none,
+      dollLook: characterDollLook);
   if (light != null) canvas.restore();
 }
 
@@ -164,7 +168,8 @@ void paintCharacterFigure(
     FaceRig? faceRig,
     LayerView layers = LayerView.all,
     String? viewKey,
-    DollGuide doll = DollGuide.none}) {
+    DollGuide doll = DollGuide.none,
+    DollLook dollLook = const DollLook()}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -375,9 +380,9 @@ void paintCharacterFigure(
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   // The guide figure to draw over, under it -- or, after it, faintly over.
-  if (doll == DollGuide.under) paintDoll(canvas, rig, dna);
+  if (doll == DollGuide.under) paintDoll(canvas, rig, dna, look: dollLook);
   _paintStyled(canvas, style, dna, box, room, draw);
-  if (doll == DollGuide.over) paintDoll(canvas, rig, dna, opacity: 0.4);
+  if (doll == DollGuide.over) paintDoll(canvas, rig, dna, opacity: 0.4, look: dollLook);
 }
 
 /// _paintStyled draws the figure -- [draw] -- as [style] lays it on the
