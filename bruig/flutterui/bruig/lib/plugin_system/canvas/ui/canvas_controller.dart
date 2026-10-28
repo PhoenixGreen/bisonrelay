@@ -28,8 +28,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
-    show characterSoloOf;
+    show characterDollOf, characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_settings.dart'
     show showPanel;
@@ -3847,7 +3848,40 @@ class CanvasController extends ChangeNotifier {
   set showPuppet(bool on) {
     if (_showPuppet == on) return;
     _showPuppet = on;
+    _syncDoll();
     notifyListeners();
+  }
+
+  /// puppet3D is whether the puppet is the doll in 3D -- see
+  /// character_doll.dart -- to pose and draw over, rather than the guide
+  /// drawn flat with its handles. For this run of the app.
+  bool get puppet3D => _puppet3D;
+  bool _puppet3D = false;
+  set puppet3D(bool on) {
+    if (_puppet3D == on) return;
+    _puppet3D = on;
+    _syncDoll();
+    notifyListeners();
+  }
+
+  /// dollShown is whether the doll is out.
+  bool get dollShown => _showPuppet && _puppet3D;
+
+  void _syncDoll() {
+    if (dollShown) {
+      characterDollOf = _dollOf;
+    } else if (characterDollOf == _dollOf) {
+      characterDollOf = null;
+    }
+  }
+
+  /// _dollOf is where the doll is drawn for [e]: for the sketch being drawn
+  /// on or picked alone, under one drawn from nothing and faintly over any
+  /// other.
+  DollGuide _dollOf(CharacterElement e) {
+    var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
+    if (!dollShown || e.id != id) return DollGuide.none;
+    return e.dna.kind == CharacterType.empty ? DollGuide.under : DollGuide.over;
   }
 
   /// editRig shows a sketch's limbs point by point, to reshape on the
@@ -8676,6 +8710,7 @@ class CanvasController extends ChangeNotifier {
   @override
   void dispose() {
     if (vectorSoloOf == _soloOf) vectorSoloOf = null;
+    if (characterDollOf == _dollOf) characterDollOf = null;
     _disposedForWaveform = true;
     _autosave?.cancel();
     _playback?.cancel();

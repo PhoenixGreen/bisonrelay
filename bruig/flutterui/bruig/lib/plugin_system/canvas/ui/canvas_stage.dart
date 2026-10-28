@@ -2542,7 +2542,8 @@ class CanvasStageState extends State<CanvasStage>
   /// _guideCharacter is the sketch the puppet is laid over, while it is
   /// shown: the one being drawn on, or picked.
   CharacterElement? _guideCharacter() {
-    if (!controller.showPuppet) return null;
+    // The doll in 3D in its place: drawn with the character.
+    if (!controller.showPuppet || controller.puppet3D) return null;
     var who = _posedCharacter();
     return who != null && !who.body.inThreeD ? who : null;
   }
@@ -6657,6 +6658,7 @@ class CanvasStageState extends State<CanvasStage>
                         facePicked: controller.facePick,
                         rigPicked: controller.rigPick,
                         guideCharacter: _guideCharacter(),
+                        dollShown: controller.dollShown,
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide
                             ? _guideHandle

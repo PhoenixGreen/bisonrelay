@@ -173,6 +173,16 @@ class CharacterDrawBar extends StatelessWidget {
                 controller.showPuppet,
                 controller.showPuppet ? "Hide the puppet" : "Show the puppet",
                 () => controller.showPuppet = !controller.showPuppet),
+            // The puppet as a doll in 3D, to pose and draw over, or flat.
+            if (controller.showPuppet)
+              toggle(
+                  "characterDrawPuppet3D",
+                  Icons.view_in_ar,
+                  controller.puppet3D,
+                  controller.puppet3D
+                      ? "Show the flat puppet, with its handles"
+                      : "Show the puppet as a doll in 3D",
+                  () => controller.puppet3D = !controller.puppet3D),
             toggle(
                 "characterDrawFace",
                 Icons.face_retouching_natural,

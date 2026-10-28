@@ -232,6 +232,11 @@ class StagePainter extends CustomPainter {
   /// the one being dragged. See character_guide.dart.
   final CharacterElement? guideCharacter;
 
+  /// dollShown is whether the doll is drawn with the sketch picked -- see
+  /// character_doll.dart: the character painter draws it, and this says to
+  /// draw again when it comes and goes.
+  final bool dollShown;
+
   /// rigCharacter is the sketch whose limbs are being reshaped point by
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
   final CharacterElement? rigCharacter;
@@ -403,6 +408,7 @@ class StagePainter extends CustomPainter {
     required this.selectedPath,
     this.selectedCharacter,
     this.guideCharacter,
+    this.dollShown = false,
     this.rigCharacter,
     this.rigPicked,
     this.faceCharacter,
@@ -1865,6 +1871,7 @@ class StagePainter extends CustomPainter {
       !identical(old.selectedPath, selectedPath) ||
       !identical(old.selectedCharacter, selectedCharacter) ||
       !identical(old.guideCharacter, guideCharacter) ||
+      old.dollShown != dollShown ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||

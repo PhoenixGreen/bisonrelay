@@ -184,7 +184,10 @@ List<Widget> characterSettings(
               keyOf: (t) => "characterType-${t.name}",
               onPick: (t) {
                 // Nothing drawn of it: the puppet out, to draw over.
-                if (t == CharacterType.empty) controller.showPuppet = true;
+                if (t == CharacterType.empty) {
+                  controller.showPuppet = true;
+                  controller.puppet3D = true;
+                }
                 var next = e.copyWith(dna: t.becomes(dna));
                 // Renamed with it, unless it has a name of its own.
                 var named = e.base.name.isEmpty ||

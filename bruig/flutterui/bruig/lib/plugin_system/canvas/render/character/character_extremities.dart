@@ -29,6 +29,10 @@ class ExtremityFrame {
         m[6] * x + m[7] * y + m[8] * z,
       );
 
+  /// body is how far from the frame's middle, in the body's own space --
+  /// see CharacterRig.joints3 -- [x], [y], [z] of its own space is.
+  (double, double, double) body(double x, double y, double z) => _body(x, y, z);
+
   /// at is how far from the frame's middle, on the page, [x], [y], [z] of
   /// its own space is.
   Offset at(double x, double y, double z) {
@@ -171,6 +175,32 @@ FootShape footShape(CharacterRig rig, CharacterLimb leg, FootSize s,
   return FootShape(heel, toesPiece, hd, td, frame.at(out, tdn, tf));
 }
 
+/// footRings is the foot on the end of [leg], [s] big, as rings round
+/// it, heel to toes, [sides] points each: each point in the body's own
+/// space from the ankle -- see CharacterRig.joints3 -- for a foot made in
+/// 3D.
+List<List<(double, double, double)>> footRings(
+    CharacterRig rig, CharacterLimb leg, FootSize s, {int sides = 12}) {
+  var frame = ExtremityFrame(rig, rig.frames[leg]!);
+  var toes = rig.toes[leg] ?? 0;
+  var out = rig.legWidth * footOutward;
+  return [
+    for (var (sections, front) in [(_heelToBall, false), (_ballToToes.skip(1), true)])
+      for (var (f, w, h) in sections)
+        [
+          for (var k = 0; k < sides; k++)
+            () {
+              var a = k / sides * math.pi * 2;
+              var height = s.drop * h;
+              var centre = s.drop - height / 2;
+              var (ff, dd) = _toesTurned(
+                  f * s.length, centre + height / 2 * math.sin(a), toes, s, front);
+              return frame.body(out + s.half * w * math.cos(a), dd, ff);
+            }(),
+        ],
+  ];
+}
+
 /// strapAt is a strap over the top of the foot [at] of the way from the
 /// heel to the toes, as a line on the page from the ankle.
 List<Offset> strapAt(CharacterRig rig, CharacterLimb leg, FootSize s, double at) {
@@ -224,17 +254,11 @@ const List<double> _fold = [1, 1.08, 0.78];
 /// finger left straight as one piece -- farthest from the reader first.
 List<HandPiece> handPieces(CharacterRig rig, CharacterLimb arm, double r) {
   var frame = ExtremityFrame(rig, rig.frames[arm]!);
-  var shape = rig.hands[arm] ?? const [0, 0, 0, 0, 0, 0];
-  var spread = shape[5];
   var pieces = <HandPiece>[];
 
   // The palm: swept from the wrist to the knuckles, wider there.
   var palm = <Offset>[];
-  for (var (y, w, t) in const [
-    (-0.08, 0.42, 0.17),
-    (0.55, 0.6, 0.2),
-    (1.02, 0.6, 0.15),
-  ]) {
+  for (var (y, w, t) in handPalm) {
     for (var k = 0; k < 12; k++) {
       var a = k / 12 * math.pi * 2;
       palm.add(frame.at(r * w * math.cos(a), r * y, r * t * math.sin(a)));
@@ -263,6 +287,34 @@ List<HandPiece> handPieces(CharacterRig rig, CharacterLimb arm, double r) {
     }
   }
 
+  for (var (joints, radii, together) in handJoints(rig, arm, r)) {
+    rods(joints, radii, together: together);
+  }
+
+  pieces.sort((a, b) => a.depth.compareTo(b.depth));
+  return pieces;
+}
+
+/// FingerChain is a finger's joints in its hand's own space -- see
+/// CharacterRig.frames -- how round it is at each, and whether it is
+/// straight enough to be drawn as one piece.
+typedef FingerChain = (List<(double, double, double)>, List<double>, bool);
+
+/// handPalm is the palm's cross sections, wrist to knuckles: how far along
+/// the hand, how wide and how thick, as shares of the hand's size.
+const List<(double, double, double)> handPalm = [
+  (-0.08, 0.42, 0.17),
+  (0.55, 0.6, 0.2),
+  (1.02, 0.6, 0.15),
+];
+
+/// handJoints is each finger of the hand on the end of [arm], [r] its
+/// size, as [rig] has it curled and spread: the four, index first, then
+/// the thumb's root in the palm and the thumb.
+List<FingerChain> handJoints(CharacterRig rig, CharacterLimb arm, double r) {
+  var shape = rig.hands[arm] ?? const [0, 0, 0, 0, 0, 0];
+  var spread = shape[5];
+  var chains = <FingerChain>[];
   for (var f = 0; f < 4; f++) {
     var curl = shape[f + 1];
     var fan = spread * (1.5 - f) * math.pi / 180;
@@ -278,8 +330,8 @@ List<HandPiece> handPieces(CharacterRig rig, CharacterLimb arm, double r) {
       joints.add(p);
     }
     var base = 0.13 * (f == 3 ? 0.85 : 1);
-    rods(joints, [for (var k = 0; k < 4; k++) r * base * (1 - k * 0.1)],
-        together: curl.abs() < 20);
+    chains.add((joints, [for (var k = 0; k < 4; k++) r * base * (1 - k * 0.1)],
+        curl.abs() < 20));
   }
 
   // The thumb: from the heel of the palm on its side, out along the hand
@@ -302,12 +354,9 @@ List<HandPiece> handPieces(CharacterRig rig, CharacterLimb arm, double r) {
   var t2 = (t1.$1 + d1.$1 * r * 0.4, t1.$2 + d1.$2 * r * 0.4, t1.$3 + d1.$3 * r * 0.4);
   var d2 = toward((thumbCurl * 1.05).clamp(0.0, 1.2));
   var t3 = (t2.$1 + d2.$1 * r * 0.32, t2.$2 + d2.$2 * r * 0.32, t2.$3 + d2.$3 * r * 0.32);
-  rods([t0, t1], [r * 0.2, r * 0.16], together: true);
-  rods([t1, t2, t3], [r * 0.155, r * 0.135, r * 0.115],
-      together: shape[0].abs() < 20);
-
-  pieces.sort((a, b) => a.depth.compareTo(b.depth));
-  return pieces;
+  chains.add(([t0, t1], [r * 0.2, r * 0.16], true));
+  chains.add(([t1, t2, t3], [r * 0.155, r * 0.135, r * 0.115], shape[0].abs() < 20));
+  return chains;
 }
 
 /// handTip is where the tip of the middle finger of the hand on the end of

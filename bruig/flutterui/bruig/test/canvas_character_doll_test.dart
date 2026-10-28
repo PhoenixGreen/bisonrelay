@@ -1,0 +1,109 @@
+import 'dart:ui';
+
+import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
+import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/material.dart' hide Image;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// canvas_character_doll_test.dart is the doll a sketch is posed and drawn
+// over: built from its rig, drawn in the editor for the sketch picked --
+// under one drawn from nothing, faintly over any other -- and never in
+// anything made from the canvas. See character_doll.dart.
+
+CharacterElement _empty({String id = "c", double x = 20}) => CharacterElement(
+    ElementBase(id: id, x: x, y: 20, width: 160, height: 340),
+    dna: CharacterType.empty.dna);
+
+Future<List<int>> _pixels(CharacterElement e, {bool editing = true}) async {
+  var rec = PictureRecorder();
+  paintElement(Canvas(rec), e, 0, editing: editing);
+  var img = await rec.endRecording().toImage(200, 380);
+  return (await img.toByteData())!.buffer.asUint8List();
+}
+
+int _opaque(List<int> px) {
+  var n = 0;
+  for (var i = 3; i < px.length; i += 4) {
+    if (px[i] > 0) n++;
+  }
+  return n;
+}
+
+void main() {
+  test("drawn for the sketch picked, in the editor alone", () async {
+    var c = CanvasController(CanvasDocument(frames: 24)
+        .addElement(_empty())
+        .addElement(_empty(id: "d", x: 300))
+        .addElement(CharacterElement(
+            const ElementBase(id: "b", x: 500, y: 20, width: 160, height: 340),
+            dna: characterCast.first.dna)));
+    CharacterElement el(String id) => c.document.elementById(id) as CharacterElement;
+    c.selectOnly("c");
+    expect(_opaque(await _pixels(el("c"))), 0, reason: "no doll until it is asked for");
+    c.showPuppet = true;
+    c.puppet3D = true;
+    expect(c.dollShown, isTrue);
+    expect(characterDollOf?.call(el("c")), DollGuide.under);
+    expect(characterDollOf?.call(el("d")), DollGuide.none, reason: "not picked");
+    var shown = _opaque(await _pixels(el("c")));
+    expect(shown, greaterThan(2000), reason: "a body's worth");
+    expect(_opaque(await _pixels(el("c"), editing: false)), 0, reason: "never exported");
+    c.selectOnly("b");
+    expect(characterDollOf?.call(el("b")), DollGuide.over, reason: "faint, over a drawn one");
+    c.puppet3D = false;
+    expect(characterDollOf, isNull);
+    c.puppet3D = true;
+    c.dispose();
+    expect(characterDollOf, isNull, reason: "put away with its editor");
+  });
+
+  test("posed as the character is, its proportions the character's", () async {
+    DollGuide under(CharacterElement e) => DollGuide.under;
+    characterDollOf = under;
+    addTearDown(() => characterDollOf = null);
+    var rest = await _pixels(_empty());
+    var waving = await _pixels(_empty().copyWith(pose: posePresets[1].pose));
+    expect(waving, isNot(rest));
+    var child = _empty().copyWith(dna: CharacterType.empty.dna.copyWith(headsTall: 3.5));
+    expect(await _pixels(child), isNot(rest), reason: "a bigger head on a shorter body");
+  });
+
+  testWidgets("the bar's puppet is flat or a doll", (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
+    addTearDown(c.dispose);
+    c.selectOnly("c");
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(home: Scaffold(body: CharacterDrawBar(controller: c))),
+    ));
+    await tester.pumpAndSettle();
+    var doll = find.byKey(const ValueKey("characterDrawPuppet3D"));
+    expect(doll, findsNothing, reason: "only with the puppet out");
+    await tester.tap(find.byKey(const ValueKey("characterDrawPuppet")));
+    await tester.pumpAndSettle();
+    await tester.tap(doll);
+    await tester.pumpAndSettle();
+    expect(c.dollShown, isTrue);
+    await tester.tap(doll);
+    await tester.pumpAndSettle();
+    expect(c.dollShown, isFalse);
+    expect(c.showPuppet, isTrue, reason: "the flat puppet back");
+  });
+}

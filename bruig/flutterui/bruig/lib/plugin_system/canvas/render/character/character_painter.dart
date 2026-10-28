@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/render/canvas_perf.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_live.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape.dart';
@@ -37,6 +38,11 @@ import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 /// edited, set by the editor -- as vectorSoloOf is for a drawing's layers.
 /// Null draws every layer.
 String? Function(CharacterElement e)? characterSoloOf;
+
+/// characterDollOf is where the guide figure is drawn for [CharacterElement]
+/// while it is edited, set by the editor -- see character_doll.dart. Null
+/// draws none.
+DollGuide Function(CharacterElement e)? characterDollOf;
 
 /// _Pass is which of the two drawings of a soloed layer this is: the rest,
 /// faint, or the layer alone over them. All for a figure soloing nothing.
@@ -106,7 +112,10 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       layers: e.body.inThreeD
           ? LayerView.all
           : e.layerView(solo: editing ? characterSoloOf?.call(e) : null),
-      viewKey: e.body.inThreeD ? null : e.viewKey(pose));
+      viewKey: e.body.inThreeD ? null : e.viewKey(pose),
+      doll: editing && !e.body.inThreeD
+          ? characterDollOf?.call(e) ?? DollGuide.none
+          : DollGuide.none);
   if (light != null) canvas.restore();
 }
 
@@ -154,7 +163,8 @@ void paintCharacterFigure(
     CharacterDrawing? drawing,
     FaceRig? faceRig,
     LayerView layers = LayerView.all,
-    String? viewKey}) {
+    String? viewKey,
+    DollGuide doll = DollGuide.none}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -364,6 +374,16 @@ void paintCharacterFigure(
   void draw(Canvas onto) => CanvasPerf.time("character", () => drawOn(onto));
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
+  // The guide figure to draw over, under it -- or, after it, faintly over.
+  if (doll == DollGuide.under) paintDoll(canvas, rig, dna);
+  _paintStyled(canvas, style, dna, box, room, draw);
+  if (doll == DollGuide.over) paintDoll(canvas, rig, dna, opacity: 0.4);
+}
+
+/// _paintStyled draws the figure -- [draw] -- as [style] lays it on the
+/// page: through its filter, its shadow or its pixels.
+void _paintStyled(Canvas canvas, CharacterStyle style, CharacterDna dna,
+    Rect box, Rect room, void Function(Canvas) draw) {
   switch (style) {
     case CharacterStyle.noir:
       // A silhouette, lit from behind on one side: the figure in light,
