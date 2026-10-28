@@ -54,7 +54,7 @@ List<LayerRow> layerRows(CharacterElement e) {
 /// layer [l]: its own, and the skin with the head and the body, and the
 /// beard with the head.
 List<AppearanceGroup> appearanceOf(BodyLayer l, {bool person = true}) => switch (l) {
-      BodyLayer.hairFront || BodyLayer.hairBack => [AppearanceGroup.hair],
+      BodyLayer.hairFront || BodyLayer.hairBase || BodyLayer.hairBack => [AppearanceGroup.hair],
       BodyLayer.brows => [AppearanceGroup.brows],
       BodyLayer.eyes => [AppearanceGroup.eyes],
       BodyLayer.nose => [AppearanceGroup.nose],

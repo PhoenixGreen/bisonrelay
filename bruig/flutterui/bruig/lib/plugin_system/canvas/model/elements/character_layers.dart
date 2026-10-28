@@ -10,6 +10,9 @@
 /// BodyLayer is a layer of the body, the face or the hair.
 enum BodyLayer {
   hairFront("Front hair", LayerGroup.hair),
+  // The hair over the head as one shape, the locks over it: what to
+  // reshape for a hairline, or a bold lock -- see _Drawing._hairBase.
+  hairBase("Hair base", LayerGroup.hair),
   brows("Brows", LayerGroup.face),
   eyes("Eyes", LayerGroup.face),
   nose("Nose", LayerGroup.face),

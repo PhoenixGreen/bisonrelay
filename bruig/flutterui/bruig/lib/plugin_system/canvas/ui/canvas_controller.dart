@@ -4198,6 +4198,13 @@ class CanvasController extends ChangeNotifier {
     _resetVectorEditing();
     // Ready to pick: what is drawn there is the thing to work on first.
     _vectorTool = VectorTool.select;
+    // The hair's base is one shape: picked, its points out, and the pencil
+    // in its colour, so what is drawn adds to it -- a bold lock, a lower
+    // hairline -- and the eraser takes from it.
+    if (layer == BodyLayer.hairBase.name && proxy.shapes?.length == 1) {
+      _vectorShape = 0;
+      if (proxy.shapes!.first.fill case var fill?) _vectorPencilColour = fill;
+    }
     _selection = {proxy.id};
     _backgroundSelected = false;
     _proxyOver = c;

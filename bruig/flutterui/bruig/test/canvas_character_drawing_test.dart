@@ -388,4 +388,42 @@ void main() {
     var page = at + const Offset(100, 40);
     expect(green(page), greaterThan(200), reason: "drawn at $page");
   });
+
+  test("empty: nothing of it drawn, until it is drawn on a layer", () async {
+    var dna = CharacterType.empty.becomes(characterCast.first.dna);
+    expect(dna.wardrobe, isEmpty, reason: "nothing kept from before");
+    expect(CharacterType.woman.becomes(dna).wardrobe, isNotEmpty,
+        reason: "and nothing kept from it");
+    var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+        const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+        dna: dna)));
+    addTearDown(c.dispose);
+    Future<List<int>> pixels() async {
+      var rec = PictureRecorder();
+      paintElement(Canvas(rec), c.document.elementById("c")!, 0);
+      var img = await rec.endRecording().toImage(400, 420);
+      return (await img.toByteData())!.buffer.asUint8List();
+    }
+
+    int opaque(List<int> px) {
+      var n = 0;
+      for (var i = 3; i < px.length; i += 4) {
+        if (px[i] > 0) n++;
+      }
+      return n;
+    }
+
+    expect(opaque(await pixels()), 0);
+    // A layer taken apart is nothing to edit: drawn on, it is what is drawn.
+    c.takeApartCharacterLayer("c", BodyLayer.head.name);
+    c.drawOnCharacter("c", layer: BodyLayer.head.name);
+    expect(c.editingVector!.shapes ?? const [], isEmpty);
+    var (rig, _, _) = drawnRig(c.document.elementById("c") as CharacterElement, 0, 24);
+    c.replaceElement(c.editingVector!.copyWith(shapes: [_dot(rig.headCentre)]));
+    c.stopDrawingOnCharacter();
+    var e = c.document.elementById("c") as CharacterElement;
+    var (d, _) = e.drawingAt(drawnKey(e, 0, 24));
+    expect(d.layers, [BodyLayer.head.name]);
+    expect(opaque(await pixels()), greaterThan(20));
+  });
 }

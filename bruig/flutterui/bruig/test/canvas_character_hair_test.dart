@@ -8,12 +8,15 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_cast.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_hair_shape.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_hair_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_hair_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_layers_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
@@ -86,6 +89,40 @@ void main() {
     var longer = _sketch(
         hair: messy.withGroup(HairGroup.back, const HairGroupLook(length: 3)), turn: 180);
     expect(await _pixels(longer), isNot(await _pixels(turned)));
+  });
+
+  test("the hair over the head is a layer of its own, one shape on each view", () async {
+    var e = _sketch(hair: messy);
+    expect(layerRows(e).map((r) => r.key), contains(BodyLayer.hairBase.name));
+    expect(await _pixels(e.withLayerShown(BodyLayer.hairBase.name, false)),
+        isNot(await _pixels(e)));
+    for (var v in CharacterView.start) {
+      var seen = turnedToView(e, v.key, 0);
+      var apart = takeApartLayer(seen, BodyLayer.hairBase.name, 0, 12);
+      var (d, _) = apart.drawingAt(v.key);
+      var mine = [
+        for (var i = 0; i < d.shapes.length; i++)
+          if (d.layerOf(i) == BodyLayer.hairBase.name) d.shapes[i],
+      ];
+      expect(mine, hasLength(1), reason: "${v.key}: one shape to reshape");
+      expect(mine.single.fill?.toARGB32(), e.dna.hair.toARGB32());
+      expect(mine.single.stroke, isNotNull, reason: "${v.key}: lined round");
+    }
+  });
+
+  test("drawn on, the hair base is picked and the pencil is its colour", () {
+    var c = CanvasController(CanvasDocument(frames: 24).addElement(_sketch(hair: messy)));
+    addTearDown(c.dispose);
+    c.selectOnly("c");
+    c.takeApartCharacterLayer("c", BodyLayer.hairBase.name);
+    c.drawOnCharacter("c", layer: BodyLayer.hairBase.name);
+    expect(c.vectorSelectedShapes, {0}, reason: "what the pencil adds to");
+    expect(c.vectorPencilColour.toARGB32(), characterCast.first.dna.hair.toARGB32());
+    expect(c.vectorTool, VectorTool.select);
+    // Another layer: nothing picked for it.
+    c.takeApartCharacterLayer("c", BodyLayer.head.name);
+    c.drawOnCharacter("c", layer: BodyLayer.head.name);
+    expect(c.vectorSelectedShapes, isEmpty);
   });
 
   group("the hair layer's settings", () {

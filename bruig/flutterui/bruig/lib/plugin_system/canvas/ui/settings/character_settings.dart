@@ -183,6 +183,8 @@ List<Widget> characterSettings(
               selected: (t) => dna.kind == t,
               keyOf: (t) => "characterType-${t.name}",
               onPick: (t) {
+                // Nothing drawn of it: the puppet out, to draw over.
+                if (t == CharacterType.empty) controller.showPuppet = true;
                 var next = e.copyWith(dna: t.becomes(dna));
                 // Renamed with it, unless it has a name of its own.
                 var named = e.base.name.isEmpty ||
@@ -713,6 +715,20 @@ void _figureTile(
 /// side on when it stands on four legs, which face on is all chest.
 void _typeTile(
     ui.Canvas canvas, Size size, CharacterType t, CharacterStyle style) {
+  // Empty: a person's shape, faint, to draw over.
+  if (t == CharacterType.empty) {
+    var h = size.height * 0.92;
+    canvas.saveLayer(Offset.zero & size, Paint()..color = const Color(0x40000000));
+    paintCharacterFigure(
+        canvas,
+        Rect.fromCenter(center: size.center(Offset.zero), width: h * 0.45, height: h),
+        CharacterType.man.dna,
+        CharacterElement.restPose,
+        bare: true,
+        style: style);
+    canvas.restore();
+    return;
+  }
   var dna = t.dna;
   var pose = dna.fourLegs
       ? CharacterElement.restPose.withTurn(65)

@@ -26,6 +26,11 @@ enum CharacterType {
   boy("Boy", TypeFamily.people),
   baby("Baby", TypeFamily.people),
   elder("Older adult", TypeFamily.people),
+
+  /// empty is a person drawn from nothing: the body is there to draw on
+  /// -- its rig, its views and its layers -- but nothing of it is drawn
+  /// until it is drawn by hand.
+  empty("Empty", TypeFamily.people),
   dog("Dog", TypeFamily.animals),
   cat("Cat", TypeFamily.animals),
   fox("Fox", TypeFamily.animals),
@@ -201,6 +206,13 @@ enum CharacterType {
               Garment(GarmentKind.hoodie, color: Color(0xFFF07A3E), fit: 1.3),
               Garment(GarmentKind.trainers, color: Color(0xFFE5393B)),
             ],
+          ),
+        empty => const CharacterDna(
+            type: empty,
+            headsTall: 6,
+            build: 0.5,
+            hairStyle: HairStyle.bald,
+            wardrobe: [],
           ),
         baby => const CharacterDna(
             type: baby,
@@ -483,7 +495,9 @@ enum CharacterType {
   /// clothes kept, so a woman made a girl is the same person younger.
   CharacterDna becomes(CharacterDna dna) {
     var base = this.dna;
-    if (!person || !dna.kind.person) return base;
+    // Nothing kept going to or from empty: it has nothing to keep, and
+    // nothing of it is to be had.
+    if (!person || !dna.kind.person || this == empty || dna.kind == empty) return base;
     return base.copyWith(
       skin: dna.skin,
       hair: dna.hair,

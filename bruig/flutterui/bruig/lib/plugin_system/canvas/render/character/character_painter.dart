@@ -69,7 +69,7 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
     }
   } else {
     box = characterBox(e, frame, box);
-    if (e.shadow != CharacterShadow.none) {
+    if (e.shadow != CharacterShadow.none && e.dna.type != CharacterType.empty) {
       // A contact shadow on the ground under the feet, smaller and fainter
       // the higher it jumps.
       var up = 1 / (1 + pose.lift.abs() * 0.8);
@@ -1279,7 +1279,7 @@ class _Drawing {
   void _solid(Rect bounds, Color colour, void Function(Paint) draw,
       {double light = 1}) {
     var base = Paint()..color = colour;
-    if (painted case var buffers? when !identical(canvas, _sink)) {
+    if (painted case var buffers? when identical(canvas, _real)) {
       // Laid into the light's buffers, drawing on each in turn, and drawn
       // as flat colour for it to light.
       var main = canvas;
@@ -1388,6 +1388,8 @@ class _Drawing {
   double get bodyFacing => math.cos(rig.yaw * math.pi / 180);
 
   void draw() {
+    // An empty character is drawn by hand alone.
+    if (dna.type == CharacterType.empty) return;
     // Long hair hangs behind the head, until the head turns away and it is
     // the thing in front -- see _head.
     var head = _shows(CharacterRegion.head);
@@ -3382,21 +3384,30 @@ class _Drawing {
   /// Each grows from its root on the scalp, as a ball, out and down -- or,
   /// on the top, out and up -- turned and tipped with the head, and is
   /// drawn as wide as it is along it.
-  void _hairStrokes({required bool front}) {
+  /// _locks is the hair's strokes on the near side of the head -- or, not
+  /// [front], the far side -- as drawn there, furthest first.
+  List<HairStrokeShape> _locks({required bool front}) {
     var hair = _hairRig;
-    if (hair == null) return;
+    if (hair == null) return const [];
     var r = rig.headRadii;
     var head = HeadView(r.width, r.height, yaw, rig.tilt * math.pi / 180, nod: _nodShift);
-    var shapes = <HairStrokeShape>[
+    return [
       for (var s in hair.strokes)
         if (hairStrokeShape(s, hair.lookOf(s.group), head) case var shape
             when (shape.depth >= -0.1) == front)
           shape,
     ]..sort((a, b) => a.depth.compareTo(b.depth));
-    // The hair's own volume over the skull, which the locks hang from the
-    // edge of: the crown above the brow in front of the head, and behind
-    // it down to the ears, standing off the head as full as the hair is.
-    var full = 1.06 + 0.06 * hair.lookOf(HairGroup.top).volume;
+  }
+
+  late final List<HairStrokeShape> _nearLocks = _locks(front: true);
+
+  /// _hairShell is the hair's own volume over the skull, which the locks
+  /// hang from the edge of: the crown above the brow in front of the head
+  /// -- down to the hairline -- and, not [front], behind it down to the
+  /// ears, standing off the head as full as the hair is.
+  Path _hairShell({required bool front}) {
+    var r = rig.headRadii;
+    var full = 1.06 + 0.06 * (_hairRig?.lookOf(HairGroup.top).volume ?? 0);
     var w = r.width, h = r.height;
     // As high as the forehead goes; down to the hairline in front.
     var brow = 0.12 * _a(Look.forehead);
@@ -3405,20 +3416,64 @@ class _Drawing {
           center: Offset(0, -h * (0.06 + brow * 0.5) + _nodShift * 0.3),
           width: w * 2 * full,
           height: h * 2 * full * (1 + brow * 0.5)));
-    var shell = Path.combine(
+    return Path.combine(
         PathOperation.intersect,
         dome,
         Path()
           ..addRect(Rect.fromLTRB(-w * 2, -h * 2, w * 2,
               (front ? -h * (0.42 - 0.15 * _a(Look.hairline)) : h * 0.25) + _nodShift)));
-    if (shapes.isEmpty && !front) return;
+  }
+
+  /// _hairMassBounds is where the hair over the front of the head is --
+  /// its base and the locks over it -- lit as one.
+  late final Rect _hairMassBounds = _nearLocks
+      .map((s) => s.outline.getBounds())
+      .fold(_hairShell(front: true).getBounds(), (a, b) => a.expandToInclude(b));
+
+  /// _hairBase is the hair over the head as one shape: what is round the
+  /// back of it as the head turns and -- the hair drawn as strokes -- its
+  /// volume over the crown, down to the hairline. Drawn before the face,
+  /// the features over it, and the locks of [_hairStrokes] over them; a
+  /// starting point to reshape as a drawing -- see BodyLayer.hairBase.
+  void _hairBase(double w, double h, Path head) {
+    var back = _backOfHead(w, h);
+    if (_hairRig != null) {
+      var shell = _hairShell(front: true);
+      var base = back == null ? shell : Path.combine(PathOperation.union, back, shell);
+      _solid(_hairMassBounds, dna.hair, (p) => canvas.drawPath(base, p), light: 0.6);
+      _outline(base, dna.hair);
+      return;
+    }
+    if (back == null) return;
+    _solid(back.getBounds(), dna.hair, (p) => canvas.drawPath(back, p));
+    canvas.drawPath(
+        head,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = edge
+          ..color = _shade(dna.hair));
+  }
+
+  void _hairStrokes({required bool front}) {
+    if (_hairRig == null) return;
+    var r = rig.headRadii;
+    var shapes = front ? _nearLocks : _locks(front: false);
+    var w = r.width, h = r.height;
+    var shell = _hairShell(front: front);
+    // In front, the base is drawn already: the locks lie over it.
+    if (shapes.isEmpty) return;
     // One mass of hair, shaded and lined once round the outside -- the far
     // side a shade darker, for the depth -- not a bundle of strands.
     var colour = front ? dna.hair : _shade(dna.hair, 0.12);
-    var whole = shapes
+    var locks = shapes
         .map((s) => s.outline)
-        .fold(shell, (a, b) => Path.combine(PathOperation.union, a, b));
-    _solid(whole.getBounds(), colour, (p) => canvas.drawPath(whole, p), light: 0.6);
+        .reduce((a, b) => Path.combine(PathOperation.union, a, b));
+    var whole = Path.combine(PathOperation.union, shell, locks);
+    if (front) {
+      _solid(_hairMassBounds, colour, (p) => canvas.drawPath(locks, p), light: 0.6);
+    } else {
+      _solid(whole.getBounds(), colour, (p) => canvas.drawPath(whole, p), light: 0.6);
+    }
     // A band of shine across the near side: a short light stroke down each
     // lock, a little way from its root.
     if (front && painted == null) {
@@ -3466,7 +3521,13 @@ class _Drawing {
             : Path.combine(PathOperation.union, nearer, s.outline);
       }
     }
-    _outline(whole, colour);
+    if (!front) return _outline(whole, colour);
+    // Lined where they hang from the crown, not round their roots on it.
+    canvas.save();
+    canvas.clipPath(Path.combine(PathOperation.difference,
+        Path()..addRect(whole.getBounds().inflate(u)), shell));
+    _outline(locks, colour);
+    canvas.restore();
   }
 
   void _backHair() {
@@ -3807,17 +3868,7 @@ class _Drawing {
     // curves round the head as it turns: a sliver at each side straight on,
     // half the head side on, all of it from behind.
     if (dna.hairStyle != HairStyle.bald) {
-      if (_backOfHead(w, h) case var back?) {
-        _inBody(BodyLayer.hairBack, () {
-          _solid(back.getBounds(), dna.hair, (p) => canvas.drawPath(back, p));
-          canvas.drawPath(
-              head,
-              Paint()
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = edge
-                ..color = _shade(dna.hair));
-        });
-      }
+      _inBody(BodyLayer.hairBase, () => _hairBase(w, h, head));
     }
     if (facing > -0.2 && !dna.species.animal) {
       _inBody(BodyLayer.nose,
