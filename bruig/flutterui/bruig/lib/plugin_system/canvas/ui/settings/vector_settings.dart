@@ -991,6 +991,15 @@ Widget _brushPicker(CanvasController controller) {
             }
           },
         ),
+        // A line, a fill, or both -- never neither: turning one off turns
+        // the other on.
+        CanvasToggle(
+          key: const ValueKey("vectorBrushLine"),
+          label: "Line",
+          value: brush.line || !brush.fill,
+          onChanged: (v) => controller.vectorBrush =
+              brush.copyWith(line: v, fill: v ? brush.fill : true),
+        ),
         // A fill with no line has no line colour to choose.
         if (brush.line || !brush.fill)
           CanvasColorButton(
@@ -1003,7 +1012,8 @@ Widget _brushPicker(CanvasController controller) {
           key: const ValueKey("vectorBrushFill"),
           label: "Fill",
           value: brush.fill,
-          onChanged: (v) => controller.vectorBrush = brush.copyWith(fill: v),
+          onChanged: (v) => controller.vectorBrush =
+              brush.copyWith(fill: v, line: v ? brush.line : true),
         ),
         // The fill colour by the Fill switch, and the quick fill by that:
         // both fill with it.

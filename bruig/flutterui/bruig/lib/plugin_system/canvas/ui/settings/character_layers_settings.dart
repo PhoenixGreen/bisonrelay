@@ -16,6 +16,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/image_layer_settings.dart' show LayersAddButton;
 import 'package:flutter/material.dart';
 
 // character_layers_settings.dart is a sketched character's Layers: every
@@ -94,8 +95,13 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
       ].join(" · "),
       initiallyOpen: true,
       children: [
-        _viewStrip(controller, e, write, begin, commit),
-        _views(controller, e, write, begin, commit),
+        ViewsStrip(
+            key: ValueKey("characterViewsStrip-${e.id}"),
+            controller: controller,
+            character: e,
+            write: write,
+            begin: begin,
+            commit: commit),
         // The face and the limbs, while they are being set on the canvas.
         if (controller.editFace || controller.editRig)
           _rigging(controller, e, write, begin, commit),
@@ -113,6 +119,11 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
             commit();
           },
           onSolo: (key) => controller.soloLayer(e.id, key),
+          apart: {
+            for (var r in rows)
+              if (controller.layerTakenApart(e.id, r.key)) r.key,
+          },
+          onPutBack: (key) => controller.putCharacterLayerBack(e.id, key),
           onDraw: (key) {
             // Drawing on it already: done. Otherwise, taken apart on this
             // view -- its own shapes, to edit -- and the tools on it.
@@ -205,140 +216,154 @@ Widget characterLayersSection(BuildContext context, CanvasController controller,
       ]);
 }
 
-/// _viewStrip is the character from each of its views, side by side --
+/// ViewsStrip is the character from each of its views, side by side --
 /// what a change to a layer does on every one of them -- the view it is
-/// seen from lit, and a tap on another showing that one.
-Widget _viewStrip(CanvasController controller, CharacterElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
-  var frame = controller.frame;
-  var now = e.viewKey(e.inView(e.poseAtFrame(frame)));
-  var views = panelOptions(e, adding: false);
-  return CanvasTiles<String>(
-    key: const ValueKey("characterViewStrip"),
-    label: "Views",
-    help: "The character from each of its views, as it is drawn there: what "
-        "changing a layer does on every one. Pick one to see it from there "
-        "on the canvas -- and to draw on it.",
-    scrolls: true,
-    tileWidth: 64,
-    previewHeight: 96,
-    tiles: [
-      for (var (key, label) in views)
-        CanvasTile(key, label.split(" · ").first,
-            drawnFrom: "${identityHashCode(e)}|$key|$frame",
-            paint: (canvas, size) {
-              var shown = showPanel(controller, e, key);
-              var b = e.bounds;
-              var k = math.min(size.width / b.width, size.height / b.height);
-              canvas.translate((size.width - b.width * k) / 2, (size.height - b.height * k) / 2);
-              canvas.scale(k);
-              canvas.translate(-b.left, -b.top);
-              paintElement(canvas, shown, frame);
-            }),
-    ],
-    selected: (key) => key == now,
-    keyOf: (key) => "characterView-$key",
-    onPick: (key) {
-      begin();
-      write(showPanel(controller, e, key));
-      commit();
-    },
-  );
+/// seen from lit, a tap on another showing that one; and over them, the
+/// view seen taken away or put back as it is made, and the views to add:
+/// of the twenty a sketch can have, the ones it has not, or a view of a
+/// pose.
+class ViewsStrip extends StatefulWidget {
+  final CanvasController controller;
+  final CharacterElement character;
+  final SettingsWrite write;
+  final VoidCallback begin;
+  final VoidCallback commit;
+  const ViewsStrip(
+      {required this.controller,
+      required this.character,
+      required this.write,
+      required this.begin,
+      required this.commit,
+      super.key});
+
+  @override
+  State<ViewsStrip> createState() => ViewsStripState();
 }
 
-/// _views is what is done with the views themselves: laid out on the
-/// canvas, added -- of the twenty a sketch can have, the ones it has not --
-/// or of a pose; the one it is seen from taken away, or put back as it is
-/// made.
-Widget _views(CanvasController controller, CharacterElement e,
-    SettingsWrite write, VoidCallback begin, VoidCallback commit) {
-  void now(CharacterElement next) {
-    begin();
-    write(next);
-    commit();
+class ViewsStripState extends State<ViewsStrip> {
+  bool _adding = false;
+
+  void _now(CharacterElement next) {
+    widget.begin();
+    widget.write(next);
+    widget.commit();
   }
 
-  var frame = controller.frame, rate = controller.document.frameRate;
-  var pose = e.inView(e.poseAtFrame(frame));
-  var turn = pose.panelTurn, tilt = pose.panelTilt;
-  var key = e.viewKey(e.poseAtFrame(frame));
-  var (own, mirrored) = e.drawingAt(key);
-  var edited = (!mirrored && !own.isEmpty) ||
-      e.dna.wardrobe.any((g) => !g.drawingAt(key).$2 && !g.drawingAt(key).$1.isEmpty);
-  return CanvasControlGroup(
-      key: const ValueKey("characterViews"),
-      label: "On the views",
-      help: "A sketch starts with three views -- front, side and back -- and "
-          "is drawn from the nearest one however it turns. Add others as "
-          "they are wanted: three-quarters, from above, from below, from the "
-          "top -- or a view of a pose, drawn when it is in that pose. A side "
-          "turned the other way is its mirror until it is drawn on.",
-      children: [
-        CanvasToggle(
-          key: const ValueKey("characterTurnaroundToggle"),
-          label: "Lay them out on the canvas",
-          value: controller.showTurnaround,
-          onChanged: (v) => controller.showTurnaround = v,
+  /// _addPose adds a view of the pose called [name] -- or, empty, the
+  /// pose it is in now -- from the panel it is seen from.
+  void _addPose(String name) {
+    var c = widget.controller, e = widget.character;
+    var frame = c.frame;
+    var seen = e.inView(e.poseAtFrame(frame));
+    var now0 = e.poseAtFrame(frame);
+    var posed = name.isEmpty
+        ? now0
+        : [...posePresets, ...actionPoses].firstWhere((p) => p.name == name).pose;
+    if (name.isEmpty) {
+      var n = 1;
+      while (e.views.any((v) => v.pose == "Pose $n")) {
+        n++;
+      }
+      name = "Pose $n";
+    }
+    var base = CharacterView.of(seen.panelTurn, seen.panelTilt);
+    var view = CharacterView(base.turn, base.tilt, pose: name, posed: posed);
+    var next = e.withView(base).withView(view);
+    _now(c.characterPosed(next, next.inView(posed.withTurn(seen.panelTurn).withTilt(seen.panelTilt))));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var controller = widget.controller, e = widget.character;
+    var theme = ThemeNotifier.of(context);
+    var frame = controller.frame, rate = controller.document.frameRate;
+    var now = e.viewKey(e.inView(e.poseAtFrame(frame)));
+    var views = panelOptions(e, adding: false);
+    var key = e.viewKey(e.poseAtFrame(frame));
+    var (own, mirrored) = e.drawingAt(key);
+    var edited = (!mirrored && !own.isEmpty) ||
+        e.dna.wardrobe.any((g) => !g.drawingAt(key).$2 && !g.drawingAt(key).$1.isEmpty);
+    var toAdd = [for (var v in CharacterView.all) if (!e.views.contains(v)) v];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Tooltip(
+            message: "A sketch starts with three views -- front, side and back -- and is "
+                "drawn from the nearest one however it turns. Add others as they are "
+                "wanted, or a view of a pose, drawn when it is in that pose.",
+            child: Text("Views",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colors.onSurface)),
+          ),
         ),
-        CanvasDropdown<String>(
+        // The view seen taken away -- front, side and back stay: a
+        // character needs a view, and these are where a turnaround starts.
+        CanvasIconButton(
+          key: const ValueKey("characterDrawingViewRemove"),
+          tight: true,
+          icon: Icons.remove_circle_outline,
+          tooltip: "Remove this view",
+          onPressed: e.views.length > 1 ? () => _now(e.withView(viewOfKey(e, key), on: false)) : null,
+        ),
+        CanvasIconButton(
+          key: const ValueKey("characterViewPutBack"),
+          tight: true,
+          icon: Icons.refresh,
+          tooltip: "Put this view back as it is made",
+          onPressed: edited ? () => _now(putPanelBack(e, frame, rate)) : null,
+        ),
+        LayersAddButton(
           key: const ValueKey("characterViewAdd"),
-          label: "Add a view",
-          value: "",
-          options: [
-            ("", "Pick a view…"),
-            for (var v in CharacterView.all)
-              if (!e.views.contains(v)) (v.key, v.label),
-          ],
-          onChanged: (k) {
-            if (k.isEmpty) return;
-            now(showPanel(controller, e, "add:$k"));
-          },
+          open: _adding,
+          onPressed: () => setState(() => _adding = !_adding),
         ),
-        // A view of a pose: drawn when it is in that pose, from here.
-        CanvasDropdown<String?>(
-          key: const ValueKey("characterDrawingPoseView"),
-          label: "Add a pose view",
-          value: null,
-          options: [
-            (null, "Pick a pose…"),
-            ("", "The pose it is in now"),
-            for (var p in posePresets) (p.name, p.name),
+      ]),
+      if (_adding)
+        CanvasTiles<String>(
+          key: const ValueKey("characterViewAddTiles"),
+          columns: 3,
+          previewHeight: 26,
+          tiles: [
+            for (var v in toAdd) CanvasTile("view:${v.key}", v.label, icon: Icons.threesixty),
+            const CanvasTile("pose:", "The pose it is in", icon: Icons.accessibility_new),
+            for (var p in [...posePresets, ...actionPoses])
+              CanvasTile("pose:${p.name}", p.name, icon: Icons.accessibility_new),
           ],
-          onChanged: (name) {
-            if (name == null) return;
-            var now0 = e.poseAtFrame(frame);
-            var posed =
-                name.isEmpty ? now0 : posePresets.firstWhere((p) => p.name == name).pose;
-            if (name.isEmpty) {
-              var n = 1;
-              while (e.views.any((v) => v.pose == "Pose $n")) {
-                n++;
-              }
-              name = "Pose $n";
+          selected: (_) => false,
+          keyOf: (k) => "characterViewAdd-${k.replaceFirst(":", "-")}",
+          onPick: (k) {
+            setState(() => _adding = false);
+            if (k.startsWith("view:")) {
+              _now(showPanel(controller, e, "add:${k.substring(5)}"));
+            } else {
+              _addPose(k.substring(5));
             }
-            var base = CharacterView.of(turn, tilt);
-            var view = CharacterView(base.turn, base.tilt, pose: name, posed: posed);
-            var next = e.withView(base).withView(view);
-            now(controller.characterPosed(next, next.inView(posed.withTurn(turn).withTilt(tilt))));
           },
         ),
-        // Front, side and back stay: a character needs a view, and these
-        // are where a turnaround starts.
-        if (e.views.length > 1)
-          CanvasTextButton(
-            key: const ValueKey("characterDrawingViewRemove"),
-            label: "Remove this view",
-            icon: Icons.remove_circle_outline,
-            onPressed: () => now(e.withView(viewOfKey(e, key), on: false)),
-          ),
-        if (edited)
-          CanvasTextButton(
-            key: const ValueKey("characterViewPutBack"),
-            label: "Put this view back",
-            icon: Icons.restart_alt,
-            onPressed: () => now(putPanelBack(e, frame, rate)),
-          ),
-      ]);
+      CanvasTiles<String>(
+        key: const ValueKey("characterViewStrip"),
+        scrolls: true,
+        tileWidth: 64,
+        previewHeight: 96,
+        tiles: [
+          for (var (key, label) in views)
+            CanvasTile(key, label.split(" · ").first,
+                drawnFrom: "${identityHashCode(e)}|$key|$frame",
+                paint: (canvas, size) {
+                  var shown = showPanel(controller, e, key);
+                  var b = e.bounds;
+                  var k = math.min(size.width / b.width, size.height / b.height);
+                  canvas.translate((size.width - b.width * k) / 2, (size.height - b.height * k) / 2);
+                  canvas.scale(k);
+                  canvas.translate(-b.left, -b.top);
+                  paintElement(canvas, shown, frame);
+                }),
+        ],
+        selected: (key) => key == now,
+        keyOf: (key) => "characterView-$key",
+        onPick: (key) => _now(showPanel(controller, e, key)),
+      ),
+    ]);
+  }
 }
 
 /// _rigging is the face set feature by feature, or the limbs reshaped
@@ -418,6 +443,11 @@ class _LayerList extends StatelessWidget {
   final String? drawingOn;
   final ValueChanged<String> onDraw;
 
+  /// apart is the layers taken apart on the view seen, and onPutBack what
+  /// their refresh does: draws each as it is made again there.
+  final Set<String> apart;
+  final ValueChanged<String>? onPutBack;
+
   /// detail is the picked layer's settings, opened under it.
   final Widget? detail;
   const _LayerList(
@@ -430,6 +460,8 @@ class _LayerList extends StatelessWidget {
       required this.onSolo,
       required this.onDraw,
       this.drawingOn,
+      this.apart = const {},
+      this.onPutBack,
       this.detail,
       super.key});
 
@@ -492,6 +524,15 @@ class _LayerList extends StatelessWidget {
                 ),
               ),
             ),
+            if (apart.contains(r.key) && onPutBack != null)
+              IconButton(
+                key: ValueKey("layerPutBack-${r.key}"),
+                tooltip: "Put ${r.label} back as it is made on this view",
+                iconSize: 16,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => onPutBack!(r.key),
+                icon: Icon(Icons.refresh, color: c.onSurfaceVariant),
+              ),
             IconButton(
               key: ValueKey("layerDraw-${r.key}"),
               tooltip: drawingOn == r.key
@@ -553,33 +594,20 @@ class _LayerList extends StatelessWidget {
 Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row) {
   var pose = e.inView(e.poseAtFrame(controller.frame));
   var apart = controller.layerTakenApart(e.id, row.key);
-  var drawing = controller.drawingOn == e.id &&
-      (controller.drawingLayer == row.key ||
-          (controller.drawingGarment != null &&
-              garmentLayer(controller.drawingGarment!) == row.key));
   return CanvasControlGroup(
       key: const ValueKey("characterLayerView"),
       label: "${row.label} on this view",
       help: "Seen from the ${viewLabel(pose.panelTurn, pose.panelTilt).toLowerCase()}. "
           "Take it apart -- or click its pencil -- to edit its outline point "
           "by point here: the other views stay as they are. Its sliders go on "
-          "shaping it, your edits carried along on top. Draw on it to add "
-          "shapes that go with it. Copy edits to another view to make the "
-          "same change there -- laid on the layer as that view draws it -- "
-          "or mirror them to the side turned the other way.",
+          "shaping it, your edits carried along on top; its refresh puts it "
+          "back as it is made. Copy edits to another view to make the same "
+          "change there -- laid on the layer as that view draws it -- or "
+          "mirror them to the side turned the other way.",
       children: [
         CanvasStatus(apart
             ? "Edited on this view. Its sliders still shape it here, with your edits on top."
             : "Drawn from its sliders on this view."),
-        CanvasTextButton(
-          key: const ValueKey("characterLayerDraw"),
-          label: drawing ? "Stop drawing on it" : "Draw on it",
-          icon: Icons.draw_outlined,
-          primary: drawing,
-          onPressed: () => drawing
-              ? controller.stopDrawingOnCharacter()
-              : controller.drawOnCharacter(e.id, layer: row.key),
-        ),
         if (apart) ...[
           // The same edit on the other views: each as that view draws it.
           CanvasDropdown<String>(
@@ -606,19 +634,14 @@ Widget _onThisView(CanvasController controller, CharacterElement e, LayerRow row
               onPressed: () => controller.mirrorCharacterLayer(e.id, row.key),
             ),
         ],
-        apart
-            ? CanvasTextButton(
-                key: const ValueKey("characterLayerPutBack"),
-                label: "Put it back here",
-                icon: Icons.restart_alt,
-                onPressed: () => controller.putCharacterLayerBack(e.id, row.key),
-              )
-            : CanvasTextButton(
-                key: const ValueKey("characterLayerTakeApart"),
-                label: "Take it apart here",
-                icon: Icons.scatter_plot_outlined,
-                onPressed: () => controller.takeApartCharacterLayer(e.id, row.key),
-              ),
+        // Put back by the refresh on its row.
+        if (!apart)
+          CanvasTextButton(
+            key: const ValueKey("characterLayerTakeApart"),
+            label: "Take it apart here",
+            icon: Icons.scatter_plot_outlined,
+            onPressed: () => controller.takeApartCharacterLayer(e.id, row.key),
+          ),
       ]);
 }
 

@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/vector_element.dart';
 
@@ -306,12 +308,21 @@ VectorShape mapShape(VectorShape shape,
         x: x, y: y, inX: ix - x, inY: iy - y, outX: ox - x, outY: oy - y);
   }
 
+  // The tint, shadow and highlight laid on it, and what was rubbed out of
+  // it, are strokes of their own over it: moved as its points are.
+  Offset point(Offset p) {
+    var (x, y) = to(p.dx, p.dy);
+    return Offset(x, y);
+  }
+
   return shape.copyWith(
     paths: [
       for (var p in shape.paths)
         p.copyWith(nodes: [for (var n in p.nodes) node(n)]),
     ],
     strokeWidth: shape.strokeWidth * scale,
+    tints: [for (var t in shape.tints) t.mapped(point, scale: scale)],
+    erasures: [for (var t in shape.erasures) t.mapped(point, scale: scale)],
   );
 }
 

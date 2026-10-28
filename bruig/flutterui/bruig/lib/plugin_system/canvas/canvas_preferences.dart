@@ -29,6 +29,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _filesFolderKey = "canvasFilesFolder";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
+  static const _drawBarWidthKey = "canvasDrawBarWidth";
   static const _keyframesShownKey = "canvasKeyframesShown";
   static const _scenesShownKey = "canvasScenesShown";
   static const _cuesShownKey = "canvasCuesShown";
@@ -155,6 +156,19 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
   }
 
+  /// drawBarWidth is how wide a sketched character's bar over the canvas
+  /// was dragged to, or nought for its usual width -- see
+  /// character_draw_bar.dart. One width, whatever tool is in hand.
+  double get drawBarWidth => _drawBarWidth;
+  double _drawBarWidth = 0;
+
+  set drawBarWidth(double value) {
+    if (_drawBarWidth == value) return;
+    _drawBarWidth = value;
+    StorageManager.saveString(_drawBarWidthKey, value.toStringAsFixed(1));
+    notifyListeners();
+  }
+
   /// keyframesShown, scenesShown and cuesShown are which of the timeline's
   /// rows were showing -- the keyframes, the scenes, the cues on the ruler --
   /// kept between visits, like the timeline itself. All shown to begin with.
@@ -219,6 +233,8 @@ class CanvasPreferences extends ChangeNotifier {
     _timelineHeight =
         double.tryParse(await StorageManager.readString(_timelineHeightKey)) ??
             0;
+    _drawBarWidth =
+        double.tryParse(await StorageManager.readString(_drawBarWidthKey)) ?? 0;
     try {
       var saved = jsonDecode(await StorageManager.readString(_publishKey));
       if (saved is Map<String, dynamic>) _publish = Map.unmodifiable(saved);

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:bruig/components/paint_spec.dart';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -282,6 +283,36 @@ void main() {
       expect(find.byKey(const ValueKey("vectorTools")), findsNothing);
     });
 
+    testWidgets("the bar is one width whatever the tool, dragged wider by its grip",
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+          const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+          dna: dna)));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      tester.view.physicalSize = const Size(1400, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(host(c));
+      await tester.pumpAndSettle();
+      c.drawOnCharacter("c");
+      await tester.pumpAndSettle();
+      double width() => tester.getSize(find.byKey(const ValueKey("characterDrawBar"))).width;
+      var at = width();
+      for (var tool in [VectorTool.pencil, VectorTool.tint, VectorTool.knife, VectorTool.select]) {
+        c.vectorTool = tool;
+        await tester.pumpAndSettle();
+        expect(width(), at, reason: "${tool.name}: no jump");
+      }
+      await tester.drag(find.byKey(const ValueKey("characterDrawBarGrip")), const Offset(-50, 0));
+      await tester.pumpAndSettle();
+      expect(width(), lessThan(at - 40), reason: "narrower, both ways from the middle");
+      var prefs = Provider.of<CanvasPreferences>(
+          tester.element(find.byKey(const ValueKey("characterDrawBar"))), listen: false);
+      expect(prefs.drawBarWidth, closeTo(width(), 1), reason: "kept for next time");
+    });
+
     testWidgets("the bar is one line, no tools on it, the tip at its end",
         (tester) async {
       SharedPreferences.setMockInitialValues({});
@@ -425,5 +456,31 @@ void main() {
     var (d, _) = e.drawingAt(drawnKey(e, 0, 24));
     expect(d.layers, [BodyLayer.head.name]);
     expect(opaque(await pixels()), greaterThan(20));
+  });
+
+  test("a tint, a shade and a rub-out laid on a layer stay where they were laid", () {
+    var c = CanvasController(CanvasDocument(frames: 24).addElement(CharacterElement(
+        const ElementBase(id: "c", x: 100, y: 40, width: 160, height: 340),
+        dna: dna)));
+    addTearDown(c.dispose);
+    c.takeApartCharacterLayer("c", BodyLayer.head.name);
+    c.drawOnCharacter("c", layer: BodyLayer.head.name);
+    var proxy = c.editingVector!;
+    var shape = proxy.shapes!.first;
+    var at = shapeCentre(shape);
+    const paint = PaintSpec(Color(0xFF00FF00));
+    var tinted = shape.copyWith(
+      tints: [VectorTint(points: [at, at + const Offset(4, 0)], paint: paint, width: 6)],
+      erasures: [VectorTint(points: [at], paint: paint, width: 3, erase: true)],
+    );
+    c.replaceElement(proxy.copyWith(shapes: [tinted, ...proxy.shapes!.skip(1)]));
+    c.stopDrawingOnCharacter();
+    // Drawn on again: there, as laid.
+    c.drawOnCharacter("c", layer: BodyLayer.head.name);
+    var back = c.editingVector!.shapes!.first;
+    expect(back.tints, hasLength(1));
+    expect((back.tints.first.points.first - at).distance, lessThan(0.5));
+    expect(back.tints.first.width, closeTo(6, 0.01));
+    expect((back.erasures.first.points.first - at).distance, lessThan(0.5));
   });
 }

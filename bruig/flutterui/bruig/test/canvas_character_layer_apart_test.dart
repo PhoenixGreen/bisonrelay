@@ -168,13 +168,18 @@ void main() {
 
       await tap("characterLayerTakeApart");
       expect(c.layerTakenApart("c", eyes), isTrue);
-      await tap("characterLayerDraw");
+      // Drawn on and put down by its pencil; no buttons of its own for it.
+      expect(find.byKey(const ValueKey("characterLayerDraw")), findsNothing);
+      await tap("layerDraw-$eyes");
       expect(c.drawingOn, "c");
       expect(c.drawingLayer, eyes);
-      await tap("characterLayerDraw");
+      await tap("layerDraw-$eyes");
       expect(c.drawingOn, isNull);
-      await tap("characterLayerPutBack");
+      // Put back by the refresh on its row.
+      expect(find.byKey(const ValueKey("characterLayerPutBack")), findsNothing);
+      await tap("layerPutBack-$eyes");
       expect(c.layerTakenApart("c", eyes), isFalse);
+      expect(find.byKey(ValueKey("layerPutBack-$eyes")), findsNothing, reason: "nothing to put back");
       expect(tester.takeException(), isNull);
     });
   });

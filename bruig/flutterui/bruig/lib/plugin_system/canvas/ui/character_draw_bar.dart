@@ -8,7 +8,11 @@ import 'package:bruig/plugin_system/canvas/ui/settings/character_drawing_setting
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_tool_hint.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'dart:math' as math;
+
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 // character_draw_bar.dart is what floats over the canvas while a sketched
 // character is picked, as a picture's bar does (see image_tool_hint.dart),
@@ -267,9 +271,11 @@ class CharacterDrawBar extends StatelessWidget {
             ],
           ]);
 
-          return Container(
+          return _BarWidth(
+              builder: (width, grip) => Container(
             key: const ValueKey("characterDrawBar"),
-            padding: const EdgeInsets.fromLTRB(6, 3, 6, 3),
+            width: width,
+            padding: const EdgeInsets.fromLTRB(6, 3, 0, 3),
             decoration: BoxDecoration(
               color: theme.colors.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(22),
@@ -283,17 +289,78 @@ class CharacterDrawBar extends StatelessWidget {
             ),
             // Captions in hover text: the bar is one line, and the controls
             // are known by what is in them.
-            child: CanvasControlScope(
-              maxWidth: 240,
-              hoverCaptions: true,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: row,
+            child: Row(children: [
+              Expanded(
+                child: CanvasControlScope(
+                  maxWidth: 240,
+                  hoverCaptions: true,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: row,
+                  ),
+                ),
               ),
-            ),
-          );
+              grip,
+            ]),
+          ));
         },
       );
+}
+
+/// drawBarWidthUsual is how wide the bar is until it is dragged wider or
+/// narrower.
+const double drawBarWidthUsual = 720;
+
+/// _BarWidth gives the bar one width -- whatever is on it, so it does not
+/// jump as the tool in hand changes -- that a grip at its end drags wider
+/// or narrower, kept between visits; never wider than there is room for.
+class _BarWidth extends StatefulWidget {
+  final Widget Function(double width, Widget grip) builder;
+  const _BarWidth({required this.builder});
+
+  @override
+  State<_BarWidth> createState() => _BarWidthState();
+}
+
+class _BarWidthState extends State<_BarWidth> {
+  double? _dragged;
+
+  @override
+  Widget build(BuildContext context) {
+    var prefs = Provider.of<CanvasPreferences?>(context);
+    var theme = ThemeNotifier.of(context);
+    return LayoutBuilder(builder: (context, room) {
+      var most = room.maxWidth.isFinite ? room.maxWidth : 1600.0;
+      var saved = prefs?.drawBarWidth ?? 0;
+      var width = (_dragged ?? (saved > 0 ? saved : drawBarWidthUsual)).clamp(320.0, math.max(320.0, most)).toDouble();
+      var grip = MouseRegion(
+        cursor: SystemMouseCursors.resizeLeftRight,
+        child: GestureDetector(
+          key: const ValueKey("characterDrawBarGrip"),
+          behavior: HitTestBehavior.opaque,
+          // The bar sits in the middle: its end moved, it grows both ways.
+          onHorizontalDragUpdate: (d) =>
+              setState(() => _dragged = (width + d.delta.dx * 2).clamp(320.0, math.max(320.0, most))),
+          onHorizontalDragEnd: (_) {
+            if (_dragged case var w?) prefs?.drawBarWidth = w;
+          },
+          child: SizedBox(
+            width: 14,
+            height: 30,
+            child: Center(
+              child: Container(
+                width: 3,
+                height: 16,
+                decoration: BoxDecoration(
+                    color: theme.colors.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+          ),
+        ),
+      );
+      return widget.builder(width, grip);
+    });
+  }
 }
 
 /// _Tip is what to do with the tool in hand, and the way back out: to the

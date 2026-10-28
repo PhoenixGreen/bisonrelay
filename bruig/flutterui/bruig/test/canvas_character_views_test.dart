@@ -189,19 +189,27 @@ void main() {
             home: Scaffold(body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
       ));
       await tester.pumpAndSettle();
-      tester.widget<CanvasDropdown<String?>>(find.byKey(const ValueKey("characterDrawingPoseView")))
-          .onChanged("Wave");
-      await tester.pumpAndSettle();
+      Future<void> tap(String key) async {
+        var f = find.byKey(ValueKey(key));
+        await tester.ensureVisible(f);
+        await tester.pumpAndSettle();
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      // Views are added from the Add button over the strip: no laying out
+      // of them here -- that is on the bar.
+      expect(find.byKey(const ValueKey("characterTurnaroundToggle")), findsNothing);
+      await tap("characterViewAdd");
+      await tap("characterViewAdd-pose-Wave");
       var e = c.document.elementById("c") as CharacterElement;
       expect(e.views, contains(view));
       expect(e.viewKey(e.poseAtFrame(0)), "0,0@Wave", reason: "in the pose, seen from its view");
       // A view of an angle, added: turned to it.
-      var add = tester.widget<CanvasDropdown<String>>(
-          find.byKey(const ValueKey("characterViewAdd")));
-      expect(add.options.map((o) => o.$1), isNot(contains(panelKey(0, 0))),
+      await tap("characterViewAdd");
+      expect(find.byKey(ValueKey("characterViewAdd-view-${panelKey(0, 0)}")), findsNothing,
           reason: "only views it has not got");
-      add.onChanged(panelKey(45, 0));
-      await tester.pumpAndSettle();
+      await tap("characterViewAdd-view-${panelKey(45, 0)}");
       e = c.document.elementById("c") as CharacterElement;
       expect(e.views, contains(const CharacterView(45, 0)));
       expect(e.inView(e.poseAtFrame(0)).turn, 45);
