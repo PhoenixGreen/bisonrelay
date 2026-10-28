@@ -15,6 +15,11 @@ import 'package:flutter/foundation.dart';
 // is laid whole, repeating from where the stroke began; painted at random,
 // each cell takes one of its tiles, some left empty if asked. The tile to
 // be laid shows faintly under the pointer. Each stroke is one undo.
+//
+// On an objects layer the pen stands things anywhere, not in cells: a
+// stamp put down where it is pressed -- on the grid, or not -- and moved
+// till the pen lifts; one under the pen rubbed out or moved; or a spread of
+// them scattered about where the pen goes, each a little apart.
 
 /// TileTool is what painting a map does with the pen.
 enum TileTool {
@@ -23,7 +28,16 @@ enum TileTool {
   line("Line"),
   rect("Box"),
   fill("Fill"),
-  picker("Pick a tile");
+  picker("Pick a tile"),
+  // On an objects layer: one stood there picked up and moved, and a spread
+  // of them scattered.
+  move("Move"),
+  scatter("Scatter");
+
+  /// forObjects is whether it is a tool for an objects layer, and
+  /// forCells for a layer of cells.
+  bool get forObjects => this != line && this != rect && this != fill;
+  bool get forCells => this != move && this != scatter;
 
   final String label;
   const TileTool(this.label);
@@ -56,6 +70,15 @@ class TilePaintSession extends ChangeNotifier {
   math.Random rng = math.Random();
   bool grid = true;
 
+  /// snap stands a thing on the grid: its feet on a line between cells,
+  /// its stamp's tiles in line with the cells.
+  bool snap = true;
+
+  /// spread is how far about the pen things are scattered, and apart how
+  /// far apart they stand at least, in cells.
+  double spread = 2;
+  double apart = 1.5;
+
   /// hover is the cell under the pointer, when it is over the map.
   (int, int)? hover;
 
@@ -73,8 +96,20 @@ class TilePaintSession extends ChangeNotifier {
     return m == null ? 0 : i.clamp(0, math.max(0, m.layers.length - 1)).toInt();
   }
 
-  void set({TileTool? tool, TileRef? brush, TileStamp? stamp, bool? random, double? gaps, bool? grid}) {
+  void set(
+      {TileTool? tool,
+      TileRef? brush,
+      TileStamp? stamp,
+      bool? random,
+      double? gaps,
+      bool? grid,
+      bool? snap,
+      double? spread,
+      double? apart}) {
     if (tool != null) this.tool = tool;
+    if (snap != null) this.snap = snap;
+    if (spread != null) this.spread = spread.clamp(0.5, 20.0);
+    if (apart != null) this.apart = apart.clamp(0.25, 20.0);
     if (brush != null) this.stamp = TileStamp.one(brush);
     if (stamp != null && stamp.cells.isNotEmpty) this.stamp = stamp;
     if (random != null) this.random = random;
@@ -105,6 +140,38 @@ class TilePaintSession extends ChangeNotifier {
   /// _picking is the box being dragged out with the picker.
   (int, int)? _pickFrom;
 
+  /// onObjects is whether the layer painted is an objects layer.
+  bool get onObjects => map?.layers[layer].isObjects ?? false;
+
+  /// _point is the pointer, counted in cells, when it is over the map.
+  ui.Offset? _point;
+
+  /// _objects is the objects layer as the stroke under way has it; _held
+  /// the one being put down or moved, and _grip where on it the pen holds.
+  List<TileObject>? _objects;
+  int? _held;
+  ui.Offset _grip = ui.Offset.zero;
+  ui.Offset? _scattered;
+
+  /// standAt is where a stamp stands with its feet at [p], in cells: on the
+  /// grid when snapping, its tiles in line with the cells.
+  ui.Offset standAt(ui.Offset p, TileStamp s) {
+    if (!snap) return p;
+    var w = s.width;
+    return ui.Offset((p.dx - w / 2).roundToDouble() + w / 2, p.dy.roundToDouble());
+  }
+
+  /// objectAt is the top thing on the objects layer under [doc], or null.
+  int? objectAt(TileMapElement m, List<TileObject> objects, ui.Offset doc) {
+    // The nearest the reader is drawn last: looked for first.
+    var order = [for (var i = 0; i < objects.length; i++) i]
+      ..sort((a, b) => objects[b].y.compareTo(objects[a].y));
+    for (var i in order) {
+      if (m.objectRect(objects[i]).contains(doc)) return i;
+    }
+    return null;
+  }
+
   /// view is what the renderer shows of [e] while it is painted.
   TileEditView view(TileMapElement e) {
     var ghost = <(int, int, TileRef)>[];
@@ -121,15 +188,31 @@ class TilePaintSession extends ChangeNotifier {
     if ((_pickFrom, hover) case ((var a, var b), (var c, var d))) {
       box = (math.min(a, c), math.min(b, d), math.max(a, c), math.max(b, d));
     }
-    return (working: _working, grid: grid, hover: hover, ghost: ghost, box: box);
+    TileObject? standing;
+    if (onObjects) {
+      ghost.clear();
+      if (_point case var p? when _objects == null && tool == TileTool.paint) {
+        var pool = random ? TileStamp.one(brush) : stamp;
+        var at = standAt(p, pool);
+        standing = TileObject(at.dx, at.dy, pool);
+      }
+    }
+    return (working: _working, grid: grid, hover: hover, ghost: ghost, standing: standing, box: box);
   }
 
   /// hoverAt follows the pointer at [doc]: the cell under it lit.
   void hoverAt(ui.Offset? doc) {
     var m = map;
     (int, int)? next;
-    if (m != null && doc != null && m.bounds.contains(doc)) next = m.cellAt(doc);
-    if (next == hover) return;
+    ui.Offset? point;
+    if (m != null && doc != null && m.bounds.contains(doc)) {
+      next = m.cellAt(doc);
+      point = m.inCells(doc);
+    }
+    // A thing to be stood follows the pointer itself; a tile, the cell.
+    var moved = onObjects && tool == TileTool.paint && point != _point;
+    _point = point;
+    if (next == hover && !moved) return;
     hover = next;
     _shown();
   }
@@ -140,13 +223,17 @@ class TilePaintSession extends ChangeNotifier {
     if (m == null || m.layers.isEmpty) return;
     var l = m.layers[layer];
     var at = m.cellAt(doc);
+    if (l.isObjects) {
+      _objectsStart(m, l, doc);
+      return;
+    }
     if (tool == TileTool.picker) {
       _pickFrom = at;
       hover = at;
       _shown();
       return;
     }
-    if (l.locked) return;
+    if (l.locked || !tool.forCells) return;
     _before = l.cells;
     _cells = Map.of(l.cells);
     _from = at;
@@ -169,9 +256,92 @@ class TilePaintSession extends ChangeNotifier {
     tool = TileTool.paint;
   }
 
+  /// _objectsStart puts the pen down at [doc] on objects layer [l].
+  void _objectsStart(TileMapElement m, TileLayer l, ui.Offset doc) {
+    var p = m.inCells(doc);
+    var hit = objectAt(m, l.objects, doc);
+    if (tool == TileTool.picker) {
+      if (hit != null) {
+        stamp = l.objects[hit].stamp;
+        tool = TileTool.paint;
+      }
+      _shown();
+      return;
+    }
+    if (l.locked || !tool.forObjects) return;
+    var objects = [...l.objects];
+    _objects = objects;
+    _held = null;
+    _scattered = null;
+    switch (tool) {
+      case TileTool.paint:
+        var pool = random ? TileStamp.one(stamp.cells[rng.nextInt(stamp.cells.length)].$3) : stamp;
+        var at = standAt(p, pool);
+        objects.add(TileObject(at.dx, at.dy, pool));
+        _held = objects.length - 1;
+        _grip = ui.Offset.zero;
+      case TileTool.move:
+        if (hit != null) {
+          _held = hit;
+          _grip = ui.Offset(objects[hit].x, objects[hit].y) - p;
+        }
+      case TileTool.erase:
+        if (hit != null) objects.removeAt(hit);
+      case TileTool.scatter:
+        _scatter(p, objects);
+      default:
+        break;
+    }
+    _showObjects(m);
+  }
+
+  /// _scatter stands things about [p], in cells: a few tries each a little
+  /// way off, kept where none stands nearer than [apart].
+  void _scatter(ui.Offset p, List<TileObject> objects) {
+    if (_scattered case var last? when (p - last).distance < apart / 2) return;
+    _scattered = p;
+    for (var k = 0; k < 4; k++) {
+      var r = spread * math.sqrt(rng.nextDouble()), a = rng.nextDouble() * 2 * math.pi;
+      var pool = random || stamp.cells.length == 1 ? TileStamp.one(stamp.cells[rng.nextInt(stamp.cells.length)].$3) : stamp;
+      var at = standAt(p + ui.Offset(math.cos(a) * r, math.sin(a) * r), pool);
+      if (objects.any((o) => (ui.Offset(o.x, o.y) - at).distance < apart)) continue;
+      objects.add(TileObject(at.dx, at.dy, pool));
+    }
+  }
+
+  void _showObjects(TileMapElement m) {
+    _working = m.withLayer(layer, m.layers[layer].copyWith(objects: List.unmodifiable(_objects!)));
+    _shown();
+  }
+
+  /// _objectsTo carries the pen on to [doc] on the objects layer.
+  void _objectsTo(TileMapElement m, ui.Offset doc) {
+    var objects = _objects!;
+    var p = m.inCells(doc);
+    _point = p;
+    switch (tool) {
+      case TileTool.paint || TileTool.move:
+        if (_held case var i?) {
+          var at = standAt(p + _grip, objects[i].stamp);
+          objects[i] = objects[i].movedTo(at.dx, at.dy);
+        }
+      case TileTool.erase:
+        if (objectAt(m, objects, doc) case var hit?) objects.removeAt(hit);
+      case TileTool.scatter:
+        _scatter(p, objects);
+      default:
+        return;
+    }
+    _showObjects(m);
+  }
+
   /// strokeTo carries the pen on to [doc].
   void strokeTo(ui.Offset doc) {
     var m = map, from = _from;
+    if (m != null && _objects != null) {
+      _objectsTo(m, doc);
+      return;
+    }
     if (m != null && _pickFrom != null) {
       _pickTo(m, doc);
       return;
@@ -188,7 +358,7 @@ class TilePaintSession extends ChangeNotifier {
         _show(m);
       case TileTool.line || TileTool.rect:
         _lay(m, from, at);
-      case TileTool.fill || TileTool.picker:
+      case TileTool.fill || TileTool.picker || TileTool.move || TileTool.scatter:
         return;
     }
   }
@@ -244,7 +414,7 @@ class TilePaintSession extends ChangeNotifier {
         }
       case TileTool.paint || TileTool.erase:
         _dab(at.$1, at.$2);
-      case TileTool.picker:
+      case TileTool.picker || TileTool.move || TileTool.scatter:
         break;
     }
     _show(m);
@@ -285,11 +455,18 @@ class TilePaintSession extends ChangeNotifier {
       return;
     }
     var done = _working;
+    var objects = _objects;
     _working = null;
     _cells = null;
+    _objects = null;
+    _held = null;
     _from = null;
     _before = const {};
-    if (done != null && !mapEquals(done.layers[layer].cells, map?.layers[layer].cells)) {
+    var was = map?.layers[layer];
+    var changed = objects != null
+        ? !listEquals([for (var o in objects) o.toJson().join(",")], [for (var o in was?.objects ?? const <TileObject>[]) o.toJson().join(",")])
+        : !mapEquals(done?.layers[layer].cells, was?.cells);
+    if (done != null && changed) {
       controller.beginInteraction();
       controller.replaceElement(done);
       controller.endInteraction();

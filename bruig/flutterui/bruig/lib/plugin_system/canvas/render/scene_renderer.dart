@@ -382,11 +382,18 @@ void _paintScene(
       if (e is TextElement && e.curve?.hideHost == true) e.curve!.elementId,
   };
 
+  // Figures stood on a map are drawn by it, among the things on it.
+  var onMaps = <String>{
+    for (var e in elements)
+      if (e is TileMapElement && e.visible) ...e.figureIds,
+  };
+
   // Characters standing on a stage are drawn with it, nearest last.
   for (var element in inStageOrder(elements, frame)) {
     if (!element.visible ||
         element.id == skipElement ||
-        hidden.contains(element.id)) {
+        hidden.contains(element.id) ||
+        onMaps.contains(element.id)) {
       continue;
     }
     paintElement(
@@ -935,8 +942,27 @@ void paintElement(
         paintSprite(canvas, bounds, e, frame,
             frameRate: frameRate, images: images, editing: editing);
       case TileMapElement e:
+        // Its figures are drawn among the things stood on it, by their
+        // feet, rather than where they come in the canvas's order.
         paintTileMap(canvas, bounds, e, frame,
-            frameRate: frameRate, images: images, editing: editing);
+            frameRate: frameRate,
+            images: images,
+            editing: editing,
+            figures: document == null
+                ? null
+                : (id) {
+                    var f = document.elementById(id);
+                    if (f is! SpriteElement || !f.visible) return null;
+                    var dy = f.track?.at(frame).dy ?? 0;
+                    return (
+                      f.bounds.bottom + dy,
+                      () => paintElement(canvas, f, frame,
+                          frameRate: frameRate,
+                          images: images,
+                          editing: editing,
+                          document: document)
+                    );
+                  });
       case CharacterElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => paintCharacter(canvas, bounds, e, frame,

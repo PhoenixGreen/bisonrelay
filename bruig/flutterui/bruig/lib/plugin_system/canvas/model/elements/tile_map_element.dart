@@ -75,6 +75,10 @@ class TileSource {
   final int tileW, tileH;
   final int margin, spacing;
 
+  /// animations is the tiles that play, by the tile painted: the tiles it
+  /// shows in turn, and how many a second -- water, a torch, a flag.
+  final Map<int, TileAnimation> animations;
+
   const TileSource({
     required this.sheet,
     this.name = "",
@@ -84,7 +88,16 @@ class TileSource {
     required this.tileH,
     this.margin = 0,
     this.spacing = 0,
+    this.animations = const {},
   });
+
+  /// shownAt is the tile [index] shows [seconds] in: itself, or the frame
+  /// of its animation it has got to.
+  int shownAt(int index, double seconds) {
+    var a = animations[index];
+    if (a == null || a.frames.length < 2) return index;
+    return a.frames[(seconds * a.fps).floor() % a.frames.length];
+  }
 
   int get columns => math.max(1, (sheetW - 2 * margin + spacing) ~/ math.max(1, tileW + spacing));
   int get rows => math.max(1, (sheetH - 2 * margin + spacing) ~/ math.max(1, tileH + spacing));
@@ -106,9 +119,18 @@ class TileSource {
     return tileRect(i).contains(p) ? i : null;
   }
 
-  TileSource copyWith({String? sheet, String? name, int? sheetW, int? sheetH, int? tileW, int? tileH,
-          int? margin, int? spacing}) =>
+  TileSource copyWith(
+          {String? sheet,
+          String? name,
+          int? sheetW,
+          int? sheetH,
+          int? tileW,
+          int? tileH,
+          int? margin,
+          int? spacing,
+          Map<int, TileAnimation>? animations}) =>
       TileSource(
+        animations: animations ?? this.animations,
         sheet: sheet ?? this.sheet,
         name: name ?? this.name,
         sheetW: sheetW ?? this.sheetW,
@@ -128,6 +150,8 @@ class TileSource {
         "th": tileH,
         if (margin != 0) "margin": margin,
         if (spacing != 0) "spacing": spacing,
+        if (animations.isNotEmpty)
+          "animations": {for (var e in animations.entries) "${e.key}": e.value.toJson()},
       };
 
   static TileSource? fromJson(Object? json) {
@@ -144,7 +168,54 @@ class TileSource {
       tileH: n("th", 16).clamp(1, 4096),
       margin: n("margin", 0).clamp(0, 4096),
       spacing: n("spacing", 0).clamp(0, 4096),
+      animations: {
+        if (json["animations"] case Map raw)
+          for (var e in raw.entries)
+            if ((int.tryParse("${e.key}"), TileAnimation.fromJson(e.value)) case (var k?, var a?)) k: a,
+      },
     );
+  }
+}
+
+/// TileAnimation is a tile that plays: the tiles shown in turn, and how
+/// many a second.
+class TileAnimation {
+  final List<int> frames;
+  final double fps;
+  const TileAnimation(this.frames, {this.fps = 4});
+
+  Map<String, dynamic> toJson() => {"frames": frames, "fps": fps};
+
+  static TileAnimation? fromJson(Object? json) {
+    if (json is! Map) return null;
+    var frames = [
+      if (json["frames"] case List raw)
+        for (var f in raw)
+          if (f is num) f.toInt(),
+    ];
+    if (frames.isEmpty) return null;
+    return TileAnimation(frames, fps: jsonDouble(json["fps"], 4).clamp(0.25, 60.0));
+  }
+}
+
+/// TileObject is a thing stood on an objects layer anywhere, not in a
+/// cell: a tree, a rock, a lamp post -- a stamp, standing with the middle
+/// of its bottom at ([x], [y]), counted in cells from the map's top left.
+class TileObject {
+  final double x, y;
+  final TileStamp stamp;
+  const TileObject(this.x, this.y, this.stamp);
+
+  TileObject movedTo(double x, double y) => TileObject(x, y, stamp);
+
+  /// toJson is its place, then its stamp, flat.
+  List<num> toJson() => [x, y, ...stamp.toJson()];
+
+  static TileObject? fromJson(Object? json) {
+    if (json is! List || json.length < 5 || json[0] is! num || json[1] is! num) return null;
+    var stamp = TileStamp.fromJson(json.sublist(2));
+    if (stamp == null) return null;
+    return TileObject((json[0] as num).toDouble(), (json[1] as num).toDouble(), stamp);
   }
 }
 
@@ -236,6 +307,15 @@ class TileLayer {
   /// cells is the cells painted, by [cellKey], each its tile's [TileRef]
   /// word.
   final Map<int, int> cells;
+
+  /// isObjects is whether it is an objects layer: things stood anywhere --
+  /// [objects] -- and figures, Sprite elements of the canvas drawn among
+  /// them, each by where its feet are, the nearer the reader in front.
+  final bool isObjects;
+  final List<TileObject> objects;
+
+  /// figures is the ids of the Sprite elements on the layer.
+  final List<String> figures;
   final bool visible;
   final bool locked;
   final double opacity;
@@ -244,6 +324,9 @@ class TileLayer {
   const TileLayer({
     this.name = "Layer",
     this.cells = const {},
+    this.isObjects = false,
+    this.objects = const [],
+    this.figures = const [],
     this.visible = true,
     this.locked = false,
     this.opacity = 1,
@@ -258,6 +341,8 @@ class TileLayer {
   TileLayer copyWith({
     String? name,
     Map<int, int>? cells,
+    List<TileObject>? objects,
+    List<String>? figures,
     bool? visible,
     bool? locked,
     double? opacity,
@@ -267,6 +352,9 @@ class TileLayer {
       TileLayer(
         name: name ?? this.name,
         cells: cells ?? this.cells,
+        isObjects: isObjects,
+        objects: objects ?? this.objects,
+        figures: figures ?? this.figures,
         visible: visible ?? this.visible,
         locked: locked ?? this.locked,
         opacity: (opacity ?? this.opacity).clamp(0.0, 1.0),
@@ -279,6 +367,9 @@ class TileLayer {
         "cells": [
           for (var e in cells.entries) ...[colOf(e.key), rowOf(e.key), e.value]
         ],
+        if (isObjects) "kind": "objects",
+        if (objects.isNotEmpty) "objects": [for (var o in objects) o.toJson()],
+        if (figures.isNotEmpty) "figures": figures,
         if (!visible) "hidden": true,
         if (locked) "locked": true,
         if (opacity != 1) "opacity": opacity,
@@ -297,6 +388,17 @@ class TileLayer {
     return TileLayer(
       name: json["name"] as String? ?? "Layer",
       cells: cells,
+      isObjects: json["kind"] == "objects",
+      objects: [
+        if (json["objects"] case List raw)
+          for (var o in raw)
+            if (TileObject.fromJson(o) case var object?) object,
+      ],
+      figures: [
+        if (json["figures"] case List raw)
+          for (var f in raw)
+            if (f is String) f,
+      ],
       visible: !jsonBool(json["hidden"], false),
       locked: jsonBool(json["locked"], false),
       opacity: jsonDouble(json["opacity"], 1).clamp(0.0, 1.0),
@@ -383,8 +485,29 @@ class TileMapElement extends CanvasElement {
     return c0 == null ? null : (c0, r0!, c1!, r1!);
   }
 
-  /// tileCount is how many cells are painted, on every layer.
-  int get tileCount => layers.fold(0, (n, l) => n + l.cells.length);
+  /// tileCount is how many cells are painted and things stood, on every
+  /// layer.
+  int get tileCount => layers.fold(0, (n, l) => n + l.cells.length + l.objects.length);
+
+  /// figureIds is the Sprite elements stood on its objects layers.
+  Set<String> get figureIds => {
+        for (var l in layers)
+          if (l.visible) ...l.figures,
+      };
+
+  /// objectRect is where [o] stands on the canvas.
+  Rect objectRect(TileObject o) {
+    var cs = cellSize, b = bounds;
+    var w = o.stamp.width * cs.width, h = o.stamp.height * cs.height;
+    var foot = Offset(b.left + o.x * cs.width, b.top + o.y * cs.height);
+    return Rect.fromLTWH(foot.dx - w / 2, foot.dy - h, w, h);
+  }
+
+  /// inCells is canvas point [p] counted in cells from the map's top left.
+  Offset inCells(Offset p) {
+    var cs = cellSize, b = bounds;
+    return Offset((p.dx - b.left) / cs.width, (p.dy - b.top) / cs.height);
+  }
 
   TileMapElement copyWith(
           {List<TileSource>? sources,
@@ -418,7 +541,11 @@ class TileMapElement extends CanvasElement {
             for (var e in l.cells.entries)
               if (TileRef(e.value).source != s)
                 e.key: TileRef(e.value).source > s ? e.value - (1 << 20) : e.value,
-          }),
+          }, objects: [
+            for (var o in l.objects)
+              if (o.stamp.cells.every((c) => c.$3.source != s))
+                TileObject(o.x, o.y, TileStamp([for (var (c, r, t) in o.stamp.cells) (c, r, moved(t))])),
+          ]),
       ],
     );
   }

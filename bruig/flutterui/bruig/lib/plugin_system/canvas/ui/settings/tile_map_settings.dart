@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/render/tile_map_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
@@ -81,6 +82,8 @@ List<Widget> tileMapSettings(BuildContext context, CanvasController controller, 
                 p.set(stamp: t, tool: p.tool == TileTool.erase || p.tool == TileTool.picker ? TileTool.paint : null);
               },
             ),
+            if (painting != null && painting.stamp.cells.length == 1 && painting.brush.source == s)
+              _animateGroup(e, s, painting.brush.index, now),
             CanvasControlGroup(
               key: const ValueKey("tileMapGrid"),
               label: "Grid",
@@ -165,20 +168,57 @@ Widget _paintGroup(
           previewHeight: 24,
           tiles: [
             for (var t in TileTool.values)
-              CanvasTile(t, t.label,
-                  icon: switch (t) {
-                    TileTool.paint => Icons.edit,
-                    TileTool.erase => Icons.auto_fix_normal,
-                    TileTool.line => Icons.horizontal_rule,
-                    TileTool.rect => Icons.crop_square,
-                    TileTool.fill => Icons.format_color_fill,
-                    TileTool.picker => Icons.colorize,
-                  }),
+              if (painting.onObjects ? t.forObjects : t.forCells)
+                CanvasTile(t, painting.onObjects && t == TileTool.paint ? "Place" : t.label,
+                    icon: switch (t) {
+                      TileTool.paint => painting.onObjects ? Icons.add_location_alt_outlined : Icons.edit,
+                      TileTool.erase => Icons.auto_fix_normal,
+                      TileTool.line => Icons.horizontal_rule,
+                      TileTool.rect => Icons.crop_square,
+                      TileTool.fill => Icons.format_color_fill,
+                      TileTool.picker => Icons.colorize,
+                      TileTool.move => Icons.open_with,
+                      TileTool.scatter => Icons.grain,
+                    }),
           ],
           selected: (t) => t == painting.tool,
           keyOf: (t) => "tileMapTool-${t.name}",
           onPick: (t) => painting.set(tool: t),
         ),
+        if (painting.onObjects) ...[
+          CanvasStatus("An objects layer: things stood anywhere, the nearer the "
+              "reader in front, and the figures put on it among them."),
+          CanvasToggle(
+            key: const ValueKey("tileMapSnap"),
+            label: "On the grid",
+            value: painting.snap,
+            onChanged: (v) => painting.set(snap: v),
+          ),
+          if (painting.tool == TileTool.scatter) ...[
+            CanvasStepper(
+              key: const ValueKey("tileMapSpread"),
+              label: "Spread",
+              value: painting.spread,
+              min: 0.5,
+              max: 20,
+              step: 0.5,
+              decimals: 1,
+              suffix: " tiles",
+              onChanged: (v) => painting.set(spread: v),
+            ),
+            CanvasStepper(
+              key: const ValueKey("tileMapApart"),
+              label: "Apart",
+              value: painting.apart,
+              min: 0.25,
+              max: 20,
+              step: 0.25,
+              decimals: 2,
+              suffix: " tiles",
+              onChanged: (v) => painting.set(apart: v),
+            ),
+          ],
+        ],
         SizedBox(
           key: const ValueKey("tileMapBrush"),
           width: 88,
@@ -258,6 +298,68 @@ Widget _paintGroup(
                 lockAspect: false)) as TileMapElement);
           },
         ),
+    ],
+  );
+}
+
+/// _animateGroup is tile [index] of set [s] made to play, as Godot's tile
+/// animations are: it and so many tiles after it on the sheet -- across,
+/// or down -- shown in turn, so many a second, wherever it is painted.
+Widget _animateGroup(TileMapElement e, int s, int index, void Function(TileMapElement) now) {
+  var source = e.sources[s];
+  var a = source.animations[index];
+  var count = a?.frames.length ?? 1;
+  var down = a != null && a.frames.length > 1 && a.frames[1] - a.frames[0] == source.columns;
+  void animate({int? frames, bool? goingDown, double? fps}) {
+    var n = frames ?? count, step = (goingDown ?? down) ? source.columns : 1;
+    var list = [
+      for (var k = 0; k < n; k++)
+        if (index + k * step < source.count) index + k * step
+    ];
+    var animations = {...source.animations};
+    if (list.length < 2) {
+      animations.remove(index);
+    } else {
+      animations[index] = TileAnimation(list, fps: fps ?? a?.fps ?? 4);
+    }
+    now(e.copyWith(sources: [for (var (i, x) in e.sources.indexed) i == s ? x.copyWith(animations: animations) : x]));
+  }
+
+  return CanvasControlGroup(
+    key: const ValueKey("tileMapAnimate"),
+    label: "Animate this tile",
+    help: "Make the picked tile play -- water, a torch, a flag: it and the tiles "
+        "after it on the sheet, shown in turn wherever it is painted.",
+    children: [
+      CanvasStepper(
+        key: const ValueKey("tileMapAnimFrames"),
+        label: "Frames",
+        value: count.toDouble(),
+        min: 1,
+        max: 32,
+        step: 1,
+        defaultValue: 1,
+        onChanged: (v) => animate(frames: v.round()),
+      ),
+      if (count > 1) ...[
+        CanvasDropdown<bool>(
+          key: const ValueKey("tileMapAnimDown"),
+          label: "The next",
+          value: down,
+          options: const [(false, "Across"), (true, "Down")],
+          onChanged: (v) => animate(goingDown: v),
+        ),
+        CanvasStepper(
+          key: const ValueKey("tileMapAnimFps"),
+          label: "Speed",
+          value: a!.fps,
+          min: 1,
+          max: 30,
+          step: 1,
+          suffix: " fps",
+          onChanged: (v) => animate(fps: v),
+        ),
+      ],
     ],
   );
 }
@@ -825,7 +927,12 @@ class TileLayersEditor extends StatelessWidget {
                           color: theme.colors.onSurface,
                           fontWeight: i == picked ? FontWeight.w600 : FontWeight.normal)),
                 ),
-                Text("${e.layers[i].cells.length}",
+                if (e.layers[i].isObjects)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(Icons.park_outlined, size: 13, color: theme.colors.onSurfaceVariant),
+                  ),
+                Text("${e.layers[i].cells.length + e.layers[i].objects.length}",
                     style: TextStyle(fontSize: 11, color: theme.colors.onSurfaceVariant)),
               ]),
             ),
@@ -840,6 +947,17 @@ class TileLayersEditor extends StatelessWidget {
           tooltip: "Add a layer above",
           onPressed: () {
             var layers = [...e.layers]..insert(picked + 1, TileLayer(name: "Layer ${e.layers.length + 1}"));
+            pickedTileLayer[e.id] = picked + 1;
+            now(e.copyWith(layers: layers));
+          },
+        ),
+        CanvasIconButton(
+          key: const ValueKey("tileLayerAddObjects"),
+          tight: true,
+          icon: Icons.park_outlined,
+          tooltip: "Add an objects layer above",
+          onPressed: () {
+            var layers = [...e.layers]..insert(picked + 1, const TileLayer(name: "Objects", isObjects: true));
             pickedTileLayer[e.id] = picked + 1;
             now(e.copyWith(layers: layers));
           },
@@ -916,6 +1034,58 @@ class TileLayersEditor extends StatelessWidget {
           ),
         ],
       ),
+      if (layer.isObjects) _figuresGroup(controller, e, picked, now),
     ]);
   }
+}
+
+/// _figuresGroup is the Sprite elements stood on objects layer [i]: drawn
+/// by the map among the things on it, by where their feet are -- behind a
+/// tree, in front of a fence -- wherever they walk.
+Widget _figuresGroup(CanvasController controller, TileMapElement e, int i, void Function(TileMapElement) now) {
+  var layer = e.layers[i];
+  var elsewhere = {
+    for (var (k, l) in e.layers.indexed)
+      if (k != i) ...l.figures
+  };
+  var sprites = [
+    for (var x in controller.document.elements)
+      if (x is SpriteElement && !layer.figures.contains(x.id) && !elsewhere.contains(x.id)) x
+  ];
+  String nameOf(String id) {
+    var x = controller.document.elementById(id);
+    return x == null ? "Gone" : (x.name.isEmpty ? "Sprite" : x.name);
+  }
+
+  return CanvasControlGroup(
+    key: const ValueKey("tileMapFigures"),
+    label: "Figures on this layer",
+    help: "Sprites on the canvas, drawn among the things on this layer by where "
+        "their feet are: behind a tree when above it, in front when below.",
+    children: [
+      for (var id in layer.figures)
+        CanvasChip(
+          key: ValueKey("tileMapFigure-$id"),
+          label: nameOf(id),
+          onRemove: () => now(e.withLayer(i, layer.copyWith(figures: [...layer.figures]..remove(id)))),
+        ),
+      if (layer.figures.isNotEmpty) const CanvasLineBreak(),
+      if (sprites.isNotEmpty)
+        CanvasDropdown<String>(
+          key: const ValueKey("tileMapFigureAdd"),
+          label: "Put on the map",
+          value: "",
+          options: [
+            ("", "A sprite…"),
+            for (var x in sprites) (x.id, x.name.isEmpty ? "Sprite" : x.name),
+          ],
+          onChanged: (id) {
+            if (id.isEmpty) return;
+            now(e.withLayer(i, layer.copyWith(figures: [...layer.figures, id])));
+          },
+        )
+      else if (layer.figures.isEmpty)
+        const CanvasStatus("Add a Sprite element to the canvas to stand it here."),
+    ],
+  );
 }

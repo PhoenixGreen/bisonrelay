@@ -8,6 +8,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
@@ -276,6 +277,146 @@ void main() {
       expect(s.view(get(c)).ghost.single, (4, 2, s.brush));
       s.hoverAt(const Offset(0, 0));
       expect(s.hover, isNull);
+    });
+  });
+
+  group("objects, figures and tiles that play", () {
+    test("kept and read back", () {
+      var tree = TileStamp([(0, 0, TileRef.of(0, 0)), (0, 1, TileRef.of(0, 1))]);
+      var e = TileMapElement(_box,
+          sources: [_set.copyWith(animations: {0: const TileAnimation([0, 1], fps: 6)})],
+          layers: [
+            const TileLayer(name: "Ground"),
+            TileLayer(name: "Things", isObjects: true, objects: [TileObject(2.5, 3, tree)], figures: const ["s"]),
+          ]);
+      var back = TileMapElement.fromJson(e.props(), _box);
+      expect(back.props(), e.props());
+      expect(back.layers[1].isObjects, isTrue);
+      expect(back.figureIds, {"s"});
+      expect(back.sources.first.shownAt(0, 0.1), 0);
+      expect(back.sources.first.shownAt(0, 0.2), 1, reason: "six a second: the second frame by a sixth");
+      expect(back.sources.first.shownAt(1, 5), 1, reason: "a tile that does not play");
+      // A tree two tiles tall, its feet at (2.5, 3) cells.
+      expect(e.objectRect(e.layers[1].objects.single), const Rect.fromLTWH(100 + 2 * 32, 50 + 1 * 32, 32, 64));
+      expect(e.withoutSource(0).layers[1].objects, isEmpty);
+    });
+
+    (CanvasController, TilePaintSession) objects({List<TileObject> things = const []}) {
+      var c = CanvasController(CanvasDocument(frames: 10).addElement(_map(layers: [
+        const TileLayer(name: "Ground"),
+        TileLayer(name: "Things", isObjects: true, objects: things),
+      ])));
+      c.paintTiles("m");
+      pickedTileLayer["m"] = 1;
+      return (c, c.tilePaint!);
+    }
+
+    tearDown(pickedTileLayer.clear);
+    TileMapElement get(CanvasController c) => c.document.elementById("m") as TileMapElement;
+    List<TileObject> things(CanvasController c) => get(c).layers[1].objects;
+
+    test("a thing put down on the grid, moved till the pen lifts; one undo", () {
+      var (c, s) = objects();
+      addTearDown(c.dispose);
+      expect(s.onObjects, isTrue);
+      s.strokeStart(const Offset(100 + 70, 50 + 40));
+      s.strokeTo(const Offset(100 + 135, 50 + 75));
+      s.strokeEnd();
+      var o = things(c).single;
+      expect((o.x, o.y), (4.5, 2), reason: "a tile wide, in line with the cells; its feet on a line");
+      s.set(snap: false);
+      s.strokeStart(const Offset(100 + 50, 50 + 50));
+      s.strokeEnd();
+      expect((things(c).last.x, things(c).last.y), (50 / 32, 50 / 32));
+      c.undo();
+      expect(things(c).length, 1);
+    });
+
+    test("moved and rubbed out by what is under the pen, the nearest first", () {
+      var one = TileStamp.one(TileRef.of(0, 0));
+      var (c, s) = objects(things: [TileObject(1.5, 2, one), TileObject(1.5, 2.5, one)]);
+      addTearDown(c.dispose);
+      s.set(tool: TileTool.move);
+      // Both under the pen: the one standing lower down the page is moved.
+      s.strokeStart(const Offset(100 + 48, 50 + 60));
+      s.strokeTo(const Offset(100 + 48 + 64, 50 + 60));
+      s.strokeEnd();
+      expect([for (var o in things(c)) (o.x, o.y)], [(1.5, 2.0), (3.5, 3.0)]);
+      s.set(tool: TileTool.erase);
+      s.strokeStart(const Offset(100 + 48, 50 + 50));
+      s.strokeEnd();
+      expect([for (var o in things(c)) (o.x, o.y)], [(3.5, 3.0)]);
+      s.set(tool: TileTool.picker, brush: TileRef.of(0, 1));
+      s.strokeStart(const Offset(100 + 112, 50 + 80));
+      s.strokeEnd();
+      expect(s.stamp, one);
+    });
+
+    test("scattered about the pen, none nearer than apart", () {
+      var (c, s) = objects();
+      addTearDown(c.dispose);
+      s.rng = math.Random(3);
+      s.set(tool: TileTool.scatter, stamp: TileStamp([(0, 0, TileRef.of(0, 0)), (1, 0, TileRef.of(0, 1))]),
+          random: true, spread: 2, apart: 1);
+      s.strokeStart(const Offset(100 + 80, 50 + 80));
+      for (var x = 80; x <= 240; x += 8) {
+        s.strokeTo(Offset(100.0 + x, 50 + 80));
+      }
+      s.strokeEnd();
+      var placed = things(c);
+      expect(placed.length, greaterThan(4));
+      for (var a in placed) {
+        expect(a.stamp.cells.length, 1, reason: "at random: one tile each");
+        for (var b in placed) {
+          if (!identical(a, b)) expect((Offset(a.x, a.y) - Offset(b.x, b.y)).distance, greaterThanOrEqualTo(1));
+        }
+      }
+      expect(c.canUndo, isTrue);
+      c.undo();
+      expect(things(c), isEmpty, reason: "the whole stroke, one undo");
+    });
+
+    test("a figure drawn by its map, among its things by its feet; a tile played", () async {
+      var sheet = await _sheet();
+      var blue = await (() async {
+        var p = SpritePixels.blank(8, 8);
+        for (var y = 0; y < 8; y++) {
+          for (var x = 0; x < 8; x++) {
+            p.dab(x, y, const ui.Color(0xFF0000FF));
+          }
+        }
+        return p.image();
+      })();
+      // The sprite comes first, under the map in the canvas's order; its
+      // feet are lower than the red thing's, so it stands in front of it.
+      // The thing stands from 98 to 130 down; the figure's feet at 142.
+      var sprite = SpriteElement(const ElementBase(id: "s", x: 100, y: 110, width: 32, height: 32),
+          sheet: "blue", sheetW: 8, sheetH: 8, actions: const [SpriteAction("Play", frames: {SpriteFacing.front: [0]})],
+          action: "Play");
+      var map = _map(layers: [
+        TileLayer(name: "Things", isObjects: true, objects: [
+          TileObject(0.5, 2.5, TileStamp.one(TileRef.of(0, 0))),
+        ], figures: const ["s"]),
+        TileLayer(name: "Top", cells: {cellKey(5, 0): TileRef.of(0, 0).word}),
+      ]).copyWith(sources: [_set.copyWith(animations: {0: const TileAnimation([0, 1], fps: 1)})]);
+      var doc = CanvasDocument(frames: 48).addElement(sprite).addElement(map);
+      var images = _Images({"sheet": sheet, "blue": blue});
+      Future<SpritePixels> draw(CanvasDocument d, int frame) async {
+        var rec = ui.PictureRecorder();
+        paintCanvasDocument(ui.Canvas(rec), d, frame: frame, images: images);
+        return (await SpritePixels.of(await rec.endRecording().toImage(500, 300)))!;
+      }
+
+      var px = await draw(doc, 0);
+      expect(px.at(116, 120), const ui.Color(0xFF0000FF), reason: "the figure, in front of the thing behind it");
+      // Moved up the page, its feet (at 122) above the thing's: behind it.
+      var behind = await draw(doc.withElement(sprite.rebase(sprite.base.copyWith(y: 90))), 0);
+      expect(behind.at(116, 115), const ui.Color(0xFFFF0000));
+      expect(behind.at(116, 95), const ui.Color(0xFF0000FF), reason: "its head, over the top of it");
+      // The top layer's tile plays: red, then a second on, green.
+      expect(px.at(100 + 160 + 16, 50 + 16), const ui.Color(0xFFFF0000));
+      var later = await draw(doc, doc.frameRate);
+      expect(later.at(100 + 160 + 16, 50 + 16), const ui.Color(0xFF00FF00));
     });
   });
 

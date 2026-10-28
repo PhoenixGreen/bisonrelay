@@ -10,17 +10,22 @@ import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 // tile_map_painter.dart draws a Tile map element: each layer's cells, the
 // first layer at the bottom, inside the element's box -- see
 // tile_map_element.dart. The tiles as they are on their sheet go in one
-// draw a set; a turned or flipped one is drawn on its own.
+// draw a set; a turned or flipped one is drawn on its own. A tile that
+// plays shows the frame its animation has got to. On an objects layer the
+// things stood on it and the figures among them are drawn by where their
+// feet are, the furthest up the page first, so the nearer stand in front.
 
 /// TileEditView is what the renderer shows of a map being painted: the
 /// map as the stroke under way has it, the grid, the cell under the
-/// pointer with the tiles that would go there, and a box being dragged out
-/// to pick tiles up from. See tile_painting.dart.
+/// pointer with the tiles that would go there -- or the thing that would
+/// be stood there -- and a box being dragged out to pick tiles up from.
+/// See tile_painting.dart.
 typedef TileEditView = ({
   TileMapElement? working,
   bool grid,
   (int, int)? hover,
   List<(int, int, TileRef)> ghost,
+  TileObject? standing,
   (int, int, int, int)? box,
 });
 
@@ -28,32 +33,49 @@ typedef TileEditView = ({
 /// by it; null for one not being painted.
 TileEditView? Function(TileMapElement e)? tileMapEditingOf;
 
-/// paintTileMap draws [e] in [box]. [editing], one being painted is shown
-/// as its painter has it, ruled into cells.
+/// TileFigure is a figure on a map, found by its id: where its feet are,
+/// down the canvas, and how it is drawn -- or null, when there is none.
+typedef TileFigure = (double, void Function())? Function(String id);
+
+/// paintTileMap draws [e] in [box] on [frame]; [figures] finds the figures
+/// on its objects layers. [editing], one being painted is shown as its
+/// painter has it, ruled into cells.
 void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
-    {int frameRate = 12, CanvasImageSource? images, bool editing = false}) {
+    {int frameRate = 12, CanvasImageSource? images, bool editing = false, TileFigure? figures}) {
   var view = editing ? tileMapEditingOf?.call(e) : null;
   var m = view?.working ?? e;
-  if (m.tileCount == 0 && view == null) {
+  if (m.tileCount == 0 && m.figureIds.isEmpty && view == null) {
     _paintEmpty(canvas, box);
     return;
   }
+  var seconds = frame / math.max(1, frameRate);
   var sheets = [for (var s in m.sources) images?.resolve(s.sheet, const BackgroundRemoval())];
-  canvas.save();
-  canvas.clipRect(box);
   for (var layer in m.layers) {
-    if (!layer.visible || layer.cells.isEmpty) continue;
+    if (!layer.visible) continue;
     var layered = layer.opacity < 1;
     if (layered) {
-      canvas.saveLayer(box, Paint()..color = Color.fromRGBO(0, 0, 0, layer.opacity));
+      canvas.saveLayer(null, Paint()..color = Color.fromRGBO(0, 0, 0, layer.opacity));
     }
-    paintTileCells(canvas, box, m, layer.cells, sheets, tint: layer.tint);
+    if (layer.cells.isNotEmpty) {
+      canvas.save();
+      canvas.clipRect(box);
+      paintTileCells(canvas, box, m, layer.cells, sheets, tint: layer.tint, seconds: seconds);
+      canvas.restore();
+    }
+    if (layer.isObjects) _paintObjects(canvas, box, m, layer, sheets, seconds, figures);
     if (layered) canvas.restore();
   }
   if (view != null) {
+    canvas.save();
+    canvas.clipRect(box);
     if (view.ghost.isNotEmpty) {
       canvas.saveLayer(box, Paint()..color = const Color(0x99000000));
       paintTileCells(canvas, box, m, {for (var (c, r, t) in view.ghost) cellKey(c, r): t.word}, sheets);
+      canvas.restore();
+    }
+    if (view.standing case var o?) {
+      canvas.saveLayer(box, Paint()..color = const Color(0x99000000));
+      _paintObject(canvas, m, o, sheets, seconds, null);
       canvas.restore();
     }
     if (view.grid) _paintGrid(canvas, box, m);
@@ -66,7 +88,7 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2
             ..color = const Color(0xCC3D7EFF));
-    } else if (view.hover case (var c, var r)) {
+    } else if (view.hover case (var c, var r) when view.standing == null) {
       canvas.drawRect(
           m.cellRect(c, r),
           Paint()
@@ -74,19 +96,62 @@ void paintTileMap(Canvas canvas, Rect box, TileMapElement e, int frame,
             ..strokeWidth = 1.5
             ..color = const Color(0xCC3D7EFF));
     }
+    canvas.restore();
   }
-  canvas.restore();
+}
+
+/// _paintObjects draws [layer]'s things and figures, the furthest up the
+/// page first. Its things are cut to the map's box; a figure is not -- it
+/// is an element of the canvas, walking where it likes.
+void _paintObjects(Canvas canvas, Rect box, TileMapElement m, TileLayer layer, List<ui.Image?> sheets,
+    double seconds, TileFigure? figures) {
+  var drawn = <(double, void Function())>[
+    for (var o in layer.objects)
+      (
+        m.objectRect(o).bottom,
+        () {
+          canvas.save();
+          canvas.clipRect(box);
+          _paintObject(canvas, m, o, sheets, seconds, layer.tint);
+          canvas.restore();
+        }
+      ),
+    if (figures != null)
+      for (var id in layer.figures)
+        if (figures(id) case var f?) f,
+  ];
+  // Stable: two at the same height keep the order they were put down in.
+  var order = [for (var i = 0; i < drawn.length; i++) i]
+    ..sort((a, b) {
+      var by = drawn[a].$1.compareTo(drawn[b].$1);
+      return by != 0 ? by : a.compareTo(b);
+    });
+  for (var i in order) {
+    drawn[i].$2();
+  }
+}
+
+/// _paintObject draws [o], standing where it stands.
+void _paintObject(Canvas canvas, TileMapElement m, TileObject o, List<ui.Image?> sheets, double seconds, Color? tint) {
+  var r = m.objectRect(o);
+  var cs = m.cellSize;
+  paintTileCells(canvas, r, m, {for (var (c, row, t) in o.stamp.cells) cellKey(c, row): t.word}, sheets,
+      tint: tint, seconds: seconds, window: (0, 0, o.stamp.width - 1, o.stamp.height - 1), cell: cs);
 }
 
 /// paintTileCells draws [cells] of [m] -- by [cellKey], each a [TileRef]
 /// word -- from [sheets], one for each of its sets, in [box]; those whose
 /// sheet is not read yet left out.
+///
+/// [seconds] in, a tile that plays shows the frame it has got to. The
+/// cells drawn are those in the map's window, or in [window] -- first and
+/// last column and row -- counted from [box]'s top left.
 void paintTileCells(Canvas canvas, Rect box, TileMapElement m, Map<int, int> cells, List<ui.Image?> sheets,
-    {Color? tint}) {
+    {Color? tint, double seconds = 0, (int, int, int, int)? window, Size? cell}) {
   var paint = Paint()..filterQuality = m.pixelArt ? FilterQuality.none : FilterQuality.medium;
   if (tint != null) paint.colorFilter = ColorFilter.mode(tint, BlendMode.modulate);
-  var k = m.scale, cs = m.cellSize;
-  var (c0, r0, c1, r1) = m.window;
+  var k = m.scale, cs = cell ?? m.cellSize;
+  var (c0, r0, c1, r1) = window ?? m.window;
   // Plain tiles, gathered by their set, to be drawn in one go each.
   var plain = <int, (List<RSTransform>, List<Rect>)>{};
   for (var entry in cells.entries) {
@@ -99,7 +164,7 @@ void paintTileCells(Canvas canvas, Rect box, TileMapElement m, Map<int, int> cel
     var sheet = sheets[t.source];
     if (sheet == null) continue;
     var s = m.sources[t.source];
-    var src = _onSheet(s, s.tileRect(t.index), sheet);
+    var src = _onSheet(s, s.tileRect(s.shownAt(t.index, seconds)), sheet);
     if (src.isEmpty) continue;
     var w = s.tileW * k, h = s.tileH * k;
     // On the cell's bottom, in the middle across: a tile of the cell's own
