@@ -245,74 +245,249 @@ class ModularLook {
 /// tipped.
 class ModularPose {
   final double armL, armR, legL, legR;
+
+  /// kneeL and kneeR are how much of a leg's length shows: 1 straight, less
+  /// a knee bent towards the viewer -- sitting, crouching, a foot lifted.
+  /// The longer leg is what the figure stands on.
+  final double kneeL, kneeR;
   final double rise;
   final double head;
+
+  /// lean is the whole figure tipped about its feet, degrees, to the page's
+  /// right.
+  final double lean;
   final String? mouth;
   const ModularPose({
     this.armL = 0,
     this.armR = 0,
     this.legL = 0,
     this.legR = 0,
+    this.kneeL = 1,
+    this.kneeR = 1,
     this.rise = 0,
     this.head = 0,
+    this.lean = 0,
     this.mouth,
   });
+
+  /// lerp is [a] a way [t] towards [b]; the mouth the nearer one's.
+  static ModularPose lerp(ModularPose a, ModularPose b, double t) {
+    double l(double x, double y) => x + (y - x) * t;
+    return ModularPose(
+      armL: l(a.armL, b.armL),
+      armR: l(a.armR, b.armR),
+      legL: l(a.legL, b.legL),
+      legR: l(a.legR, b.legR),
+      kneeL: l(a.kneeL, b.kneeL),
+      kneeR: l(a.kneeR, b.kneeR),
+      rise: l(a.rise, b.rise),
+      head: l(a.head, b.head),
+      lean: l(a.lean, b.lean),
+      mouth: t < 0.5 ? a.mouth : b.mouth,
+    );
+  }
+
+  /// scaled is the pose [motion] times as far from standing still: a
+  /// smaller swing, or a bigger one. An arm stops short of straight up.
+  ModularPose scaled(double motion) {
+    if (motion == 1) return this;
+    double knee(double k) => (1 + (k - 1) * motion).clamp(0.25, 1.0);
+    return ModularPose(
+      armL: (armL * motion).clamp(-40.0, 175.0),
+      armR: (armR * motion).clamp(-40.0, 175.0),
+      legL: legL * motion,
+      legR: legR * motion,
+      kneeL: knee(kneeL),
+      kneeR: knee(kneeR),
+      rise: rise * motion,
+      head: head * motion,
+      lean: lean * motion,
+      mouth: mouth,
+    );
+  }
 }
 
-/// ModularAnimation is one thing the puppet does: its frames' poses, how
-/// fast they play, and whether over and over.
+/// ModularAnimation is one thing the puppet does: a cycle, played round and
+/// round, or a run of key poses from first to last -- how many frames it is
+/// drawn in, how fast they play, and whether over and over.
 class ModularAnimation {
   final String name;
-  final List<ModularPose> frames;
+  final int count;
   final double fps;
   final bool loop;
-  const ModularAnimation(this.name, this.frames, {this.fps = 8, this.loop = true});
+  final ModularPose Function(double phase)? _cycle;
+  final List<ModularPose> _keys;
+
+  /// cycle is an animation that comes back round to where it started: its
+  /// pose at each [phase], 0 to 2π.
+  ModularAnimation.cycle(this.name, this.count, ModularPose Function(double phase) at,
+      {this.fps = 8, this.loop = true})
+      : _cycle = at,
+        _keys = const [];
+
+  /// keyed is one that goes from its first pose to its last, through the
+  /// rest: drawn in as many frames as it has keys, or between them.
+  ModularAnimation.keyed(this.name, List<ModularPose> keys, {this.fps = 8, this.loop = false})
+      : count = keys.length,
+        _cycle = null,
+        _keys = keys;
+
+  /// frames is its poses, drawn in [count] frames, [motion] times as big.
+  List<ModularPose> framesOf({int? count, double motion = 1}) {
+    var n = math.max(count ?? this.count, _cycle == null ? 2 : 1);
+    if (_cycle case var at?) {
+      return [for (var k = 0; k < n; k++) at(2 * math.pi * k / n).scaled(motion)];
+    }
+    if (n == _keys.length) return [for (var p in _keys) p.scaled(motion)];
+    return [
+      for (var k = 0; k < n; k++)
+        () {
+          var t = k * (_keys.length - 1) / (n - 1);
+          var i = math.min(t.floor(), _keys.length - 2);
+          return ModularPose.lerp(_keys[i], _keys[i + 1], t - i).scaled(motion);
+        }(),
+    ];
+  }
+
+  List<ModularPose> get frames => framesOf();
 }
 
-List<ModularPose> _cycle(int n, ModularPose Function(double phase) at) =>
-    [for (var k = 0; k < n; k++) at(2 * math.pi * k / n)];
+/// ModularTuning is how an animation is drawn and played, changed from how
+/// it comes: in how many frames, how fast, and how big its motion.
+class ModularTuning {
+  final int? frames;
+  final double? fps;
+  final double motion;
+  const ModularTuning({this.frames, this.fps, this.motion = 1});
 
-/// modularAnimations is what the builder can make: each a run of poses.
+  ModularTuning copyWith({int? frames, double? fps, double? motion}) =>
+      ModularTuning(frames: frames ?? this.frames, fps: fps ?? this.fps, motion: motion ?? this.motion);
+
+  Map<String, dynamic> toJson() => {
+        if (frames != null) "frames": frames,
+        if (fps != null) "fps": fps,
+        if (motion != 1) "motion": motion,
+      };
+
+  static ModularTuning fromJson(dynamic j) => j is Map
+      ? ModularTuning(
+          frames: (j["frames"] as num?)?.toInt(),
+          fps: (j["fps"] as num?)?.toDouble(),
+          motion: (j["motion"] as num?)?.toDouble() ?? 1)
+      : const ModularTuning();
+}
+
+/// _talking is the mouths a figure talks through, in turn.
+const List<String> _talking = ["straight", "oh", "happy", "teethUpper", "oh", "glad"];
+
+String _mouthAt(double phase, List<String> mouths) =>
+    mouths[(phase / (2 * math.pi) * mouths.length).round() % mouths.length];
+
+/// modularAnimations is what the builder can make.
 final List<ModularAnimation> modularAnimations = [
-  ModularAnimation("Idle", _cycle(4, (p) => ModularPose(rise: 3 * math.sin(p), armL: 2 * math.sin(p), armR: 2 * math.sin(p))), fps: 4),
-  ModularAnimation(
+  ModularAnimation.cycle(
+      "Idle", 4, (p) => ModularPose(rise: 3 * math.sin(p), armL: 2 * math.sin(p), armR: 2 * math.sin(p)),
+      fps: 4),
+  ModularAnimation.cycle(
       "Walk",
-      _cycle(8, (p) => ModularPose(
+      8,
+      (p) => ModularPose(
           legL: 16 * math.sin(p),
           legR: -16 * math.sin(p),
           armL: -14 * math.sin(p),
           armR: 14 * math.sin(p),
           rise: 5 * math.cos(2 * p).abs())),
-      fps: 8),
-  ModularAnimation(
+  ModularAnimation.cycle(
       "Run",
-      _cycle(8, (p) => ModularPose(
+      8,
+      (p) => ModularPose(
           legL: 32 * math.sin(p),
           legR: -32 * math.sin(p),
           armL: -30 * math.sin(p),
           armR: 30 * math.sin(p),
           rise: 12 * math.cos(2 * p).abs(),
-          head: 3)),
+          head: 3),
       fps: 12),
-  ModularAnimation(
-      "Jump",
-      const [
-        ModularPose(rise: -14, legL: 8, legR: 8, armL: -10, armR: -10),
-        ModularPose(rise: 30, legL: -6, legR: -6, armL: 70, armR: 70, mouth: "oh"),
-        ModularPose(rise: 60, legL: -10, legR: -10, armL: 110, armR: 110, mouth: "oh"),
-        ModularPose(rise: 30, legL: -4, legR: -4, armL: 80, armR: 80),
-        ModularPose(rise: -10, legL: 8, legR: 8, armL: 0, armR: 0),
-      ],
-      fps: 8,
-      loop: false),
-  ModularAnimation(
-      "Wave",
-      _cycle(6, (p) => ModularPose(armR: 130 + 18 * math.sin(p), armL: 2, head: 3 * math.sin(p))),
-      fps: 8),
-  ModularAnimation(
+  ModularAnimation.keyed("Jump", const [
+    ModularPose(rise: -14, legL: 8, legR: 8, armL: -10, armR: -10, kneeL: 0.85, kneeR: 0.85),
+    ModularPose(rise: 30, legL: -6, legR: -6, armL: 70, armR: 70, mouth: "oh"),
+    ModularPose(rise: 60, legL: -10, legR: -10, armL: 110, armR: 110, mouth: "oh"),
+    ModularPose(rise: 30, legL: -4, legR: -4, armL: 80, armR: 80),
+    ModularPose(rise: -10, legL: 8, legR: 8, armL: 0, armR: 0, kneeL: 0.85, kneeR: 0.85),
+  ]),
+  ModularAnimation.cycle(
+      "Wave", 6, (p) => ModularPose(armR: 130 + 18 * math.sin(p), armL: 2, head: 3 * math.sin(p))),
+  ModularAnimation.cycle(
       "Cheer",
-      _cycle(4, (p) => ModularPose(armL: 135 + 10 * math.sin(p), armR: 135 + 10 * math.sin(p), rise: 6 * math.sin(p).abs(), mouth: "oh")),
+      4,
+      (p) => ModularPose(
+          armL: 135 + 10 * math.sin(p), armR: 135 + 10 * math.sin(p), rise: 6 * math.sin(p).abs(), mouth: "oh"),
       fps: 6),
+  // Talking: the mouth through its shapes, the head nodding, a hand
+  // making the point.
+  ModularAnimation.cycle(
+      "Talk",
+      6,
+      (p) => ModularPose(
+          mouth: _mouthAt(p, _talking), head: 3 * math.sin(p), armR: 18 + 10 * math.sin(2 * p), armL: 3),
+      fps: 8),
+  ModularAnimation.cycle(
+      "Sit",
+      4,
+      (p) => ModularPose(
+          kneeL: 0.3, kneeR: 0.3, legL: 8, legR: 8, armL: -20, armR: -20, rise: 2 * math.sin(p)),
+      fps: 3),
+  ModularAnimation.cycle(
+      "Crouch",
+      4,
+      (p) => ModularPose(
+          kneeL: 0.45, kneeR: 0.45, legL: 14, legR: 14, armL: 10, armR: 10, rise: 2 * math.sin(p), head: 2),
+      fps: 4),
+  // Up a ladder, seen from in front: a hand up and the other foot, then
+  // the other two.
+  ModularAnimation.cycle(
+      "Climb",
+      4,
+      (p) => ModularPose(
+          armL: 125 + 30 * math.sin(p),
+          armR: 125 - 30 * math.sin(p),
+          kneeL: 0.8 - 0.2 * math.sin(p),
+          kneeR: 0.8 + 0.2 * math.sin(p),
+          legL: 6,
+          legR: 6),
+      fps: 6),
+  // Falling through the air, arms and legs flailing.
+  ModularAnimation.cycle(
+      "Fall",
+      4,
+      (p) => ModularPose(
+          rise: 40,
+          armL: 120 + 25 * math.sin(p),
+          armR: 120 - 25 * math.sin(p),
+          legL: 14 + 8 * math.sin(p),
+          legR: 14 - 8 * math.sin(p),
+          kneeL: 0.9,
+          kneeR: 0.9,
+          mouth: "oh"),
+      fps: 10),
+  // A swing: the fist drawn back low, then up and out.
+  ModularAnimation.keyed("Punch", const [
+    ModularPose(armR: -30, armL: 10, lean: -3, kneeL: 0.85, kneeR: 0.85, legL: 10, legR: 10),
+    ModularPose(armR: 60, armL: -10, lean: 5, kneeL: 0.85, kneeR: 0.85, legL: 10, legR: 10, mouth: "teethUpper"),
+    ModularPose(armR: 60, armL: -10, lean: 5, kneeL: 0.85, kneeR: 0.85, legL: 10, legR: 10, mouth: "teethUpper"),
+    ModularPose(armR: 0, armL: 0, kneeL: 0.9, kneeR: 0.9, legL: 6, legR: 6),
+  ], fps: 10),
+  ModularAnimation.keyed("Kick", const [
+    ModularPose(armL: 25, armR: 25, legR: 6),
+    ModularPose(armL: 50, armR: 40, legR: 55, lean: -6, mouth: "teethUpper"),
+    ModularPose(armL: 50, armR: 40, legR: 55, lean: -6, mouth: "teethUpper"),
+    ModularPose(armL: 25, armR: 25, legR: 6),
+  ], fps: 10),
+  ModularAnimation.keyed("Hurt", const [
+    ModularPose(lean: -6, head: -8, armL: 40, armR: 40, rise: 4, mouth: "sad"),
+    ModularPose(lean: -5, head: -5, armL: 25, armR: 25, mouth: "sad"),
+    ModularPose(mouth: "straight"),
+  ], fps: 8),
 ];
 
 // Where each piece joins the next, in its own picture's pixels: the arm at
@@ -322,6 +497,7 @@ const ui.Offset _shoulderIn = ui.Offset(14, 40);
 const ui.Offset _wristIn = ui.Offset(156, 116);
 const ui.Offset _hipIn = ui.Offset(33, 8);
 const ui.Offset _ankleIn = ui.Offset(62, 156);
+const ui.Offset _kneeIn = ui.Offset(48, 82);
 
 /// modularHeight is how tall a standing figure is, in the pack's pixels,
 /// hair to shoes, and modularWidth how wide, arms out.
@@ -337,8 +513,10 @@ void paintModular(ui.Canvas canvas, Map<String, ui.Image?> pieces, ModularParts 
   canvas.save();
   canvas.translate(floor.dx, floor.dy);
   canvas.scale(scale);
-  // From the waist: the body's middle, a leg and a shoe's height up.
-  canvas.translate(0, -(164 + 26) - pose.rise);
+  if (pose.lean != 0) canvas.rotate(pose.lean * math.pi / 180);
+  // From the waist: the body's middle, the longer leg and a shoe's height
+  // up -- the shorter one's foot off the floor.
+  canvas.translate(0, -(164 - (_kneeIn.dy - _hipIn.dy) * (1 - math.max(pose.kneeL, pose.kneeR)) + 26) - pose.rise);
   var paint = ui.Paint()..filterQuality = ui.FilterQuality.medium;
 
   void piece(ui.Image? img, ui.Offset pivot, ui.Offset place, double degrees,
@@ -360,8 +538,9 @@ void paintModular(ui.Canvas canvas, Map<String, ui.Image?> pieces, ModularParts 
   // Where a point of a piece turned [degrees] about [place] -- mirrored or
   // not -- ends up.
   ui.Offset carried(ui.Offset pivot, ui.Offset point, ui.Offset place, double degrees, bool mirror,
-      {bool flip = false}) {
+      {bool flip = false, double length = 1}) {
     var d = point - pivot;
+    d = ui.Offset(d.dx, d.dy * length);
     if (mirror) d = ui.Offset(-d.dx, d.dy);
     if (flip) d = ui.Offset(d.dx, -d.dy);
     var r = degrees * math.pi / 180;
@@ -372,15 +551,51 @@ void paintModular(ui.Canvas canvas, Map<String, ui.Image?> pieces, ModularParts 
   // Legs, the trouser legs over them, and shoes at their ends. Turned
   // outwards is a leg swung out from the hip: the right's angle as it is,
   // the left's mirrored.
-  for (var (mirror, angle, hip) in [(true, -pose.legL, const ui.Offset(-34, 18)), (false, pose.legR, const ui.Offset(34, 18))]) {
-    piece(at(parts.skinPart(skin, "leg")), _hipIn, hip, angle, mirror: mirror);
+  // A leg is drawn in two: the thigh from the hip, shortened as much as the
+  // knee is bent towards the viewer, and the shin from the knee -- hanging
+  // straighter the more it is bent, as a sitting figure's do. A shortened
+  // thigh is its knee end only, not the whole of it squashed: squashed, the
+  // trousers' edge at the hip smears.
+  void limb(ui.Image? img, ui.Offset pivot, ui.Offset hip, double angle, double shin, double knee, bool mirror) {
+    if (img == null) return;
+    var w = img.width.toDouble(), h = img.height.toDouble();
+    var split = math.min(_kneeIn.dy, h);
+    var kneeIn = ui.Offset(pivot.dx + _kneeIn.dx - _hipIn.dx, split);
+    canvas.save();
+    canvas.translate(hip.dx, hip.dy);
+    canvas.rotate(angle * math.pi / 180);
+    // Seen end on, a bent thigh is the knee coming forward: wider.
+    canvas.scale((mirror ? -1 : 1) * (1 + (1 - knee) * 0.25), 1);
+    // A little past the knee, so no seam shows there.
+    var top = math.min(split + 3, h);
+    var from = (split - pivot.dy) * (1 - knee);
+    canvas.drawImageRect(img, ui.Rect.fromLTRB(0, from, w, top),
+        ui.Rect.fromLTRB(-pivot.dx, -pivot.dy, w - pivot.dx, top - from - pivot.dy), paint);
+    canvas.restore();
+    if (split >= h) return;
+    var at = carried(pivot, kneeIn, hip, angle, mirror, length: knee);
+    canvas.save();
+    canvas.translate(at.dx, at.dy);
+    canvas.rotate(shin * math.pi / 180);
+    if (mirror) canvas.scale(-1, 1);
+    canvas.drawImageRect(img, ui.Rect.fromLTWH(0, split, w, h - split),
+        ui.Rect.fromLTWH(-kneeIn.dx, 0, w, h - split), paint);
+    canvas.restore();
+  }
+
+  for (var (mirror, angle, hip, knee) in [
+    (true, -pose.legL, const ui.Offset(-34, 18), pose.kneeL),
+    (false, pose.legR, const ui.Offset(34, 18), pose.kneeR),
+  ]) {
+    var shin = angle * ((knee - 0.4) / 0.6).clamp(0.0, 1.0);
+    limb(at(parts.skinPart(skin, "leg")), _hipIn, hip, angle, shin, knee, mirror);
     if (look.legs != "none") {
-      var legImg = at(parts.legs[look.pantsColour]?[look.legs]);
-      piece(legImg, _hipIn + const ui.Offset(6, 0), hip, angle, mirror: mirror);
+      limb(at(parts.legs[look.pantsColour]?[look.legs]), _hipIn + const ui.Offset(6, 0), hip, angle, shin, knee, mirror);
     }
-    var ankle = carried(_hipIn, _ankleIn, hip, angle, mirror);
+    var kneeAt = carried(_hipIn, _kneeIn, hip, angle, mirror, length: knee);
+    var ankle = carried(_kneeIn, _ankleIn, kneeAt, shin, mirror);
     centred(at(parts.shoes[look.shoeColour]?[look.shoe]), ankle + ui.Offset(mirror ? -14 : 14, 8),
-        degrees: angle * 0.4, mirror: mirror);
+        degrees: shin * 0.4, mirror: mirror);
   }
   // The body: neck, shirt, the waist of the trousers.
   centred(at(parts.skinPart(skin, "neck")), const ui.Offset(0, -168));
@@ -450,22 +665,29 @@ Future<Map<String, ui.Image?>> modularPieces(ModularParts parts, ModularLook loo
 
 /// modularCell is how much room a frame of a built figure has, in the
 /// pack's pixels: enough for a jump, and arms held up.
-const ui.Size modularCell = ui.Size(500, 760);
+const ui.Size modularCell = ui.Size(560, 760);
 
 /// modularSheet draws [look] through [animations] -- a row each, a frame
 /// to a cell [cellHeight] pixels tall, each standing on its cell's floor --
 /// and is the sheet, and how many cells across and down.
+/// Each is drawn as [tuning] has it, by name: in so many frames, its
+/// motion so big.
 Future<(ui.Image, int, int)> modularSheet(
-    ModularParts parts, ModularLook look, List<ModularAnimation> animations, int cellHeight) async {
-  var mouths = {for (var a in animations) for (var f in a.frames) if (f.mouth != null) f.mouth!};
+    ModularParts parts, ModularLook look, List<ModularAnimation> animations, int cellHeight,
+    {Map<String, ModularTuning> tuning = const {}}) async {
+  var drawn = [
+    for (var a in animations)
+      a.framesOf(count: tuning[a.name]?.frames, motion: tuning[a.name]?.motion ?? 1),
+  ];
+  var mouths = {for (var frames in drawn) for (var f in frames) if (f.mouth != null) f.mouth!};
   var pieces = await modularPieces(parts, look, mouths: mouths);
   var scale = cellHeight / modularCell.height;
   var cw = (modularCell.width * scale).ceil(), ch = cellHeight;
-  var cols = animations.map((a) => a.frames.length).reduce(math.max);
+  var cols = drawn.map((f) => f.length).reduce(math.max);
   var rec = ui.PictureRecorder();
   var canvas = ui.Canvas(rec);
-  for (var (row, a) in animations.indexed) {
-    for (var (k, pose) in a.frames.indexed) {
+  for (var (row, frames) in drawn.indexed) {
+    for (var (k, pose) in frames.indexed) {
       canvas.save();
       canvas.clipRect(ui.Rect.fromLTWH(k * cw.toDouble(), row * ch.toDouble(), cw.toDouble(), ch.toDouble()));
       paintModular(canvas, pieces, parts, look, pose, ui.Offset(k * cw + cw / 2, (row + 1) * ch - ch * 0.02), scale);

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
@@ -45,6 +46,11 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
   int _height = 160;
   Map<String, ui.Image?> _pieces = const {};
 
+  /// _tuning is how each animation is drawn and played, where changed from
+  /// how it comes; _tuned the one being changed.
+  Map<String, ModularTuning> _tuning = {};
+  String _tuned = modularAnimations.first.name;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +59,15 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
       _look = ModularLook.fromJson(built["look"]);
       if (built["animations"] case List names) _animations = {for (var n in names) "$n"};
       if (built["height"] case num h) _height = h.toInt();
+      if (built["tuning"] case Map t) {
+        _tuning = {for (var e in t.entries) "${e.key}": ModularTuning.fromJson(e.value)};
+      }
+      // A speed changed since, in the Animations, is kept.
+      for (var a in widget.sprite.actions) {
+        if (modularAnimations.any((m) => m.name == a.name)) {
+          _tuning[a.name] = (_tuning[a.name] ?? const ModularTuning()).copyWith(fps: a.fps);
+        }
+      }
       _open = true;
     }
     _check();
@@ -87,7 +102,8 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
   Future<void> _show() async {
     var p = parts, look = _look;
     if (p == null || look == null) return;
-    var pieces = await modularPieces(p, look);
+    // Every mouth, for the animations that talk or shout: they are small.
+    var pieces = await modularPieces(p, look, mouths: p.mouths.keys);
     if (mounted) setState(() => _pieces = pieces);
   }
 
@@ -119,7 +135,7 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
     var chosen = [for (var a in modularAnimations) if (_animations.contains(a.name)) a];
     if (chosen.isEmpty) return;
     setState(() => _busy = true);
-    var (sheet, cols, rows) = await modularSheet(p, look, chosen, _height);
+    var (sheet, cols, rows) = await modularSheet(p, look, chosen, _height, tuning: _tuning);
     var png = await sheet.toByteData(format: ui.ImageByteFormat.png);
     var id = png == null ? null : await CanvasAssets.save(png.buffer.asUint8List());
     if (!mounted) return;
@@ -145,9 +161,14 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
       actions: [
         for (var (row, a) in chosen.indexed)
           SpriteAction(a.name,
-              frames: {SpriteFacing.front: [for (var k = 0; k < a.frames.length; k++) row * cols + k]},
-              fps: a.fps,
-              loop: a.loop),
+              frames: {
+                SpriteFacing.front: [
+                  for (var k = 0; k < a.framesOf(count: _tuning[a.name]?.frames).length; k++) row * cols + k
+                ]
+              },
+              fps: _tuning[a.name]?.fps ?? a.fps,
+              // Whether it loops, as it was set in the Animations, if it was.
+              loop: e.actionNamed(a.name)?.loop ?? a.loop),
       ],
       action: chosen.first.name,
       cues: const [],
@@ -158,6 +179,10 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
         "look": look.toJson(),
         "animations": [for (var a in chosen) a.name],
         "height": _height,
+        "tuning": {
+          for (var e in _tuning.entries)
+            if (e.value.toJson().isNotEmpty) e.key: e.value.toJson(),
+        },
       },
     );
     var box = made.base;
@@ -201,6 +226,9 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
         ] else if (look != null) ...[
           SizedBox(
             key: const ValueKey("spriteBuilderPreview"),
+            // A line of its own: in the group's flow, a box with no width
+            // is no wider than nothing.
+            width: double.infinity,
             height: 190,
             child: CustomPaint(painter: _FigurePainter(p, look, _pieces)),
           ),
@@ -217,6 +245,7 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
                 ? _animations.remove(n)
                 : _animations.add(n)),
           ),
+          ..._tuningControls(p, look),
           CanvasStepper(
             key: const ValueKey("spriteBuilderHeight"),
             label: "Height",
@@ -240,6 +269,64 @@ class SpriteBuilderGroupState extends State<SpriteBuilderGroup> {
             "with the help of donations, at kenney.nl."),
       ],
     );
+  }
+
+  /// _tuningControls is one of the chosen animations picked, and how it is
+  /// drawn and played changed: in how many frames, how fast, how big -- and
+  /// its frames, drawn as they will be.
+  List<Widget> _tuningControls(ModularParts p, ModularLook look) {
+    var chosen = [for (var a in modularAnimations) if (_animations.contains(a.name)) a];
+    var a = chosen.where((a) => a.name == _tuned).firstOrNull ?? chosen.first;
+    var t = _tuning[a.name] ?? const ModularTuning();
+    void tune(ModularTuning next) => setState(() => _tuning[a.name] = next);
+    var frames = a.framesOf(count: t.frames, motion: t.motion);
+    return [
+      CanvasDropdown<String>(
+        key: const ValueKey("spriteBuilderTune"),
+        label: "Tune",
+        value: a.name,
+        options: [for (var c in chosen) (c.name, c.name)],
+        onChanged: (n) => setState(() => _tuned = n),
+      ),
+      SizedBox(
+        key: const ValueKey("spriteBuilderFrames-strip"),
+        width: double.infinity,
+        height: 64,
+        child: CustomPaint(painter: _StripPainter(p, look, _pieces, frames)),
+      ),
+      CanvasStepper(
+        key: const ValueKey("spriteBuilderFrames"),
+        label: "Frames",
+        value: frames.length.toDouble(),
+        min: 2,
+        max: 16,
+        step: 1,
+        defaultValue: a.count.toDouble(),
+        onChanged: (v) => tune(t.copyWith(frames: v.round())),
+      ),
+      CanvasStepper(
+        key: const ValueKey("spriteBuilderSpeed"),
+        label: "Speed",
+        value: t.fps ?? a.fps,
+        min: 1,
+        max: 30,
+        step: 1,
+        suffix: " fps",
+        defaultValue: a.fps,
+        onChanged: (v) => tune(t.copyWith(fps: v.roundToDouble())),
+      ),
+      CanvasStepper(
+        key: const ValueKey("spriteBuilderMotion"),
+        label: "Motion",
+        value: t.motion * 100,
+        min: 50,
+        max: 150,
+        step: 10,
+        suffix: " %",
+        defaultValue: 100,
+        onChanged: (v) => tune(t.copyWith(motion: (v / 10).round() / 10)),
+      ),
+    ];
   }
 
   List<Widget> _choices(ModularParts p, ModularLook look) {
@@ -299,4 +386,30 @@ class _FigurePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_FigurePainter old) => !identical(old.pieces, pieces) || !identical(old.look, look);
+}
+
+/// _StripPainter is an animation's frames side by side, as they will be
+/// drawn.
+class _StripPainter extends CustomPainter {
+  final ModularParts parts;
+  final ModularLook look;
+  final Map<String, ui.Image?> pieces;
+  final List<ModularPose> frames;
+  _StripPainter(this.parts, this.look, this.pieces, this.frames);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var cw = size.width / frames.length;
+    var scale = math.min(size.height / modularCell.height, cw / modularCell.width);
+    for (var (k, pose) in frames.indexed) {
+      canvas.save();
+      canvas.clipRect(Rect.fromLTWH(k * cw, 0, cw, size.height));
+      paintModular(canvas, pieces, parts, look, pose, Offset(k * cw + cw / 2, size.height - 2), scale);
+      canvas.restore();
+    }
+  }
+
+  @override
+  // Its frames are worked out afresh each build: a handful of small figures.
+  bool shouldRepaint(_StripPainter old) => true;
 }

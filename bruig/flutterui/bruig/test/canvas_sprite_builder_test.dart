@@ -109,6 +109,63 @@ void main() {
     }
   });
 
+  test("tuned: drawn in more frames or fewer, its motion bigger or smaller", () {
+    var walk = modularAnimations.firstWhere((a) => a.name == "Walk");
+    expect(walk.framesOf(count: 12).length, 12);
+    expect(walk.framesOf(count: 4)[1].legL, closeTo(16, 1e-9), reason: "a quarter of the way round");
+    // A run of keys is drawn between them: its first and last kept.
+    var jump = modularAnimations.firstWhere((a) => a.name == "Jump");
+    var nine = jump.framesOf(count: 9);
+    expect(nine.length, 9);
+    expect((nine.first.rise, nine.last.rise), (jump.frames.first.rise, jump.frames.last.rise));
+    expect(nine[4].rise, jump.frames[2].rise, reason: "the middle key, in the middle");
+    expect(nine[1].rise, closeTo((jump.frames[0].rise + jump.frames[1].rise) / 2, 1e-9));
+    // Half the motion is half the swing; bent knees half as bent.
+    var half = const ModularPose(armR: 60, kneeL: 0.4, lean: 6).scaled(0.5);
+    expect((half.armR, half.lean), (30, 3));
+    expect(half.kneeL, closeTo(0.7, 1e-9));
+    expect(const ModularPose(armL: 150).scaled(1.5).armL, 175, reason: "an arm stops short of straight up");
+    var t = ModularTuning.fromJson(const ModularTuning(frames: 6, fps: 12, motion: 1.2).toJson());
+    expect((t.frames, t.fps, t.motion), (6, 12, 1.2));
+    expect(const ModularTuning().toJson(), isEmpty);
+  });
+
+  test("talking goes through its mouths; sitting is lower, its feet still on the floor", () async {
+    var talk = modularAnimations.firstWhere((a) => a.name == "Talk");
+    expect({for (var f in talk.frames) f.mouth}.length, greaterThan(3));
+    var parts = ModularParts(await _pack());
+    var pick = [for (var n in ["Idle", "Sit"]) modularAnimations.firstWhere((a) => a.name == n)];
+    var (sheet, cols, _) = await modularSheet(parts, parts.standard(), pick, 152);
+    var px = (await SpritePixels.of(sheet))!;
+    var cw = sheet.width ~/ cols;
+    (int, int) span(int row) {
+      int? top, bottom;
+      for (var y = row * 152; y < (row + 1) * 152; y++) {
+        for (var x = 0; x < cw; x++) {
+          if (px.at(x, y).a > 0) {
+            top ??= y - row * 152;
+            bottom = y - row * 152;
+            break;
+          }
+        }
+      }
+      return (top!, bottom!);
+    }
+
+    var (standTop, standFloor) = span(0);
+    var (sitTop, sitFloor) = span(1);
+    expect(sitTop, greaterThan(standTop + 5), reason: "the head lower");
+    expect((sitFloor - standFloor).abs(), lessThanOrEqualTo(2), reason: "the shoes where they were");
+  });
+
+  test("a tuned sheet is as wide as its longest tuned animation", () async {
+    var parts = ModularParts(await _pack());
+    var pick = [modularAnimations[0], modularAnimations[1]];
+    var (_, cols, rows) = await modularSheet(parts, parts.standard(), pick, 38,
+        tuning: {"Walk": const ModularTuning(frames: 5), "Idle": const ModularTuning(frames: 7)});
+    expect((cols, rows), (7, 2));
+  });
+
   testWidgets("built in the Sprite's settings: chosen, and the sprite made", (tester) async {
     SharedPreferences.setMockInitialValues({});
     var parts = await tester.runAsync(() async => ModularParts(await _pack()));
@@ -158,5 +215,40 @@ void main() {
     expect(e.actionNamed("Walk")!.frames[SpriteFacing.front], [8, 9, 10, 11, 12, 13, 14, 15]);
     expect(e.built?["look"], isNotNull, reason: "built again from what it was built from");
     expect(tester.takeException(), isNull);
+
+    // Its Walk slowed, and made not to loop, in the Animations; built again,
+    // both are kept.
+    var walk = e.actionNamed("Walk")!;
+    c.replaceElement(e.withAction(walk.copyWith(fps: 3, loop: false)));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+        ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+      ],
+      child: MaterialApp(
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: SpriteBuilderGroup(
+                      key: const ValueKey("again"),
+                      controller: c,
+                      sprite: c.document.elementById("s") as SpriteElement)))),
+    ));
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    // The same sheet, stored under the same name: it is the tuning that
+    // says it was built again.
+    Object? tuned() => (c.document.elementById("s") as SpriteElement).built?["tuning"]["Walk"];
+    await tester.tap(find.byKey(const ValueKey("spriteBuilderBuild")));
+    for (var i = 0; i < 200 && tuned() == null; i++) {
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    var again = (c.document.elementById("s") as SpriteElement).actionNamed("Walk")!;
+    expect((again.fps, again.loop), (3, false));
+    expect((c.document.elementById("s") as SpriteElement).built?["tuning"]["Walk"]["fps"], 3);
   });
 }
