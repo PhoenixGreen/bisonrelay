@@ -384,13 +384,19 @@ void paintCharacterFigure(
   // The guide figure to draw over, under it -- or, after it, faintly over.
   // Its body the puppet's, when it has one of its own, posed as it is.
   void paintTheDoll(double opacity) {
+    var lift = pose.lift * rig.unit;
     if (puppet == null) {
-      paintDoll(canvas, rig, dna, look: dollLook, opacity: opacity);
+      paintDoll(canvas, rig, dna, look: dollLook, opacity: opacity, box: box, lift: lift);
       return;
     }
     var made = style.dnaOf(puppet.dna);
-    paintDoll(canvas, CharacterRig.of(made, pose, box, breath: life.breath), made,
-        look: dollLook, opacity: opacity, feminine: puppet.feminine);
+    var dollRig = CharacterRig.of(made, pose, box, breath: life.breath);
+    paintDoll(canvas, dollRig, made,
+        look: dollLook,
+        opacity: opacity,
+        feminine: puppet.feminine,
+        box: box,
+        lift: pose.lift * dollRig.unit);
   }
 
   if (doll == DollGuide.under) paintTheDoll(dollLook.opacity ?? 1);

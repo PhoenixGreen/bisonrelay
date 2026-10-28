@@ -35,7 +35,11 @@ enum SavedPresetKind {
 
   /// paintBrush is a brush for a picture's paint layers somebody made --
   /// see BrushPreset.
-  paintBrush("paint-brushes");
+  paintBrush("paint-brushes"),
+
+  /// pose is a character's pose somebody kept -- see the Puppet section's
+  /// poses.
+  pose("poses");
 
   /// folder is where these are kept on disk, under the presets folder.
   final String folder;
@@ -118,7 +122,8 @@ class SavedPreset {
         SavedPresetKind.brush ||
         SavedPresetKind.pitchView ||
         SavedPresetKind.look ||
-        SavedPresetKind.paintBrush =>
+        SavedPresetKind.paintBrush ||
+        SavedPresetKind.pose =>
           const [],
       };
 

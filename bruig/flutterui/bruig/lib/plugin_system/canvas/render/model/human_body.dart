@@ -262,7 +262,8 @@ class HumanBody extends ChangeNotifier {
       {bool drawnFace = false,
       String? preferHair,
       double limbs = 1,
-      bool gloves = false}) {
+      bool gloves = false,
+      double? gender}) {
     var pack = _pack;
     if (pack == null) {
       if (!_missing) {
@@ -282,6 +283,7 @@ class HumanBody extends ChangeNotifier {
       drawnFace,
       limbs,
       gloves,
+      gender,
       dna.kind.name,
       dna.headsTall,
       dna.build,
@@ -306,14 +308,18 @@ class HumanBody extends ChangeNotifier {
     CanvasPerf.count("bodyBuild");
     var standIn = _made[_lastOf[(dna.kind, drawnFace)]];
     if (standIn != null && !buildNow && !_inForeground) {
-      _buildAway(key, pack, dna, wearing, drawnFace, images, limbs, gloves);
+      _buildAway(key, pack, dna, wearing, drawnFace, images, limbs, gloves, gender);
       stoodIn++;
       return standIn;
     }
     return _keep(key, dna, drawnFace,
         LoadedModel.of(
             buildHuman(pack, dna,
-                wearing: wearing, drawnFace: drawnFace, limbs: limbs, gloves: gloves),
+                wearing: wearing,
+                drawnFace: drawnFace,
+                limbs: limbs,
+                gloves: gloves,
+                gender: gender),
             images));
   }
 
@@ -345,22 +351,22 @@ class HumanBody extends ChangeNotifier {
   /// _away is the body being made away from the screen, and _next the one
   /// asked for meanwhile -- only the last asked for is made next.
   String? _away;
-  (String, CharacterDna, List<WearMesh>, bool, List<ui.Image?>, double, bool)? _next;
+  (String, CharacterDna, List<WearMesh>, bool, List<ui.Image?>, double, bool, double?)? _next;
   _Builder? _builder;
 
   void _buildAway(String key, HumanPack pack, CharacterDna dna,
       List<WearMesh> wearing, bool drawnFace, List<ui.Image?> images,
-      double limbs, bool gloves) {
+      double limbs, bool gloves, double? gender) {
     if (_away == key) return;
     if (_away != null) {
-      _next = (key, dna, wearing, drawnFace, images, limbs, gloves);
+      _next = (key, dna, wearing, drawnFace, images, limbs, gloves, gender);
       return;
     }
     _away = key;
     () async {
       try {
         var builder = _builder ??= await _Builder.start(pack);
-        var gltf = await builder.build(dna, wearing, drawnFace, limbs, gloves);
+        var gltf = await builder.build(dna, wearing, drawnFace, limbs, gloves, gender);
         if (identical(_pack, pack)) {
           _keep(key, dna, drawnFace, LoadedModel.of(gltf, images));
         }
@@ -372,7 +378,7 @@ class HumanBody extends ChangeNotifier {
         _next = null;
         if (next != null && !_made.containsKey(next.$1) && identical(_pack, pack)) {
           _buildAway(next.$1, pack, next.$2, next.$3, next.$4, next.$5,
-              next.$6, next.$7);
+              next.$6, next.$7, next.$8);
         }
         notifyListeners();
       }
@@ -412,10 +418,10 @@ class _Builder {
   }
 
   Future<Gltf> build(CharacterDna dna, List<WearMesh> wearing, bool drawnFace,
-      double limbs, bool gloves) {
+      double limbs, bool gloves, double? gender) {
     var id = _ids++;
     var c = _waiting[id] = Completer<Gltf>();
-    _to.send((id, dna, wearing, drawnFace, limbs, gloves));
+    _to.send((id, dna, wearing, drawnFace, limbs, gloves, gender));
     return c.future;
   }
 
@@ -429,13 +435,17 @@ class _Builder {
         reply = m;
         continue;
       }
-      var (id, dna, wearing, drawnFace, limbs, gloves) =
-          m as (int, CharacterDna, List<WearMesh>, bool, double, bool);
+      var (id, dna, wearing, drawnFace, limbs, gloves, gender) =
+          m as (int, CharacterDna, List<WearMesh>, bool, double, bool, double?);
       try {
         reply?.send((
           id,
           buildHuman(pack, dna,
-              wearing: wearing, drawnFace: drawnFace, limbs: limbs, gloves: gloves),
+              wearing: wearing,
+              drawnFace: drawnFace,
+              limbs: limbs,
+              gloves: gloves,
+              gender: gender),
           null
         ));
       } catch (e) {
@@ -526,7 +536,8 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     {List<WearMesh> wearing = const [],
     bool drawnFace = false,
     double limbs = 1,
-    bool gloves = false}) {
+    bool gloves = false,
+    double? gender}) {
   var n = pack.vertexCount;
   var pos = Float32List.fromList(pack.base);
   void apply(String name, double w) {
@@ -552,7 +563,7 @@ Gltf buildHuman(HumanPack pack, CharacterDna dna,
     }
   }
 
-  var macro = humanMacroOf(dna);
+  var macro = humanMacroOf(dna, gender: gender);
   for (var e in macroWeights(macro).entries) {
     apply(e.key, e.value);
   }

@@ -191,10 +191,11 @@ List<String> humanTargetFiles() {
 /// them: each from nought to one.
 typedef HumanMacro = ({double gender, double age, double muscle, double weight});
 
-/// humanMacroOf is [dna]'s body as MakeHuman's sliders.
-HumanMacro humanMacroOf(CharacterDna dna) {
+/// humanMacroOf is [dna]'s body as MakeHuman's sliders -- [gender], when
+/// given, how much a man's from nought to one, in place of its type's.
+HumanMacro humanMacroOf(CharacterDna dna, {double? gender}) {
   var type = dna.kind;
-  var gender = switch (type) {
+  gender ??= switch (type) {
     CharacterType.woman || CharacterType.girl => 0.0,
     CharacterType.man || CharacterType.boy => 1.0,
     _ => 0.5,

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:bruig/models/snackbar.dart';
@@ -9,6 +10,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/storage/saved_preset_store.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
@@ -45,6 +48,17 @@ int _opaque(List<int> px) {
 }
 
 void main() {
+  // Kept poses go to a library of the tests' own, never the real one.
+  late Directory library;
+  setUpAll(() {
+    library = Directory.systemTemp.createTempSync("doll_test");
+    CanvasStorage.rootOverride = library.path;
+  });
+  tearDownAll(() {
+    CanvasStorage.rootOverride = null;
+    library.deleteSync(recursive: true);
+  });
+
   test("drawn for the sketch picked, in the editor alone", () async {
     var c = CanvasController(CanvasDocument(frames: 24)
         .addElement(_empty())
@@ -278,5 +292,74 @@ void main() {
     var woman = await as(CharacterType.woman), man = await as(CharacterType.man);
     expect(woman, isNot(man));
     expect(await as(CharacterType.girl), isNot(woman));
+  });
+
+  test("three dolls: the human -- the smooth one until its body is here -- and the wooden", () async {
+    Future<List<int>> as(DollKind kind) async {
+      characterDollOf = (e) => DollGuide.under;
+      characterDollLook = DollLook(kind: kind);
+      return _pixels(_empty().copyWith(puppet: PuppetForm.of(CharacterType.man)));
+    }
+
+    addTearDown(() {
+      characterDollOf = null;
+      characterDollLook = const DollLook();
+    });
+    var human = await as(DollKind.human);
+    expect(_opaque(human), greaterThan(2000), reason: "something stands in");
+    expect(await as(DollKind.wooden), isNot(human));
+  });
+
+  group("the Puppet section's choices and poses", () {
+    setUpAll(() => CanvasSection.openAll = true);
+    tearDownAll(() => CanvasSection.openAll = false);
+
+    testWidgets("a human, wooden or flat puppet; a pose from the library", (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(_empty()));
+      addTearDown(c.dispose);
+      c.selectOnly("c");
+      c.showPuppet = true;
+      c.puppet3D = true;
+      tester.view.physicalSize = const Size(900, 9000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(c.dollLook.kind, DollKind.human);
+      expect(find.byKey(const ValueKey("puppetKind")), findsOneWidget);
+      // Every pose, standing and in action, a tile.
+      for (var p in [...posePresets, ...actionPoses]) {
+        var group = posePresets.contains(p) ? "stand" : "action";
+        expect(find.byKey(ValueKey("puppetPose-$group-${p.name}")), findsOneWidget, reason: p.name);
+      }
+      var crouch = find.byKey(const ValueKey("puppetPose-action-Crouch"));
+      await tester.ensureVisible(crouch);
+      await tester.tap(crouch);
+      await tester.pumpAndSettle();
+      var e = c.document.elementById("c") as CharacterElement;
+      var want = actionPoses.firstWhere((p) => p.name == "Crouch").pose;
+      expect(e.pose.swing(CharacterBone.thighL), want.swing(CharacterBone.thighL));
+      expect(e.pose.lift, want.lift);
+      c.undo();
+      expect((c.document.elementById("c") as CharacterElement).pose.lift, 0, reason: "one undo");
+      expect(find.byKey(const ValueKey("puppetPoseKeep")), findsOneWidget);
+      expect(find.byKey(const ValueKey("puppetPoseFile")), findsOneWidget);
+      // Wooden.
+      c.dollLook = c.dollLook.copyWith(kind: DollKind.wooden);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("puppetHumanStatus")), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

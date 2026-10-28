@@ -443,3 +443,127 @@ const List<ExpressionPreset> expressionPresets = [
         FaceControl.jaw: 0.08,
       })),
 ];
+
+/// actionPoses is the stances to draw a figure in, past standing: moving,
+/// low to the ground, reaching -- shaped in three dimensions, so they read
+/// from the side as well as the front. See the Puppet section.
+const List<PosePreset> actionPoses = [
+  PosePreset(
+      "Walk",
+      CharacterPose({CharacterBone.upperArmL: 6, CharacterBone.upperArmR: -6}, {
+        CharacterBone.thighL: 25,
+        CharacterBone.shinL: -12,
+        CharacterBone.thighR: -18,
+        CharacterBone.shinR: -28,
+        CharacterBone.upperArmL: -22,
+        CharacterBone.foreArmL: 18,
+        CharacterBone.upperArmR: 22,
+        CharacterBone.foreArmR: 22,
+        CharacterBone.spine: 3,
+      })),
+  PosePreset(
+      "Run",
+      CharacterPose({CharacterBone.upperArmL: 8, CharacterBone.upperArmR: -8}, {
+        CharacterBone.thighL: 50,
+        CharacterBone.shinL: -65,
+        CharacterBone.thighR: -28,
+        CharacterBone.shinR: -70,
+        CharacterBone.upperArmL: -50,
+        CharacterBone.foreArmL: 85,
+        CharacterBone.upperArmR: 50,
+        CharacterBone.foreArmR: 85,
+        CharacterBone.spine: 12,
+      }, 0, 0.35)),
+  PosePreset(
+      "Reach out",
+      CharacterPose({CharacterBone.upperArmL: 12, CharacterBone.foreArmL: -6}, {
+        CharacterBone.upperArmR: 82,
+        CharacterBone.foreArmR: 4,
+        CharacterBone.upperArmL: -25,
+        CharacterBone.spine: 10,
+        CharacterBone.thighL: 12,
+        CharacterBone.thighR: -14,
+      })),
+  PosePreset(
+      "Crouch",
+      CharacterPose({CharacterBone.thighL: 12, CharacterBone.thighR: -12}, {
+        CharacterBone.thighL: 110,
+        CharacterBone.shinL: -140,
+        CharacterBone.thighR: 110,
+        CharacterBone.shinR: -140,
+        CharacterBone.spine: 30,
+        CharacterBone.upperArmL: 35,
+        CharacterBone.foreArmL: 55,
+        CharacterBone.upperArmR: 35,
+        CharacterBone.foreArmR: 55,
+      }, 0, -1.6)),
+  PosePreset(
+      "Sit",
+      CharacterPose({CharacterBone.thighL: 4, CharacterBone.thighR: -4}, {
+        CharacterBone.thighL: 90,
+        CharacterBone.shinL: -90,
+        CharacterBone.thighR: 90,
+        CharacterBone.shinR: -90,
+        CharacterBone.upperArmL: 20,
+        CharacterBone.foreArmL: 45,
+        CharacterBone.upperArmR: 20,
+        CharacterBone.foreArmR: 45,
+      }, 0, -1.3)),
+  PosePreset(
+      "Kneel",
+      CharacterPose({}, {
+        CharacterBone.thighL: 90,
+        CharacterBone.shinL: -90,
+        CharacterBone.thighR: -5,
+        CharacterBone.shinR: -85,
+        CharacterBone.upperArmL: 25,
+        CharacterBone.foreArmL: 40,
+        CharacterBone.spine: 5,
+      }, 0, -1.4)),
+  PosePreset(
+      "Jump",
+      CharacterPose({
+        CharacterBone.upperArmL: 150,
+        CharacterBone.foreArmL: 15,
+        CharacterBone.upperArmR: -150,
+        CharacterBone.foreArmR: -15,
+        CharacterBone.thighL: 10,
+        CharacterBone.thighR: -10,
+      }, {
+        CharacterBone.thighL: 45,
+        CharacterBone.shinL: -100,
+        CharacterBone.thighR: 30,
+        CharacterBone.shinR: -90,
+      }, 0, 1.2)),
+  PosePreset(
+      "Kick",
+      CharacterPose({
+        CharacterBone.upperArmL: 60,
+        CharacterBone.upperArmR: -60,
+        CharacterBone.foreArmL: 20,
+        CharacterBone.foreArmR: -20,
+      }, {
+        CharacterBone.thighR: 95,
+        CharacterBone.shinR: -8,
+        CharacterBone.thighL: -6,
+        CharacterBone.spine: -14,
+      })),
+  PosePreset(
+      "Fight",
+      CharacterPose({
+        CharacterBone.upperArmL: 20,
+        CharacterBone.upperArmR: -25,
+        CharacterBone.thighL: 12,
+        CharacterBone.thighR: -10,
+      }, {
+        CharacterBone.upperArmL: 55,
+        CharacterBone.foreArmL: 75,
+        CharacterBone.upperArmR: 35,
+        CharacterBone.foreArmR: 100,
+        CharacterBone.thighL: 22,
+        CharacterBone.shinL: -25,
+        CharacterBone.thighR: -14,
+        CharacterBone.shinR: -10,
+        CharacterBone.spine: 8,
+      })),
+];

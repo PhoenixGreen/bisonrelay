@@ -3894,7 +3894,8 @@ class CanvasController extends ChangeNotifier {
     if (look.lens == _dollLook.lens &&
         look.lines == _dollLook.lines &&
         look.place == _dollLook.place &&
-        look.opacity == _dollLook.opacity) {
+        look.opacity == _dollLook.opacity &&
+        look.kind == _dollLook.kind) {
       return;
     }
     _dollLook = look;
