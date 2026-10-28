@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_limits.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
@@ -250,10 +251,11 @@ Widget _jointGroup(CanvasController controller, CharacterElement e, DollJoint jo
         "it, along its orange ring to swing it towards you or away, or set "
         "them here. On a wrist, drag a fingertip to curl that finger.",
     children: [
-      degrees("puppetJointBend", "Bend", pose[bone], -180, 180,
-          (v) => posed(pose.withAngle(bone, v))),
-      degrees("puppetJointSwing", "Swing", pose.swing(bone), -170, 170,
-          (v) => posed(pose.withSwing(bone, v))),
+      // As far as the joint goes, and no further.
+      degrees("puppetJointBend", "Bend", pose[bone], limitOf(bone).angleMin,
+          limitOf(bone).angleMax, (v) => posed(pose.withAngle(bone, v))),
+      degrees("puppetJointSwing", "Swing", pose.swing(bone), limitOf(bone).swingMin,
+          limitOf(bone).swingMax, (v) => posed(pose.withSwing(bone, v))),
       CanvasTextButton(
         key: const ValueKey("puppetJointStraighten"),
         label: "Straighten",
@@ -280,7 +282,8 @@ Widget _jointGroup(CanvasController controller, CharacterElement e, DollJoint jo
           },
         ),
         for (var f in Finger.values)
-          degrees("puppetFinger-${f.name}", f.label, pose[f.bone(left)], -30, 110,
+          degrees("puppetFinger-${f.name}", f.label, pose[f.bone(left)],
+              limitOf(f.bone(left)).angleMin, limitOf(f.bone(left)).angleMax,
               (v) => posed(pose.withAngle(f.bone(left), v))),
       ],
     ],

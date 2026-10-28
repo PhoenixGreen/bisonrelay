@@ -67,9 +67,11 @@ extension _Sweep on _Builder {
   ///
   /// It is the shape added, and the ring each joint is at -- [sides]
   /// points to a ring -- for the lines drawn round it there.
+  ///
+  /// [colour], when given, is its colour at [t] along it: bands round it.
   (int, List<int>) sweep(Color color, List<_V> joints, _V front,
       double Function(double t, double theta) radius,
-      {int steps = 8, int sides = 20, _V? sortAt}) {
+      {int steps = 8, int sides = 20, _V? sortAt, Color Function(double t)? colour}) {
     var bones = joints.length - 1;
     var along = <(_V, double)>[];
     var atJoint = <int>[];
@@ -127,7 +129,15 @@ extension _Sweep on _Builder {
       rings.add(ringAt(_add(along.last.$1, _mul(tn, meanRadius(1) * math.sin(a))), tn, 1,
           scale: math.cos(a)));
     }
-    var shape = loft(color, rings, sortAt: sortAt);
+    var shape = loft(color, rings,
+        sortAt: sortAt,
+        ringColours: colour == null
+            ? null
+            : [
+                for (var k = 0; k < cap; k++) colour(0),
+                for (var (_, tt) in along) colour(tt),
+                for (var k = 0; k < cap; k++) colour(1),
+              ]);
     return (shape, [for (var j in atJoint) j + cap]);
   }
 
@@ -469,23 +479,27 @@ List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna,
       lens: lens <= 0 ? 0 : u * dna.headsTall * (6 - 4.8 * lens.clamp(0.0, 1.0)));
 }
 
-/// woodColour and woodJoint are the wooden doll's: its pieces, and the
-/// balls it bends at.
-const Color woodColour = Color(0xFFDDC29C);
-const Color woodJoint = Color(0xFFB4895F);
+/// The wooden doll's colours: its pale wood, the warmer wood of its trunk,
+/// the tan of the joints it bends at, and its grey shoes.
+const Color woodColour = Color(0xFFE4DFD5);
+const Color woodTrunk = Color(0xFFE7CDA9);
+const Color woodJoint = Color(0xFFCDA673);
+const Color woodShoe = Color(0xFF8F9298);
 
-/// woodenPieces is the guide figure as an artist's wooden doll: rounded
-/// pieces for the hips, the belly, the chest and the head, a capsule for
-/// each bone of each limb, and a ball at every joint between them -- the
-/// points it bends at, plain to see. Built from [rig] as dollPieces is,
-/// in pixels from the rig's hips.
+/// woodenPieces is the guide figure as an artist's wooden doll, after
+/// mannequin.js: a fluted barrel of a trunk and a bowl of a pelvis with a
+/// ball between them, a ball at each shoulder and hip, a band at each
+/// elbow, wrist and knee -- the points it bends at, in a warmer wood --
+/// slim limbs, thighs fluted and full, grey shoes, and a carved head with
+/// a face and grooves for hair. Built from [rig] as dollPieces is, in
+/// pixels from the rig's hips.
 List<MeshPiece> woodenPieces(CharacterRig rig, CharacterDna dna,
     {double lens = 0, double feminine = 0}) {
   var j = rig.joints3;
   _V at(RigJoint k) => j[k] ?? const [0.0, 0.0, 0.0];
   var u = rig.unit;
   var b = _Builder();
-  const c = woodColour, ball = woodJoint;
+  const c = woodColour;
   var she = feminine.clamp(0.0, 1.0);
 
   var hips = at(RigJoint.hips), chest = at(RigJoint.chest);
@@ -496,82 +510,137 @@ List<MeshPiece> woodenPieces(CharacterRig rig, CharacterDna dna,
   var forward = _unit(_cross(across, down), const [0, 0, 1]);
   across = _cross(down, forward);
   var trunk = _Frame(across, down, forward);
+  var trunkMiddle = _add(chest, _mul(down, t * 0.5));
   var sh = rig.shoulderHalf, hip = rig.hipHalf * (1 + 0.1 * she);
 
-  // The trunk in three pieces, bending at a ball between the chest and the
-  // belly.
-  b.ellipsoid(c, _add(chest, _mul(down, t * 0.27)), trunk, sh * 0.8, t * 0.3, sh * 0.45,
-      rings: 12, sides: 20);
-  var chestPiece = b.last;
-  if (she > 0.3) {
-    for (var side in [-1.0, 1.0]) {
-      b.sittingOn(chestPiece, () => b.ellipsoid(c,
-          _add(chest, trunk.on(side * sh * 0.34, t * 0.3, sh * 0.36)), trunk,
-          sh * 0.2 * she, sh * 0.2 * she, sh * 0.16 * she,
-          rings: 6, sides: 10));
-    }
-  }
-  b.ellipsoid(ball, _add(chest, _mul(down, t * 0.58)), trunk, sh * 0.42, t * 0.1, sh * 0.32,
-      rings: 8, sides: 16);
-  b.ellipsoid(c, _add(chest, _mul(down, t * 0.72)), trunk, sh * 0.55, t * 0.16, sh * 0.36,
-      rings: 10, sides: 18);
-  b.ellipsoid(c, _add(hips, _mul(down, t * 0.04)), trunk, hip * 1.0, t * 0.2, hip * 0.6,
-      rings: 10, sides: 20);
+  // A section round the trunk: [w] across and [d] deep, squarish, fluted.
+  List<_V> section(double a, double w, double d, {int sides = 36, double flutes = 0.025}) => [
+        for (var k = 0; k < sides; k++)
+          () {
+            var th = 2 * math.pi * k / sides;
+            var groove = 1 + flutes * math.cos(12 * th);
+            return _add(
+                _add(chest, _mul(down, a * t)),
+                _add(_mul(across, _squarish(math.sin(th), 2.6) * w * groove),
+                    _mul(forward, _squarish(math.cos(th), 2.4) * d * groove)));
+          }(),
+      ];
 
-  // The neck and the head.
+  // The trunk: broad at the shoulders, in to the waist, rounded off.
+  const chestKeys = [
+    (-0.13, 0.36), (-0.08, 0.68), (0.0, 0.84), (0.12, 0.86), (0.3, 0.8), (0.46, 0.7), (0.56, 0.64), (0.61, 0.45),
+  ];
+  var bust = 1 + 0.12 * she;
+  var trunkRings = [
+    for (var r = 0; r < 18; r++)
+      () {
+        var a = -0.13 + 0.74 * r / 17;
+        var w = _keyed(chestKeys, a) * sh;
+        var d = sh * 0.42 * _keyed([(-0.13, 0.7), (0.0, 0.95), (0.2, bust), (0.5, 0.92), (0.61, 0.6)], a);
+        return section(a, w, d);
+      }(),
+  ];
+  var torso = b.loft(c, trunkRings,
+      sortAt: trunkMiddle,
+      ringColours: [
+        for (var r = 0; r < 18; r++) Color.lerp(woodTrunk, const Color(0xFFEBDDC6), r / 17)!,
+      ]);
+  // The ball it bends at, and the pelvis below.
+  b.ellipsoid(woodJoint, _add(chest, _mul(down, t * 0.66)), trunk, sh * 0.34, t * 0.1, sh * 0.3,
+      rings: 8, sides: 18);
+  const pelvisKeys = [(0.66, 0.62), (0.74, 0.9), (0.86, 1.08), (0.98, 1.1), (1.08, 0.95), (1.16, 0.62), (1.2, 0.3)];
+  var pelvis = b.loft(c, [
+    for (var r = 0; r < 14; r++)
+      () {
+        var a = 0.66 + 0.54 * r / 13;
+        var w = _keyed(pelvisKeys, a) * hip;
+        return section(a, w, w * 0.62, flutes: 0.03);
+      }(),
+  ], sortAt: _add(hips, _mul(forward, -hip * 0.05)));
+  // The balls at the shoulders and the hips, over the trunk and the pelvis.
+  var arm = rig.limbWidth * 0.5;
+  var leg = rig.legWidth * 0.5;
+  for (var s in [RigJoint.shoulderL, RigJoint.shoulderR]) {
+    b.sittingOn(torso, () => b.ellipsoid(woodJoint, at(s), trunk, arm * 1.55, arm * 1.45, arm * 1.5,
+        rings: 10, sides: 16), always: true);
+  }
+  for (var h in [RigJoint.hipL, RigJoint.hipR]) {
+    // At the top of the thigh, to the outside: a cap, not a ball out front.
+    var out = _mul(across, (h == RigJoint.hipL ? -1.0 : 1.0) * leg * 0.45);
+    b.sittingOn(pelvis, () => b.ellipsoid(woodJoint, _add(_add(at(h), out), _mul(down, leg * 1.0)),
+        trunk, leg * 1.2, leg * 0.9, leg * 1.05, rings: 10, sides: 16), always: true);
+  }
+
+  // The neck, and the head carved over it: a face, and grooves for hair.
   var skull = _Frame.of(rig.headBasis);
   var hs = rig.headScale;
   var headAt = at(RigJoint.head);
   var radii = rig.headRadii;
   var rx = radii.width / 0.46 * 0.4 * hs, ry = radii.height * hs, rz = u * 0.44 * hs;
-  var neckR = u * 0.1;
-  if (!dna.species.legless) {
-    b.ellipsoid(ball, _add(chest, _mul(down, -t * 0.03)), trunk, neckR * 1.5, neckR * 1.2,
-        neckR * 1.4, rings: 8, sides: 14);
-    b.sweep(c, [_add(chest, _mul(down, -t * 0.06)), _add(headAt, skull.on(0, ry * 0.75, 0))],
-        forward, (t, th) => neckR, steps: 3, sides: 12);
-  }
+  var neckR = u * 0.095;
+  b.sweep(c, [_add(chest, _mul(down, -t * 0.1)), _add(headAt, skull.on(0, ry * 0.7, -rz * 0.1))],
+      forward, (tt, th) => neckR * (1 - 0.1 * tt), steps: 3, sides: 14);
   var neckPiece = b.last;
-  // The head over the neck it sits on, whichever way round it is seen.
-  void head() => b.loft(c, [
-    for (var r = 1; r < 18; r++)
-      () {
-        var lat = math.pi * r / 18;
-        var sy = -math.cos(lat), sr = math.sin(lat);
-        var k = sy > 0 ? 1 - 0.35 * sy * sy : 1.0;
-        return [
-          for (var s = 0; s < 20; s++)
-            _add(headAt, skull.on(sr * math.sin(2 * math.pi * s / 20) * rx * k, sy * ry,
-                sr * math.cos(2 * math.pi * s / 20) * rz * k + (sy > 0 ? sy * sy * rz * 0.1 : 0))),
-        ];
-      }(),
-  ]);
-  if (neckPiece >= 0 && !dna.species.legless) {
-    b.sittingOn(neckPiece, head, always: true);
-  } else {
-    head();
-  }
+  b.sittingOn(neckPiece, () {
+    const lats = 26, lons = 32;
+    b.loft(c, [
+      for (var r = 1; r < lats; r++)
+        () {
+          var lat = math.pi * r / lats;
+          var sy = -math.cos(lat), sr = math.sin(lat);
+          return [
+            for (var s = 0; s < lons; s++)
+              () {
+                var th = 2 * math.pi * s / lons;
+                var front = math.cos(th);
+                var narrow = sy > 0 ? 1 - 0.42 * math.pow(sy, 1.5) : 1.0;
+                var x = sr * math.sin(th) * rx * narrow;
+                var z = sr * front * rz * narrow;
+                if (sy > 0 && front > 0) z += sy * sy * rz * 0.15 * front;
+                var p = [x, sy * ry, z];
+                var dent = 0.0;
+                // Eyes set in, a brow, a nose, lips.
+                for (var side in [-1.0, 1.0]) {
+                  dent -= 0.09 * _bump(lat, math.pi * 0.55, 0.08) * _bump(_round(th, side * 0.36), 0, 0.17);
+                  dent += 0.03 * _bump(lat, math.pi * 0.49, 0.05) * _bump(_round(th, side * 0.36), 0, 0.25);
+                }
+                dent += 0.12 * _bump(lat, math.pi * 0.63, 0.06) * _bump(_round(th, 0), 0, 0.1);
+                dent += 0.04 * _bump(lat, math.pi * 0.73, 0.03) * _bump(_round(th, 0), 0, 0.22);
+                // Grooves of hair over the crown and down the back.
+                var hair = sy < -0.15 || (front < -0.2 && sy < 0.25);
+                if (hair) dent += 0.025 * math.cos(22 * th) * math.min(1, (0.25 - sy).abs() * 4);
+                var l = _len(p);
+                if (l > 0) p = _mul(p, 1 + dent * rz / l);
+                return _add(headAt, skull.on(p[0], p[1], p[2]));
+              }(),
+          ];
+        }(),
+    ], sortAt: headAt);
+  }, always: true);
 
-  // A capsule for each bone, short of the balls at its ends: one smooth
-  // piece, rounded off.
-  void bone(_V a, _V z, double ra, double rz, double gap) {
-    var d = _sub(z, a);
-    b.sweep(c, [_add(a, _mul(d, gap)), _sub(z, _mul(d, gap))], forward,
-        (t, _) => ra + (rz - ra) * t,
-        steps: 4, sides: 14);
-  }
-
-  var arm = rig.limbWidth * 0.5;
+  // Arms, each one piece from the shoulder, its elbow and wrist banded.
   var hand = rig.handRadius * 1.25;
+  Color band(double tt, List<double> at, double width) {
+    for (var a in at) {
+      if ((tt - a).abs() < width) return woodJoint;
+    }
+    return c;
+  }
+
   for (var (limb, s, e, w) in [
     (CharacterLimb.armL, RigJoint.shoulderL, RigJoint.elbowL, RigJoint.wristL),
     (CharacterLimb.armR, RigJoint.shoulderR, RigJoint.elbowR, RigJoint.wristR),
   ]) {
-    b.ellipsoid(ball, at(s), trunk, arm * 1.25, arm * 1.25, arm * 1.25, rings: 8, sides: 14);
-    bone(at(s), at(e), arm * 1.05, arm * 0.85, 0.1);
-    b.ellipsoid(ball, at(e), trunk, arm * 0.9, arm * 0.9, arm * 0.9, rings: 8, sides: 12);
-    bone(at(e), at(w), arm * 0.85, arm * 0.65, 0.1);
-    b.ellipsoid(ball, at(w), trunk, arm * 0.62, arm * 0.62, arm * 0.62, rings: 6, sides: 10);
+    var reach = math.max(0.0, _dot(_sub(at(e), at(s)), forward));
+    b.sweep(c, [at(s), at(e), at(w)], forward, (tt, th) {
+      var r = _keyed(const [(0.0, 1.15), (0.2, 1.1), (0.44, 0.92), (0.5, 1.12), (0.56, 0.95),
+        (0.7, 1.0), (0.92, 0.72), (0.97, 0.85), (1.0, 0.68)], tt);
+      return r * arm;
+    },
+        steps: 10,
+        sides: 16,
+        colour: (tt) => band(tt, const [0.5, 0.975], 0.035),
+        sortAt: _add(_mul(_add(at(s), at(e)), 0.5), _mul(forward, reach * 1.5 - sh * 0.45)));
     var m = rig.frames[limb];
     if (m == null) continue;
     var frame = ExtremityFrame(rig, m);
@@ -580,7 +649,6 @@ List<MeshPiece> woodenPieces(CharacterRig rig, CharacterDna dna,
       return _add(at(w), [x, y, z]);
     }
 
-    // A flat paddle of a palm, and fingers in pieces.
     b.loft(c, [
       for (var (y, wd, th) in handPalm)
         [
@@ -590,28 +658,36 @@ List<MeshPiece> woodenPieces(CharacterRig rig, CharacterDna dna,
         ],
     ]);
     for (var (chain, radii, _) in handJoints(rig, limb, hand)) {
-      b.sweep(c, [for (var p in chain) on(p)], forward, (t, _) {
-        var x = t * (radii.length - 1);
+      b.sweep(c, [for (var p in chain) on(p)], forward, (tt, _) {
+        var x = tt * (radii.length - 1);
         var i = math.min(x.floor(), radii.length - 2);
         return (radii[i] + (radii[i + 1] - radii[i]) * (x - i)) * 0.95;
       }, steps: 2, sides: 8);
     }
   }
 
-  var leg = rig.legWidth * 0.5;
+  // Legs: full fluted thighs, a band at the knee, slim shins, grey shoes.
   var foot = rig.footSize();
   for (var (limb, h, k, a) in [
     (CharacterLimb.legL, RigJoint.hipL, RigJoint.kneeL, RigJoint.ankleL),
     (CharacterLimb.legR, RigJoint.hipR, RigJoint.kneeR, RigJoint.ankleR),
   ]) {
     if (dna.species.legless) break;
-    b.ellipsoid(ball, at(h), trunk, leg * 1.3, leg * 1.3, leg * 1.3, rings: 8, sides: 14);
-    bone(at(h), at(k), leg * 1.3, leg * 1.0, 0.1);
-    b.ellipsoid(ball, at(k), trunk, leg * 1.05, leg * 1.05, leg * 1.05, rings: 8, sides: 14);
-    bone(at(k), at(a), leg * 1.0, leg * 0.72, 0.1);
-    b.ellipsoid(ball, at(a), trunk, leg * 0.72, leg * 0.72, leg * 0.72, rings: 6, sides: 12);
+    var middle = _mul(_add(at(h), at(k)), 0.5);
+    var lifted = math.max(0.0, _dot(_sub(at(k), at(h)), forward) - hip * 0.6);
+    b.sweep(c, [at(h), at(k), at(a)], forward, (tt, th) {
+      var r = _keyed(const [(0.0, 1.55), (0.15, 1.6), (0.38, 1.25), (0.46, 1.0), (0.5, 1.18),
+        (0.54, 0.98), (0.64, 1.02), (0.85, 0.72), (1.0, 0.62)], tt);
+      if (tt < 0.45) r *= 1 + 0.03 * math.cos(10 * th);
+      return r * leg;
+    },
+        steps: 10,
+        sides: 20,
+        colour: (tt) => band(tt, const [0.5], 0.035),
+        sortAt: _add(_add(trunkMiddle, _mul(_sub(middle, trunkMiddle), 0.05)),
+            _mul(forward, lifted * 2 - hip * 0.5)));
     if (rig.frames[limb] == null) continue;
-    b.loft(c, [
+    b.loft(woodShoe, [
       for (var r in footRings(rig, limb, foot))
         [for (var (x, y, z) in r) _add(at(a), [x, y, z])],
     ]);

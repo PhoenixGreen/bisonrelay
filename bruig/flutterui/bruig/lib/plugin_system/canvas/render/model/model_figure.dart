@@ -428,9 +428,25 @@ class LoadedModel {
       if (length(want) < 1e-9) continue;
       var now = _minus(world[tip].translation, world[n].translation);
       if (length(now) < 1e-9) continue;
+      // An arm raised past level takes its shoulder up with it, a share
+      // of the way: turned at the arm alone, the shoulder folds in.
+      if (_shoulderOf(seg.bone) case var sb? when h[sb] != null) {
+        var up = want[1] / length(want);
+        var share = 0.38 * ((up + 0.15) / 1.15).clamp(0.0, 1.0);
+        if (share > 0) {
+          var sn = h[sb]!;
+          var q = Quat.slerp(Quat.identity, Quat.between(now, want), share);
+          turns[sn] = (parentTurn(world, sn).conjugate * (q * world[sn].rotation)).normalized;
+          world = _worldWith(turns);
+          now = _minus(world[tip].translation, world[n].translation);
+        }
+      }
       var turned = Quat.between(now, want) * world[n].rotation;
       turns[n] = (parentTurn(world, n).conjugate * turned).normalized;
     }
+    // Nothing of an arm inside the body: one that would be is turned out
+    // of it, as little as will do.
+    _clear(turns, parentTurn);
 
     // The head, turned as the rig turns it and as the face turns and nods
     // it, from how it stood as made.
@@ -450,6 +466,145 @@ class LoadedModel {
       }
     }
     return turns;
+  }
+
+  /// _shoulderOf is the shoulder an upper arm [bone] hangs from.
+  static HumanBone? _shoulderOf(HumanBone bone) => switch (bone) {
+        HumanBone.leftUpperArm => HumanBone.leftShoulder,
+        HumanBone.rightUpperArm => HumanBone.rightShoulder,
+        _ => null,
+      };
+
+  /// _volumes is how much room the body takes up, measured once from it
+  /// as made -- see _BodyVolumes -- or null for a model without the bones
+  /// to measure by.
+  late final _BodyVolumes? _volumes = _BodyVolumes.measure(gltf, _rest);
+
+  /// _clear turns each arm of [turns] -- the forearm first, then the
+  /// whole arm -- out of the body and the thighs, where any of it from
+  /// the elbow down would be inside them: as little, and in as few small
+  /// steps, as will do.
+  void _clear(Map<int, Quat> turns, Quat Function(List<Mat4>, int) parentTurn) {
+    var v = _volumes;
+    if (v == null) return;
+    var h = gltf.humanoid;
+    for (var (upper, lower, hand) in const [
+      (HumanBone.leftUpperArm, HumanBone.leftLowerArm, HumanBone.leftHand),
+      (HumanBone.rightUpperArm, HumanBone.rightLowerArm, HumanBone.rightHand),
+    ]) {
+      var u = h[upper], l = h[lower], w = h[hand];
+      if (u == null || l == null || w == null) continue;
+      for (var step = 0; step < 36; step++) {
+        var world = _worldWith(turns);
+        var s = world[u].translation, e = world[l].translation, wr = world[w].translation;
+        var fore = _minus(wr, e);
+        var tip = [for (var k = 0; k < 3; k++) wr[k] + fore[k] * 0.45];
+        List<double> at(List<double> a, List<double> b, double t) =>
+            [for (var k = 0; k < 3; k++) a[k] + (b[k] - a[k]) * t];
+        var samples = [at(s, e, 0.75), e, at(e, wr, 0.35), at(e, wr, 0.7), wr, tip];
+        var worst = 0.0;
+        List<double>? push;
+        var which = -1;
+        for (var (k, p) in samples.indexed) {
+          if (v.inside(p, world, _rest) case (var depth, var away) when depth > worst) {
+            worst = depth;
+            push = away;
+            which = k;
+          }
+        }
+        if (push == null || worst <= 0) break;
+        // The forearm turned at the elbow for a hand or forearm in the
+        // body -- until it has been tried a while -- else the whole arm at
+        // the shoulder.
+        var pivot = which >= 2 && step < 18 ? l : u;
+        var from = world[pivot].translation;
+        var arm = _minus(samples[which], from);
+        var axis = cross(arm, push);
+        var len = length(axis);
+        if (len < 1e-9 || length(arm) < 1e-9) break;
+        var angle = math.min(worst / length(arm) * 1.3 + 0.01, 0.16);
+        var half = angle / 2, sn = math.sin(half) / len;
+        var q = Quat(axis[0] * sn, axis[1] * sn, axis[2] * sn, math.cos(half));
+        turns[pivot] =
+            (parentTurn(world, pivot).conjugate * (q * world[pivot].rotation)).normalized;
+      }
+    }
+  }
+
+  /// _guides is where the lines a figure is drawn by lie on the body as
+  /// made, primitive by primitive in the order _pieces draws them -- see
+  /// _GuideLines -- worked out once.
+  late final List<List<_GuideSeg>> _guides = _GuideLines.measure(gltf, _rest);
+
+  /// guidePieces is the lines a figure is drawn by, on the model posed as
+  /// [pieces] has it: the middle of the body front and back and over the
+  /// head, down the front of each limb, and rings round the trunk, the
+  /// head and each limb -- [width] pixels wide, in [centre] and [ring],
+  /// each hidden where the body over it is. For a model with a human
+  /// skeleton; none for one without.
+  List<MeshPiece> guidePieces(CharacterRig rig, CharacterFace face, ui.Rect box,
+      {double lift = 0,
+      double width = 1.6,
+      ui.Color centre = const ui.Color(0xFFE8742A),
+      ui.Color ring = const ui.Color(0xFF8C8F98)}) {
+    if (!humanoid) return const [];
+    var (_, body) = pieces(rig, face, box, lift: lift);
+    var guides = _guides;
+    var pts = [<double>[], <double>[]], idx = [<int>[], <int>[]];
+    for (var i = 0; i < body.length && i < guides.length; i++) {
+      var v = body[i].points, ix = body[i].indices;
+      for (var g in guides[i]) {
+        var t = g.tri * 3;
+        if (t + 2 >= ix.length) continue;
+        var a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
+        // Only where the body faces the reader: a line round the back of
+        // an arm is not seen through it.
+        var nz = (v[b] - v[a]) * (v[c + 1] - v[a + 1]) - (v[b + 1] - v[a + 1]) * (v[c] - v[a]);
+        if (nz <= 0) continue;
+        List<double> at((int, int, double) e) {
+          var (p, q, f) = e;
+          return [for (var k = 0; k < 3; k++) v[p * 3 + k] + (v[q * 3 + k] - v[p * 3 + k]) * f];
+        }
+
+        var p0 = at(g.from), p1 = at(g.to);
+        var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+        var len = math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) continue;
+        var nx = -dy / len * width / 2, ny = dx / len * width / 2;
+        // A hair nearer than the face it lies on, so it is drawn just after.
+        var z = math.max(v[a + 2], math.max(v[b + 2], v[c + 2])) + 0.05;
+        var k = g.centre ? 0 : 1;
+        var base = pts[k].length ~/ 3;
+        pts[k].addAll([p0[0] + nx, p0[1] + ny, z, p0[0] - nx, p0[1] - ny, z,
+          p1[0] + nx, p1[1] + ny, z, p1[0] - nx, p1[1] - ny, z]);
+        // Corners anticlockwise as seen, so the drawing takes it as facing.
+        idx[k].addAll([base, base + 2, base + 1, base + 1, base + 2, base + 3]);
+      }
+    }
+    return [
+      for (var k = 0; k < 2; k++)
+        if (pts[k].isNotEmpty)
+          MeshPiece(
+            points: Float32List.fromList(pts[k]),
+            indices: _facing(Float32List.fromList(pts[k]), Uint32List.fromList(idx[k])),
+            color: k == 0 ? centre : ring,
+            doubleSided: true,
+          ),
+    ];
+  }
+
+  /// _facing is [ix] with each triangle turned to face the reader.
+  static Uint32List _facing(Float32List v, Uint32List ix) {
+    for (var t = 0; t + 2 < ix.length; t += 3) {
+      var a = ix[t] * 3, b = ix[t + 1] * 3, c = ix[t + 2] * 3;
+      var nz = (v[b] - v[a]) * (v[c + 1] - v[a + 1]) - (v[b + 1] - v[a + 1]) * (v[c] - v[a]);
+      if (nz < 0) {
+        var keep = ix[t + 1];
+        ix[t + 1] = ix[t + 2];
+        ix[t + 2] = keep;
+      }
+    }
+    return ix;
   }
 
   /// _expressionWeights is how far each mesh's face shapes are turned on
@@ -701,4 +856,347 @@ void _putUnit(Float32List out, int i, double x, double y, double z) {
   out[i * 3] = x / l;
   out[i * 3 + 1] = y / l;
   out[i * 3 + 2] = z / l;
+}
+
+/// _BodyVolumes is the room a humanoid's body takes up, measured from it as
+/// made: the trunk as a stack of slices up it -- how wide each is and how
+/// far forward and back it goes -- each thigh as a rod as thick as it is,
+/// and how thick an arm is. What an arm is kept out of.
+class _BodyVolumes {
+  final double lo, step;
+  final List<(double, double, double, double, double)?> slices;
+  final double arm;
+  final Map<int, (int, double)> thighs;
+  final int hips, chest;
+  final double middle;
+  const _BodyVolumes(this.lo, this.step, this.slices, this.arm, this.thighs, this.hips,
+      this.chest, this.middle);
+
+  static _BodyVolumes? measure(Gltf gltf, List<Mat4> rest) {
+    var h = gltf.humanoid;
+    var hipsN = h[HumanBone.hips], chestN = h[HumanBone.chest] ?? h[HumanBone.spine];
+    var neckN = h[HumanBone.neck];
+    if (hipsN == null || chestN == null || neckN == null) return null;
+    bool under(int node, int? top) {
+      if (top == null) return false;
+      for (var n = node; n >= 0; n = gltf.nodes[n].parent) {
+        if (n == top) return true;
+      }
+      return false;
+    }
+
+    var arms = [h[HumanBone.leftUpperArm], h[HumanBone.rightUpperArm]];
+    var legs = [h[HumanBone.leftUpperLeg], h[HumanBone.rightUpperLeg]];
+    var shins = [h[HumanBone.leftLowerLeg], h[HumanBone.rightLowerLeg]];
+    var head = h[HumanBone.head];
+    // What part each bone moves: 0 trunk, 1 arm, 2 and 3 a thigh, 4 the
+    // rest -- head, shins, feet.
+    int partOf(int node) {
+      if (arms.any((a) => under(node, a))) return 1;
+      for (var k = 0; k < 2; k++) {
+        if (under(node, shins[k])) return 4;
+        if (under(node, legs[k])) return 2 + k;
+      }
+      if (under(node, head)) return 4;
+      return 0;
+    }
+
+    var parts = [for (var n = 0; n < gltf.nodes.length; n++) partOf(n)];
+    var trunk = <List<double>>[], thigh = [<List<double>>[], <List<double>>[]];
+    var armPts = <List<double>>[];
+    for (var (n, node) in gltf.nodes.indexed) {
+      var mi = node.mesh;
+      if (mi == null || mi >= gltf.meshes.length) continue;
+      var skin = node.skin != null && node.skin! < gltf.skins.length ? gltf.skins[node.skin!] : null;
+      for (var prim in gltf.meshes[mi].primitives) {
+        var joints = prim.joints, jw = prim.weights;
+        if (skin == null || joints == null || jw == null) continue;
+        var (p, _) = _skinPrimitive(gltf, rest, n, node, prim, null);
+        for (var i = 0; i < prim.vertexCount; i++) {
+          var best = 0, bw = -1.0;
+          for (var k = 0; k < 4; k++) {
+            if (jw[i * 4 + k] > bw) {
+              bw = jw[i * 4 + k];
+              best = joints[i * 4 + k];
+            }
+          }
+          if (best >= skin.joints.length) continue;
+          var part = parts[skin.joints[best]];
+          var pt = [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
+          switch (part) {
+            case 0:
+              trunk.add(pt);
+            case 1:
+              armPts.add(pt);
+            case 2 || 3:
+              thigh[part - 2].add(pt);
+          }
+        }
+      }
+    }
+    if (trunk.isEmpty) return null;
+    var hipsAt = rest[hipsN].translation, neckAt = rest[neckN].translation;
+    var lo = trunk.map((p) => p[1]).reduce(math.min);
+    var hi = neckAt[1];
+    const count = 40;
+    var step = math.max(1e-6, (hi - lo) / count);
+    var slices = List<(double, double, double, double, double)?>.filled(count, null);
+    for (var k = 0; k < count; k++) {
+      var y0 = lo + k * step, y1 = y0 + step;
+      var inSlice = [for (var p in trunk) if (p[1] >= y0 && p[1] < y1) p];
+      if (inSlice.isEmpty) continue;
+      var cx = hipsAt[0];
+      var zs = inSlice.map((p) => p[2]);
+      var zMin = zs.reduce(math.min), zMax = zs.reduce(math.max);
+      var cz = (zMin + zMax) / 2;
+      var half = inSlice.map((p) => (p[0] - cx).abs()).reduce(math.max);
+      slices[k] = (cx, cz, half, zMax - cz, cz - zMin);
+    }
+    // A slice with no point of the body in it -- a coarse mesh, its points
+    // far apart -- is as the slices either side of it are, between them.
+    var known = [for (var k = 0; k < count; k++) if (slices[k] != null) k];
+    for (var i = 0; i + 1 < known.length; i++) {
+      var a = known[i], b = known[i + 1];
+      var (ax, az, ah, af, ab) = slices[a]!;
+      var (bx, bz, bh, bf, bb) = slices[b]!;
+      for (var k = a + 1; k < b; k++) {
+        var t = (k - a) / (b - a);
+        double mix(double x, double y) => x + (y - x) * t;
+        slices[k] = (mix(ax, bx), mix(az, bz), mix(ah, bh), mix(af, bf), mix(ab, bb));
+      }
+    }
+    // How far a run of points is from the line from [a] to [b]: the most
+    // of most of them -- a few strays aside.
+    double thickness(List<List<double>> pts, List<double> a, List<double> b, double share) {
+      if (pts.isEmpty) return 0;
+      var d = [for (var p in pts) _toSegment(p, a, b).$1]..sort();
+      return d[((d.length - 1) * share).round()];
+    }
+
+    var lowerL = h[HumanBone.leftLowerArm], handL = h[HumanBone.leftHand];
+    var arm = lowerL != null && handL != null
+        ? thickness(
+            [for (var p in armPts) if (_toSegment(p, rest[lowerL].translation, rest[handL].translation).$2 > 0.05) p],
+            rest[lowerL].translation,
+            rest[handL].translation,
+            0.6)
+        : 0.0;
+    var thighs = <int, (int, double)>{};
+    for (var k = 0; k < 2; k++) {
+      var top = legs[k], knee = shins[k];
+      if (top == null || knee == null) continue;
+      thighs[top] = (knee, thickness(thigh[k], rest[top].translation, rest[knee].translation, 0.85));
+    }
+    // Room for most of an arm's thickness, not all: an arm at rest lies
+    // against the side, touching it, as an arm does.
+    return _BodyVolumes(lo, step, slices, arm * 0.65, thighs, hipsN, chestN,
+        (hipsAt[1] + neckAt[1]) / 2);
+  }
+
+  /// inside is how far point [p] -- of the model posed as [world] -- is
+  /// inside the trunk or a thigh, an arm's thickness about it, and which
+  /// way is out; or null when it is clear.
+  (double, List<double>)? inside(List<double> p, List<Mat4> world, List<Mat4> rest) {
+    (double, List<double>)? best;
+    void found(double depth, List<double> out) {
+      if (depth > 0 && (best == null || depth > best!.$1)) best = (depth, out);
+    }
+
+    // The trunk, as the hips or the chest have it now -- whichever the
+    // point is beside -- measured against it as made.
+    for (var bone in [hips, chest]) {
+      var back = rest[bone] * world[bone].inverted();
+      var q = back.point(p[0], p[1], p[2]);
+      var lowHalf = q[1] < middle;
+      if (lowHalf != (bone == hips)) continue;
+      var k = ((q[1] - lo) / step).floor();
+      if (k < 0 || k >= slices.length) continue;
+      var slice = slices[k];
+      if (slice == null) continue;
+      var (cx, cz, half, front, behind) = slice;
+      var rx = half + arm, rz = (q[2] > cz ? front : behind) + arm;
+      var ex = (q[0] - cx) / rx, ez = (q[2] - cz) / rz;
+      var d = math.sqrt(ex * ex + ez * ez);
+      if (d >= 1) continue;
+      // Out across the slice, from its middle, as the body is turned now.
+      var outRest = [ex / rx, 0.0, ez / rz];
+      if (length(outRest) < 1e-9) outRest = [0.0, 0.0, 1.0];
+      var turned = world[bone] * rest[bone].inverted();
+      var out = turned.direction(outRest[0], outRest[1], outRest[2]);
+      found((1 - d) * math.min(rx, rz), _unit3(out));
+    }
+    for (var e in thighs.entries) {
+      var a = world[e.key].translation, b = world[e.value.$1].translation;
+      var (d, t, c) = _toSegmentAt(p, a, b);
+      var r = e.value.$2 + arm;
+      if (d >= r || t <= 0.02) continue;
+      found(r - d, d < 1e-9 ? const [1.0, 0.0, 0.0] : _unit3(_minus(p, c)));
+    }
+    return best;
+  }
+}
+
+List<double> _unit3(List<double> v) {
+  var l = length(v);
+  return l < 1e-12 ? const [0.0, 0.0, 1.0] : [v[0] / l, v[1] / l, v[2] / l];
+}
+
+/// _toSegment is how far [p] is from the line [a] to [b], and how far
+/// along it, nought to one, the nearest point is.
+(double, double) _toSegment(List<double> p, List<double> a, List<double> b) {
+  var (d, t, _) = _toSegmentAt(p, a, b);
+  return (d, t);
+}
+
+(double, double, List<double>) _toSegmentAt(List<double> p, List<double> a, List<double> b) {
+  var ab = _minus(b, a), ap = _minus(p, a);
+  var l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+  var t = l2 < 1e-12 ? 0.0 : ((ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / l2).clamp(0.0, 1.0);
+  var c = [for (var k = 0; k < 3; k++) a[k] + ab[k] * t];
+  return (length(_minus(p, c)), t, c);
+}
+
+/// _GuideSeg is a piece of a guide line on a mesh: across triangle [tri],
+/// from a point on one of its edges to a point on another -- each as two
+/// vertices and how far from the first to the second -- the middle line
+/// or a ring.
+typedef _GuideSeg = ({int tri, (int, int, double) from, (int, int, double) to, bool centre});
+
+/// _GuideLines works out where the lines a figure is drawn by lie on a
+/// humanoid model as made: slices of it by planes, each through only the
+/// part of the body it belongs to.
+class _GuideLines {
+  static List<List<_GuideSeg>> measure(Gltf gltf, List<Mat4> rest) {
+    var h = gltf.humanoid;
+    var out = <List<_GuideSeg>>[];
+    bool under(int node, int? top) {
+      if (top == null) return false;
+      for (var n = node; n >= 0; n = gltf.nodes[n].parent) {
+        if (n == top) return true;
+      }
+      return false;
+    }
+
+    // Which part each bone moves: a limb's bone, the head, or the trunk.
+    var limbBones = [
+      for (var b in const [
+        HumanBone.leftUpperArm, HumanBone.leftLowerArm, HumanBone.rightUpperArm,
+        HumanBone.rightLowerArm, HumanBone.leftUpperLeg, HumanBone.leftLowerLeg,
+        HumanBone.rightUpperLeg, HumanBone.rightLowerLeg,
+      ])
+        if (h[b] != null) b,
+    ];
+    var childOf = const {
+      HumanBone.leftUpperArm: HumanBone.leftLowerArm,
+      HumanBone.leftLowerArm: HumanBone.leftHand,
+      HumanBone.rightUpperArm: HumanBone.rightLowerArm,
+      HumanBone.rightLowerArm: HumanBone.rightHand,
+      HumanBone.leftUpperLeg: HumanBone.leftLowerLeg,
+      HumanBone.leftLowerLeg: HumanBone.leftFoot,
+      HumanBone.rightUpperLeg: HumanBone.rightLowerLeg,
+      HumanBone.rightLowerLeg: HumanBone.rightFoot,
+    };
+    // 0 the trunk, 1 the head, 2 a hand or a foot, 10 and on a limb bone.
+    int partOf(int node) {
+      for (var (i, b) in limbBones.indexed) {
+        var child = h[childOf[b]];
+        if (under(node, h[b]) && (child == null || !under(node, child))) return 10 + i;
+      }
+      for (var b in const [HumanBone.leftHand, HumanBone.rightHand, HumanBone.leftFoot, HumanBone.rightFoot]) {
+        if (under(node, h[b])) return 2;
+      }
+      if (under(node, h[HumanBone.head])) return 1;
+      return 0;
+    }
+
+    var parts = [for (var n = 0; n < gltf.nodes.length; n++) partOf(n)];
+    var hips = h[HumanBone.hips], neck = h[HumanBone.neck], head = h[HumanBone.head];
+    for (var (n, node) in gltf.nodes.indexed) {
+      var mi = node.mesh;
+      if (mi == null || mi >= gltf.meshes.length) continue;
+      var skin = node.skin != null && node.skin! < gltf.skins.length ? gltf.skins[node.skin!] : null;
+      for (var prim in gltf.meshes[mi].primitives) {
+        var segs = <_GuideSeg>[];
+        out.add(segs);
+        var joints = prim.joints, jw = prim.weights;
+        if (skin == null || joints == null || jw == null || hips == null || neck == null) continue;
+        var (p, _) = _skinPrimitive(gltf, rest, n, node, prim, null);
+        var count = prim.vertexCount;
+        var vpart = Int32List(count);
+        for (var i = 0; i < count; i++) {
+          var best = 0, bw = -1.0;
+          for (var k = 0; k < 4; k++) {
+            if (jw[i * 4 + k] > bw) {
+              bw = jw[i * 4 + k];
+              best = joints[i * 4 + k];
+            }
+          }
+          vpart[i] = best < skin.joints.length ? parts[skin.joints[best]] : -1;
+        }
+        List<double> pt(int i) => [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
+        var ix = prim.indices;
+        // Each triangle of [part] cut by the plane through [o] square to
+        // [normal] -- in front of [o] only, along [front], when given.
+        void slice(Set<int> part, List<double> o, List<double> normal, bool centre,
+            {List<double>? front}) {
+          for (var t = 0; t + 2 < ix.length; t += 3) {
+            var c = [ix[t], ix[t + 1], ix[t + 2]];
+            if (!c.every((i) => part.contains(vpart[i]))) continue;
+            var d = [
+              for (var i in c)
+                (p[i * 3] - o[0]) * normal[0] + (p[i * 3 + 1] - o[1]) * normal[1] + (p[i * 3 + 2] - o[2]) * normal[2]
+            ];
+            var cross = <(int, int, double)>[];
+            for (var (a, b) in const [(0, 1), (1, 2), (2, 0)]) {
+              if ((d[a] < 0) != (d[b] < 0)) {
+                cross.add((c[a], c[b], d[a] / (d[a] - d[b])));
+              }
+            }
+            if (cross.length != 2) continue;
+            if (front != null) {
+              var mid = pt(c[0]);
+              var f = (mid[0] - o[0]) * front[0] + (mid[1] - o[1]) * front[1] + (mid[2] - o[2]) * front[2];
+              if (f < 0) continue;
+            }
+            segs.add((tri: t ~/ 3, from: cross[0], to: cross[1], centre: centre));
+          }
+        }
+
+        var hp = rest[hips].translation, np = rest[neck].translation;
+        // Down the middle, front and back, and over the head.
+        slice({0, 1}, hp, const [1, 0, 0], true);
+        // Round the trunk: the chest, the waist, the hips.
+        for (var f in const [0.15, 0.45, 0.75]) {
+          slice({0}, [hp[0], hp[1] + (np[1] - hp[1]) * f, hp[2]], const [0, 1, 0], false);
+        }
+        // Round the head at the eyes.
+        if (head != null) {
+          var eye = h[HumanBone.leftEye];
+          var y = eye != null ? rest[eye].translation[1] : rest[head].translation[1] + (np[1] - hp[1]) * 0.25;
+          slice({1}, [hp[0], y, hp[2]], const [0, 1, 0], false);
+        }
+        // Each limb bone: round it half way and near its end, and down its
+        // front.
+        for (var (i, b) in limbBones.indexed) {
+          var child = h[childOf[b]];
+          if (child == null) continue;
+          var a = rest[h[b]!].translation, z = rest[child].translation;
+          var axis = [z[0] - a[0], z[1] - a[1], z[2] - a[2]];
+          var l = length(axis);
+          if (l < 1e-9) continue;
+          axis = [axis[0] / l, axis[1] / l, axis[2] / l];
+          for (var f in const [0.5, 0.92]) {
+            slice({10 + i}, [for (var k = 0; k < 3; k++) a[k] + (z[k] - a[k]) * f], axis, false);
+          }
+          // The plane through the bone and the way the body faces -- its
+          // front half.
+          var across = cross(axis, const [0, 0, 1]);
+          if (length(across) < 1e-6) continue;
+          var ac = _unit3(across);
+          slice({10 + i}, a, ac, true, front: const [0, 0, 1]);
+        }
+      }
+    }
+    return out;
+  }
 }

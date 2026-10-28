@@ -43,6 +43,12 @@ enum HumanBone {
   rightFoot,
   leftEye,
   rightEye,
+
+  /// leftShoulder and rightShoulder are the collarbones' ends the upper
+  /// arms hang from: raised a little with an arm raised high, so the
+  /// shoulder lifts rather than folding in.
+  leftShoulder,
+  rightShoulder,
 }
 
 /// _boneNames is what each human bone is called in the rigs a character is
@@ -54,6 +60,8 @@ const Map<HumanBone, List<String>> _boneNames = {
   HumanBone.chest: ["chest", "spine2", "spine_02", "spine1", "upperchest", "spine_03", "cc_base_spine02"],
   HumanBone.neck: ["neck", "neck_01", "cc_base_necktwist01"],
   HumanBone.head: ["head", "cc_base_head"],
+  HumanBone.leftShoulder: ["leftshoulder", "shoulder_l", "clavicle_l", "clavicle.l", "lcollar", "l_clavicle", "cc_base_l_clavicle"],
+  HumanBone.rightShoulder: ["rightshoulder", "shoulder_r", "clavicle_r", "clavicle.r", "rcollar", "r_clavicle", "cc_base_r_clavicle"],
   HumanBone.leftUpperArm: ["leftarm", "upperarm_l", "upperarm.l", "l_upperarm", "leftupperarm", "lshldr", "cc_base_l_upperarm"],
   HumanBone.leftLowerArm: ["leftforearm", "lowerarm_l", "forearm_l", "forearm.l", "leftlowerarm", "lforearm", "cc_base_l_forearm"],
   HumanBone.leftHand: ["lefthand", "hand_l", "hand.l", "lhand", "cc_base_l_hand"],

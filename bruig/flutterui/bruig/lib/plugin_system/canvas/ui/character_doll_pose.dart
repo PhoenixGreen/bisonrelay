@@ -2,8 +2,12 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_limits.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_extremities.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
+import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
+    show characterDollLook;
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 
 // character_doll_pose.dart is posing the doll -- see character_doll.dart --
@@ -89,6 +93,9 @@ List<CharacterBone> dollFingerBones(CharacterLimb arm) => arm == CharacterLimb.a
 /// is -- see dollPieces.
 const double dollHandScale = 1.25;
 
+/// _humanLast is the human body's joints last worked out, and what for.
+(String, Map<RigJoint, Offset>)? _humanLast;
+
 extension DollPosing on CharacterPlacement {
   /// _base is the pose to change, and as it is seen: with the camera's
   /// turn.
@@ -104,12 +111,64 @@ extension DollPosing on CharacterPlacement {
         e.body.inThreeD ? p : e.inView(p), bounds);
   }
 
-  /// dollJoint is where [j] is on the page, with rig [r] or the doll's.
-  Offset dollJoint(DollJoint j, [CharacterRig? r]) =>
-      toPage(CharacterPlacement.rigJoint(r ?? dollRig(), j.at));
+  /// _human is where each joint of the human body is, posed as [r] has it
+  /// -- in the drawing's own space -- when the doll is the human body and
+  /// it is here: its joints are its own, its arms its own length, kept
+  /// out of its body. Null otherwise.
+  Map<RigJoint, Offset>? _human(CharacterRig r) {
+    if (characterDollLook.kind != DollKind.human) return null;
+    var e = element;
+    var dna = e.style.dnaOf(e.puppet?.dna ?? e.dna);
+    var model = dollHumanModel(dna, e.puppet?.feminine ?? dollFeminine(dna));
+    if (model == null) return null;
+    var lift = e.poseAtFrame(frame).lift * r.unit;
+    // Posed once for every joint asked for of the same body in the same
+    // pose: each knob drawn, each step of a solve.
+    var key = "${identityHashCode(model)}|$bounds|$lift|${r.yaw}|${r.tilt}|${r.joints3.values}";
+    if (_humanLast?.$1 == key) return _humanLast!.$2;
+    var joints = {
+      for (var m in model.joints(r, CharacterFace.rest, bounds, lift: lift).entries)
+        m.key: m.value.page,
+    };
+    _humanLast = (key, joints);
+    return joints;
+  }
 
-  /// _tip is where the far end of the bone [j] turns is, in the drawing.
-  Offset _tip(DollJoint j, CharacterRig r) => switch (j) {
+  /// _jointIn is where rig joint [k] of the doll is, in the drawing.
+  Offset _jointIn(RigJoint k, CharacterRig r, Map<RigJoint, Offset>? human) =>
+      human?[k] ?? CharacterPlacement.rigJoint(r, k);
+
+  /// dollJoint is where [j] is on the page, with rig [r] or the doll's.
+  Offset dollJoint(DollJoint j, [CharacterRig? r]) {
+    r ??= dollRig();
+    return toPage(_jointIn(j.at, r, _human(r)));
+  }
+
+  /// _tip is where the far end of the bone [j] turns is, in the drawing:
+  /// the next joint, on the human body when the doll is it; or, past a
+  /// wrist or an ankle, the hand's or the foot's tip, carried with it.
+  Offset _tip(DollJoint j, CharacterRig r) {
+    var human = _human(r);
+    var next = switch (j) {
+      DollJoint.neck => RigJoint.head,
+      DollJoint.waist => RigJoint.chest,
+      DollJoint.shoulderL => RigJoint.elbowL,
+      DollJoint.elbowL => RigJoint.wristL,
+      DollJoint.shoulderR => RigJoint.elbowR,
+      DollJoint.elbowR => RigJoint.wristR,
+      DollJoint.hipL => RigJoint.kneeL,
+      DollJoint.kneeL => RigJoint.ankleL,
+      DollJoint.hipR => RigJoint.kneeR,
+      DollJoint.kneeR => RigJoint.ankleR,
+      _ => null,
+    };
+    if (next != null) return _jointIn(next, r, human);
+    var end = _rigTip(j, r);
+    var at = CharacterPlacement.rigJoint(r, j.at);
+    return _jointIn(j.at, r, human) + (end - at);
+  }
+
+  Offset _rigTip(DollJoint j, CharacterRig r) => switch (j) {
         DollJoint.neck => r.headCentre,
         DollJoint.waist => r.chest,
         DollJoint.shoulderL => r.elbowL,
@@ -141,6 +200,8 @@ extension DollPosing on CharacterPlacement {
 
     var want = (page - dollJoint(j)).direction;
     var a = seen[j.bone];
+    // No further than the joint goes.
+    var limit = limitOf(j.bone);
     double wrap(double x) => math.atan2(math.sin(x), math.cos(x));
     for (var k = 0; k < 8; k++) {
       var now = angleAt(a);
@@ -148,20 +209,23 @@ extension DollPosing on CharacterPlacement {
       if (miss.abs() < 0.002) break;
       var slope = wrap(angleAt(a + 1) - now);
       if (slope.abs() < 1e-5) break;
-      a += (miss / slope).clamp(-45.0, 45.0);
+      a = (a + (miss / slope).clamp(-45.0, 45.0)).clamp(limit.angleMin, limit.angleMax);
     }
-    return seen.withAngle(j.bone, a).withTurn(_base.turn).withTilt(_base.tilt);
+    return seen.withAngle(j.bone, a).withTurn(_base.turn).withTilt(_base.tilt).limited();
   }
 
   /// swungBy is the pose with [j]'s bone swung [degrees] more towards the
   /// reader than in [from].
-  CharacterPose swungBy(DollJoint j, CharacterPose from, double degrees) =>
-      from.withSwing(j.bone, (from.swing(j.bone) + degrees).clamp(-170.0, 170.0));
+  CharacterPose swungBy(DollJoint j, CharacterPose from, double degrees) {
+    var limit = limitOf(j.bone);
+    return from.withSwing(
+        j.bone, (from.swing(j.bone) + degrees).clamp(limit.swingMin, limit.swingMax));
+  }
 
   /// movedTo is the pose that dragging joint [j] to [page] asks for: the
   /// pin's there, or the bone above it turned to bring it there.
   CharacterPose? movedTo(DollJoint j, Offset page) {
-    if (j.pin case var pin?) return posedBy(pin, page);
+    if (j.pin case var pin?) return posedBy(pin, page).limited();
     var above = j.above;
     if (above == null) return null;
     return bentTo(above, page);
@@ -175,12 +239,14 @@ extension DollPosing on CharacterPlacement {
     if (m == null) return const [];
     var frame = ExtremityFrame(r, m);
     var chains = handJoints(r, arm, r.handRadius * dollHandScale);
+    var wrist = arm == CharacterLimb.armL ? RigJoint.wristL : RigJoint.wristR;
+    var at = _jointIn(wrist, r, _human(r));
     return [
       for (var (k, (joints, _, _)) in chains.indexed)
         if (k != 4)
           () {
             var (x, y, z) = joints.last;
-            return toPage(r!.end(arm) + frame.at(x, y, z));
+            return toPage(at + frame.at(x, y, z));
           }(),
     ];
   }
@@ -195,12 +261,15 @@ extension DollPosing on CharacterPlacement {
       return finger < tips.length ? (tips[finger] - page).distance : double.infinity;
     }
 
-    var best = seen[bone], least = miss(best);
-    for (var c = -20.0; c <= 110; c += 10) {
+    var limit = limitOf(bone);
+    var best = seen[bone].clamp(limit.angleMin, limit.angleMax).toDouble(), least = miss(best);
+    for (var c = limit.angleMin; c <= limit.angleMax; c += 10) {
       var m = miss(c);
       if (m < least) (best, least) = (c, m);
     }
-    for (var c = best - 8; c <= best + 8; c += 2) {
+    for (var c = math.max(limit.angleMin, best - 8);
+        c <= math.min(limit.angleMax, best + 8);
+        c += 2) {
       var m = miss(c);
       if (m < least) (best, least) = (c, m);
     }
@@ -211,13 +280,14 @@ extension DollPosing on CharacterPlacement {
   /// first.
   DollJoint? dollJointUnder(Offset page, double reach) {
     var r = dollRig();
+    var human = _human(r);
     DollJoint? best;
     var nearest = reach;
     for (var j in DollJoint.values) {
       if (element.dna.species.legless && j.bone.name.contains(RegExp(r"thigh|shin|ankle"))) {
         continue;
       }
-      var d = (dollJoint(j, r) - page).distance;
+      var d = (toPage(_jointIn(j.at, r, human)) - page).distance;
       if (d <= nearest) {
         nearest = d;
         best = j;

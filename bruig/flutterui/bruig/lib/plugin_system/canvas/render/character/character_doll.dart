@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mannequin.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/model/model_figure.dart';
 
 // character_doll.dart is the guide figure a sketch is posed and drawn
 // over in the editor, as a drawing figure is in a paint program: a grey
@@ -90,7 +91,8 @@ void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
 
   var line = math.max(1.0, rig.unit * 0.014);
   if (look.kind == DollKind.human && box != null) {
-    if (_humanPieces(rig, dna, she, box, lift) case (var origin, var pieces)) {
+    if (_humanPieces(rig, dna, she, box, lift, lines: look.lines, width: line * 1.3)
+        case (var origin, var pieces)) {
       var bounds = meshBounds(pieces, origin);
       begin(bounds);
       var ink = InkLook(
@@ -123,15 +125,10 @@ void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
 /// _humanPieces is the human body made as [dna] is -- bare, bald, its face
 /// plain -- posed as [rig] has it in [box], grey: or null while that body
 /// is not here, for the smooth doll to stand in.
-(Offset, List<MeshPiece>)? _humanPieces(
-    CharacterRig rig, CharacterDna dna, double feminine, Rect box, double lift) {
-  var person = dna.kind == CharacterType.empty
-      ? dna.copyWith(type: feminine >= 0.5 ? CharacterType.woman : CharacterType.man)
-      : dna;
-  var model = HumanBody.instance.modelFor(
-      person.copyWith(wardrobe: const [], hairStyle: HairStyle.bald),
-      drawnFace: true,
-      gender: 1 - feminine);
+(Offset, List<MeshPiece>)? _humanPieces(CharacterRig rig, CharacterDna dna, double feminine,
+    Rect box, double lift,
+    {bool lines = false, double width = 1.6}) {
+  var model = dollHumanModel(dna, feminine);
   if (model == null) return null;
   var (origin, pieces) = model.pieces(rig, CharacterFace.rest, box, lift: lift);
   return (
@@ -146,6 +143,27 @@ void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
           doubleSided: p.doubleSided,
           depth: p.depth,
         ),
+      if (lines)
+        ...model.guidePieces(rig, CharacterFace.rest, box,
+            lift: lift, width: width, centre: dollCentreLine, ring: dollRingLine),
     ]
   );
 }
+
+/// dollHumanModel is the human body the doll is made as [dna] is -- bare,
+/// bald, its face plain, [feminine] how much a woman's figure -- or null
+/// while that body is not here.
+LoadedModel? dollHumanModel(CharacterDna dna, double feminine) {
+  var person = dna.kind == CharacterType.empty
+      ? dna.copyWith(type: feminine >= 0.5 ? CharacterType.woman : CharacterType.man)
+      : dna;
+  return HumanBody.instance.modelFor(
+      person.copyWith(wardrobe: const [], hairStyle: HairStyle.bald),
+      drawnFace: true,
+      gender: 1 - feminine);
+}
+
+/// dollFeminine is how much a woman's figure the doll of [dna] has, when
+/// its puppet does not say: a woman's or a girl's.
+double dollFeminine(CharacterDna dna) =>
+    dna.kind == CharacterType.woman || dna.kind == CharacterType.girl ? 1.0 : 0.0;

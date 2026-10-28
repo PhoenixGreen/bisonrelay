@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_limits.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_stage.dart';
@@ -37,12 +38,22 @@ void main() {
       var from = placed.dollJoint(j);
       // A quarter turn round from where it points now.
       var now = (placed.dollTip(j) - from).direction;
-      var want = from + Offset.fromDirection(now + math.pi / 2 * 0.6, 60);
+      // Twenty degrees round: within how far any of them goes.
+      var want = from + Offset.fromDirection(now + math.pi / 9, 60);
       var bent = e.copyWith(pose: placed.bentTo(j, want));
       var after = CharacterPlacement.of(bent, 0);
       var got = (after.dollTip(j) - after.dollJoint(j)).direction;
       expect(_gap(got, (want - from).direction), lessThan(0.06), reason: j.label);
     }
+  });
+
+  test("bent past how far it goes, it stops there", () {
+    var e = _empty();
+    var placed = CharacterPlacement.of(e, 0);
+    var from = placed.dollJoint(DollJoint.waist);
+    var now = (placed.dollTip(DollJoint.waist) - from).direction;
+    var bent = placed.bentTo(DollJoint.waist, from + Offset.fromDirection(now + math.pi / 2, 60));
+    expect(bent[CharacterBone.spine].abs(), lessThanOrEqualTo(limitOf(CharacterBone.spine).angleMax));
   });
 
   test("a joint dragged is brought there by the bone above it", () {

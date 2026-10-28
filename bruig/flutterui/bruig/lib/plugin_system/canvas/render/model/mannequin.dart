@@ -74,6 +74,10 @@ class _Shape {
   /// outlined is whether it is lined round on its own -- see
   /// MeshPiece.outlined -- which a guide line drawn on another is not.
   bool outlined = true;
+
+  /// colours is each point's own colour, red green blue alpha, when it has
+  /// them: a band of another colour round it.
+  List<double>? colours;
   _Shape(this.color, this.centre, this.on, this.always);
 }
 
@@ -180,7 +184,9 @@ class _Builder {
   /// same number round -- closed at both ends: a body swept through its
   /// cross sections.
   /// [sortAt] is where it is sorted from, near or far, when not its middle.
-  int loft(Color color, List<List<_V>> rings, {_V? sortAt}) {
+  ///
+  /// [ringColours], when given, is each ring's own colour.
+  int loft(Color color, List<List<_V>> rings, {_V? sortAt, List<Color>? ringColours}) {
     if (rings.length < 2) return -1;
     var sides = rings.first.length;
     _V centreOf(List<_V> ring) =>
@@ -219,6 +225,20 @@ class _Builder {
       for (var k = 0; k < sides; k++) {
         idx.addAll([at, r * sides + k, r * sides + (k + 1) % sides]);
       }
+    }
+    if (ringColours != null && ringColours.length == n) {
+      var cs = <double>[];
+      for (var r = 0; r < n; r++) {
+        var c = ringColours[r];
+        for (var k = 0; k < sides; k++) {
+          cs.addAll([c.r, c.g, c.b, c.a]);
+        }
+      }
+      for (var r in [0, n - 1]) {
+        var c = ringColours[r];
+        cs.addAll([c.r, c.g, c.b, c.a]);
+      }
+      shape.colours = cs;
     }
     return last;
   }
@@ -357,11 +377,13 @@ class _Builder {
       }
       var indices = Uint32List.fromList(idx);
       _outwards(points, normals, indices);
+      var cs = shape.colours;
       out.add(MeshPiece(
           points: points,
           normals: normals,
           indices: indices,
-          color: shape.color,
+          colors: cs == null ? null : Float32List.fromList(cs),
+          color: cs == null ? shape.color : const Color(0xFFFFFFFF),
           depth: depth,
           outlined: shape.outlined));
     }

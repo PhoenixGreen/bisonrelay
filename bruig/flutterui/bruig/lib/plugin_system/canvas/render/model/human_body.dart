@@ -476,6 +476,8 @@ const Map<HumanBone, String> _humanoid = {
   HumanBone.rightFoot: "foot.R",
   HumanBone.leftEye: "eye.L",
   HumanBone.rightEye: "eye.R",
+  HumanBone.leftShoulder: "shoulder01.L",
+  HumanBone.rightShoulder: "shoulder01.R",
 };
 
 /// wearFor is what [dna] wears of [wear]: its hair, its brows, its shoes
