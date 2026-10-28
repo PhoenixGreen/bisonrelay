@@ -55,6 +55,11 @@ class MeshPiece {
   /// pass through each other, a triangle at a time leaves a ragged seam.
   final double? depth;
 
+  /// outlined is whether, drawn by paintMeshes with outlineEach, it is
+  /// lined round where it lies over what is drawn before it -- an arm
+  /// across the body -- and not only round the whole.
+  final bool outlined;
+
   const MeshPiece({
     required this.points,
     required this.indices,
@@ -67,6 +72,7 @@ class MeshPiece {
     this.depth,
     this.toon,
     this.cutOut = false,
+    this.outlined = false,
   });
 }
 
@@ -118,14 +124,43 @@ Rect? meshBounds(List<MeshPiece> pieces, Offset origin) {
 /// paintMeshes draws [pieces] round [origin] -- their x and y nought --
 /// lit as [shading] says, with a line [outline] pixels wide round the
 /// whole when it is more than nought.
+///
+/// [outlineEach] lines each piece that is [MeshPiece.outlined] round on
+/// its own instead, as it is drawn: so a part lying over another -- an
+/// arm across the body -- has its edge drawn there too.
 void paintMeshes(Canvas canvas, Offset origin, List<MeshPiece> pieces,
     {ModelShading shading = ModelShading.soft,
     double outline = 0,
-    Color outlineColor = const Color(0xFF1A1A1A)}) {
+    Color outlineColor = const Color(0xFF1A1A1A),
+    bool outlineEach = false}) {
   var bounds = meshBounds(pieces, origin);
   if (bounds == null) return;
   var order = _sorted(pieces);
   if (order.isEmpty) return;
+  if (outlineEach && outline > 0) {
+    var start = 0;
+    while (start < order.length) {
+      var piece = order[start].piece;
+      var end = start + 1;
+      while (end < order.length && order[end].piece == piece) {
+        end++;
+      }
+      var p = pieces[piece];
+      var own = p.outlined ? meshBounds([p], origin) : null;
+      if (own != null) {
+        canvas.saveLayer(
+            own.inflate(outline * 2),
+            Paint()
+              ..imageFilter = ImageFilter.dilate(radiusX: outline, radiusY: outline)
+              ..colorFilter = ColorFilter.mode(outlineColor, BlendMode.srcIn));
+        _run(canvas, origin, p, order, start, end, shading, _Pass.plain, null);
+        canvas.restore();
+      }
+      _run(canvas, origin, p, order, start, end, shading, _Pass.lit, null);
+      start = end;
+    }
+    return;
+  }
   if (outline > 0) {
     // The figure in one colour, grown by the line's width, under the
     // figure: what is left showing round it is the line.

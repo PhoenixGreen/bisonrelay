@@ -28,6 +28,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/character_layers_settings
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/character_puppet_settings.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:bruig/plugin_system/canvas/storage/human_assets.dart';
@@ -380,6 +381,9 @@ List<Widget> characterSettings(
                 ),
               ]),
         ]),
+    // The puppet to pose and draw over, while it is out.
+    if (!e.body.inThreeD && controller.showPuppet)
+      characterPuppetSection(context, controller, e, write, begin, commit),
     // Drawn on by hand, panel by panel: a sketch's, not a body in 3D.
     // A sketch as a stack of layers, each shaped where it is picked.
     if (!e.body.inThreeD)

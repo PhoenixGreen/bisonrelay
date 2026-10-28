@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_animation.dart';
 
@@ -24,6 +25,7 @@ export 'package:bruig/plugin_system/canvas/model/elements/character_layers.dart'
 export 'package:bruig/plugin_system/canvas/model/elements/character_views.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_rig_points.dart';
 export 'package:bruig/plugin_system/canvas/model/elements/character_types.dart';
+export 'package:bruig/plugin_system/canvas/model/elements/character_puppet.dart';
 
 // character_element.dart is a person, an animal or a monster on a canvas: a
 // cast member with a body, a look and a pose.
@@ -1239,6 +1241,10 @@ class CharacterElement extends CanvasElement {
   /// canvas is dressed, whatever this says.
   final bool bareView;
 
+  /// puppet is the body of the doll it is posed and drawn over -- see
+  /// character_puppet.dart -- or null for the character's own.
+  final PuppetForm? puppet;
+
   /// onStage is where it stands on a 3D stage, or null when it is drawn
   /// on the page like any other element.
   final OnStage? onStage;
@@ -1393,6 +1399,7 @@ class CharacterElement extends CanvasElement {
     this.life = const CharacterLife(),
     this.motions = const [],
     this.bareView = false,
+    this.puppet,
     this.onStage,
     this.shadow = CharacterShadow.soft,
     this.depth = 0,
@@ -1505,6 +1512,7 @@ class CharacterElement extends CanvasElement {
       life: life,
       motions: motions,
       bareView: bareView,
+      puppet: puppet,
       onStage: onStage,
       shadow: shadow,
       depth: depth,
@@ -1523,6 +1531,8 @@ class CharacterElement extends CanvasElement {
     CharacterLife? life,
     List<MotionClip>? motions,
     bool? bareView,
+    PuppetForm? puppet,
+    bool ownPuppet = false,
     OnStage? onStage,
     bool offStage = false,
     CharacterShadow? shadow,
@@ -1542,6 +1552,7 @@ class CharacterElement extends CanvasElement {
           life: life ?? this.life,
           motions: motions ?? this.motions,
           bareView: bareView ?? this.bareView,
+          puppet: ownPuppet ? null : (puppet ?? this.puppet),
           onStage: offStage ? null : (onStage ?? this.onStage),
           shadow: shadow ?? this.shadow,
           depth: (depth ?? this.depth).clamp(0.0, 2.0),
@@ -1561,6 +1572,7 @@ class CharacterElement extends CanvasElement {
         "life": life.toJson(),
         if (motions.isNotEmpty) "motions": [for (var m in motions) m.toJson()],
         if (bareView) "bareView": true,
+        if (puppet != null) "puppet": puppet!.toJson(),
         if (onStage != null) "onStage": onStage!.toJson(),
         if (shadow != CharacterShadow.soft) "shadow": shadow.name,
         if (depth != 0) "depth": depth,
@@ -1589,6 +1601,7 @@ class CharacterElement extends CanvasElement {
           face: CharacterFace.fromJson(json["face"]),
           life: CharacterLife.fromJson(json["life"]),
           bareView: jsonBool(json["bareView"], false),
+          puppet: PuppetForm.fromJson(json["puppet"]),
           onStage: OnStage.fromJson(json["onStage"]),
           shadow: CharacterShadow.fromName(json["shadow"] as String?),
           depth: jsonDouble(json["depth"], 0).clamp(0.0, 2.0),

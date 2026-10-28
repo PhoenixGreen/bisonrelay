@@ -3874,16 +3874,18 @@ class CanvasController extends ChangeNotifier {
   DollLook get dollLook => _dollLook;
   bool get dollLines => _dollLook.lines;
   DollLook _dollLook = const DollLook();
-  set dollLens(double lens) {
-    if (lens == _dollLook.lens) return;
-    _dollLook = DollLook(lens: lens, lines: _dollLook.lines);
-    _syncDoll();
-    notifyListeners();
-  }
+  set dollLens(double lens) => dollLook = _dollLook.copyWith(lens: lens);
+  set dollLines(bool on) => dollLook = _dollLook.copyWith(lines: on);
 
-  set dollLines(bool on) {
-    if (on == _dollLook.lines) return;
-    _dollLook = DollLook(lens: _dollLook.lens, lines: on);
+  /// dollLook is everything about how the doll is shown -- see DollLook.
+  set dollLook(DollLook look) {
+    if (look.lens == _dollLook.lens &&
+        look.lines == _dollLook.lines &&
+        look.place == _dollLook.place &&
+        look.opacity == _dollLook.opacity) {
+      return;
+    }
+    _dollLook = look;
     _syncDoll();
     notifyListeners();
   }
@@ -3903,7 +3905,8 @@ class CanvasController extends ChangeNotifier {
   DollGuide _dollOf(CharacterElement e) {
     var id = drawingOn ?? (_selection.length == 1 ? _selection.first : null);
     if (!dollShown || e.id != id) return DollGuide.none;
-    return e.dna.kind == CharacterType.empty ? DollGuide.under : DollGuide.over;
+    return _dollLook.place ??
+        (e.dna.kind == CharacterType.empty ? DollGuide.under : DollGuide.over);
   }
 
   /// editRig shows a sketch's limbs point by point, to reshape on the

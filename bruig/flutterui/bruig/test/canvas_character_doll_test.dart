@@ -11,6 +11,8 @@ import 'package:bruig/plugin_system/canvas/render/character/character_painter.da
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_draw_bar.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/design_panel.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter_test/flutter_test.dart';
@@ -140,5 +142,93 @@ void main() {
     await tester.pumpAndSettle();
     expect(c.dollShown, isFalse);
     expect(c.showPuppet, isTrue, reason: "the flat puppet back");
+  });
+
+  test("a puppet's form is saved with the character", () {
+    var form = PuppetForm.of(CharacterType.woman).copyWith(headsTall: 5, feminine: 0.7);
+    var e = _empty().copyWith(puppet: form);
+    var back = CharacterElement.fromJson(e.props(), e.base);
+    expect(back.puppet?.body, CharacterType.woman);
+    expect(back.puppet?.headsTall, 5);
+    expect(back.puppet?.feminine, 0.7);
+    expect(back.puppet?.look[Look.chest], form.look[Look.chest]);
+    expect(e.copyWith(ownPuppet: true).puppet, isNull);
+    expect(PuppetForm.of(CharacterType.man).isAsMade, isTrue);
+    expect(form.isAsMade, isFalse);
+  });
+
+  group("the Puppet section", () {
+    setUpAll(() => CanvasSection.openAll = true);
+    tearDownAll(() => CanvasSection.openAll = false);
+
+    Future<CanvasController> open(WidgetTester tester, CharacterElement e) async {
+      SharedPreferences.setMockInitialValues({});
+      var c = CanvasController(CanvasDocument(frames: 24).addElement(e));
+      addTearDown(c.dispose);
+      c.selectOnly(e.id);
+      tester.view.physicalSize = const Size(900, 6000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+          ChangeNotifierProvider<CanvasPreferences>(create: (c) => CanvasPreferences()),
+        ],
+        child: MaterialApp(
+            home: Scaffold(
+                body: SizedBox(width: 420, child: CanvasDesignPanel(controller: c)))),
+      ));
+      await tester.pumpAndSettle();
+      return c;
+    }
+
+    testWidgets("there while the puppet is out; a body picked shapes the doll and an empty one",
+        (tester) async {
+      var c = await open(tester, _empty());
+      expect(find.byKey(const ValueKey("elementSection-puppet")), findsNothing);
+      c.showPuppet = true;
+      c.puppet3D = true;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey("elementSection-puppet")), findsOneWidget);
+      var woman = find.byKey(const ValueKey("puppetBody-woman"));
+      await tester.ensureVisible(woman);
+      await tester.tap(woman);
+      await tester.pumpAndSettle();
+      var e = c.document.elementById("c") as CharacterElement;
+      expect(e.puppet?.body, CharacterType.woman);
+      expect(e.dna.kind, CharacterType.empty, reason: "still drawn from nothing");
+      expect(e.dna.headsTall, CharacterType.woman.dna.headsTall, reason: "its body the doll's");
+      // Shaped, a step at a time.
+      expect(find.byKey(const ValueKey("puppetHeadsTall")), findsOneWidget);
+      for (var l in puppetLooks) {
+        expect(find.byKey(ValueKey("puppetLook-${l.name}")), findsOneWidget);
+      }
+      // Back to the character's own.
+      var own = find.byKey(const ValueKey("puppetBody-character"));
+      await tester.ensureVisible(own);
+      await tester.tap(own);
+      await tester.pumpAndSettle();
+      expect((c.document.elementById("c") as CharacterElement).puppet, isNull);
+      // How it is shown.
+      expect(find.byKey(const ValueKey("puppetLens")), findsOneWidget);
+      var lines = find.byKey(const ValueKey("puppetLines"));
+      await tester.ensureVisible(lines);
+      await tester.tap(lines);
+      await tester.pumpAndSettle();
+      expect(c.dollLines, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  test("a woman's doll is not a man's, nor a child's", () async {
+    DollGuide under(CharacterElement e) => DollGuide.under;
+    characterDollOf = under;
+    addTearDown(() => characterDollOf = null);
+    Future<List<int>> as(CharacterType t) =>
+        _pixels(_empty().copyWith(puppet: PuppetForm.of(t)));
+    var woman = await as(CharacterType.woman), man = await as(CharacterType.man);
+    expect(woman, isNot(man));
+    expect(await as(CharacterType.girl), isNot(woman));
   });
 }

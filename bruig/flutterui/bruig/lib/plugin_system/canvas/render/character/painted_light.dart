@@ -89,8 +89,14 @@ class PaintedLook {
 class PaintedBuffers {
   final PictureRecorder _height = PictureRecorder();
   final PictureRecorder _part = PictureRecorder();
+  // Made at once, not when first drawn on: a figure with nothing of its
+  // own to draw -- an empty one -- still ends both recordings.
   late final Canvas height = Canvas(_height);
   late final Canvas part = Canvas(_part);
+  PaintedBuffers() {
+    height;
+    part;
+  }
   int _order = 1;
 
   /// add lays a shape into both pictures: [draw] draws it with a paint

@@ -119,7 +119,8 @@ void paintCharacter(Canvas canvas, Rect box, CharacterElement e, int frame,
       doll: editing && !e.body.inThreeD
           ? characterDollOf?.call(e) ?? DollGuide.none
           : DollGuide.none,
-      dollLook: characterDollLook);
+      dollLook: characterDollLook,
+      puppet: e.puppet);
   if (light != null) canvas.restore();
 }
 
@@ -169,7 +170,8 @@ void paintCharacterFigure(
     LayerView layers = LayerView.all,
     String? viewKey,
     DollGuide doll = DollGuide.none,
-    DollLook dollLook = const DollLook()}) {
+    DollLook dollLook = const DollLook(),
+    PuppetForm? puppet}) {
   if (box.height <= 0) return;
   // bodyStyle is the style a sculpted body is made for, in place of this
   // one -- for a preview of a style drawn on the body already made, rather
@@ -380,9 +382,20 @@ void paintCharacterFigure(
   // The room the figure is drawn in, arms out and hat on included.
   var room = box.inflate(box.height * 0.35);
   // The guide figure to draw over, under it -- or, after it, faintly over.
-  if (doll == DollGuide.under) paintDoll(canvas, rig, dna, look: dollLook);
+  // Its body the puppet's, when it has one of its own, posed as it is.
+  void paintTheDoll(double opacity) {
+    if (puppet == null) {
+      paintDoll(canvas, rig, dna, look: dollLook, opacity: opacity);
+      return;
+    }
+    var made = style.dnaOf(puppet.dna);
+    paintDoll(canvas, CharacterRig.of(made, pose, box, breath: life.breath), made,
+        look: dollLook, opacity: opacity, feminine: puppet.feminine);
+  }
+
+  if (doll == DollGuide.under) paintTheDoll(dollLook.opacity ?? 1);
   _paintStyled(canvas, style, dna, box, room, draw);
-  if (doll == DollGuide.over) paintDoll(canvas, rig, dna, opacity: 0.4, look: dollLook);
+  if (doll == DollGuide.over) paintTheDoll(dollLook.opacity ?? 0.4);
 }
 
 /// _paintStyled draws the figure -- [draw] -- as [style] lays it on the

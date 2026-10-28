@@ -19,17 +19,41 @@ enum DollGuide { none, under, over }
 
 /// DollLook is how the doll is seen: [lens] how strongly in perspective,
 /// nought for not at all; [lines] whether its guide lines are drawn.
+///
+/// [place] is where it is drawn -- null for under a character drawn from
+/// nothing and over any other -- and [opacity] how solid, null for solid
+/// under and faint over.
 class DollLook {
   final double lens;
   final bool lines;
-  const DollLook({this.lens = 0, this.lines = true});
+  final DollGuide? place;
+  final double? opacity;
+  const DollLook({this.lens = 0, this.lines = true, this.place, this.opacity});
+
+  DollLook copyWith(
+          {double? lens,
+          bool? lines,
+          DollGuide? place,
+          bool autoPlace = false,
+          double? opacity,
+          bool autoOpacity = false}) =>
+      DollLook(
+        lens: lens ?? this.lens,
+        lines: lines ?? this.lines,
+        place: autoPlace ? null : (place ?? this.place),
+        opacity: autoOpacity ? null : (opacity ?? this.opacity),
+      );
 }
 
 /// paintDoll draws the doll as [rig] has the body, made as [dna] is,
 /// [opacity] of the way to solid.
 void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
-    {double opacity = 1, DollLook look = const DollLook()}) {
-  var pieces = dollPieces(rig, dna, lens: look.lens, lines: look.lines);
+    {double opacity = 1, DollLook look = const DollLook(), double? feminine}) {
+  var pieces = dollPieces(rig, dna,
+      lens: look.lens,
+      lines: look.lines,
+      feminine: feminine ??
+          (dna.kind == CharacterType.woman || dna.kind == CharacterType.girl ? 1 : 0));
   var bounds = meshBounds(pieces, rig.hips);
   if (bounds == null) return;
   var faint = opacity < 1;
@@ -38,6 +62,8 @@ void paintDoll(Canvas canvas, CharacterRig rig, CharacterDna dna,
         Paint()..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0)));
   }
   paintMeshes(canvas, rig.hips, pieces,
-      outline: math.max(1.0, rig.unit * 0.018), outlineColor: const Color(0xFF55575E));
+      outline: math.max(1.0, rig.unit * 0.014),
+      outlineColor: const Color(0xFF4A4C53),
+      outlineEach: true);
   if (faint) canvas.restore();
 }

@@ -8,6 +8,8 @@ import 'package:bruig/plugin_system/canvas/render/character/character_extremitie
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/render/model/mesh_painter.dart';
 
+part 'doll_body.dart';
+
 // mannequin.dart builds a character's body in 3D from its rig: rounded
 // pieces between the joints, the proportions the character has, coloured
 // with its skin, its hair and what it is wearing.
@@ -68,6 +70,10 @@ class _Shape {
   /// always draws it after [on] whichever way round it is: hair on a
   /// head, which covers it from every side.
   final bool always;
+
+  /// outlined is whether it is lined round on its own -- see
+  /// MeshPiece.outlined -- which a guide line drawn on another is not.
+  bool outlined = true;
   _Shape(this.color, this.centre, this.on, this.always);
 }
 
@@ -228,7 +234,7 @@ class _Builder {
     _V normal(int i) => [base.nrm[i * 3], base.nrm[i * 3 + 1], base.nrm[i * 3 + 2]];
     var path = [...along, if (closed) along.first];
     sittingOn(on, () {
-      var shape = _start(color, base.centre);
+      var shape = _start(color, base.centre)..outlined = false;
       for (var (k, i) in path.indexed) {
         var p = point(i), n = normal(i);
         var t = _sub(point(path[math.min(k + 1, path.length - 1)]),
@@ -356,7 +362,8 @@ class _Builder {
           normals: normals,
           indices: indices,
           color: shape.color,
-          depth: depth));
+          depth: depth,
+          outlined: shape.outlined));
     }
     return out;
   }
@@ -630,228 +637,10 @@ List<MeshPiece> mannequinPieces(
   return b.pieces(rig.yaw, tilt: rig.tilt, ground: rig.ground);
 }
 
-/// dollCentreLine and dollRingLine are the colours of the doll's guide
-/// lines: the middle of each part, and the rings round it.
-const Color dollCentreLine = Color(0xFFE8742A);
-const Color dollRingLine = Color(0xFF8C8F98);
-
-/// _limbLines draws guide lines on limb [shape], its points along it
-/// starting at ring [first], [sides] to a ring: down its front -- the
-/// side nearest [forward] where it starts -- and round it at the middle
-/// of each bone and at the joint between.
-void _limbLines(_Builder b, int shape, int first, int sides, _V forward, double width) {
-  if (shape < 0) return;
-  var s = b._shapes[shape];
-  var rings = s.pts.length ~/ 3 ~/ sides;
-  var along = [for (var r = first; r <= first + 8 && r < rings; r++) r];
-  _V at(int i) => [s.pts[i * 3], s.pts[i * 3 + 1], s.pts[i * 3 + 2]];
-  var mid = _mul([for (var k = 0; k < sides; k++) at(first * sides + k)]
-      .fold<_V>(const [0.0, 0.0, 0.0], _add), 1 / sides);
-  var front = 0;
-  var best = -double.infinity;
-  for (var k = 0; k < sides; k++) {
-    var d = _dot(_sub(at(first * sides + k), mid), forward);
-    if (d > best) {
-      best = d;
-      front = k;
-    }
-  }
-  b.stripe(shape, [for (var r in along) r * sides + front], dollCentreLine, width * 0.85);
-  for (var r in [first + 2, first + 4, first + 6]) {
-    if (r >= rings) continue;
-    b.stripe(shape, [for (var k = 0; k < sides; k++) r * sides + k], dollRingLine,
-        width * 0.6, closed: true);
-  }
-}
-
 /// _frameAlong is a frame pointing down [along], facing as near
 /// [forward] as it can.
 _Frame _frameAlong(_V along, _V forward) {
   var x = _unit(_cross(along, forward), const [1, 0, 0]);
   var z = _cross(x, along);
   return _Frame(x, along, z);
-}
-
-/// dollColour is the guide figure's grey.
-const Color dollColour = Color(0xFFDADBDF);
-
-/// dollPieces is the guide figure to pose and draw over -- see
-/// character_doll.dart -- built from [rig] as the mannequin is: a smooth
-/// grey body with no face, its proportions and its pose the rig's, its
-/// hands and feet made as the drawn ones are. In pixels from the rig's
-/// hips, for paintMeshes.
-///
-/// [lens] is how strongly it is seen in perspective, nought for not at
-/// all to one for a camera close up; [lines] draws the guide lines round
-/// it -- the middle down its front and back, and rings round its parts.
-List<MeshPiece> dollPieces(CharacterRig rig, CharacterDna dna,
-    {double lens = 0, bool lines = false}) {
-  var j = rig.joints3;
-  _V at(RigJoint k) => j[k] ?? const [0.0, 0.0, 0.0];
-  var u = rig.unit;
-  var lk = dna.look;
-  const c = dollColour;
-  var b = _Builder();
-
-  // The trunk, swept from the neck to between the legs.
-  var hips = at(RigJoint.hips), chest = at(RigJoint.chest);
-  var across = _unit(_sub(at(RigJoint.shoulderR), at(RigJoint.shoulderL)),
-      const [1, 0, 0]);
-  var spine = _sub(hips, chest);
-  var length = math.max(_len(spine), u * 0.2);
-  var down = _unit(spine, const [0, 1, 0]);
-  var forward = _unit(_cross(across, down), const [0, 0, 1]);
-  across = _cross(down, forward);
-  var trunk = _Frame(across, down, forward);
-  var trunkMiddle = _add(chest, _mul(down, length * 0.55));
-  var sh = rig.shoulderHalf, hip = rig.hipHalf;
-  var neckR = u * 0.13;
-  var waist = 1 + 0.3 * lk[Look.waist] + 0.2 * lk[Look.belly];
-  var belly = 1 + 0.45 * lk[Look.belly];
-  var chestDeep = 1 + 0.35 * lk[Look.chest];
-  List<_V> ring(_V centre, _Frame f, double w, double d, {int sides = 20}) => [
-        for (var k = 0; k < sides; k++)
-          _add(centre, f.on(w * math.sin(2 * math.pi * k / sides), 0,
-              d * math.cos(2 * math.pi * k / sides))),
-      ];
-  // Never under a pixel and a bit, where a line breaks into dashes.
-  var line = math.max(u * 0.022, 1.6);
-  var torso = b.loft(c, [
-    for (var (a, w, d, f) in [
-      (-0.2, neckR, neckR * 0.95, 0.0),
-      (-0.12, neckR * 1.7, neckR * 1.35, -0.02),
-      (-0.05, sh * 0.72, sh * 0.36, 0.0),
-      (0.04, sh * 0.94, sh * 0.42, 0.0),
-      (0.17, sh * 0.92, sh * 0.48 * chestDeep, 0.03),
-      (0.34, sh * 0.8, sh * 0.48 * chestDeep, 0.04),
-      (0.52, sh * 0.62 * waist, sh * 0.4 * belly, 0.03),
-      (0.68, sh * 0.58 * waist, sh * 0.38 * belly, 0.02),
-      (0.82, hip * 0.97, hip * 0.58, 0.0),
-      (0.96, hip * 1.06, hip * 0.62, 0.0),
-      (1.08, hip * 1.0, hip * 0.6, 0.0),
-      (1.18, hip * 0.76, hip * 0.48, 0.0),
-      (1.25, hip * 0.36, hip * 0.3, 0.0),
-    ])
-      ring(_add(chest, trunk.on(0, a * length, f * sh)), trunk, w, d),
-  ]);
-  if (lines) {
-    // Down the middle, front and back; round the chest, waist and hips.
-    b.stripe(torso, [for (var r = 0; r < 13; r++) r * 20], dollCentreLine, line);
-    b.stripe(torso, [for (var r = 0; r < 13; r++) r * 20 + 10], dollCentreLine, line);
-    for (var r in [4, 7, 9]) {
-      b.stripe(torso, [for (var k = 0; k < 20; k++) r * 20 + k], dollRingLine, line * 0.7,
-          closed: true);
-    }
-  }
-
-  // The neck and the head: an egg, narrowing to the chin, with no face.
-  var skull = _Frame.of(rig.headBasis);
-  var hs = rig.headScale;
-  var headAt = at(RigJoint.head);
-  var radii = rig.headRadii;
-  var rx = radii.width / 0.46 * 0.4 * hs, ry = radii.height * hs;
-  var rz = u * 0.44 * hs;
-  if (!dna.species.legless) {
-    b.tube(c, _add(at(RigJoint.neck), _mul(down, length * 0.1)),
-        _add(headAt, skull.on(0, ry * 0.3, -rz * 0.2)), neckR, neckR * 0.92,
-        ends: false);
-  }
-  b.loft(c, [
-    for (var r = 1; r < 14; r++)
-      () {
-        var lat = math.pi * r / 14;
-        var sy = -math.cos(lat), sr = math.sin(lat);
-        // Below the middle the jaw narrows to the chin, which comes forward.
-        var k = sy > 0 ? 1 - 0.42 * sy * sy : 1.0;
-        var ahead = sy > 0 ? sy * sy * rz * 0.12 : 0.0;
-        return [
-          for (var s = 0; s < 18; s++)
-            _add(headAt, skull.on(sr * math.sin(2 * math.pi * s / 18) * rx * k,
-                sy * ry, sr * math.cos(2 * math.pi * s / 18) * rz * k + ahead)),
-        ];
-      }(),
-  ]);
-  var headShape = b.last;
-  if (lines) {
-    // The face's cross: down its middle and over the head, and round it
-    // at the eyes.
-    b.stripe(headShape, [
-      for (var r = 0; r < 13; r++) r * 18,
-      for (var r = 12; r >= 0; r--) r * 18 + 9,
-    ], dollCentreLine, line, closed: true);
-    b.stripe(headShape, [for (var k = 0; k < 18; k++) 6 * 18 + k], dollRingLine, line * 0.7,
-        closed: true);
-  }
-  for (var side in [-1.0, 1.0]) {
-    b.sittingOn(headShape, () => b.ellipsoid(c,
-        _add(headAt, skull.on(side * rx * 0.97, ry * 0.08, -rz * 0.05)), skull,
-        u * 0.035 * hs, u * 0.09 * hs, u * 0.06 * hs,
-        rings: 5, sides: 8));
-  }
-
-  // Arms, the shoulders rounded over them, and hands with fingers.
-  var arm = rig.limbWidth * 0.5;
-  var hand = rig.handRadius;
-  for (var (limb, s, e, w) in [
-    (CharacterLimb.armL, RigJoint.shoulderL, RigJoint.elbowL, RigJoint.wristL),
-    (CharacterLimb.armR, RigJoint.shoulderR, RigJoint.elbowR, RigJoint.wristR),
-  ]) {
-    var (armShape, armFirst) =
-        b.limb(c, [at(s), at(e), at(w)], [arm * 1.25, arm * 0.92, arm * 0.7]);
-    if (lines) _limbLines(b, armShape, armFirst, 16, forward, line);
-    var m = rig.frames[limb];
-    if (m == null) continue;
-    var frame = ExtremityFrame(rig, m);
-    _V on((double, double, double) p) {
-      var (x, y, z) = frame.body(p.$1, p.$2, p.$3);
-      return _add(at(w), [x, y, z]);
-    }
-
-    b.loft(c, [
-      for (var (y, wd, t) in handPalm)
-        [
-          for (var k = 0; k < 12; k++)
-            on((hand * wd * math.cos(2 * math.pi * k / 12), hand * y,
-                hand * t * math.sin(2 * math.pi * k / 12))),
-        ],
-    ]);
-    for (var (joints, radii, _) in handJoints(rig, limb, hand)) {
-      for (var i = 0; i + 1 < joints.length; i++) {
-        b.tube(c, on(joints[i]), on(joints[i + 1]), radii[i], radii[i + 1],
-            sides: 8);
-      }
-    }
-  }
-
-  // Legs, and feet made as the drawn ones are.
-  var leg = rig.legWidth * 0.5;
-  var foot = rig.footSize();
-  for (var (limb, h, k, a) in [
-    (CharacterLimb.legL, RigJoint.hipL, RigJoint.kneeL, RigJoint.ankleL),
-    (CharacterLimb.legR, RigJoint.hipR, RigJoint.kneeR, RigJoint.ankleR),
-  ]) {
-    if (dna.species.legless) break;
-    // The top of the thigh is in the hips, so it is sorted just behind
-    // them -- in the order the two legs are -- and in front only as far as
-    // the knee is lifted out in front.
-    var middle = _mul(_add(at(h), at(k)), 0.5);
-    var lifted = math.max(0.0,
-        _dot(_sub(at(k), at(h)), forward) - hip * 0.6);
-    var (legShape, legFirst) = b.limb(c, [at(h), at(k), at(a)],
-        [leg * 1.45, leg * 0.98, leg * 0.66],
-        sides: 18,
-        sortAt: _add(
-            _add(trunkMiddle, _mul(_sub(middle, trunkMiddle), 0.05)),
-            _mul(forward, lifted * 2 - hip * 0.5)));
-    if (lines) _limbLines(b, legShape, legFirst, 18, forward, line);
-    if (rig.frames[limb] == null) continue;
-    b.loft(c, [
-      for (var r in footRings(rig, limb, foot))
-        [for (var (x, y, z) in r) _add(at(a), [x, y, z])],
-    ]);
-  }
-  return b.pieces(rig.yaw,
-      tilt: rig.tilt,
-      ground: rig.ground,
-      lens: lens <= 0 ? 0 : u * dna.headsTall * (6 - 4.8 * lens.clamp(0.0, 1.0)));
 }
