@@ -5,11 +5,13 @@ import 'dart:ui';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 
 // sprite_element.dart is the Sprite element: a sprite sheet -- a picture
-// of a figure's frames side by side -- sliced into them, by a grid or by the
-// frames the sheet's own notes say, and its actions, each a run of those
-// frames for each way it can face, played at so many frames a second. It
-// faces the reader, away, or one side or the other, and plays its action
-// from the frames for that way: as a sprite sheet is drawn for a game.
+// of frames side by side, of anything: a figure, a flame, a coin, a door --
+// sliced into them, by a grid or by the frames the sheet's own notes say,
+// and its animations, each a run of those frames played at so many frames
+// a second. A figure's can have directions too: frames for each way it
+// faces, played for the way it faces now, as a sprite sheet is drawn for
+// a game. (An animation is a SpriteAction, from when sprites were figures
+// only; saved canvases keep the name.)
 
 /// SpriteFacing is a way a sprite can face: towards the reader, away, or
 /// to the page's left or right.
@@ -140,6 +142,10 @@ class SpriteElement extends CanvasElement {
   /// facing is the way it faces, until a cue turns it.
   final SpriteFacing facing;
 
+  /// directions is whether its animations have frames for each way it can
+  /// face -- a figure's -- or one run each, whichever way: a flame's.
+  final bool directions;
+
   const SpriteElement(
     super.base, {
     this.sheet = "",
@@ -157,6 +163,7 @@ class SpriteElement extends CanvasElement {
     this.pixelArt = true,
     this.mirrorSides = true,
     this.facing = SpriteFacing.front,
+    this.directions = false,
   });
 
   @override
@@ -185,7 +192,8 @@ class SpriteElement extends CanvasElement {
       cues: cues,
       pixelArt: pixelArt,
       mirrorSides: mirrorSides,
-      facing: facing);
+      facing: facing,
+      directions: directions);
 
   /// frameCount is how many frames the sheet is sliced into.
   int get frameCount => rects.isNotEmpty ? rects.length : columns * rows;
@@ -223,6 +231,7 @@ class SpriteElement extends CanvasElement {
   /// facingAt is the way it faces on [frame]: the last cue's that turns it,
   /// or its own.
   SpriteFacing facingAt(int frame) {
+    if (!directions) return SpriteFacing.front;
     var f = facing;
     for (var c in cues) {
       if (c.frame <= frame && c.facing != null) f = c.facing!;
@@ -265,6 +274,7 @@ class SpriteElement extends CanvasElement {
     bool? pixelArt,
     bool? mirrorSides,
     SpriteFacing? facing,
+    bool? directions,
   }) =>
       SpriteElement(
         base,
@@ -283,6 +293,7 @@ class SpriteElement extends CanvasElement {
         pixelArt: pixelArt ?? this.pixelArt,
         mirrorSides: mirrorSides ?? this.mirrorSides,
         facing: facing ?? this.facing,
+        directions: directions ?? this.directions,
       );
 
   /// withAction is this with [a] in place of the action of its name -- or
@@ -319,6 +330,7 @@ class SpriteElement extends CanvasElement {
         if (!pixelArt) "pixelArt": false,
         if (!mirrorSides) "mirrorSides": false,
         if (facing != SpriteFacing.front) "facing": facing.name,
+        if (directions) "directions": true,
       };
 
   factory SpriteElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -360,6 +372,7 @@ class SpriteElement extends CanvasElement {
       pixelArt: jsonBool(json["pixelArt"], true),
       mirrorSides: jsonBool(json["mirrorSides"], true),
       facing: facingOf(json["facing"]) ?? SpriteFacing.front,
+      directions: jsonBool(json["directions"], false),
     );
   }
 }

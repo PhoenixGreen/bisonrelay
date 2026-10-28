@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:bruig/models/snackbar.dart';
@@ -8,6 +9,9 @@ import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
+import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/element_factory.dart';
@@ -60,7 +64,7 @@ void main() {
   });
 
   test("an action plays at its speed, loops or holds, and a side mirrors the other", () {
-    var e = _sprite().copyWith(sheet: "x", sheetW: 64, sheetH: 32, columns: 4, rows: 2, actions: [
+    var e = _sprite().copyWith(sheet: "x", sheetW: 64, sheetH: 32, columns: 4, rows: 2, directions: true, actions: [
       const SpriteAction("Walk", frames: {
         SpriteFacing.front: [0, 1, 2, 3],
         SpriteFacing.right: [4, 5],
@@ -178,7 +182,14 @@ void main() {
       tester.widget<CanvasDropdown<String>>(find.byKey(const ValueKey("spriteActionAdd"))).onChanged("Walk");
       await tester.pumpAndSettle();
       expect(get().action, "Walk");
-      // Facing right, the second row.
+      // A figure: directions on, facing right, the second row.
+      expect(find.byKey(const ValueKey("spriteFacing-right")), findsNothing,
+          reason: "a sprite is not a figure until it has directions");
+      await tester.ensureVisible(find.byKey(const ValueKey("spriteDirections")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("spriteDirections")));
+      await tester.pumpAndSettle();
+      expect(get().directions, isTrue);
       await tester.ensureVisible(find.byKey(const ValueKey("spriteFacing-right")));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("spriteFacing-right")));
@@ -194,12 +205,92 @@ void main() {
       await tester.tapAt(tester.getTopLeft(view) + const Offset(10, 10));
       await tester.pumpAndSettle();
       expect(get().actionNamed("Walk")!.frames[SpriteFacing.right], [4, 5, 6, 7, 0]);
+      // The frames as thumbnails, picked and moved with buttons.
+      await tester.ensureVisible(find.byKey(const ValueKey("spriteFrame-4")));
+      await tester.tap(find.byKey(const ValueKey("spriteFrame-4")));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey("spriteFrameEarlier")));
+      await tester.pumpAndSettle();
+      expect(get().actionNamed("Walk")!.frames[SpriteFacing.right], [4, 5, 6, 0, 7]);
+      await tester.tap(find.byKey(const ValueKey("spriteFrameRemove")));
+      await tester.pumpAndSettle();
+      expect(get().actionNamed("Walk")!.frames[SpriteFacing.right], [4, 5, 6, 7]);
+      expect(find.byKey(const ValueKey("spritePreview")), findsOneWidget);
       // Cued here.
       await tester.ensureVisible(find.byKey(const ValueKey("spriteCueAdd")));
       await tester.tap(find.byKey(const ValueKey("spriteCueAdd")));
       await tester.pumpAndSettle();
       expect(get().cues.single.action, "Walk");
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group("painted", () {
+    late Directory library;
+    setUpAll(() {
+      library = Directory.systemTemp.createTempSync("sprite_paint_test");
+      CanvasStorage.rootOverride = library.path;
+    });
+    tearDownAll(() {
+      CanvasStorage.rootOverride = null;
+      library.deleteSync(recursive: true);
+    });
+
+    test("pixels: dabs, lines with no gaps, a fill kept to its frame, frames copied", () async {
+      var p = SpritePixels.blank(8, 4);
+      const red = ui.Color(0xFFFF0000), blue = ui.Color(0xFF0000FF);
+      p.line(0, 0, 3, 3, red);
+      expect([for (var k = 0; k < 4; k++) p.at(k, k)], List.filled(4, red));
+      // A fill of the clear left frame, kept to it.
+      p.fill(0, 3, blue, within: const ui.Rect.fromLTWH(0, 0, 4, 4));
+      expect(p.at(0, 3), blue);
+      expect(p.at(5, 0).a, 0, reason: "not past its frame");
+      p.copyFrame(const ui.Rect.fromLTWH(0, 0, 4, 4), const ui.Rect.fromLTWH(4, 0, 4, 4));
+      expect(p.at(6, 2), red);
+      var g = p.grown(12, 4);
+      expect((g.width, g.at(6, 2), g.at(10, 0).a), (12, red, 0));
+      var back = await SpritePixels.of(await g.image());
+      expect(back!.at(6, 2), red);
+    });
+
+    test("painted on: each stroke kept as the sheet, one undo; frames added and copied", () async {
+      var c = CanvasController(const CanvasDocument().addElement(
+          const SpriteElement(ElementBase(id: "s", x: 0, y: 0, width: 160, height: 160))));
+      addTearDown(c.dispose);
+      var made = await blankSprite(c, c.document.elementById("s") as SpriteElement, 16, 16, 2);
+      c.replaceElement(made!.rebase(made.base.copyWith(width: 160, height: 160)));
+      expect(made.frameCount, 2);
+      c.paintSprite("s");
+      var session = c.spritePaint!;
+      session.set(colour: const ui.Color(0xFF00AA00), size: 2);
+      var before = (c.document.elementById("s") as SpriteElement).sheet;
+      // Across the middle of the first frame, shown 160 across: 10 a pixel.
+      await session.strokeStart(const ui.Offset(15, 80));
+      await session.strokeTo(const ui.Offset(145, 80));
+      await session.strokeEnd();
+      var e = c.document.elementById("s") as SpriteElement;
+      expect(e.sheet, isNot(before), reason: "kept as a new sheet");
+      var px = await SpritePixels.of(session.view(e).live!);
+      expect(px!.at(8, 8).toARGB32(), 0xFF00AA00);
+      expect(px.at(20, 8).a, 0, reason: "the second frame left alone");
+      c.undo();
+      expect((c.document.elementById("s") as SpriteElement).sheet, before, reason: "one undo");
+      // A frame copied: the sheet a frame wider, the frame in the animation.
+      await session.strokeStart(const ui.Offset(80, 80));
+      await session.strokeEnd();
+      await session.addFrame(copy: true);
+      e = c.document.elementById("s") as SpriteElement;
+      expect((e.columns, e.sheetW, e.frameCount), (3, 48, 3));
+      expect(e.actionNamed("Play")!.frames[SpriteFacing.front], [0, 1, 2]);
+      expect(session.frame, 2);
+      var grown = await SpritePixels.of(session.view(e).live!);
+      expect(grown!.at(32 + 8, 8).toARGB32(), 0xFF00AA00, reason: "the frame copied");
+      // Shown as painted: the frame still, not playing.
+      var view = session.view(e);
+      expect(view.frame, 2);
+      expect(view.onion, 1, reason: "the frame before it, faintly");
+      c.paintSprite(null);
+      expect(spritePaintingOf, isNull);
     });
   });
 }

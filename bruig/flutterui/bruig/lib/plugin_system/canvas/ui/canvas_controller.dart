@@ -30,6 +30,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_doll.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
+import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart' show spritePaintingOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart'
     show characterDollLook, characterDollOf, characterSoloOf;
 import 'package:bruig/plugin_system/canvas/render/character/character_parts.dart';
@@ -3867,6 +3869,22 @@ class CanvasController extends ChangeNotifier {
 
   /// dollShown is whether the doll is out.
   bool get dollShown => _showPuppet && _puppet3D;
+
+  /// spritePaint is the Sprite element being painted frame by frame on the
+  /// canvas, when one is -- see sprite_painting.dart -- and paintSprite
+  /// starts painting one, or with null stops.
+  SpritePaintSession? get spritePaint => _spritePaint;
+  SpritePaintSession? _spritePaint;
+  void paintSprite(String? id) {
+    if (_spritePaint?.id == id) return;
+    _spritePaint?.removeListener(notifyListeners);
+    _spritePaint?.dispose();
+    _spritePaint = id == null ? null : (SpritePaintSession(this, id)..addListener(notifyListeners));
+    spritePaintingOf = _spritePaint == null
+        ? null
+        : (e) => e.id == _spritePaint?.id ? _spritePaint!.view(e) : null;
+    notifyListeners();
+  }
 
   /// dollJoint is the doll's joint picked to turn, with its rings round
   /// it on the canvas -- see character_doll_pose.dart. For this run of
@@ -8749,6 +8767,11 @@ class CanvasController extends ChangeNotifier {
   void dispose() {
     if (vectorSoloOf == _soloOf) vectorSoloOf = null;
     if (characterDollOf == _dollOf) characterDollOf = null;
+    if (_spritePaint != null) {
+      _spritePaint!.dispose();
+      _spritePaint = null;
+      spritePaintingOf = null;
+    }
     _disposedForWaveform = true;
     _autosave?.cancel();
     _playback?.cancel();

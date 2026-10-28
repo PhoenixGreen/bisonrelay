@@ -132,6 +132,10 @@ enum _DragMode {
   node,
   handle,
 
+  /// spritePaint is a Sprite element's frame being painted on -- see
+  /// sprite_painting.dart.
+  spritePaint,
+
   /// dollJoint, dollRing and dollFinger are the doll's joint, a picked
   /// joint's ring and a fingertip being dragged -- see
   /// character_doll_pose.dart.
@@ -2057,6 +2061,16 @@ class CanvasStageState extends State<CanvasStage>
           controller.beginInteraction();
           return;
         }
+      }
+    }
+
+    // A sprite being painted takes a press on it before anything else: it
+    // is a brush on its pixels, not a hand on the element.
+    if (controller.spritePaint case var session?) {
+      if (session.sprite case var e? when !e.locked && e.bounds.contains(doc)) {
+        _mode = _DragMode.spritePaint;
+        unawaited(session.strokeStart(doc));
+        return;
       }
     }
 
@@ -5484,6 +5498,8 @@ class CanvasStageState extends State<CanvasStage>
                   frameRate: document.frameRate, document: document),
               transient: true);
         }
+      case _DragMode.spritePaint:
+        if (controller.spritePaint case var session?) unawaited(session.strokeTo(doc));
       case _DragMode.dollJoint || _DragMode.dollRing || _DragMode.dollFinger:
         if (_dollCharacter() case var who?) {
           var placed = CharacterPlacement.of(who, controller.frame,
@@ -6179,6 +6195,9 @@ class CanvasStageState extends State<CanvasStage>
     // gesture came next, so undoing after nudging a chart's title also undid
     // the move that followed it.
     if (_mode == _DragMode.guide) _finishGuide();
+    if (_mode == _DragMode.spritePaint) {
+      if (controller.spritePaint case var session?) unawaited(session.strokeEnd());
+    }
     if (_mode == _DragMode.vectorKnife) _finishKnife();
     if (_mode == _DragMode.vectorItemsBox) {
       var box = _marquee;
@@ -6745,6 +6764,7 @@ class CanvasStageState extends State<CanvasStage>
                         dollLook: controller.dollLook,
                         dollCharacter: _dollCharacter(),
                         dollPicked: controller.dollJoint,
+                        spritePaintTick: controller.spritePaint?.tick ?? -1,
                         guideHandles: controller.puppetHandles,
                         guideHeld: _mode == _DragMode.characterGuide
                             ? _guideHandle

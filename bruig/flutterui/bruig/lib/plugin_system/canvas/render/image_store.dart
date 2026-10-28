@@ -116,6 +116,18 @@ class CanvasImageStore extends ChangeNotifier
     _bytes += _sizeOf(image);
   }
 
+  /// hold keeps [image] as the picture [assetId] -- one just made here, a
+  /// sprite's sheet painted on -- so it is drawn at once, not read back
+  /// from the file it was stored to.
+  void hold(String assetId, ui.Image image) {
+    if (_disposed || _images.containsKey(assetId)) return;
+    _images[assetId] = image;
+    _bytes += _sizeOf(image);
+    _touch(assetId);
+    _evict();
+    notifyListeners();
+  }
+
   /// notifyForTest is the store saying a picture arrived, which is the one
   /// thing a late load does that anything else can see.
   @visibleForTesting

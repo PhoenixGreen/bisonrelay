@@ -251,6 +251,10 @@ class StagePainter extends CustomPainter {
   final CharacterElement? dollCharacter;
   final DollJoint? dollPicked;
 
+  /// spritePaintTick changes with each stroke on a sprite being painted:
+  /// its pixels are not the document's until the pen lifts.
+  final int spritePaintTick;
+
   /// rigCharacter is the sketch whose limbs are being reshaped point by
   /// point, and rigPicked the point picked. See character_rig_editor.dart.
   final CharacterElement? rigCharacter;
@@ -426,6 +430,7 @@ class StagePainter extends CustomPainter {
     this.dollLook = const DollLook(),
     this.dollCharacter,
     this.dollPicked,
+    this.spritePaintTick = -1,
     this.rigCharacter,
     this.rigPicked,
     this.faceCharacter,
@@ -1940,6 +1945,7 @@ class StagePainter extends CustomPainter {
       !identical(old.dollLook, dollLook) ||
       !identical(old.dollCharacter, dollCharacter) ||
       old.dollPicked != dollPicked ||
+      old.spritePaintTick != spritePaintTick ||
       !identical(old.rigCharacter, rigCharacter) ||
       old.rigPicked != rigPicked ||
       !identical(old.faceCharacter, faceCharacter) ||

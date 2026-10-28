@@ -930,7 +930,8 @@ void paintElement(
       case StageElement e:
         paintStage(canvas, bounds, e, frame);
       case SpriteElement e:
-        paintSprite(canvas, bounds, e, frame, frameRate: frameRate, images: images);
+        paintSprite(canvas, bounds, e, frame,
+            frameRate: frameRate, images: images, editing: editing);
       case CharacterElement e:
         arriving(canvas, bounds, e.animation, pose,
             () => paintCharacter(canvas, bounds, e, frame,
