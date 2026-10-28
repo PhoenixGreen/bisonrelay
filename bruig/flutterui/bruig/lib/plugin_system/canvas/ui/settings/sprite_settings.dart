@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/controls.dart';
 import 'package:bruig/plugin_system/canvas/ui/sprite_painting.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sprite_export.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/sprite_builder_settings.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/panel_kit.dart';
@@ -146,6 +147,7 @@ List<Widget> spriteSettings(BuildContext context, CanvasController controller, S
           SpriteSheetPicker(key: ValueKey("spriteImport-${e.id}"), controller: controller, sprite: e),
           if (!e.hasSheet) BlankSheetMaker(key: ValueKey("spriteBlank-${e.id}"), controller: controller, sprite: e),
           CharacterSpriteMaker(key: ValueKey("spriteFromCharacter-${e.id}"), controller: controller, sprite: e),
+          SpriteBuilderGroup(key: ValueKey("spriteBuilder-${e.id}"), controller: controller, sprite: e),
           if (e.hasSheet) ...[
             SpriteSheetView(
               key: const ValueKey("spriteSheetView"),

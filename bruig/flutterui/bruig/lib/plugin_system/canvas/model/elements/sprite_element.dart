@@ -154,6 +154,11 @@ class SpriteElement extends CanvasElement {
   /// Godot's modulate -- or null for their own.
   final Color? tint;
 
+  /// built is what it was built from, when the builder made its sheet --
+  /// the pieces chosen and the animations -- for the builder to open with
+  /// again. See sprite_builder.dart.
+  final Map<String, dynamic>? built;
+
   const SpriteElement(
     super.base, {
     this.sheet = "",
@@ -174,6 +179,7 @@ class SpriteElement extends CanvasElement {
     this.directions = false,
     this.glow = false,
     this.tint,
+    this.built,
   });
 
   @override
@@ -205,7 +211,8 @@ class SpriteElement extends CanvasElement {
       facing: facing,
       directions: directions,
       glow: glow,
-      tint: tint);
+      tint: tint,
+      built: built);
 
   /// frameCount is how many frames the sheet is sliced into.
   int get frameCount => rects.isNotEmpty ? rects.length : columns * rows;
@@ -290,6 +297,8 @@ class SpriteElement extends CanvasElement {
     bool? glow,
     Color? tint,
     bool noTint = false,
+    Map<String, dynamic>? built,
+    bool notBuilt = false,
   }) =>
       SpriteElement(
         base,
@@ -311,6 +320,7 @@ class SpriteElement extends CanvasElement {
         directions: directions ?? this.directions,
         glow: glow ?? this.glow,
         tint: noTint ? null : (tint ?? this.tint),
+        built: notBuilt ? null : (built ?? this.built),
       );
 
   /// withAction is this with [a] in place of the action of its name -- or
@@ -350,6 +360,7 @@ class SpriteElement extends CanvasElement {
         if (directions) "directions": true,
         if (glow) "glow": true,
         if (tint != null) "tint": colorToJson(tint!),
+        if (built != null) "built": built,
       };
 
   factory SpriteElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -394,6 +405,7 @@ class SpriteElement extends CanvasElement {
       directions: jsonBool(json["directions"], false),
       glow: jsonBool(json["glow"], false),
       tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
+      built: json["built"] is Map<String, dynamic> ? json["built"] as Map<String, dynamic> : null,
     );
   }
 }
