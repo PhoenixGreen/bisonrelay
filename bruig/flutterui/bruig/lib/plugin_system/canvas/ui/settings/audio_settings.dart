@@ -12,6 +12,8 @@ import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sound_tools.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/instrument_settings.dart';
 import 'package:flutter/material.dart';
 
 // audio_settings.dart is an Audio element's settings.
@@ -32,6 +34,10 @@ List<Widget> audioSettings(
   /// press, no icon, no box.
   bool background = false,
 }) {
+  // An instrument: its own settings, a keyboard and a part.
+  if (e.instrument != null && !background) {
+    return instrumentSettings(context, controller, e, write, begin, commit);
+  }
   var across = controller.document.editingMaster ||
       (background && controller.document.sharedBackdrop);
   void now(AudioElement next) {
@@ -254,6 +260,13 @@ List<Widget> audioSettings(
     return [
       soundGroup,
       playbackGroup,
+      // Where it is heard from: a stage behind, or something on it.
+      placementGroup(controller, e, clip, clipNow,
+          clipLive: (c) {
+            begin();
+            write(e.copyWith(clip: c));
+          },
+          commit: commit),
       // The sound's channel in the mix, beside the master: its level, its
       // effects -- opening here, in place -- and what it ducks.
       if (background && clip.timed)
@@ -278,6 +291,18 @@ List<Widget> audioSettings(
                 "${clip.autoplay ? " · starts by itself" : ""}",
         initiallyOpen: true,
         children: [soundGroup, playbackGroup]),
+    section(e, "placement",
+        icon: Icons.surround_sound_outlined,
+        title: "Placement",
+        summary: placementSummary(clip.place),
+        children: [
+          placementGroup(controller, e, clip, clipNow,
+              clipLive: (c) {
+                begin();
+                write(e.copyWith(clip: c));
+              },
+              commit: commit),
+        ]),
     section(e, "controls",
         icon: Icons.tune,
         title: "Reader's controls",

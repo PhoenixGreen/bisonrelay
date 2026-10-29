@@ -34,6 +34,7 @@ const List<ElementKind> _addable = [
   ElementKind.button,
   ElementKind.counter,
   ElementKind.audio,
+  ElementKind.sheet,
   ElementKind.video,
   ElementKind.background,
   ElementKind.player,
@@ -41,7 +42,8 @@ const List<ElementKind> _addable = [
   ElementKind.character,
   ElementKind.sprite,
   ElementKind.tileMap,
-  ElementKind.stage,
+  // No 3D stage: it is a kind of background now, chosen in a background's
+  // Pattern layers.
 ];
 
 IconData iconForKind(ElementKind kind) => switch (kind) {
@@ -63,6 +65,8 @@ IconData iconForKind(ElementKind kind) => switch (kind) {
       ElementKind.stage => Icons.view_in_ar_outlined,
       ElementKind.sprite => Icons.directions_run,
       ElementKind.tileMap => Icons.grid_view,
+      ElementKind.parallax => Icons.landscape_outlined,
+      ElementKind.sheet => Icons.queue_music,
     };
 
 class CanvasElementsPanel extends StatelessWidget {
@@ -77,7 +81,12 @@ class CanvasElementsPanel extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (var kind in _addable) _AddChip(controller, kind),
+              for (var kind in _addable) ...[
+                _AddChip(controller, kind),
+                // An instrument is a sound -- an Audio element playing a
+                // part -- so it sits after the speaker.
+                if (kind == ElementKind.audio) _AddInstrument(controller),
+              ],
             ],
           ),
         ],
@@ -131,6 +140,44 @@ class _AddChip extends StatelessWidget {
           onTap: () =>
               controller.addElement(newElement(kind, controller.document)),
           child: body,
+        ),
+      ),
+    );
+  }
+}
+
+/// _AddInstrument is the chip that adds an instrument: a keyboard to play,
+/// and a part on the timeline.
+class _AddInstrument extends StatelessWidget {
+  final CanvasController controller;
+  const _AddInstrument(this.controller);
+
+  @override
+  Widget build(BuildContext context) {
+    var theme = ThemeNotifier.of(context);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        key: const ValueKey("addInstrument"),
+        borderRadius: BorderRadius.circular(8),
+        onTap: () =>
+            controller.addElement(newInstrument(controller.document)),
+        child: Container(
+          width: 76,
+          height: 62,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: theme.colors.outlineVariant),
+            color: theme.colors.surfaceContainerHighest.withValues(alpha: 0.5),
+          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.piano, size: 20, color: theme.colors.onSurfaceVariant),
+            const SizedBox(height: 4),
+            Text("Instrument",
+                style: TextStyle(
+                    fontSize: 10, color: theme.colors.onSurfaceVariant),
+                textAlign: TextAlign.center),
+          ]),
         ),
       ),
     );

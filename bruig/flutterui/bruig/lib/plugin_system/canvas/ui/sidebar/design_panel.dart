@@ -6,6 +6,7 @@ import 'package:bruig/plugin_system/canvas/ui/sidebar/element_settings_pane.dart
 import 'package:bruig/plugin_system/canvas/ui/sidebar/elements_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/layers_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/scenes_panel.dart';
+import 'package:bruig/plugin_system/canvas/ui/sidebar/structure_panel.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/transitions_panel.dart';
 import 'package:bruig/components/panel_stack.dart';
 import 'package:bruig/plugin_system/canvas/ui/sidebar/colour_panel.dart';
@@ -51,6 +52,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   /// does not listen at all, because nothing about the document changes it.
   late Widget _add;
   late Widget _scenes;
+  late Widget _structure;
   late Widget _transitions;
   late Widget _layers;
   late Widget _settings;
@@ -80,6 +82,7 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
   void _makeBodies() {
     _add = CanvasElementsPanel(controller: controller);
     _scenes = CanvasScenesPanel(controller: controller);
+    _structure = CanvasStructurePanel(controller: controller);
     _transitions = CanvasTransitionsPanel(
       controller: controller,
       onPreview: () =>
@@ -113,31 +116,48 @@ class _CanvasDesignPanelState extends State<CanvasDesignPanel> {
           // Between what can be added and what is on this canvas, because
           // that is the order the questions come in: which canvas am I on,
           // then what is on it.
-          StackPanel(
-            id: "scenes",
-            // Named for what this document's canvases are. The panel, the
-            // list and the buttons all say the same word, which comes from
-            // one place -- see CanvasKind.many.
-            label: controller.document.kind.manyCap,
-            icon: controller.document.isPages
-                ? Icons.menu_book_outlined
-                : Icons.movie_outlined,
-            trailing: controller.document.hasScenes
-                ? "${controller.document.at + 1}/"
-                    "${controller.document.allScenes.length}"
-                : null,
-            hint: controller.document.isPages
-                ? "The leaves of this document, in order. Drag one up or "
-                    "down to move it. The first and last can be marked as "
-                    "covers, which takes them out of the numbering."
-                : "The canvases this document plays through, in order. Drag "
-                    "one up or down to change when it plays.",
-            // Shut to begin with: most documents are one canvas, and a list
-            // with one row in it is a hole in a column that has three other
-            // panels wanting the room.
-            startsOpen: false,
-            body: _scenes,
-          ),
+          // A piece of sound has its structure where a document of scenes
+          // has its scenes: the sections it is laid out in, along the one
+          // timeline.
+          if (controller.document.kind.isAudio)
+            StackPanel(
+              id: "structure",
+              label: "Structure",
+              icon: Icons.view_week_outlined,
+              trailing: controller.document.audio.sections.isEmpty
+                  ? null
+                  : "${controller.document.audio.sections.length}",
+              hint: "The sections this piece is laid out in, in order, each "
+                  "so many bars long: an intro, a verse, a chorus. A sound "
+                  "plays on from one section into the next.",
+              body: _structure,
+            )
+          else
+            StackPanel(
+              id: "scenes",
+              // Named for what this document's canvases are. The panel, the
+              // list and the buttons all say the same word, which comes from
+              // one place -- see CanvasKind.many.
+              label: controller.document.kind.manyCap,
+              icon: controller.document.isPages
+                  ? Icons.menu_book_outlined
+                  : Icons.movie_outlined,
+              trailing: controller.document.hasScenes
+                  ? "${controller.document.at + 1}/"
+                      "${controller.document.allScenes.length}"
+                  : null,
+              hint: controller.document.isPages
+                  ? "The leaves of this document, in order. Drag one up or "
+                      "down to move it. The first and last can be marked as "
+                      "covers, which takes them out of the numbering."
+                  : "The canvases this document plays through, in order. Drag "
+                      "one up or down to change when it plays.",
+              // Shut to begin with: most documents are one canvas, and a list
+              // with one row in it is a hole in a column that has three other
+              // panels wanting the room.
+              startsOpen: false,
+              body: _scenes,
+            ),
           // Only where there is another scene to give way to: with one
           // canvas the whole panel would be settings about an event that
           // cannot happen.

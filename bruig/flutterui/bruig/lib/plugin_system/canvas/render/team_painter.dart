@@ -52,12 +52,16 @@ TeamGround? teamGround(CanvasDocument? doc, TeamElement team, int frame) {
   if (!team.linked || doc == null) return null;
   if (team.link == teamLinkBackground) {
     var spec = doc.drawnBackground.spec;
-    if (spec.style != ProceduralStyle.pitch) return null;
+    // A background showing its stage is not showing its pitch.
+    if (spec.style != ProceduralStyle.pitch || doc.drawnBackground.isStage) {
+      return null;
+    }
     return TeamGround(pitchPlacement(doc.size.rect, spec), _same, _same);
   }
   var element = doc.elementById(team.link) ??
       doc.masterScene?.elements.where((e) => e.id == team.link).firstOrNull;
   if (element is! BackgroundElement ||
+      element.isStage ||
       element.spec.style != ProceduralStyle.pitch) {
     return null;
   }
@@ -79,7 +83,8 @@ typedef PitchChoice = ({
 /// pitchChoices is every pitch in [doc] a team can stand on: the canvas's
 /// background where it is one, and every background element that is one.
 List<PitchChoice> pitchChoices(CanvasDocument doc) => [
-      if (doc.drawnBackground.spec.style == ProceduralStyle.pitch)
+      if (doc.drawnBackground.spec.style == ProceduralStyle.pitch &&
+          !doc.drawnBackground.isStage)
         (
           link: teamLinkBackground,
           label: "Canvas background",
@@ -89,7 +94,9 @@ List<PitchChoice> pitchChoices(CanvasDocument doc) => [
           area: doc.size.rect,
         ),
       for (var e in doc.elements)
-        if (e is BackgroundElement && e.spec.style == ProceduralStyle.pitch)
+        if (e is BackgroundElement &&
+            !e.isStage &&
+            e.spec.style == ProceduralStyle.pitch)
           (
             link: e.id,
             label: e.name.isEmpty ? "Pitch" : e.name,

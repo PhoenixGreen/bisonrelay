@@ -70,11 +70,19 @@ class EpubMediaBuilder {
   /// pages is converted once.
   final Map<String, EpubFile?> _files = {};
 
-  EpubMediaBuilder(this.ffmpeg, {this.scale = 1, this.images});
+  /// audioKbps is the bitrate the book's sound is written at, its videos'
+  /// soundtracks included.
+  final int audioKbps;
+
+  EpubMediaBuilder(this.ffmpeg,
+      {this.scale = 1, this.images, this.audioKbps = 160});
 
   static Future<EpubMediaBuilder> start(
-          {double scale = 1, CanvasImageSource? images}) async =>
-      EpubMediaBuilder(await ffmpegPath(), scale: scale, images: images);
+          {double scale = 1,
+          CanvasImageSource? images,
+          int audioKbps = 160}) async =>
+      EpubMediaBuilder(await ffmpegPath(),
+          scale: scale, images: images, audioKbps: audioKbps);
 
   /// page is what page [index] of [document] carries, placed in pixels at
   /// [pixels] per design unit -- the page picture's own scale -- on a page
@@ -442,13 +450,13 @@ class EpubMediaBuilder {
           "-c:a",
           "aac",
           "-b:a",
-          "128k",
+          "${audioKbps}k",
         ] else ...[
           "-vn",
           "-c:a",
           "aac",
           "-b:a",
-          "160k",
+          "${audioKbps}k",
         ],
         "-movflags", "+faststart",
         out,

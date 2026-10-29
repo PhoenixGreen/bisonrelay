@@ -1,3 +1,9 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
+import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/backdrop_settings.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -73,7 +79,50 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     // last, and with a backdrop on the shared canvas nothing moved at all.
     var showing = document.editedBackground;
 
+    var picker = backdropKindPicker(showing.backdrop, (kind) {
+      controller.beginInteraction();
+      controller.setBackground(showing.copyWith(
+          backdrop: kind,
+          stage: showing.stage ?? defaultBackgroundStage,
+          parallax: kind == BackdropKind.parallax
+              ? showing.parallax ??
+                  parallaxLooks.first.scenery
+                          .rebase(const ElementBase(id: backgroundParallaxId))
+                      as ParallaxElement
+              : null));
+      controller.endInteraction();
+    });
+    // A stage in the pattern's place: its camera, its set, its light.
+    var stage = showing.isStage
+        ? stageBackdropSettings(
+            context, controller, showing.stageOn(document.size.rect),
+            picker: picker, write: (s) {
+            controller.beginInteraction();
+            controller.putStage(s, transient: true);
+          },
+            begin: controller.beginInteraction,
+            commit: controller.endInteraction,
+            rememberAs: "canvasBackground")
+        : showing.isParallax
+            ? [
+                ParallaxSettings(
+                  key: const ValueKey("parallaxSettings-background"),
+                  controller: controller,
+                  scenery: showing.parallaxOn(document.size.rect),
+                  picker: picker,
+                  write: (p) {
+                    controller.beginInteraction();
+                    controller.putBackdrop(p, transient: true);
+                  },
+                  begin: controller.beginInteraction,
+                  commit: controller.endInteraction,
+                  rememberAs: "canvasBackground",
+                ),
+              ]
+            : null;
+
     var pattern = ProceduralSettings(
+      kindPicker: picker,
       // In sections, as every element's settings are.
       sections: true,
       rememberAs: "canvasBackground",
@@ -94,7 +143,8 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
           imageAssetId: showing.imageAssetId,
           imageFit: showing.imageFit,
           video: showing.video,
-          sound: showing.sound)),
+          sound: showing.sound,
+          stage: showing.stage)),
       onChanged: (spec) {
         controller.beginInteraction();
         controller.setBackground(showing.copyWith(spec: spec), transient: true);
@@ -106,25 +156,28 @@ Widget elementSettingsBody(BuildContext context, CanvasController controller) {
     var settings = CanvasSections(
       key: const ValueKey("backgroundSections"),
       children: [
-        pattern,
+        ...?stage,
+        if (stage == null) pattern,
         ...backgroundMediaSettings(context, controller),
         // The designs saved from here or from a background element, to start
-        // from or to keep this one -- last, as on every element.
-        CanvasSection(
-          key: const ValueKey("elementSection-presets"),
-          icon: Icons.bookmarks_outlined,
-          title: "Presets",
-          summary: "Backgrounds to start from",
-          remember: "canvasBackground.presets",
-          children: [
-            backgroundPresetsSection(context, controller, showing.spec,
-                onUse: (spec) {
-              controller.beginInteraction();
-              controller.setBackground(showing.copyWith(spec: spec));
-              controller.endInteraction();
-            }),
-          ],
-        ),
+        // from or to keep this one -- last, as on every element. Patterns,
+        // so not while the background is a stage.
+        if (stage == null)
+          CanvasSection(
+            key: const ValueKey("elementSection-presets"),
+            icon: Icons.bookmarks_outlined,
+            title: "Presets",
+            summary: "Backgrounds to start from",
+            remember: "canvasBackground.presets",
+            children: [
+              backgroundPresetsSection(context, controller, showing.spec,
+                  onUse: (spec) {
+                controller.beginInteraction();
+                controller.setBackground(showing.copyWith(spec: spec));
+                controller.endInteraction();
+              }),
+            ],
+          ),
       ],
     );
 

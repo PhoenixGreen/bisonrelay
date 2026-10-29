@@ -1,5 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:path/path.dart' as path;
 
@@ -55,6 +59,15 @@ class FakeEngine implements AudioEngine {
   @override
   double lengthOf(AudioTrack track) => (track as FakeTrack).length;
 
+  /// clicks is every metronome asked for, as (seconds a beat, beats a bar).
+  final List<(double, int)> clicks = [];
+
+  @override
+  AudioTrack? metronome(double secondsPerBeat, int beatsPerBar) {
+    clicks.add((secondsPerBeat, beatsPerBar));
+    return FakeTrack("metronome", 24 * 3600);
+  }
+
   /// channels is every mixer channel as last set, master the master, and
   /// onChannel which channel each voice was played through.
   final Map<String, ChannelSound> channels = {};
@@ -66,6 +79,30 @@ class FakeEngine implements AudioEngine {
 
   @override
   void setMaster(MasterSound sound) => master = sound;
+
+  /// returns is the returns as last set -- see AudioEngine.setReturns.
+  List<ReturnChannel> returns = const [];
+  @override
+  void setReturns(List<ReturnChannel> returns) => this.returns = returns;
+
+  /// speakers and placements are as last set -- see AudioEngine.
+  SpeakerLayout speakers = SpeakerLayout.stereo;
+  final Map<String, Heard> placements = {};
+  @override
+  void setSpeakers(SpeakerLayout layout) => speakers = layout;
+
+  /// notes is every live note, as (channel, key, velocity) -- nought for a
+  /// let-go -- in order.
+  final List<(String, int, int)> notes = [];
+  @override
+  void noteOn(String channel, InstrumentPart sound, int key, int velocity,
+          {SoundFont? font}) =>
+      notes.add((channel, key, velocity));
+  @override
+  void noteOff(String channel, int key) => notes.add((channel, key, 0));
+  @override
+  void setPlacement(String key, Heard? heard) =>
+      heard == null ? placements.remove(key) : placements[key] = heard;
 
   @override
   (double, double) levels([String? channel]) => (0.5, 0.5);

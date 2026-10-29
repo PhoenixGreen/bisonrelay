@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart'
     show BackgroundRemoval;
+import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/paint_util.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:flutter/painting.dart';
@@ -23,7 +24,21 @@ class AudioState {
   final bool muted;
   final double volume;
 
-  const AudioState({this.playing = false, this.muted = false, this.volume = 1});
+  /// keys are an instrument's keys sounding -- under the playhead, or held
+  /// down -- and recording whether what is played is being written down.
+  final Set<int> keys;
+  final bool recording;
+
+  /// next are the keys a practice take is waiting for, lit blue.
+  final Set<int> next;
+
+  const AudioState(
+      {this.playing = false,
+      this.muted = false,
+      this.volume = 1,
+      this.keys = const {},
+      this.recording = false,
+      this.next = const {}});
 
   factory AudioState.idle(AudioElement e) =>
       AudioState(muted: e.clip.muted, volume: e.clip.volume);
@@ -88,6 +103,15 @@ double volumeAt(Rect bar, double x) {
 
 void paintAudio(ui.Canvas canvas, Rect bounds, AudioElement e, AudioState state,
     {CanvasImageSource? images}) {
+  // An instrument is its keyboard.
+  if (e.instrument case var part?) {
+    paintKeyboard(canvas, bounds, part,
+        lit: state.keys,
+        next: state.next,
+        accent: e.accent,
+        recording: state.recording);
+    return;
+  }
   paintBox(canvas, bounds, e.box, images);
   var parts = audioParts(e, bounds);
   if (parts.icon.width <= 0) return;

@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
 import 'package:flutter/foundation.dart';
 
 // audio_runtime.dart decides what is playing: which file of a playlist, from
@@ -123,6 +127,82 @@ class AudioRuntime extends ChangeNotifier {
   bool get unavailable => _unavailable;
   bool _unavailable = false;
 
+  AudioTrack? _click;
+  AudioVoice? _clickVoice;
+  (double, int)? _clickMetre;
+  int _clickGeneration = 0;
+
+  /// metronomeUnavailable is set once the engine has said it has no
+  /// metronome -- SoLoud's buses -- so the button can say why it is silent.
+  bool get metronomeUnavailable => _noClick;
+  bool _noClick = false;
+
+  /// metronome is the click as it should be now: sounding from [at] seconds,
+  /// a beat every [secondsPerBeat] in bars of [beatsPerBar], or -- not [on]
+  /// -- silent. Called whenever the playhead moves, as cue is: a click that
+  /// has drifted from [at] by more than a little is moved back to it, so a
+  /// loop's jump back or a seek takes the click with it.
+  void metronome(
+      {required bool on,
+      double at = 0,
+      double secondsPerBeat = 0.5,
+      int beatsPerBar = 4}) {
+    if (!on || _disposed) {
+      _clickGeneration++;
+      if (_clickVoice case var v?) engine.stop(v);
+      _clickVoice = null;
+      return;
+    }
+    var metre = (secondsPerBeat, beatsPerBar);
+    if (_clickMetre != metre) {
+      if (_clickVoice case var v?) engine.stop(v);
+      _clickVoice = null;
+      _click = null;
+      _clickMetre = metre;
+    }
+    // Counted from the start of the timeline: a beat falls where the ruler
+    // says it does, wherever playing began.
+    if (_clickVoice case var v? when engine.alive(v)) {
+      if ((engine.position(v) - at).abs() > 0.05) engine.seek(v, at);
+      return;
+    }
+    var generation = ++_clickGeneration;
+    () async {
+      if (!await _ready() || generation != _clickGeneration) return;
+      var track = _click ??= engine.metronome(secondsPerBeat, beatsPerBar);
+      if (track == null) {
+        if (!_noClick) {
+          _noClick = true;
+          notifyListeners();
+        }
+        return;
+      }
+      _clickVoice = engine.play(track, volume: 1, at: at);
+    }();
+  }
+
+  /// noteOn sounds [key] on channel [channel]'s instrument, live -- the
+  /// bank read first, where the part is played on it and it is there.
+  Future<void> noteOn(
+      String channel, InstrumentPart part, int key, int velocity) async {
+    var down = _down.putIfAbsent(channel, () => {})..add(key);
+    if (!await _ready()) return;
+    var font = part.sound == InstrumentSound.bank ? await loadSoundBank() : null;
+    // Let go while the bank was being read -- the first press of all can
+    // take a moment -- it is not started at all, rather than started and
+    // never stopped.
+    if (_disposed || !down.contains(key)) return;
+    engine.noteOn(channel, part, key, velocity, font: font);
+  }
+
+  void noteOff(String channel, int key) {
+    _down[channel]?.remove(key);
+    if (_started) engine.noteOff(channel, key);
+  }
+
+  /// _down is the keys held on each channel, live.
+  final Map<String, Set<int>> _down = {};
+
   /// view is how [e] is doing now.
   AudioView view(AudioElement e) {
     var p = _sounds[e.id];
@@ -229,7 +309,32 @@ class AudioRuntime extends ChangeNotifier {
   void setMix(Map<String, ChannelMix> channels,
       {Map<String, String> routes = const {},
       Set<String> solo = const {},
-      required MasterMix master}) {
+      required MasterMix master,
+      List<ReturnChannel> returns = const [],
+      SpeakerLayout speakers = SpeakerLayout.stereo,
+      Map<String, Heard> placements = const {}}) {
+    if (speakers != _speakers) {
+      _speakers = speakers;
+      if (_started) engine.setSpeakers(speakers);
+    }
+    // Where each placed sound's channel is heard from, on this frame; a
+    // channel no longer placed goes back to its own pan.
+    for (var key in [..._placements.keys]) {
+      if (placements.containsKey(key)) continue;
+      _placements.remove(key);
+      if (_started) engine.setPlacement(key, null);
+    }
+    for (var e in placements.entries) {
+      if (_placements[e.key] == e.value) continue;
+      _placements[e.key] = e.value;
+      if (_started) engine.setPlacement(e.key, e.value);
+    }
+    var returnsKey = [for (var r in returns) r.toKey()].join("|");
+    _returns = returns;
+    if (returnsKey != _returnsKey) {
+      _returnsKey = returnsKey;
+      if (_started) engine.setReturns(returns);
+    }
     _routes
       ..clear()
       ..addAll(routes);
@@ -244,9 +349,11 @@ class AudioRuntime extends ChangeNotifier {
         eq: mix.eq.flat ? null : eqBandGains(mix.eq),
         comp: mix.comp.on ? mix.comp : null,
         compFirst: mix.compFirst,
+        mix: silent ? mix.copyWith(mute: true) : mix,
       );
-      var signature =
-          "$l|$r|${mix.eq.flat ? "" : mix.eq.toJson()}|${mix.comp.on ? mix.comp.toJson() : ""}|${mix.compFirst}";
+      // The whole strip: a send, a surround pan or the LFE changed alone is
+      // a change the engine has to hear of too.
+      var signature = "$l|$r|$silent|${mix.toJson()}";
       _channels[entry.key] = sound;
       if (_channelSignature[entry.key] == signature) continue;
       _channelSignature[entry.key] = signature;
@@ -258,6 +365,9 @@ class AudioRuntime extends ChangeNotifier {
       comp: master.comp.on ? master.comp : null,
       ceilingDb: master.limiter ? master.ceilingDb : null,
       compFirst: master.compFirst,
+      // Never brought to a target while playing: that is measured over the
+      // whole mix, which the editor has not heard yet.
+      mix: master.copyWith(normalise: false),
     );
     var signature = master.toJson().toString();
     _master = sound;
@@ -266,6 +376,15 @@ class AudioRuntime extends ChangeNotifier {
       if (_started) engine.setMaster(sound);
     }
   }
+
+  List<ReturnChannel> _returns = const [];
+  String? _returnsKey;
+  SpeakerLayout _speakers = SpeakerLayout.stereo;
+  final Map<String, Heard> _placements = {};
+
+  /// placements are where each placed channel is heard from now, for tests
+  /// and the strip's own display.
+  Map<String, Heard> get placements => Map.unmodifiable(_placements);
 
   /// levels is how loud [channel] -- or the master -- is right now.
   (double, double) levels([String? channel]) =>
@@ -488,6 +607,11 @@ class AudioRuntime extends ChangeNotifier {
         engine.setChannel(entry.key, entry.value);
       }
       if (_master case var m?) engine.setMaster(m);
+      engine.setReturns(_returns);
+      engine.setSpeakers(_speakers);
+      for (var e in _placements.entries) {
+        engine.setPlacement(e.key, e.value);
+      }
     }
     if (!ok && !_unavailable) {
       _unavailable = true;
@@ -643,6 +767,7 @@ class AudioRuntime extends ChangeNotifier {
 
   @override
   void dispose() {
+    metronome(on: false);
     _disposed = true;
     _timer?.cancel();
     _timer = null;

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegPath;
+import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -12,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:flutter/foundation.dart';
@@ -44,14 +47,24 @@ class ExportSound {
   final double fadeOut;
   final double volume;
 
-  /// mix is the channel strip this stretch plays through.
+  /// mix is the channel strip this stretch plays through, and channel the
+  /// channel's key: every stretch on one channel is summed and then played
+  /// through the strip once, as the editor plays it. Empty for a stretch
+  /// with a strip of its own.
   final ChannelMix mix;
+  final String channel;
 
   /// envelope is the clip's volume envelope, in seconds from the start of
   /// this stretch -- see MediaClip.envelope.
   final List<GainPoint> envelope;
 
+  /// place is where the sound is heard from over the export, for a placed
+  /// sound: each (seconds into the export, where), in order. See
+  /// SoundPlacement.
+  final List<(double, Heard)> place;
+
   const ExportSound({
+    this.place = const [],
     required this.path,
     required this.at,
     required this.from,
@@ -60,35 +73,9 @@ class ExportSound {
     this.fadeOut = 0,
     this.volume = 1,
     this.mix = const ChannelMix(),
+    this.channel = "",
     this.envelope = const [],
   });
-}
-
-/// envelopeExpression is [points] as an ffmpeg volume expression in t, the
-/// seconds into the stretch: flat before the first point and after the
-/// last, straight lines between.
-///
-/// A sum of pieces, each switched on for its own stretch of time, rather
-/// than ifs inside ifs: a voice-over ducked at every line is a couple of
-/// hundred points, and an expression nested that deep is one the parser may
-/// refuse.
-String envelopeExpression(List<GainPoint> points) {
-  String n(double v) => v.toStringAsFixed(4);
-  if (points.isEmpty) return "1";
-  var first = points.first, last = points.last;
-  var parts = <String>[
-    "${n(first.gain)}*lt(t,${n(first.time)})",
-    "${n(last.gain)}*gte(t,${n(last.time)})",
-  ];
-  for (var i = 0; i < points.length - 1; i++) {
-    var a = points[i], b = points[i + 1];
-    var span = b.time - a.time;
-    if (span <= 0) continue;
-    var slope = (b.gain - a.gain) / span;
-    parts.add("gte(t,${n(a.time)})*lt(t,${n(b.time)})"
-        "*(${n(a.gain)}+${n(slope)}*(t-${n(a.time)}))");
-  }
-  return parts.join("+");
 }
 
 /// _Placed is one piece of timed media as it sits in the run.
@@ -108,7 +95,11 @@ class _Placed {
   VideoFrame? pending;
   bool ended = false;
 
-  _Placed(this.element, this.start, this.until);
+  /// scene is the scene it is in, or null for one on the master or a
+  /// transition: where a placed sound finds its stage.
+  final int? scene;
+
+  _Placed(this.element, this.start, this.until, [this.scene]);
 
   /// clip is the element's clip as the export plays it: a video that is not
   /// on the timeline from the start of its scene, wherever it was once put.
@@ -169,7 +160,7 @@ class ExportMedia {
       var from = document.hasScenes ? document.startOfScene(i) : 0;
       var until = math.min(run, from + scenes[i].frames);
       for (var e in scenes[i].elements) {
-        if (_timed(e)) placed.add(_Placed(e, from, until));
+        if (_timed(e)) placed.add(_Placed(e, from, until, i));
       }
       // A scene's backdrop is its own, unless the master's covers it --
       // which is placed once, below, against the whole run.
@@ -302,6 +293,7 @@ class ExportMedia {
       if (limit <= 0) continue;
       var run = clip.runLength;
       if (run <= 0) continue;
+      var place = _placeOf(p, clip, begins, limit);
 
       var t = 0.0;
       while (t < limit) {
@@ -327,6 +319,9 @@ class ExportMedia {
                 fadeOut: length < span ? 0 : clip.fadeOut,
                 volume: clip.volume,
                 mix: clip.mix,
+                channel:
+                    clip.channel.isNotEmpty ? clip.channel : p.element.id,
+                place: place,
                 envelope: multiplyEnvelopes(
                   [for (var g in clip.envelope) GainPoint(g.time - t, g.gain)],
                   // The run's ducking, from where this stretch starts.
@@ -343,6 +338,31 @@ class ExportMedia {
         }
         if (clip.loop == MediaLoop.none) break;
       }
+    }
+    return out;
+  }
+
+  /// _placeOf is where [p]'s sound is heard from, frame by frame, from
+  /// [begins] seconds into the export for [limit] seconds -- each change
+  /// kept, the rest left out -- or nothing for a sound that is not placed.
+  List<(double, Heard)> _placeOf(
+      _Placed p, MediaClip clip, double begins, double limit) {
+    if (clip.place.isOff) return const [];
+    var doc = p.scene == null ? document : document.goToScene(p.scene!);
+    var out = <(double, Heard)>[];
+    var first = (begins * _rate).floor();
+    var last = ((begins + limit) * _rate).ceil();
+    for (var f = first; f <= last; f++) {
+      var h = heardAt(doc, p.element, clip.place, f - p.start);
+      if (h == null) continue;
+      if (out.isNotEmpty) {
+        var was = out.last.$2;
+        if ((wrapAngle(h.angle - was.angle)).abs() < 0.5 &&
+            (h.gain - was.gain).abs() < 0.005) {
+          continue;
+        }
+      }
+      out.add((f / _rate, h));
     }
     return out;
   }
@@ -379,59 +399,6 @@ class ExportMedia {
   }
 }
 
-/// mixArgs is what ffmpeg is told to put [sounds] together as one track, when
-/// they are its inputs from [first] on: the input arguments, and the filter
-/// graph whose output is labelled "mix".
-///
-/// Each stretch is trimmed by input seeking, faded, set to its volume and
-/// delayed to where it starts; then all of them are summed without being
-/// turned down -- amix's default halves every input, which would make a
-/// clip on its own half as loud as it was set to be.
-(List<String>, String) mixArgs(List<ExportSound> sounds,
-    {int first = 1, MasterMix master = const MasterMix(), bool pad = true}) {
-  var inputs = <String>[];
-  var chains = <String>[];
-  var labels = <String>[];
-  String n(double v) => v.toStringAsFixed(3);
-  for (var (i, s) in sounds.indexed) {
-    inputs.addAll(["-ss", n(s.from), "-t", n(s.length), "-i", s.path]);
-    var filters = <String>[
-      "aresample=48000",
-      "aformat=channel_layouts=stereo",
-      if (s.fadeIn > 0) "afade=t=in:st=0:d=${n(s.fadeIn)}",
-      if (s.fadeOut > 0)
-        "afade=t=out:st=${n(math.max(0, s.length - s.fadeOut))}:d=${n(s.fadeOut)}",
-      if (s.volume != 1) "volume=${n(s.volume)}",
-      // Quoted, so the commas inside it are the expression's own.
-      if (s.envelope.isNotEmpty)
-        "volume='${envelopeExpression(s.envelope)}':eval=frame",
-      // The strip it plays through: EQ, compressor, fader and balance. Per
-      // stretch rather than per channel, which is the same thing -- one
-      // channel's stretches never overlap -- and keeps the graph one chain
-      // per input.
-      ...s.mix.ffmpeg,
-      "adelay=${(s.at * 1000).round()}:all=1",
-    ];
-    chains.add("[${first + i}:a]${filters.join(",")}[s$i]");
-    labels.add("[s$i]");
-  }
-  // Then the master: its EQ, glue, level, the loudness target and the
-  // limiter -- see MasterMix.ffmpeg -- over the sum of everything. The
-  // loudness normaliser works at a high rate of its own, so the sound is put
-  // back to 48kHz after it.
-  var chain = [
-    ...master.ffmpeg,
-    if (master.normalise) "aresample=48000",
-    if (pad) "apad",
-  ];
-  var tail = chain.isEmpty ? "anull" : chain.join(",");
-  var mix = sounds.length == 1
-      ? "${labels.single}$tail[mix]"
-      : "${labels.join()}amix=inputs=${sounds.length}:normalize=0"
-          ":dropout_transition=0,$tail[mix]";
-  return (inputs, [...chains, mix].join(";"));
-}
-
 /// renderSoundtrack is [document]'s timeline sound through its mix and
 /// nothing else -- what a video export of it would carry -- as an AAC file
 /// exactly as long as the timeline. Null where there is nothing to hear, or
@@ -450,17 +417,24 @@ Future<Uint8List?> renderSoundtrack(CanvasDocument document,
   try {
     var sounds = await media.sounds();
     if (sounds.isEmpty) return null;
-    var (inputs, graph) =
-        mixArgs(sounds, first: 0, master: document.masterMix, pad: true);
     var seconds = document.playFrames /
         (document.frameRate <= 0 ? 1 : document.frameRate);
     work = await Directory.systemTemp.createTemp("canvas-soundtrack");
+    var mixed = path.join(work.path, "mix.wav");
+    // A book's player is a browser's: two speakers, folded down.
+    if (!await renderMixWav(sounds, document.masterMix,
+        seconds: seconds,
+        ffmpeg: ffmpeg,
+        out: mixed,
+        returns: document.returns,
+        speakers: document.audio.speakers,
+        fold: true)) {
+      return null;
+    }
     var out = path.join(work.path, "sound.m4a");
     var run = await Process.run(ffmpeg, [
       "-hide_banner", "-loglevel", "error", "-y", //
-      ...inputs,
-      "-filter_complex", graph,
-      "-map", "[mix]",
+      "-i", mixed,
       "-t", seconds.toStringAsFixed(3),
       "-c:a", "aac", "-b:a", "192k",
       "-movflags", "+faststart",
@@ -520,19 +494,28 @@ Future<Loudness?> measureMix(CanvasDocument document,
   if (ffmpeg == null) return null;
   var media = ExportMedia.of(document, locate: locate);
   if (media == null) return null;
+  Directory? work;
   try {
     var sounds = await media.sounds();
     if (sounds.isEmpty) return null;
-    var (inputs, graph) =
-        mixArgs(sounds, first: 0, master: document.masterMix, pad: false);
     var seconds = document.playFrames /
         (document.frameRate <= 0 ? 1 : document.frameRate);
+    // The mix as an export renders it, then ffmpeg's meter over that.
+    work = await Directory.systemTemp.createTemp("canvas-measure");
+    var mixed = path.join(work.path, "mix.wav");
+    if (!await renderMixWav(sounds, document.masterMix,
+        seconds: seconds,
+        ffmpeg: ffmpeg,
+        out: mixed,
+        returns: document.returns,
+        // Every speaker: ffmpeg's meter weights them as BS.1770 says.
+        speakers: document.audio.speakers)) {
+      return null;
+    }
     var run = await Process.run(ffmpeg, [
       "-hide_banner", "-nostats", //
-      ...inputs,
-      "-filter_complex", "$graph;[mix]ebur128=peak=true[out]",
-      "-map", "[out]",
-      "-t", seconds.toStringAsFixed(3),
+      "-i", mixed,
+      "-filter_complex", "ebur128=peak=true",
       "-f", "null", "-",
     ]);
     return parseLoudness(run.stderr.toString());
@@ -541,5 +524,6 @@ Future<Loudness?> measureMix(CanvasDocument document,
     return null;
   } finally {
     media.dispose();
+    if (work != null) await work.delete(recursive: true).catchError((_) => work!);
   }
 }

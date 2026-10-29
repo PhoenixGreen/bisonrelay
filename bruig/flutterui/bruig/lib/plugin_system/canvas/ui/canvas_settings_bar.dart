@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/controls_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -85,6 +88,12 @@ class CanvasSettingsBar extends StatefulWidget {
   final bool timelineOpen;
   final VoidCallback onToggleTimeline;
 
+  /// canvasShown is whether the canvas itself is on screen, and
+  /// onToggleCanvas puts it away or brings it back: put away, the mixer and
+  /// the effects have the whole of the room it was in.
+  final bool canvasShown;
+  final VoidCallback? onToggleCanvas;
+
   /// onShowSidebar brings a hidden sidebar back, and is null while it is
   /// showing. See CanvasSidebarRestoreButton -- a hidden sidebar with no way
   /// back is a trap, so the control has to be somewhere predictable, and this
@@ -100,6 +109,8 @@ class CanvasSettingsBar extends StatefulWidget {
     required this.timelineOpen,
     required this.onToggleTimeline,
     required this.onToggleCanvasSettings,
+    this.canvasShown = true,
+    this.onToggleCanvas,
     this.onShowSidebar,
     super.key,
   });
@@ -400,6 +411,31 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
               tooltip: "Canvas settings",
               active: widget.canvasSettingsOpen,
               onPressed: widget.onToggleCanvasSettings),
+          // Lit while the canvas is away, as the others are lit while what
+          // they open is out: it is the unusual state that wants seeing.
+          // Not on an audio document, which has no canvas to show.
+          if (widget.onToggleCanvas != null)
+            _barButton(theme,
+                key: const ValueKey("toggleCanvas"),
+                icon: widget.canvasShown
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                tooltip: widget.canvasShown
+                    ? "Hide the canvas, to give the mixer and effects the room"
+                    : "Show the canvas",
+                active: !widget.canvasShown,
+                onPressed: widget.onToggleCanvas),
+          // Played as a game: there where something is set to be played.
+          if (controller.playable || controller.gaming)
+            _barButton(theme,
+                key: const ValueKey("playGame"),
+                icon: Icons.sports_esports_outlined,
+                tooltip: controller.gaming
+                    ? "Stop playing (Esc)"
+                    : "Play it as a game: the keys and a controller drive "
+                        "what is set to be played",
+                active: controller.gaming,
+                onPressed: () => controller.gaming = !controller.gaming),
           _divider(theme),
           _barButton(theme,
               icon: Icons.undo,
@@ -533,7 +569,8 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     // are answers to a question nobody asked.
     var offered = [
       for (var format in EstimateAs.values)
-        if (format.moving == document.isAnimated) format,
+        if (format == EstimateAs.audio || format.moving == document.isAnimated)
+          format,
     ];
     if (!offered.contains(spec.format)) {
       spec = spec.copyWith(format: offered.first);
@@ -610,6 +647,121 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
     ]);
   }
 
+  /// _audioGroup is the document's sound as a production: where it is going
+  /// -- a preset that sets everything at once -- how it is written, and how
+  /// loud it is brought to. A piece of sound's tempo, metre and quantise are
+  /// on the timeline's control bar, beside what they time.
+  Widget _audioGroup(CanvasDocument document) {
+    var audio = document.audio;
+    var export = audio.export;
+    var mix = document.masterMix;
+    void write(AudioSettings next, {MasterMix? master}) =>
+        controller.apply(document.copyWith(audio: next, masterMix: master));
+    void writeExport(AudioOptions next) => write(audio.copyWith(export: next));
+    var preset = AudioPreset.values
+        .where((p) =>
+            p.options == export &&
+            mix.normalise &&
+            p.target == mix.target &&
+            p.ceilingDb == mix.ceilingDb)
+        .firstOrNull;
+    var fixed = export.format.fixedRate;
+    return CanvasControlGroup(label: "Audio", children: [
+      CanvasDropdown<String>(
+        key: const ValueKey("audioPreset"),
+        label: "For",
+        value: preset?.name ?? "",
+        width: 150,
+        options: [
+          if (preset == null) ("", "Custom"),
+          for (var p in AudioPreset.values) (p.name, p.label),
+        ],
+        onChanged: (name) {
+          var p = AudioPreset.values.where((p) => p.name == name).firstOrNull;
+          if (p == null) return;
+          write(audio.copyWith(export: p.options),
+              master: mix.copyWith(
+                  target: p.target,
+                  ceilingDb: p.ceilingDb,
+                  normalise: true,
+                  limiter: true));
+        },
+      ),
+      // What it is mixed for. Surround is heard here folded down to two
+      // speakers, and written whole wherever the file can carry it.
+      CanvasDropdown<SpeakerLayout>(
+        key: const ValueKey("audioSpeakers"),
+        label: "Speakers",
+        value: audio.speakers,
+        width: 110,
+        options: [for (var l in SpeakerLayout.values) (l, l.label)],
+        onChanged: (l) => write(audio.copyWith(speakers: l)),
+      ),
+      CanvasDropdown<AudioFormat>(
+        key: const ValueKey("audioFormat"),
+        label: "Format",
+        value: export.format,
+        width: 104,
+        options: [for (var f in AudioFormat.values) (f, f.label)],
+        onChanged: (f) => writeExport(export.copyWith(format: f)),
+      ),
+      if (fixed == null)
+        CanvasDropdown<int>(
+          key: const ValueKey("audioRate"),
+          label: "Rate",
+          value: export.sampleRate,
+          width: 86,
+          options: [
+            for (var r in audioRates)
+              (r, "${(r / 1000).toStringAsFixed(1)} kHz")
+          ],
+          onChanged: (r) => writeExport(export.copyWith(sampleRate: r)),
+        ),
+      export.format.lossless
+          ? CanvasDropdown<int>(
+              key: const ValueKey("audioDepth"),
+              label: "Depth",
+              value: export.bitDepth,
+              width: 76,
+              options: [for (var d in audioDepths) (d, "$d-bit")],
+              onChanged: (d) => writeExport(export.copyWith(bitDepth: d)),
+            )
+          : CanvasDropdown<int>(
+              key: const ValueKey("audioBitrate"),
+              label: "Bitrate",
+              value: export.kbps,
+              width: 90,
+              options: [for (var k in audioBitrates) (k, "$k kbps")],
+              onChanged: (k) => writeExport(export.copyWith(kbps: k)),
+            ),
+      CanvasToggle(
+        key: const ValueKey("audioToTarget"),
+        label: "To a loudness",
+        value: mix.normalise,
+        onChanged: (v) => controller
+            .apply(document.copyWith(masterMix: mix.copyWith(normalise: v))),
+      ),
+      if (mix.normalise)
+        CanvasDropdown<double>(
+          key: const ValueKey("audioTarget"),
+          label: "Of",
+          value: mix.target,
+          width: 104,
+          options: [
+            for (var (t, _) in loudnessOptions(mix.target))
+              (t, "${t.round()} LUFS"),
+          ],
+          onChanged: (t) => controller
+              .apply(document.copyWith(masterMix: mix.copyWith(target: t))),
+        ),
+      CanvasHint("Where this is going, and how its sound is written when it "
+          "is published — every publish starts from these. ${preset?.note ?? "Choose a destination to set the format and the loudness at once, or set each yourself."} "
+          "The loudness is measured over the whole mix and then limited, "
+          "so a quiet piece is brought up and a loud one down."
+          "${audio.speakers.isSurround ? " Mixed for ${audio.speakers.label}: heard here folded down to two speakers, and published with every speaker in WAV, FLAC, AAC, Opus and video — an MP3 carries the fold-down." : ""}"),
+    ]);
+  }
+
   List<Widget> _canvasGroups(BuildContext context, ThemeNotifier theme) {
     var document = controller.document;
 
@@ -649,173 +801,200 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
             "pages, and one gives way to the next with a page turn. Choosing "
             "Pages puts a new canvas on A4 at one frame a second; a canvas "
             "already on paper is left as it is."),
-        CanvasDropdown<CanvasRatio>(
-          key: const ValueKey("canvasRatio"),
-          label: "Ratio",
-          value: document.size.ratio,
-          width: 116,
-          options: [for (var r in CanvasRatio.values) (r, r.label)],
-          // The shapes this document is being laid out for are marked in the
-          // list they are chosen from, each with a cross to give it up. One
-          // list rather than a choice here and a set of the same names in a
-          // group somewhere else: clicking a shape starts a layout for it,
-          // and the cross is how it is ended. See CanvasDocument.targets.
-          marked: {
-            for (var r in CanvasRatio.values)
-              if (document.targets.contains(r.name)) r,
-          },
-          removeTip: (r) => r.name == shapeKey(document.size)
-              ? "Lay ${r.label} out again from another shape"
-              : "Stop laying out for ${r.label}",
-          onRemove: (r) {
-            // The shape being looked at cannot simply be dropped -- it is
-            // the one on screen -- so its cross lays it out again from
-            // another, which is the same "start this one over" the others
-            // get by being removed and chosen again.
-            if (r.name != shapeKey(document.size)) {
-              controller.forgetShape(r.name);
-              return;
-            }
-            var other = document.targets
-                .where((t) => t != shapeKey(document.size))
-                .firstOrNull;
-            if (other != null) controller.resetShape(other);
-          },
-          onChanged: (v) {
-            // A shape change carries its own frame rate with it, but only
-            // where nobody has chosen one: going from a screen to a page
-            // should stop the document being twenty-four frames a second,
-            // and should not overrule somebody who has typed 30.
-            var rate = document.frameRate;
-            if (rate == defaultRateFor(document.size.ratio, document.kind)) {
-              // Through defaultRateFor rather than the shape alone: putting a
-              // document of pages onto A4 must not drop it to one frame a
-              // second, because its pages turn.
-              rate = defaultRateFor(v, document.kind);
-            }
-            // Through the controller, which keeps the layout of the shape
-            // being left and takes out the one belonging to the shape being
-            // opened. See CanvasController.setShape.
-            controller.setShape(document.size.copyWith(ratio: v),
-                frameRate: rate);
-          },
-        ),
+        // A piece of sound starts with no picture at all -- Ratio "None" --
+        // and can be given one. Everything else always has one.
+        if (document.kind.isAudio)
+          CanvasDropdown<String>(
+            key: const ValueKey("canvasRatio"),
+            label: "Ratio",
+            value: document.hasCanvas ? document.size.ratio.name : "",
+            width: 116,
+            options: [
+              ("", "None"),
+              for (var r in CanvasRatio.values) (r.name, r.label),
+            ],
+            onChanged: (name) {
+              var r = CanvasRatio.values.where((r) => r.name == name);
+              controller.beginInteraction();
+              controller.setHasCanvas(r.isNotEmpty);
+              if (r.isNotEmpty && r.first != document.size.ratio) {
+                controller.setShape(document.size.copyWith(ratio: r.first));
+              }
+              controller.endInteraction();
+            },
+          )
+        else
+          CanvasDropdown<CanvasRatio>(
+            key: const ValueKey("canvasRatio"),
+            label: "Ratio",
+            value: document.size.ratio,
+            width: 116,
+            options: [for (var r in CanvasRatio.values) (r, r.label)],
+            // The shapes this document is being laid out for are marked in the
+            // list they are chosen from, each with a cross to give it up. One
+            // list rather than a choice here and a set of the same names in a
+            // group somewhere else: clicking a shape starts a layout for it,
+            // and the cross is how it is ended. See CanvasDocument.targets.
+            marked: {
+              for (var r in CanvasRatio.values)
+                if (document.targets.contains(r.name)) r,
+            },
+            removeTip: (r) => r.name == shapeKey(document.size)
+                ? "Lay ${r.label} out again from another shape"
+                : "Stop laying out for ${r.label}",
+            onRemove: (r) {
+              // The shape being looked at cannot simply be dropped -- it is
+              // the one on screen -- so its cross lays it out again from
+              // another, which is the same "start this one over" the others
+              // get by being removed and chosen again.
+              if (r.name != shapeKey(document.size)) {
+                controller.forgetShape(r.name);
+                return;
+              }
+              var other = document.targets
+                  .where((t) => t != shapeKey(document.size))
+                  .firstOrNull;
+              if (other != null) controller.resetShape(other);
+            },
+            onChanged: (v) {
+              // A shape change carries its own frame rate with it, but only
+              // where nobody has chosen one: going from a screen to a page
+              // should stop the document being twenty-four frames a second,
+              // and should not overrule somebody who has typed 30.
+              var rate = document.frameRate;
+              if (rate == defaultRateFor(document.size.ratio, document.kind)) {
+                // Through defaultRateFor rather than the shape alone: putting a
+                // document of pages onto A4 must not drop it to one frame a
+                // second, because its pages turn.
+                rate = defaultRateFor(v, document.kind);
+              }
+              // Through the controller, which keeps the layout of the shape
+              // being left and takes out the one belonging to the shape being
+              // opened. See CanvasController.setShape.
+              controller.setShape(document.size.copyWith(ratio: v),
+                  frameRate: rate);
+            },
+          ),
         // The sizes that have a name *in this shape*, beside the box that
         // takes any other number. A width on its own names nothing: 1920
         // across is 1080p at sixteen by nine and is 1920 by 2716 on an A4
         // page, so the list follows the ratio and a shape with no named sizes
         // shows no list at all.
-        if (sizePresetsFor(document.size.ratio) case var named
-            when named.isNotEmpty)
-          CanvasDropdown<int>(
-            key: const ValueKey("canvasWidthPreset"),
-            label: "Size",
-            value: named.any((p) => p.width == document.size.exportWidth)
-                ? document.size.exportWidth
-                : 0,
-            width: 168,
-            options: [
-              // "Custom" when the width is not one of the named ones. A list
-              // that showed a name for a canvas 1337 across would be saying
-              // something untrue, and the pixels are already on the readout
-              // two controls along -- saying them here as well is saying them
-              // twice.
-              if (!named.any((p) => p.width == document.size.exportWidth))
-                (0, "Custom"),
-              for (var preset in named)
-                (preset.width, "${preset.label} · ${preset.width}"),
-            ],
-            onChanged: (v) {
-              if (v == 0) return;
-              write(document.copyWith(
-                  size: document.size.copyWith(exportWidth: v)));
-            },
-          ),
-        CanvasNumberField(
-          key: const ValueKey("canvasWidth"),
-          label: "Max width",
-          value: document.size.exportWidth.toDouble(),
-          min: minCanvasWidth.toDouble(),
-          max: maxCanvasWidth.toDouble(),
-          width: 66,
-          suffix: "px",
-          onChanged: (v) => edit(document.copyWith(
-              size: document.size.copyWith(exportWidth: v.round()))),
-          onCommit: controller.endInteraction,
-        ),
-        // How many frames a second this canvas runs at. On the band with the
-        // shape and the width because it is the same kind of decision -- what
-        // this document *is* -- and because the answer follows the shape: a
-        // page is one frame a second and a screen is twenty-four.
-        CanvasDropdown<int>(
-          key: const ValueKey("canvasRatePreset"),
-          label: "Rate",
-          value: canvasFrameRates.contains(document.frameRate)
-              ? document.frameRate
-              : 0,
-          width: 118,
-          options: [
-            // The rate somebody has typed, at the top and only while it is
-            // theirs. Choosing one of the named rates leaves the list with
-            // nothing to say about a number nothing is set to any more, so
-            // the entry goes on its own -- there is never more than one
-            // custom rate to keep.
-            if (!canvasFrameRates.contains(document.frameRate))
-              (0, "Custom · ${document.frameRate}"),
-            for (var rate in canvasFrameRates)
-              (rate, rate == 1 ? "Still · 1" : "$rate fps"),
-            (_typeARate, "Custom…"),
-          ],
-          onChanged: (v) async {
-            // Re-choosing the rate already set: nothing to do, and writing
-            // it would be an undo step for an edit nobody made.
-            if (v == 0) return;
-            if (v != _typeARate) {
-              write(document.copyWith(frameRate: v));
-              return;
-            }
-            var typed =
-                await askForFrameRate(context, initial: document.frameRate);
-            if (typed == null) return;
-            // The document as it is *now*: the one captured when the list was
-            // built is a frame old by the time the dialog closes, and a shape
-            // changed behind the dialog would be written back out of it.
-            write(controller.document.copyWith(frameRate: typed));
-          },
-        ),
-        if (document.size.ratio == CanvasRatio.custom)
+        // With no canvas there is no size to set nor frames to count: the
+        // timeline goes by the tempo.
+        if (document.hasCanvas) ...[
+          if (sizePresetsFor(document.size.ratio) case var named
+              when named.isNotEmpty)
+            CanvasDropdown<int>(
+              key: const ValueKey("canvasWidthPreset"),
+              label: "Size",
+              value: named.any((p) => p.width == document.size.exportWidth)
+                  ? document.size.exportWidth
+                  : 0,
+              width: 168,
+              options: [
+                // "Custom" when the width is not one of the named ones. A list
+                // that showed a name for a canvas 1337 across would be saying
+                // something untrue, and the pixels are already on the readout
+                // two controls along -- saying them here as well is saying them
+                // twice.
+                if (!named.any((p) => p.width == document.size.exportWidth))
+                  (0, "Custom"),
+                for (var preset in named)
+                  (preset.width, "${preset.label} · ${preset.width}"),
+              ],
+              onChanged: (v) {
+                if (v == 0) return;
+                write(document.copyWith(
+                    size: document.size.copyWith(exportWidth: v)));
+              },
+            ),
           CanvasNumberField(
-            key: const ValueKey("canvasAspect"),
-            label: "Aspect",
-            value: document.size.customRatio,
-            min: 0.05,
-            max: 20,
-            decimals: 3,
-            width: 58,
+            key: const ValueKey("canvasWidth"),
+            label: "Max width",
+            value: document.size.exportWidth.toDouble(),
+            min: minCanvasWidth.toDouble(),
+            max: maxCanvasWidth.toDouble(),
+            width: 66,
+            suffix: "px",
             onChanged: (v) => edit(document.copyWith(
-                size: document.size.copyWith(customRatio: v))),
+                size: document.size.copyWith(exportWidth: v.round()))),
             onCommit: controller.endInteraction,
           ),
-        Padding(
-          // No nudge. These two readouts only ever appear on the band, where
-          // the captions are beside their controls and there is nothing above
-          // this to line it up under -- and the group centres what is on a
-          // line against the rest of it.
-          padding: const EdgeInsets.only(left: 2),
-          child: SizedBox(
-            height: controlHeight,
-            child: Center(
-              child: Text(
-                // The file's size. Where the design is laid out in a smaller
-                // space and published larger, this is the larger number --
-                // it is what somebody is choosing when they choose a size.
-                "${document.size.exportWidth} × ${document.size.exportHeight}",
-                style: TextStyle(
-                    fontSize: 10, color: theme.colors.onSurfaceVariant),
+          // How many frames a second this canvas runs at. On the band with the
+          // shape and the width because it is the same kind of decision -- what
+          // this document *is* -- and because the answer follows the shape: a
+          // page is one frame a second and a screen is twenty-four.
+          CanvasDropdown<int>(
+            key: const ValueKey("canvasRatePreset"),
+            label: "Rate",
+            value: canvasFrameRates.contains(document.frameRate)
+                ? document.frameRate
+                : 0,
+            width: 118,
+            options: [
+              // The rate somebody has typed, at the top and only while it is
+              // theirs. Choosing one of the named rates leaves the list with
+              // nothing to say about a number nothing is set to any more, so
+              // the entry goes on its own -- there is never more than one
+              // custom rate to keep.
+              if (!canvasFrameRates.contains(document.frameRate))
+                (0, "Custom · ${document.frameRate}"),
+              for (var rate in canvasFrameRates)
+                (rate, rate == 1 ? "Still · 1" : "$rate fps"),
+              (_typeARate, "Custom…"),
+            ],
+            onChanged: (v) async {
+              // Re-choosing the rate already set: nothing to do, and writing
+              // it would be an undo step for an edit nobody made.
+              if (v == 0) return;
+              if (v != _typeARate) {
+                write(document.copyWith(frameRate: v));
+                return;
+              }
+              var typed =
+                  await askForFrameRate(context, initial: document.frameRate);
+              if (typed == null) return;
+              // The document as it is *now*: the one captured when the list was
+              // built is a frame old by the time the dialog closes, and a shape
+              // changed behind the dialog would be written back out of it.
+              write(controller.document.copyWith(frameRate: typed));
+            },
+          ),
+          if (document.size.ratio == CanvasRatio.custom)
+            CanvasNumberField(
+              key: const ValueKey("canvasAspect"),
+              label: "Aspect",
+              value: document.size.customRatio,
+              min: 0.05,
+              max: 20,
+              decimals: 3,
+              width: 58,
+              onChanged: (v) => edit(document.copyWith(
+                  size: document.size.copyWith(customRatio: v))),
+              onCommit: controller.endInteraction,
+            ),
+          Padding(
+            // No nudge. These two readouts only ever appear on the band, where
+            // the captions are beside their controls and there is nothing above
+            // this to line it up under -- and the group centres what is on a
+            // line against the rest of it.
+            padding: const EdgeInsets.only(left: 2),
+            child: SizedBox(
+              height: controlHeight,
+              child: Center(
+                child: Text(
+                  // The file's size. Where the design is laid out in a smaller
+                  // space and published larger, this is the larger number --
+                  // it is what somebody is choosing when they choose a size.
+                  "${document.size.exportWidth} × ${document.size.exportHeight}",
+                  style: TextStyle(
+                      fontSize: 10, color: theme.colors.onSurfaceVariant),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ]),
       // The settings that only a document of pages reads, and only there:
       // on a set of scenes every one of them is a question with no answer.
@@ -867,7 +1046,9 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
               "otherwise${document.pages.countCovers ? "" : ", and are never "
                   "paired with another page"}."),
         ]),
-      _estimateGroup(context, theme, document),
+      _audioGroup(document),
+      // A game's controls, where something is set to be played.
+      if (controller.playable) GameControlsGroup(controller: controller),
       // What changing the size does, at the end of the line: it is set once
       // and left, and it belongs after the size and the cost rather than
       // between the ratio and the width they are worked out from.
@@ -876,20 +1057,23 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
       // and scaled on the way out, so publishing at 4K gives the same picture
       // with four times the pixels. Off, it is a page: the design keeps its
       // scale and there is more room around it.
-      CanvasControlGroup(label: "Scaling", children: [
-        CanvasToggle(
-          key: const ValueKey("canvasScalesDesign"),
-          label: "Size scales the design",
-          value: document.size.scalesDesign,
-          onChanged: (v) => write(
-              document.copyWith(size: document.size.copyWith(scalesDesign: v))),
-        ),
-        const CanvasHint(
-            "On, the size is a resolution: the design is drawn in its own "
-            "space and scaled on the way out, so publishing larger gives the "
-            "same picture with more pixels in it. Off, the size is a page: "
-            "the design keeps its scale and there is more room around it."),
-      ]),
+      if (document.hasCanvas)
+        CanvasControlGroup(label: "Scaling", children: [
+          CanvasToggle(
+            key: const ValueKey("canvasScalesDesign"),
+            label: "Size scales the design",
+            value: document.size.scalesDesign,
+            onChanged: (v) => write(document.copyWith(
+                size: document.size.copyWith(scalesDesign: v))),
+          ),
+          const CanvasHint(
+              "On, the size is a resolution: the design is drawn in its own "
+              "space and scaled on the way out, so publishing larger gives the "
+              "same picture with more pixels in it. Off, the size is a page: "
+              "the design keeps its scale and there is more room around it."),
+        ]),
+      // Last, at the far end of the row: what all of the above comes to.
+      _estimateGroup(context, theme, document),
     ];
   }
 }

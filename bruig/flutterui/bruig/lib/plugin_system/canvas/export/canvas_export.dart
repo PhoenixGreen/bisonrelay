@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/audio_export.dart'
+    show estimateAudioBytes;
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
@@ -123,7 +125,20 @@ class ExportBackdrop {
         }
       }
     }
-    if (background.spec.animated) return null;
+    if (!background.isStage &&
+        !background.isParallax &&
+        background.spec.animated) {
+      return null;
+    }
+    if (background.isParallax &&
+        background.parallaxOn(document.size.rect).moves) {
+      return null;
+    }
+    // A stage whose camera moves is a different picture every frame too.
+    if (background.isStage &&
+        (background.stage?.track?.keys.isNotEmpty ?? false)) {
+      return null;
+    }
     // A video on the timeline behind everything is a different picture every
     // frame, like a moving pattern.
     if (background.video?.clip.timed == true) return null;
@@ -420,6 +435,9 @@ Future<CanvasExport?> renderGif(
 /// unusable.
 int estimateBytes(CanvasDocument document, CanvasEstimate spec,
     {double scale = 1}) {
+  if (spec.format == EstimateAs.audio) {
+    return estimateAudioBytes(document, document.audio.export);
+  }
   if (spec.format.moving) {
     var frames = spec.format == EstimateAs.video
         ? _oldAnimationBytes(document, scale: scale)

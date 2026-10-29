@@ -116,6 +116,36 @@ void main() {
 
     // The mixer is opened from the timeline's header now, beside the
     // effects button -- see canvas_timeline_view_test.
+    testWidgets("the canvas is put away and brought back from the band",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var shown = true;
+      Widget bar() => CanvasSettingsBar(
+            controller: controller,
+            onPublish: () {},
+            canvasSettingsOpen: false,
+            onToggleCanvasSettings: () {},
+            guidesOpen: false,
+            onToggleGuides: () {},
+            timelineOpen: true,
+            onToggleTimeline: () {},
+            canvasShown: shown,
+            onToggleCanvas: () => shown = !shown,
+          );
+      await pump(tester, bar());
+      var button = find.byKey(const ValueKey("toggleCanvas"));
+      expect(button, findsOneWidget);
+      // Right of the canvas settings, as asked.
+      expect(tester.getCenter(button).dx,
+          greaterThan(tester.getCenter(find.byIcon(Icons.tune)).dx));
+      expect(find.byIcon(Icons.visibility_outlined), findsOneWidget);
+      await tester.tap(button);
+      expect(shown, isFalse);
+      await pump(tester, bar());
+      expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
+    });
+
     testWidgets("the mixer's button is not on the band", (tester) async {
       var controller = CanvasController(const CanvasDocument());
       addTearDown(controller.dispose);
@@ -379,6 +409,9 @@ void main() {
       expect(find.text("Quality"), findsNothing,
           reason: "PNG packs harder or less hard and never looks different");
 
+      // At the far end of the bar, after the Audio settings.
+      await tester.ensureVisible(find.byKey(const ValueKey("estimateAs")));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey("estimateAs")));
       await tester.pumpAndSettle();
       await tester.tap(find.text("JPEG").last);
@@ -553,8 +586,9 @@ void main() {
       // The line scrolls sideways, and it grew when the frame rate joined it.
       await tester.ensureVisible(scaling);
       await tester.pumpAndSettle();
+      // Before the estimate, which is the last thing on the bar.
       expect(tester.getRect(scaling).left,
-          greaterThan(tester.getRect(find.text("ESTIMATED SIZE")).left));
+          lessThan(tester.getRect(find.text("ESTIMATED SIZE")).left));
 
       await tester.tap(scaling);
       await tester.pumpAndSettle();
@@ -629,7 +663,12 @@ void main() {
       addTearDown(controller.dispose);
       await pump(tester, CanvasElementsPanel(controller: controller));
 
+      // All but the 3D stage and parallax, which are chosen in a
+      // background's Pattern layers rather than added.
       for (var kind in ElementKind.values) {
+        if (kind == ElementKind.stage || kind == ElementKind.parallax) {
+          continue;
+        }
         expect(find.text(kind.label), findsWidgets, reason: kind.name);
       }
 
@@ -1142,17 +1181,24 @@ void main() {
       controller.frame = 12;
       await pump(tester, CanvasTimeline(controller: controller));
 
-      var playhead = find.byKey(const ValueKey("canvasFrame"));
+      var playhead = find.byKey(const ValueKey("transportPosition"));
       var length = find.byKey(const ValueKey("canvasFrames"));
       // One-based on screen: the first frame is frame 1 to everybody except a
       // computer.
-      expect(find.descendant(of: playhead, matching: find.text("13")),
+      expect(find.descendant(of: playhead, matching: find.text("13 / 40")),
           findsOneWidget);
       expect(find.descendant(of: length, matching: find.text("40")),
           findsOneWidget);
 
-      await enterValue(tester, playhead, "25");
-      await tester.pump();
+      // Double-clicked, the position is a field to type where to go.
+      await tester.tap(playhead);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(playhead);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey("positionField")), "25");
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
       expect(controller.frame, 24);
 
       await enterValue(tester, length, "600");
@@ -1207,16 +1253,16 @@ void main() {
 
       expect(
           find.descendant(
-              of: find.byKey(const ValueKey("canvasFrame")),
-              matching: find.text("1")),
+              of: find.byKey(const ValueKey("transportPosition")),
+              matching: find.text("1 / 10")),
           findsOneWidget);
       await tester.tap(find.byTooltip("Next frame"));
       await tester.pumpAndSettle();
       expect(controller.frame, 1);
       expect(
           find.descendant(
-              of: find.byKey(const ValueKey("canvasFrame")),
-              matching: find.text("2")),
+              of: find.byKey(const ValueKey("transportPosition")),
+              matching: find.text("2 / 10")),
           findsOneWidget);
 
       // Clamped rather than wrapping or running past the end.
@@ -1488,9 +1534,16 @@ void main() {
           find.textContaining("does not go through the proxy"), findsOneWidget,
           reason: "the reason it is off is the reason it is a decision");
 
-      await tester.tap(find.byType(Switch).last);
+      // The switch on the fetching row: Canvas's own is first, and the
+      // audio engine's comes after.
+      await tester.tap(find.descendant(
+          of: find.ancestor(
+              of: find.text("Let a canvas fetch data"),
+              matching: find.byType(Row)),
+          matching: find.byType(Switch)));
       await tester.pumpAndSettle();
       expect(prefs.allowFetching, isTrue);
+      expect(prefs.mixEngine, isTrue, reason: "and nothing else changed");
     });
   });
 
@@ -3488,6 +3541,8 @@ void main() {
         // left alone, like a headline's -- and the designs saved, as on
         // every element.
         "Animation",
+        // What it does played as a game -- every element has it.
+        "Play",
         "Presets",
       ]);
     });
@@ -7098,6 +7153,8 @@ void main() {
         "On a line",
         "Parts of the text",
         "Animation",
+        // What it does played as a game -- every element has it.
+        "Play",
         "Presets",
       ]);
       expect(
@@ -8090,7 +8147,9 @@ void main() {
           find.byKey(const ValueKey("timelineGrip")), const Offset(0, -120));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey("lane-new")), findsOneWidget);
-      expect(find.textContaining("Channel 1"), findsWidgets);
+      // Its + adds a channel of either kind: see the + menu's own tests.
+      expect(find.text("Add a channel"), findsOneWidget);
+      expect(find.byKey(const ValueKey("addChannel")), findsOneWidget);
       expect(c.document.elements, isEmpty);
     });
 

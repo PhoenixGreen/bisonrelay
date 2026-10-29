@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+export 'package:bruig/plugin_system/canvas/model/surround.dart'
+    show SoundPlacement, PlaceBy;
 
 // media_clip.dart is what is played: which files, which part of each, how it
 // starts and stops, and whether it goes round again.
@@ -215,7 +218,12 @@ class MediaClip {
   /// duckEnvelope -- so playing it and exporting it are the same sound.
   final List<GainPoint> envelope;
 
+  /// place is where the sound is heard from, taken from the picture -- see
+  /// SoundPlacement. Off, its channel's own pan says.
+  final SoundPlacement place;
+
   const MediaClip({
+    this.place = const SoundPlacement(),
     this.playlist = const [],
     this.volume = 0.8,
     this.muted = false,
@@ -304,8 +312,10 @@ class MediaClip {
     String? channel,
     String? channelName,
     List<GainPoint>? envelope,
+    SoundPlacement? place,
   }) =>
       MediaClip(
+        place: place ?? this.place,
         playlist: playlist ?? this.playlist,
         volume: volume ?? this.volume,
         muted: muted ?? this.muted,
@@ -337,6 +347,7 @@ class MediaClip {
         if (!mix.isDefault) "mix": mix.toJson(),
         if (channel.isNotEmpty) "channel": channel,
         if (channelName.isNotEmpty) "channelName": channelName,
+        if (!place.isOff) "place": place.toJson(),
         if (envelope.isNotEmpty)
           "envelope": [
             for (var p in envelope) [p.time, p.gain]
@@ -366,6 +377,9 @@ class MediaClip {
       channel: json["channel"] is String ? json["channel"] as String : "",
       channelName:
           json["channelName"] is String ? json["channelName"] as String : "",
+      place: json["place"] is Map<String, dynamic>
+          ? SoundPlacement.fromJson(json["place"] as Map<String, dynamic>)
+          : const SoundPlacement(),
       envelope: [
         if (json["envelope"] is List)
           for (var p in json["envelope"] as List)

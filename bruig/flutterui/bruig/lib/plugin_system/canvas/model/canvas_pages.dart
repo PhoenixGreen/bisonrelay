@@ -30,7 +30,13 @@ enum CanvasKind {
   pages(
       "Pages",
       "Leaves of a document: covers, page numbers, facing pages "
-          "and a page turn between them");
+          "and a page turn between them"),
+  // A piece of sound -- a song, a podcast, a soundtrack -- worked on the
+  // timeline and the mixer, with no canvas to look at.
+  audio(
+      "Audio",
+      "A piece of sound: a song, a podcast, a soundtrack, made on the "
+          "timeline and the mixer");
 
   final String label;
   final String description;
@@ -39,18 +45,26 @@ enum CanvasKind {
   /// isPages is the question almost every caller actually asks.
   bool get isPages => this == pages;
 
+  /// isAudio is whether there is anything to look at: an audio document is
+  /// its timeline and its mixer, and its canvas is put away.
+  bool get isAudio => this == audio;
+
   /// one and many are what a canvas of this kind is called, which is the whole
   /// of what the panels and the buttons need from this enum.
   ///
   /// Here rather than in each of them: "Add a scene" appears in the panel, in
   /// the menu, in the undo history and in four tooltips, and a word changed in
   /// five places out of six is worse than one that was never changed at all.
-  String get one => this == pages ? "page" : "scene";
-  String get many => this == pages ? "pages" : "scenes";
+  String get one => switch (this) {
+        pages => "page",
+        audio => "section",
+        scenes => "scene",
+      };
+  String get many => "${one}s";
 
   /// Capitalised, for the start of a sentence or a heading.
-  String get oneCap => this == pages ? "Page" : "Scene";
-  String get manyCap => this == pages ? "Pages" : "Scenes";
+  String get oneCap => one[0].toUpperCase() + one.substring(1);
+  String get manyCap => many[0].toUpperCase() + many.substring(1);
 
   static CanvasKind fromName(String? name) =>
       values.firstWhere((k) => k.name == name, orElse: () => scenes);

@@ -33,7 +33,14 @@ void main() {
     var back = CanvasDocument.decode(document.encode());
     expect(back, isNotNull);
     expect(back!.elements.length, ElementKind.values.length);
-    expect([for (var e in back.elements) e.kind], ElementKind.values);
+    // Except a stage and parallax, which are kinds of background: asked
+    // for, each is a Background element showing it, and reads back as one.
+    expect([for (var e in back.elements) e.kind], [
+      for (var k in ElementKind.values)
+        k == ElementKind.stage || k == ElementKind.parallax
+            ? ElementKind.background
+            : k,
+    ]);
     for (var i = 0; i < back.elements.length; i++) {
       expect(back.elements[i].id, document.elements[i].id);
     }

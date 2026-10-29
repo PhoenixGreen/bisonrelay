@@ -6,6 +6,10 @@ import 'package:bruig/components/feed/embed_options.dart';
 import 'package:bruig/components/text.dart';
 import 'package:bruig/models/client.dart';
 import 'package:bruig/models/snackbar.dart';
+import 'package:bruig/plugin_system/canvas/export/audio_export.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart' show loudnessOptions, loudnessTargets;
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_bundle.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
@@ -47,6 +51,9 @@ enum PublishAs {
   image("Image", "A single frame as a PNG, a JPEG or a PDF"),
   animation("Animation", "Every frame as an animated GIF"),
   video("Video", "Every frame as an MP4 or a WebM, at full colour"),
+  // The sound alone: the timeline mixed, as a video's soundtrack is. See
+  // audio_export.dart.
+  audio("Audio", "The sound alone, mixed: a WAV, FLAC, MP3, AAC or Opus file"),
   // A document rather than a picture of one: every canvas is a page, in
   // order, in something made for reading rather than for looking at. See
   // document_export.dart.
@@ -183,6 +190,19 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// publish setting rather than the mixer's, since it is about the file
   /// being made. Starts from what the document said before it moved here.
   late bool _toTarget = widget.document.masterMix.normalise;
+
+  /// _target is the loudness it is brought to, starting from the mixer's.
+  late double _target = widget.document.masterMix.target;
+
+  /// _sound is how sound is written: a sound file's format, and for every
+  /// kind with sound in it the bitrate, rate and depth. See AudioOptions.
+  /// Starts from the document's own -- see AudioSettings.export, set in
+  /// the canvas's Audio settings -- rather than from the last publish of
+  /// some other canvas.
+  late AudioOptions _sound = widget.document.audio.export;
+
+  /// _needsFfmpeg is whether what is being made is made by ffmpeg.
+  bool get _needsFfmpeg => _as == PublishAs.video || _as == PublishAs.audio;
   int _colors = 256;
   bool _loop = true;
 
@@ -216,10 +236,10 @@ class _PublishSheetState extends State<_PublishSheet> {
   /// one they all do the right thing, and none of them learns a new argument.
   CanvasDocument get _document {
     var mix = widget.document.masterMix;
-    var document = mix.normalise == _toTarget
+    var document = mix.normalise == _toTarget && mix.target == _target
         ? widget.document
-        : widget.document
-            .copyWith(masterMix: mix.copyWith(normalise: _toTarget));
+        : widget.document.copyWith(
+            masterMix: mix.copyWith(normalise: _toTarget, target: _target));
     return _chosen(document);
   }
 
@@ -333,6 +353,8 @@ class _PublishSheetState extends State<_PublishSheet> {
         "videoFormat": _videoFormat.name,
         "videoQuality": _videoQuality.name,
         "toTarget": _toTarget,
+        "target": _target,
+        "sound": _sound.toJson(),
       };
 
   /// _restore sets the sheet as it was last published with. Anything no
@@ -363,6 +385,8 @@ class _PublishSheetState extends State<_PublishSheet> {
     _videoFormat = pick(VideoFormat.values, "videoFormat", _videoFormat);
     _videoQuality = pick(VideoQuality.values, "videoQuality", _videoQuality);
     _toTarget = flag("toTarget", _toTarget);
+    var target = number("target", _target).toDouble();
+    if (loudnessTargets.any((t) => t.$1 == target)) _target = target;
   }
 
   /// _loadRecord reads what this canvas published before, if anything.
@@ -392,6 +416,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         PublishAs.animation => estimateAnimationBytes(_document, scale: _scale),
         PublishAs.video => estimateVideoBytes(_document,
             scale: _scale, format: _videoFormat, quality: _videoQuality),
+        PublishAs.audio => estimateAudioBytes(_document, _sound),
         // An interactive canvas is the document itself, which is a known
         // quantity rather than an estimate -- so this one is exact, and the
         // label below says so. The pictures are added at their stored size,
@@ -480,16 +505,20 @@ class _PublishSheetState extends State<_PublishSheet> {
           images: widget.images,
           format: _videoFormat,
           quality: _videoQuality,
+          sound: _sound,
           onProgress: (done, total) {
             if (mounted) {
               setState(() => _progress = "Rendering frame $done of $total…");
             }
           },
         );
+      case PublishAs.audio:
+        return renderAudio(document, options: _sound);
       case PublishAs.document:
         return renderDocument(
           document,
           as: _documentAs,
+          soundKbps: _sound.kbps,
           scale: _scale,
           images: widget.images,
           paper: _paper,
@@ -552,8 +581,10 @@ class _PublishSheetState extends State<_PublishSheet> {
       // The encoder is the likeliest thing to have gone wrong on a video, and
       // "unable to render" would send somebody looking at their canvas rather
       // than at their machine.
-      if (_as == PublishAs.video) {
-        setState(() => _progress = "Encoding the video…");
+      if (_needsFfmpeg) {
+        setState(() => _progress = _as == PublishAs.audio
+            ? "Mixing the sound…"
+            : "Encoding the video…");
       }
       // Every shape it is laid out for, each rendered from the document laid
       // out for that shape -- see CanvasDocument.forShape. The one on screen
@@ -567,7 +598,7 @@ class _PublishSheetState extends State<_PublishSheet> {
       var export = await _render();
       if (!mounted) return;
       if (export == null) {
-        snackbar.error(_as == PublishAs.video && !_ffmpeg
+        snackbar.error(_needsFfmpeg && !_ffmpeg
             ? ffmpegHelp
             : "Unable to render the canvas.");
         return;
@@ -655,7 +686,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     }
     if (!mounted) return;
     if (made.isEmpty) {
-      snackbar.error(_as == PublishAs.video && !_ffmpeg
+      snackbar.error(_needsFfmpeg && !_ffmpeg
           ? ffmpegHelp
           : "Unable to render the canvas.");
       return;
@@ -774,7 +805,7 @@ class _PublishSheetState extends State<_PublishSheet> {
               // Said where the choice is rather than after a long wait: a
               // video with no encoder to make it cannot be published, and the
               // button below says so too.
-              if (_as == PublishAs.video && !_ffmpeg)
+              if (_needsFfmpeg && !_ffmpeg)
                 _warning(theme, ffmpegHelp),
               if ((_as == PublishAs.animation || _as == PublishAs.video) &&
                   !widget.document.isAnimated)
@@ -892,7 +923,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         ),
         FilledButton(
           onPressed:
-              _busy || (_as == PublishAs.video && !_ffmpeg) ? null : _publish,
+              _busy || (_needsFfmpeg && !_ffmpeg) ? null : _publish,
           child: Text(_isPublishedHere ? "Update" : "Publish"),
         ),
       ],
@@ -1130,39 +1161,30 @@ class _PublishSheetState extends State<_PublishSheet> {
             ),
           ]),
           const SizedBox(height: 4),
-          Row(children: [
-            Expanded(
-              child: _dropdown<VideoQuality>(
-                  theme,
-                  "Quality",
-                  _videoQuality,
-                  [for (var q in VideoQuality.values) (q, q.label)],
-                  (v) => setState(() => _videoQuality = v)),
-            ),
-            const SizedBox(width: 12),
-            // The sound brought to the loudness the master aims at -- see
-            // the mixer's Loudness slot, where it is set and measured.
-            Expanded(
-              child: CheckboxListTile(
-                key: const ValueKey("publishToTarget"),
-                value: _toTarget,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(
-                    "Sound to ${widget.document.masterMix.target.round()} LUFS",
-                    style: const TextStyle(fontSize: 12)),
-                subtitle: Text("The mixer's loudness target",
-                    style: TextStyle(
-                        fontSize: 10, color: theme.colors.onSurfaceVariant)),
-                onChanged: (v) => setState(() => _toTarget = v ?? false),
-              ),
-            ),
-          ]),
+          _dropdown<VideoQuality>(
+              theme,
+              "Quality",
+              _videoQuality,
+              [for (var q in VideoQuality.values) (q, q.label)],
+              (v) => setState(() => _videoQuality = v)),
+          const SizedBox(height: 10),
+          ..._soundControls(theme,
+              fixedRate: _videoFormat == VideoFormat.webm ? 48000 : null),
           _note(
               theme,
               "${_runNote()} A video keeps every colour, where a GIF has 256, "
               "and is usually much smaller. ${_videoFormat.note}"),
+        ];
+
+      case PublishAs.audio:
+        return [
+          ..._soundControls(theme, file: _sound.format),
+          if (!_hasTimedSound)
+            _warning(
+                theme,
+                "Nothing is on the timeline to hear: add a sound or a video "
+                "to a channel first."),
+          _note(theme, "${_runNote()} ${_sound.format.note}"),
         ];
 
       case PublishAs.document:
@@ -1206,6 +1228,16 @@ class _PublishSheetState extends State<_PublishSheet> {
                 [for (var o in PdfOrientation.values) (o, o.label)],
                 (v) => setState(() => _orientation = v)),
           ],
+          if (_documentAs == DocumentAs.interactiveEpub) ...[
+            const SizedBox(height: 10),
+            _heading("Sound"),
+            _dropdown<int>(
+                theme,
+                "Sound quality",
+                _sound.kbps,
+                [for (var k in audioBitrates) (k, "$k kbps AAC")],
+                (v) => setState(() => _sound = _sound.copyWith(kbps: v))),
+          ],
           const SizedBox(height: 10),
           Txt.S("${_documentAs.description}. "
               "${widget.document.allScenes.length} "
@@ -1237,6 +1269,107 @@ class _PublishSheetState extends State<_PublishSheet> {
                   "move anything you have not locked."),
         ];
     }
+  }
+
+  /// _hasTimedSound is whether anything on the timeline can be heard: a
+  /// sound or a video placed on a channel, in any scene or on the master.
+  bool get _hasTimedSound {
+    var d = _document;
+    for (var e in [
+      for (var scene in d.allScenes) ...scene.elements,
+      ...?d.masterScene?.elements,
+      ...d.drawnBackground.media,
+    ]) {
+      var clip = switch (e) {
+        AudioElement a => a.clip,
+        VideoElement v => v.clip,
+        _ => null,
+      };
+      if (clip != null && clip.timed && !clip.isEmpty) return true;
+    }
+    return false;
+  }
+
+  /// _soundControls is how an export's sound is written, for every kind
+  /// with sound in it -- with its format where it is a sound file ([file]),
+  /// and without a rate where its container has only one ([fixedRate]).
+  List<Widget> _soundControls(ThemeNotifier theme,
+      {AudioFormat? file, int? fixedRate}) {
+    var lossless = file?.lossless ?? false;
+    var fixed = fixedRate ?? file?.fixedRate;
+    void set(AudioOptions next) => setState(() => _sound = next);
+    return [
+      _heading("Sound"),
+      Row(children: [
+        if (file != null) ...[
+          Expanded(
+            child: _dropdown<AudioFormat>(
+                theme,
+                "Format",
+                file,
+                [for (var f in AudioFormat.values) (f, f.label)],
+                (v) => set(_sound.copyWith(format: v))),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: lossless
+              ? _dropdown<int>(
+                  theme,
+                  "Bit depth",
+                  _sound.bitDepth,
+                  [for (var d in audioDepths) (d, "$d-bit")],
+                  (v) => set(_sound.copyWith(bitDepth: v)))
+              : _dropdown<int>(
+                  theme,
+                  "Quality",
+                  _sound.kbps,
+                  [for (var k in audioBitrates) (k, "$k kbps")],
+                  (v) => set(_sound.copyWith(kbps: v))),
+        ),
+      ]),
+      const SizedBox(height: 4),
+      Row(children: [
+        Expanded(
+          child: fixed != null
+              ? _note(theme, "${fixed ~/ 1000} kHz: the only rate it plays at.")
+              : _dropdown<int>(
+                  theme,
+                  "Sample rate",
+                  _sound.sampleRate,
+                  [
+                    for (var r in audioRates)
+                      (r, "${(r / 1000).toStringAsFixed(1)} kHz")
+                  ],
+                  (v) => set(_sound.copyWith(sampleRate: v))),
+        ),
+        const SizedBox(width: 12),
+        // The sound brought to a loudness, measured over the whole mix --
+        // see the mixer's Loudness slot, which starts it.
+        Expanded(
+          child: CheckboxListTile(
+            key: const ValueKey("publishToTarget"),
+            value: _toTarget,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text("To a loudness target",
+                style: TextStyle(fontSize: 12)),
+            subtitle: Text("Measured, then limited",
+                style: TextStyle(
+                    fontSize: 10, color: theme.colors.onSurfaceVariant)),
+            onChanged: (v) => setState(() => _toTarget = v ?? false),
+          ),
+        ),
+      ]),
+      if (_toTarget)
+        _dropdown<double>(
+            theme,
+            "Loudness",
+            _target,
+            loudnessOptions(_target),
+            (v) => setState(() => _target = v)),
+    ];
   }
 
   /// _pageLabel is the sheet's size in inches, which is the only unit a page

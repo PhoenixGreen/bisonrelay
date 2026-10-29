@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_estimate.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_face_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_rig_editor.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_rig.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'dart:math' as math;
-import 'dart:io' show File;
+import 'dart:io' show Directory, File;
 import 'dart:ui' as ui;
 import 'dart:ui' show Color, Offset, Rect, Size;
 
@@ -72,6 +75,14 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/render/image_store.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_game.dart';
+import 'package:bruig/plugin_system/canvas/ui/element_factory.dart' show newInstrument;
+import 'package:bruig/plugin_system/canvas/model/notation.dart' show splitKey;
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/part_render.dart';
+import 'package:path/path.dart' as path;
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/export/video_export.dart'
     show ffmpegHelp, ffmpegPath;
@@ -84,12 +95,19 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/render/video_painter.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_runtime.dart';
+import 'package:bruig/plugin_system/canvas/render/sound_placement.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart' show Heard;
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
 
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyRepeatEvent, KeyUpEvent, LogicalKeyboardKey;
 
 // canvas_controller.dart holds everything about the canvas being edited that
 // is not the document itself: what is selected, where the playhead is, how far
@@ -1001,6 +1019,7 @@ class CanvasController extends ChangeNotifier {
     // goes where its new settings put it.
     _audioFollowsPage(turned: false);
     _syncTimeline();
+    _scheduleParts();
 
     notifyListeners();
   }
@@ -1134,7 +1153,8 @@ class CanvasController extends ChangeNotifier {
     if (element is CounterElement) element = withCountLaidOut(element);
     var next = _document.addElement(element);
     // A stage is the set everything else is played in front of.
-    if (element is StageElement) {
+    if (element is StageElement ||
+        (element is BackgroundElement && element.isStage)) {
       next = next.reorder(next.elements.length - 1, 0);
     }
     apply(next);
@@ -1618,9 +1638,9 @@ class CanvasController extends ChangeNotifier {
     // A character standing on a stage is moved across its floor: to the
     // spot under where its feet have been dragged to.
     if (element is CharacterElement && element.onStage != null) {
-      var at = staging(element, _document.elements, _frame);
-      var stage = _document.elementById(element.onStage!.stage);
-      if (at != null && stage is StageElement) {
+      var at = stagingIn(_document, element, _frame);
+      var stage = stageOf(element.onStage!.stage);
+      if (at != null && stage != null) {
         var feet = topLeft + Offset(at.box.width / 2, at.box.height);
         var spot = stageView(stage, _frame).toFloor(feet);
         if (spot == null) return element;
@@ -2040,22 +2060,111 @@ class CanvasController extends ChangeNotifier {
         as StageElement;
   }
 
+  /// stageOf is the stage called [id] as it is drawn on this canvas: a
+  /// Background element showing one, or the background behind the canvas.
+  StageElement? stageOf(String id) => stageNamed(id, _document.elements,
+      backdrop: _document.drawnBackground, page: _document.size.rect);
+
+  /// putStage writes [stage] back where it lives: onto the Background
+  /// element it is drawn by, or the background behind the canvas -- its
+  /// settings and its camera's keys both.
+  void putStage(StageElement stage, {bool transient = false}) =>
+      putBackdrop(stage, transient: transient);
+
+  /// parallaxOf is the parallax scenery called [id] as it is drawn on this
+  /// canvas, the way [stageOf] is the stage.
+  ParallaxElement? parallaxOf(String id) {
+    if (id == backgroundParallaxId) {
+      var bg = _document.drawnBackground;
+      return bg.isParallax ? bg.parallaxOn(_document.size.rect) : null;
+    }
+    if (_document.elementById(id) case BackgroundElement b
+        when b.isParallax) {
+      return b.parallaxed;
+    }
+    return null;
+  }
+
+  /// parallaxFilmed is [p] with its camera set to [camera], by the rule
+  /// [stageFilmed] follows.
+  ParallaxElement parallaxFilmed(ParallaxElement p, ParallaxCamera camera) {
+    if (!_cameraKeyed(p)) return p.copyWith(camera: camera);
+    return p.withBase(track: _pinnedAt(p.track!, _frame, camera.channels))
+        as ParallaxElement;
+  }
+
+  /// putBackdrop writes a stage or a parallax back where it lives: the
+  /// Background element that draws it, or the background behind the
+  /// canvas.
+  void putBackdrop(CanvasElement backdrop, {bool transient = false}) {
+    var bg = _document.editedBackground;
+    switch (backdrop) {
+      case StageElement s when s.id == backgroundStageId:
+        setBackground(bg.copyWith(backdrop: BackdropKind.stage, stage: s),
+            transient: transient);
+        return;
+      case ParallaxElement p when p.id == backgroundParallaxId:
+        setBackground(
+            bg.copyWith(backdrop: BackdropKind.parallax, parallax: p),
+            transient: transient);
+        return;
+    }
+    if (_document.elementById(backdrop.id) case BackgroundElement b) {
+      switch (backdrop) {
+        case StageElement s:
+          replaceElement(b.withStage(s), transient: transient);
+          return;
+        case ParallaxElement p:
+          replaceElement(b.withParallax(p), transient: transient);
+          return;
+      }
+    }
+    replaceElement(backdrop, transient: transient);
+  }
+
+  /// panAcross keys [p]'s camera to travel [distance] design units across
+  /// the scene, from where it is on the first frame to the last -- the
+  /// commonest parallax shot there is, in one press.
+  void panAcross(ParallaxElement p, double distance) {
+    var last = math.max(1, _document.frames - 1);
+    var from = p.cameraAt(0);
+    var track = _pinnedAt(p.track ?? ElementTrack.empty, 0, from.channels);
+    track =
+        _pinnedAt(track, last, from.copyWith(x: from.x + distance).channels);
+    putBackdrop(p.withBase(track: track));
+  }
+
+  bool _cameraKeyed(CanvasElement e) =>
+      e.track?.keys.any((k) => k.values.keys.any((c) => c.startsWith("cam."))) ??
+      false;
+
+  /// _cameraNow and _cameraRest are a filmed backdrop's camera on this frame
+  /// and its own setting, as keyframe channels.
+  Map<String, double> _cameraNow(CanvasElement e) => switch (e) {
+        StageElement s => s.cameraAt(_frame).channels,
+        ParallaxElement p => p.cameraAt(_frame).channels,
+        _ => const {},
+      };
+  Map<String, double> _cameraRest(CanvasElement e) => switch (e) {
+        StageElement s => s.camera.channels,
+        ParallaxElement p => p.camera.channels,
+        _ => const {},
+      };
+
   /// keyCamera keys [stage]'s camera as it is on this frame -- and on the
   /// first frame too, the first time, so the move starts from where the
   /// camera was.
-  void keyCamera(StageElement stage) {
+  void keyCamera(CanvasElement stage) {
     var track = stage.track ?? ElementTrack.empty;
-    var keyed =
-        track.keys.any((k) => k.values.keys.any((c) => c.startsWith("cam.")));
-    if (!keyed && _frame != 0) {
-      track = _pinnedAt(track, 0, stage.camera.channels);
+    if (!_cameraKeyed(stage) && _frame != 0) {
+      track = _pinnedAt(track, 0, _cameraRest(stage));
     }
-    replaceElement(stage.withBase(
-        track: _pinnedAt(track, _frame, stage.cameraAt(_frame).channels)));
+    putBackdrop(
+        stage.withBase(track: _pinnedAt(track, _frame, _cameraNow(stage))));
   }
 
   /// hasCameraKey is whether the camera is keyed on this frame.
-  bool hasCameraKey(StageElement stage) =>
+  bool hasCameraKey(CanvasElement stage) =>
       stage.track
           ?.keyAt(_frame)
           ?.values
@@ -2064,7 +2173,7 @@ class CanvasController extends ChangeNotifier {
       false;
 
   /// clearCameraKey takes the camera off this frame's keyframe.
-  void clearCameraKey(StageElement stage) {
+  void clearCameraKey(CanvasElement stage) {
     var track = stage.track;
     var at = track?.keyAt(_frame);
     if (track == null || at == null) return;
@@ -2072,7 +2181,7 @@ class CanvasController extends ChangeNotifier {
       for (var v in at.values.entries)
         if (!v.key.startsWith("cam.")) v.key: v.value,
     });
-    replaceElement(stage.withBase(
+    putBackdrop(stage.withBase(
         track: without.isRest && without.frame != 0
             ? track.withoutFrame(_frame)
             : track.withKey(without)));
@@ -5430,8 +5539,51 @@ class CanvasController extends ChangeNotifier {
   /// dared press twice.
   void setKind(CanvasKind kind) {
     if (_document.kind == kind) return;
+    // What the size is estimated as follows what the document now is: a
+    // piece of sound as its sound, anything else as its picture.
+    var estimate = _document.estimate.copyWith(
+        format: kind.isAudio
+            ? EstimateAs.audio
+            : _document.isAnimated
+                ? EstimateAs.video
+                : EstimateAs.png);
     if (kind != CanvasKind.pages) {
-      apply(_document.copyWith(kind: kind));
+      if (kind.isAudio) _openSoundDesk();
+      // A piece of sound counts its time in small steps, so a beat lands on
+      // one -- where nothing is placed in time yet -- and going back to a
+      // document of scenes goes back to a picture's rate, the same way. A
+      // document with timing keeps its rate: frames are where things are,
+      // and changing the rate under them would move them.
+      int? rate;
+      if (!_document.hasTiming) {
+        if (kind.isAudio) {
+          rate = audioFrameRate;
+        } else if (_document.kind.isAudio &&
+            _document.frameRate == audioFrameRate) {
+          rate = defaultRateFor(_document.size.ratio, kind);
+        }
+      }
+      var frames = rate == null
+          ? null
+          : (_document.frames * rate / math.max(1, _document.frameRate))
+              .round()
+              .clamp(1, maxFrameCount)
+              .toInt();
+      var next = _document.copyWith(
+          kind: kind,
+          frameRate: rate,
+          frames: frames,
+          // A piece of sound starts with no canvas -- Ratio "None" -- and
+          // anything else always has one.
+          hasCanvas: !kind.isAudio);
+      // The estimate from what the document now is.
+      apply(next.copyWith(
+          estimate: next.estimate.copyWith(
+              format: kind.isAudio
+                  ? EstimateAs.audio
+                  : next.isAnimated
+                      ? EstimateAs.video
+                      : EstimateAs.png)));
       return;
     }
 
@@ -5462,8 +5614,62 @@ class CanvasController extends ChangeNotifier {
     // brought with it -- is two steps for one decision.
     beginInteraction();
     if (!onPaper) setShape(next, frameRate: rate);
-    apply(_document.copyWith(kind: kind, frameRate: onPaper ? rate : null));
+    apply(_document.copyWith(
+        kind: kind,
+        frameRate: onPaper ? rate : null,
+        estimate: estimate,
+        hasCanvas: true));
     endInteraction();
+  }
+
+  /// setAudio changes the document's sound settings: its tempo, metre,
+  /// structure, grid and how it is published.
+  void setAudio(AudioSettings next, {bool transient = false}) {
+    var doc = _document.copyWith(audio: next);
+    // A structure longer than the timeline makes the timeline long enough
+    // to hold it: the last section is played to its end.
+    if (next.sections.isNotEmpty) {
+      var need = (next.totalBars * next.secondsPerBar * doc.frameRate)
+          .ceil()
+          .clamp(1, maxFrameCount)
+          .toInt();
+      if (need > doc.frames) doc = doc.copyWith(frames: need);
+    }
+    apply(doc, transient: transient);
+  }
+
+  /// addSection adds a section at the end of the structure, named [name].
+  void addSection(String name) {
+    var a = _document.audio;
+    var taken = {for (var s in a.sections) s.id};
+    var n = a.sections.length;
+    while (taken.contains("section$n")) {
+      n++;
+    }
+    setAudio(a.copyWith(sections: [
+      ...a.sections,
+      SongSection("section$n",
+          name: name,
+          bars: a.sections.isEmpty ? 8 : a.sections.last.bars,
+          color: a.sections.length % sectionColors.length),
+    ]));
+  }
+
+  /// goToSection moves the playhead to where section [index] starts.
+  void goToSection(int index) {
+    var a = _document.audio;
+    if (index < 0 || index >= a.sections.length) return;
+    frame = (a.startBar(index) * a.secondsPerBar * _document.frameRate)
+        .round()
+        .clamp(0, math.max(0, _document.frames - 1))
+        .toInt();
+  }
+
+  /// setHasCanvas gives the document a picture or takes it away -- the
+  /// Ratio "None" of a piece of sound. See CanvasDocument.hasCanvas.
+  void setHasCanvas(bool has) {
+    if (_document.hasCanvas == has) return;
+    apply(_document.copyWith(hasCanvas: has));
   }
 
   /// forgetShape drops a shape from the document's targets, and the layouts
@@ -5954,6 +6160,7 @@ class CanvasController extends ChangeNotifier {
 
   void play() {
     if (playing) return;
+    _playedFrom = (_document.at, _frame);
     // Sounds that start by themselves start with the canvas -- before the
     // checks below, since a page that is a still is still a page with music
     // on it.
@@ -6026,7 +6233,9 @@ class CanvasController extends ChangeNotifier {
   /// frame at a time, so a marker on a frame passed over is still obeyed.
   void _tick(int elapsed) {
     var rate = math.max(1, _document.frameRate);
-    var seconds = (clockForTest?.call() ?? elapsed) / 1000000 + _clockShift;
+    // Practising, the clock runs at the tempo set -- see practiceRate.
+    var seconds = (clockForTest?.call() ?? elapsed) / 1000000 * _clockRate +
+        _clockShift;
     var now = seconds * rate;
     var due = now.floor() - _clockFrames;
     // A long stall -- the window dragged, the machine asleep -- is let go
@@ -6054,7 +6263,9 @@ class CanvasController extends ChangeNotifier {
   double get betweenFrames {
     if (_playback == null || clockForTest != null) return 0;
     var rate = math.max(1, _document.frameRate);
-    var now = (_playWatch.elapsedMicroseconds / 1000000 + _clockShift) * rate;
+    var now = (_playWatch.elapsedMicroseconds / 1000000 * _clockRate +
+            _clockShift) *
+        rate;
     return (now - _clockFrames).clamp(0.0, 0.999);
   }
 
@@ -6115,6 +6326,12 @@ class CanvasController extends ChangeNotifier {
   }
 
   void pause() {
+    if (_practice != null) _endPractice();
+    // Stopped, a recording is kept: what was played is in the part.
+    if (_recording) {
+      _recording = false;
+      _keepTake();
+    }
     _playback?.cancel();
     _playback = null;
     _previewing = null;
@@ -6129,6 +6346,187 @@ class CanvasController extends ChangeNotifier {
   }
 
   void togglePlay() => playing ? pause() : play();
+
+  /// _playedFrom is the scene and frame the last Play started from.
+  (int, int)? _playedFrom;
+
+  /// stopPlaying is the control bar's Stop: playing, back to where Play
+  /// started, as a take is gone over again; stopped already, back to the
+  /// very start.
+  void stopPlaying() {
+    var from = _playedFrom;
+    if (!playing || from == null) {
+      stop();
+      return;
+    }
+    pause();
+    var (scene, frame) = from;
+    if (scene != _document.at && scene < _document.allScenes.length) {
+      goToScene(scene);
+    }
+    this.frame = frame;
+  }
+
+  // ------------------------------------------------------------------------
+  // The control bar's switches
+  // ------------------------------------------------------------------------
+
+  /// metronome is whether a click sounds on every beat while a piece of
+  /// sound plays. The editor's, not the document's: it is never exported.
+  bool get metronome => _metronome;
+  bool _metronome = false;
+  set metronome(bool on) {
+    if (_metronome == on) return;
+    _metronome = on;
+    _syncMetronome();
+    notifyListeners();
+  }
+
+  /// metronomeAvailable is false where the engine has no click to play --
+  /// SoLoud's buses, with the mix engine switched off.
+  bool get metronomeAvailable => !(_audio?.metronomeUnavailable ?? false);
+
+  void _syncMetronome() {
+    var on = playing &&
+        _metronome &&
+        _document.kind.isAudio &&
+        _previewing == null &&
+        _previewAt == null;
+    if (!on && _audio == null) return;
+    var a = _document.audio;
+    audio.metronome(
+        on: on,
+        at: _frame / math.max(1, _document.frameRate),
+        secondsPerBeat: a.secondsPerBeat,
+        beatsPerBar: a.beatsPerBar);
+  }
+
+  /// followPlayhead is whether the timeline scrolls to keep the playhead in
+  /// view while it plays.
+  bool get followPlayhead => _followPlayhead;
+  bool _followPlayhead = true;
+  set followPlayhead(bool on) {
+    if (_followPlayhead == on) return;
+    _followPlayhead = on;
+    notifyListeners();
+  }
+
+  /// looping is whether playing goes round between [loopRange]'s ends. For
+  /// working on a part: the timeline's own Loop action, which a published
+  /// piece obeys, is a different thing and is left alone.
+  bool get looping => _looping;
+  bool _looping = false;
+  set looping(bool on) {
+    if (_looping == on) return;
+    _looping = on;
+    if (on) _loop ??= _defaultLoop();
+    notifyListeners();
+  }
+
+  (int, int)? _loop;
+
+  /// loopRange is where the loop starts and how long it is, in frames --
+  /// the one set, or until one is, where it would start.
+  (int, int) get loopRange {
+    var (from, length) = _loop ?? _defaultLoop();
+    var frames = math.max(1, _document.frames);
+    from = from.clamp(0, frames - 1).toInt();
+    return (from, length.clamp(1, frames - from).toInt());
+  }
+
+  /// setLoop moves the loop: to start at [from], [length] long.
+  void setLoop(int from, int length) {
+    var frames = math.max(1, _document.frames);
+    from = from.clamp(0, frames - 1).toInt();
+    _loop = (from, length.clamp(1, frames - from).toInt());
+    notifyListeners();
+  }
+
+  /// _defaultLoop is the loop a first press makes. A piece of sound: the
+  /// section the playhead is in, or four bars from the bar it is in. Scenes:
+  /// the whole scene.
+  (int, int) _defaultLoop() {
+    var doc = _document;
+    var rate = math.max(1, doc.frameRate);
+    if (!doc.kind.isAudio) return (0, math.max(1, doc.frames));
+    var a = doc.audio;
+    var barFrames = a.secondsPerBar * rate;
+    var bar = (_frame / barFrames + 1e-6).floor();
+    for (var i = 0; i < a.sections.length; i++) {
+      var start = a.startBar(i);
+      if (bar >= start && bar < start + a.sections[i].bars) {
+        return (
+          (start * barFrames).round(),
+          (a.sections[i].bars * barFrames).round()
+        );
+      }
+    }
+    return ((bar * barFrames).round(), (4 * barFrames).round());
+  }
+
+  /// stepGrid moves the playhead to the next line of the quantise grid --
+  /// or, with quantise off, the next beat -- either way, [by] -1 or 1.
+  void stepGrid(int by) {
+    var a = _document.audio;
+    var rate = math.max(1, _document.frameRate);
+    var step = (a.gridSeconds() ?? a.secondsPerBeat) * rate;
+    if (step <= 0) return;
+    var at = _frame / step;
+    var line = by > 0 ? (at + 1e-6).floor() + 1 : (at - 1e-6).ceil() - 1;
+    stepFrame((line * step).round() - _frame);
+  }
+
+  /// markerFrames are the places the marker buttons go between: the
+  /// timeline's markers and locators, and each section's start.
+  List<int> get markerFrames {
+    var doc = _document;
+    var rate = math.max(1, doc.frameRate);
+    var a = doc.audio;
+    return {
+      for (var m in doc.actions) m.frame,
+      if (doc.kind.isAudio)
+        for (var i = 0; i < a.sections.length; i++)
+          (a.startBar(i) * a.secondsPerBar * rate).round(),
+    }.toList()
+      ..sort();
+  }
+
+  /// goToMarker moves the playhead to the next marker, locator or section
+  /// start after it -- [by] 1 -- or the one before it, -1.
+  void goToMarker(int by) {
+    var marks = markerFrames;
+    int? to = by > 0
+        ? marks.where((m) => m > _frame).firstOrNull
+        : marks.where((m) => m < _frame).lastOrNull;
+    if (to == null) return;
+    stepFrame(to - _frame);
+  }
+
+  /// addLocator puts a named locator under the playhead -- or, with one
+  /// there, leaves it.
+  void addLocator() {
+    var doc = _document;
+    if (doc.actions.any((a) => a.frame == _frame)) return;
+    var count = doc.actions
+            .where((a) => a.kind == TimelineActionKind.locator)
+            .length +
+        1;
+    apply(doc.copyWith(actions: [
+      ...doc.actions,
+      TimelineAction(
+          frame: _frame,
+          kind: TimelineActionKind.locator,
+          label: "Locator $count"),
+    ]..sort((a, b) => a.frame.compareTo(b.frame))));
+  }
+
+  /// engineLoad is how hard the mix engine is working -- the share of each
+  /// block's time spent making it, nought to one -- or null where the
+  /// editor's sound is not going through it.
+  double? get engineLoad => switch (_audio?.engine) {
+        DartAudioEngine e => e.load,
+        _ => null,
+      };
 
   void stop() {
     pause();
@@ -6204,9 +6602,23 @@ class CanvasController extends ChangeNotifier {
       return;
     }
 
+    // Waiting to be played: the playhead holds on the note.
+    if (_practice != null && _practiceHolds(_frame + 1)) {
+      notifyListeners();
+      return;
+    }
     var next = _frame + 1;
+    // Round the loop: from its end back to its start -- but only from inside
+    // it, so a playhead put past the loop plays on from there.
+    if (_looping) {
+      var (from, length) = loopRange;
+      var end = from + length;
+      if (_frame < end && next >= end) next = from;
+    }
     if (next >= _document.frames) next = 0;
+    var was = _frame;
     _frame = next;
+    if (_practice != null) _practiceStep(was, next);
 
     for (var action in _document.actions) {
       if (action.frame != next) continue;
@@ -6230,6 +6642,8 @@ class CanvasController extends ChangeNotifier {
           }
         case TimelineActionKind.jump:
           _frame = action.target.clamp(0, _document.frames - 1).toInt();
+        case TimelineActionKind.locator:
+          break;
       }
     }
     _syncTimeline();
@@ -6458,8 +6872,10 @@ class CanvasController extends ChangeNotifier {
       case ButtonActionKind.playSound:
         switch (_mediaById(action.elementId)) {
           case AudioElement e:
+            _heard();
             unawaited(audio.play(e));
           case VideoElement e:
+            _heard();
             unawaited(video.play(e));
         }
       case ButtonActionKind.pauseSound:
@@ -6468,8 +6884,10 @@ class CanvasController extends ChangeNotifier {
       case ButtonActionKind.toggleSound:
         switch (_mediaById(action.elementId)) {
           case AudioElement e:
+            _heard();
             unawaited(audio.toggle(e));
           case VideoElement e:
+            _heard();
             unawaited(video.toggle(e));
         }
       case ButtonActionKind.stopSound:
@@ -6496,7 +6914,8 @@ class CanvasController extends ChangeNotifier {
   /// audio is what is playing. Made the first time anything asks, so a
   /// canvas with no sound on it never opens a sound device.
   AudioRuntime get audio => _audio ??= AudioRuntime(
-      engine: _audioEngine ?? SoLoudAudioEngine(),
+      engine: _audioEngine ??
+          (useMixEngine ? sharedMixEngine : SoLoudAudioEngine()),
       locate: (id) => CanvasMedia.existingPath(MediaKind.audio, id))
     ..addListener(notifyListeners);
 
@@ -6553,6 +6972,7 @@ class CanvasController extends ChangeNotifier {
       case VideoPart.picture:
       case VideoPart.bigPlay:
       case VideoPart.playPause:
+        _heard();
         unawaited(video.toggle(e));
       case VideoPart.track:
         unawaited(video.seekTo(e, along));
@@ -6577,10 +6997,533 @@ class CanvasController extends ChangeNotifier {
 
   /// audioState is how [e]'s sound is doing, for the icon to show.
   AudioState audioState(AudioElement e) {
+    if (e.instrument case var part?) {
+      // An instrument's keys: the notes under the playhead, and any held.
+      var seconds = (_frame - e.clip.at) / math.max(1, _document.frameRate);
+      var practised = _practised;
+      return AudioState(
+          playing: playing,
+          keys: {...part.sounding(seconds), ...?_held[e.id]},
+          recording: _recording && _armed(e),
+          next: practised != null && practised.$2.id == e.id
+              ? {for (var i in _waiting) part.notes[i].key}
+              : const {});
+    }
     var a = _audio;
     if (a == null) return AudioState.idle(e);
     var v = a.view(e);
     return AudioState(playing: v.playing, muted: v.muted, volume: v.volume);
+  }
+
+  // ------------------------------------------------------------------------
+  // Instruments
+  // ------------------------------------------------------------------------
+
+  /// _held is each instrument's keys held down live, by element id.
+  final Map<String, Set<int>> _held = {};
+
+  /// heldKeys is [id]'s keys held down now.
+  Set<int> heldKeys(String id) => Set.unmodifiable(_held[id] ?? const {});
+
+  static String _channelOf(AudioElement e) =>
+      e.clip.channel.isEmpty ? e.id : e.clip.channel;
+
+  /// noteOn presses [key] on instrument [e]: heard at once, through its
+  /// channel, and written down while recording.
+  void noteOn(AudioElement e, int key, {int velocity = 100}) {
+    var part = e.instrument;
+    if (part == null) return;
+    if (!(_held.putIfAbsent(e.id, () => {})).add(key)) return;
+    _heard();
+    unawaited(audio.noteOn(_channelOf(e), part, key, velocity));
+    if (_practice != null) _practiceHeard(e, key);
+    if (_recording && playing) {
+      (_take[e.id] ??= {})[key] = (_nowInPart(e), velocity);
+    }
+    notifyListeners();
+  }
+
+  /// midiTarget is the instrument a MIDI keyboard plays: the one selected,
+  /// or the first there is.
+  AudioElement? get midiTarget {
+    var picked = selected;
+    if (picked is AudioElement && picked.instrument != null) return picked;
+    for (var e in _document.elements) {
+      if (e is AudioElement && e.instrument != null) return e;
+    }
+    return null;
+  }
+
+  /// midiNote is a key on a MIDI keyboard, pressed or -- at a velocity of
+  /// nought -- let go: played on [midiTarget], as a key pressed on the
+  /// canvas is.
+  void midiNote(int key, int velocity) {
+    var e = midiTarget;
+    if (e == null) return;
+    velocity > 0 ? noteOn(e, key, velocity: velocity) : noteOff(e, key);
+  }
+
+  /// noteOff lets [key] go.
+  void noteOff(AudioElement e, int key) {
+    if (!(_held[e.id]?.remove(key) ?? false)) return;
+    audio.noteOff(_channelOf(e), key);
+    if (_take[e.id]?.remove(key) case (var start, var velocity)?) {
+      var length = math.max(0.02, _nowInPart(e) - start);
+      (_taken[e.id] ??= []).add(MidiNote(key, start, length, velocity));
+    }
+    notifyListeners();
+  }
+
+  /// _nowInPart is where the playhead is in [e]'s part, in seconds.
+  double _nowInPart(AudioElement e) =>
+      math.max(0, (_frame + betweenFrames - e.clip.at)) /
+      math.max(1, _document.frameRate);
+
+  /// recording is the control bar's Record: while it is on and the canvas
+  /// plays, what is played on an instrument is written into its part.
+  bool get recording => _recording;
+  bool _recording = false;
+  set recording(bool on) {
+    if (_recording == on) return;
+    _recording = on;
+    if (on) {
+      _take.clear();
+      _taken.clear();
+      if (!playing) play();
+    } else {
+      _keepTake();
+    }
+    notifyListeners();
+  }
+
+  /// hasInstruments is whether there is anything to record onto.
+  bool get hasInstruments => _document.elements
+      .any((e) => e is AudioElement && e.instrument != null);
+
+  bool _armed(AudioElement e) => true;
+
+  /// _take is each instrument's notes being held while recording, as when
+  /// each started and how hard; _taken the notes finished.
+  final Map<String, Map<int, (double, int)>> _take = {};
+  final Map<String, List<MidiNote>> _taken = {};
+
+  /// _keepTake writes what was recorded into each part -- one change to
+  /// undo -- notes still held ending where the playhead is.
+  void _keepTake() {
+    for (var e in _take.entries) {
+      var el = _document.elementById(e.key);
+      if (el is! AudioElement) continue;
+      for (var k in e.value.entries) {
+        var (start, velocity) = k.value;
+        (_taken[e.key] ??= []).add(MidiNote(k.key, start,
+            math.max(0.02, _nowInPart(el) - start), velocity));
+      }
+    }
+    _take.clear();
+    if (_taken.isEmpty) return;
+    var next = _document;
+    for (var e in _taken.entries) {
+      var el = next.elementById(e.key);
+      if (el is! AudioElement || el.instrument == null) continue;
+      var part = el.instrument!;
+      next = next.withElement(el.copyWith(
+          instrument: part.copyWith(
+              notes: [...part.notes, ...e.value]
+                ..sort((a, b) => a.start.compareTo(b.start)))));
+    }
+    _taken.clear();
+    apply(next);
+  }
+
+  // ------------------------------------------------------------------------
+  // Played as a game
+  // ------------------------------------------------------------------------
+
+  GameRun? _game;
+  CanvasDocument? _gameView;
+  Timer? _gameTimer;
+  final Stopwatch _gameWatch = Stopwatch();
+
+  /// gaming is whether the canvas is being played as a game: what is set to
+  /// be played answers the keys and the controllers, and the view follows
+  /// the player. See canvas_game.dart.
+  bool get gaming => _game != null;
+
+  /// game is the game going, or null.
+  GameRun? get game => _game;
+
+  /// gameView is the canvas as the game has it now, for the stage to draw
+  /// -- or null, not playing.
+  CanvasDocument? get gameView => _gameView;
+
+  /// playable is whether anything is set to be played.
+  bool get playable =>
+      _document.elements.any((e) => e.base.play.as.moves);
+
+  set gaming(bool on) {
+    if (on == gaming) return;
+    if (on) {
+      var run = GameRun();
+      _game = run;
+      unawaited(run.listen());
+      HardwareKeyboard.instance.addHandler(_gameKey);
+      _gameWatch
+        ..reset()
+        ..start();
+      _gameTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+        var dt = _gameWatch.elapsedMicroseconds / 1e6;
+        _gameWatch
+          ..reset()
+          ..start();
+        stepGame(math.min(dt, 0.05));
+      });
+      if (!playing) play();
+    } else {
+      HardwareKeyboard.instance.removeHandler(_gameKey);
+      _gameTimer?.cancel();
+      _gameTimer = null;
+      _game?.dispose();
+      _game = null;
+      _gameView = null;
+      if (playing) pause();
+    }
+    notifyListeners();
+  }
+
+  /// stepGame moves the game on by [dt] seconds.
+  void stepGame(double dt) {
+    var run = _game;
+    if (run == null) return;
+    run.step(_document, _frame, dt);
+    _gameView = run.view(_document);
+    notifyListeners();
+  }
+
+  /// gameKey is a key while playing: held, let go -- and taken, where it
+  /// presses one of the actions, so Space jumps rather than pausing.
+  /// Escape stops the game.
+  bool _gameKey(KeyEvent event) => gameKey(event);
+
+  @visibleForTesting
+  bool gameKey(KeyEvent event) {
+    var run = _game;
+    if (run == null) return false;
+    var id = event.logicalKey.keyId;
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
+      gaming = false;
+      return true;
+    }
+    var bound = _document.controlsNow.any((a) => a.keys.contains(id));
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      run.input.keys.add(id);
+    } else if (event is KeyUpEvent) {
+      run.input.keys.remove(id);
+    }
+    return bound;
+  }
+
+  // ------------------------------------------------------------------------
+  // Practising
+  // ------------------------------------------------------------------------
+
+  /// _practice is the Sheet music being practised, by id, while a take is
+  /// going; the rest is how the take is going.
+  String? _practice;
+  final Map<int, NoteMark> _marks = {};
+  final Map<int, int> _wrongKeys = {};
+  final Set<int> _waiting = {};
+
+  /// _accompanying is the keys the hand not practised has sounding.
+  final Set<int> _accompanying = {};
+
+  /// practising is the Sheet music being practised, or null.
+  String? get practising => _practice;
+
+  double get _clockRate {
+    var sheet = _practice == null ? null : _document.elementById(_practice!);
+    return sheet is SheetElement ? sheet.tempo : 1;
+  }
+
+  /// _practised is the sheet being practised, the instrument it follows,
+  /// and its part -- or null where one of them has gone.
+  (SheetElement, AudioElement, InstrumentPart)? get _practised {
+    var sheet = _practice == null ? null : _document.elementById(_practice!);
+    if (sheet is! SheetElement) return null;
+    var inst = _document.elementById(sheet.follows);
+    if (inst is! AudioElement || inst.instrument == null) return null;
+    return (sheet, inst, inst.instrument!);
+  }
+
+  /// _mine is whether note [i] is the player's to play: of the hand being
+  /// practised -- the right hand from middle C up -- and not in Listen.
+  static bool _mine(SheetElement sheet, MidiNote n) =>
+      sheet.mode != PracticeMode.listen &&
+      switch (sheet.hands) {
+        PracticeHands.right => n.key >= splitKey,
+        PracticeHands.left => n.key < splitKey,
+        PracticeHands.both => true,
+      };
+
+  int _noteFrame(AudioElement inst, MidiNote n) =>
+      inst.clip.at + (n.start * math.max(1, _document.frameRate)).round();
+
+  int _noteEndFrame(AudioElement inst, MidiNote n) =>
+      inst.clip.at + (n.end * math.max(1, _document.frameRate)).round();
+
+  /// startPractice starts a take on [sheet]: the marks cleared, playing
+  /// from the playhead.
+  void startPractice(SheetElement sheet) {
+    if (playing) pause();
+    _marks.clear();
+    _wrongKeys.clear();
+    _waiting.clear();
+    _practice = sheet.id;
+    sheetMarksOf = _sheetMarks;
+    play();
+    notifyListeners();
+  }
+
+  /// stopPractice ends the take, its marks left to look at.
+  void stopPractice() => pause();
+
+  void _endPractice() {
+    var p = _practised;
+    if (p != null) {
+      for (var k in _accompanying) {
+        audio.noteOff(_channelOf(p.$2), k);
+      }
+    }
+    _accompanying.clear();
+    _waiting.clear();
+    _practice = null;
+    // The take's marks stay on the score until the next.
+  }
+
+  SheetMarks _sheetMarks(SheetElement e) => SheetMarks(
+      marks: Map.of(_marks),
+      waiting: _practice == e.id ? Set.of(_waiting) : const {},
+      wrongKeys: Map.of(_wrongKeys));
+
+  /// practiceScore is the take so far: how many right, how many wrong.
+  (int, int) get practiceScore => (
+        _marks.values.where((m) => m == NoteMark.right).length,
+        _marks.values.where((m) => m == NoteMark.wrong).length
+      );
+
+  /// _practiceHolds is whether the playhead holds before [next], waiting
+  /// to be played -- Wait for me, a note of the player's there unplayed.
+  bool _practiceHolds(int next) {
+    var p = _practised;
+    if (p == null) return false;
+    var (sheet, inst, part) = p;
+    if (sheet.mode != PracticeMode.wait) return false;
+    if (_waiting.isNotEmpty) return true;
+    for (var (i, n) in part.notes.indexed) {
+      if (!_mine(sheet, n) || _marks[i] == NoteMark.right) continue;
+      // Due on the frame it is on, or the one it is going to.
+      var f = _noteFrame(inst, n);
+      if (f >= _frame && f <= next) _waiting.add(i);
+    }
+    return _waiting.isNotEmpty;
+  }
+
+  /// _practiceStep is the playhead gone from [was] to [now]: the other
+  /// hand's notes started and stopped, and -- playing along -- the notes
+  /// gone by unplayed marked missed.
+  void _practiceStep(int was, int now) {
+    var p = _practised;
+    if (p == null) return;
+    var (sheet, inst, part) = p;
+    var channel = _channelOf(inst);
+    if (now < was) {
+      // Round a loop: everything let go, and the take begun again.
+      for (var k in _accompanying) {
+        audio.noteOff(channel, k);
+      }
+      _accompanying.clear();
+    }
+    var rate = math.max(1, _document.frameRate);
+    for (var (i, n) in part.notes.indexed) {
+      var start = _noteFrame(inst, n), end = _noteEndFrame(inst, n);
+      if (!_mine(sheet, n)) {
+        // Each stretch from where it was up to where it is, so a note on
+        // the very first frame is played, and none twice.
+        if (start >= was && start < now) {
+          unawaited(audio.noteOn(channel, part, n.key, n.velocity));
+          _accompanying.add(n.key);
+        }
+        if (end >= was && end < now && _accompanying.remove(n.key)) {
+          audio.noteOff(channel, n.key);
+        }
+        continue;
+      }
+      if (sheet.mode == PracticeMode.along &&
+          !_marks.containsKey(i) &&
+          now - start > 0.25 * rate &&
+          was - start <= 0.25 * rate) {
+        _marks[i] = NoteMark.missed;
+      }
+    }
+  }
+
+  /// _practiceHeard is [key] played on [inst]: right, if it is a note of
+  /// the player's due now; wrong, if one is due and this is not it.
+  void _practiceHeard(AudioElement inst, int key) {
+    var p = _practised;
+    if (p == null || p.$2.id != inst.id) return;
+    var (sheet, followed, part) = p;
+    if (sheet.mode == PracticeMode.listen) return;
+    if (sheet.mode == PracticeMode.wait) {
+      if (_waiting.isEmpty) return;
+      var hit = _waiting.where((i) => part.notes[i].key == key).firstOrNull;
+      if (hit != null) {
+        _waiting.remove(hit);
+        _marks[hit] = NoteMark.right;
+        _wrongKeys.remove(hit);
+      } else {
+        var first = _waiting.first;
+        _marks.putIfAbsent(first, () => NoteMark.wrong);
+        _wrongKeys[first] = key;
+      }
+      return;
+    }
+    // Playing along: the nearest of the player's notes due within a quarter
+    // of a second either way.
+    var rate = math.max(1, _document.frameRate);
+    var now = _frame + betweenFrames;
+    int? due;
+    var best = double.infinity;
+    for (var (i, n) in part.notes.indexed) {
+      if (!_mine(sheet, n) || _marks.containsKey(i)) continue;
+      var d = (_noteFrame(followed, n) - now).abs() / rate;
+      if (d > 0.25) continue;
+      if (n.key == key) {
+        _marks[i] = NoteMark.right;
+        return;
+      }
+      if (d < best) {
+        best = d;
+        due = i;
+      }
+    }
+    if (due != null) {
+      _marks[due] = NoteMark.wrong;
+      _wrongKeys[due] = key;
+    }
+  }
+
+  /// addMidiChannel adds a MIDI channel: an instrument on a channel of its
+  /// own, to be played into -- live, from a MIDI keyboard, with Record. On a
+  /// piece of sound with no canvas it lives on the timeline alone; on a
+  /// canvas, its keyboard is on the canvas too. Picked, so a MIDI keyboard
+  /// plays it and its settings are open.
+  AudioElement addMidiChannel() {
+    var e = newInstrument(_document);
+    // Named for what it plays, numbered where that is taken: Piano, Piano 2.
+    var taken = {for (var c in timelineChannels) c.name};
+    var name = e.name;
+    for (var n = 2; taken.contains(name); n++) {
+      name = "${e.name} $n";
+    }
+    e = e.rebase(e.base.copyWith(
+        name: name,
+        visible: _document.hasCanvas || !_document.kind.isAudio)) as AudioElement;
+    addElement(e);
+    return e;
+  }
+
+  /// setInstrument changes [e]'s part.
+  void setInstrument(AudioElement e, InstrumentPart part,
+      {bool transient = false}) {
+    var current = _document.elementById(e.id);
+    if (current is! AudioElement) return;
+    replaceElement(current.copyWith(instrument: part), transient: transient);
+  }
+
+  /// partRenderer plays a part into the bytes of a WAV, and partStore keeps
+  /// them, returning the stored file's id -- see part_render.dart. Both
+  /// stand-ins for tests.
+  @visibleForTesting
+  static Future<Uint8List> Function(InstrumentPart part, {String? bankPath})
+      partRenderer = partWav;
+  @visibleForTesting
+  static Future<String?> Function(Uint8List wav) partStore = _storePart;
+
+  /// bankReady is whether the sound bank is here -- see soundBankReady.
+  @visibleForTesting
+  static Future<bool> Function() bankReady = soundBankReady;
+
+  static Future<String?> _storePart(Uint8List wav) async {
+    var dir = await Directory.systemTemp.createTemp("canvas-part");
+    try {
+      var file = File(path.join(dir.path, "part.wav"));
+      await file.writeAsBytes(wav, flush: true);
+      return await CanvasMedia.saveFile(MediaKind.audio, file.path);
+    } finally {
+      await dir.delete(recursive: true).catchError((_) => dir);
+    }
+  }
+
+  Timer? _partTimer;
+  final Set<String> _rendering = {};
+  bool _disposed = false;
+
+  /// _scheduleParts plays, a moment after the last change, any instrument
+  /// whose sound file is not its part any more.
+  void _scheduleParts() {
+    var waiting = _document.elements.any((e) =>
+        e is AudioElement && (e.instrument?.needsPlaying ?? false));
+    if (!waiting) return;
+    _partTimer?.cancel();
+    _partTimer = Timer(const Duration(milliseconds: 300), () {
+      unawaited(renderParts());
+    });
+  }
+
+  /// renderParts plays every instrument's part that needs it into its
+  /// clip's file, now.
+  Future<void> renderParts() async {
+    _partTimer?.cancel();
+    for (var e in [..._document.elements]) {
+      if (e is! AudioElement) continue;
+      var part = e.instrument;
+      if (part == null || !part.needsPlaying) continue;
+      var signature = part.signature;
+      // Played on the piano of our own for want of the bank: again only
+      // once the bank is here.
+      var stood = "$signature~";
+      var wantsBank = part.sound == InstrumentSound.bank;
+      var bankHere = wantsBank && await bankReady();
+      if (part.rendered == stood && !bankHere) continue;
+      if (!_rendering.add(signature)) continue;
+      try {
+        var bank = bankHere ? await soundBankPath() : null;
+        var wav = await partRenderer(part, bankPath: bank);
+        var id = await partStore(wav);
+        if (id == null || _disposed) continue;
+        // Written onto the element as it is now -- if it still sounds the
+        // same: changed again meanwhile, that change plays next.
+        var now = _document.elementById(e.id);
+        if (now is! AudioElement || now.instrument?.signature != signature) {
+          continue;
+        }
+        var clip = now.clip.copyWith(timed: true, playlist: [
+          MediaSource(
+              assetId: id, name: "${part.name} part", length: part.length),
+        ]);
+        // Not a change of its own to undo: the file follows the notes.
+        apply(
+            _document.withElement(now.copyWith(
+                clip: clip,
+                instrument: now.instrument!.copyWith(
+                    rendered: wantsBank && !bankHere ? stood : signature))),
+            transient: true);
+      } catch (exception) {
+        debugPrint("Unable to play the part: $exception");
+      } finally {
+        _rendering.remove(signature);
+      }
+    }
   }
 
   /// pressAudio is a press on one of [e]'s own controls. [volume] is where
@@ -6589,6 +7532,7 @@ class CanvasController extends ChangeNotifier {
     var current = _audioById(e.id) ?? e;
     switch (part) {
       case AudioControl.playPause:
+        _heard();
         unawaited(audio.toggle(current));
       case AudioControl.mute:
         audio.toggleMute(current);
@@ -6684,7 +7628,10 @@ class CanvasController extends ChangeNotifier {
   Iterable<(CanvasElement, int)> get _timedOnScreen sync* {
     bool timed(CanvasElement e) => switch (e) {
           VideoElement v => v.clip.timed && !v.isLink && !v.clip.isEmpty,
-          AudioElement a => a.clip.timed && !a.clip.isEmpty,
+          // An instrument is on its channel before it has a note: a MIDI
+          // channel waiting to be played into.
+          AudioElement a =>
+            a.clip.timed && (!a.clip.isEmpty || a.instrument != null),
           _ => false,
         };
     var onMaster = _document.editingMaster;
@@ -6789,9 +7736,36 @@ class CanvasController extends ChangeNotifier {
   /// in the order they first appear. A channel is its sounds: one with none
   /// left is gone, and the empty lane under the last is not one -- it is
   /// where a new channel is started.
+  /// interactiveLanes are the sounds on the canvas that play when pressed
+  /// -- this canvas's, and the master's seen from it. Each is on a channel
+  /// so that every sound has the same strip and effects; the timeline shows
+  /// the channel greyed, since there is nothing on it to place in time.
+  List<TimedLane> get interactiveLanes {
+    var document = _document;
+    var here = {for (var e in document.elements) e.id};
+    var onMaster = document.editingMaster;
+    var pressed = <CanvasElement>[
+      for (var e in _pageAudio)
+        if (!e.clip.timed && !e.clip.isEmpty) e,
+      // And a video's sound -- not a link's, which plays on its own site.
+      for (var e in [
+        ...document.elements,
+        if (!onMaster) ...?document.masterScene?.elements,
+      ])
+        if (e is VideoElement && !e.isLink && !e.clip.timed && !e.clip.isEmpty)
+          e,
+    ];
+    return [
+      for (var e in pressed)
+        TimedLane(e,
+            editable: here.contains(e.id),
+            scene: onMaster || !here.contains(e.id) ? -1 : document.at),
+    ];
+  }
+
   List<TimelineChannel> get timelineChannels {
     var by = <String, List<TimedLane>>{};
-    for (var lane in timedLanes) {
+    for (var lane in [...timedLanes, ...interactiveLanes]) {
       (by[lane.channelKey] ??= []).add(lane);
     }
     var found = [
@@ -6801,9 +7775,10 @@ class CanvasController extends ChangeNotifier {
     // each was first met within a scene. The scene being edited used to come
     // first, so the list reshuffled itself at every turn of the page.
     var met = {for (var (i, c) in found.indexed) c.key: i};
+    // The sounds played by pressing them after all those on the timeline.
     int rank(TimelineChannel c) {
       var scene = c.first.scene;
-      return scene < 0 ? 1 << 20 : scene;
+      return (c.interactive ? 1 << 22 : 0) + (scene < 0 ? 1 << 20 : scene);
     }
 
     found.sort((a, b) {
@@ -7341,7 +8316,11 @@ class CanvasController extends ChangeNotifier {
   String get effectsChannel {
     var channels = timelineChannels;
     if (selectedChannel case var k?) {
-      if (k == mixerMasterKey || channels.any((c) => c.key == k)) return k;
+      if (k == mixerMasterKey ||
+          channels.any((c) => c.key == k) ||
+          returnOf(k) != null) {
+        return k;
+      }
     }
     var picked = clipSelection;
     for (var lane in timedLanes) {
@@ -7620,11 +8599,15 @@ class CanvasController extends ChangeNotifier {
   /// out of sight outside its span.
   void _syncTimeline() {
     _applyMix();
+    _syncMetronome();
     var going = playing;
     var ducks = _duckEnvelopes();
     var rate = math.max(1, _document.frameRate);
     for (var (e, at) in _joinedCuts(_timedOnScreen.toList())) {
-      var moment = at == null ? null : _momentOf(e, at);
+      // Practising, the timeline's sounds are quiet: the piece is played
+      // live -- the hand not being practised -- at the practice tempo.
+      var moment =
+          at == null || _practice != null ? null : _momentOf(e, at);
       // Turned down while a channel that ducks the others is speaking -- see
       // Ducking.
       if (moment != null && ducks.isNotEmpty) {
@@ -7776,6 +8759,46 @@ class CanvasController extends ChangeNotifier {
   void setMasterMix(MasterMix mix, {bool transient = false}) =>
       apply(_document.copyWith(masterMix: mix), transient: transient);
 
+  /// returnOf is the return called [id], or null.
+  ReturnChannel? returnOf(String? id) =>
+      _document.returns.where((r) => r.id == id).firstOrNull;
+
+  /// setReturn changes a return -- its name, its devices, its strip.
+  void setReturn(ReturnChannel next, {bool transient = false}) => apply(
+      _document.copyWith(returns: [
+        for (var r in _document.returns) r.id == next.id ? next : r,
+      ]),
+      transient: transient);
+
+  /// addReturn adds a return at the end, with a reverb on it -- the
+  /// commonest reason for one -- and picks it.
+  ReturnChannel? addReturn() {
+    var returns = _document.returns;
+    if (returns.length >= maxReturns) return null;
+    var taken = {for (var r in returns) r.id};
+    var n = returns.length;
+    while (taken.contains("return${returnLetter(n)}")) {
+      n++;
+    }
+    var made = ReturnChannel("return${returnLetter(n)}",
+        name: "Reverb", devices: const [MixDevice(DeviceKind.reverb)]);
+    apply(_document.copyWith(returns: [...returns, made]));
+    pickStrip(made.id);
+    return made;
+  }
+
+  /// removeReturn takes a return away. What was sent to it is sent nowhere:
+  /// the sends are kept on the channels, so putting it back with undo finds
+  /// them as they were.
+  void removeReturn(String id) {
+    apply(_document.copyWith(returns: [
+      for (var r in _document.returns)
+        if (r.id != id) r,
+    ]));
+    if (selectedChannel == id) selectedChannel = null;
+    if (_effectsOf == id) _effectsOf = null;
+  }
+
   /// levels is how loud a strip -- by its channel's key, or the master with
   /// none -- is coming out now, for the meters.
   (double, double) levels([String? channel]) =>
@@ -7785,11 +8808,22 @@ class CanvasController extends ChangeNotifier {
   /// none -- is playing now, for the EQ to draw. See AudioEngine.spectrum.
   Float32List? spectrum([String? channel]) => _audio?.spectrum(channel);
 
+  /// _heard opens the runtime, where it is not open yet, with the mixer
+  /// already in it: a sound pressed on the canvas plays through its strip
+  /// from its first note.
+  void _heard() {
+    audio;
+    _applyMix();
+  }
+
   /// _applyMix hands the runtime the mixer as it stands. Cheap when nothing
   /// has changed: the runtime compares before it calls the engine.
   void _applyMix() {
-    var lanes = timedLanes;
-    if (lanes.isEmpty && _audio == null) return;
+    var timed = timedLanes;
+    // A sound pressed on the canvas opens the device when it is pressed --
+    // see _heard -- not when the canvas holding it is opened.
+    if (timed.isEmpty && _audio == null) return;
+    var lanes = [...timed, ...interactiveLanes];
     // One strip per channel, every sound on it routed through it. The strip
     // is the channel's first sound's mix, which setChannelMix copies onto
     // every sound on the channel.
@@ -7803,7 +8837,25 @@ class CanvasController extends ChangeNotifier {
           for (var key in _solo)
             if (strips.containsKey(key)) key,
         },
-        master: _document.masterMix);
+        master: _document.masterMix,
+        returns: _document.returns,
+        speakers: _document.audio.speakers,
+        placements: placementsNow);
+  }
+
+  /// placementsNow is where each placed sound's channel is heard from on
+  /// this frame, by channel -- the first placed sound on a channel says,
+  /// which is the only one on it unless channels have been shared.
+  Map<String, Heard> get placementsNow {
+    var out = <String, Heard>{};
+    for (var lane in [...timedLanes, ...interactiveLanes]) {
+      var place = lane.clip.place;
+      if (place.isOff || out.containsKey(lane.channelKey)) continue;
+      if (heardAt(_document, lane.element, place, _frame) case var h?) {
+        out[lane.channelKey] = h;
+      }
+    }
+    return out;
   }
 
   /// _autoplayAudio starts the sounds on screen that start by themselves.
@@ -7812,7 +8864,10 @@ class CanvasController extends ChangeNotifier {
       for (var e in _pageAudio)
         if (e.clip.autoplay && !e.clip.isEmpty && !e.clip.timed) e,
     ];
-    if (starting.isNotEmpty) audio.autoplay(starting);
+    if (starting.isNotEmpty) {
+      _heard();
+      audio.autoplay(starting);
+    }
 
     var videos = [
       for (var e in [
@@ -7836,7 +8891,10 @@ class CanvasController extends ChangeNotifier {
           audio.autoplay([a]);
       }
     }
-    if (videos.isNotEmpty) video.autoplay(videos);
+    if (videos.isNotEmpty) {
+      _heard();
+      video.autoplay(videos);
+    }
   }
 
   // ------------------------------------------------------------------------
@@ -8697,7 +9755,16 @@ class CanvasController extends ChangeNotifier {
     // the moment it was most wanted.
     _zoom = 1;
     _pan = const Offset2(0, 0);
+    // A piece of sound opens on what it is made with.
+    if (document.kind.isAudio) _openSoundDesk();
     notifyListeners();
+  }
+
+  /// _openSoundDesk opens the mixer and the effects: what an audio document
+  /// is worked on with, there being no canvas to look at.
+  void _openSoundDesk() {
+    _mixerOpen = true;
+    _effectsOpen = true;
   }
 
   /// _autosave is the pending write, if any.
@@ -8782,6 +9849,15 @@ class CanvasController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _partTimer?.cancel();
+    if (gaming) {
+      HardwareKeyboard.instance.removeHandler(_gameKey);
+      _gameTimer?.cancel();
+      _game?.dispose();
+      _game = null;
+    }
+    if (sheetMarksOf == _sheetMarks) sheetMarksOf = null;
     if (vectorSoloOf == _soloOf) vectorSoloOf = null;
     if (characterDollOf == _dollOf) characterDollOf = null;
     if (_spritePaint != null) {
@@ -8860,6 +9936,13 @@ class TimedLane {
 
   /// channelKey is the channel this is on: its own, for a clip with none.
   String get channelKey => clip.channel.isNotEmpty ? clip.channel : element.id;
+
+  /// interactive is whether this is a sound on the canvas that plays when
+  /// it is pressed, rather than at a time on the timeline: on a channel all
+  /// the same, so it has a strip and effects like every other sound, but
+  /// with nothing on its lane to move or cut. See interactiveLanes.
+  bool get interactive =>
+      (element is AudioElement || element is VideoElement) && !clip.timed;
 }
 
 /// TimelineChannel is one channel of the timeline and the sounds on it.
@@ -8880,6 +9963,10 @@ class TimelineChannel {
 
   bool get editable => lanes.any((l) => l.editable);
   bool get video => first.element is VideoElement;
+
+  /// interactive is a channel of sounds played by pressing them on the
+  /// canvas -- see TimedLane.interactive.
+  bool get interactive => lanes.every((l) => l.interactive);
 
   /// sceneLabel is which canvas the channel's clips are on -- see
   /// TimedLane.sceneLabel.

@@ -15,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/model/human_body.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/parallax_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
@@ -48,6 +49,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/text_parts.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/audio_painter.dart';
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/render/chart_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/counter_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/image_silhouette.dart';
@@ -395,7 +398,8 @@ void _paintScene(
   };
 
   // Characters standing on a stage are drawn with it, nearest last.
-  for (var element in inStageOrder(elements, frame)) {
+  for (var element in inStageOrder(elements, frame,
+      backdrop: doc.drawnBackground, page: doc.size.rect)) {
     if (!element.visible ||
         element.id == skipElement ||
         hidden.contains(element.id) ||
@@ -485,7 +489,14 @@ void _paintDocumentBackground(
       !picture.removal.active &&
       picture.frame == null &&
       picture.box.padding == 0;
-  if (!covered) {
+  if (bg.isStage) {
+    // The stage in the pattern's place: a set, through its camera, that
+    // the characters standing on it are drawn in front of.
+    paintStage(canvas, rect, bg.stageOn(rect), (time * frameRate).round());
+  } else if (bg.isParallax) {
+    paintParallax(canvas, rect, bg.parallaxOn(rect), (time * frameRate).round(),
+        frameRate: frameRate, images: images);
+  } else if (!covered) {
     _paintPattern(canvas, rect, bg, time, images, backgrounds, frameRate);
   }
   if (picture != null && decoded != null) {
@@ -674,7 +685,7 @@ void paintElement(
   if (element is CharacterElement &&
       element.onStage != null &&
       document != null) {
-    var at = staging(element, document.elements, frame);
+    var at = stagingIn(document, element, frame);
     if (at != null) {
       if (alpha < 0.999) {
         canvas.saveLayer(null,
@@ -909,6 +920,9 @@ void paintElement(
                         : (pose.values[KeyframeChannel.count] ?? e.from),
                 pressed: counterPressed?.call(e) ?? -1,
                 running: counterRunning?.call(e)));
+      case SheetElement e:
+        arriving(canvas, bounds, const ElementAnimation(), pose,
+            () => paintSheetElement(canvas, bounds, e, document, frame));
       case AudioElement e:
         arriving(
             canvas,
@@ -1311,7 +1325,7 @@ LineElement _bowed(LineElement e, Keyframe pose) {
 Rect visualBoundsOf(CanvasElement element, CanvasDocument? doc, int frame) {
   // Where the stage's camera puts a character standing on it.
   if (element is CharacterElement && element.onStage != null && doc != null) {
-    var at = staging(element, doc.elements, frame);
+    var at = stagingIn(doc, element, frame);
     if (at != null) return at.box;
   }
   if (element is TextElement) {
@@ -1377,7 +1391,7 @@ bool hasOwnGeometry(CanvasElement element, CanvasDocument? doc, int frame) =>
     !(element is CharacterElement &&
         element.onStage != null &&
         doc != null &&
-        staging(element, doc.elements, frame) != null);
+        stagingIn(doc, element, frame) != null);
 
 /// curveOfElement is [element]'s own line as a polyline in document space, or
 /// null when it has none.
@@ -3040,6 +3054,17 @@ void _paintBackgroundElement(
     canvas.save();
     canvas.clipRRect(
         RRect.fromRectAndRadius(bounds, Radius.circular(e.cornerRadius)));
+  }
+  if (e.isStage || e.isParallax) {
+    var frame = (time * frameRate).round();
+    if (e.isStage) {
+      paintStage(canvas, bounds, e.staged, frame);
+    } else {
+      paintParallax(canvas, bounds, e.parallaxed, frame,
+          frameRate: frameRate, images: images);
+    }
+    if (e.cornerRadius > 0) canvas.restore();
+    return;
   }
   // Drawn from the editor's cache where it can be, as the canvas's own
   // background is: generated afresh on every repaint, a metal or a surface

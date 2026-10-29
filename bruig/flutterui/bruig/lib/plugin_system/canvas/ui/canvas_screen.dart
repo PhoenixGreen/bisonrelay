@@ -22,6 +22,7 @@ import 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
+import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/ui/text_documents.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_settings_bar.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/guides_settings.dart';
@@ -142,6 +143,21 @@ class _CanvasScreenState extends State<CanvasScreen> {
   /// who does animate turns it on once rather than on every visit.
   bool _timelineOpen = false;
 
+  /// _canvasShown is whether the canvas is on screen. Put away, it is kept
+  /// -- its zoom, its selection, its tools -- but neither drawn nor
+  /// touched, and the mixer and effects fill the room. For this session.
+  bool _canvasShown = true;
+
+  /// _audioKind is an audio document: worked on the timeline and the
+  /// mixer, so its timeline is always out.
+  bool get _audioKind => _controller.document.kind.isAudio;
+
+  /// _noCanvas is a document with no picture -- Ratio "None" -- whose
+  /// canvas is away for good.
+  bool get _noCanvas => _audioKind && !_controller.document.hasCanvas;
+  bool get _shown => _canvasShown && !_noCanvas;
+  bool get _timelineShown => _timelineOpen || _audioKind;
+
   /// _keyframesOpen is whether the pose bar is out.
   ///
   /// Held here rather than in the timeline for the same reason the canvas
@@ -174,6 +190,8 @@ class _CanvasScreenState extends State<CanvasScreen> {
   @override
   void initState() {
     super.initState();
+    // A MIDI keyboard plays this canvas's instruments while it is open.
+    MidiInput.shared.onNote = _controller.midiNote;
     var prefs = Provider.of<CanvasPreferences>(context, listen: false);
     // Nought is never set: the strip as it starts. Anything under the strip
     // is the play bar alone, as it was left.
@@ -275,6 +293,9 @@ class _CanvasScreenState extends State<CanvasScreen> {
 
   @override
   void dispose() {
+    if (MidiInput.shared.onNote == _controller.midiNote) {
+      MidiInput.shared.onNote = null;
+    }
     _documents?.stop();
     _controller.removeListener(_onSelectionChanged);
     _controller.removeListener(_keepShown);
@@ -570,6 +591,68 @@ class _CanvasScreenState extends State<CanvasScreen> {
     }
   }
 
+  /// _canvasAway is what is in the canvas's room while it is put away: the
+  /// effects over the mixer, filling it between them -- or, with neither
+  /// open, a word on where they are and the way back.
+  Widget _canvasAway(ThemeNotifier theme) => ColoredBox(
+        key: const ValueKey("canvasAway"),
+        color: theme.colors.surface,
+        child: LayoutBuilder(builder: (context, box) {
+          var room = box.maxHeight;
+          var mixer = _controller.mixerOpen, effects = _controller.effectsOpen;
+          if (!mixer && !effects) {
+            return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(_noCanvas ? "A piece of sound" : "The canvas is hidden",
+                    style: TextStyle(color: theme.colors.onSurfaceVariant)),
+                const SizedBox(height: 4),
+                Text("Open the mixer or the effects from the timeline.",
+                    style: TextStyle(
+                        fontSize: 12, color: theme.colors.onSurfaceVariant)),
+                const SizedBox(height: 8),
+                if (!_noCanvas)
+                  TextButton.icon(
+                    key: const ValueKey("showCanvas"),
+                    onPressed: () => setState(() => _canvasShown = true),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text("Show the canvas"),
+                  ),
+              ]),
+            );
+          }
+          // The mixer keeps the height it was given; the effects take the
+          // rest. Alone, either has all of it.
+          var most = math.max(mixerMinHeight, room - effectsMinHeight);
+          var mixerHeight = !mixer
+              ? 0.0
+              : effects
+                  ? _mixerHeight.clamp(mixerMinHeight, most).toDouble()
+                  : room;
+          return Column(children: [
+            if (effects)
+              CanvasMixer.effects(
+                controller: _controller,
+                // Pinned to the top here: the line between it and the mixer
+                // is the mixer's grip, and a grip along the top of this one
+                // moved that line the other way from the pointer.
+                resizable: false,
+                height: room - mixerHeight,
+                onResize: (h) => setState(() => _mixerHeight =
+                    (room - h).clamp(mixerMinHeight, most).toDouble()),
+                onClose: () => _controller.effectsOpen = false,
+              ),
+            if (mixer)
+              CanvasMixer(
+                controller: _controller,
+                height: mixerHeight,
+                onResize: (h) => setState(() =>
+                    _mixerHeight = h.clamp(mixerMinHeight, most).toDouble()),
+                onClose: () => _controller.mixerOpen = false,
+              ),
+          ]);
+        }),
+      );
+
   Widget _content(ThemeNotifier theme) => ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
@@ -594,7 +677,12 @@ class _CanvasScreenState extends State<CanvasScreen> {
                           _guidesOpen = !_guidesOpen;
                           if (_guidesOpen) _canvasSettingsOpen = false;
                         }),
-                        timelineOpen: _timelineOpen,
+                        canvasShown: _shown,
+                        onToggleCanvas: _noCanvas
+                            ? null
+                            : () =>
+                                setState(() => _canvasShown = !_canvasShown),
+                        timelineOpen: _timelineShown,
                         onToggleTimeline: () => setState(() {
                           _timelineOpen = !_timelineOpen;
                           Provider.of<CanvasPreferences>(context, listen: false)
@@ -619,104 +707,114 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 Expanded(
                   child: Stack(children: [
                     Positioned.fill(
-                      // The whole canvas area is a drop target, so an element
-                      // dragged out of the sidebar lands where it was let go rather
-                      // than in the middle of the page.
-                      child: DragTarget<ElementKind>(
-                        onAcceptWithDetails: (details) {
-                          var stage = _stageKey.currentState;
-                          var box =
-                              _stageKey.currentContext?.findRenderObject();
-                          if (stage == null || box is! RenderBox) return;
-                          var local = box.globalToLocal(details.offset);
-                          _controller.addElement(newElement(
-                            details.data,
-                            _controller.document,
-                            center: stage.toDocumentPoint(local),
-                          ));
-                        },
-                        builder: (context, candidate, rejected) =>
-                            // And an asset from the Assets sidebar, which becomes the
-                            // element that shows it, where it was let go.
-                            // Or a stock result, fetched when it lands.
-                            DragTarget<Object>(
-                          onWillAcceptWithDetails: (d) =>
-                              droppedKind(d.data) != null,
-                          onAcceptWithDetails: (details) async {
+                      // Put away rather than taken out: Offstage keeps the
+                      // stage's state and stops it painting and being hit.
+                      child: Offstage(
+                        offstage: !_shown,
+                        // The whole canvas area is a drop target, so an element
+                        // dragged out of the sidebar lands where it was let go rather
+                        // than in the middle of the page.
+                        child: DragTarget<ElementKind>(
+                          onAcceptWithDetails: (details) {
                             var stage = _stageKey.currentState;
                             var box =
                                 _stageKey.currentContext?.findRenderObject();
                             if (stage == null || box is! RenderBox) return;
                             var local = box.globalToLocal(details.offset);
-                            var center = stage.toDocumentPoint(local);
-                            var asset = await droppedAsset(details.data);
-                            if (asset == null || !mounted) return;
-                            // A model let go on a character is that
-                            // character's body now, not a second character.
-                            if (asset.kind == AssetKind.model) {
-                              var doc = _controller.document;
-                              var on = doc.elements.reversed
-                                  .whereType<CharacterElement>()
-                                  .where((c) =>
-                                      !c.locked &&
-                                      visualBoundsOf(c, doc, _controller.frame)
-                                          .contains(center))
-                                  .firstOrNull;
-                              if (on != null) {
-                                _controller.beginInteraction();
-                                _controller.replaceElement(on.copyWith(
-                                    body: on.body.copyWith(
-                                        kind: BodyKind.model,
-                                        modelId: asset.id,
-                                        modelName: asset.name)));
-                                _controller.endInteraction();
-                                _controller.selectOnly(on.id);
-                                return;
-                              }
-                            }
-                            _controller.addElement(elementForAsset(
-                              asset,
+                            _controller.addElement(newElement(
+                              details.data,
                               _controller.document,
-                              center: center,
+                              center: stage.toDocumentPoint(local),
                             ));
                           },
-                          builder: (context, assets, _) => Container(
-                            color: candidate.isEmpty && assets.isEmpty
-                                ? null
-                                : theme.colors.primary.withValues(alpha: 0.06),
-                            child: CanvasStage(
-                              key: _stageKey,
-                              controller: _controller,
-                              onButtonLink: _openLink,
+                          builder: (context, candidate, rejected) =>
+                              // And an asset from the Assets sidebar, which becomes the
+                              // element that shows it, where it was let go.
+                              // Or a stock result, fetched when it lands.
+                              DragTarget<Object>(
+                            onWillAcceptWithDetails: (d) =>
+                                droppedKind(d.data) != null,
+                            onAcceptWithDetails: (details) async {
+                              var stage = _stageKey.currentState;
+                              var box =
+                                  _stageKey.currentContext?.findRenderObject();
+                              if (stage == null || box is! RenderBox) return;
+                              var local = box.globalToLocal(details.offset);
+                              var center = stage.toDocumentPoint(local);
+                              var asset = await droppedAsset(details.data);
+                              if (asset == null || !mounted) return;
+                              // A model let go on a character is that
+                              // character's body now, not a second character.
+                              if (asset.kind == AssetKind.model) {
+                                var doc = _controller.document;
+                                var on = doc.elements.reversed
+                                    .whereType<CharacterElement>()
+                                    .where((c) =>
+                                        !c.locked &&
+                                        visualBoundsOf(
+                                                c, doc, _controller.frame)
+                                            .contains(center))
+                                    .firstOrNull;
+                                if (on != null) {
+                                  _controller.beginInteraction();
+                                  _controller.replaceElement(on.copyWith(
+                                      body: on.body.copyWith(
+                                          kind: BodyKind.model,
+                                          modelId: asset.id,
+                                          modelName: asset.name)));
+                                  _controller.endInteraction();
+                                  _controller.selectOnly(on.id);
+                                  return;
+                                }
+                              }
+                              _controller.addElement(elementForAsset(
+                                asset,
+                                _controller.document,
+                                center: center,
+                              ));
+                            },
+                            builder: (context, assets, _) => Container(
+                              color: candidate.isEmpty && assets.isEmpty
+                                  ? null
+                                  : theme.colors.primary
+                                      .withValues(alpha: 0.06),
+                              child: CanvasStage(
+                                key: _stageKey,
+                                controller: _controller,
+                                onButtonLink: _openLink,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
+                    if (!_shown) Positioned.fill(child: _canvasAway(theme)),
                     // The tool in hand on a picture, and what to do with it, over
                     // the top of the canvas where the eye is -- see
                     // image_tool_hint.dart.
-                    Positioned(
-                      top: 10,
-                      left: 16,
-                      right: 16,
-                      // A drawing's as well: only one is ever being edited.
-                      child: Center(
-                          child:
-                              Column(mainAxisSize: MainAxisSize.min, children: [
-                        ImageToolHint(controller: _controller),
-                        // A sketched character's: going round it, its
-                        // panels, the zoom and the drawing tools.
-                        CharacterDrawBar(controller: _controller),
-                        VectorToolHint(controller: _controller),
-                      ])),
-                    ),
+                    if (_shown)
+                      Positioned(
+                        top: 10,
+                        left: 16,
+                        right: 16,
+                        // A drawing's as well: only one is ever being edited.
+                        child: Center(
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                              ImageToolHint(controller: _controller),
+                              // A sketched character's: going round it, its
+                              // panels, the zoom and the drawing tools.
+                              CharacterDrawBar(controller: _controller),
+                              VectorToolHint(controller: _controller),
+                            ])),
+                      ),
                     // The pose bar still sits over the design rather than pushing
                     // it: it is opened while watching an animation, where a shift
                     // in the middle of playback is exactly what nobody wants, and
                     // it hangs off the bottom edge rather than the top -- which is
                     // not the edge anybody is working against.
-                    if (_keyframesOpen && !_controller.playing)
+                    if (_shown && _keyframesOpen && !_controller.playing)
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -728,7 +826,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                     // playhead is half of what it is for.
                     // The mixer at the bottom, the channels over it, so the strips
                     // and the clips they belong to are both in view.
-                    if (_controller.mixerOpen)
+                    if (_shown && _controller.mixerOpen)
                       Positioned(
                         bottom: _keyframesOpen && !_controller.playing
                             ? keyframeBarHeight
@@ -752,7 +850,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                       ),
                     // The effects of one strip, a panel of its own over the mixer
                     // -- or at the bottom, with the mixer shut.
-                    if (_controller.effectsOpen)
+                    if (_shown && _controller.effectsOpen)
                       Positioned(
                         bottom: (_keyframesOpen && !_controller.playing
                                 ? keyframeBarHeight
@@ -778,7 +876,7 @@ class _CanvasScreenState extends State<CanvasScreen> {
                 // Hidden by taking it out rather than by shrinking it to nothing:
                 // the transport holds a focus node and a ticker, and a strip of no
                 // height that still answers the keyboard is worse than no strip.
-                if (_timelineOpen)
+                if (_timelineShown)
                   CanvasTimeline(
                     controller: _controller,
                     keyframesOpen: _keyframesOpen,

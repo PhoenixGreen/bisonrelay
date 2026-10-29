@@ -18,7 +18,9 @@ enum EstimateAs {
   jpeg("JPEG", "Much smaller, and no transparency"),
   webp("WebP", "Smaller again than JPEG at the same quality"),
   gif("GIF", "Every frame, at 256 colours"),
-  video("MP4 or WebM", "Every frame, at full colour");
+  video("MP4 or WebM", "Every frame, at full colour"),
+  // The sound alone, as the Audio settings will write it.
+  audio("Audio", "The sound alone, as it is set to be written under Audio");
 
   final String label;
   final String description;

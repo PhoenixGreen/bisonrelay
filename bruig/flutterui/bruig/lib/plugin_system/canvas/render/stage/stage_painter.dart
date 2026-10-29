@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_camera.dart';
@@ -159,16 +162,51 @@ class Staging {
       [this.tilt = 0]);
 }
 
+/// stageNamed is the stage called [id], as it is drawn: a Background
+/// element showing one, or the canvas's own background where [backdrop] is
+/// one -- stretched to [page]. Null where there is no such stage, or it is
+/// showing its pattern instead.
+StageElement? stageNamed(String id, Iterable<CanvasElement> elements,
+    {CanvasBackground? backdrop, Rect? page}) {
+  if (id == backgroundStageId) {
+    if (backdrop == null || page == null || !backdrop.isStage) return null;
+    return backdrop.stageOn(page);
+  }
+  for (var el in elements) {
+    if (el.id != id) continue;
+    if (el is BackgroundElement && el.isStage) return el.staged;
+    // A stage made in code, as the tests make one. A saved one is read as
+    // the Background element it has become.
+    if (el is StageElement) return el;
+  }
+  return null;
+}
+
+/// stagesIn is every stage a character could stand on: the background's
+/// first, then each Background element showing one, as (id, name).
+List<(String, String)> stagesIn(Iterable<CanvasElement> elements,
+        {CanvasBackground? backdrop}) =>
+    [
+      if (backdrop?.isStage == true) (backgroundStageId, "Canvas background"),
+      for (var el in elements)
+        if ((el is BackgroundElement && el.isStage) || el is StageElement)
+          (el.id, el.name),
+    ];
+
+/// stagingIn is [staging] in [doc], against the background behind the
+/// canvas being shown.
+Staging? stagingIn(CanvasDocument doc, CharacterElement e, int frame) =>
+    staging(e, doc.elements, frame,
+        backdrop: doc.drawnBackground, page: doc.size.rect);
+
 /// staging is [e] as it stands on its stage among [elements] on [frame], or
 /// null when it is not on one that is there -- or is behind the camera.
 Staging? staging(
-    CharacterElement e, Iterable<CanvasElement> elements, int frame) {
+    CharacterElement e, Iterable<CanvasElement> elements, int frame,
+    {CanvasBackground? backdrop, Rect? page}) {
   var on = e.onStage;
   if (on == null) return null;
-  StageElement? stage;
-  for (var el in elements) {
-    if (el is StageElement && el.id == on.stage) stage = el;
-  }
+  var stage = stageNamed(on.stage, elements, backdrop: backdrop, page: page);
   if (stage == null) return null;
   var view = stageView(stage, frame);
   var feet = view.see(on.x, 0, on.z);
@@ -204,17 +242,25 @@ Staging? staging(
 /// standing on a stage taken out of its place and drawn just after its
 /// stage, the furthest from the camera first, so the nearer stand in front
 /// whatever order they were added in and however the camera moves.
-List<CanvasElement> inStageOrder(List<CanvasElement> elements, int frame) {
+///
+/// Those on the background's own stage come first of all, since that stage
+/// is behind everything.
+List<CanvasElement> inStageOrder(List<CanvasElement> elements, int frame,
+    {CanvasBackground? backdrop, Rect? page}) {
   var staged = <String, List<(double, CharacterElement)>>{};
   for (var e in elements) {
     if (e is! CharacterElement || e.onStage == null) continue;
-    var at = staging(e, elements, frame);
+    var at = staging(e, elements, frame, backdrop: backdrop, page: page);
     if (at == null) continue;
     (staged[e.onStage!.stage] ??= []).add((at.depth, e));
   }
   if (staged.isEmpty) return elements;
   var moved = {for (var list in staged.values) for (var (_, e) in list) e.id};
   var out = <CanvasElement>[];
+  if (staged[backgroundStageId] case var list?) {
+    list.sort((a, b) => b.$1.compareTo(a.$1));
+    out.addAll([for (var (_, c) in list) c]);
+  }
   for (var e in elements) {
     if (moved.contains(e.id)) continue;
     out.add(e);

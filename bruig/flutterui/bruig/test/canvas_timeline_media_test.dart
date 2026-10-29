@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:bruig/models/snackbar.dart';
@@ -101,29 +104,62 @@ void main() {
   });
 
   group("the mix", () {
-    test("each stretch trimmed, faded, set and placed; summed, not halved", () {
-      var (inputs, graph) = mixArgs(const [
+    test("each stretch trimmed, faded, set and placed; summed, not halved",
+        () async {
+      var which = await Process.run("which", ["ffmpeg"]);
+      if (which.exitCode != 0) {
+        markTestSkipped("ffmpeg is not installed");
+        return;
+      }
+      var dir = await Directory.systemTemp.createTemp("canvas-mix-place");
+      addTearDown(() => dir.delete(recursive: true));
+      var tone = path.join(dir.path, "tone.wav");
+      await Process.run("ffmpeg", [
+        "-y", "-f", "lavfi", "-i", "sine=frequency=500:duration=8", tone //
+      ]);
+      var out = path.join(dir.path, "mix.wav");
+      expect(
+          await renderMixWav(const [], const MasterMix(limiter: false),
+              seconds: 1, ffmpeg: "ffmpeg", out: out),
+          isFalse,
+          reason: "nothing to hear, nothing written");
+      var sounds = [
         ExportSound(
-            path: "/a.flac",
+            path: tone,
             at: 2,
             from: 1.5,
             length: 4,
             fadeIn: 1,
             fadeOut: 0.5,
-            volume: 0.8),
-        ExportSound(path: "/b.flac", at: 0, from: 0, length: 3),
-      ]);
-      expect(inputs, [
-        "-ss", "1.500", "-t", "4.000", "-i", "/a.flac", //
-        "-ss", "0.000", "-t", "3.000", "-i", "/b.flac",
-      ]);
-      expect(graph, contains("[1:a]"));
-      expect(graph, contains("afade=t=in:st=0:d=1.000"));
-      expect(graph, contains("afade=t=out:st=3.500:d=0.500"));
-      expect(graph, contains("volume=0.800"));
-      expect(graph, contains("adelay=2000:all=1"));
-      expect(graph, contains("amix=inputs=2:normalize=0"));
-      expect(graph, endsWith("[mix]"));
+            volume: 0.8,
+            channel: "a"),
+        ExportSound(path: tone, at: 0, from: 0, length: 3, channel: "b"),
+      ];
+      expect(
+          await renderMixWav(sounds, const MasterMix(limiter: false),
+              seconds: 7, ffmpeg: "ffmpeg", out: out),
+          isTrue);
+      var bytes = await File(out).readAsBytes();
+      var pcm = bytes.buffer.asFloat32List(44);
+      expect(pcm.length, 7 * 48000 * 2);
+      double rms(double from, double to) {
+        var sum = 0.0;
+        var a = (from * 48000).round(), b = (to * 48000).round();
+        for (var i = a; i < b; i++) {
+          sum += pcm[i * 2] * pcm[i * 2];
+        }
+        return math.sqrt(sum / (b - a));
+      }
+
+      var one = rms(0.5, 1.5); // b alone, at full volume
+      expect(one, greaterThan(0.05));
+      expect(rms(4, 5) / one, closeTo(0.8, 0.02), reason: "a at its volume");
+      // Both at once, in step: b at full and a part way up its fade --
+      // summed, not each turned down to make room.
+      expect(rms(2.3, 2.7) / one, closeTo(1 + 0.8 * 0.5, 0.1));
+      expect(rms(3.3, 3.7) / one, closeTo(0.8, 0.03),
+          reason: "b over, a up from its fade");
+      expect(rms(6.2, 7), lessThan(1e-4), reason: "a over at six seconds");
     });
   });
 

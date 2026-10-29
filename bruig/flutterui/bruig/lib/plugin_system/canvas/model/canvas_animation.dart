@@ -438,7 +438,10 @@ enum TimelineActionKind {
   stop("Stop", "Playback holds on this frame until something starts it again"),
   loop("Loop back", "Jump back to the target frame and carry on"),
   jump("Jump to", "Jump forward or back to the target frame once"),
-  pause("Pause", "Hold for a moment, then carry on");
+  pause("Pause", "Hold for a moment, then carry on"),
+  // A place, not an instruction: playback carries on past it. A player that
+  // does not know the kind skips it (see media.js), which is the same thing.
+  locator("Locator", "A named place on the ruler to jump to");
 
   final String label;
   final String description;

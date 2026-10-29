@@ -79,6 +79,17 @@ class StageView {
     );
   }
 
+  /// heardFrom is where [x], [y], [z] is from the camera, as a listener
+  /// standing there hears it: the angle round from straight ahead --
+  /// positive to the right, a half turn behind -- and how far, in metres.
+  /// See SoundPlacement.
+  (double, double) heardFrom(double x, double y, double z) {
+    var v = _P(x, y, z) - _eye;
+    var side = v.dot(_right), ahead = v.dot(_forward);
+    var angle = math.atan2(side, ahead) * 180 / math.pi;
+    return (angle, math.sqrt(v.dot(v)));
+  }
+
   /// lookingDown is how far down the camera looks to see [x], [y], [z], in
   /// degrees: the angle from level to the line from its eye -- negative
   /// looking up.

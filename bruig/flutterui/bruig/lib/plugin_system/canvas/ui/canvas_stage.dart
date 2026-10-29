@@ -14,6 +14,10 @@ import 'package:bruig/plugin_system/canvas/ui/character_doll_pose.dart';
 import 'package:bruig/plugin_system/canvas/ui/character_puppet.dart';
 import 'package:bruig/plugin_system/canvas/ui/orbit_pad.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
+import 'package:bruig/plugin_system/canvas/render/instrument_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -66,7 +70,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/text_item.dart';
 import 'package:bruig/plugin_system/canvas/model/text_spec.dart';
 import 'package:bruig/plugin_system/canvas/render/text_flow.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
-import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart' show vectorPathsOf;
+import 'package:bruig/plugin_system/canvas/render/character/character_outline.dart'
+    show vectorPathsOf;
 import 'package:bruig/plugin_system/canvas/render/vector_painter.dart'
     show vectorLinePath, vectorShapePath;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -169,6 +174,10 @@ enum _DragMode {
   /// stageOrbit is a 3D stage's camera being swung round it, by a drag with
   /// Option held anywhere on the stage.
   stageOrbit,
+
+  /// parallaxPan is parallax scenery's camera being panned, by a drag with
+  /// Option held on it: the scenery follows the pointer, as a map does.
+  parallaxPan,
 
   /// chartLabel is a chart's title or description being moved or resized
   /// inside the chart. Its own mode because it moves a *part* of an element
@@ -321,6 +330,9 @@ class CanvasStageState extends State<CanvasStage>
   /// not yet released, which control, and where -- the volume bar needs to
   /// know how far along it was pressed.
   AudioElement? _pendingAudio;
+
+  /// _keyDown is an instrument's key held under the pointer.
+  (AudioElement, int)? _keyDown;
 
   /// _pendingVideo is the same for a selected video's controls.
   VideoElement? _pendingVideo;
@@ -599,6 +611,7 @@ class CanvasStageState extends State<CanvasStage>
   /// with the camera as it was and where on the screen the drag began.
   String? _orbiting;
   StageCamera? _orbitFrom;
+  ParallaxCamera? _panFrom;
   Offset _orbitAt = Offset.zero;
   Map<String, Rect> _startBounds = {};
 
@@ -961,8 +974,12 @@ class CanvasStageState extends State<CanvasStage>
     var page = _pageRect.center;
     var want = page - Offset(_visible.width / 2, _visible.height / 2) - pan;
     return Offset(
-      want.dx.clamp(0.0, math.max(0.0, _viewport.width - _visible.width)).toDouble(),
-      want.dy.clamp(0.0, math.max(0.0, _viewport.height - _visible.height)).toDouble(),
+      want.dx
+          .clamp(0.0, math.max(0.0, _viewport.width - _visible.width))
+          .toDouble(),
+      want.dy
+          .clamp(0.0, math.max(0.0, _viewport.height - _visible.height))
+          .toDouble(),
     );
   }
 
@@ -1190,7 +1207,7 @@ class CanvasStageState extends State<CanvasStage>
     if (e is TeamElement && e.linked) return _hitPlayer(e, point) != null;
     // A character on a stage is wherever the camera puts it.
     if (e is CharacterElement && e.onStage != null) {
-      if (staging(e, document.elements, controller.frame) case var at?) {
+      if (stagingIn(document, e, controller.frame) case var at?) {
         return at.box.contains(point);
       }
     }
@@ -1962,7 +1979,8 @@ class CanvasStageState extends State<CanvasStage>
 
     // A sketch's hair strokes, while they are shaped: a handle of the one
     // picked, a stroke, or -- on the bare scalp -- a new one grown there.
-    if (controller.hairCharacter case var who? when !who.locked && controller.puppetHandles) {
+    if (controller.hairCharacter case var who?
+        when !who.locked && controller.puppetHandles) {
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
       var view = HairView.of(who, controller.frame,
           frameRate: document.frameRate, document: document);
@@ -1973,12 +1991,15 @@ class CanvasStageState extends State<CanvasStage>
             : view.under(doc, _scale, reach, picked: controller.hairPick);
         if (hold == null) {
           if (view.grownAt(doc,
-                  width: controller.hairAddLocks ? controller.hairLockWidth : null)
+                  width:
+                      controller.hairAddLocks ? controller.hairLockWidth : null)
               case var grown?) {
             controller.beginInteraction();
             var hair = view.hair;
             who = who.copyWith(
-                dna: who.dna.copyWith(hairRig: HairRig(hair.name, [...hair.strokes, grown], hair.groups)));
+                dna: who.dna.copyWith(
+                    hairRig: HairRig(
+                        hair.name, [...hair.strokes, grown], hair.groups)));
             controller.replaceElement(who, transient: true);
             hold = HairHold(hair.strokes.length, HairGrab.tip);
             _hairStart = who;
@@ -2002,7 +2023,8 @@ class CanvasStageState extends State<CanvasStage>
 
     // A sketch's face, feature by feature, while it is set: the smallest
     // handles, so first.
-    if (controller.faceCharacter case var who? when !who.locked && controller.puppetHandles) {
+    if (controller.faceCharacter case var who?
+        when !who.locked && controller.puppetHandles) {
       var reach = (handleSize / 2 + handleHitSlop) / _scale;
       var view = FaceRigView.of(who, controller.frame,
           frameRate: document.frameRate, document: document);
@@ -2105,8 +2127,9 @@ class CanvasStageState extends State<CanvasStage>
         }
       }
       if (picked != null) {
-        if (dollRingUnder(placed.dollJoint(picked), dollRingRadius / _scale, doc,
-                handleHitSlop / _scale) case var ring?) {
+        if (dollRingUnder(placed.dollJoint(picked), dollRingRadius / _scale,
+                doc, handleHitSlop / _scale)
+            case var ring?) {
           _dollHeld = picked;
           _dollRing = ring;
           _dollFrom = doc;
@@ -2136,9 +2159,31 @@ class CanvasStageState extends State<CanvasStage>
 
     // Option held on a 3D stage takes hold of its camera: across goes round
     // the stage, down looks from higher -- the stage's orbit globe, on the
-    // stage itself.
+    // stage itself. On a Background element showing one, or -- where the
+    // press hits nothing else -- the background's own.
     if (HardwareKeyboard.instance.isAltPressed) {
-      if (_hitElement(doc) case StageElement s when !s.locked) {
+      var hit = _hitElement(doc);
+      var held = switch (hit) {
+        StageElement s => s,
+        BackgroundElement b when b.isStage => b.staged,
+        null => controller.stageOf(backgroundStageId),
+        _ => null,
+      };
+      // Parallax scenery is panned the same way.
+      var scenery = switch (hit) {
+        BackgroundElement b when b.isParallax => b.parallaxed,
+        null => controller.parallaxOf(backgroundParallaxId),
+        _ => null,
+      };
+      if (scenery case var p? when !p.locked) {
+        _orbiting = p.id;
+        _panFrom = p.cameraAt(controller.frame);
+        _orbitAt = stage;
+        _mode = _DragMode.parallaxPan;
+        controller.beginInteraction();
+        return;
+      }
+      if (held case var s? when !s.locked) {
         _orbiting = s.id;
         _orbitFrom = s.cameraAt(controller.frame);
         _orbitAt = stage;
@@ -2418,6 +2463,24 @@ class CanvasStageState extends State<CanvasStage>
         _pendingVideo = element;
         _pendingVideoPart = part;
         _pendingVideoAt = doc;
+        _beginTransform(_DragMode.move, null);
+        return;
+      }
+    }
+
+    // A selected instrument's keys: down, the note sounds -- straight away,
+    // not on the release, as a key does -- and let go, it stops. A press
+    // that travels lets the note go and moves the keyboard instead. Further
+    // down the key is harder, as it is on a real one.
+    if (element is AudioElement &&
+        element.instrument != null &&
+        controller.selection.length == 1 &&
+        controller.selection.first == element.id) {
+      var keys =
+          keyboardLayout(element.instrument!, element.boundsAt(controller.frame));
+      if (keys.keyAt(doc) case (var key, var depth)?) {
+        controller.noteOn(element, key, velocity: (50 + depth * 77).round());
+        _keyDown = (element, key);
         _beginTransform(_DragMode.move, null);
         return;
       }
@@ -3438,26 +3501,33 @@ class CanvasStageState extends State<CanvasStage>
     // drawn, and its fill.
     Path area(VectorShape s) {
       var out = Path();
-      if (s.fill != null) out = Path.combine(PathOperation.union, out, vectorShapePath(s));
-      if (s.stroke != null) out = Path.combine(PathOperation.union, out, vectorLinePath(s));
+      if (s.fill != null)
+        out = Path.combine(PathOperation.union, out, vectorShapePath(s));
+      if (s.stroke != null)
+        out = Path.combine(PathOperation.union, out, vectorLinePath(s));
       return out;
     }
 
     var added = now.sublist(was.length);
     if (added.isEmpty) return;
     var into = vectorShapePath(target);
-    var stroke = added.map(area).reduce((a, b) => Path.combine(PathOperation.union, a, b));
+    var stroke = added
+        .map(area)
+        .reduce((a, b) => Path.combine(PathOperation.union, a, b));
     // Not touching it: a shape of its own, as drawn.
-    if (Path.combine(PathOperation.intersect, into, stroke).getBounds().isEmpty) {
+    if (Path.combine(PathOperation.intersect, into, stroke)
+        .getBounds()
+        .isEmpty) {
       return;
     }
     var merged = Path.combine(PathOperation.union, into, stroke);
-    var paths = vectorPathsOf(merged,
-        tolerance: 0.35 * VectorSpace(before).unitsPer);
+    var paths =
+        vectorPathsOf(merged, tolerance: 0.35 * VectorSpace(before).unitsPer);
     if (paths.isEmpty) return;
     controller.replaceElement(
         before.copyWith(shapes: [
-          for (var (i, s) in was.indexed) i == base ? s.copyWith(paths: paths) : s,
+          for (var (i, s) in was.indexed)
+            i == base ? s.copyWith(paths: paths) : s,
         ]),
         transient: true);
   }
@@ -3831,7 +3901,9 @@ class CanvasStageState extends State<CanvasStage>
           paint: controller.vectorTint,
           width: controller.vectorBrushSize / _scale * unit,
           // Shading drawn on is cel shading: a hard edge, unless softened.
-          soft: _shade != 0 ? controller.vectorBrushSoft * 0.5 : controller.vectorBrushSoft,
+          soft: _shade != 0
+              ? controller.vectorBrushSoft * 0.5
+              : controller.vectorBrushSoft,
           line: controller.vectorTintLine,
           fill: controller.vectorTintFill,
           erase: HardwareKeyboard.instance.isAltPressed,
@@ -3871,7 +3943,8 @@ class CanvasStageState extends State<CanvasStage>
         erase: like.erase);
     _strokeOn = _onPicked(shapesUnder(e, at, like.width / 2));
     controller.replaceElement(
-        withStrokeOn(e, _strokeOn, _stroke!, rubOut: rubOut, shade: rubOut ? 0 : _shade),
+        withStrokeOn(e, _strokeOn, _stroke!,
+            rubOut: rubOut, shade: rubOut ? 0 : _shade),
         transient: true);
   }
 
@@ -3891,7 +3964,10 @@ class CanvasStageState extends State<CanvasStage>
     // stroke is a few hundred points, not one for every pixel crossed.
     if ((at - stroke.points.last).distance < stroke.width / 10) return;
     _stroke = stroke.withPoint(at);
-    _strokeOn = {..._strokeOn, ..._onPicked(shapesUnder(before, at, stroke.width / 2))};
+    _strokeOn = {
+      ..._strokeOn,
+      ..._onPicked(shapesUnder(before, at, stroke.width / 2))
+    };
     controller.replaceElement(
         withStrokeOn(before, _strokeOn, _stroke!,
             rubOut: _strokeRubs, shade: _strokeRubs ? 0 : _shade),
@@ -5398,6 +5474,12 @@ class CanvasStageState extends State<CanvasStage>
     // stayed where the stroke began.
     _hoverAt = event.localPosition;
     if (_brushAt != null) _moveBrush(event.localPosition);
+    // A key held that travels is a drag of the keyboard: the note goes.
+    if (_keyDown case (var e, var key)?
+        when (event.localPosition - _pressedAt).distance > _buttonClickSlop) {
+      controller.noteOff(e, key);
+      _keyDown = null;
+    }
     // A press that travels is a drag of the chart, not a hold of its key.
     if (_legendHold != null &&
         (event.localPosition - _pressedAt).distance > _buttonClickSlop) {
@@ -5468,16 +5550,29 @@ class CanvasStageState extends State<CanvasStage>
       case _DragMode.player:
         _applyPlayerMove(doc);
       case _DragMode.stageOrbit:
-        if (controller.document.elementById(_orbiting ?? "")
-            case StageElement s) {
+        if (controller.stageOf(_orbiting ?? "") case var s?) {
           var from = _orbitFrom ?? s.cameraAt(controller.frame);
           var d = event.localPosition - _orbitAt;
           var yaw = from.yaw + d.dx * CanvasOrbitPad.degreesPerPixel * 0.5;
           var pitch = (from.pitch + d.dy * CanvasOrbitPad.degreesPerPixel * 0.5)
               .clamp(-10.0, 89.0);
-          controller.replaceElement(
+          controller.putStage(
               controller.stageFilmed(
                   s, from.copyWith(yaw: (yaw * 10).round() / 10, pitch: pitch)),
+              transient: true);
+        }
+      case _DragMode.parallaxPan:
+        if ((controller.parallaxOf(_orbiting ?? ""), _panFrom)
+            case (var p?, var from?)) {
+          // Against the drag, in design units: dragging the scenery left
+          // moves the camera right.
+          var d = (event.localPosition - _orbitAt) / (_scale == 0 ? 1 : _scale);
+          controller.putBackdrop(
+              controller.parallaxFilmed(
+                  p,
+                  from.copyWith(
+                      x: (from.x - d.dx).roundToDouble(),
+                      y: (from.y - d.dy).roundToDouble())),
               transient: true);
         }
       case _DragMode.characterHair:
@@ -5485,21 +5580,26 @@ class CanvasStageState extends State<CanvasStage>
           var view = HairView.of(start, controller.frame,
               frameRate: document.frameRate, document: document);
           if (view != null) {
-            controller.replaceElement(view.dragged(hold, _rigFrom, doc), transient: true);
+            controller.replaceElement(view.dragged(hold, _rigFrom, doc),
+                transient: true);
           }
         }
       case _DragMode.characterFace:
         if ((_faceStart, _faceHold) case (var start?, var hold?)) {
           controller.replaceElement(
               faceDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate, document: document, mirror: controller.mirrorEdits),
+                  frameRate: document.frameRate,
+                  document: document,
+                  mirror: controller.mirrorEdits),
               transient: true);
         }
       case _DragMode.characterRig:
         if ((_rigStart, _rigHold) case (var start?, var hold?)) {
           controller.replaceElement(
               rigDragged(start, hold, _rigFrom, doc, controller.frame, _scale,
-                  frameRate: document.frameRate, document: document, mirror: controller.mirrorEdits),
+                  frameRate: document.frameRate,
+                  document: document,
+                  mirror: controller.mirrorEdits),
               transient: true);
         }
       case _DragMode.characterGuide:
@@ -5510,7 +5610,8 @@ class CanvasStageState extends State<CanvasStage>
               transient: true);
         }
       case _DragMode.spritePaint:
-        if (controller.spritePaint case var session?) unawaited(session.strokeTo(doc));
+        if (controller.spritePaint case var session?)
+          unawaited(session.strokeTo(doc));
       case _DragMode.tilePaint:
         controller.tilePaint?.strokeTo(doc);
       case _DragMode.dollJoint || _DragMode.dollRing || _DragMode.dollFinger:
@@ -5518,16 +5619,19 @@ class CanvasStageState extends State<CanvasStage>
           var placed = CharacterPlacement.of(who, controller.frame,
               frameRate: document.frameRate, document: document);
           CharacterPose? posed = switch (_mode) {
-            _DragMode.dollFinger => placed.curledTo(_dollHeld.hand!, _dollFinger, doc),
+            _DragMode.dollFinger =>
+              placed.curledTo(_dollHeld.hand!, _dollFinger, doc),
             _DragMode.dollRing => _dollRing == DollRing.bend
                 ? placed.bentTo(_dollHeld, doc)
                 // Up the swing ring brings the bone towards the reader.
-                : placed.swungBy(_dollHeld, _dollPose, (_dollFrom.dy - doc.dy) * _scale * 0.7),
+                : placed.swungBy(_dollHeld, _dollPose,
+                    (_dollFrom.dy - doc.dy) * _scale * 0.7),
             // A joint pressed is picked; dragged, it moves.
             _ when (doc - _dollFrom).distance * _scale < 3 => null,
             _ => placed.movedTo(_dollHeld, doc),
           };
-          if (posed != null) controller.setCharacterPose(who, posed, transient: true);
+          if (posed != null)
+            controller.setCharacterPose(who, posed, transient: true);
         }
       case _DragMode.characterPin:
         if (_posedCharacter() case var who?) {
@@ -6081,6 +6185,15 @@ class CanvasStageState extends State<CanvasStage>
       return;
     }
 
+    if (_keyDown case (var e, var key)?) {
+      _keyDown = null;
+      controller.noteOff(e, key);
+      controller.endInteraction();
+      _mode = _DragMode.none;
+      _handle = null;
+      return;
+    }
+
     var sound = _pendingAudio;
     _pendingAudio = null;
     if (sound != null &&
@@ -6209,7 +6322,8 @@ class CanvasStageState extends State<CanvasStage>
     // the move that followed it.
     if (_mode == _DragMode.guide) _finishGuide();
     if (_mode == _DragMode.spritePaint) {
-      if (controller.spritePaint case var session?) unawaited(session.strokeEnd());
+      if (controller.spritePaint case var session?)
+        unawaited(session.strokeEnd());
     }
     if (_mode == _DragMode.tilePaint) controller.tilePaint?.strokeEnd();
     if (_mode == _DragMode.vectorKnife) _finishKnife();
@@ -6239,6 +6353,7 @@ class CanvasStageState extends State<CanvasStage>
         _mode == _DragMode.characterFace ||
         _mode == _DragMode.characterHair ||
         _mode == _DragMode.stageOrbit ||
+        _mode == _DragMode.parallaxPan ||
         _mode == _DragMode.tableColumn ||
         _mode == _DragMode.imageFrame ||
         _mode == _DragMode.imageLayerMove ||
@@ -6721,7 +6836,8 @@ class CanvasStageState extends State<CanvasStage>
                             : controller.frameOn(_facingPage!),
                         facingOnLeft: _facingOnLeft,
                         facingShown: _spreadShown,
-                        document: document,
+                        // Played as a game: the canvas as the game has it.
+                        document: controller.gameView ?? document,
                         frame: controller.frame,
                         previewAt: controller.previewAt,
                         previewing: controller.previewing,
@@ -6766,8 +6882,11 @@ class CanvasStageState extends State<CanvasStage>
                         rulersApart: _viewport.width > _visible.width + 0.5 ||
                             _viewport.height > _visible.height + 0.5,
                         turnaround: switch (controller.turnaroundCharacter) {
-                          var who? => Turnaround.of(who, controller.frame,
-                              document.frameRate, panelOptions(who, adding: false)),
+                          var who? => Turnaround.of(
+                              who,
+                              controller.frame,
+                              document.frameRate,
+                              panelOptions(who, adding: false)),
                           null => null,
                         },
                         onionSkin: controller.onionSkin,
@@ -6808,7 +6927,8 @@ class CanvasStageState extends State<CanvasStage>
                                   controller.vectorTool == VectorTool.text ||
                                   controller.vectorTool == VectorTool.tint ||
                                   controller.vectorTool == VectorTool.shadow ||
-                                  controller.vectorTool == VectorTool.highlight ||
+                                  controller.vectorTool ==
+                                      VectorTool.highlight ||
                                   controller.vectorTool == VectorTool.eraser ||
                                   (controller.vectorTool == VectorTool.pencil &&
                                       !controller.vectorPencilPoints),

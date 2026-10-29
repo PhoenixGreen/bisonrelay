@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/export/audio_export.dart';
+import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -64,7 +66,8 @@ const List<String> _candidates = [
 /// two together would relicense the app. So the encoder is the reader's, on
 /// their machine, under whatever licence they please.
 const String ffmpegHelp =
-    "Video needs ffmpeg, which is not installed. Install it with "
+    "Publishing a video or a sound needs ffmpeg, which is not installed. "
+    "Install it with "
     "\"brew install ffmpeg\" on a Mac, \"apt install ffmpeg\" on Linux, or "
     "from ffmpeg.org on Windows — then restart. The GIF export needs nothing.";
 
@@ -207,6 +210,9 @@ Future<CanvasExport?> renderVideo(
   VideoQuality quality = VideoQuality.balanced,
   GifProgress? onProgress,
 
+  /// sound is how its sound is written -- see AudioOptions.videoArgs.
+  AudioOptions sound = const AudioOptions(),
+
   /// viaFiles takes the old road: every frame written out as a PNG and handed
   /// to ffmpeg as a numbered set. What the pipe falls back to, and what the
   /// test for the fallback asks for on purpose.
@@ -222,6 +228,7 @@ Future<CanvasExport?> renderVideo(
         images: images,
         format: format,
         quality: quality,
+        sound: sound,
         onProgress: onProgress);
     if (piped != null) return piped;
     debugPrint("Streaming the frames to ffmpeg did not work; writing them "
@@ -267,13 +274,13 @@ Future<CanvasExport?> renderVideo(
     if (width == 0) return null;
 
     var out = path.join(work.path, "canvas${format.extension}");
-    var sound = await _soundArgs(media, format);
+    var soundArgs = await _soundArgs(media, format, ffmpeg, work.path, sound);
     var result = await Process.run(ffmpeg, [
       "-y",
       ..._input(document, work.path),
-      ...sound.inputs,
+      ...soundArgs.inputs,
       ..._encoderArgs(document, format, quality),
-      ...sound.output,
+      ...soundArgs.output,
       out,
     ]);
 
@@ -321,6 +328,7 @@ Future<CanvasExport?> _renderPiped(
   required CanvasImageSource? images,
   required VideoFormat format,
   required VideoQuality quality,
+  required AudioOptions sound,
   GifProgress? onProgress,
 }) async {
   ExportBackdrop? backdrop;
@@ -342,7 +350,7 @@ Future<CanvasExport?> _renderPiped(
 
     work = await Directory.systemTemp.createTemp("bruig-canvas-video");
     var out = path.join(work.path, "canvas${format.extension}");
-    var sound = await _soundArgs(media, format);
+    var soundArgs = await _soundArgs(media, format, ffmpeg, work.path, sound);
 
     process = await Process.start(ffmpeg, [
       "-y",
@@ -356,9 +364,9 @@ Future<CanvasExport?> _renderPiped(
       "${document.frameRate}",
       "-i",
       "-",
-      ...sound.inputs,
+      ...soundArgs.inputs,
       ..._encoderArgs(document, format, quality),
-      ...sound.output,
+      ...soundArgs.output,
       out,
     ]);
 
@@ -447,30 +455,34 @@ Future<CanvasExport?> _renderPiped(
 /// _soundArgs is the sound of the media on the timeline, as ffmpeg inputs
 /// after the picture's and the arguments that mix and encode them -- or
 /// nothing at all, for an export with nothing to hear.
+///
+/// The sound is mixed first, into a WAV in [work] -- see mix_render.dart --
+/// and that is the one input ffmpeg is given for it.
 Future<({List<String> inputs, List<String> output})> _soundArgs(
-    ExportMedia? media, VideoFormat format) async {
+    ExportMedia? media, VideoFormat format, String ffmpeg, String work,
+    [AudioOptions sound = const AudioOptions()]) async {
+  const none = (inputs: <String>[], output: <String>[]);
   var sounds = media == null ? const <ExportSound>[] : await media.sounds();
-  if (sounds.isEmpty) {
-    return (inputs: const <String>[], output: const <String>[]);
-  }
-  var (inputs, graph) = mixArgs(sounds, master: media!.document.masterMix);
+  if (sounds.isEmpty) return none;
+  var document = media!.document;
+  var mixed = path.join(work, "mix.wav");
+  var ok = await renderMixWav(sounds, document.masterMix,
+      seconds: document.playFrames /
+          (document.frameRate <= 0 ? 1 : document.frameRate),
+      ffmpeg: ffmpeg,
+      out: mixed,
+      returns: document.returns,
+      // An MP4's AAC and a WebM's Opus both carry surround.
+      speakers: document.audio.speakers);
+  if (!ok) return none;
   return (
-    inputs: inputs,
+    inputs: ["-i", mixed],
     output: [
-      "-filter_complex", graph,
       "-map", "0:v",
-      "-map", "[mix]",
-      if (format == VideoFormat.webm) ...[
-        "-c:a",
-        "libopus",
-        "-b:a",
-        "160k"
-      ] else ...[
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k"
-      ],
+      "-map", "1:a",
+      ...sound.videoArgs(
+          webm: format == VideoFormat.webm,
+          channels: document.audio.speakers.channels),
       // The picture decides how long it is: the mix is padded with silence
       // to reach its end, and cut where it ends.
       "-shortest",

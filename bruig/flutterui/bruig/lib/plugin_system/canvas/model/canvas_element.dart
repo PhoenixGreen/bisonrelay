@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -53,7 +54,13 @@ enum ElementKind {
   sprite("Sprite"),
   // A scene painted from tile sets onto a grid, in layers. See
   // TileMapElement.
-  tileMap("Tile map");
+  tileMap("Tile map"),
+  // Layers of scenery moving at different speeds as the camera pans. A kind
+  // of background, never added by itself. See ParallaxElement.
+  parallax("Parallax"),
+  // A score: an instrument's part engraved, played, and practised against.
+  // See SheetElement.
+  sheet("Sheet music");
 
   final String label;
   const ElementKind(this.label);
@@ -235,6 +242,9 @@ class ElementBase {
   /// of element to learn.
   final String link;
 
+  /// play is what it does when the canvas is played as a game. See play.dart.
+  final PlaySpec play;
+
   const ElementBase({
     required this.id,
     this.name = "",
@@ -260,6 +270,7 @@ class ElementBase {
     this.shared,
     this.cue = "",
     this.link = "",
+    this.play = const PlaySpec(),
   });
 
   ElementBase copyWith({
@@ -289,8 +300,10 @@ class ElementBase {
     bool clearShared = false,
     String? cue,
     String? link,
+    PlaySpec? play,
   }) =>
       ElementBase(
+        play: play ?? this.play,
         id: id ?? this.id,
         name: name ?? this.name,
         x: x ?? this.x,
@@ -347,6 +360,7 @@ class ElementBase {
           : null,
       cue: _s(json["cue"], ""),
       link: _s(json["link"], ""),
+      play: PlaySpec.fromJson(json["play"]),
       layouts: {
         if (json["layouts"] is Map)
           for (var e in (json["layouts"] as Map).entries)
@@ -387,6 +401,7 @@ class ElementBase {
         if (shared != null) "shared": shared,
         if (cue.isNotEmpty) "cue": cue,
         if (link.isNotEmpty) "link": link,
+        if (!play.isNone) "play": play.toJson(),
         if (layouts.isNotEmpty)
           "layouts": {
             for (var e in layouts.entries) e.key: e.value.toJson(),

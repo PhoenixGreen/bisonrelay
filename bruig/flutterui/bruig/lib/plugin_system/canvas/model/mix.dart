@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+export 'package:bruig/plugin_system/canvas/model/surround.dart' show SurroundPan, SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonSpec;
 
@@ -7,17 +9,17 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
 // balance, EQ and compressor, and the master's EQ, compressor, limiter and
 // loudness target.
 //
-// A mix plays in three places -- the editor through SoLoud, an exported video
-// through ffmpeg, and later an interactive EPUB through Web Audio -- and it has
-// to sound the same in all of them. So everything here is something all three
-// can do, and each setting is defined once, here, in terms each of them is
-// told exactly:
+// What a mix does to the sound is media/mix/dsp.dart's: an export is
+// rendered by it, and the editor will play through it too. A mix may still
+// play in places that are not that arithmetic -- SoLoud's filters in the
+// editor until then, and Web Audio in an interactive EPUB -- so each setting
+// is defined once, here, in terms each of them can be told exactly:
 //
-// - the EQ is RBJ biquads (cuts, shelves and bells), which is what ffmpeg's
-//   highpass/lowpass/lowshelf/equalizer/highshelf and Web Audio's
-//   BiquadFilterNode are. SoLoud's EQ is a set of bands rather than biquads,
-//   so it is given this curve sampled at its band centres -- see
-//   eqBandGains -- and follows it to within a fraction of a decibel;
+// - the EQ is RBJ biquads (cuts, shelves and bells), which dsp.dart runs
+//   and which Web Audio's BiquadFilterNode is. SoLoud's EQ is a set of
+//   bands rather than biquads, so it is given this curve sampled at its
+//   band centres -- see eqBandGains -- and follows it to within a fraction
+//   of a decibel;
 // - balance is a gain on each side, worked out here and handed to each of
 //   them as two numbers, not as a "pan" each would read by its own law;
 // - the compressor and limiter take the parameters all three share.
@@ -225,6 +227,18 @@ class Eq {
   }
 }
 
+/// eqBiquads is [eq] as the filters that run it, in order up the spectrum:
+/// each [b0, b1, b2, a1, a2] already divided through by a0, which is the
+/// form a processor runs. Its overall [Eq.gainDb] is not among them.
+List<List<double>> eqBiquads(Eq eq, double sampleRate) => [
+      if (eq.on)
+        for (var slot in EqSlot.values)
+          if (eq.shaping(slot))
+            for (var (b0, b1, b2, a0, a1, a2)
+                in _sections(slot, eq.band(slot), sampleRate))
+              [b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0],
+    ];
+
 /// _sections is [b] in [slot] as the biquads that make it: one for a shelf
 /// or a bell, and for a cut one per twelve decibels an octave -- the first
 /// at the band's Q, so it can ring at the corner, the rest Butterworth.
@@ -351,42 +365,6 @@ List<double> eqBandGains(Eq eq, {int bands = soloudBands}) {
   ];
 }
 
-/// eqFfmpeg is [eq] as ffmpeg filters, the same biquads: ffmpeg's highpass
-/// and lowpass, two-pole, are the RBJ ones, as its shelves and bells are.
-List<String> eqFfmpeg(Eq eq) {
-  if (eq.flat) return const [];
-  String n(double v) => v.toStringAsFixed(3);
-  return [
-    for (var slot in EqSlot.values)
-      if (eq.shaping(slot))
-        ...switch ((slot.kind, eq.band(slot))) {
-          (EqKind.lowCut || EqKind.highCut, var b) => [
-              for (var i = 0; i < b.slope ~/ 12; i++)
-                "${slot.kind == EqKind.lowCut ? "highpass" : "lowpass"}"
-                    "=f=${n(b.freq)}:p=2:t=q:w=${n(i == 0 ? b.q : 0.707)}",
-            ],
-          (EqKind.lowShelf, var b) => [
-              "lowshelf=f=${n(b.freq)}:t=q:w=${n(b.q)}:g=${n(b.gainDb)}"
-            ],
-          (EqKind.highShelf, var b) => [
-              "highshelf=f=${n(b.freq)}:t=q:w=${n(b.q)}:g=${n(b.gainDb)}"
-            ],
-          (EqKind.bell, var b) => [
-              "equalizer=f=${n(b.freq)}:t=q:w=${n(b.q)}:g=${n(b.gainDb)}"
-            ],
-        },
-    if (eq.gainDb != 0) "volume=${n(eq.gainDb)}dB",
-  ];
-}
-
-/// dynamicsAndEq is a strip's EQ and compressor as ffmpeg filters, in the
-/// strip's order.
-List<String> dynamicsAndEq(Eq eq, Dynamics comp, bool compFirst) => [
-      if (compFirst && comp.on) comp.ffmpeg,
-      ...eqFfmpeg(eq),
-      if (!compFirst && comp.on) comp.ffmpeg,
-    ];
-
 /// AutoGain is a compressor making up, by itself, what it takes off: none,
 /// enough that a full-scale level comes out at full scale, or enough that
 /// one twelve decibels down does.
@@ -504,17 +482,6 @@ class Dynamics {
     return (makeupDb + math.max(0.0, auto)).clamp(0.0, 36.0);
   }
 
-  /// ffmpeg is this compressor as ffmpeg's acompressor, which takes its
-  /// levels as ratios rather than decibels -- its knee among them, from one
-  /// (a hard corner) to eight.
-  String get ffmpeg {
-    String n(double v) => v.toStringAsFixed(4);
-    return "acompressor=threshold=${n(dbToGain(threshold))}"
-        ":ratio=${n(ratio)}:attack=${n(attackMs)}:release=${n(releaseMs)}"
-        ":makeup=${n(math.max(1, dbToGain(totalMakeupDb)))}"
-        ":knee=${n(dbToGain(kneeDb).clamp(1.0, 8.0))}"
-        ":mix=${n(mix)}";
-  }
 }
 
 /// DuckCurve is how a ducked channel sinks and comes back.
@@ -632,7 +599,21 @@ class ChannelMix {
   /// it is said here rather than left to whichever was switched on first.
   final bool compFirst;
 
+  /// sends is how much of this channel also goes to each return, by the
+  /// return's id, in decibels. A return not listed is sent nothing.
+  final Map<String, double> sends;
+
+  /// surround is where among the speakers this channel is heard, in a
+  /// piece mixed for surround -- null for the front pair, as it was mixed
+  /// -- and lfeDb how much of it also goes to the LFE, or null for none.
+  /// See surround.dart. A stereo piece hears neither.
+  final SurroundPan? surround;
+  final double? lfeDb;
+
   const ChannelMix({
+    this.surround,
+    this.lfeDb,
+    this.sends = const {},
     this.gainDb = 0,
     this.balance = 0,
     this.mute = false,
@@ -649,7 +630,20 @@ class ChannelMix {
       !eq.on &&
       !comp.on &&
       !duck.on &&
-      !compFirst;
+      !compFirst &&
+      surround == null &&
+      lfeDb == null &&
+      sends.isEmpty;
+
+  /// sendDb is how much goes to return [id], or null for none.
+  double? sendDb(String id) => sends[id];
+
+  /// withSend sets how much goes to return [id]; null sends nothing.
+  ChannelMix withSend(String id, double? db) => copyWith(sends: {
+        for (var e in sends.entries)
+          if (e.key != id) e.key: e.value,
+        if (db != null && db > -90) id: db.clamp(-90.0, 6.0),
+      });
 
   /// gains is the level of each side: the fader, and the balance taking away
   /// from the side it turns from. Nothing is ever made louder than the fader
@@ -661,6 +655,34 @@ class ChannelMix {
     return (level * (b > 0 ? 1 - b : 1), level * (b < 0 ? 1 + b : 1));
   }
 
+  /// withSurround places the channel; null puts it back on the front pair.
+  ChannelMix withSurround(SurroundPan? pan) => ChannelMix(
+        surround: pan,
+        lfeDb: lfeDb,
+        sends: sends,
+        gainDb: gainDb,
+        balance: balance,
+        mute: mute,
+        eq: eq,
+        comp: comp,
+        duck: duck,
+        compFirst: compFirst,
+      );
+
+  /// withLfe sets how much goes to the LFE; null sends none.
+  ChannelMix withLfe(double? db) => ChannelMix(
+        surround: surround,
+        lfeDb: db == null || db <= -60 ? null : db.clamp(-60.0, 6.0),
+        sends: sends,
+        gainDb: gainDb,
+        balance: balance,
+        mute: mute,
+        eq: eq,
+        comp: comp,
+        duck: duck,
+        compFirst: compFirst,
+      );
+
   ChannelMix copyWith({
     double? gainDb,
     double? balance,
@@ -669,8 +691,12 @@ class ChannelMix {
     Dynamics? comp,
     Ducking? duck,
     bool? compFirst,
+    Map<String, double>? sends,
   }) =>
       ChannelMix(
+        surround: surround,
+        lfeDb: lfeDb,
+        sends: sends ?? this.sends,
         gainDb: gainDb ?? this.gainDb,
         balance: balance ?? this.balance,
         mute: mute ?? this.mute,
@@ -688,9 +714,24 @@ class ChannelMix {
         if (comp.on) "comp": comp.toJson(),
         if (duck.on) "duck": duck.toJson(),
         if (compFirst) "compFirst": true,
+        if (sends.isNotEmpty) "sends": sends,
+        if (surround case var s?) "surround": s.toJson(),
+        if (lfeDb case var l?) "lfe": l,
       };
 
   factory ChannelMix.fromJson(Map<String, dynamic> json) => ChannelMix(
+        surround: json["surround"] is Map<String, dynamic>
+            ? SurroundPan.fromJson(json["surround"] as Map<String, dynamic>)
+            : null,
+        lfeDb: json["lfe"] is num
+            ? (json["lfe"] as num).toDouble().clamp(-60.0, 6.0)
+            : null,
+        sends: {
+          if (json["sends"] case Map raw)
+            for (var e in raw.entries)
+              if (e.key is String && e.value is num)
+                e.key as String: (e.value as num).toDouble().clamp(-90.0, 6.0),
+        },
         gainDb: jsonDouble(json["gain"], 0).clamp(-90.0, 12.0),
         balance: jsonDouble(json["balance"], 0).clamp(-1.0, 1.0),
         mute: jsonBool(json["mute"], false),
@@ -700,26 +741,31 @@ class ChannelMix {
         compFirst: jsonBool(json["compFirst"], false),
       );
 
-  /// ffmpeg is this strip as ffmpeg filters, in the order the editor runs
-  /// them: the EQ and the compressor in the order set, then level and
-  /// balance.
-  List<String> get ffmpeg {
-    var (l, r) = gains;
-    String n(double v) => v.toStringAsFixed(4);
-    return [
-      ...dynamicsAndEq(eq, comp, compFirst),
-      if (l != 1 || r != 1) "pan=stereo|c0=${n(l)}*c0|c1=${n(r)}*c1",
-    ];
-  }
 }
 
-/// loudnessTargets are the targets offered: what the loudest services play
-/// at, what podcasts do, and the broadcast standard.
+/// loudnessTargets are the targets offered: a loud master, the CD level the
+/// CD preset sets, what the streaming services play at, what podcasts do, and
+/// the two broadcast standards. One list for every place a target is
+/// chosen -- the mixer, Canvas settings and Publish -- so a target set in one
+/// is always one of the others' items.
 const loudnessTargets = <(double, String)>[
+  (-9, "−9 LUFS · loud master"),
+  (-12, "−12 LUFS · CD"),
   (-14, "−14 LUFS · streaming"),
   (-16, "−16 LUFS · podcast"),
+  (-18, "−18 LUFS · dynamic"),
   (-23, "−23 LUFS · EBU R128 broadcast"),
+  (-24, "−24 LKFS · film & TV"),
 ];
+
+/// loudnessOptions is [loudnessTargets] with [current] added when it is none
+/// of them -- one read from an older file, say -- so a dropdown always has
+/// exactly one item for the value it shows.
+List<(double, String)> loudnessOptions(double current) => [
+      ...loudnessTargets,
+      if (!loudnessTargets.any((t) => t.$1 == current))
+        (current, "${current.round()} LUFS"),
+    ];
 
 /// MasterMix is the master strip: what everything is summed through.
 class MasterMix {
@@ -811,21 +857,6 @@ class MasterMix {
         compFirst: jsonBool(json["compFirst"], false),
       );
 
-  /// ffmpeg is the master as ffmpeg filters: EQ, glue, level, then -- where
-  /// asked -- the loudness brought to the target, and last the limiter, so
-  /// nothing after it can take a peak back over the ceiling.
-  List<String> get ffmpeg {
-    String n(double v) => v.toStringAsFixed(4);
-    return [
-      ...dynamicsAndEq(eq, comp, compFirst),
-      if (gainDb != 0) "volume=${n(gainDb)}dB",
-      if (normalise)
-        "loudnorm=I=${n(target)}:TP=${n(ceilingDb)}:LRA=11:linear=true",
-      if (limiter)
-        "alimiter=limit=${n(dbToGain(ceilingDb))}:attack=5:release=50"
-            ":level=disabled",
-    ];
-  }
 }
 
 double dbToGain(double db) => db <= -90 ? 0 : math.pow(10, db / 20).toDouble();

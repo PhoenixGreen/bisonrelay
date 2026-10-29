@@ -1,6 +1,11 @@
 import 'dart:convert';
+
+import 'package:bruig/plugin_system/canvas/media/mix/dart_audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 // canvas_preferences.dart is what the reader has decided about the Canvas
 // feature: whether it exists at all, and where the editor was left.
@@ -33,6 +38,9 @@ class CanvasPreferences extends ChangeNotifier {
   static const _keyframesShownKey = "canvasKeyframesShown";
   static const _scenesShownKey = "canvasScenesShown";
   static const _cuesShownKey = "canvasCuesShown";
+  static const _studioLookKey = "canvasStudioLook";
+  static const _mixEngineKey = "canvasMixEngine";
+  static const _studioOverridesKey = "canvasStudioColours";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -196,6 +204,51 @@ class CanvasPreferences extends ChangeNotifier {
     StorageManager.saveBool(_cuesShownKey, value);
   }
 
+  /// mixEngine is whether the editor plays through the mix engine rather
+  /// than SoLoud's own buses -- see dart_audio_engine.dart. On by default.
+  bool get mixEngine => useMixEngine;
+  set mixEngine(bool value) {
+    if (useMixEngine == value) return;
+    useMixEngine = value;
+    StorageManager.saveBool(_mixEngineKey, value);
+    notifyListeners();
+  }
+
+  /// studioLook is where the mixer's and the effects' colours come from,
+  /// and studioOverrides any of them changed by hand. See StudioColors.
+  StudioLook get studioLook => _studioLook;
+  StudioLook _studioLook = StudioLook.studio;
+  set studioLook(StudioLook value) {
+    if (_studioLook == value) return;
+    _studioLook = value;
+    StorageManager.saveString(_studioLookKey, value.name);
+    notifyListeners();
+  }
+
+  Map<StudioRole, Color> get studioOverrides => _studioOverrides;
+  Map<StudioRole, Color> _studioOverrides = const {};
+
+  /// setStudioColour changes one role, or puts it back with null.
+  void setStudioColour(StudioRole role, Color? colour) {
+    var next = {..._studioOverrides};
+    if (colour == null) {
+      next.remove(role);
+    } else {
+      next[role] = colour;
+    }
+    _studioOverrides = Map.unmodifiable(next);
+    StorageManager.saveString(_studioOverridesKey,
+        jsonEncode({for (var e in next.entries) e.key.name: colorToJson(e.value)}));
+    notifyListeners();
+  }
+
+  /// clearStudioColours puts every role back.
+  void clearStudioColours() {
+    _studioOverrides = const {};
+    StorageManager.saveString(_studioOverridesKey, "");
+    notifyListeners();
+  }
+
   /// publish is how the publish sheet was last set when something was
   /// published with it -- what, as what, where, and every setting for each --
   /// so that the next one opens as the last was left rather than on Image
@@ -235,6 +288,23 @@ class CanvasPreferences extends ChangeNotifier {
             0;
     _drawBarWidth =
         double.tryParse(await StorageManager.readString(_drawBarWidthKey)) ?? 0;
+    useMixEngine =
+        await StorageManager.readBool(_mixEngineKey, defaultVal: true);
+    _studioLook =
+        StudioLook.fromName(await StorageManager.readString(_studioLookKey));
+    try {
+      var saved =
+          jsonDecode(await StorageManager.readString(_studioOverridesKey));
+      if (saved is Map) {
+        _studioOverrides = Map.unmodifiable({
+          for (var role in StudioRole.values)
+            if (saved[role.name] is num)
+              role: colorFromJson(saved[role.name]),
+        });
+      }
+    } catch (_) {
+      // Nothing changed by hand yet.
+    }
     try {
       var saved = jsonDecode(await StorageManager.readString(_publishKey));
       if (saved is Map<String, dynamic>) _publish = Map.unmodifiable(saved);

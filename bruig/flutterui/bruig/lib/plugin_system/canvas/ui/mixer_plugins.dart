@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
     show envelopeAt;
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
@@ -270,12 +272,23 @@ class _Strip {
       ? null
       : controller.timelineChannels.where((l) => l.key == channel).firstOrNull;
 
-  bool get gone => channel != null && _lane == null;
+  /// _return is the return this strip is, where it is one rather than a
+  /// channel of sounds.
+  ReturnChannel? get _return => controller.returnOf(channel);
 
-  Eq get eq =>
-      channel == null ? controller.document.masterMix.eq : _lane!.mix.eq;
-  Dynamics get comp =>
-      channel == null ? controller.document.masterMix.comp : _lane!.mix.comp;
+  ChannelMix? get _mix => _lane?.mix ?? _return?.mix;
+
+  bool get gone => channel != null && _lane == null && _return == null;
+
+  // A channel can go while its devices are on screen -- its last sound
+  // deleted, a speaker emptied -- and the meters ask for its settings thirty
+  // times a second. Gone, it reads as a strip at rest rather than throwing.
+  Eq get eq => channel == null
+      ? controller.document.masterMix.eq
+      : _mix?.eq ?? const Eq();
+  Dynamics get comp => channel == null
+      ? controller.document.masterMix.comp
+      : _mix?.comp ?? const Dynamics();
 
   void write({Eq? eq, Dynamics? comp, bool transient = false}) {
     controller.beginInteraction();
@@ -286,13 +299,17 @@ class _Strip {
       // Opened on purpose, so changed wherever the sound is.
       controller.setChannelMix(lane, lane.mix.copyWith(eq: eq, comp: comp),
           transient: true, anywhere: true);
+    } else if (_return case var ret?) {
+      controller.setReturn(
+          ret.copyWith(mix: ret.mix.copyWith(eq: eq, comp: comp)),
+          transient: true);
     }
     if (!transient) controller.endInteraction();
   }
 
   void commit() => controller.endInteraction();
 
-  Ducking get duck => _lane!.mix.duck;
+  Ducking get duck => _lane?.mix.duck ?? const Ducking();
 
   void writeDuck(Ducking next, {bool transient = false}) {
     var lane = _lane;
@@ -303,11 +320,11 @@ class _Strip {
     if (!transient) controller.endInteraction();
   }
 
-  String get name => _lane?.name ?? "";
+  String get name => _lane?.name ?? _return?.name ?? "";
 
   bool get compFirst => channel == null
       ? controller.document.masterMix.compFirst
-      : _lane!.mix.compFirst;
+      : _mix?.compFirst ?? false;
 
   /// swap puts the compressor before the EQ, or back after it.
   void swap() {
@@ -320,6 +337,10 @@ class _Strip {
       controller.setChannelMix(
           lane, lane.mix.copyWith(compFirst: !lane.mix.compFirst),
           transient: true, anywhere: true);
+    } else if (_return case var ret?) {
+      controller.setReturn(
+          ret.copyWith(mix: ret.mix.copyWith(compFirst: !ret.mix.compFirst)),
+          transient: true);
     }
     controller.endInteraction();
   }
@@ -2196,4 +2217,167 @@ class _DuckShape extends CustomPainter {
   bool shouldRepaint(_DuckShape old) =>
       old.name != name ||
       old.duck.toJson().toString() != duck.toJson().toString();
+}
+
+/// ParamDevice is a device in a return's chain, drawn from its kind's table
+/// of settings: a knob for each, its switch, and a way to take it out. A
+/// reverb or a delay -- and whatever device is added to the table next.
+class ParamDevice extends StatelessWidget {
+  final CanvasController controller;
+  final String returnId;
+  final int index;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const ParamDevice({
+    required this.controller,
+    required this.returnId,
+    required this.index,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    super.key,
+  });
+
+  static String _reading(DeviceParam p, double v) => switch (p.unit) {
+        "ms" => "${v.round()} ms",
+        "Hz" => v >= 1000
+            ? "${(v / 1000).toStringAsFixed(1)} kHz"
+            : "${v.round()} Hz",
+        _ => "${(v * 100).round()}%",
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    var ret = controller.returnOf(returnId);
+    if (ret == null || index >= ret.devices.length) return const SizedBox();
+    var device = ret.devices[index];
+    void write(MixDevice next, {bool transient = false}) {
+      var now = controller.returnOf(returnId);
+      if (now == null || index >= now.devices.length) return;
+      controller.beginInteraction();
+      controller.setReturn(
+          now.copyWith(devices: [...now.devices]..[index] = next),
+          transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    var params = device.kind.params;
+    var columns = (params.length + 1) ~/ 2;
+    return DeviceFrame(
+      id: "dev$index",
+      title: device.kind.label,
+      skin: DeviceSkin.silver,
+      on: device.on,
+      onPower: (v) => write(device.switched(v)),
+      powerKey: ValueKey("devicePower-$index"),
+      folded: folded,
+      onFold: onFold,
+      width: 24.0 + 72 * columns,
+      height: height,
+      actions: [
+        IconButton(
+          key: ValueKey("deviceRemove-$index"),
+          tooltip: "Take the ${device.kind.label.toLowerCase()} out",
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, color: _silverInk),
+          onPressed: () {
+            var now = controller.returnOf(returnId);
+            if (now == null) return;
+            controller.beginInteraction();
+            controller.setReturn(now.copyWith(
+                devices: [...now.devices]..removeAt(index)));
+            controller.endInteraction();
+          },
+        ),
+      ],
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(device.kind.label,
+              style: const TextStyle(fontSize: 11, color: _silverInk)),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            for (var p in params)
+              _Knob(
+                key: ValueKey("device-$index-${p.id}"),
+                label: p.label,
+                text: _reading(p, device.value(p.id)),
+                value: device.value(p.id),
+                initial: p.initial,
+                range: _Range(p.min == 0 && p.unit != "" ? 1 : p.min, p.max,
+                    log: p.unit == "Hz" || p.unit == "ms"),
+                size: 46,
+                onChanged: (v, {transient = false}) =>
+                    write(device.withValue(p.id, v), transient: transient),
+                onCommit: controller.endInteraction,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// AddDeviceSlot is the end of a return's chain: a button for each kind of
+/// device that can be put on it.
+class AddDeviceSlot extends StatelessWidget {
+  final CanvasController controller;
+  final String returnId;
+  final double height;
+
+  const AddDeviceSlot(
+      {required this.controller,
+      required this.returnId,
+      required this.height,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return Container(
+      width: 92,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: look.studio.edge),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text("Add",
+            style: TextStyle(fontSize: 11, color: look.studio.muted)),
+        const SizedBox(height: 6),
+        for (var kind in DeviceKind.values)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: OutlinedButton(
+              key: ValueKey("addDevice-${kind.name}"),
+              style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: look.studio.text,
+                  side: BorderSide(color: look.studio.edge),
+                  textStyle: const TextStyle(fontSize: 11)),
+              onPressed: () {
+                var ret = controller.returnOf(returnId);
+                if (ret == null) return;
+                controller.beginInteraction();
+                controller.setReturn(
+                    ret.copyWith(devices: [...ret.devices, MixDevice(kind)]));
+                controller.endInteraction();
+              },
+              child: Text(kind.label),
+            ),
+          ),
+      ]),
+    );
+  }
 }

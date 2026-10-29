@@ -75,7 +75,13 @@ class ProceduralSettings extends StatelessWidget {
   final bool sections;
   final String rememberAs;
 
+  /// kindPicker is the choice of what the background draws -- this
+  /// pattern, or a stage -- put first in its Pattern layers. Null where
+  /// there is no such choice: a layer, a fill. See backdrop_settings.dart.
+  final Widget? kindPicker;
+
   const ProceduralSettings({
+    this.kindPicker,
     this.sections = false,
     this.rememberAs = "background",
     required this.spec,
@@ -2149,7 +2155,7 @@ class _LayeredState extends State<_Layered> {
                 : "${layers.length + 1} patterns · editing "
                     "${at == 0 ? "the background" : "layer $at"}",
             remember: "${owner.rememberAs}.layers",
-            children: [list],
+            children: [if (owner.kindPicker case var k?) k, list],
           ),
           if (picked != null)
             CanvasSection(
@@ -2178,6 +2184,7 @@ class _LayeredState extends State<_Layered> {
           initiallyOpen: true,
           trailing: layers.isEmpty ? "None" : "${layers.length}",
           children: [
+            if (owner.kindPicker case var k?) k,
             Padding(
               padding: const EdgeInsets.only(bottom: canvasGroupGap - 10),
               child: list,

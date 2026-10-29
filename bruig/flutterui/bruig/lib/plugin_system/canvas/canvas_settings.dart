@@ -1,5 +1,7 @@
 import 'package:bruig/components/text.dart';
 import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/controls.dart';
+import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/theming_system/runtime/theme_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -68,8 +70,90 @@ class CanvasSettingsSection extends StatelessWidget {
             color: TextColor.onSurfaceVariant,
           ),
         ),
+        Row(children: [
+          const Expanded(child: Txt.M("Play through the mix engine")),
+          Switch(
+            key: const ValueKey("mixEngine"),
+            value: prefs.mixEngine,
+            onChanged: (v) => prefs.mixEngine = v,
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(right: 60, bottom: 8),
+          child: Txt.S(
+            "On: the editor's sound goes through the same mixer an export "
+            "is made with, so what you hear is what is exported, sends and "
+            "returns included. Off: the older engine, which plays each "
+            "channel through SoLoud's own filters and cannot play a send. "
+            "Takes effect for the next canvas opened.",
+            color: TextColor.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Txt.M("Studio colours"),
+        Padding(
+          padding: const EdgeInsets.only(right: 60, top: 4, bottom: 8),
+          child: Txt.S(
+            "The colours of the mixer, the effects and the instruments. "
+            "Studio is a dark desk of its own; Follow my theme takes them "
+            "from the app's theme. Either way, press a colour to change it.",
+            color: TextColor.onSurfaceVariant,
+          ),
+        ),
+        SegmentedButton<StudioLook>(
+          key: const ValueKey("studioLook"),
+          segments: [
+            for (var l in StudioLook.values)
+              ButtonSegment(value: l, label: Text(l.label)),
+          ],
+          selected: {prefs.studioLook},
+          onSelectionChanged: (v) => prefs.studioLook = v.first,
+        ),
+        const SizedBox(height: 10),
+        _StudioSwatches(prefs: prefs),
       ],
       const Divider(),
+    ]);
+  }
+}
+
+/// _StudioSwatches is every studio colour as it is now, each pressed to
+/// change it; one changed by hand has a way back beside it.
+class _StudioSwatches extends StatelessWidget {
+  final CanvasPreferences prefs;
+  const _StudioSwatches({required this.prefs});
+
+  @override
+  Widget build(BuildContext context) {
+    var colours = StudioColors.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(spacing: 10, runSpacing: 8, children: [
+        for (var role in StudioRole.values)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            CanvasColorButton(
+              key: ValueKey("studioColour-${role.name}"),
+              label: role.label,
+              color: colours[role],
+              onChanged: (c) => prefs.setStudioColour(role, c),
+            ),
+            if (prefs.studioOverrides.containsKey(role))
+              IconButton(
+                key: ValueKey("studioColourReset-${role.name}"),
+                tooltip: "Put ${role.label.toLowerCase()} back",
+                iconSize: 16,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.restart_alt),
+                onPressed: () => prefs.setStudioColour(role, null),
+              ),
+          ]),
+      ]),
+      if (prefs.studioOverrides.isNotEmpty)
+        TextButton.icon(
+          key: const ValueKey("studioColoursReset"),
+          onPressed: prefs.clearStudioColours,
+          icon: const Icon(Icons.restart_alt, size: 16),
+          label: const Text("Put every colour back"),
+        ),
     ]);
   }
 }

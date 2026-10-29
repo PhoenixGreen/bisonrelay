@@ -107,7 +107,7 @@ class CharacterPlacement {
     // On a stage, where its camera puts it and turned as it sees it -- and
     // nothing of its own box: see paintElement.
     if (document != null && e.onStage != null) {
-      if (staging(e, document.elements, frame) case var at?) {
+      if (stagingIn(document, e, frame) case var at?) {
         var seen = performed
             .withTurn(performed.turn + at.turn)
             .withTilt((performed.tilt + at.tilt).clamp(-85.0, 85.0));

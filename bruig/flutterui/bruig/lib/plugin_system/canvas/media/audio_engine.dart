@@ -3,7 +3,11 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/surround.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 
@@ -36,12 +40,17 @@ class ChannelSound {
   /// compFirst is the order: the compressor before the EQ, or after it.
   final bool compFirst;
 
+  /// mix is the strip itself, solo and mute worked in, for an engine that
+  /// runs the strip rather than approximating it -- see DartAudioEngine.
+  final ChannelMix? mix;
+
   const ChannelSound(
       {this.left = 1,
       this.right = 1,
       this.eq,
       this.comp,
-      this.compFirst = false});
+      this.compFirst = false,
+      this.mix});
 }
 
 /// MasterSound is the master strip as the engine applies it.
@@ -56,12 +65,16 @@ class MasterSound {
   /// compFirst is the order of the EQ and the glue. The limiter is last.
   final bool compFirst;
 
+  /// mix is the master itself -- see ChannelSound.mix.
+  final MasterMix? mix;
+
   const MasterSound(
       {this.volume = 1,
       this.eq,
       this.comp,
       this.ceilingDb,
-      this.compFirst = false});
+      this.compFirst = false,
+      this.mix});
 }
 
 /// busLevels splits a strip's level on each side into what SoLoud takes:
@@ -100,6 +113,11 @@ abstract class AudioEngine {
   /// lengthOf is how long [track] is, in seconds.
   double lengthOf(AudioTrack track);
 
+  /// metronome is a click on every beat of a bar of [beatsPerBar], a beat
+  /// every [secondsPerBeat], as a track to play like any other -- or null
+  /// from an engine that cannot make one.
+  AudioTrack? metronome(double secondsPerBeat, int beatsPerBar);
+
   /// play starts [track] from [at] seconds in, at [volume], through the
   /// mixer channel called [channel] where it has one.
   AudioVoice? play(AudioTrack track,
@@ -110,6 +128,28 @@ abstract class AudioEngine {
 
   /// setMaster is the master strip, over everything.
   void setMaster(MasterSound sound);
+
+  /// setReturns is the returns the channels' sends feed. An engine that
+  /// cannot send -- SoLoud's buses carry a sound to one place only --
+  /// leaves them silent.
+  void setReturns(List<ReturnChannel> returns);
+
+  /// setSpeakers is what the mix is for. The editor hears surround folded
+  /// down to stereo; an engine with no surround hears it as stereo.
+  void setSpeakers(SpeakerLayout layout);
+
+  /// setPlacement is where the sound on channel [key] is heard from, taken
+  /// from the picture -- or null for the channel's own pan. See
+  /// SoundPlacement. SoLoud's buses cannot follow one, and leave it.
+  void setPlacement(String key, Heard? heard);
+
+  /// noteOn sounds [key] at [velocity] on channel [channel]'s instrument,
+  /// played with [sound]'s sound -- on [font], where that is the bank.
+  /// noteOff lets it go. An engine with no instruments of its own leaves
+  /// them: what an instrument plays on the timeline is its rendered file.
+  void noteOn(String channel, InstrumentPart sound, int key, int velocity,
+      {SoundFont? font});
+  void noteOff(String channel, int key);
 
   /// levels is how loud a channel -- or with no [channel], the master -- is
   /// coming out right now, left and right, nought to one. For the meters;
@@ -205,7 +245,28 @@ final void Function(int busId, bool enable)? _busMetering = () {
 class SoLoudAudioEngine implements AudioEngine {
   SoLoud get _soloud => SoLoud.instance;
 
+  @override
+  void setReturns(List<ReturnChannel> returns) {}
+
   Future<bool>? _starting;
+
+  @override
+  void setSpeakers(SpeakerLayout layout) {}
+
+  @override
+  void noteOn(String channel, InstrumentPart sound, int key, int velocity,
+      {SoundFont? font}) {}
+
+  @override
+  void noteOff(String channel, int key) {}
+
+  @override
+  void setPlacement(String key, Heard? heard) {}
+
+  /// No metronome on SoLoud's buses: the click is the mix engine's, made
+  /// as it plays. See click_track.dart.
+  @override
+  AudioTrack? metronome(double secondsPerBeat, int beatsPerBar) => null;
 
   @override
   Future<bool> start() {

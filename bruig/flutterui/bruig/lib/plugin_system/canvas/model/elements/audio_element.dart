@@ -1,3 +1,4 @@
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'dart:ui';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -83,8 +84,15 @@ class AudioElement extends CanvasElement {
 
   final ElementAnimation animation;
 
+  /// instrument is the part it plays, where it is an instrument -- drawn as
+  /// a keyboard, its clip's file the part played. See instrument.dart.
+  final InstrumentPart? instrument;
+
+  bool get isInstrument => instrument != null;
+
   const AudioElement(
     super.base, {
+    this.instrument,
     this.clip = const MediaClip(),
     this.glyph = AudioGlyph.speaker,
     this.picture = "",
@@ -117,6 +125,7 @@ class AudioElement extends CanvasElement {
 
   @override
   CanvasElement rebase(ElementBase base) => AudioElement(base,
+      instrument: instrument,
       clip: clip,
       glyph: glyph,
       picture: picture,
@@ -139,8 +148,10 @@ class AudioElement extends CanvasElement {
     BoxSpec? box,
     List<AudioControl>? controls,
     ElementAnimation? animation,
+    InstrumentPart? instrument,
   }) =>
       AudioElement(base,
+          instrument: instrument ?? this.instrument,
           clip: clip ?? this.clip,
           glyph: glyph ?? this.glyph,
           picture: picture ?? this.picture,
@@ -164,11 +175,15 @@ class AudioElement extends CanvasElement {
         "box": box.toJson(),
         "controls": [for (var c in controls) c.name],
         if (animation.any) "anim": animation.toJson(),
+        if (instrument case var part?) "instrument": part.toJson(),
       };
 
   factory AudioElement.fromJson(Map<String, dynamic> json, ElementBase b) {
     var raw = json["controls"];
     return AudioElement(b,
+        instrument: json["instrument"] is Map<String, dynamic>
+            ? InstrumentPart.fromJson(json["instrument"] as Map<String, dynamic>)
+            : null,
         clip: jsonSpec(json["clip"], MediaClip.fromJson, const MediaClip()),
         glyph: AudioGlyph.fromName(json["glyph"] as String?),
         picture: jsonString(json["picture"], ""),

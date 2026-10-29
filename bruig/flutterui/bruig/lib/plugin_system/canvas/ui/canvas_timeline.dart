@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/storage_manager.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -12,6 +13,8 @@ import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart';
 import 'package:bruig/plugin_system/canvas/ui/scene_strip.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/element_loop.dart';
 import 'package:bruig/plugin_system/canvas/ui/timeline_view.dart';
+import 'package:bruig/plugin_system/canvas/ui/transport_controls.dart';
+import 'package:bruig/plugin_system/canvas/model/transport.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_editing.dart';
 import 'package:bruig/plugin_system/canvas/ui/vector_timeline.dart';
 import 'package:bruig/plugin_system/canvas/ui/image_timeline.dart';
@@ -83,17 +86,17 @@ const double timelineCollapsedHeight = 1 + // the border along its top
 
 /// _transportHeight is the play bar: its controls, with no captions over
 /// them -- the captions are their hover text. See CanvasControlScope.
-const double _transportHeight = controlHeight;
+const double _transportHeight = controlHeight + 6;
 
 /// _stripPadTop is the room above the play bar: enough that its buttons do
 /// not sit hard against the timeline's top edge, now there is no line of
 /// captions over them to keep it off.
-const double _stripPadTop = 8;
+const double _stripPadTop = 4;
 const double _stripPadBottom = 6;
 
 /// _stripGap is the room between the play bar and the ruler under it: enough
 /// that the two read as two things rather than one run of controls.
-const double _stripGap = 10;
+const double _stripGap = 8;
 
 /// _markRow is where the keyframes sit inside the strip, and _stripHeight is
 /// tall enough for them with air under. Every hit test and the painter read
@@ -129,6 +132,12 @@ const double _flagWidth = 12;
 /// stretch of frames on screen. Taken out of the notes gutter, so the total
 /// does not change.
 const double _scrollbarHeight = 10;
+
+/// _braceHeight is how far down the ruler the loop brace comes.
+const double _braceHeight = 7;
+
+/// _BracePart is which part of the loop brace is held: an end, or all of it.
+enum _BracePart { start, end, whole }
 
 /// _rulerHeight is the frame numbers and the playhead.
 const double _rulerHeight = 30;
@@ -237,6 +246,15 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// and a drag is moving -- false its start, true its end -- or null.
   bool? _pressedLoop;
   bool? _dragLoop;
+
+  /// _pressedBrace and _dragBrace are the part of the loop brace -- the
+  /// control bar's Loop, along the top of the ruler -- a press is on and
+  /// the one being dragged; _braceFrom where the drag took hold, and
+  /// _braceWas the loop then. See _braceAt.
+  _BracePart? _pressedBrace;
+  _BracePart? _dragBrace;
+  int _braceFrom = 0;
+  (int, int) _braceWas = (0, 1);
 
   /// _selectedKeys are the frames of the marks that have been clicked.
   ///
@@ -899,7 +917,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var head = _origin + controller.frame;
     var moved = head != _lastHead &&
         (head < view.first || head > view.first + view.span);
-    if (_view != null && (controller.playing || moved)) {
+    // Playing, it keeps up only while Follow is on: off, the view stays
+    // where it was put. Moved by hand, it always keeps up.
+    if (_view != null &&
+        (controller.playing ? controller.followPlayhead : moved)) {
       view = view.following(head, frames);
       _view = view;
     }
@@ -1165,6 +1186,629 @@ class CanvasTimelineState extends State<CanvasTimeline> {
   /// rather than taking it from the channels. See CanvasSceneStrip.
   bool get _showScenes => _runs && !_collapsed && controller.scenesShown;
 
+  /// _controlBar is the play bar, grouped as a desk's transport is: what the
+  /// timing is, where the playhead is and the buttons that move it, the
+  /// editing that happens at the playhead, then -- pinned at the far end --
+  /// the tools, the engine and the views. See transport_controls.dart.
+  ///
+  /// A piece of sound has its tempo, metre and quantise here, and counts in
+  /// bars; a document of scenes has its frames.
+  Widget _controlBar(ThemeNotifier theme, CanvasDocument document,
+      TimelineAction? actionHere, Keyframe? keyHere, String? target) {
+    var sound = document.kind.isAudio;
+    var audio = document.audio;
+    var rate = math.max(1, document.frameRate);
+    var playable = (controller.playAll && document.hasScenes
+            ? document.playFrames
+            : document.frames) >
+        1;
+    void writeAudio(AudioSettings next) =>
+        controller.apply(document.copyWith(audio: next));
+    var (loopFrom, loopLength) = controller.loopRange;
+    var looping = controller.looping;
+    var quantise = audio.quantise == Quantise.off ? "beat" : audio.quantise.label;
+
+    Widget timing() {
+      if (sound) {
+        return TransportGroup(children: [
+          // Taps of the beat the time signature counts; the tempo is in
+          // quarter notes, as it is everywhere else.
+          TapTempoButton(
+              onTempo: (bpm) =>
+                  writeAudio(audio.copyWith(tempo: bpm * audio.beatUnit / 4))),
+          CanvasNumberField(
+            key: const ValueKey("audioTempo"),
+            label: "Tempo (BPM)",
+            value: audio.tempo,
+            min: 20,
+            max: 400,
+            decimals: 2,
+            width: 64,
+            grow: false,
+            onChanged: (v) {
+              controller.beginInteraction();
+              controller.apply(
+                  document.copyWith(audio: audio.copyWith(tempo: v)),
+                  transient: true);
+            },
+            onCommit: controller.endInteraction,
+          ),
+          CanvasDropdown<String>(
+            key: const ValueKey("audioSignature"),
+            label: "Time signature",
+            value: audio.signature,
+            width: 64,
+            options: [
+              for (var (b, u) in timeSignatures) ("$b/$u", "$b/$u"),
+              if (!timeSignatures
+                  .any((t) => "${t.$1}/${t.$2}" == audio.signature))
+                (audio.signature, audio.signature),
+            ],
+            onChanged: (v) {
+              var parts = v.split("/");
+              writeAudio(audio.copyWith(
+                  beatsPerBar: int.parse(parts[0]),
+                  beatUnit: int.parse(parts[1])));
+            },
+          ),
+          TransportButton(
+            key: const ValueKey("metronome"),
+            tooltip: controller.metronomeAvailable
+                ? "Metronome: a click on every beat while it plays"
+                : "The metronome needs the mix engine: Settings > Plugins > "
+                    "Canvas > Play through the mix engine",
+            on: controller.metronome,
+            onPressed: () => controller.metronome = !controller.metronome,
+            child: const MetronomeIcon(),
+          ),
+          CanvasDropdown<Quantise>(
+            key: const ValueKey("audioQuantise"),
+            label: "Quantise",
+            value: audio.quantise,
+            width: 74,
+            options: [for (var q in Quantise.values) (q, q.label)],
+            onChanged: (q) => writeAudio(audio.copyWith(quantise: q)),
+          ),
+        ]);
+      }
+      return TransportGroup(children: [
+        // The master canvas is as long as the scenes it covers, so there is
+        // nothing here to set: it was a field that took a number and put
+        // the old one back, which reads as the field being broken rather
+        // than as the length not being its own.
+        if (document.editingMaster)
+          TransportReadout(
+            key: const ValueKey("canvasFramesMaster"),
+            caption: "LENGTH",
+            value: "${document.frames}",
+            tooltip: "How long the whole sequence runs: every scene end to "
+                "end. The master canvas is as long as what it covers, so "
+                "this follows the scenes rather than being set here.",
+          )
+        else
+          CanvasNumberField(
+            key: const ValueKey("canvasFrames"),
+            label: "Length",
+            value: document.frames.toDouble(),
+            min: 1,
+            max: maxFrameCount.toDouble(),
+            width: 68,
+            grow: false,
+            onChanged: (v) {
+              controller.beginInteraction();
+              controller.setSceneLength(v.round(), transient: true);
+            },
+            onCommit: controller.endInteraction,
+          ),
+        CanvasNumberField(
+          key: const ValueKey("canvasFrameRate"),
+          label: "Per second",
+          value: document.frameRate.toDouble(),
+          min: 1,
+          max: 60,
+          width: 48,
+          grow: false,
+          onChanged: (v) {
+            controller.beginInteraction();
+            controller.apply(document.copyWith(frameRate: v.round()),
+                transient: true);
+          },
+          onCommit: controller.endInteraction,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+              document.isAnimated
+                  ? "${document.durationSeconds.toStringAsFixed(1)}s"
+                  : "Still",
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                  fontSize: 11, color: theme.colors.onSurfaceVariant)),
+        ),
+        // Which of the two Play means. Only where there is more than one
+        // canvas: on a single scene the two are the same thing.
+        if (document.hasScenes)
+          TransportButton(
+            key: const ValueKey("playAll"),
+            icon: Icons.playlist_play,
+            tooltip: "Play all scenes",
+            on: controller.playAll,
+            onPressed: () => controller.playAll = !controller.playAll,
+          ),
+      ]);
+    }
+
+    Widget transport() => TransportGroup(children: [
+          TransportPosition(
+            audio: audio,
+            bars: sound,
+            frame: controller.frame,
+            frames: document.frames,
+            rate: rate,
+            onGo: (f) => controller.stepFrame(f - controller.frame),
+          ),
+          TransportButton(
+            key: const ValueKey("toFirstFrame"),
+            icon: Icons.skip_previous,
+            tooltip: "",
+            onPressed: controller.rewind,
+          ),
+          TransportButton(
+            key: const ValueKey("play"),
+            icon: controller.playing ? Icons.pause : Icons.play_arrow,
+            tooltip: controller.playing ? "Pause" : "",
+            on: controller.playing,
+            lit: const Color(0xFF3CCF7A),
+            onPressed: playable ? controller.togglePlay : null,
+          ),
+          TransportButton(
+            key: const ValueKey("stopPlaying"),
+            icon: Icons.stop,
+            tooltip: "Stop: back to where Play started; again, to the start",
+            onPressed: controller.stopPlaying,
+          ),
+          // Record: what is played on an instrument, written into its part.
+          // There only where there is an instrument to play.
+          if (controller.hasInstruments)
+            TransportButton(
+              key: const ValueKey("record"),
+              tooltip: controller.recording
+                  ? "Stop recording: what was played is kept"
+                  : "Record: it plays, and what you play on an instrument "
+                      "is written into its part",
+              on: controller.recording,
+              lit: const Color(0xFF4A1F1F),
+              onPressed: () => controller.recording = !controller.recording,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: controller.recording
+                        ? const Color(0xFFFF5A5A)
+                        : const Color(0xFF9A5A5A)),
+              ),
+            ),
+          // The end of the scene; pressed there while every scene plays,
+          // the start of the next. See forward. A piece of sound has no
+          // scenes to go on to.
+          if (!sound)
+            TransportButton(
+              key: const ValueKey("toLastFrame"),
+              icon: Icons.skip_next,
+              tooltip: "",
+              onPressed: controller.forward,
+            ),
+          const TransportDivider(),
+          TransportButton(
+            key: const ValueKey("loop"),
+            icon: Icons.repeat,
+            tooltip: "Loop: play goes round between the brace's ends on the "
+                "ruler",
+            on: looping,
+            onPressed: () => controller.looping = !looping,
+          ),
+          TransportReadout(
+            key: const ValueKey("loopFrom"),
+            fieldKey: const ValueKey("loopFromField"),
+            caption: "FROM",
+            dim: !looping,
+            value: sound
+                ? barsText(audio, loopFrom, rate)
+                : "${loopFrom + 1}",
+            widest: sound
+                ? barsText(audio, math.max(0, document.frames - 1), rate)
+                : "${document.frames}",
+            tooltip: "Where the loop starts. Press to type it.",
+            onSubmit: (typed) {
+              var at = parsePosition(typed, audio, rate, bars: sound);
+              if (at == null) return false;
+              controller.setLoop(at, loopLength);
+              return true;
+            },
+          ),
+          TransportReadout(
+            key: const ValueKey("loopLength"),
+            fieldKey: const ValueKey("loopLengthField"),
+            caption: "FOR",
+            dim: !looping,
+            value: sound
+                ? lengthText(audio, loopLength, rate)
+                : "$loopLength",
+            widest: sound
+                ? lengthText(audio, document.frames, rate)
+                : "${document.frames}",
+            tooltip: sound
+                ? "How long the loop is: bars, beats, sixteenths. Press to "
+                    "type it."
+                : "How long the loop is, in frames. Press to type it.",
+            onSubmit: (typed) {
+              var length = parseLength(typed, audio, rate, bars: sound);
+              if (length == null) return false;
+              controller.setLoop(loopFrom, length);
+              return true;
+            },
+          ),
+          const TransportDivider(),
+          TransportButton(
+            key: const ValueKey("follow"),
+            icon: Icons.keyboard_tab,
+            tooltip: "Follow: keep the playhead in view while it plays",
+            on: controller.followPlayhead,
+            onPressed: () =>
+                controller.followPlayhead = !controller.followPlayhead,
+          ),
+        ]);
+
+    Widget markers() {
+      // One button for an action here, which is a stop until "At this
+      // frame" says otherwise: four buttons for four kinds was a row of
+      // look-alikes for one thing. A piece of sound adds a locator.
+      if (actionHere == null) {
+        return sound
+            ? TransportButton(
+                key: const ValueKey("addLocator"),
+                width: null,
+                tooltip: "Add a locator here: a named place to jump to",
+                onPressed: controller.addLocator,
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.flag_outlined),
+                  SizedBox(width: 4),
+                  Text("Locator",
+                      style: TextStyle(fontWeight: FontWeight.w500)),
+                ]),
+              )
+            : CanvasIconButton(
+                key: const ValueKey("addAction"),
+                icon: Icons.flag_outlined,
+                tooltip: "Add Timeline Action",
+                onPressed: () => _addAction(TimelineActionKind.stop),
+              );
+      }
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        CanvasDropdown<TimelineActionKind>(
+          label: "At this frame",
+          value: actionHere.kind,
+          width: 116,
+          options: [for (var k in TimelineActionKind.values) (k, k.label)],
+          onChanged: (v) => _replaceAction(actionHere.copyWith(kind: v)),
+        ),
+        // A word or two beside the flag, and whether it shows.
+        CanvasTextField(
+          key: const ValueKey("actionLabel"),
+          label: "Label",
+          value: actionHere.label,
+          width: 110,
+          grow: false,
+          onChanged: (v) {
+            controller.beginInteraction();
+            var document = controller.document;
+            controller.apply(
+                document.copyWith(actions: [
+                  for (var a in document.actions)
+                    a.frame == actionHere.frame ? a.copyWith(label: v) : a,
+                ]),
+                transient: true);
+          },
+          onCommit: controller.endInteraction,
+        ),
+        if (actionHere.kind != TimelineActionKind.locator)
+          CanvasToggle(
+            key: const ValueKey("actionShowLabel"),
+            label: "Show label",
+            value: actionHere.showLabel,
+            onChanged: (v) => _replaceAction(actionHere.copyWith(showLabel: v)),
+          ),
+        if (actionHere.kind == TimelineActionKind.loop ||
+            actionHere.kind == TimelineActionKind.jump)
+          CanvasNumberField(
+            label: "To frame",
+            value: actionHere.target.toDouble(),
+            min: 0,
+            max: (document.frames - 1).toDouble(),
+            width: 56,
+            onChanged: (v) =>
+                _replaceAction(actionHere.copyWith(target: v.round())),
+          ),
+        if (actionHere.kind == TimelineActionKind.loop)
+          CanvasNumberField(
+            label: "Times (0 = ∞)",
+            value: actionHere.repeats.toDouble(),
+            min: 0,
+            max: 999,
+            width: 56,
+            onChanged: (v) =>
+                _replaceAction(actionHere.copyWith(repeats: v.round())),
+          ),
+        CanvasIconButton(
+          icon: Icons.close,
+          tooltip: "Remove this marker",
+          onPressed: () => _removeAction(actionHere.frame),
+        ),
+      ]);
+    }
+
+    Widget editing() => TransportGroup(children: [
+          // Back and on: by a frame for scenes, and by the quantise grid --
+          // the beat, with it off -- for a piece of sound.
+          TransportButton(
+            key: ValueKey(sound ? "stepBack" : "previousFrame"),
+            icon: Icons.chevron_left,
+            tooltip: sound ? "Back a $quantise" : "Previous frame",
+            onPressed: () =>
+                sound ? controller.stepGrid(-1) : controller.stepFrame(-1),
+          ),
+          Text(sound ? quantise : "1 fr",
+              style: TextStyle(
+                  fontSize: 10,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  color: theme.colors.onSurfaceVariant)),
+          TransportButton(
+            key: ValueKey(sound ? "stepOn" : "nextFrame"),
+            icon: Icons.chevron_right,
+            tooltip: sound ? "On a $quantise" : "Next frame",
+            onPressed: () =>
+                sound ? controller.stepGrid(1) : controller.stepFrame(1),
+          ),
+          const TransportDivider(),
+          if (sound)
+            TransportMenu(
+              key: const ValueKey("keysMenu"),
+              label: "Keys",
+              icon: Icons.diamond_outlined,
+              tooltip: "Keyframes, for an element on the canvas",
+              items: [
+                (
+                  "Previous keyframe",
+                  _keyframeFrames.isEmpty ? null : () => _goToKeyframe(-1),
+                  null
+                ),
+                (
+                  keyHere != null ? "Remove keyframe" : "Add keyframe",
+                  !_hasTarget
+                      ? null
+                      : keyHere != null
+                          ? () => _removeTargetKey(controller.frame)
+                          : _addKeyframe,
+                  null
+                ),
+                (
+                  "Next keyframe",
+                  _keyframeFrames.isEmpty ? null : () => _goToKeyframe(1),
+                  null
+                ),
+                (
+                  "Auto keyframe",
+                  () => controller.autoKeyframe = !controller.autoKeyframe,
+                  controller.autoKeyframe
+                ),
+                (
+                  "Clear this channel's keyframes",
+                  _canClearChannel ? _clearChannel : null,
+                  null
+                ),
+                (
+                  "Clear all keyframes",
+                  document.hasKeyframes ? controller.clearAllKeyframes : null,
+                  null
+                ),
+              ],
+            )
+          else ...[
+            // And to the next mark rather than the next frame. Stepping a
+            // frame at a time to reach a keyframe eighty frames away is
+            // eighty presses, and dragging the playhead there lands one frame
+            // off as often as on.
+            CanvasIconButton(
+              key: const ValueKey("prevKeyframe"),
+              icon: Icons.keyboard_double_arrow_left,
+              tooltip: _keyframeFrames.isEmpty
+                  ? "No keyframes"
+                  : "Back to the previous keyframe",
+              tight: true,
+              onPressed:
+                  _keyframeFrames.isEmpty ? null : () => _goToKeyframe(-1),
+            ),
+            // The keyframe buttons stay on the transport row: they are
+            // pressed constantly while animating, and none changes width, so
+            // none can shift the row.
+            CanvasIconButton(
+              icon: Icons.fiber_manual_record,
+              tooltip: "Auto Keyframe",
+              active: controller.autoKeyframe,
+              tight: true,
+              onPressed: () =>
+                  controller.autoKeyframe = !controller.autoKeyframe,
+            ),
+            CanvasIconButton(
+              icon: keyHere != null ? Icons.diamond : Icons.diamond_outlined,
+              // Short, but not wrong: a player following a path has its
+              // timing on the path's points, not here.
+              tooltip: _drivingPath != null
+                  ? "Following a path"
+                  : keyHere != null
+                      ? "Remove Keyframe"
+                      : "Add Keyframe",
+              active: keyHere != null,
+              tight: true,
+              onPressed: !_hasTarget
+                  ? null
+                  : keyHere != null
+                      ? () => _removeTargetKey(controller.frame)
+                      : _addKeyframe,
+            ),
+            CanvasIconButton(
+              key: const ValueKey("nextKeyframe"),
+              icon: Icons.keyboard_double_arrow_right,
+              tooltip: _keyframeFrames.isEmpty
+                  ? "No keyframes"
+                  : "On to the next keyframe",
+              tight: true,
+              onPressed:
+                  _keyframeFrames.isEmpty ? null : () => _goToKeyframe(1),
+            ),
+            // Clearing, beside the diamond that adds and removes one. Guarded
+            // by needing something to clear rather than by a dialog: both are
+            // one undo step.
+            CanvasIconButton(
+              icon: Icons.layers_clear_outlined,
+              tooltip: _drivingPath != null
+                  ? "Following a path"
+                  : "Clear Channel Keyframes",
+              tight: true,
+              onPressed: _canClearChannel ? _clearChannel : null,
+            ),
+            CanvasIconButton(
+              icon: Icons.delete_sweep_outlined,
+              tooltip: "Clear all keyframes",
+              tight: true,
+              onPressed:
+                  document.hasKeyframes ? controller.clearAllKeyframes : null,
+            ),
+            _keyframeToggle(theme, target, keyHere != null),
+          ],
+          const TransportDivider(),
+          if (sound)
+            TransportButton(
+              key: const ValueKey("prevMarker"),
+              icon: Icons.keyboard_double_arrow_left,
+              tooltip: "Back to the previous locator or section",
+              onPressed: () => controller.goToMarker(-1),
+            ),
+          markers(),
+          if (sound)
+            TransportButton(
+              key: const ValueKey("nextMarker"),
+              icon: Icons.keyboard_double_arrow_right,
+              tooltip: "On to the next locator or section",
+              onPressed: () => controller.goToMarker(1),
+            ),
+        ]);
+
+    // Pinned at the far end, outside the part that scrolls, so they are
+    // always in the same place: what a press on a sound does, whether the
+    // trackpad moves the timeline, the engine, the effects and the mixer.
+    var tools = TransportGroup(children: [
+      TransportButton(
+        key: const ValueKey("toolSelect"),
+        icon: Icons.near_me_outlined,
+        tooltip: "Select",
+        on: controller.timelineTool == TimelineTool.select,
+        onPressed: () => controller.timelineTool = TimelineTool.select,
+      ),
+      TransportButton(
+        key: const ValueKey("toolKnife"),
+        icon: Icons.content_cut,
+        tooltip: "Knife (K)",
+        on: controller.timelineTool == TimelineTool.knife,
+        onPressed: () => controller.timelineTool = TimelineTool.knife,
+      ),
+      TransportButton(
+        key: const ValueKey("snap"),
+        icon: Icons.grid_4x4,
+        tooltip: sound
+            ? "Timeline snapping: to other clips and markers. Moves always "
+                "keep to the quantise grid."
+            : "Timeline snapping",
+        on: controller.snapping,
+        onPressed: () => _setSnapping(!controller.snapping),
+      ),
+      TransportButton(
+        key: const ValueKey("trackpadScrolls"),
+        icon: Icons.swipe_outlined,
+        tooltip: "Scrubbing",
+        on: _trackpadScrolls,
+        onPressed: () => _setTrackpadScrolls(!_trackpadScrolls),
+      ),
+    ]);
+    var key = controller.effectsChannel;
+    var shown = controller.effectsOpen;
+    var name = key == mixerMasterKey
+        ? "the master"
+        : controller.timelineChannels
+                .where((c) => c.key == key)
+                .firstOrNull
+                ?.name ??
+            "the channel";
+    var views = TransportGroup(children: [
+      // The selected channel's effects, and the mixer: both open the panel
+      // under the canvas, the first on that channel's chain.
+      TransportButton(
+        key: const ValueKey("effectsToggle"),
+        width: null,
+        tooltip: shown
+            ? "Hide the effects"
+            : "Effects of $name: its EQ, compressor and the rest, in a chain",
+        on: shown,
+        onPressed: () => shown
+            ? controller.effectsOpen = false
+            : controller.openEffects(key),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.settings_input_component_outlined),
+          SizedBox(width: 5),
+          Text("Effects", style: TextStyle(fontWeight: FontWeight.w500)),
+        ]),
+      ),
+      TransportButton(
+        key: const ValueKey("mixerToggle"),
+        width: null,
+        tooltip: controller.mixerOpen
+            ? "Close the mixer"
+            : "Mixer: level, panning and effects for each channel, and the "
+                "master",
+        on: controller.mixerOpen,
+        onPressed: () => controller.mixerOpen = !controller.mixerOpen,
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.equalizer),
+          SizedBox(width: 5),
+          Text("Mixer", style: TextStyle(fontWeight: FontWeight.w500)),
+        ]),
+      ),
+    ]);
+
+    return CanvasControlScope(
+      maxWidth: 400,
+      hoverCaptions: true,
+      child: Row(children: [
+        // Scrolls sideways rather than overflowing: on a narrow window a Row
+        // that cannot break is a red-and-yellow stripe rather than a control
+        // anybody can reach.
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [timing(), transport(), editing()]),
+          ),
+        ),
+        const SizedBox(width: 6),
+        tools,
+        if (controller.engineLoad case var load?)
+          TransportGroup(children: [EngineMeter(load: load)]),
+        views,
+      ]),
+    );
+  }
+
   Widget _body(
       BuildContext context,
       ThemeNotifier theme,
@@ -1183,403 +1827,9 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
       ),
       child: Column(children: [
-        // Scrolls sideways rather than overflowing. The row grew when the
-        // animation settings moved here from the band above, and on a narrow
-        // window a Row that cannot break is a red-and-yellow stripe rather
-        // than a control anybody can reach.
-        // Captions as hover text: "Frame", "Length", "Per second" were a
-        // line of grey words over the play bar, a line of the timeline's
-        // height, for controls known by what is in them.
         SizedBox(
           height: _transportHeight,
-          child: CanvasControlScope(
-            maxWidth: 400,
-            hoverCaptions: true,
-            child: Row(children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    CanvasIconButton(
-                      key: const ValueKey("toFirstFrame"),
-                      icon: Icons.skip_previous,
-                      tooltip: "",
-                      onPressed: controller.rewind,
-                    ),
-                    CanvasIconButton(
-                      icon: controller.playing ? Icons.pause : Icons.play_arrow,
-                      key: const ValueKey("play"),
-                      tooltip: controller.playing ? "Pause" : "",
-                      active: controller.playing,
-                      onPressed: (controller.playAll && document.hasScenes
-                                  ? document.playFrames
-                                  : document.frames) >
-                              1
-                          ? controller.togglePlay
-                          : null,
-                    ),
-                    // The end of the scene; pressed there while every scene
-                    // plays, the start of the next. See forward.
-                    CanvasIconButton(
-                      key: const ValueKey("toLastFrame"),
-                      icon: Icons.skip_next,
-                      tooltip: "",
-                      onPressed: controller.forward,
-                    ),
-                    // Which of the two Play means. Only where there is more than
-                    // one canvas: on a single scene the two are the same thing.
-                    if (document.hasScenes)
-                      CanvasIconButton(
-                        key: const ValueKey("playAll"),
-                        icon: controller.playAll
-                            ? Icons.playlist_play
-                            : Icons.filter_1,
-                        tooltip: "Play all scenes",
-                        active: controller.playAll,
-                        onPressed: () =>
-                            controller.playAll = !controller.playAll,
-                      ),
-                    CanvasIconButton(
-                      icon: Icons.chevron_left,
-                      key: const ValueKey("previousFrame"),
-                      tooltip: "Previous frame",
-                      onPressed: () => controller.stepFrame(-1),
-                    ),
-                    CanvasIconButton(
-                      icon: Icons.chevron_right,
-                      key: const ValueKey("nextFrame"),
-                      tooltip: "Next frame",
-                      onPressed: () => controller.stepFrame(1),
-                    ),
-                    // And to the next mark rather than the next frame. Stepping a
-                    // frame at a time to reach a keyframe eighty frames away is
-                    // eighty presses, and dragging the playhead there lands one
-                    // frame off as often as on -- which is the difference between
-                    // editing the pose that is there and laying a new one beside
-                    // it.
-                    CanvasIconButton(
-                      key: const ValueKey("prevKeyframe"),
-                      icon: Icons.keyboard_double_arrow_left,
-                      tooltip: _keyframeFrames.isEmpty
-                          ? "No keyframes"
-                          : "Back to the previous keyframe",
-                      onPressed: _keyframeFrames.isEmpty
-                          ? null
-                          : () => _goToKeyframe(-1),
-                    ),
-                    CanvasIconButton(
-                      key: const ValueKey("nextKeyframe"),
-                      icon: Icons.keyboard_double_arrow_right,
-                      tooltip: _keyframeFrames.isEmpty
-                          ? "No keyframes"
-                          : "On to the next keyframe",
-                      onPressed: _keyframeFrames.isEmpty
-                          ? null
-                          : () => _goToKeyframe(1),
-                    ),
-                    const SizedBox(width: 6),
-                    // The playhead and the document's length, as one control reading
-                    // "frame 288 of 600". They were a readout and a separate Frames
-                    // field a few pixels apart, saying the same number twice -- and the
-                    // field was too narrow for four digits, so a long document showed
-                    // "10000" clipped to "1000".
-                    CanvasNumberField(
-                      key: const ValueKey("canvasFrame"),
-                      label: "Frame",
-                      // One-based on screen and zero-based underneath, because the first
-                      // frame of an animation is frame 1 to everybody except a computer.
-                      value: (controller.frame + 1).toDouble(),
-                      min: 1,
-                      max: document.frames.toDouble(),
-                      width: 68,
-                      onChanged: (v) => controller
-                          .stepFrame(v.round() - 1 - controller.frame),
-                    ),
-                    Padding(
-                      // Level with the fields: there is no caption over them
-                      // to sit under any more.
-                      padding: const EdgeInsets.only(right: 2),
-                      child: SizedBox(
-                        height: controlHeight,
-                        child: Center(
-                          child: Text("/",
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: theme.colors.onSurfaceVariant)),
-                        ),
-                      ),
-                    ),
-                    // The master canvas is as long as the scenes it covers, so
-                    // there is nothing here to set: it was a field that took a
-                    // number and put the old one back, which reads as the field
-                    // being broken rather than as the length not being its own.
-                    if (document.editingMaster)
-                      Tooltip(
-                        message:
-                            "How long the whole sequence runs: every scene "
-                            "end to end. The master canvas is as long as what it "
-                            "covers, so this follows the scenes rather than being "
-                            "set here.",
-                        child: CanvasReadout(
-                          key: const ValueKey("canvasFramesMaster"),
-                          label: "Length",
-                          width: 68,
-                          value: "${document.frames}",
-                        ),
-                      )
-                    else
-                      CanvasNumberField(
-                        key: const ValueKey("canvasFrames"),
-                        label: "Length",
-                        value: document.frames.toDouble(),
-                        min: 1,
-                        max: maxFrameCount.toDouble(),
-                        width: 68,
-                        onChanged: (v) {
-                          controller.beginInteraction();
-                          controller.setSceneLength(v.round(), transient: true);
-                        },
-                        onCommit: controller.endInteraction,
-                      ),
-                    CanvasNumberField(
-                      key: const ValueKey("canvasFrameRate"),
-                      label: "Per second",
-                      value: document.frameRate.toDouble(),
-                      min: 1,
-                      max: 60,
-                      width: 60,
-                      onChanged: (v) {
-                        controller.beginInteraction();
-                        controller.apply(
-                            document.copyWith(frameRate: v.round()),
-                            transient: true);
-                      },
-                      onCommit: controller.endInteraction,
-                    ),
-                    SizedBox(
-                      // Room for the longest duration a canvas can have: an hour of
-                      // frames at one a second.
-                      width: 62,
-                      height: controlHeight,
-                      // Level with the rate it is worked out from.
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          document.isAnimated
-                              ? "${document.durationSeconds.toStringAsFixed(1)}s"
-                              : "Still",
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: theme.colors.onSurfaceVariant),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-
-                    // The two keyframe buttons stay on the transport row: they are
-                    // pressed constantly while animating, and neither changes width, so
-                    // neither can shift the row. What moved off is the *pose* controls
-                    // -- easing, fade, scale, turn -- which appeared and vanished as the
-                    // playhead crossed a keyframe and took the play buttons with them.
-                    CanvasIconButton(
-                      icon: Icons.fiber_manual_record,
-                      tooltip: "Auto Keyframe",
-                      active: controller.autoKeyframe,
-                      onPressed: () =>
-                          controller.autoKeyframe = !controller.autoKeyframe,
-                    ),
-                    CanvasIconButton(
-                      icon: keyHere != null
-                          ? Icons.diamond
-                          : Icons.diamond_outlined,
-                      // Short, but not wrong: a player following a path has
-                      // its timing on the path's points, not here.
-                      tooltip: _drivingPath != null
-                          ? "Following a path"
-                          : keyHere != null
-                              ? "Remove Keyframe"
-                              : "Add Keyframe",
-                      active: keyHere != null,
-                      onPressed: !_hasTarget
-                          ? null
-                          : keyHere != null
-                              ? () => _removeTargetKey(controller.frame)
-                              : _addKeyframe,
-                    ),
-                    // Clearing, beside the diamond that adds and removes one. The wider
-                    // of the two is guarded by needing something to clear rather than by
-                    // a dialog: both are one undo step, and a confirmation on every
-                    // press is worse than an undo on the rare one.
-                    CanvasIconButton(
-                      icon: Icons.layers_clear_outlined,
-                      tooltip: _drivingPath != null
-                          ? "Following a path"
-                          : "Clear Channel Keyframes",
-                      onPressed: _canClearChannel ? _clearChannel : null,
-                    ),
-                    CanvasIconButton(
-                      icon: Icons.delete_sweep_outlined,
-                      tooltip: "Clear all keyframes",
-                      onPressed: document.hasKeyframes
-                          ? controller.clearAllKeyframes
-                          : null,
-                    ),
-                    _keyframeToggle(theme, target, keyHere != null),
-                    // A fixed gap rather than a Spacer: the row scrolls, so it has no
-                    // width to divide up and a Spacer inside it is an unbounded
-                    // constraint rather than a space.
-                    const SizedBox(width: 24),
-                    // One button for an action here, which is a stop until
-                    // "At this frame" says otherwise: four buttons for four
-                    // kinds was a row of look-alikes for one thing.
-                    if (actionHere == null)
-                      CanvasIconButton(
-                        key: const ValueKey("addAction"),
-                        icon: Icons.flag_outlined,
-                        tooltip: "Add Timeline Action",
-                        onPressed: () => _addAction(TimelineActionKind.stop),
-                      )
-                    else ...[
-                      CanvasDropdown<TimelineActionKind>(
-                        label: "At this frame",
-                        value: actionHere.kind,
-                        width: 116,
-                        options: [
-                          for (var k in TimelineActionKind.values) (k, k.label)
-                        ],
-                        onChanged: (v) =>
-                            _replaceAction(actionHere.copyWith(kind: v)),
-                      ),
-                      // A word or two beside the flag, and whether it shows.
-                      CanvasTextField(
-                        key: const ValueKey("actionLabel"),
-                        label: "Label",
-                        value: actionHere.label,
-                        width: 110,
-                        grow: false,
-                        onChanged: (v) {
-                          controller.beginInteraction();
-                          var document = controller.document;
-                          controller.apply(
-                              document.copyWith(actions: [
-                                for (var a in document.actions)
-                                  a.frame == actionHere.frame
-                                      ? a.copyWith(label: v)
-                                      : a,
-                              ]),
-                              transient: true);
-                        },
-                        onCommit: controller.endInteraction,
-                      ),
-                      CanvasToggle(
-                        key: const ValueKey("actionShowLabel"),
-                        label: "Show label",
-                        value: actionHere.showLabel,
-                        onChanged: (v) =>
-                            _replaceAction(actionHere.copyWith(showLabel: v)),
-                      ),
-                      if (actionHere.kind == TimelineActionKind.loop ||
-                          actionHere.kind == TimelineActionKind.jump)
-                        CanvasNumberField(
-                          label: "To frame",
-                          value: actionHere.target.toDouble(),
-                          min: 0,
-                          max: (document.frames - 1).toDouble(),
-                          width: 56,
-                          onChanged: (v) => _replaceAction(
-                              actionHere.copyWith(target: v.round())),
-                        ),
-                      if (actionHere.kind == TimelineActionKind.loop)
-                        CanvasNumberField(
-                          label: "Times (0 = ∞)",
-                          value: actionHere.repeats.toDouble(),
-                          min: 0,
-                          max: 999,
-                          width: 56,
-                          onChanged: (v) => _replaceAction(
-                              actionHere.copyWith(repeats: v.round())),
-                        ),
-                      CanvasIconButton(
-                        icon: Icons.close,
-                        tooltip: "Remove this marker",
-                        onPressed: () => _removeAction(actionHere.frame),
-                      ),
-                    ],
-                  ]),
-                ),
-              ),
-              // Pinned at the far end, outside the part that scrolls, so they
-              // are always in the same place: what a press on a sound does,
-              // whether the trackpad moves the timeline, the effects and the
-              // mixer.
-              CanvasIconButton(
-                key: const ValueKey("toolSelect"),
-                icon: Icons.near_me_outlined,
-                tooltip: "Select",
-                active: controller.timelineTool == TimelineTool.select,
-                onPressed: () => controller.timelineTool = TimelineTool.select,
-              ),
-              CanvasIconButton(
-                key: const ValueKey("toolKnife"),
-                icon: Icons.content_cut,
-                tooltip: "Knife (K)",
-                active: controller.timelineTool == TimelineTool.knife,
-                onPressed: () => controller.timelineTool = TimelineTool.knife,
-              ),
-              CanvasIconButton(
-                key: const ValueKey("snap"),
-                icon: Icons.grid_4x4,
-                tooltip: "Timeline snapping",
-                active: controller.snapping,
-                onPressed: () => _setSnapping(!controller.snapping),
-              ),
-              CanvasIconButton(
-                key: const ValueKey("trackpadScrolls"),
-                icon: Icons.swipe_outlined,
-                tooltip: "Scrubbing",
-                active: _trackpadScrolls,
-                onPressed: () => _setTrackpadScrolls(!_trackpadScrolls),
-              ),
-              // The selected channel's effects, and the mixer: both open the
-              // panel under the canvas, the first on that channel's chain.
-              Builder(builder: (context) {
-                var key = controller.effectsChannel;
-                var shown = controller.effectsOpen;
-                var name = key == mixerMasterKey
-                    ? "the master"
-                    : controller.timelineChannels
-                            .where((c) => c.key == key)
-                            .firstOrNull
-                            ?.name ??
-                        "the channel";
-                return CanvasIconButton(
-                  key: const ValueKey("effectsToggle"),
-                  icon: Icons.settings_input_component_outlined,
-                  tooltip: shown
-                      ? "Hide the effects"
-                      : "Effects of $name: its EQ, compressor and the rest, "
-                          "in a chain",
-                  active: shown,
-                  onPressed: () => shown
-                      ? controller.effectsOpen = false
-                      : controller.openEffects(key),
-                );
-              }),
-              CanvasIconButton(
-                key: const ValueKey("mixerToggle"),
-                icon: Icons.equalizer,
-                tooltip: controller.mixerOpen
-                    ? "Close the mixer"
-                    : "Mixer: level, panning and effects for each channel, "
-                        "and the master",
-                active: controller.mixerOpen,
-                onPressed: () => controller.mixerOpen = !controller.mixerOpen,
-              ),
-            ]),
-          ),
+          child: _controlBar(theme, document, actionHere, keyHere, target),
         ),
         if (!_collapsed) const SizedBox(height: _stripGap),
         if (!_collapsed)
@@ -1604,6 +1854,13 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       supportedDevices: timelinePointers,
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (details) {
+                        // The brace is switched on the release, and leaves
+                        // playing alone: a loop is set while listening.
+                        if (_braceAt(details.localPosition,
+                                constraints.maxWidth) !=
+                            null) {
+                          return;
+                        }
                         controller.pause();
                         // Selected on the press and the playhead moved on the
                         // release. Moving it here moved it the instant a mark was
@@ -1680,6 +1937,14 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         // playhead on itself, which is what anybody wants from
                         // clicking a keyframe -- to be looking at the pose they are
                         // about to change -- and anywhere else scrubs.
+                        // A click on the brace switches the loop off, as
+                        // Ableton's does; the Loop button puts it back.
+                        if (_braceAt(details.localPosition,
+                                constraints.maxWidth) !=
+                            null) {
+                          controller.looping = !controller.looping;
+                          return;
+                        }
                         var mark = _keyframeAt(
                             details.localPosition, constraints.maxWidth);
                         if (mark != null) {
@@ -1701,6 +1966,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       // instead.
                       onHorizontalDragDown: (details) {
                         _pressX = details.localPosition.dx;
+                        // The loop brace along the top of the ruler wins:
+                        // it is what the press is on.
+                        _pressedBrace = _braceAt(
+                            details.localPosition, constraints.maxWidth);
                         // An end of the loop's bar, under the keyframes.
                         _pressedLoop = _loopEndAt(
                             details.localPosition, constraints.maxWidth);
@@ -1732,6 +2001,13 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                             details.localPosition.dy > _rulerHeight + _sceneGap;
                       },
                       onHorizontalDragStart: (details) {
+                        _dragBrace = _pressedBrace;
+                        if (_dragBrace != null) {
+                          // Moved while it plays: a loop is set by ear.
+                          _braceFrom = _frameAt(_pressX, constraints.maxWidth);
+                          _braceWas = controller.loopRange;
+                          return;
+                        }
                         controller.pause();
                         _dragLoop = _pressedLoop;
                         if (_dragLoop != null) {
@@ -1773,6 +2049,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       onHorizontalDragUpdate: (details) {
                         var at = _frameAt(
                             details.localPosition.dx, constraints.maxWidth);
+                        if (_dragBrace case var part?) {
+                          _moveBrace(part, at);
+                          return;
+                        }
                         if (_dragLoop != null) {
                           _moveLoopEnd(_dragLoop!, at);
                           return;
@@ -1809,6 +2089,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                           }
                         }
                         _pressedMarquee = false;
+                        _dragBrace = null;
+                        _pressedBrace = null;
                         if (_dragLoop != null) controller.endInteraction();
                         _dragLoop = null;
                         _pressedLoop = null;
@@ -1831,6 +2113,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                           }
                         }
                         _pressedMarquee = false;
+                        _dragBrace = null;
+                        _pressedBrace = null;
                         if (_dragLoop != null) controller.endInteraction();
                         _dragLoop = null;
                         _pressedLoop = null;
@@ -1867,6 +2151,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                               : const [0],
                           frame: controller.frame,
                           frameRate: document.frameRate,
+                          // A piece of sound is counted in bars and beats,
+                          // under its structure.
+                          bars: document.kind.isAudio ? document.audio : null,
+                          brace:
+                              controller.looping ? controller.loopRange : null,
+                          looping: controller.looping,
                           // The focused player's, when one is focused -- see
                           // _targetTrack. The marks on the ruler have to be the same
                           // keyframes the diamond button adds and removes, or the
@@ -2060,6 +2350,49 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var (start, end) = loop.span(
         arrived: arrivalEnd(element), last: controller.document.frames - 1);
     return (start, end, loop.cycle, loop.gap);
+  }
+
+  /// _braceAt is which part of the loop brace is under [local]: an end,
+  /// which moves that end, or the middle, which moves the whole -- or null,
+  /// off it. The brace is the top few pixels of the ruler, and is there
+  /// only while the loop is on: off, the top of the ruler scrubs as ever.
+  _BracePart? _braceAt(Offset local, double width) {
+    if (!controller.looping || local.dy > _braceHeight + 2) return null;
+    var (from, length) = controller.loopRange;
+    var a = _xFor(from, width), b = _xFor(from + length, width);
+    if ((local.dx - a).abs() <= 5) return _BracePart.start;
+    if ((local.dx - b).abs() <= 5) return _BracePart.end;
+    if (local.dx > a && local.dx < b) return _BracePart.whole;
+    return null;
+  }
+
+  /// _moveBrace drags the part of the brace taken hold of to [frame] --
+  /// onto the quantise grid in a piece of sound.
+  void _moveBrace(_BracePart part, int frame) {
+    var document = controller.document;
+    var rate = math.max(1, document.frameRate);
+    int snap(int f) {
+      if (!document.kind.isAudio) return f;
+      var a = document.audio;
+      var step = (a.gridSeconds() ?? a.secondsPerBeat) * rate;
+      return step <= 0 ? f : ((f / step).round() * step).round();
+    }
+
+    var (from, length) = _braceWas;
+    var end = from + length;
+    switch (part) {
+      case _BracePart.start:
+        var at = math.min(snap(frame), end - 1);
+        controller.setLoop(at, end - at);
+      case _BracePart.end:
+        var at = math.max(snap(frame), from + 1);
+        controller.setLoop(from, at - from);
+      case _BracePart.whole:
+        var at = snap(from + frame - _braceFrom);
+        controller.setLoop(
+            at.clamp(0, math.max(0, document.frames - length)).toInt(),
+            length);
+    }
   }
 
   /// _loopEndAt is which end of the loop's bar is under [local] -- false
@@ -2260,7 +2593,20 @@ class _TimelinePainter extends CustomPainter {
   /// positions, or null.
   final (double, double)? marquee;
 
+  /// bars is a piece of sound's tempo, metre and structure: its ruler is
+  /// counted in bars and beats, with its sections laid along it. Null for
+  /// a ruler of frames.
+  final AudioSettings? bars;
+
+  /// brace is the control bar's loop, as where it starts and how long it
+  /// is, drawn along the top of the ruler -- lit while [looping].
+  final (int, int)? brace;
+  final bool looping;
+
   const _TimelinePainter({
+    this.bars,
+    this.brace,
+    this.looping = false,
     this.loop,
     this.marquee,
     required this.view,
@@ -2280,6 +2626,77 @@ class _TimelinePainter extends CustomPainter {
     required this.xFor,
   });
 
+  /// _paintBars is the ruler of a piece of sound: its sections as coloured
+  /// bands with their names, a line and a number at every bar -- fewer,
+  /// zoomed out -- and a tick at every beat where there is room for them.
+  void _paintBars(Canvas canvas, Size size, AudioSettings a) {
+    var perBar = a.secondsPerBar * frameRate;
+    if (perBar <= 0) return;
+    double xAt(double f) => xFor(f.round());
+    // The sections, behind everything else on the ruler.
+    for (var (i, section) in a.sections.indexed) {
+      var from = xAt(a.startBar(i) * perBar);
+      var to = xAt((a.startBar(i) + section.bars) * perBar);
+      if (to < 0 || from > size.width) continue;
+      var colour = Color(sectionColors[section.color % sectionColors.length]);
+      canvas.drawRect(Rect.fromLTRB(from, 0, to, _rulerHeight),
+          Paint()..color = colour.withValues(alpha: 0.22));
+      canvas.drawRect(Rect.fromLTRB(from, 0, to, 3), Paint()..color = colour);
+      var name = TextPainter(
+        text: TextSpan(
+            text: section.name,
+            style: TextStyle(
+                fontSize: 10,
+                height: 1,
+                fontWeight: FontWeight.w600,
+                color: colors.onSurface)),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: "…",
+      )..layout(maxWidth: (to - from - 8).clamp(0.0, 400.0));
+      name.paint(canvas, Offset(from + 4, 5));
+    }
+    var pxPerBar = xAt(perBar) - xAt(0);
+    // A number on every bar where they fit, else every second, fourth...
+    var every = 1;
+    while (pxPerBar * every < 34 && every < 1024) {
+      every *= 2;
+    }
+    var first = (view.first / perBar).floor() - 1;
+    var last = ((view.first + view.span) / perBar).ceil() + 1;
+    var line = Paint()
+      ..color = colors.onSurfaceVariant.withValues(alpha: 0.5)
+      ..strokeWidth = 1;
+    var tick = Paint()
+      ..color = colors.onSurfaceVariant.withValues(alpha: 0.32)
+      ..strokeWidth = 1;
+    var numbers = TextStyle(
+        fontSize: 11,
+        height: 1,
+        color: colors.onSurfaceVariant.withValues(alpha: 0.95));
+    var perBeat = perBar / a.beatsPerBar;
+    var beats = pxPerBar / a.beatsPerBar >= 6;
+    for (var bar = math.max(0, first); bar <= last; bar++) {
+      var x = xAt(bar * perBar);
+      if (bar % every == 0) {
+        canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
+        var label = TextPainter(
+          text: TextSpan(text: "${bar + 1}", style: numbers),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        label.paint(canvas, Offset(x + 4, _rulerHeight - label.height - 4));
+      } else {
+        canvas.drawLine(Offset(x, 0), Offset(x, 9), tick);
+      }
+      if (beats) {
+        for (var b = 1; b < a.beatsPerBar; b++) {
+          var bx = xAt(bar * perBar + b * perBeat);
+          canvas.drawLine(Offset(bx, 0), Offset(bx, 5), tick);
+        }
+      }
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     // Zoomed in, marks and bars run past either edge: drawn, and cut there.
@@ -2296,39 +2713,43 @@ class _TimelinePainter extends CustomPainter {
     // Counted along the whole run where the timeline runs, so the numbers go
     // on through every scene rather than starting again at each; and from
     // one, the way the Frame box counts.
-    var step = size.width / math.max(1.0, view.span);
-    var (major, medium, minor) = rulerSteps(step, frameRate);
+    if (bars case var a?) {
+      _paintBars(canvas, size, a);
+    } else {
+      var step = size.width / math.max(1.0, view.span);
+      var (major, medium, minor) = rulerSteps(step, frameRate);
 
-    var from = math.max(-origin, view.first.floor());
-    var to = math.min(frames - 1, (view.first + view.span).ceil());
-    var line = Paint()
-      ..color = colors.onSurfaceVariant.withValues(alpha: 0.45)
-      ..strokeWidth = 1;
-    var mid = Paint()
-      ..color = colors.onSurfaceVariant.withValues(alpha: 0.55)
-      ..strokeWidth = 1;
-    var small = Paint()
-      ..color = colors.onSurfaceVariant.withValues(alpha: 0.32)
-      ..strokeWidth = 1;
-    var numbers = TextStyle(
-        fontSize: 11,
-        height: 1,
-        color: colors.onSurfaceVariant.withValues(alpha: 0.95));
+      var from = math.max(-origin, view.first.floor());
+      var to = math.min(frames - 1, (view.first + view.span).ceil());
+      var line = Paint()
+        ..color = colors.onSurfaceVariant.withValues(alpha: 0.45)
+        ..strokeWidth = 1;
+      var mid = Paint()
+        ..color = colors.onSurfaceVariant.withValues(alpha: 0.55)
+        ..strokeWidth = 1;
+      var small = Paint()
+        ..color = colors.onSurfaceVariant.withValues(alpha: 0.32)
+        ..strokeWidth = 1;
+      var numbers = TextStyle(
+          fontSize: 11,
+          height: 1,
+          color: colors.onSurfaceVariant.withValues(alpha: 0.95));
 
-    for (var f = from; f <= to; f++) {
-      var run = f + origin;
-      var x = xFor(f);
-      if (run % major == 0) {
-        canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
-        var label = TextPainter(
-          text: TextSpan(text: "${rulerNumber(f, origin)}", style: numbers),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        label.paint(canvas, Offset(x + 5, _rulerHeight - label.height - 4));
-      } else if (medium != null && run % medium == 0) {
-        canvas.drawLine(Offset(x, 0), Offset(x, 9), mid);
-      } else if (minor != null && run % minor == 0) {
-        canvas.drawLine(Offset(x, 0), Offset(x, 5), small);
+      for (var f = from; f <= to; f++) {
+        var run = f + origin;
+        var x = xFor(f);
+        if (run % major == 0) {
+          canvas.drawLine(Offset(x, 0), Offset(x, _rulerHeight), line);
+          var label = TextPainter(
+            text: TextSpan(text: "${rulerNumber(f, origin)}", style: numbers),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          label.paint(canvas, Offset(x + 5, _rulerHeight - label.height - 4));
+        } else if (medium != null && run % medium == 0) {
+          canvas.drawLine(Offset(x, 0), Offset(x, 9), mid);
+        } else if (minor != null && run % minor == 0) {
+          canvas.drawLine(Offset(x, 0), Offset(x, 5), small);
+        }
       }
     }
 
@@ -2345,6 +2766,20 @@ class _TimelinePainter extends CustomPainter {
       }
     }
     paintPastScene(canvas, Size(size.width, _rulerHeight), view, scene, colors);
+
+    if (brace case (var from, var length)) {
+      var rect = Rect.fromLTRB(xFor(from), 1, xFor(from + length), _braceHeight);
+      var lit = looping ? colors.primary : colors.onSurfaceVariant;
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+          Paint()..color = lit.withValues(alpha: looping ? 0.55 : 0.18));
+      canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = lit.withValues(alpha: looping ? 1 : 0.4));
+    }
 
     // The bars first, under the marks they join: a chart's entrance and its
     // exit are each two keyframes that mean nothing apart, and two marks with
@@ -2596,6 +3031,7 @@ class _TimelinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_TimelinePainter old) =>
+      old.bars?.toJson().toString() != bars?.toJson().toString() ||
       old.frames != frames ||
       old.scene != scene ||
       old.origin != origin ||
@@ -2610,6 +3046,8 @@ class _TimelinePainter extends CustomPainter {
       old.actions != actions ||
       !listEquals(old.cues, cues) ||
       old.marquee != marquee ||
+      old.brace != brace ||
+      old.looping != looping ||
       old.loop != loop;
 }
 

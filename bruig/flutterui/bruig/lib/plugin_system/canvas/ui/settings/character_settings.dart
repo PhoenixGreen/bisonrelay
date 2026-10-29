@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_bvh.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion_files.dart';
 import 'package:bruig/plugin_system/canvas/ui/body_capture.dart';
@@ -13,7 +14,6 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
-import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/scene_renderer.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -2628,7 +2628,8 @@ Widget _stageSection(
     SettingsWrite write,
     VoidCallback commit,
     void Function(CharacterElement) now) {
-  var stages = controller.document.elements.whereType<StageElement>().toList();
+  var stages = stagesIn(controller.document.elements,
+      backdrop: controller.document.drawnBackground);
   var on = e.onStage;
   void place(OnStage next, {bool live = false}) {
     controller.beginInteraction();
@@ -2641,15 +2642,16 @@ Widget _stageSection(
       title: "Where it stands",
       summary: on == null
           ? "On the page"
-          : "On ${stages.where((s) => s.id == on.stage).firstOrNull?.name ?? "a stage"}",
+          : "On ${stages.where((s) => s.$1 == on.stage).firstOrNull?.$2 ?? "a stage"}",
       children: [
         CanvasControlGroup(
             label: "Stands on",
             help: "On a 3D stage the character stands at a spot on its "
                 "floor, and the stage's camera decides where on the page "
                 "that is, how big it looks and which way round. Drag it to "
-                "move it across the floor. Add a 3D stage from Add to have "
-                "one to stand on.",
+                "move it across the floor. To have one to stand on, choose "
+                "3D stage in a background's Pattern layers -- the canvas's "
+                "own, or a Background element's.",
             children: [
               CanvasDropdown<String>(
                   key: const ValueKey("characterStage"),
@@ -2658,7 +2660,7 @@ Widget _stageSection(
                   width: 170,
                   options: [
                     ("", "The page"),
-                    for (var s in stages) (s.id, s.name),
+                    for (var (id, name) in stages) (id, name),
                   ],
                   onChanged: (id) => now(id.isEmpty
                       ? e.copyWith(offStage: true)

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -90,7 +91,8 @@ class CanvasChannels extends StatefulWidget {
       {required this.controller, required this.view, this.leading, super.key});
 
   /// hint is what the empty lane says after its name.
-  static const String hint = "drop a sound or video here";
+  static const String hint =
+      "+ for an audio or a MIDI channel, or drop a sound or video here";
 
   @override
   State<CanvasChannels> createState() => _CanvasChannelsState();
@@ -267,6 +269,8 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     var ids = {..._boxBase};
     var keys = {..._boxChannels};
     for (var channel in controller.timelineChannels) {
+      // Nothing on an interactive lane to pick: it plays when pressed.
+      if (channel.interactive) continue;
       var row = _keyFor(channel.key).currentContext?.findRenderObject();
       if (row is! RenderBox || !row.attached) continue;
       var origin = row.localToGlobal(Offset.zero);
@@ -334,10 +338,20 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _snapped is [frames] nudged so that [edge] + frames lands on a second
   /// or on the playhead, where one is within reach -- or [frames] as it is.
   double _snapped(double edge, double frames, double width) {
-    if (!controller.snapping) return frames;
-    var reach = _view.framesPer(_snapReach, width);
     var rate = math.max(1, controller.document.frameRate);
     var wanted = edge + frames;
+    // A piece of sound lands on its grid -- the nearest bar, beat or note
+    // the quantise says -- always, as a sequencer's does. Quantise is its own
+    // switch (Off is one of its values), so the snapping magnet is not asked.
+    var doc = controller.document;
+    if (doc.kind.isAudio) {
+      if (doc.audio.gridSeconds() case var grid?) {
+        var step = grid * rate;
+        return frames + ((wanted / step).round() * step - wanted);
+      }
+    }
+    if (!controller.snapping) return frames;
+    var reach = _view.framesPer(_snapReach, width);
     var marks = [
       controller.frame.toDouble(),
       (wanted / rate).roundToDouble() * rate,
@@ -617,8 +631,15 @@ class _CanvasChannelsState extends State<CanvasChannels> {
               _row(_newLane, channelsLaneHeight, width,
                   header: _EmptyHeader(
                       width: width,
-                      name: controller.newChannelName(),
-                      theme: theme),
+                      name: "Add a channel",
+                      theme: theme,
+                      onAudio: () async {
+                        var chosen = await pickCanvasAudio(context, controller);
+                        if (chosen != null && mounted) {
+                          _addAt(chosen, controller.frame, null);
+                        }
+                      },
+                      onMidi: controller.addMidiChannel),
                   lane: _emptyLane(theme)),
             ],
           ),
@@ -791,6 +812,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   }
 
   Widget _lane(TimelineChannel channel, ThemeNotifier theme) {
+    if (channel.interactive) return _interactiveLane(channel, theme);
     var height = _heightOf(channel.key);
     var tall = height >= _waveformFrom;
     // A sound's shape from its file, and a video's from the soundtrack that
@@ -874,6 +896,34 @@ class _CanvasChannelsState extends State<CanvasChannels> {
     );
   }
 
+  /// _interactiveLane is the lane of sounds played by pressing them on the
+  /// canvas: greyed, with nothing on it to move, cut or drop onto. Pressed,
+  /// it picks the channel, so its strip and effects can be opened.
+  Widget _interactiveLane(TimelineChannel channel, ThemeNotifier theme) =>
+      GestureDetector(
+        key: ValueKey("lane-${channel.key}"),
+        supportedDevices: timelinePointers,
+        behavior: HitTestBehavior.opaque,
+        onTapUp: (_) {
+          controller.clearSelection();
+          controller.selectedChannel = channel.key;
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _InteractiveLanePainter(
+            label: channel.lanes.length > 1
+                ? "${channel.lanes.length} sounds that play when pressed"
+                : channel.video
+                    ? "A video that plays when pressed on the canvas"
+                    : "Plays when pressed on the canvas",
+            colors: theme.colors,
+            chosen: controller.selectedChannels.contains(channel.key),
+            frame: controller.frame,
+            view: _view,
+          ),
+        ),
+      );
+
   /// _emptyLane is the lane under the last channel: a sound dropped on it,
   /// or chosen by clicking it, starts a channel.
   Widget _emptyLane(ThemeNotifier theme) => DragTarget<Object>(
@@ -900,7 +950,7 @@ class _CanvasChannelsState extends State<CanvasChannels> {
           child: CustomPaint(
             size: Size.infinite,
             painter: _EmptyLanePainter(
-              label: "${controller.newChannelName()} — ${CanvasChannels.hint}",
+              label: CanvasChannels.hint,
               colors: theme.colors,
               lit: candidate.isNotEmpty || _over == _newLane,
             ),
@@ -1124,7 +1174,15 @@ class _LanePainter extends CustomPainter {
     if (clip.isEmpty) return;
     var video = lane.element is VideoElement;
     var locked = lane.element.locked;
-    var fill = (video ? const Color(0xFF7B5CC4) : const Color(0xFF2A9D8F))
+    // A video's clips violet, a sound's teal, an instrument's part -- notes,
+    // not a recording -- blue, as a MIDI clip is told from audio.
+    var instrument = lane.element is AudioElement &&
+        (lane.element as AudioElement).isInstrument;
+    var fill = (video
+            ? const Color(0xFF7B5CC4)
+            : instrument
+                ? const Color(0xFF3D6FD9)
+                : const Color(0xFF2A9D8F))
         .withValues(alpha: lane.editable && !locked ? 1 : 0.5);
 
     var from = _x(span.from, w), to = _x(span.to, w);
@@ -1148,11 +1206,33 @@ class _LanePainter extends CustomPainter {
 
     var rate = frameRate <= 0 ? 1 : frameRate;
 
-    // The shape of the sound as it will come out -- its peaks times its own
-    // volume -- where the lane is tall enough to read one. Turned up, it
-    // grows; where a peak would go past full it stops at the edge, in red,
-    // which is where it would clip.
-    if (size.height >= _waveformFrom) {
+    // An instrument's part: its notes, each where it is played and as high
+    // as its key -- a piano roll in small -- rather than the shape of the
+    // file they were played into.
+    var part = switch (lane.element) {
+      AudioElement a => a.instrument,
+      _ => null,
+    };
+    if (part != null && part.notes.isNotEmpty) {
+      var lo = part.notes.map((n) => n.key).reduce(math.min) - 1;
+      var hi = part.notes.map((n) => n.key).reduce(math.max) + 1;
+      var row = (bottom - top - 4) / math.max(1, hi - lo + 1);
+      var ink = Paint()..color = const Color(0xDDFFFFFF);
+      for (var n in part.notes) {
+        var a = _x(span.from + n.start * rate, w);
+        var b = _x(span.from + n.end * rate, w);
+        if (b < 0 || a > w) continue;
+        var y = bottom - 2 - (n.key - lo + 1) * row;
+        canvas.drawRRect(
+            RRect.fromLTRBR(a, y, math.max(a + 1.5, b),
+                y + math.max(1.5, row - 0.5), const Radius.circular(1)),
+            ink);
+      }
+    } else if (size.height >= _waveformFrom) {
+      // The shape of the sound as it will come out -- its peaks times its own
+      // volume -- where the lane is tall enough to read one. Turned up, it
+      // grows; where a peak would go past full it stops at the edge, in red,
+      // which is where it would clip.
       var ink = Paint()
         ..color = const Color(0x99FFFFFF)
         ..strokeWidth = 1;
@@ -1301,6 +1381,65 @@ class _LanePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_LanePainter old) => true;
+}
+
+/// _InteractiveLanePainter draws a lane with no time on it: hatched grey,
+/// saying why, with the playhead going through it like every other lane.
+class _InteractiveLanePainter extends CustomPainter {
+  final String label;
+  final ColorScheme colors;
+  final bool chosen;
+  final int frame;
+  final TimelineView view;
+
+  _InteractiveLanePainter({
+    required this.label,
+    required this.colors,
+    required this.chosen,
+    required this.frame,
+    required this.view,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.clipRect(Offset.zero & size);
+    var body = Rect.fromLTRB(0, 3, size.width, size.height - 3);
+    canvas.drawRect(
+        body,
+        Paint()
+          ..color = colors.onSurface.withValues(alpha: chosen ? 0.10 : 0.06));
+    var hatch = Paint()
+      ..color = colors.onSurface.withValues(alpha: 0.07)
+      ..strokeWidth = 1;
+    for (var x = -size.height; x < size.width; x += 9) {
+      canvas.drawLine(
+          Offset(x, body.bottom), Offset(x + body.height, body.top), hatch);
+    }
+    var text = TextPainter(
+      text: TextSpan(
+          text: label,
+          style: TextStyle(
+              fontSize: 11,
+              height: 1.2,
+              color: colors.onSurfaceVariant.withValues(alpha: 0.9))),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: "…",
+    )..layout(maxWidth: math.max(0, size.width - 16));
+    if (size.height >= text.height + 4) {
+      text.paint(canvas, Offset(8, (size.height - text.height) / 2));
+    }
+    var head = view.centreOf(frame, size.width);
+    canvas.drawLine(Offset(head, 0), Offset(head, size.height),
+        Paint()..color = colors.primary.withValues(alpha: 0.5));
+  }
+
+  @override
+  bool shouldRepaint(_InteractiveLanePainter old) =>
+      old.label != label ||
+      old.chosen != chosen ||
+      old.frame != frame ||
+      old.colors != colors;
 }
 
 class _EmptyLanePainter extends CustomPainter {
@@ -1580,6 +1719,10 @@ class ChannelNameEditor extends StatefulWidget {
   /// field's.
   final Key textKey;
   final Key fieldKey;
+
+  /// color is the name's, where it is drawn on something other than the
+  /// app's own surface -- the mixer's studio strip.
+  final Color? color;
   const ChannelNameEditor(
       {required this.name,
       required this.theme,
@@ -1588,6 +1731,7 @@ class ChannelNameEditor extends StatefulWidget {
       this.weight = FontWeight.w500,
       this.textKey = const ValueKey("channelName"),
       this.fieldKey = const ValueKey("channelNameField"),
+      this.color,
       super.key});
 
   @override
@@ -1617,7 +1761,7 @@ class ChannelNameEditorState extends State<ChannelNameEditor> {
         fontSize: widget.fontSize,
         height: 1.2,
         fontWeight: widget.weight,
-        color: widget.theme.colors.onSurface);
+        color: widget.color ?? widget.theme.colors.onSurface);
     if (_typing) {
       return TextField(
         key: widget.fieldKey,
@@ -1653,35 +1797,71 @@ class _EmptyHeader extends StatelessWidget {
   final double width;
   final String name;
   final ThemeNotifier theme;
+
+  /// onAudio and onMidi add a channel of either kind: a sound chosen, or an
+  /// instrument to play into.
+  final VoidCallback onAudio;
+  final VoidCallback onMidi;
   const _EmptyHeader(
-      {required this.width, required this.name, required this.theme});
+      {required this.width,
+      required this.name,
+      required this.theme,
+      required this.onAudio,
+      required this.onMidi});
 
   @override
   Widget build(BuildContext context) {
     var colors = theme.colors;
-    return Container(
-      // Less to either side when the column is narrow: the icon alone is
-      // what fits, and eight pixels each side of it did not.
-      padding: width < 64
-          ? const EdgeInsets.fromLTRB(4, 3, 2, 3)
-          : const EdgeInsets.fromLTRB(8, 3, 8, 3),
-      decoration: BoxDecoration(
-          border: Border(right: BorderSide(color: colors.outlineVariant))),
-      child: Row(children: [
-        Icon(Icons.add, size: 12, color: colors.onSurfaceVariant),
-        if (width >= 64) ...[
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 10.5,
-                    height: 1.2,
-                    color: colors.onSurfaceVariant)),
+    // The + is a menu of the two kinds of channel there are.
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: const ValueKey("addAudioChannel"),
+          leadingIcon: const Icon(Icons.graphic_eq, size: 16),
+          onPressed: onAudio,
+          child: const Text("Audio channel: choose a sound",
+              style: TextStyle(fontSize: 12)),
+        ),
+        MenuItemButton(
+          key: const ValueKey("addMidiChannel"),
+          leadingIcon: const Icon(Icons.piano, size: 16),
+          onPressed: onMidi,
+          child: const Text("MIDI channel: an instrument to play",
+              style: TextStyle(fontSize: 12)),
+        ),
+      ],
+      builder: (context, menu, _) => Tooltip(
+        message: "Add an audio or a MIDI channel",
+        child: InkWell(
+          key: const ValueKey("addChannel"),
+          onTap: () => menu.isOpen ? menu.close() : menu.open(),
+          child: Container(
+            // Less to either side when the column is narrow: the icon alone
+            // is what fits, and eight pixels each side of it did not.
+            padding: width < 64
+                ? const EdgeInsets.fromLTRB(4, 3, 2, 3)
+                : const EdgeInsets.fromLTRB(8, 3, 8, 3),
+            decoration: BoxDecoration(
+                border:
+                    Border(right: BorderSide(color: colors.outlineVariant))),
+            child: Row(children: [
+              Icon(Icons.add, size: 14, color: colors.primary),
+              if (width >= 64) ...[
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          height: 1.2,
+                          color: colors.onSurfaceVariant)),
+                ),
+              ],
+            ]),
           ),
-        ],
-      ]),
+        ),
+      ),
     );
   }
 }

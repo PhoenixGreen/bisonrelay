@@ -1,3 +1,9 @@
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
+import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/render/stage/stage_painter.dart';
 import 'package:bruig/plugin_system/canvas/render/team_painter.dart';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -82,12 +88,40 @@ Size defaultSizeFor(ElementKind kind, CanvasDocument document) {
     ElementKind.character => Size(short * 0.34, short * 0.7),
     // The whole page: a stage is the set the scene is played on.
     ElementKind.stage => Size(wide, short),
+    ElementKind.parallax => Size(wide, short),
+    // Two systems of a grand staff, across most of the canvas.
+    ElementKind.sheet => Size(wide * 0.7, short * 0.5),
     // A square: a sprite's frames are mostly as wide as they are tall, and
     // the box takes a frame's own shape once there is a sheet.
     ElementKind.sprite => Size(short * 0.3, short * 0.3),
     // Most of the page: a map is the scene, its box a window onto it.
     ElementKind.tileMap => Size(wide * 0.8, short * 0.8),
   };
+}
+
+/// newInstrument makes an instrument -- an Audio element playing a part,
+/// drawn as its keyboard: two octaves from the C below middle C, on its own
+/// channel, its part on the timeline. See instrument.dart.
+AudioElement newInstrument(CanvasDocument document, {Offset? center}) {
+  var r = document.size.rect;
+  var size = Size(r.width * 0.46, r.width * 0.46 * 0.3);
+  var at = center ?? r.center;
+  return AudioElement(
+    ElementBase(
+      id: newElementId(),
+      name: "Piano",
+      x: at.dx - size.width / 2,
+      y: at.dy - size.height / 2,
+      width: size.width,
+      height: size.height,
+    ),
+    instrument: const InstrumentPart(),
+    clip: const MediaClip(timed: true),
+    controls: const [],
+    // Amber, not the speaker's blue: blue is the key a practice take is
+    // waiting for, and the two have to be told apart.
+    accent: const Color(0xFFF2B33D),
+  );
 }
 
 /// newElement makes one of [kind], centred on [center] in document space.
@@ -293,9 +327,41 @@ CanvasElement newElement(
     case ElementKind.tileMap:
       return TileMapElement(base.copyWith(name: "Tile map"));
 
+    // Not offered by Add any more: a stage is a kind of background. Kept so
+    // that asking for one still gives one -- a Background element showing
+    // its stage, over the whole page.
     case ElementKind.stage:
-      return StageElement(base.copyWith(
-          name: "3D stage", x: 0, y: 0, width: size.width, height: size.height));
+      return BackgroundElement(
+          base.copyWith(
+              name: "3D stage",
+              x: 0,
+              y: 0,
+              width: size.width,
+              height: size.height),
+          backdrop: BackdropKind.stage,
+          stage: const StageElement(ElementBase(id: "")));
+
+    // A score of the first instrument there is, if there is one; with none,
+    // it says so in its settings.
+    case ElementKind.sheet:
+      var first = document.elements
+          .whereType<AudioElement>()
+          .where((e) => e.instrument != null)
+          .firstOrNull;
+      return SheetElement(base.copyWith(name: "Sheet music"),
+          follows: first?.id ?? "", title: first?.name ?? "");
+
+    // The same for parallax scenery: a Background element showing it.
+    case ElementKind.parallax:
+      return BackgroundElement(
+          base.copyWith(
+              name: "Parallax",
+              x: 0,
+              y: 0,
+              width: size.width,
+              height: size.height),
+          backdrop: BackdropKind.parallax,
+          parallax: parallaxLooks.first.scenery);
 
     case ElementKind.character:
       // The first of the cast, named for who they are rather than what they
@@ -311,13 +377,16 @@ CanvasElement newElement(
               kind: BodyKind.mannequin, shading: ModelShading.toon, outline: true));
       // On the stage, where there is one: a scene with a set is played on
       // it. Each new one a step along from the last, not on top of it.
-      var stage = document.elements.whereType<StageElement>().firstOrNull;
+      var stage = stagesIn(document.elements,
+              backdrop: document.drawnBackground)
+          .firstOrNull
+          ?.$1;
       if (stage == null) return character;
       var already = document.elements
           .whereType<CharacterElement>()
-          .where((c) => c.onStage?.stage == stage.id)
+          .where((c) => c.onStage?.stage == stage)
           .length;
       var x = (already.isEven ? 1 : -1) * (already + 1) ~/ 2 * 1.2;
-      return character.copyWith(onStage: OnStage(stage.id, x: x.toDouble()));
+      return character.copyWith(onStage: OnStage(stage, x: x.toDouble()));
   }
 }

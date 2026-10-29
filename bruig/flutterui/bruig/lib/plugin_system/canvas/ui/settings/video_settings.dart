@@ -12,6 +12,7 @@ import 'package:bruig/plugin_system/canvas/ui/settings/image_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/media_timeline_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/element_sections.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/settings_shared.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/placement_settings.dart';
 import 'package:flutter/material.dart';
 
 // video_settings.dart is a Video element's settings.
@@ -422,6 +423,13 @@ List<Widget> videoSettings(
     return [
       videoGroup,
       if (!e.isLink) playbackGroup,
+      if (!e.isLink)
+        placementGroup(controller, e, clip, clipNow,
+            clipLive: (c) {
+              begin();
+              write(e.copyWith(clip: c));
+            },
+            commit: commit),
       if (!e.isLink) greenGroup,
       colourGroup,
       ...lookGroups,
@@ -442,6 +450,20 @@ List<Widget> videoSettings(
           videoGroup,
           if (!e.isLink) playbackGroup,
         ]),
+    // Where its sound is heard from -- a link's is the site's own.
+    if (!e.isLink)
+      section(e, "placement",
+          icon: Icons.surround_sound_outlined,
+          title: "Placement",
+          summary: placementSummary(clip.place),
+          children: [
+            placementGroup(controller, e, clip, clipNow,
+                clipLive: (c) {
+                  begin();
+                  write(e.copyWith(clip: c));
+                },
+                commit: commit),
+          ]),
     if (!e.isLink && !clip.timed)
       section(e, "controls",
           icon: Icons.tune,

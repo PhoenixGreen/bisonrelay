@@ -1,3 +1,6 @@
+import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'dart:typed_data';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -12,6 +15,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -116,15 +120,16 @@ void main() {
       expect(worstOf(eqBandGains(eq)), lessThan(worstOf(sampled)));
     });
 
-    test("and is written for ffmpeg as the same three filters", () {
-      var args = eqFfmpeg(const Eq(
-          on: true,
-          low: EqBand(120, gainDb: -3),
-          mid: EqBand(1000, gainDb: 2, q: 1.5)));
-      expect(args, [
-        "lowshelf=f=120.000:t=q:w=0.707:g=-3.000",
-        "equalizer=f=1000.000:t=q:w=1.500:g=2.000",
-      ]);
+    test("and is run as a filter for each band shaping the sound", () {
+      var sections = eqBiquads(
+          const Eq(
+              on: true,
+              low: EqBand(120, gainDb: -3),
+              mid: EqBand(1000, gainDb: 2, q: 1.5)),
+          48000);
+      expect(sections, hasLength(2));
+      expect(sections.every((c) => c.length == 5), isTrue);
+      expect(eqBiquads(const Eq(), 48000), isEmpty, reason: "off is nothing");
     });
 
     test("eight bands: two cuts, two shelves and four bells", () {
@@ -188,42 +193,35 @@ void main() {
       expect(back.gainDb, -2);
     });
 
-    test("a cut is written for ffmpeg as a section per twelve dB", () {
-      var args = eqFfmpeg(const Eq(
-          on: true,
-          lowCut: EqBand(80, slope: 24, q: 1),
-          highCut: EqBand(12000),
-          gainDb: 1.5));
-      expect(args, [
-        "highpass=f=80.000:p=2:t=q:w=1.000",
-        "highpass=f=80.000:p=2:t=q:w=0.707",
-        "lowpass=f=12000.000:p=2:t=q:w=0.707",
-        "volume=1.500dB",
-      ]);
+    test("a cut is run as a section per twelve dB", () {
+      var sections = eqBiquads(
+          const Eq(
+              on: true,
+              lowCut: EqBand(80, slope: 24, q: 1),
+              highCut: EqBand(12000),
+              gainDb: 1.5),
+          48000);
+      expect(sections, hasLength(3), reason: "two for 24 dB, one for 12");
     });
 
-    test("and ffmpeg's cut is the one drawn", () async {
-      var which = await Process.run("which", ["ffmpeg"]);
-      if (which.exitCode != 0) {
-        markTestSkipped("ffmpeg is not installed");
-        return;
-      }
+    test("and the cut that is run is the one drawn", () {
       const eq = Eq(on: true, lowCut: EqBand(200, slope: 24));
-      Future<double> level(List<String> filters) async {
-        var r = await Process.run("ffmpeg", [
-          "-hide_banner", "-f", "lavfi", //
-          "-i", "sine=frequency=100:sample_rate=48000:duration=2",
-          "-af", [...filters, "volumedetect"].join(","),
-          "-f", "null", "-",
-        ]);
-        var m = RegExp(r"mean_volume: (-?[\d.]+) dB")
-            .firstMatch(r.stderr as String);
-        return double.parse(m!.group(1)!);
+      var n = 48000;
+      var l = Float32List(n), r = Float32List(n);
+      for (var i = 0; i < n; i++) {
+        l[i] = r[i] = 0.5 * math.sin(2 * math.pi * 100 * i / 48000);
+      }
+      double rms(Float32List x) {
+        var sum = 0.0;
+        for (var i = n ~/ 2; i < n; i++) {
+          sum += x[i] * x[i];
+        }
+        return 10 * math.log(sum / (n - n ~/ 2)) / math.ln10;
       }
 
-      var dry = await level(const []);
-      var wet = await level(eqFfmpeg(eq));
-      expect(wet - dry, closeTo(eq.responseDb(100), 0.5));
+      var dry = rms(l);
+      EqProcessor(eq).process(l, r, n);
+      expect(rms(l) - dry, closeTo(eq.responseDb(100), 0.2));
     });
   });
 
@@ -244,15 +242,37 @@ void main() {
 
   group("the order of the EQ and the compressor", () {
     test("is the strip's, in the export", () {
-      const eq = Eq(on: true, mid: EqBand(1000, gainDb: 3));
-      const comp = Dynamics(on: true);
-      var after = const ChannelMix(eq: eq, comp: comp).ffmpeg;
-      expect(after.first, startsWith("equalizer"));
-      var before = const ChannelMix(eq: eq, comp: comp, compFirst: true).ffmpeg;
-      expect(before.first, startsWith("acompressor"));
-      var master = const MasterMix(eq: eq, comp: comp, compFirst: true).ffmpeg;
-      expect(master.first, startsWith("acompressor"));
-      expect(master.last, startsWith("alimiter"), reason: "the limiter last");
+      // A lift into a hard compressor comes out different from the same
+      // lift after it: the order is heard, and the strip's is the one run.
+      const eq = Eq(on: true, mid: EqBand(1000, gainDb: 9, q: 0.7));
+      const comp =
+          Dynamics(on: true, threshold: -24, ratio: 8, kneeDb: 0, attackMs: 1);
+      (Float32List, Float32List) tone() {
+        var l = Float32List(24000), r = Float32List(24000);
+        for (var i = 0; i < l.length; i++) {
+          l[i] = r[i] = 0.3 * math.sin(2 * math.pi * 1000 * i / 48000);
+        }
+        return (l, r);
+      }
+
+      Float32List by(void Function(Float32List, Float32List) run) {
+        var (l, r) = tone();
+        run(l, r);
+        return l;
+      }
+
+      var stripAfter = by((l, r) =>
+          StripProcessor(const ChannelMix(eq: eq, comp: comp))
+              .process(l, r, l.length));
+      var byHand = by((l, r) {
+        EqProcessor(eq).process(l, r, l.length);
+        Compressor(comp).process(l, r, l.length);
+      });
+      var stripBefore = by((l, r) =>
+          StripProcessor(const ChannelMix(eq: eq, comp: comp, compFirst: true))
+              .process(l, r, l.length));
+      expect(stripAfter, byHand);
+      expect(stripBefore, isNot(stripAfter));
       expect(
           ChannelMix.fromJson(const ChannelMix(compFirst: true).toJson())
               .compFirst,
@@ -297,15 +317,13 @@ void main() {
       expect(const Dynamics(makeupDb: 3).totalMakeupDb, 3);
     });
 
-    test("knee, mix and auto gain are saved and reach ffmpeg", () {
+    test("knee, mix and auto gain are saved", () {
       const c =
           Dynamics(on: true, kneeDb: 0, mix: 0.5, autoGain: AutoGain.minus12);
       var back = Dynamics.fromJson(c.toJson());
       expect(back.kneeDb, 0);
       expect(back.mix, 0.5);
       expect(back.autoGain, AutoGain.minus12);
-      expect(c.ffmpeg, contains(":mix=0.5000"));
-      expect(c.ffmpeg, contains(":knee=1.0000"));
       expect(Dynamics.fromJson(const {"on": true}).kneeDb, 6,
           reason: "an older file keeps the knee it had");
     });
@@ -321,25 +339,18 @@ void main() {
       expect(r, 0);
     });
 
-    test("writes an export chain in the editor's order", () {
-      var chain = const ChannelMix(
-              gainDb: -6,
-              balance: -0.25,
-              eq: Eq(on: true, mid: EqBand(1000, gainDb: 3)),
-              comp: Dynamics(on: true))
-          .ffmpeg;
-      expect(chain[0], startsWith("equalizer"));
-      expect(chain[1], startsWith("acompressor"));
-      expect(chain[2], startsWith("pan=stereo|c0="));
-    });
-
     test("the master brings to the target before the limiter", () {
-      var chain = const MasterMix(normalise: true, target: -14).ffmpeg;
-      var norm = chain.indexWhere((f) => f.startsWith("loudnorm=I=-14"));
-      var limit = chain.indexWhere((f) => f.startsWith("alimiter"));
-      expect(norm, greaterThanOrEqualTo(0));
-      expect(limit, greaterThan(norm),
-          reason: "nothing after the limiter may take a peak back over it");
+      // Turned up twenty decibels to reach a target, and still nothing over
+      // the ceiling: the limiter comes after.
+      var l = Float32List(24000), r = Float32List(24000);
+      for (var i = 0; i < l.length; i++) {
+        l[i] = r[i] = 0.3 * math.sin(2 * math.pi * 300 * i / 48000);
+      }
+      MasterProcessor(const MasterMix(normalise: true, target: -14),
+              normaliseDb: 20)
+          .process(l, r, l.length);
+      var ceiling = dbToGain(-1);
+      expect(l.every((v) => v.abs() <= ceiling + 1e-6), isTrue);
     });
 
     test("reads back what it wrote, and writes nothing untouched", () {
@@ -525,19 +536,38 @@ void main() {
   });
 
   group("an export", () {
-    test("each stretch through its strip, the sum through the master", () {
-      var (_, graph) = mixArgs(const [
+    test("each channel through its strip, the sum brought to its target",
+        () async {
+      var which = await Process.run("which", ["ffmpeg"]);
+      if (which.exitCode != 0) {
+        markTestSkipped("ffmpeg is not installed");
+        return;
+      }
+      var dir = await Directory.systemTemp.createTemp("canvas-mix-render");
+      addTearDown(() => dir.delete(recursive: true));
+      var tone = "${dir.path}/tone.wav";
+      await Process.run("ffmpeg", [
+        "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", tone //
+      ]);
+      var out = "${dir.path}/mix.wav";
+      var ok = await renderMixWav([
         ExportSound(
-            path: "/a.flac",
+            path: tone,
             at: 0,
             from: 0,
-            length: 2,
-            mix: ChannelMix(gainDb: -6, comp: Dynamics(on: true))),
-      ], master: const MasterMix(normalise: true));
-      expect(graph, contains("acompressor"));
-      expect(graph, contains("pan=stereo"));
-      expect(graph, contains("loudnorm=I=-16"));
-      expect(graph, contains("aresample=48000,apad[mix]"));
+            length: 6,
+            channel: "a",
+            mix: const ChannelMix(gainDb: -6, comp: Dynamics(on: true))),
+      ], const MasterMix(normalise: true, target: -16),
+          seconds: 6, ffmpeg: "ffmpeg", out: out);
+      expect(ok, isTrue);
+      var run = await Process.run("ffmpeg", [
+        "-hide_banner", "-nostats", "-i", out, //
+        "-filter_complex", "ebur128=peak=true", "-f", "null", "-",
+      ]);
+      var heard = parseLoudness("${run.stderr}")!;
+      expect(heard.integrated, closeTo(-16, 1));
+      expect(heard.truePeak, lessThanOrEqualTo(-0.5));
     });
 
     test("a muted strip is not in it at all", () async {
@@ -1118,6 +1148,32 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken's log: the CD preset sets −12 LUFS, the mixer offered only −14,
+    // −16 and −23, and the Loudness slot threw on every frame.
+    for (var target in [-12.0, -24.0, -11.0]) {
+      testWidgets("the Loudness slot opens on a target of $target",
+          (tester) async {
+        var c = await show(tester);
+        c.apply(c.document.copyWith(
+            masterMix: c.document.masterMix.copyWith(target: target)));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey("loudnessSlot")));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+        var dropdown = tester.widget<DropdownButton<double>>(
+            find.byKey(const ValueKey("loudnessTarget")));
+        expect(dropdown.items!.where((i) => i.value == target), hasLength(1));
+        await done(tester, c);
+      });
+    }
+
+    test("every preset's target is offered", () {
+      for (var p in AudioPreset.values) {
+        expect(loudnessTargets.any((t) => t.$1 == p.target), isTrue,
+            reason: p.label);
+      }
+    });
+
     testWidgets("a channel's Duck slot ducks the others, but those left alone",
         (tester) async {
       var c = await show(tester);
@@ -1166,4 +1222,167 @@ void main() {
       await done(tester, c);
     });
   });
+
+  // Ken's log: at the app's larger text sizes (Settings > Appearance) the
+  // strips' and devices' labels ran out of them -- twelve pixels at Large.
+  // The desk is zoomed to the text size instead; tried here at each size,
+  // folded, short and tall, with the effects open and shut.
+  testWidgets("the desk fits at every text size and height", (tester) async {
+    var failures = <String>[];
+    VideoElement timed(String id, String name) =>
+        VideoElement(ElementBase(id: id, name: name),
+            clip: const MediaClip(
+                playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
+    for (var (scale, speakers) in [
+      (0.85, SpeakerLayout.stereo),
+      (1.15, SpeakerLayout.stereo),
+      (1.25, SpeakerLayout.stereo),
+      (1.5, SpeakerLayout.stereo),
+      // The surround pad, its width and its LFE, in each strip.
+      (1.0, SpeakerLayout.surround51),
+      (1.25, SpeakerLayout.surround71),
+      (1.5, SpeakerLayout.surround51),
+    ]) {
+      for (var effects in [false, true]) {
+        // Every height a desk is dragged to, in tens: Ken's logs found
+        // strips a few pixels too tall at heights between the old steps.
+        for (var h in [
+          56.0,
+          for (var k = 200.0; k <= 440; k += 10) k,
+        ]) {
+          var c = CanvasController(
+              CanvasDocument(
+                  frames: 100,
+                  frameRate: 25,
+                  audio: AudioSettings(speakers: speakers),
+                  elements: [
+                    timed("v", "Speaker"),
+                    timed("w", "Backdrop"),
+                  ]),
+              audioEngine: FakeEngine({}),
+              frameSource: FakeFrames(4));
+          if (effects) c.openEffects("v");
+          tester.view.physicalSize = const Size(1400, 900);
+          tester.view.devicePixelRatio = 1;
+          await tester.pumpWidget(MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ThemeNotifier>(
+                  create: (c) => ThemeNotifier(doLoad: false)),
+              ChangeNotifierProvider<SnackBarModel>(
+                  create: (c) => SnackBarModel()),
+            ],
+            child: MaterialApp(
+                builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
+                home: Scaffold(
+                    body: ListenableBuilder(
+                        listenable: c,
+                        builder: (context, _) => Column(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  if (c.effectsOpen)
+                                    CanvasMixer.effects(
+                                        controller: c,
+                                        height: math.max(h, effectsMinHeight),
+                                        onResize: (_) {},
+                                        onClose: () {}),
+                                  CanvasMixer(
+                                      controller: c,
+                                      height: h,
+                                      onResize: (_) {},
+                                      onClose: () {}),
+                                ])))),
+          ));
+          await tester.pump();
+          if (tester.takeException() case var e?) {
+            failures.add("${speakers.label}, effects $effects, $h tall, "
+                "${scale}x: "
+                "${e.toString().split("\n").first}");
+          }
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pumpWidget(const SizedBox());
+          c.dispose();
+        }
+      }
+    }
+    tester.view.reset();
+    expect(failures, isEmpty);
+  });
+
+  // Ken: dragging the mixer or the effects to resize them glitched, the
+  // grip needing taking hold of again. With the canvas put away the effects
+  // sit over the mixer pinned to the top, and their own grip moved the line
+  // between the two the other way from the pointer: it is gone there, and
+  // the mixer's grip -- that line -- follows the pointer the whole way,
+  // through its fold to one line, at any text size.
+  for (var scale in [1.0, 1.15]) {
+    testWidgets("the line between the effects and the mixer follows a drag "
+        "(${scale}x)", (tester) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      var c = CanvasController(
+          CanvasDocument(frames: 50, elements: [
+            VideoElement(const ElementBase(id: "v", name: "v"),
+                clip: const MediaClip(
+                    playlist: [MediaSource(assetId: "x", length: 4)],
+                    timed: true)),
+          ]),
+          audioEngine: FakeEngine({}),
+          frameSource: FakeFrames(4));
+      c.openEffects("v");
+      var mixerHeight = 300.0;
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
+            home: Scaffold(
+                body: StatefulBuilder(
+                    builder: (context, setState) => LayoutBuilder(
+                        builder: (context, box) => Column(children: [
+                              CanvasMixer.effects(
+                                  controller: c,
+                                  resizable: false,
+                                  height: box.maxHeight - mixerHeight,
+                                  onResize: (_) {},
+                                  onClose: () {}),
+                              CanvasMixer(
+                                  controller: c,
+                                  height: mixerHeight,
+                                  onResize: (h) => setState(() =>
+                                      mixerHeight = h.clamp(56.0, 600.0)),
+                                  onClose: () {}),
+                            ]))))),
+      ));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const ValueKey("effectsGrip")), findsNothing);
+      var g = await tester
+          .startGesture(tester.getCenter(find.byKey(const ValueKey("mixerGrip"))));
+      var seen = <double>[];
+      for (var i = 0; i < 30; i++) {
+        await g.moveBy(const Offset(0, 9));
+        await tester.pump();
+        seen.add(mixerHeight);
+      }
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      // Nine pixels a move, every move, down to the least it may be.
+      for (var i = 1; i < seen.length; i++) {
+        expect(seen[i - 1] - seen[i], seen[i] <= 56 ? lessThanOrEqualTo(9) : closeTo(9, 0.01),
+            reason: "step $i: $seen");
+      }
+      expect(seen.last, 56);
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+    });
+  }
 }

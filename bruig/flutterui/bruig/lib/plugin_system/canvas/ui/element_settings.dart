@@ -1,3 +1,10 @@
+import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/sheet_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
+import 'package:bruig/plugin_system/canvas/presets/parallax_looks.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/ui/settings/backdrop_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/character_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/stage_settings.dart';
@@ -80,7 +87,8 @@ List<Widget> elementSettings(
   // CanvasController.drawOnCharacter -- and its own settings shown, the
   // drawing's tools in its Drawing section.
   if (drawnCharacterOf(element.id) case var id?) {
-    if (controller.document.elementById(id) case CharacterElement c) element = c;
+    if (controller.document.elementById(id) case CharacterElement c)
+      element = c;
   }
 
   // A sound on the timeline is not on the canvas: no place on it, no presets
@@ -119,18 +127,18 @@ List<Widget> elementSettings(
                 commit();
               })
           : element is VectorElement &&
-              element.edited &&
-              (element.shapes?.isNotEmpty ?? false)
-          ? VectorLayersList(
-              key: const ValueKey("vectorLayersList"),
-              controller: controller,
-              element: element,
-              onChanged: (next) {
-                begin();
-                write(next);
-                commit();
-              })
-          : null,
+                  element.edited &&
+                  (element.shapes?.isNotEmpty ?? false)
+              ? VectorLayersList(
+                  key: const ValueKey("vectorLayersList"),
+                  controller: controller,
+                  element: element,
+                  onChanged: (next) {
+                    begin();
+                    write(next);
+                    commit();
+                  })
+              : null,
       children: [
         positionSection(controller, element, write, begin, commit,
             // An element with no arrival of its own still waits on a cue.
@@ -172,17 +180,13 @@ List<Widget> elementSettings(
             counterSettings(context, controller, e, write, begin, commit),
           AudioElement e =>
             audioSettings(context, controller, e, write, begin, commit),
+          SheetElement e =>
+            sheetSettings(context, controller, e, write, begin, commit),
           VideoElement e =>
             videoSettings(context, controller, e, write, begin, commit),
           BackgroundElement e => [
-              ProceduralSettings(
-                sections: true,
-                rememberAs: "backgroundElement",
-                spec: e.spec,
-                onChanged: (spec) => write(e.copyWith(spec: spec)),
-                onBegin: begin,
-                onCommit: commit,
-              ),
+              ..._backgroundElementBackdrop(
+                  context, controller, e, write, begin, commit),
               section(e, "panel",
                   icon: Icons.crop_square,
                   title: "Panel",
@@ -222,6 +226,10 @@ List<Widget> elementSettings(
             tileMapSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
+        // What it does played as a game. Not a backdrop, which the camera
+        // moves already, nor a sound, which has nothing to walk with.
+        if (element is! BackgroundElement && element is! AudioElement)
+          playSection(controller, element, write, begin, commit),
         presetsPanelSection(context, controller, element, extra: [
           // A text's named styles, under the designs kept of its kind: the
           // other way its look is kept to use again.
@@ -254,3 +262,58 @@ Widget elementCueGroup(CanvasController controller, CanvasElement element) =>
                 controller.cueTo(element.id, v.isEmpty ? null : v),
           ),
         ]);
+
+/// _backgroundElementBackdrop is a Background element's pattern, or its
+/// stage, under the choice between them.
+List<Widget> _backgroundElementBackdrop(
+  BuildContext context,
+  CanvasController controller,
+  BackgroundElement e,
+  void Function(CanvasElement) write,
+  VoidCallback begin,
+  VoidCallback commit,
+) {
+  var picker = backdropKindPicker(e.backdrop, (kind) {
+    begin();
+    write(e.copyWith(
+        backdrop: kind,
+        stage: e.stage ?? const StageElement(ElementBase(id: "")),
+        parallax: kind == BackdropKind.parallax
+            ? e.parallax ?? parallaxLooks.first.scenery
+            : null));
+    commit();
+  });
+  if (e.isParallax) {
+    return [
+      ParallaxSettings(
+        key: ValueKey("parallaxSettings-${e.id}"),
+        controller: controller,
+        scenery: e.parallaxed,
+        picker: picker,
+        write: (p) => write(e.withParallax(p)),
+        begin: begin,
+        commit: commit,
+        rememberAs: "backgroundElement",
+      ),
+    ];
+  }
+  if (e.isStage) {
+    return stageBackdropSettings(context, controller, e.staged,
+        picker: picker,
+        write: (stage) => write(e.withStage(stage)),
+        begin: begin,
+        commit: commit,
+        rememberAs: "backgroundElement");
+  }
+  return [
+    ProceduralSettings(
+      kindPicker: picker,
+      sections: true,
+      rememberAs: "backgroundElement",
+      spec: e.spec,
+      onChanged: (spec) => write(e.copyWith(spec: spec)),
+      onBegin: begin,
+      onCommit: commit,
+    ),
+  ];
+}

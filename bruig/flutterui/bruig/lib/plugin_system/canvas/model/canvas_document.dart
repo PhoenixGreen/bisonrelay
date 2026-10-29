@@ -1,6 +1,11 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' show Rect;
 
+import 'package:bruig/plugin_system/canvas/model/play.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_cues.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
@@ -12,6 +17,7 @@ import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_scene.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_geometry.dart';
 import 'package:bruig/plugin_system/canvas/model/responsive_layout.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
@@ -19,6 +25,7 @@ import 'package:bruig/plugin_system/canvas/model/elements/chart_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/stage_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
@@ -93,10 +100,17 @@ const int defaultFrameRate = 24;
 /// animation nobody asked for.
 const int defaultFrameCount = 1;
 
-/// maxFrameCount is the longest one canvas may be: two and a half minutes at
-/// twenty-four a second. A guard rail on the Length field rather than a
-/// judgement about how long a scene should be.
-const int maxFrameCount = 3600;
+/// maxFrameCount is the longest one canvas may be: twenty minutes at an
+/// audio document's rate (audioFrameRate), a hundred at twenty-four a
+/// second. A guard rail on the Length field rather than a judgement about
+/// how long a scene should be -- and long enough for a song, which counts
+/// its time in small steps so that a beat lands on one.
+const int maxFrameCount = 144000;
+
+/// audioFrameRate is the steps a second a piece of sound's timeline counts
+/// in: fine enough that every beat at any tempo lands within a few
+/// milliseconds of a step, where at twenty-four it could be twenty off.
+const int audioFrameRate = 120;
 
 /// maxSequenceFrames is the longest a whole document may run -- every scene
 /// end to end, which is a different question from how long any one of them
@@ -145,6 +159,21 @@ class CanvasBackground {
   /// now, since drawings and pictures were separated. See VectorElement.
   final VectorElement? drawing;
 
+  /// backdrop is whether the pattern is drawn, or [stage].
+  final BackdropKind backdrop;
+
+  /// stage is the 3D stage this background is, where [backdrop] says so:
+  /// its settings, and on its own track the keys its camera moves on. Its
+  /// id is [backgroundStageId], which is what a character standing on it
+  /// names. Kept while the pattern is shown, so trying one and going back
+  /// to the other loses neither.
+  final StageElement? stage;
+
+  /// parallax is the parallax scenery this background is, where [backdrop]
+  /// says so, its camera's keys on its own track under
+  /// [backgroundParallaxId]. Kept the way [stage] is.
+  final ParallaxElement? parallax;
+
   const CanvasBackground({
     this.spec = const ProceduralSpec(),
     this.imageAssetId = "",
@@ -153,7 +182,35 @@ class CanvasBackground {
     this.video,
     this.sound,
     this.drawing,
+    this.backdrop = BackdropKind.flat,
+    this.stage,
+    this.parallax,
   });
+
+  bool get isStage => backdrop == BackdropKind.stage;
+  bool get isParallax => backdrop == BackdropKind.parallax;
+
+  /// parallaxOn is the scenery as it is drawn behind a page of [rect].
+  ParallaxElement parallaxOn(Rect rect) {
+    var p = parallax ??
+        const ParallaxElement(ElementBase(id: backgroundParallaxId));
+    return p.withBase(
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height) as ParallaxElement;
+  }
+
+  /// stageOn is the stage as it is drawn behind a page of [rect]: stretched
+  /// to it, whatever box it was saved with, as the picture and video are.
+  StageElement stageOn(Rect rect) {
+    var s = stage ?? defaultBackgroundStage;
+    return s.withBase(
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height) as StageElement;
+  }
 
   /// shownPicture is the picture to draw: the one with settings, or the one
   /// saved before there were any.
@@ -176,6 +233,7 @@ class CanvasBackground {
         ...?shownPicture?.assetIds,
         ...?video?.assetIds,
         ...?drawing?.assetIds,
+        ...?parallax?.assetIds,
       };
 
   Set<String> get mediaIds => {
@@ -196,8 +254,14 @@ class CanvasBackground {
     bool clearVideo = false,
     bool clearSound = false,
     bool clearDrawing = false,
+    BackdropKind? backdrop,
+    StageElement? stage,
+    ParallaxElement? parallax,
   }) =>
       CanvasBackground(
+        backdrop: backdrop ?? this.backdrop,
+        stage: stage ?? this.stage,
+        parallax: parallax ?? this.parallax,
         spec: spec ?? this.spec,
         // A picture edited with settings replaces the old bare one for good.
         imageAssetId: picture != null || clearPicture
@@ -218,6 +282,9 @@ class CanvasBackground {
         if (video != null) "video": video!.toJson(),
         if (sound != null) "sound": sound!.toJson(),
         if (drawing != null) "drawing": drawing!.toJson(),
+        if (backdrop != BackdropKind.flat) "backdrop": backdrop.name,
+        if (stage != null) "stage": stage!.toJson(),
+        if (parallax != null) "parallax": parallax!.toJson(),
       };
 
   factory CanvasBackground.fromJson(Map<String, dynamic> json) {
@@ -249,9 +316,29 @@ class CanvasBackground {
       video: element<VideoElement>(json["video"]),
       sound: element<AudioElement>(json["sound"]),
       drawing: drawing,
+      backdrop: BackdropKind.fromName(json["backdrop"] as String?),
+      // Read as a stage itself: elementFromJson reads a saved stage as the
+      // Background element a stage of its own has become.
+      stage: json["stage"] is Map<String, dynamic>
+          ? StageElement.fromJson(
+              json["stage"] as Map<String, dynamic>,
+              ElementBase.fromJson(
+                  json["stage"] as Map<String, dynamic>, "3D stage"))
+          : null,
+      parallax: json["parallax"] is Map<String, dynamic>
+          ? ParallaxElement.fromJson(
+              json["parallax"] as Map<String, dynamic>,
+              ElementBase.fromJson(
+                  json["parallax"] as Map<String, dynamic>, "Parallax"))
+          : null,
     );
   }
 }
+
+/// defaultBackgroundStage is the stage a background starts as the first time
+/// it is asked to be one.
+const StageElement defaultBackgroundStage =
+    StageElement(ElementBase(id: backgroundStageId, name: "3D stage"));
 
 /// CanvasDocument is the whole thing.
 class CanvasDocument {
@@ -282,6 +369,29 @@ class CanvasDocument {
   /// masterMix is the mixer's master strip: what every sound on the timeline
   /// is summed through. See mix.dart.
   final MasterMix masterMix;
+
+  /// audio is its sound as a production: tempo, time signature, and how it
+  /// is written when published. See audio_settings.dart.
+  final AudioSettings audio;
+
+  /// returns are the mixer's returns, in order: A, B, C. Every document
+  /// starts with a reverb and a delay. See devices.dart.
+  final List<ReturnChannel> returns;
+
+  /// controls are what drives it played as a game: each action and the keys
+  /// and controller buttons that press it. Null is the usual six -- see
+  /// defaultControls -- and is what most documents have.
+  final List<ControlAction>? controls;
+
+  /// controlsNow are its controls, the usual ones where it has none of its
+  /// own.
+  List<ControlAction> get controlsNow => controls ?? defaultControls;
+
+  /// hasCanvas is whether there is a picture at all: false is the Ratio
+  /// "None" a piece of sound starts with, which puts the canvas away and
+  /// leaves its size and rate unasked. The size is kept underneath, for the
+  /// day a ratio is chosen.
+  final bool hasCanvas;
 
   /// scenes are the canvases this document plays, in order.
   ///
@@ -383,6 +493,10 @@ class CanvasDocument {
     this.kind = CanvasKind.scenes,
     this.pages = const PagesSpec(),
     this.masterMix = const MasterMix(),
+    this.audio = const AudioSettings(),
+    this.returns = defaultReturns,
+    this.controls,
+    this.hasCanvas = true,
     this.master,
     this.masterOn = false,
     this.onMaster = false,
@@ -727,6 +841,25 @@ class CanvasDocument {
   /// so; see [sharedBackdrop].
   CanvasBackground get editedBackground => drawnBackground;
 
+  /// hasTiming is whether anything is placed in time: a keyframe, or a sound
+  /// or a video on the timeline, in any scene or on the master. What a
+  /// change of frame rate would move.
+  bool get hasTiming {
+    for (var e in [
+      for (var scene in allScenes) ...scene.elements,
+      ...?master?.elements,
+    ]) {
+      if (e.track?.keys.isNotEmpty ?? false) return true;
+      var clip = switch (e) {
+        AudioElement a => a.clip,
+        VideoElement v => v.clip,
+        _ => null,
+      };
+      if (clip != null && clip.timed && !clip.isEmpty) return true;
+    }
+    return false;
+  }
+
   /// sharedBackdrop is whether what is on screen behind this canvas belongs
   /// to the shared canvas rather than to this one -- which is what the
   /// settings panel says out loud before offering to change it.
@@ -965,6 +1098,10 @@ class CanvasDocument {
     CanvasKind? kind,
     PagesSpec? pages,
     MasterMix? masterMix,
+    AudioSettings? audio,
+    List<ReturnChannel>? returns,
+    List<ControlAction>? controls,
+    bool? hasCanvas,
     CanvasScene? master,
     bool clearMaster = false,
     bool? masterOn,
@@ -1031,6 +1168,10 @@ class CanvasDocument {
       kind: kind ?? this.kind,
       pages: pages ?? this.pages,
       masterMix: masterMix ?? this.masterMix,
+      audio: audio ?? this.audio,
+      returns: returns ?? this.returns,
+      controls: controls ?? this.controls,
+      hasCanvas: hasCanvas ?? this.hasCanvas,
       master: shared,
       masterOn: masterOn ?? this.masterOn,
       onMaster: onIt,
@@ -1062,6 +1203,10 @@ class CanvasDocument {
       kind: kind,
       pages: pages,
       masterMix: masterMix,
+      audio: audio,
+      returns: returns,
+      controls: controls,
+      hasCanvas: hasCanvas,
       master: master,
       masterOn: masterOn,
       onMaster: onMaster,
@@ -1310,6 +1455,11 @@ class CanvasDocument {
       if (kind != CanvasKind.scenes) "kind": kind.name,
       if (!pages.isDefault) "pages": pages.toJson(),
       if (!masterMix.isDefault) "masterMix": masterMix.toJson(),
+      if (!audio.isDefault) "audio": audio.toJson(),
+      if (!hasCanvas) "noCanvas": true,
+      if (!_sameReturns(returns, defaultReturns))
+        "returns": [for (var r in returns) r.toJson()],
+      if (controls case var c?) "controls": [for (var a in c) a.toJson()],
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
         if (sceneAt != 0) "sceneAt": at,
@@ -1415,6 +1565,20 @@ class CanvasDocument {
           : const PagesSpec(),
       masterMix:
           jsonSpec(json["masterMix"], MasterMix.fromJson, const MasterMix()),
+      audio: AudioSettings.fromJson(json["audio"]),
+      hasCanvas: json["noCanvas"] != true,
+      returns: json["returns"] is List
+          ? [
+              for (var r in (json["returns"] as List).take(maxReturns))
+                if (ReturnChannel.fromJson(r) case var ret?) ret,
+            ]
+          : defaultReturns,
+      controls: json["controls"] is List
+          ? [
+              for (var a in json["controls"] as List)
+                if (ControlAction.fromJson(a) case var action?) action,
+            ]
+          : null,
       master: json["master"] is Map<String, dynamic>
           ? CanvasScene.fromJson(json["master"] as Map<String, dynamic>)
           : null,
@@ -1527,8 +1691,18 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
       return VectorElement.fromJson(json, base);
     case ElementKind.character:
       return CharacterElement.fromJson(json, base);
+    // A stage of its own, from before stages were a kind of background.
     case ElementKind.stage:
-      return StageElement.fromJson(json, base);
+      return BackgroundElement.fromStage(json, base);
+    // Never saved by itself -- a background carries it -- but read as what
+    // one would be: a Background element showing it.
+    case ElementKind.sheet:
+      return SheetElement.fromJson(json, base);
+    case ElementKind.parallax:
+      return BackgroundElement(base,
+          backdrop: BackdropKind.parallax,
+          parallax:
+              ParallaxElement.fromJson(json, const ElementBase(id: "")));
     case ElementKind.sprite:
       return SpriteElement.fromJson(json, base);
     case ElementKind.tileMap:
@@ -1553,3 +1727,8 @@ class NamedTextStyle {
         name, TextSpec.fromJson(json["spec"] as Map<String, dynamic>));
   }
 }
+
+bool _sameReturns(List<ReturnChannel> a, List<ReturnChannel> b) =>
+    a.length == b.length &&
+    [for (var i = 0; i < a.length; i++) a[i].toKey() == b[i].toKey()]
+        .every((same) => same);

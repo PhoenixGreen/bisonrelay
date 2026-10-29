@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/export/mix_render.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -63,7 +65,7 @@ void main() {
       expect(MediaClip.fromJson(clip.toJson()).envelope, dip);
     });
 
-    test("an export plays it, as ffmpeg hears it", () async {
+    test("an export plays it, as the mix renders it", () async {
       var ffmpeg = await Process.run("which", ["ffmpeg"]);
       if (ffmpeg.exitCode != 0) {
         markTestSkipped("ffmpeg is not installed");
@@ -75,15 +77,13 @@ void main() {
       await Process.run("ffmpeg", [
         "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=5", tone //
       ]);
-      var (inputs, graph) = mixArgs([
-        ExportSound(path: tone, at: 0, from: 0, length: 5, envelope: dip),
-      ], pad: false);
       var out = "${dir.path}/out.wav";
-      var run = await Process.run("ffmpeg", [
-        "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", //
-        ...inputs, "-filter_complex", graph, "-map", "[mix]", "-t", "5", out
-      ]);
-      expect(run.exitCode, 0, reason: "${run.stderr}");
+      expect(
+          await renderMixWav([
+            ExportSound(path: tone, at: 0, from: 0, length: 5, envelope: dip),
+          ], const MasterMix(limiter: false),
+              seconds: 5, ffmpeg: "ffmpeg", out: out),
+          isTrue);
       // Loudness of each second: full, falling, low, rising, full.
       var levels = <double>[];
       for (var s = 0; s < 5; s++) {

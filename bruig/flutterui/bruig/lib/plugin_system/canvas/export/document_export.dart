@@ -142,6 +142,9 @@ Future<CanvasExport?> renderDocument(
   PdfPaper paper = PdfPaper.canvas,
   PdfOrientation orientation = PdfOrientation.auto,
   DocumentProgress? onProgress,
+
+  /// soundKbps is the bitrate an interactive book's sound is written at.
+  int soundKbps = 160,
 }) async {
   try {
     var scenes = document.allScenes;
@@ -152,7 +155,8 @@ Future<CanvasExport?> renderDocument(
     // An interactive book's sound and video: converted once for the book,
     // placed page by page. See epub_media.dart.
     var builder = as == DocumentAs.interactiveEpub
-        ? await EpubMediaBuilder.start(scale: scale, images: images)
+        ? await EpubMediaBuilder.start(
+            scale: scale, images: images, audioKbps: soundKbps)
         : null;
 
     for (var (i, scene) in scenes.indexed) {
