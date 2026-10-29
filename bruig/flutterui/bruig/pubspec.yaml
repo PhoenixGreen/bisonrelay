@@ -99,6 +99,17 @@ dependencies:
   proximity_sensor: ^1.3.9
   desktop_drop: ^0.7.1
   flutter_soloud: ^4.1.7
+  # MIDI keyboards, for Canvas's instruments. Held together at 1.0.2: later
+  # releases of its Windows part need win32 6, and wakelock_plus here needs
+  # win32 5 -- and the parts must be from one release, or they do not build.
+  flutter_midi_command: 1.0.2
+  flutter_midi_command_platform_interface: 1.0.2
+  flutter_midi_command_darwin: 1.0.2
+  flutter_midi_command_android: 1.0.2
+  flutter_midi_command_linux: 1.0.2
+  flutter_midi_command_web: 1.0.2
+  flutter_midi_command_windows: 1.0.1
+  gamepads: ^0.1.13
 
 msix_config:
   display_name: Bison Relay GUI
@@ -254,6 +265,12 @@ flutter:
         - asset: assets/fonts/PTSerif-BoldItalic.ttf
           weight: 700
           style: italic
+    # Bravura, SIL Open Font License 1.1 -- see assets/fonts/Bravura-OFL.txt.
+    # Steinberg's music font, the reference for SMuFL: Canvas's sheet music
+    # is engraved in it, as MuseScore's is.
+    - family: Bravura
+      fonts:
+        - asset: assets/fonts/Bravura.otf
     - family: RobotoMono
       fonts:
         - asset: "assets/fonts/RobotoMono-VariableFont_wght.ttf"
