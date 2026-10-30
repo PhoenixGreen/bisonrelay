@@ -1,7 +1,11 @@
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
-export 'package:bruig/plugin_system/canvas/model/surround.dart' show SurroundPan, SpeakerLayout;
+export 'package:bruig/plugin_system/canvas/model/surround.dart'
+    show SurroundPan, SpeakerLayout;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonSpec;
 
@@ -481,7 +485,6 @@ class Dynamics {
     };
     return (makeupDb + math.max(0.0, auto)).clamp(0.0, 36.0);
   }
-
 }
 
 /// DuckCurve is how a ducked channel sinks and comes back.
@@ -610,7 +613,27 @@ class ChannelMix {
   final SurroundPan? surround;
   final double? lfeDb;
 
+  /// devices are the channel's own devices -- a chorus, a gate, a drive --
+  /// in order, before its EQ and compressor. See devices.dart.
+  final List<MixDevice> devices;
+
+  /// speech is the channel's Speech device, if it has one: a script it
+  /// speaks into clips on the channel. See speech_spec.dart.
+  final SpeechSpec? speech;
+
+  /// vocaliser is the channel's Vocaliser, if it has one: its Speech
+  /// take sung to a MIDI channel's notes. See vocaliser.dart.
+  final VocaliserSpec? vocaliser;
+
+  /// automation is the channel's lanes: its settings moved along the
+  /// timeline. See automation.dart.
+  final List<AutomationLane> automation;
+
   const ChannelMix({
+    this.automation = const [],
+    this.speech,
+    this.vocaliser,
+    this.devices = const [],
     this.surround,
     this.lfeDb,
     this.sends = const {},
@@ -633,7 +656,11 @@ class ChannelMix {
       !compFirst &&
       surround == null &&
       lfeDb == null &&
-      sends.isEmpty;
+      sends.isEmpty &&
+      devices.isEmpty &&
+      speech == null &&
+      vocaliser == null &&
+      automation.isEmpty;
 
   /// sendDb is how much goes to return [id], or null for none.
   double? sendDb(String id) => sends[id];
@@ -657,6 +684,10 @@ class ChannelMix {
 
   /// withSurround places the channel; null puts it back on the front pair.
   ChannelMix withSurround(SurroundPan? pan) => ChannelMix(
+        automation: automation,
+        speech: speech,
+        vocaliser: vocaliser,
+        devices: devices,
         surround: pan,
         lfeDb: lfeDb,
         sends: sends,
@@ -671,6 +702,10 @@ class ChannelMix {
 
   /// withLfe sets how much goes to the LFE; null sends none.
   ChannelMix withLfe(double? db) => ChannelMix(
+        automation: automation,
+        speech: speech,
+        vocaliser: vocaliser,
+        devices: devices,
         surround: surround,
         lfeDb: db == null || db <= -60 ? null : db.clamp(-60.0, 6.0),
         sends: sends,
@@ -692,8 +727,18 @@ class ChannelMix {
     Ducking? duck,
     bool? compFirst,
     Map<String, double>? sends,
+    List<MixDevice>? devices,
+    SpeechSpec? speech,
+    bool noSpeech = false,
+    VocaliserSpec? vocaliser,
+    bool noVocaliser = false,
+    List<AutomationLane>? automation,
   }) =>
       ChannelMix(
+        automation: automation ?? this.automation,
+        speech: noSpeech ? null : speech ?? this.speech,
+        vocaliser: noVocaliser ? null : vocaliser ?? this.vocaliser,
+        devices: devices ?? this.devices,
         surround: surround,
         lfeDb: lfeDb,
         sends: sends ?? this.sends,
@@ -717,9 +762,29 @@ class ChannelMix {
         if (sends.isNotEmpty) "sends": sends,
         if (surround case var s?) "surround": s.toJson(),
         if (lfeDb case var l?) "lfe": l,
+        if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
+        if (speech case var s?) "speech": s.toJson(),
+        if (vocaliser case var v?) "vocaliser": v.toJson(),
+        if (automation.isNotEmpty)
+          "automation": [for (var a in automation) a.toJson()],
       };
 
   factory ChannelMix.fromJson(Map<String, dynamic> json) => ChannelMix(
+        automation: [
+          if (json["automation"] case List list)
+            for (var raw in list)
+              if (AutomationLane.fromJson(raw) case var a?) a,
+        ],
+        speech:
+            json["speech"] is Map ? SpeechSpec.fromJson(json["speech"]) : null,
+        vocaliser: json["vocaliser"] is Map
+            ? VocaliserSpec.fromJson(json["vocaliser"])
+            : null,
+        devices: [
+          if (json["devices"] case List list)
+            for (var raw in list)
+              if (MixDevice.fromJson(raw) case var d?) d,
+        ],
         surround: json["surround"] is Map<String, dynamic>
             ? SurroundPan.fromJson(json["surround"] as Map<String, dynamic>)
             : null,
@@ -740,7 +805,6 @@ class ChannelMix {
         duck: jsonSpec(json["duck"], Ducking.fromJson, const Ducking()),
         compFirst: jsonBool(json["compFirst"], false),
       );
-
 }
 
 /// loudnessTargets are the targets offered: a loud master, the CD level the
@@ -788,7 +852,12 @@ class MasterMix {
   /// ChannelMix.compFirst. The limiter is always last.
   final bool compFirst;
 
+  /// devices are the master's own devices, in order, before its EQ and
+  /// glue -- as a channel's are. See devices.dart.
+  final List<MixDevice> devices;
+
   const MasterMix({
+    this.devices = const [],
     this.gainDb = 0,
     this.eq = const Eq(),
     this.comp =
@@ -808,9 +877,11 @@ class MasterMix {
       ceilingDb == -1 &&
       target == -16 &&
       !normalise &&
-      !compFirst;
+      !compFirst &&
+      devices.isEmpty;
 
   MasterMix copyWith({
+    List<MixDevice>? devices,
     double? gainDb,
     Eq? eq,
     Dynamics? comp,
@@ -821,6 +892,7 @@ class MasterMix {
     bool? compFirst,
   }) =>
       MasterMix(
+        devices: devices ?? this.devices,
         gainDb: gainDb ?? this.gainDb,
         eq: eq ?? this.eq,
         comp: comp ?? this.comp,
@@ -840,9 +912,15 @@ class MasterMix {
         if (target != -16) "target": target,
         if (normalise) "normalise": true,
         if (compFirst) "compFirst": true,
+        if (devices.isNotEmpty) "devices": [for (var d in devices) d.toJson()],
       };
 
   factory MasterMix.fromJson(Map<String, dynamic> json) => MasterMix(
+        devices: [
+          if (json["devices"] case List list)
+            for (var raw in list)
+              if (MixDevice.fromJson(raw) case var d?) d,
+        ],
         gainDb: jsonDouble(json["gain"], 0).clamp(-90.0, 12.0),
         eq: jsonSpec(json["eq"], Eq.fromJson, const Eq()),
         comp: jsonSpec(
@@ -856,7 +934,6 @@ class MasterMix {
         normalise: jsonBool(json["normalise"], false),
         compFirst: jsonBool(json["compFirst"], false),
       );
-
 }
 
 double dbToGain(double db) => db <= -90 ? 0 : math.pow(10, db / 20).toDouble();

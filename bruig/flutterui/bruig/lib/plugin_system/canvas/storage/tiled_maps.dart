@@ -91,7 +91,8 @@ Future<TiledRead?> readTiledMap(String text, {required bool json, required Futur
     for (var (i, gid) in l.data.indexed) {
       if (refOf(gid) case var t?) cells[cellKey(l.x + i % l.width, l.y + i ~/ l.width)] = t.word;
     }
-    layers.add(TileLayer(name: l.name, cells: cells, visible: l.visible, opacity: l.opacity, tint: l.tint));
+    layers.add(TileLayer(
+        name: l.name, cells: cells, visible: l.visible, opacity: l.opacity, tint: l.tint, solid: l.solid));
   }
   return (sources: sources, layers: layers, width: map.width, height: map.height, left: left);
 }
@@ -207,6 +208,11 @@ String writeTiledMap(TileMapElement e, List<String> names) {
       "x": 0,
       "y": 0,
       if (l.tint != null) "tintcolor": hex(l.tint!, alpha: true),
+      // Ground in a game: the property a Tiled map's loaders look for.
+      if (l.solid)
+        "properties": [
+          {"name": "solid", "type": "bool", "value": true}
+        ],
     };
     if (l.isObjects) {
       var tiles = things.firstWhere((t) => identical(t.$1, l)).$2;
@@ -400,9 +406,17 @@ class _Layer {
   final bool visible;
   final double opacity;
   final ui.Color? tint;
+
+  /// solid is whether it has a true "solid" or "collides" property: its
+  /// tiles ground in a game.
+  final bool solid;
   _Layer(this.name, this.width, this.data,
-      {this.x = 0, this.y = 0, this.objects, this.visible = true, this.opacity = 1, this.tint});
+      {this.x = 0, this.y = 0, this.objects, this.visible = true, this.opacity = 1, this.tint, this.solid = false});
 }
+
+/// _solidNames are the layer properties that make a Tiled layer solid: its
+/// own, and the one Phaser's and others' maps use.
+const _solidNames = {"solid", "collides", "collision"};
 
 TerrainMode _mode(String? type) => switch (type) {
       "edge" => TerrainMode.sides,
@@ -456,7 +470,12 @@ _Map? _fromJson(String text) {
               y: n(l["y"], 0),
               visible: l["visible"] != false,
               opacity: (l["opacity"] as num?)?.toDouble() ?? 1,
-              tint: l["tintcolor"] == null ? null : _colour(l["tintcolor"] as String, const ui.Color(0xFFFFFFFF))));
+              tint: l["tintcolor"] == null ? null : _colour(l["tintcolor"] as String, const ui.Color(0xFFFFFFFF)),
+              solid: [
+                if (l["properties"] case List props)
+                  for (var p in props.whereType<Map>())
+                    if (_solidNames.contains(p["name"]) && (p["value"] == true || p["value"] == "true")) p,
+              ].isNotEmpty));
         case "objectgroup":
           layers.add(_Layer(l["name"] as String? ?? "Objects", 0, const [],
               objects: [
@@ -542,7 +561,11 @@ _Map? _fromXml(String text) {
           layers.add(_Layer(l.a["name"] ?? "Layer", n(l.a["width"], 1), gids,
               visible: l.a["visible"] != "0",
               opacity: double.tryParse(l.a["opacity"] ?? "") ?? 1,
-              tint: l.a["tintcolor"] == null ? null : _colour(l.a["tintcolor"], const ui.Color(0xFFFFFFFF))));
+              tint: l.a["tintcolor"] == null ? null : _colour(l.a["tintcolor"], const ui.Color(0xFFFFFFFF)),
+              solid: [
+                for (var p in l.kid("properties")?.kids ?? const <_X>[])
+                  if (p.name == "property" && _solidNames.contains(p.a["name"]) && p.a["value"] == "true") p,
+              ].isNotEmpty));
         case "objectgroup":
           layers.add(_Layer(l.a["name"] ?? "Objects", 0, const [],
               objects: [

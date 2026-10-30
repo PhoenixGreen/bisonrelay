@@ -429,15 +429,42 @@ Widget _countSection(
             label: "Shows",
             value: e.source,
             width: 128,
-            options: [for (var s in CounterSource.values) (s, s.label)],
+            options: [
+              for (var s in CounterSource.values)
+                // A game count only in a game, or where it already is one.
+                if (s != CounterSource.game ||
+                    controller.document.game ||
+                    e.source == CounterSource.game)
+                  (s, s.label),
+            ],
             onChanged: (v) => now(e.copyWith(
                 source: v,
+                gameCount: v == CounterSource.game &&
+                        e.gameCount.isEmpty &&
+                        controller.document.counts.isNotEmpty
+                    ? controller.document.counts.first.id
+                    : null,
                 // A clock written plainly is a number of seconds since
                 // midnight, which is not a thing anybody wants to read.
                 separator: v == CounterSource.clock && !e.separator.isTime
                     ? CounterSeparator.hours
                     : e.separator)),
           ),
+          if (e.source == CounterSource.game)
+            CanvasDropdown<String>(
+              key: const ValueKey("counterGameCount"),
+              label: "Count",
+              value: controller.document.counts.any((c) => c.id == e.gameCount)
+                  ? e.gameCount
+                  : "",
+              width: 128,
+              options: [
+                if (!controller.document.counts.any((c) => c.id == e.gameCount))
+                  ("", "—"),
+                for (var c in controller.document.counts) (c.id, c.name),
+              ],
+              onChanged: (id) => now(e.copyWith(gameCount: id)),
+            ),
           if (e.source == CounterSource.run) ...[
             CanvasNumberField(
               key: const ValueKey("counterRate"),
@@ -466,21 +493,25 @@ Widget _countSection(
               onChanged: (v) => now(e.copyWith(running: v)),
             ),
           ],
-          CanvasHint(e.source == CounterSource.page
-              ? "The number of the page this is drawn on. Put it on the "
-                  "master canvas and every page wears it, each saying its "
-                  "own number — that is what a page number is. Covers are "
-                  "not numbered, and where the numbering starts is in the "
-                  "canvas settings."
-              : e.source == CounterSource.clock
-                  ? "The reader's own clock, in seconds since midnight -- so the "
-                      "Minutes or Hours way of writing it is the one that makes "
-                      "a clock of it."
-                  : "Counts from ${e.format(e.from)} to ${e.format(e.to)} at "
-                      "${e.rate} a second, which is "
-                      "${(e.span / (e.rate <= 0 ? 1 : e.rate)).abs().round()} "
-                      "seconds end to end. Turn Loop on and it starts again, "
-                      "which is what makes a metronome."),
+          CanvasHint(e.source == CounterSource.game
+              ? "Where the game has got this count to while it is played -- "
+                  "coins taken, lives left -- and where it starts while it "
+                  "is not. The counts are in the Game panel."
+              : e.source == CounterSource.page
+                  ? "The number of the page this is drawn on. Put it on the "
+                      "master canvas and every page wears it, each saying its "
+                      "own number — that is what a page number is. Covers are "
+                      "not numbered, and where the numbering starts is in the "
+                      "canvas settings."
+                  : e.source == CounterSource.clock
+                      ? "The reader's own clock, in seconds since midnight -- so the "
+                          "Minutes or Hours way of writing it is the one that makes "
+                          "a clock of it."
+                      : "Counts from ${e.format(e.from)} to ${e.format(e.to)} at "
+                          "${e.rate} a second, which is "
+                          "${(e.span / (e.rate <= 0 ? 1 : e.rate)).abs().round()} "
+                          "seconds end to end. Turn Loop on and it starts again, "
+                          "which is what makes a metronome."),
         ],
       ]),
     ],

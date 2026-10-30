@@ -1,3 +1,5 @@
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
+    show PitchReading;
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -187,7 +189,8 @@ class AudioRuntime extends ChangeNotifier {
       String channel, InstrumentPart part, int key, int velocity) async {
     var down = _down.putIfAbsent(channel, () => {})..add(key);
     if (!await _ready()) return;
-    var font = part.sound == InstrumentSound.bank ? await loadSoundBank() : null;
+    var font =
+        part.sound == InstrumentSound.bank ? await loadSoundBank() : null;
     // Let go while the bank was being read -- the first press of all can
     // take a moment -- it is not started at all, rather than started and
     // never stopped.
@@ -198,6 +201,11 @@ class AudioRuntime extends ChangeNotifier {
   void noteOff(String channel, int key) {
     _down[channel]?.remove(key);
     if (_started) engine.noteOff(channel, key);
+  }
+
+  /// control sets a controller of channel [channel]'s instrument, live.
+  void control(String channel, MidiControl control, double value) {
+    if (_started) engine.control(channel, control, value);
   }
 
   /// _down is the keys held on each channel, live.
@@ -394,6 +402,10 @@ class AudioRuntime extends ChangeNotifier {
   /// AudioEngine.spectrum.
   Float32List? spectrum([String? channel]) =>
       _started ? engine.spectrum(channel) : null;
+
+  /// pitch is what a tuner on [channel] hears now -- see AudioEngine.pitch.
+  PitchReading? pitch([String? channel]) =>
+      _started ? engine.pitch(channel) : null;
 
   /// _channelFor is the mixer channel a sound plays through, or null for
   /// none: the element's own, or for a video's sound, its video's.
@@ -619,6 +631,14 @@ class AudioRuntime extends ChangeNotifier {
     }
     return ok;
   }
+
+  /// ready starts the engine, as a first play does: false where there is no
+  /// sound to be had.
+  Future<bool> ready() => _ready();
+
+  /// trackOf is the stored file [assetId], opened -- once, and kept -- or
+  /// null where it is not there.
+  Future<AudioTrack?> trackOf(String assetId) => _track(assetId);
 
   Future<AudioTrack?> _track(String assetId) async {
     var held = _tracks[assetId];

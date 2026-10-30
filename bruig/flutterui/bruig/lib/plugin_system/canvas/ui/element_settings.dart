@@ -1,4 +1,3 @@
-import 'package:bruig/plugin_system/canvas/ui/settings/play_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/sheet_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/settings/parallax_settings.dart';
@@ -226,10 +225,6 @@ List<Widget> elementSettings(
             tileMapSettings(context, controller, e, write, begin, commit),
           _ => const <Widget>[],
         },
-        // What it does played as a game. Not a backdrop, which the camera
-        // moves already, nor a sound, which has nothing to walk with.
-        if (element is! BackgroundElement && element is! AudioElement)
-          playSection(controller, element, write, begin, commit),
         presetsPanelSection(context, controller, element, extra: [
           // A text's named styles, under the designs kept of its kind: the
           // other way its look is kept to use again.

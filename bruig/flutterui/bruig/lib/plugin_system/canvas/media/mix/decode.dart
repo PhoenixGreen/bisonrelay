@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:flutter/foundation.dart';
@@ -111,10 +113,13 @@ class _Miniaudio {
             ffi.Int32 Function(ffi.Pointer<ffi.Uint8>, ffi.Uint64),
             int Function(
                 ffi.Pointer<ffi.Uint8>, int)>("ma_decoder_seek_to_pcm_frame"),
-        length = lib.lookupFunction<
-            ffi.Int32 Function(ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint64>),
-            int Function(ffi.Pointer<ffi.Uint8>,
-                ffi.Pointer<ffi.Uint64>)>("ma_decoder_get_length_in_pcm_frames"),
+        length =
+            lib.lookupFunction<
+                    ffi.Int32 Function(
+                        ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint64>),
+                    int Function(
+                        ffi.Pointer<ffi.Uint8>, ffi.Pointer<ffi.Uint64>)>(
+                "ma_decoder_get_length_in_pcm_frames"),
         uninit = lib.lookupFunction<ffi.Int32 Function(ffi.Pointer<ffi.Uint8>),
             int Function(ffi.Pointer<ffi.Uint8>)>("ma_decoder_uninit"),
         vorbis = _optional(lib, "ma_decoding_backend_libvorbis");
@@ -158,6 +163,46 @@ _Miniaudio? _load() {
     debugPrint("The mix engine's decoder is unavailable: $exception");
     return null;
   }
+}
+
+/// readWhole is [file] read whole, both sides at the mix's rate -- or null
+/// where the decoder cannot read it.
+(Float32List, Float32List)? readWhole(String file) {
+  var track = FileTrack.open(file);
+  if (track == null) return null;
+  try {
+    var l = Float32List(track.frames), r = Float32List(track.frames);
+    var at = 0;
+    var bl = Float32List(4096), br = Float32List(4096);
+    while (at < track.frames) {
+      var got = track.read(bl, br, math.min(4096, track.frames - at));
+      if (got == 0) break;
+      l.setRange(at, at + got, bl);
+      r.setRange(at, at + got, br);
+      at += got;
+    }
+    // Shorter than it said: what it had, not silence after it.
+    if (at < track.frames) {
+      return (
+        Float32List.sublistView(l, 0, at),
+        Float32List.sublistView(r, 0, at)
+      );
+    }
+    return (l, r);
+  } finally {
+    track.close();
+  }
+}
+
+/// readWholeAway is [readWhole] in an isolate of its own: a whole song
+/// read on the app's isolate held up everything there -- the mix's sound
+/// with it -- for a second or more.
+Future<(Float32List, Float32List)?> readWholeAway(String file) {
+  var library = miniaudioLibrary;
+  return Isolate.run(() {
+    miniaudioLibrary = library;
+    return readWhole(file);
+  });
 }
 
 /// canDecode is whether files can be decoded here at all.

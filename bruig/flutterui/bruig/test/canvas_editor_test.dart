@@ -116,6 +116,51 @@ void main() {
 
     // The mixer is opened from the timeline's header now, beside the
     // effects button -- see canvas_timeline_view_test.
+    // Ken: on the canvas, the app's logo puts its menu away; while it is
+    // away the logo sits at the start of this band, and brings it back.
+    testWidgets("with the app's menu put away, its logo here brings it back",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      var prefs = CanvasPreferences();
+      await pump(tester, bar(controller), prefs: prefs);
+      expect(find.byKey(const ValueKey("canvasShowMenu")), findsNothing,
+          reason: "the menu showing: its logo is its own");
+      prefs.menuHidden = true;
+      await tester.pumpAndSettle();
+      var logo = find.byKey(const ValueKey("canvasShowMenu"));
+      expect(logo, findsOneWidget);
+      // At the far left, and no taller than the band's controls.
+      var band = tester.getRect(find.byType(CanvasSettingsBar));
+      var at = tester.getRect(logo);
+      expect(at.left - band.left, lessThan(20));
+      expect(at.height, lessThanOrEqualTo(controlHeight + 1));
+      await tester.tap(logo);
+      await tester.pumpAndSettle();
+      expect(prefs.menuHidden, isFalse);
+      expect(find.byKey(const ValueKey("canvasShowMenu")), findsNothing);
+    });
+
+    // Ken: the game button makes a game -- the Game panel -- rather than
+    // only playing one.
+    testWidgets(
+        "the game button makes the canvas a game, and stops it being one",
+        (tester) async {
+      var controller = CanvasController(const CanvasDocument());
+      addTearDown(controller.dispose);
+      await pump(tester, bar(controller));
+      var button = find.byKey(const ValueKey("makeGame"));
+      expect(button, findsOneWidget, reason: "there before anything is played");
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(controller.document.game, isTrue);
+      controller.gaming = true;
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect((controller.document.game, controller.gaming), (false, false),
+          reason: "no longer a game, it is not played either");
+    });
+
     testWidgets("the canvas is put away and brought back from the band",
         (tester) async {
       var controller = CanvasController(const CanvasDocument());
@@ -1195,8 +1240,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(playhead);
       await tester.pumpAndSettle();
-      await tester.enterText(
-          find.byKey(const ValueKey("positionField")), "25");
+      await tester.enterText(find.byKey(const ValueKey("positionField")), "25");
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(controller.frame, 24);
@@ -3541,8 +3585,6 @@ void main() {
         // left alone, like a headline's -- and the designs saved, as on
         // every element.
         "Animation",
-        // What it does played as a game -- every element has it.
-        "Play",
         "Presets",
       ]);
     });
@@ -7153,8 +7195,6 @@ void main() {
         "On a line",
         "Parts of the text",
         "Animation",
-        // What it does played as a game -- every element has it.
-        "Play",
         "Presets",
       ]);
       expect(
@@ -8172,6 +8212,61 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getSize(find.byType(CanvasTimeline)).height, timelineHeight,
           reason: "never shorter than the keyframe strip");
+    });
+
+    // Ken's Game rules board: a stop that waits for an action.
+    testWidgets("a stop is set to wait for an action", (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 100, actions: [
+        TimelineAction(frame: 0, kind: TimelineActionKind.stop),
+      ]));
+      addTearDown(c.dispose);
+      await pump(tester, host(c));
+      var waits = find.byKey(const ValueKey("actionWaitsFor"));
+      await tester.ensureVisible(waits);
+      await tester.pumpAndSettle();
+      await tester.tap(waits);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text("Jump is pressed").last);
+      await tester.pumpAndSettle();
+      expect(c.document.actions.single.waitsFor, "jump");
+      expect(tester.takeException(), isNull);
+    });
+
+    // Ken: the play bar over the timeline, or under it.
+    testWidgets("the play bar goes under the timeline, and back over it",
+        (tester) async {
+      var c = CanvasController(const CanvasDocument(frames: 100));
+      addTearDown(c.dispose);
+      await pump(tester, host(c));
+      await tester.drag(
+          find.byKey(const ValueKey("timelineGrip")), const Offset(0, -150));
+      await tester.pumpAndSettle();
+      double barY() => tester.getCenter(find.byKey(const ValueKey("play"))).dy;
+      double laneY() =>
+          tester.getCenter(find.byKey(const ValueKey("lane-new"))).dy;
+      expect(barY(), lessThan(laneY()), reason: "over it, to begin with");
+      await tester.tap(find.byKey(const ValueKey("barBelow")));
+      await tester.pumpAndSettle();
+      expect(barY(), greaterThan(laneY()), reason: "under the channels");
+      expect(barY(),
+          greaterThan(tester.getRect(find.byType(CanvasTimeline)).bottom - 50),
+          reason: "at the bottom of the timeline");
+      // Still the play bar: Play plays.
+      await tester.tap(find.byKey(const ValueKey("play")));
+      await tester.pump();
+      expect(c.playing, isTrue);
+      c.pause();
+      // And the edge still drags it.
+      var before = tester.getSize(find.byType(CanvasTimeline)).height;
+      await tester.drag(
+          find.byKey(const ValueKey("timelineGrip")), const Offset(0, -60));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(CanvasTimeline)).height,
+          greaterThan(before));
+      await tester.tap(find.byKey(const ValueKey("barBelow")));
+      await tester.pumpAndSettle();
+      expect(barY(), lessThan(laneY()), reason: "back over it");
+      expect(tester.takeException(), isNull);
     });
   });
 }

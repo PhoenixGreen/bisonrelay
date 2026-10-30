@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/export/export_media.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_graph.dart';
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
@@ -64,15 +65,27 @@ Future<bool> _render(
   var channels = <String, List<_Stretch>>{};
   var strips = <String, ChannelMix>{};
   var places = <String, List<(double, Heard)>>{};
+  var clocks = <String, double>{};
   var decodedAny = false;
+  // A muted channel a vocoder takes its carrier from is still decoded:
+  // unheard itself, it is heard through the vocoder.
+  var carriers = {
+    for (var s in sounds)
+      for (var d in s.mix.devices)
+        if (d.sidechain case var c?) c,
+    for (var r in returns)
+      for (var d in r.devices)
+        if (d.sidechain case var c?) c,
+  };
   for (var (i, s) in sounds.indexed) {
-    if (s.mix.mute) continue;
+    if (s.mix.mute && !carriers.contains(s.channel)) continue;
     var pcm = await _decode(ffmpeg, s);
     if (pcm == null) continue;
     decodedAny = true;
     var key = s.channel.isNotEmpty ? s.channel : "#$i";
     (channels[key] ??= []).add(_Stretch(s, pcm.$1, pcm.$2));
     strips.putIfAbsent(key, () => s.mix);
+    clocks.putIfAbsent(key, () => s.clock);
     // Where a channel is heard from, from its first placed sound.
     if (s.place.isNotEmpty) places.putIfAbsent(key, () => s.place);
   }
@@ -87,8 +100,8 @@ Future<bool> _render(
     // says, or the two it is folded down to.
     var weights = fold ? const [1.0, 1.0] : loudnessWeights(speakers);
     var meter = SpeakerLoudness(weights);
-    _pass(channels, strips, places, master, returns, total, 0, speakers, fold,
-        (out, n) => meter.add(out, n),
+    _pass(channels, strips, places, clocks, master, returns, total, 0, speakers,
+        fold, (out, n) => meter.add(out, n),
         limit: false);
     var heard = meter.integrated;
     if (heard.isFinite) normalise = (master.target - heard).clamp(-30.0, 30.0);
@@ -99,7 +112,7 @@ Future<bool> _render(
   try {
     file.writeFromSync(wavHeader(total, written));
     var interleaved = Float32List(_block * written);
-    _pass(channels, strips, places, master, returns, total, normalise,
+    _pass(channels, strips, places, clocks, master, returns, total, normalise,
         speakers, fold, (out, n) {
       for (var i = 0; i < n; i++) {
         for (var c = 0; c < written; c++) {
@@ -122,6 +135,7 @@ void _pass(
     Map<String, List<_Stretch>> channels,
     Map<String, ChannelMix> strips,
     Map<String, List<(double, Heard)>> places,
+    Map<String, double> clocks,
     MasterMix master,
     List<ReturnChannel> returns,
     int total,
@@ -134,8 +148,10 @@ void _pass(
     ..setSpeakers(speakers)
     ..setReturns(returns)
     ..setMaster(master, normaliseDb: normaliseDb);
+  // Each from where its lanes start it, not glided to there from its own
+  // settings over the first block.
   for (var key in channels.keys) {
-    graph.setChannel(key, strips[key]!);
+    graph.setChannel(key, automatedAt(strips[key]!, -(clocks[key] ?? 0)));
   }
   var ml = Float32List(_block), mr = Float32List(_block);
   for (var at = 0; at < total; at += _block) {
@@ -145,6 +161,13 @@ void _pass(
     var middle = (at + n / 2) / mixRate;
     for (var e in places.entries) {
       graph.setPlacement(e.key, heardOn(e.value, middle));
+    }
+    // Each automated channel as its lanes have it there: retuned, not made
+    // again -- see MixGraph.setChannel.
+    for (var e in strips.entries) {
+      if (e.value.automation.isEmpty) continue;
+      graph.setChannel(
+          e.key, automatedAt(e.value, middle - (clocks[e.key] ?? 0)));
     }
     graph.begin(n);
     for (var entry in channels.entries) {

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -96,6 +98,7 @@ class MixGraph {
 
   final Map<String, StripProcessor> _strips = {};
   final Map<String, String> _signatures = {};
+  final Map<String, String> _structures = {};
   final Map<String, _Bus> _inputs = {};
   final _Bus _direct = _Bus(1024);
   List<_Return> _returns = [];
@@ -115,9 +118,33 @@ class MixGraph {
   /// setChannel makes or changes a channel. A strip set again unchanged
   /// keeps its processors, and so what is in them.
   void setChannel(String key, ChannelMix mix) {
-    var signature = mix.toJson().toString();
+    // Its Speech device is not part of how it sounds: a script typed into
+    // keeps the strip's processors, and what is in them. Nor are its lanes:
+    // what they move arrives here already moved.
+    var json = mix.toJson()
+      ..remove("speech")
+      ..remove("vocaliser")
+      ..remove("automation");
+    var signature = json.toString();
     if (_signatures[key] == signature) return;
     _signatures[key] = signature;
+    // The same strip but for its levels, its sends and its devices'
+    // settings -- automation playing -- is retuned, not made again: its
+    // compressor, its reverb's tail and the rest carry on.
+    var structure = (json
+          ..remove("gain")
+          ..remove("balance")
+          ..remove("sends")
+          ..["devices"] = [
+            for (var d in mix.devices) [d.kind.name, d.on, d.source]
+          ])
+        .toString();
+    var strip = _strips[key];
+    if (strip != null && _structures[key] == structure) {
+      strip.retune(mix);
+      return;
+    }
+    _structures[key] = structure;
     _strips[key] = StripProcessor(mix);
   }
 
@@ -248,6 +275,22 @@ class MixGraph {
     }
   }
 
+  /// pitchOf is the pitch the first of strip [key]'s devices that listens
+  /// for one has heard -- a tuner, or Auto-tune -- or null. The master with
+  /// no key.
+  PitchReading? pitchOf([String? key]) {
+    var devices = key == null
+        ? _master.devices
+        : _strips[key]?.devices ??
+            _returns.where((r) => r.spec.id == key).firstOrNull?.devices ??
+            const <DeviceProcessor>[];
+    for (var d in devices) {
+      if (d case PitchListener l when l.pitch) return l.heard;
+      if (d case AutoTune a) return a.heard;
+    }
+    return null;
+  }
+
   (double, double) levels([String? key]) =>
       key == null ? _masterLevels : (_levels[key] ?? (0, 0));
 
@@ -298,6 +341,18 @@ class MixGraph {
     for (var i = 0; i < n; i++) {
       _out[0][i] += _direct.l[i];
       _out[1][i] += _direct.r[i];
+    }
+    // A vocoder's carrier channel, as it came in -- before its own strip,
+    // so a muted carrier still carries.
+    for (var devices in [
+      for (var strip in _strips.values) strip.devices,
+      for (var ret in _returns) ret.devices,
+    ]) {
+      for (var d in devices) {
+        if (d is! Sidechained) continue;
+        var from = _inputs[d.source];
+        if (from != null) d.feed(from.l, from.r, n);
+      }
     }
     for (var entry in _strips.entries) {
       var b = _inputs[entry.key];

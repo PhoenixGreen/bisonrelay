@@ -2,18 +2,39 @@ import 'dart:math' as math;
 
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
 import 'package:bruig/plugin_system/canvas/export/export_media.dart';
+import 'package:bruig/plugin_system/canvas/model/audio_settings.dart'
+    show sectionColors;
+import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
+    show newElementId;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentPart, MidiMonitor;
+import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_channels.dart'
     show ChannelNameEditor;
+import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart'
+    show AssetKind, LibraryAsset;
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'
+    show isMidiId;
+import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart'
+    show droppedAsset, droppedKind;
+import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
+    show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/mixer_plugins.dart';
+import 'package:bruig/plugin_system/canvas/ui/clip_editor.dart';
+import 'package:bruig/plugin_system/canvas/ui/speech_device.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 import 'package:flutter/scheduler.dart';
+
+part 'canvas_mixer_strips.dart';
 
 // canvas_mixer.dart is the mixer: a strip for each sound on the timeline and
 // a master strip, floated over the canvas from a button at the end of the
@@ -28,14 +49,51 @@ import 'package:flutter/scheduler.dart';
 // which is for listening -- see CanvasController.solo. What it sets is
 // defined in mix.dart, in terms the editor and an export both follow.
 
-/// mixerMinHeight and mixerMaxFraction bound the panel's height, which the
-/// screen keeps.
-///
-/// Under mixerCompactBelow the strips give way to one line of meters, which
-/// is as short as it goes.
+/// mixerMinHeight is the least the panel is ever given, and
+/// mixerDefaultHeight what it opens at; how short it goes with its bands as
+/// they are is mixerLeastHeight.
 const double mixerMinHeight = 56;
-const double mixerCompactBelow = 260;
 const double mixerDefaultHeight = 320;
+
+/// mixerLeastHeight is how short the mixer goes with its bands as
+/// [controller]'s C, D and M say -- each at its least: a slot of clips and
+/// its stop, a device slot, the fader at its least or the mixer minimised
+/// as a row -- for the screen to stop a drag at. Short of their room, the
+/// clips and the devices scroll; the mixer is never swapped for another
+/// view of it.
+double mixerLeastHeight(CanvasController controller) {
+  var bands = 0.0;
+  var showing = 0;
+  for (var s in MixerSection.values) {
+    var state = controller.bandState(s);
+    if (state == BandState.hidden) continue;
+    showing++;
+    // No returns, no sends band at all.
+    var n = controller.document.returns.length;
+    var sends = math.max(
+        sendsHeight(n),
+        controller.narrowStrips.isNotEmpty
+            ? sendsHeight(n, narrow: true)
+            : 0.0);
+    if (s == MixerSection.sends && sends == 0) {
+      showing--;
+      continue;
+    }
+    bands += switch (s) {
+      MixerSection.clips => _clipsLeast,
+      MixerSection.devices => _slotH,
+      MixerSection.mixer => state == BandState.shown ? _mixerMinH : _miniMixerH,
+      MixerSection.sends => sends,
+    };
+  }
+  // The room along the top edge, the strips' bottom margin and a column's
+  // edge and border, its head and the gaps over each band.
+  return _edgeRoom + 10 + 14 + 2 + _headH + _bandGap * showing + bands;
+}
+
+/// _edgeRoom is the room kept along a panel's top edge, which is dragged to
+/// size it: no handle drawn, only the cursor to say so.
+const double _edgeRoom = 4;
 
 /// effectsMinHeight and effectsDefaultHeight are the effects panel's: the
 /// devices are scaled to it, down to half their size.
@@ -150,8 +208,19 @@ class _CanvasMixerState extends State<CanvasMixer>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       var at = _devices[device]?.currentContext;
       if (at != null && at.mounted) {
-        // Its left edge in view: its switch and its name, where a narrow
-        // chain cannot show it whole.
+        // Into view only if it is not: a scroll view takes no presses while
+        // it moves, so a chain moved by its padding for a device already
+        // in view swallowed the first press on it. Otherwise its left edge
+        // in view -- its switch and its name -- where a narrow chain cannot
+        // show it whole.
+        var box = at.findRenderObject() as RenderBox?;
+        var view =
+            Scrollable.maybeOf(at)?.context.findRenderObject() as RenderBox?;
+        if (box != null && view != null && box.hasSize && view.hasSize) {
+          var left = box.localToGlobal(Offset.zero).dx -
+              view.localToGlobal(Offset.zero).dx;
+          if (left >= 0 && left + box.size.width <= view.size.width) return;
+        }
         Scrollable.ensureVisible(at,
             alignment: 0, duration: const Duration(milliseconds: 200));
       }
@@ -182,8 +251,12 @@ class _CanvasMixerState extends State<CanvasMixer>
     _ticker = createTicker(_meter)..start();
   }
 
+  /// _clipScrolls keeps the columns' clip slots scrolled together.
+  final _ClipScrolls _clipScrolls = _ClipScrolls();
+
   @override
   void dispose() {
+    _clipScrolls.dispose();
     _ticker.dispose();
     _chainScroll.dispose();
     super.dispose();
@@ -222,6 +295,8 @@ class _CanvasMixerState extends State<CanvasMixer>
         math.max(db.$2, held.$2 - 0.66),
       );
     }
+    // Clips waiting for a bar blink, and playing ones go round.
+    if (controller.sessionActive) moved = true;
     if (moved && mounted) setState(() {});
   }
 
@@ -269,7 +344,10 @@ class _CanvasMixerState extends State<CanvasMixer>
               MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
           child: Builder(builder: (context) => _desk(context, zoom)),
         );
-    if ((zoom - 1).abs() < 0.01) return unscaled(1);
+    // Zoomed to one -- the panel dragged down to its least -- it is still
+    // laid out the same way: unwrapped there, the desk was built afresh as
+    // it crossed, every device moved over to the new one, and a device's
+    // tooltip showing as it moved asserted (Ken's log, 2026-10-30).
     return LayoutBuilder(builder: (context, box) {
       var width = box.maxWidth.isFinite
           ? box.maxWidth
@@ -292,11 +370,7 @@ class _CanvasMixerState extends State<CanvasMixer>
 
   /// _desk is the mixer, or the effects, laid out at [zoom]'s share of its
   /// height -- see build.
-  /// _deskHeight is the desk's height as it is laid out, before any zoom.
-  double _deskHeight = mixerDefaultHeight;
-
   Widget _desk(BuildContext context, double zoom) {
-    _deskHeight = widget.height / zoom;
     var theme = MixerLook.of(context);
     return ListenableBuilder(
       listenable: controller,
@@ -306,9 +380,6 @@ class _CanvasMixerState extends State<CanvasMixer>
             if (widget.only == null || l.key == widget.only) l,
         ];
         var editing = _editing;
-        var compact = !widget.embedded &&
-            !widget.effects &&
-            widget.height / zoom < mixerCompactBelow;
         if (widget.effects &&
             controller.effectsFocusCount != _focusSeen &&
             controller.effectsFocus != null) {
@@ -342,47 +413,41 @@ class _CanvasMixerState extends State<CanvasMixer>
                       top: BorderSide(
                           color: theme.colors.outlineVariant, width: 1)),
                 ),
-                child: Column(children: [
-                  // The grip: dragged up, the mixer is taller. Over the canvas, so
-                  // it never moves the design, whatever its height.
+                child: Stack(children: [
+                  Positioned.fill(
+                    child: Column(children: [
+                      if (!widget.embedded && widget.resizable)
+                        const SizedBox(height: _edgeRoom),
+                      if (widget.embedded) const SizedBox(height: 8),
+                      Expanded(
+                        child: editing == null
+                            ? _leastOrScrolled(_strips(theme, lanes))
+                            : _editor(theme, editing, lane),
+                      ),
+                    ]),
+                  ),
+                  // Its top edge, dragged: taller or shorter. No handle --
+                  // the cursor says it. The drag is in the desk's own,
+                  // zoomed, coordinates: put back into the screen's, so the
+                  // edge stays with the pointer.
                   if (!widget.embedded && widget.resizable)
-                    GestureDetector(
-                      key: ValueKey(
-                          widget.effects ? "effectsGrip" : "mixerGrip"),
-                      behavior: HitTestBehavior.opaque,
-                      // The drag is in the desk's own, zoomed, coordinates: put
-                      // back into the screen's, so the edge stays with the
-                      // pointer.
-                      onVerticalDragUpdate: (d) =>
-                          widget.onResize(widget.height - d.delta.dy * zoom),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 6,
                       child: MouseRegion(
                         cursor: SystemMouseCursors.resizeUpDown,
-                        child: SizedBox(
-                          height: 12,
-                          child: Center(
-                            child: Container(
-                              width: 44,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                  color: theme.colors.outline,
-                                  borderRadius: BorderRadius.circular(2)),
-                            ),
-                          ),
+                        child: GestureDetector(
+                          supportedDevices: dragPointers,
+                          key: ValueKey(
+                              widget.effects ? "effectsGrip" : "mixerGrip"),
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragUpdate: (d) => widget
+                              .onResize(widget.height - d.delta.dy * zoom),
                         ),
                       ),
                     ),
-                  // Dragged down past the strips, one line of channels: each its
-                  // name over its meter, on its side.
-                  if (compact)
-                    Expanded(child: _compact(theme, lanes))
-                  else ...[
-                    if (widget.embedded) const SizedBox(height: 8),
-                    Expanded(
-                      child: editing == null
-                          ? _strips(theme, lanes)
-                          : _editor(theme, editing, lane),
-                    ),
-                  ],
                 ]),
               ),
             ));
@@ -390,167 +455,109 @@ class _CanvasMixerState extends State<CanvasMixer>
     );
   }
 
-  /// _compact is the mixer at its shortest: a line of channels, each its
-  /// name -- picked with a press, renamed with a double-click -- over its
-  /// meter on its side, and the master's at the end.
-  Widget _compact(MixerLook theme, List<TimelineChannel> lanes) {
-    var colors = theme.colors;
-    Widget cell(String key, Widget name) {
-      var selected = controller.selectedChannel == key;
-      return Listener(
-        onPointerDown: (_) => controller.pickStrip(key),
-        child: Container(
-          key: ValueKey("compact-$key"),
-          width: 150,
-          margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.fromLTRB(6, 2, 6, 4),
-          decoration: BoxDecoration(
-            color: colors.surfaceContainer,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-                color: selected ? colors.primary : colors.outlineVariant,
-                width: selected ? 2 : 1),
-          ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            name,
-            const SizedBox(height: 2),
-            Expanded(
-              child: CustomPaint(
-                key: ValueKey("compactMeter-$key"),
-                painter: _MeterPainter(_now[key] ?? (-90, -90),
-                    _peaks[key] ?? (-90, -90), theme.studio,
-                    horizontal: true),
-              ),
-            ),
-          ]),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-          child: ListView(scrollDirection: Axis.horizontal, children: [
-            for (var lane in lanes)
-              cell(
-                  lane.key,
-                  ChannelNameEditor(
-                      name: lane.name,
-                      theme: ThemeNotifier.of(context),
-                      color: theme.colors.onSurface,
-                      onRename: (name) => controller.renameChannel(lane, name),
-                      weight: FontWeight.w600,
-                      textKey: ValueKey("compactName-${lane.key}"),
-                      fieldKey: const ValueKey("mixerNameField"))),
-          ]),
-        ),
-        cell(
-            _master,
-            Text("Master",
-                maxLines: 1,
-                style: TextStyle(
-                    fontSize: 11,
-                    height: 1.2,
-                    fontWeight: FontWeight.w600,
-                    color: colors.onSurface))),
-      ]),
-    );
-  }
+  /// _leastOrScrolled is [strips] given at least their least height --
+  /// see mixerLeastHeight -- and scrolled where the panel is shorter: the
+  /// screen never makes it so, but a window can be.
+  Widget _leastOrScrolled(Widget strips) => LayoutBuilder(builder: (c, box) {
+        var least = mixerLeastHeight(controller) - _edgeRoom;
+        if (widget.embedded || box.maxHeight >= least) return strips;
+        return SingleChildScrollView(
+            child: SizedBox(height: least, child: strips));
+      });
 
   Widget _strips(MixerLook theme, List<TimelineChannel> lanes) {
     var master = controller.document.masterMix;
+    var returns = controller.document.returns;
+    var narrow = controller.narrowStrips;
+    // In a sound's own settings: its devices and its fader, not clips.
+    var states = widget.embedded
+        ? const {
+            MixerSection.clips: BandState.hidden,
+            MixerSection.devices: BandState.shown,
+            MixerSection.mixer: BandState.shown,
+            MixerSection.sends: BandState.shown,
+          }
+        : {for (var s in MixerSection.values) s: controller.bandState(s)};
+    var showReturns = !widget.embedded && controller.returnsShown;
+    // Every band one height in every column: the tallest column's devices
+    // set it, so the faders all start on one line.
+    var devicesWanted = [
+      for (var l in lanes)
+        _ChannelStrip.devicesWanted(returns.length,
+            narrow: narrow.contains(l.key),
+            part: controller.instrumentOf(l.key)?.instrument,
+            devices: l.mix.devices.length +
+                (l.mix.speech == null ? 0 : 1) +
+                (l.mix.vocaliser == null ? 0 : 1)),
+      _MasterStrip.devicesWanted(master.devices.length),
+      if (showReturns)
+        for (var r in returns) _ReturnStrip.devicesWanted(r),
+    ].reduce(math.max);
+    // Three slots, while the clips and the mixer show whole: a longer
+    // chain scrolls, rather than squeezing them.
+    var devicesCap = _slotsHeight(3);
+    // The sends: as tall as the most dials take -- a narrow column's, two
+    // to a row, where there is one.
+    var sendsH = widget.embedded && lanes.isEmpty
+        ? 0.0
+        : math.max(
+            sendsHeight(returns.length),
+            lanes.any((l) => narrow.contains(l.key))
+                ? sendsHeight(returns.length, narrow: true)
+                : 0.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-          child: lanes.isEmpty && widget.embedded
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      "A strip appears here for each video and background "
-                      "sound on the timeline. The master strip is always "
-                      "here, and sets how the whole canvas sounds.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 12, color: theme.colors.onSurfaceVariant),
-                    ),
-                  ),
-                )
-              : ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    for (var lane in lanes)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _ChannelStrip(
-                          key: ValueKey("strip-${lane.key}"),
-                          // A short desk: the small pan, so the fader keeps
-                          // its room.
-                          compactPan: _deskHeight < 380,
-                          name: lane.name,
-                          channelKey: lane.key,
-                          mix: lane.mix,
-                          // In a sound's own settings it was picked on
-                          // purpose, and is changed there wherever it is.
-                          editable: lane.editable || widget.embedded,
-                          soloed: controller.solo.contains(lane.key),
-                          level: _now[lane.key] ?? (-90, -90),
-                          peak: _peaks[lane.key] ?? (-90, -90),
-                          theme: theme,
-                          onChanged: (mix, {transient = false}) {
-                            controller.beginInteraction();
-                            controller.setChannelMix(lane, mix,
-                                transient: true, anywhere: widget.embedded);
-                            if (!transient) controller.endInteraction();
-                          },
-                          onCommit: controller.endInteraction,
-                          onSolo: () => controller.toggleSolo(lane.key),
-                          onOpenEq: () => _open(lane.key, _Opened.eq),
-                          onOpenComp: () => _open(lane.key, _Opened.comp),
-                          onOpenDuck: () => _open(lane.key, _Opened.duck),
-                          selected: controller.selectedChannel == lane.key,
-                          onSelect: () => controller.pickStrip(lane.key),
-                          onRename: (name) =>
-                              controller.renameChannel(lane, name),
-                          returns: controller.document.returns,
-                        ),
+      child: LayoutBuilder(builder: (context, box) {
+        // Inside a column's padding and its edge.
+        var bands = _Bands.fit(
+            box.maxHeight - 14, states, devicesWanted, devicesCap,
+            sendsH: sendsH);
+        return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            child: lanes.isEmpty && widget.embedded
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        "A strip appears here for each video and background "
+                        "sound on the timeline. The master strip is always "
+                        "here, and sets how the whole canvas sounds.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 12, color: theme.colors.onSurfaceVariant),
                       ),
-                    // The returns, together after the channels, a little
-                    // apart: what the channels' sends feed.
-                    if (!widget.embedded) ...[
-                      const SizedBox(width: 8),
-                      for (var (i, ret) in controller.document.returns.indexed)
+                    ),
+                  )
+                : ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (var (i, lane) in lanes.indexed)
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
-                          child: _ReturnStrip(
-                            key: ValueKey("strip-${ret.id}"),
-                            compactPan: _deskHeight < 380,
-                            letter: returnLetter(i),
-                            ret: ret,
-                            level: _now[ret.id] ?? (-90, -90),
-                            peak: _peaks[ret.id] ?? (-90, -90),
-                            theme: theme,
-                            onChanged: (next, {transient = false}) {
-                              controller.beginInteraction();
-                              controller.setReturn(next, transient: true);
-                              if (!transient) controller.endInteraction();
-                            },
-                            onCommit: controller.endInteraction,
-                            onOpen: (device) =>
-                                controller.openEffects(ret.id, device: device),
-                            onRemove: () {
-                              controller.beginInteraction();
-                              controller.removeReturn(ret.id);
-                              controller.endInteraction();
-                            },
-                            selected: controller.selectedChannel == ret.id,
-                            onSelect: () => controller.pickStrip(ret.id),
-                          ),
+                          child: _channelStrip(theme, lane, i, bands),
                         ),
-                      if (controller.document.returns.length < maxReturns)
+                    ],
+                  ),
+          ),
+          // The returns, pinned beside the master as Ableton's are: in view
+          // however far the channels are scrolled. Never more than half the
+          // width; past that they scroll among themselves.
+          if (showReturns) ...[
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxWidth / 2),
+              child: SingleChildScrollView(
+                key: const ValueKey("returnsPinned"),
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var (i, ret) in returns.indexed)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _returnStrip(theme, ret, i, bands),
+                        ),
+                      if (returns.length < maxReturns)
                         _AddReturn(
                             theme: theme,
                             onAdd: () {
@@ -558,32 +565,177 @@ class _CanvasMixerState extends State<CanvasMixer>
                               controller.addReturn();
                               controller.endInteraction();
                             }),
-                    ],
-                  ],
-                ),
-        ),
-        const SizedBox(width: 8),
-        _MasterStrip(
-          key: const ValueKey("strip-master"),
-          mix: master,
-          level: _now[_master] ?? (-90, -90),
-          peak: _peaks[_master] ?? (-90, -90),
-          theme: theme,
-          onChanged: (mix, {transient = false}) {
-            controller.beginInteraction();
-            controller.setMasterMix(mix, transient: true);
-            if (!transient) controller.endInteraction();
-          },
-          onCommit: controller.endInteraction,
-          onOpenEq: () => _open(_master, _Opened.eq),
-          onOpenComp: () => _open(_master, _Opened.comp),
-          onOpenLoudness: () => _open(_master, _Opened.loudness),
-          selected: controller.selectedChannel == _master,
-          onSelect: () => controller.pickStrip(_master),
-        ),
-      ]),
+                    ]),
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          _MasterStrip(
+            key: const ValueKey("strip-master"),
+            mix: master,
+            speakers: controller.document.audio.speakers,
+            level: _now[_master] ?? (-90, -90),
+            peak: _peaks[_master] ?? (-90, -90),
+            theme: theme,
+            bands: bands,
+            narrow: narrow.contains(_master),
+            onNarrow: () => controller.toggleNarrow(_master),
+            onChanged: (mix, {transient = false}) {
+              controller.beginInteraction();
+              controller.setMasterMix(mix, transient: true);
+              if (!transient) controller.endInteraction();
+            },
+            onCommit: controller.endInteraction,
+            onOpenEq: () => _open(_master, _Opened.eq),
+            onOpenComp: () => _open(_master, _Opened.comp),
+            onOpenLoudness: () => _open(_master, _Opened.loudness),
+            onOpenDevice: (id) => controller.openEffects(_master, device: id),
+            onRemoveDevice: (id) => _removeDevice(_master, id),
+            scenes: () => _SceneBand(
+                controller: controller,
+                theme: theme,
+                scroll: _clipScrolls.of(_master)),
+            selected: controller.selectedChannel == _master,
+            onSelect: () => controller.pickStrip(_master),
+          ),
+          if (!widget.embedded) ...[
+            const SizedBox(width: 6),
+            _SectionRail(
+              states: states,
+              theme: theme,
+              onToggle: controller.toggleMixerSection,
+              returnsShown: controller.returnsShown,
+              onReturns: () =>
+                  controller.returnsShown = !controller.returnsShown,
+              allNarrow: _allKeys(lanes).every(narrow.contains),
+              onNarrowAll: () {
+                var keys = _allKeys(lanes);
+                controller.setAllNarrow(keys, !keys.every(narrow.contains));
+              },
+            ),
+          ],
+        ]);
+      }),
     );
   }
+
+  /// _removeDevice takes device [id] -- "dev2", "midi0", "speech" -- out of
+  /// strip [key]'s chain: one change to undo.
+  void _removeDevice(String key, String id) {
+    controller.beginInteraction();
+    if (id == "speech") {
+      controller.setSpeech(key, null);
+    } else if (id == "vocaliser") {
+      controller.setVocaliser(key, null);
+    } else if (id.startsWith("midi")) {
+      var i = int.tryParse(id.substring(4)) ?? -1;
+      controller.setChannelPart(
+          key,
+          (p) => i < 0 || i >= p.effects.length
+              ? p
+              : p.copyWith(effects: [...p.effects]..removeAt(i)));
+    } else if (id.startsWith("dev")) {
+      var i = int.tryParse(id.substring(3)) ?? -1;
+      var now = controller.devicesOf(key);
+      if (i >= 0 && i < now.length) {
+        controller.setDevicesOf(key, [...now]..removeAt(i));
+      }
+    }
+    controller.endInteraction();
+  }
+
+  /// _allKeys is every column's key: channels, returns, master.
+  List<String> _allKeys(List<TimelineChannel> lanes) => [
+        for (var l in lanes) l.key,
+        for (var r in controller.document.returns) r.id,
+        _master,
+      ];
+
+  Widget _channelStrip(
+      MixerLook theme, TimelineChannel lane, int index, _Bands bands) {
+    var e = lane.first.element;
+    // As it plays now: a setting a lane moves, where the lane has it -- and a
+    // hand on one of them holds it there. See changeChannelMix.
+    var shown = controller.mixNow(lane);
+    return _ChannelStrip(
+      key: ValueKey("strip-${lane.key}"),
+      name: lane.name,
+      number: index + 1,
+      channelKey: lane.key,
+      mix: shown,
+      automated: {
+        for (var l in lane.mix.automation)
+          if (l.points.isNotEmpty) l.target
+      },
+      held: controller.overridden[lane.key] ?? const {},
+      // In a sound's own settings it was picked on purpose, and is changed
+      // there wherever it is.
+      editable: lane.editable || widget.embedded,
+      soloed: controller.solo.contains(lane.key),
+      midi: e is AudioElement && e.instrument != null,
+      part: controller.instrumentOf(lane.key)?.instrument,
+      onOpenDevice: (id) => controller.openEffects(lane.key, device: id),
+      onRemoveDevice: (id) => _removeDevice(lane.key, id),
+      armed: controller.armed.contains(lane.key),
+      level: _now[lane.key] ?? (-90, -90),
+      peak: _peaks[lane.key] ?? (-90, -90),
+      theme: theme,
+      bands: bands,
+      narrow: controller.narrowStrips.contains(lane.key),
+      onNarrow: () => controller.toggleNarrow(lane.key),
+      onChanged: (mix, {transient = false}) {
+        controller.beginInteraction();
+        controller.changeChannelMix(lane, shown, mix,
+            transient: true, anywhere: widget.embedded);
+        if (!transient) controller.endInteraction();
+      },
+      onCommit: controller.endInteraction,
+      onSolo: () => controller.toggleSolo(lane.key),
+      onArm: () => controller.toggleArm(lane.key),
+      onOpenEq: () => _open(lane.key, _Opened.eq),
+      onOpenComp: () => _open(lane.key, _Opened.comp),
+      onOpenDuck: () => _open(lane.key, _Opened.duck),
+      onOpenPanner: () => controller.openEffects(lane.key, device: "panner"),
+      clips: () => _ClipBand(
+          controller: controller,
+          channel: lane.key,
+          theme: theme,
+          scroll: _clipScrolls.of(lane.key)),
+      selected: controller.selectedChannel == lane.key,
+      onSelect: () => controller.pickStrip(lane.key),
+      onRename: (name) => controller.renameChannel(lane, name),
+      returns: controller.document.returns,
+    );
+  }
+
+  Widget _returnStrip(
+          MixerLook theme, ReturnChannel ret, int index, _Bands bands) =>
+      _ReturnStrip(
+        key: ValueKey("strip-${ret.id}"),
+        letter: returnLetter(index),
+        ret: ret,
+        level: _now[ret.id] ?? (-90, -90),
+        peak: _peaks[ret.id] ?? (-90, -90),
+        theme: theme,
+        bands: bands,
+        narrow: controller.narrowStrips.contains(ret.id),
+        onNarrow: () => controller.toggleNarrow(ret.id),
+        onChanged: (next, {transient = false}) {
+          controller.beginInteraction();
+          controller.setReturn(next, transient: true);
+          if (!transient) controller.endInteraction();
+        },
+        onCommit: controller.endInteraction,
+        onOpen: (device) => controller.openEffects(ret.id, device: device),
+        onRemoveDevice: (id) => _removeDevice(ret.id, id),
+        onRemove: () {
+          controller.beginInteraction();
+          controller.removeReturn(ret.id);
+          controller.endInteraction();
+        },
+        selected: controller.selectedChannel == ret.id,
+        onSelect: () => controller.pickStrip(ret.id),
+      );
 
   /// _editor is [key]'s effects as a chain, left to right in the order the
   /// sound goes through them, scrolling sideways: for a channel its EQ and
@@ -625,24 +777,129 @@ class _CanvasMixerState extends State<CanvasMixer>
           ? master.compFirst
           : ret?.mix.compFirst ?? lane!.mix.compFirst;
       var skin = DeviceSkin.themed(theme.colors);
+      // The editor -- a clip's, opened from its slot, or a part's piano
+      // roll -- first in its channel's strip.
+      var wide = controller.editorWide;
+      var most = math.max(420.0, room.maxWidth - 24);
+      // As its right edge was dragged to; else as Wider or Narrower has it.
+      var editorWidth = controller.editorWidth?.clamp(420.0, most) ??
+          (wide
+              ? math.max(editorNarrowWidth, room.maxWidth - 24)
+              : math.min(editorNarrowWidth, most));
+      var clipHere =
+          controller.clipEditorShown && controller.clipEditing?.channel == key;
+      var rollHere = controller.pianoRollShown &&
+          controller.pianoRoll?.row == null &&
+          controller.pianoRoll?.channel == key;
       var chain = <Widget>[
+        if (clipHere)
+          KeyedSubtree(
+            key: _deviceKey("clip"),
+            child: EditorFrame(
+              id: "clip",
+              title:
+                  "Clip · ${controller.editedClip?.name.isNotEmpty == true ? controller.editedClip!.name : "untitled"}",
+              width: editorWidth,
+              height: h,
+              wide: wide,
+              onWide: controller.toggleEditorWide,
+              onClose: controller.closeEditor,
+              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
+              child: ClipEditor(controller: controller, wide: wide),
+            ),
+          ),
+        if (rollHere)
+          KeyedSubtree(
+            key: _deviceKey("roll"),
+            child: EditorFrame(
+              id: "roll",
+              title: "Part · ${lane?.name ?? ""}",
+              width: editorWidth,
+              height: h,
+              wide: wide,
+              onWide: controller.toggleEditorWide,
+              onClose: controller.closeEditor,
+              onResize: (w) => controller.editorWidth = w.clamp(420.0, most),
+              child: ClipEditor(controller: controller, wide: wide, part: true),
+            ),
+          ),
         // A return's own devices first -- its reverb, its delay -- then a
         // way to add another, then its EQ and compressor.
-        if (ret != null) ...[
-          for (var i = 0; i < ret.devices.length; i++)
+        // A MIDI channel's In and its MIDI effects, before its instrument
+        // plays: what comes in, and what is done to the notes.
+        if (lane != null && controller.instrumentChannel(key)) ...[
+          device(
+              "midiIn",
+              (f, fold) => MidiInDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+          for (var i = 0;
+              i < controller.instrumentOf(key)!.instrument!.effects.length;
+              i++)
             device(
-                "dev$i",
-                (f, fold) => ParamDevice(
+                "midi$i",
+                (f, fold) => MidiEffectDevice(
                     controller: controller,
-                    returnId: ret.id,
+                    channel: key,
                     index: i,
                     folded: f,
                     onFold: fold,
                     height: h)),
+          AddMidiEffectSlot(
+              key: const ValueKey("addMidiEffectSlot"),
+              controller: controller,
+              channel: key,
+              height: h),
+        ],
+        // A channel's Speech device, first: what it speaks is its sound.
+        if (lane != null && controller.speechOf(key) != null)
+          device(
+              "speech",
+              (f, fold) => SpeechDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+        // Its Vocaliser, after: what it sings is the speech, sung.
+        if (lane != null && controller.vocaliserOf(key) != null)
+          device(
+              "vocaliser",
+              (f, fold) => VocaliserDevice(
+                  controller: controller,
+                  channel: key,
+                  folded: f,
+                  onFold: fold,
+                  height: h)),
+        // A return's devices, a channel's own or the master's -- a chorus,
+        // a gate --
+        // then a way to add another, then its EQ and compressor.
+        if (ret != null || lane != null || isMaster) ...[
+          for (var i = 0; i < controller.devicesOf(key).length; i++)
+            device(
+                "dev$i",
+                (f, fold) => listensOnly(controller.devicesOf(key)[i].kind)
+                    ? ListenerDevice(
+                        controller: controller,
+                        owner: key,
+                        index: i,
+                        folded: f,
+                        onFold: fold,
+                        height: h)
+                    : ParamDevice(
+                        controller: controller,
+                        owner: key,
+                        index: i,
+                        folded: f,
+                        onFold: fold,
+                        height: h)),
           AddDeviceSlot(
               key: const ValueKey("addDeviceSlot"),
               controller: controller,
-              returnId: ret.id,
+              owner: key,
               height: h),
         ],
         ...(compFirst ? [comp, eq] : [eq, comp]),
@@ -699,11 +956,12 @@ class _CanvasMixerState extends State<CanvasMixer>
         // speakers and the channel among them -- stereo or surround.
         if (lane != null || ret != null)
           device("panner", (f, fold) {
-            var mix = lane?.mix ?? ret!.mix;
+            // A channel's pan as it plays now -- see mixNow.
+            var mix = lane != null ? controller.mixNow(lane) : ret!.mix;
             void write(ChannelMix next, {bool transient = false}) {
               controller.beginInteraction();
               if (lane != null) {
-                controller.setChannelMix(lane, next,
+                controller.changeChannelMix(lane, mix, next,
                     transient: true, anywhere: true);
               } else {
                 controller.setReturn(ret!.copyWith(mix: next), transient: true);
@@ -823,20 +1081,37 @@ class _CanvasMixerState extends State<CanvasMixer>
                 onFold: fold,
                 height: h)),
       ];
+      // The devices' own lists scroll as they always have: only the chain
+      // itself is not dragged.
+      var inside = ScrollConfiguration.of(context);
       // Held to the left: a chain narrower than the panel was centred.
       return Align(
         alignment: Alignment.topLeft,
-        child: SingleChildScrollView(
-          key: const ValueKey("effectsChain"),
-          controller: _chainScroll,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            for (var (i, d) in chain.indexed) ...[
-              if (i > 0) const SizedBox(width: 4),
-              d,
-            ],
-          ]),
+        // By the wheel and the trackpad, not by a drag: a drag in a device
+        // -- a note drawn, a point moved -- is the device's, and the chain
+        // took the first from the piano roll and the clip editor.
+        child: ScrollConfiguration(
+          behavior: inside.copyWith(
+              scrollbars: false, dragDevices: {PointerDeviceKind.trackpad}),
+          child: SingleChildScrollView(
+            key: const ValueKey("effectsChain"),
+            controller: _chainScroll,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Each wrapper keyed as its device is: unkeyed, they were
+              // matched by place, so a device put in ahead -- the clip
+              // editor opened -- moved every one after it to another
+              // wrapper, and a showing tooltip moved that way asserts.
+              for (var (i, d) in chain.indexed) ...[
+                if (i > 0) const SizedBox(width: 4),
+                ScrollConfiguration(
+                    key: d.key == null ? null : ValueKey(d.key),
+                    behavior: inside,
+                    child: d),
+              ],
+            ]),
+          ),
         ),
       );
     });
@@ -978,10 +1253,17 @@ class _DbReadingState extends State<DbReading> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _open,
-        child: Text("${dbText(widget.db)}${widget.unit}",
-            key: widget.textKey,
-            textAlign: TextAlign.center,
-            style: widget.style),
+        // One line, shrunk rather than wrapped: a reading on two lines was
+        // a column's fader shorter than its neighbours'.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text("${dbText(widget.db)}${widget.unit}",
+              key: widget.textKey,
+              maxLines: 1,
+              softWrap: false,
+              textAlign: TextAlign.center,
+              style: widget.style),
+        ),
       ),
     );
   }
@@ -996,6 +1278,12 @@ class _Fader extends StatelessWidget {
   final VoidCallback onCommit;
   final bool wide;
 
+  /// small is a mixer strip's: half the size of the effects' own, for
+  /// shorter, narrower strips. [labels] is whether its scale is numbered --
+  /// not in a narrow strip, which has room for the marks alone.
+  final bool small;
+  final bool labels;
+
   const _Fader({
     required this.db,
     required this.level,
@@ -1004,6 +1292,8 @@ class _Fader extends StatelessWidget {
     required this.onChanged,
     required this.onCommit,
     this.wide = false,
+    this.small = false,
+    this.labels = true,
   });
 
   @override
@@ -1015,6 +1305,7 @@ class _Fader extends StatelessWidget {
                   transient: true);
           return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             GestureDetector(
+              supportedDevices: dragPointers,
               key: const ValueKey("fader"),
               behavior: HitTestBehavior.opaque,
               onVerticalDragStart: (d) => at(d.localPosition.dy),
@@ -1024,14 +1315,27 @@ class _Fader extends StatelessWidget {
               child: MouseRegion(
                 cursor: SystemMouseCursors.resizeUpDown,
                 child: CustomPaint(
-                  size: Size(wide ? 44 : 40, h),
-                  painter: _FaderPainter(db, theme.studio),
+                  size: Size(
+                      small
+                          ? (labels ? 26 : 14)
+                          : wide
+                              ? 44
+                              : 40,
+                      h),
+                  painter: _FaderPainter(db, theme.studio,
+                      small: small, labels: labels),
                 ),
               ),
             ),
-            const SizedBox(width: 4),
+            SizedBox(width: small ? 2 : 4),
             CustomPaint(
-              size: Size(wide ? 22 : 14, h),
+              size: Size(
+                  small
+                      ? (labels ? (wide ? 12 : 9) : 6)
+                      : wide
+                          ? 22
+                          : 14,
+                  h),
               painter: _MeterPainter(level, peak, theme.studio),
             ),
           ]);
@@ -1045,36 +1349,43 @@ class _Fader extends StatelessWidget {
 class _FaderPainter extends CustomPainter {
   final double db;
   final StudioColors colors;
-  _FaderPainter(this.db, this.colors);
+  final bool small;
+  final bool labels;
+  _FaderPainter(this.db, this.colors, {this.small = false, this.labels = true});
 
   static const _marks = [6.0, 0.0, -6.0, -12.0, -24.0, -48.0];
 
   @override
   void paint(Canvas canvas, Size size) {
-    var slotX = size.width - 13;
+    // Half size: the cap, the marks and the numbers all halved.
+    var k = small ? 0.5 : 1.0;
+    var slotX = size.width - (small ? 7 : 13);
     double yOf(double d) => 6 + faderPosition(d) * (size.height - 12);
     // The scale, left of the slot.
     for (var m in _marks) {
       var y = yOf(m);
       var unity = m == 0;
       canvas.drawLine(
-          Offset(slotX - (unity ? 12 : 8), y),
-          Offset(slotX - 3, y),
+          Offset(slotX - (unity ? 12 : 8) * k - (small ? 2 : 0), y),
+          Offset(slotX - 3 * k - (small ? 1.5 : 0), y),
           Paint()
             ..strokeWidth = 1
             ..color = unity ? colors.muted : colors.edge);
+      if (!labels) continue;
       var label = TextPainter(
         text: TextSpan(
             text: m > 0 ? "+${m.round()}" : "${m.round()}".replaceAll("-", "−"),
             style: TextStyle(
-                fontSize: 7,
+                fontSize: small ? 6 : 7,
                 height: 1,
                 color: unity ? colors.text : colors.muted)),
         textDirection: TextDirection.ltr,
       )..layout();
-      if (size.height > 90) {
+      if (size.height > (small ? 70 : 90)) {
         label.paint(
-            canvas, Offset(slotX - 14 - label.width, y - label.height / 2));
+            canvas,
+            Offset(
+                slotX - (small ? 9 : 14) - label.width, y - label.height / 2));
       }
     }
     // The slot, and the part of it under the cap lit.
@@ -1087,8 +1398,11 @@ class _FaderPainter extends CustomPainter {
             const Radius.circular(1.5)),
         Paint()..color = colors.on.withValues(alpha: 0.55));
     // The cap: metal, ridged, with its line.
-    var cap = Rect.fromCenter(center: Offset(slotX, y), width: 22, height: 30);
-    var rrect = RRect.fromRectAndRadius(cap, const Radius.circular(4));
+    var cap = Rect.fromCenter(
+        center: Offset(slotX, y),
+        width: 22 * k + (small ? 1 : 0),
+        height: 30 * k);
+    var rrect = RRect.fromRectAndRadius(cap, Radius.circular(4 * k + 0.5));
     canvas.drawRRect(
         rrect.shift(const Offset(0, 2)),
         Paint()
@@ -1116,13 +1430,13 @@ class _FaderPainter extends CustomPainter {
     var grip = Paint()
       ..strokeWidth = 1
       ..color = const Color(0xFF7D838D);
-    for (var dy in [-9.0, -5.0, 5.0, 9.0]) {
+    for (var dy in small ? [-4.5, 4.5] : [-9.0, -5.0, 5.0, 9.0]) {
       canvas.drawLine(
-          Offset(slotX - 7, y + dy), Offset(slotX + 7, y + dy), grip);
+          Offset(slotX - 7 * k, y + dy), Offset(slotX + 7 * k, y + dy), grip);
     }
     canvas.drawLine(
-        Offset(slotX - 8, y),
-        Offset(slotX + 8, y),
+        Offset(slotX - 8 * k, y),
+        Offset(slotX + 8 * k, y),
         Paint()
           ..strokeWidth = 2
           ..strokeCap = StrokeCap.round
@@ -1130,7 +1444,11 @@ class _FaderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FaderPainter old) => old.db != db || old.colors != colors;
+  bool shouldRepaint(_FaderPainter old) =>
+      old.db != db ||
+      old.colors != colors ||
+      old.small != small ||
+      old.labels != labels;
 }
 
 class _MeterPainter extends CustomPainter {
@@ -1225,7 +1543,7 @@ class _MiniCurve extends CustomPainter {
 
 Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
         VoidCallback onTap,
-        {Key? key}) =>
+        {Key? key, VoidCallback? onRemove}) =>
     Material(
       color: theme.colors.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(4),
@@ -1233,225 +1551,61 @@ Widget _slot(MixerLook theme, String label, bool on, Widget trailing,
         key: key,
         borderRadius: BorderRadius.circular(4),
         onTap: onTap,
+        // Right-clicked, a device's slot takes the device out.
+        onSecondaryTap: onRemove,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          child: Row(children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-                    color: on
-                        ? theme.colors.onSurface
-                        : theme.colors.onSurfaceVariant)),
-            const SizedBox(width: 4),
-            // Scaled down rather than overflowing: a reading like
-            // "−12.0 dBTP" beside its label is wider than a strip in some
-            // fonts, and a strip that overflows is a striped warning where
-            // the control should be.
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: FittedBox(fit: BoxFit.scaleDown, child: trailing),
+          child: LayoutBuilder(
+            builder: (context, box) => Row(children: [
+              // A long label -- "Add a device", a device's own name -- fades
+              // at the slot's edge rather than running out of it.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: box.maxWidth * 0.7),
+                child: Text(label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                        color: on
+                            ? theme.colors.onSurface
+                            : theme.colors.onSurfaceVariant)),
               ),
-            ),
-          ]),
+              const SizedBox(width: 4),
+              // Scaled down rather than overflowing: a reading like
+              // "−12.0 dBTP" beside its label is wider than a strip in some
+              // fonts, and a strip that overflows is a striped warning where
+              // the control should be.
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(fit: BoxFit.scaleDown, child: trailing),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
     );
-
-class _ChannelStrip extends StatelessWidget {
-  final String name;
-
-  /// compactPan is a short desk's: see _PanControl.compact.
-  final bool compactPan;
-
-  /// channelKey is the channel's key: where its placement is looked up.
-  final String channelKey;
-  final ChannelMix mix;
-  final bool editable;
-  final bool soloed;
-  final (double, double) level;
-  final (double, double) peak;
-  final MixerLook theme;
-  final _MixWrite<ChannelMix> onChanged;
-  final VoidCallback onCommit;
-  final VoidCallback onSolo;
-  final VoidCallback onOpenEq;
-  final VoidCallback onOpenComp;
-  final VoidCallback onOpenDuck;
-
-  /// selected is whether this is the channel picked -- here or on the
-  /// timeline; a press anywhere on the strip picks it.
-  final bool selected;
-  final VoidCallback onSelect;
-  final ValueChanged<String> onRename;
-
-  /// returns are what its sends can feed: a dial for each.
-  final List<ReturnChannel> returns;
-
-  const _ChannelStrip({
-    this.compactPan = false,
-    this.returns = const [],
-    required this.name,
-    required this.channelKey,
-    required this.mix,
-    required this.editable,
-    required this.soloed,
-    required this.level,
-    required this.peak,
-    required this.theme,
-    required this.onChanged,
-    required this.onCommit,
-    required this.onSolo,
-    required this.onOpenEq,
-    required this.onOpenComp,
-    required this.onOpenDuck,
-    required this.selected,
-    required this.onSelect,
-    required this.onRename,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = theme.colors;
-    var body = Container(
-      width: 116,
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-            color: selected ? colors.primary : colors.outlineVariant,
-            width: selected ? 2 : 1),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Double-clicked, renamed: the channel's name on the timeline too.
-        ChannelNameEditor(
-            name: name,
-            theme: ThemeNotifier.of(context),
-            color: theme.colors.onSurface,
-            onRename: onRename,
-            weight: FontWeight.w600,
-            textKey: const ValueKey("mixerName"),
-            fieldKey: const ValueKey("mixerNameField")),
-        const SizedBox(height: 6),
-        _slot(
-            theme,
-            "EQ",
-            mix.eq.on,
-            CustomPaint(
-                size: const Size(40, 14), painter: _MiniCurve(mix.eq, colors)),
-            onOpenEq,
-            key: const ValueKey("eqSlot")),
-        const SizedBox(height: 4),
-        _slot(
-            theme,
-            "Comp",
-            mix.comp.on,
-            Icon(Icons.circle,
-                size: 7, color: mix.comp.on ? theme.studio.on : colors.outline),
-            onOpenComp,
-            key: const ValueKey("compSlot")),
-        const SizedBox(height: 4),
-        // Whether this channel turns the others down while it is heard --
-        // see Ducking. On the channel that is listened for: the voice.
-        _slot(
-            theme,
-            "Duck",
-            mix.duck.on,
-            Text(mix.duck.on ? "${dbText(mix.duck.depthDb)} dB" : "off",
-                style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant)),
-            onOpenDuck,
-            key: const ValueKey("duckSlot")),
-        if (returns.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          _Sends(
-            mix: mix,
-            returns: returns,
-            theme: theme,
-            onChanged: onChanged,
-            onCommit: onCommit,
-          ),
-        ],
-        const SizedBox(height: 6),
-        _PanControl(
-          compact: compactPan,
-          channel: channelKey,
-          mix: mix,
-          theme: theme,
-          onChanged: onChanged,
-          onCommit: onCommit,
-        ),
-        const SizedBox(height: 6),
-        Row(children: [
-          Expanded(
-            child: _Toggle(
-                key: const ValueKey("mute"),
-                label: "M",
-                on: mix.mute,
-                onColor: theme.studio.arm,
-                theme: theme,
-                tooltip: "Mute: silent here and in exports",
-                onTap: () => onChanged(mix.copyWith(mute: !mix.mute))),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: _Toggle(
-                key: const ValueKey("solo"),
-                label: "S",
-                on: soloed,
-                onColor: theme.studio.solo,
-                theme: theme,
-                tooltip: "Solo: hear only this, while you listen",
-                onTap: onSolo),
-          ),
-        ]),
-        const SizedBox(height: 6),
-        Expanded(
-          child: _Fader(
-            db: mix.gainDb,
-            level: level,
-            peak: peak,
-            theme: theme,
-            onChanged: (db, {transient = false}) =>
-                onChanged(mix.copyWith(gainDb: db), transient: transient),
-            onCommit: onCommit,
-          ),
-        ),
-        const SizedBox(height: 4),
-        DbReading(
-            db: mix.gainDb,
-            textKey: const ValueKey("faderReading"),
-            onSet: (db) => onChanged(mix.copyWith(gainDb: db)),
-            style: TextStyle(
-                fontSize: 11,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: colors.onSurface)),
-      ]),
-    );
-    if (editable) {
-      // A Listener, not a tap: it picks the channel whatever the press
-      // goes on to do -- open an effect, move the fader -- without taking
-      // the press from it.
-      return Listener(onPointerDown: (_) => onSelect(), child: body);
-    }
-    return Tooltip(
-      message: "On the master: changed there",
-      child: IgnorePointer(child: Opacity(opacity: 0.55, child: body)),
-    );
-  }
-}
 
 class _Toggle extends StatelessWidget {
   final String label;
   final bool on;
   final Color onColor;
+
+  /// onInk is what the label is drawn in while it is on: white if not said.
+  final Color? onInk;
+  final double height;
+  final double fontSize;
   final MixerLook theme;
   final String tooltip;
   final VoidCallback onTap;
 
   const _Toggle({
+    this.onInk,
+    this.height = 20,
+    this.fontSize = 10,
     required this.label,
     required this.on,
     required this.onColor,
@@ -1471,14 +1625,15 @@ class _Toggle extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             onTap: onTap,
             child: SizedBox(
-              height: 20,
+              height: height,
               child: Center(
                 child: Text(label,
                     style: TextStyle(
-                        fontSize: 10,
+                        fontSize: fontSize,
+                        height: 1,
                         fontWeight: FontWeight.w700,
                         color: on
-                            ? const Color(0xFFFFFFFF)
+                            ? onInk ?? const Color(0xFFFFFFFF)
                             : theme.colors.onSurfaceVariant)),
               ),
             ),
@@ -1512,6 +1667,7 @@ class _Balance extends StatelessWidget {
           style: TextStyle(fontSize: 10, color: theme.colors.onSurfaceVariant)),
       const Spacer(),
       GestureDetector(
+        supportedDevices: dragPointers,
         key: const ValueKey("balance"),
         onVerticalDragUpdate: (d) => onChanged(
             (value - d.delta.dy / 80).clamp(-1.0, 1.0),
@@ -1576,12 +1732,7 @@ class _PanControl extends StatelessWidget {
   final _MixWrite<ChannelMix> onChanged;
   final VoidCallback onCommit;
 
-  /// compact is a short strip's: a small pad and its reading, the width and
-  /// the LFE left to the Panner device in the effects.
-  final bool compact;
-
   const _PanControl({
-    this.compact = false,
     required this.channel,
     required this.mix,
     required this.theme,
@@ -1618,7 +1769,6 @@ class _PanControl extends StatelessWidget {
               "for the front pair, as it was mixed.",
       child: _SurroundPad(
         key: const ValueKey("surroundPad"),
-        side: compact ? 28 : _SurroundPad.size,
         speakers: speakers,
         pan: placed == null ? mix.surround : null,
         placed: placed,
@@ -1634,27 +1784,6 @@ class _PanControl extends StatelessWidget {
     );
     Widget fit(Widget child, Alignment to) =>
         FittedBox(fit: BoxFit.scaleDown, alignment: to, child: child);
-    if (compact) {
-      return SizedBox(
-        height: 28,
-        child: Row(children: [
-          pad,
-          const SizedBox(width: 5),
-          Expanded(
-            child: fit(
-                Text(
-                    key: const ValueKey("panReading"),
-                    placed != null
-                        ? "Placed ${angleText(placed.angle)}"
-                        : mix.surround == null
-                            ? "Front"
-                            : angleText(pan.angle),
-                    style: value),
-                Alignment.centerLeft),
-          ),
-        ]),
-      );
-    }
     return SizedBox(
       height: _SurroundPad.size,
       child: Row(children: [
@@ -1843,6 +1972,7 @@ class _PannerDevice extends StatelessWidget {
                 pan.copyWith(width: pan.width - e.scrollDelta.dy / 4)));
           },
           child: GestureDetector(
+            supportedDevices: dragPointers,
             onPanStart: (d) => point(d.localPosition, room),
             onPanUpdate: (d) => point(d.localPosition, room),
             onPanEnd: (_) => onCommit(),
@@ -1976,7 +2106,8 @@ class _PannerDevice extends StatelessWidget {
       ),
       body: Padding(
         padding: const EdgeInsets.all(8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
             child: Tooltip(
               message: placed != null
@@ -2200,6 +2331,7 @@ class _DragNumber extends StatelessWidget {
   Widget build(BuildContext context) => Tooltip(
         message: tooltip,
         child: GestureDetector(
+          supportedDevices: dragPointers,
           onVerticalDragUpdate: (d) => onDrag(d.delta.dy),
           onVerticalDragEnd: (_) => onCommit(),
           onDoubleTap: onReset,
@@ -2230,8 +2362,6 @@ class _DragNumber extends StatelessWidget {
 /// up: each speaker a mark round the edge, the channel a dot where it is
 /// heard from, its two sides' spread an arc either side.
 class _SurroundPad extends StatelessWidget {
-  /// side is how big it is drawn.
-  final double side;
   final SpeakerLayout speakers;
   final SurroundPan? pan;
   final Heard? placed;
@@ -2241,7 +2371,6 @@ class _SurroundPad extends StatelessWidget {
   final VoidCallback? onReset;
 
   const _SurroundPad({
-    this.side = _SurroundPad.size,
     required this.speakers,
     required this.pan,
     required this.placed,
@@ -2253,6 +2382,7 @@ class _SurroundPad extends StatelessWidget {
   });
 
   static const double size = 48;
+  double get side => size;
 
   double _angleAt(Offset local) {
     var d = local - Offset(side / 2, side / 2);
@@ -2268,6 +2398,7 @@ class _SurroundPad extends StatelessWidget {
     var angle = onAngle;
     if (angle == null) return painter;
     return GestureDetector(
+      supportedDevices: dragPointers,
       onPanStart: (d) => angle(_angleAt(d.localPosition)),
       onPanUpdate: (d) => angle(_angleAt(d.localPosition)),
       onPanEnd: (_) => onCommit(),
@@ -2372,122 +2503,6 @@ class _KnobPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_KnobPainter old) => old.value != value;
-}
-
-class _MasterStrip extends StatelessWidget {
-  final MasterMix mix;
-  final (double, double) level;
-  final (double, double) peak;
-  final MixerLook theme;
-  final _MixWrite<MasterMix> onChanged;
-  final VoidCallback onCommit;
-  final VoidCallback onOpenEq;
-  final VoidCallback onOpenComp;
-  final VoidCallback onOpenLoudness;
-  final bool selected;
-  final VoidCallback onSelect;
-
-  const _MasterStrip({
-    required this.mix,
-    required this.level,
-    required this.peak,
-    required this.theme,
-    required this.onChanged,
-    required this.onCommit,
-    required this.onOpenEq,
-    required this.onOpenComp,
-    required this.onOpenLoudness,
-    required this.selected,
-    required this.onSelect,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = theme.colors;
-    TextStyle small([Color? c]) =>
-        TextStyle(fontSize: 10, color: c ?? colors.onSurfaceVariant);
-    return Listener(
-      onPointerDown: (_) => onSelect(),
-      child: Container(
-        width: 120,
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainer,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-              color: selected ? colors.primary : colors.outline,
-              width: selected ? 2 : 1),
-        ),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text("Master",
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface)),
-          const SizedBox(height: 6),
-          _slot(
-              theme,
-              "EQ",
-              mix.eq.on,
-              CustomPaint(
-                  size: const Size(40, 14),
-                  painter: _MiniCurve(mix.eq, colors)),
-              onOpenEq,
-              key: const ValueKey("masterEqSlot")),
-          const SizedBox(height: 4),
-          _slot(
-              theme,
-              "Glue",
-              mix.comp.on,
-              Icon(Icons.circle,
-                  size: 7,
-                  color: mix.comp.on ? theme.studio.on : colors.outline),
-              onOpenComp,
-              key: const ValueKey("masterCompSlot")),
-          const SizedBox(height: 4),
-          _slot(
-              theme,
-              "Limit",
-              mix.limiter,
-              Text("${dbText(mix.ceilingDb)} dBTP", style: small()),
-              () => onChanged(mix.copyWith(limiter: !mix.limiter)),
-              key: const ValueKey("limiterSlot")),
-          const SizedBox(height: 4),
-          // The loudness the whole mix is aimed at, measured from its
-          // own editor -- see _LoudnessEditor. Reaching it in an export is
-          // a publish setting.
-          _slot(
-              theme,
-              "Loudness",
-              true,
-              Text("${mix.target.round()} LUFS", style: small()),
-              onOpenLoudness,
-              key: const ValueKey("loudnessSlot")),
-          const SizedBox(height: 6),
-          Expanded(
-            child: _Fader(
-              db: mix.gainDb,
-              level: level,
-              peak: peak,
-              theme: theme,
-              wide: true,
-              onChanged: (db, {transient = false}) =>
-                  onChanged(mix.copyWith(gainDb: db), transient: transient),
-              onCommit: onCommit,
-            ),
-          ),
-          const SizedBox(height: 4),
-          DbReading(
-              db: mix.gainDb,
-              textKey: const ValueKey("masterReading"),
-              onSet: (db) => onChanged(mix.copyWith(gainDb: db)),
-              style: TextStyle(fontSize: 11, color: colors.onSurface)),
-        ]),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2605,7 +2620,11 @@ class _Sends extends StatelessWidget {
   final _MixWrite<ChannelMix> onChanged;
   final VoidCallback onCommit;
 
+  /// narrow is a narrow column's: smaller dials, two to a row.
+  final bool narrow;
+
   const _Sends({
+    this.narrow = false,
     required this.mix,
     required this.returns,
     required this.theme,
@@ -2622,6 +2641,7 @@ class _Sends extends StatelessWidget {
           for (var (i, r) in returns.indexed)
             _SendDial(
               key: ValueKey("send-${r.id}"),
+              size: narrow ? 18 : 24,
               letter: returnLetter(i),
               name: r.name,
               db: mix.sendDb(r.id),
@@ -2648,8 +2668,10 @@ class _SendDial extends StatefulWidget {
   final MixerLook theme;
   final void Function(double? db, {bool transient}) onChanged;
   final VoidCallback onCommit;
+  final double size;
 
   const _SendDial({
+    this.size = 24,
     required this.letter,
     required this.name,
     required this.db,
@@ -2679,6 +2701,7 @@ class _SendDialState extends State<_SendDial> {
           "${db == null ? "nothing" : "${dbText(db)} dB"}. Drag up for "
           "more; double-click for none.",
       child: GestureDetector(
+        supportedDevices: dragPointers,
         dragStartBehavior: DragStartBehavior.down,
         onVerticalDragStart: (d) {
           _from = d.globalPosition.dy;
@@ -2693,7 +2716,7 @@ class _SendDialState extends State<_SendDial> {
           cursor: SystemMouseCursors.resizeUpDown,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             CustomPaint(
-              size: const Size(24, 24),
+              size: Size.square(widget.size),
               painter: _ArcKnob(sendPosition(db), widget.theme.studio),
             ),
             Text(widget.letter,
@@ -2746,168 +2769,6 @@ class _ArcKnob extends CustomPainter {
   bool shouldRepaint(_ArcKnob old) => old.value != value;
 }
 
-/// _ReturnStrip is a return: its letter and name, its devices -- each a
-/// slot that opens it -- its EQ and compressor, pan, mute, fader and level.
-class _ReturnStrip extends StatelessWidget {
-  final String letter;
-
-  /// compactPan is a short desk's: see _PanControl.compact.
-  final bool compactPan;
-  final ReturnChannel ret;
-  final (double, double) level;
-  final (double, double) peak;
-  final MixerLook theme;
-  final _MixWrite<ReturnChannel> onChanged;
-  final VoidCallback onCommit;
-  final ValueChanged<String?> onOpen;
-  final VoidCallback onRemove;
-  final bool selected;
-  final VoidCallback onSelect;
-
-  const _ReturnStrip({
-    this.compactPan = false,
-    required this.letter,
-    required this.ret,
-    required this.level,
-    required this.peak,
-    required this.theme,
-    required this.onChanged,
-    required this.onCommit,
-    required this.onOpen,
-    required this.onRemove,
-    required this.selected,
-    required this.onSelect,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    var colors = theme.colors;
-    var mix = ret.mix;
-    void set(ChannelMix next, {bool transient = false}) =>
-        onChanged(ret.copyWith(mix: next), transient: transient);
-    var body = Container(
-      width: 116,
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-            color: selected ? colors.primary : colors.outlineVariant,
-            width: selected ? 2 : 1),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Text("$letter ",
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: theme.studio.on)),
-          Expanded(
-            child: ChannelNameEditor(
-                name: ret.name.isEmpty ? "Return" : ret.name,
-                theme: ThemeNotifier.of(context),
-                color: colors.onSurface,
-                onRename: (name) => onChanged(ret.copyWith(name: name)),
-                weight: FontWeight.w600,
-                textKey: const ValueKey("returnName"),
-                fieldKey: const ValueKey("returnNameField")),
-          ),
-          InkWell(
-            key: const ValueKey("removeReturn"),
-            onTap: onRemove,
-            child: Tooltip(
-              message: "Take this return away. What is sent to it is kept "
-                  "on the channels, for undo to find.",
-              child:
-                  Icon(Icons.close, size: 13, color: colors.onSurfaceVariant),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 6),
-        for (var (i, d) in ret.devices.indexed) ...[
-          _slot(
-              theme,
-              d.kind.label,
-              d.on,
-              Icon(Icons.circle,
-                  size: 7, color: d.on ? theme.studio.on : colors.outline),
-              () => onOpen("dev$i"),
-              key: ValueKey("returnDevice-$i")),
-          const SizedBox(height: 4),
-        ],
-        if (ret.devices.isEmpty) ...[
-          _slot(
-              theme,
-              "Add a device",
-              false,
-              Icon(Icons.add, size: 12, color: colors.onSurfaceVariant),
-              () => onOpen(null),
-              key: const ValueKey("returnAddDevice")),
-          const SizedBox(height: 4),
-        ],
-        _slot(
-            theme,
-            "EQ",
-            mix.eq.on,
-            CustomPaint(
-                size: const Size(40, 14), painter: _MiniCurve(mix.eq, colors)),
-            () => onOpen("eq"),
-            key: const ValueKey("returnEq")),
-        const SizedBox(height: 4),
-        _slot(
-            theme,
-            "Comp",
-            mix.comp.on,
-            Icon(Icons.circle,
-                size: 7, color: mix.comp.on ? theme.studio.on : colors.outline),
-            () => onOpen("comp"),
-            key: const ValueKey("returnComp")),
-        const SizedBox(height: 6),
-        _PanControl(
-          compact: compactPan,
-          channel: ret.id,
-          mix: mix,
-          theme: theme,
-          onChanged: (m, {transient = false}) => set(m, transient: transient),
-          onCommit: onCommit,
-        ),
-        const SizedBox(height: 6),
-        _Toggle(
-            key: const ValueKey("returnMute"),
-            label: "M",
-            on: mix.mute,
-            onColor: theme.studio.arm,
-            theme: theme,
-            tooltip: "Mute this return: nothing sent to it is heard",
-            onTap: () => set(mix.copyWith(mute: !mix.mute))),
-        const SizedBox(height: 6),
-        Expanded(
-          child: _Fader(
-            db: mix.gainDb,
-            level: level,
-            peak: peak,
-            theme: theme,
-            onChanged: (db, {transient = false}) =>
-                set(mix.copyWith(gainDb: db), transient: transient),
-            onCommit: onCommit,
-          ),
-        ),
-        const SizedBox(height: 4),
-        DbReading(
-            db: mix.gainDb,
-            textKey: const ValueKey("returnReading"),
-            onSet: (db) => set(mix.copyWith(gainDb: db)),
-            style: TextStyle(
-                fontSize: 11,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                color: colors.onSurface)),
-      ]),
-    );
-    return Listener(onPointerDown: (_) => onSelect(), child: body);
-  }
-}
-
 /// _AddReturn is the button after the returns that adds another.
 class _AddReturn extends StatelessWidget {
   final MixerLook theme;
@@ -2927,16 +2788,20 @@ class _AddReturn extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: theme.studio.edge),
             ),
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.add, size: 18, color: theme.studio.muted),
-              const SizedBox(height: 6),
-              RotatedBox(
-                quarterTurns: 3,
-                child: Text("Return",
-                    style: TextStyle(fontSize: 11, color: theme.studio.muted)),
-              ),
-            ]),
+            // Shrunk to fit, in a mixer at its least.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.add, size: 18, color: theme.studio.muted),
+                const SizedBox(height: 6),
+                RotatedBox(
+                  quarterTurns: 3,
+                  child: Text("Return",
+                      style:
+                          TextStyle(fontSize: 11, color: theme.studio.muted)),
+                ),
+              ]),
+            ),
           ),
         ),
       );

@@ -3,11 +3,14 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/asset_elements.dart';
+import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart'
+    show isMidiId;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart' show DbReading;
 import 'package:bruig/plugin_system/canvas/ui/media_picking.dart';
@@ -581,12 +584,17 @@ class _CanvasChannelsState extends State<CanvasChannels> {
             padding: EdgeInsets.zero,
             children: [
               if (widget.leading case var leading?) leading,
-              for (var channel in channels)
+              for (var channel in channels) ...[
                 _row(channel.key, _heightOf(channel.key), width,
                     moving: channel.key == _moving,
                     header: _ChannelHeader(
                       key: ValueKey("channelStrip-${channel.key}"),
                       channel: channel,
+                      mix: controller.mixNow(channel),
+                      automation:
+                          controller.automationShown.contains(channel.key),
+                      onAutomation: () =>
+                          controller.toggleAutomation(channel.key),
                       // Which canvas its clips are on -- M for the master,
                       // S1 for the first scene -- beside the band whose
                       // colour says sound or video.
@@ -603,9 +611,13 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           : controller.selectedChannel = channel.key,
                       onRename: (name) =>
                           controller.renameChannel(channel, name),
+                      // As the mixer's fader: a level typed over a lane is
+                      // held by hand -- see changeChannelMix.
                       onMix: (mix) {
                         controller.beginInteraction();
-                        controller.setChannelMix(channel, mix, transient: true);
+                        controller.changeChannelMix(
+                            channel, controller.mixNow(channel), mix,
+                            transient: true);
                         controller.endInteraction();
                       },
                       onLock: () =>
@@ -628,6 +640,46 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                       onMoveEnd: _endMove,
                     ),
                     lane: _lane(channel, theme)),
+                // Its automation, opened under it: a lane for each setting
+                // shown, and a row to show another.
+                if (controller.automationShown.contains(channel.key) &&
+                    channel.editable &&
+                    channel.key != _moving) ...[
+                  for (var (i, target)
+                      in controller.automationRows(channel).indexed)
+                    SizedBox(
+                      key: ValueKey("autoRow-${channel.key}-$i"),
+                      height: automationLaneHeight,
+                      child: Row(children: [
+                        SizedBox(
+                            width: width,
+                            child: AutomationLaneHeader(
+                                controller: controller,
+                                channel: channel,
+                                index: i,
+                                width: width)),
+                        Expanded(
+                            child: AutomationLaneBody(
+                                key:
+                                    ValueKey("autoBody-${channel.key}-$target"),
+                                controller: controller,
+                                channel: channel,
+                                target: target,
+                                view: _view)),
+                      ]),
+                    ),
+                  SizedBox(
+                    height: automationAddHeight,
+                    child: Row(children: [
+                      SizedBox(
+                          width: width,
+                          child: AutomationAddRow(
+                              controller: controller, channel: channel)),
+                      const Expanded(child: SizedBox()),
+                    ]),
+                  ),
+                ],
+              ],
               _row(_newLane, channelsLaneHeight, width,
                   header: _EmptyHeader(
                       width: width,
@@ -639,7 +691,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
                           _addAt(chosen, controller.frame, null);
                         }
                       },
-                      onMidi: controller.addMidiChannel),
+                      onMidi: () => controller.addMidiChannel(),
+                      onEmptyAudio: () => controller.addEmptyAudioChannel(),
+                      onEmptyMidi: () =>
+                          controller.addMidiChannel(onCanvas: false)),
                   lane: _emptyLane(theme)),
             ],
           ),
@@ -784,6 +839,16 @@ class _CanvasChannelsState extends State<CanvasChannels> {
   /// _addAt makes a new sound from [source] at [frame] on [channel], or on a
   /// channel of its own.
   void _addAt(MediaSource source, int frame, TimelineChannel? channel) {
+    // A MIDI file: its notes onto a MIDI channel, or a MIDI channel of its
+    // own -- never a silent sound on an audio one.
+    if (isMidiId(source.assetId)) {
+      if (channel != null && controller.instrumentChannel(channel.key)) {
+        controller.putMidiOn(channel.key, source.assetId, frame);
+      } else if (channel == null) {
+        controller.addMidiChannelFrom(source, frame: frame, onCanvas: false);
+      }
+      return;
+    }
     var key = channel?.key ?? controller.newChannelId();
     controller.addElement(channelClip(controller.document, frame,
         source: source,
@@ -831,6 +896,10 @@ class _CanvasChannelsState extends State<CanvasChannels> {
       onWillAcceptWithDetails: (d) =>
           (droppedKind(d.data) == AssetKind.video ||
               droppedKind(d.data) == AssetKind.audio) &&
+          // A MIDI file only onto a MIDI channel; a sound only onto one
+          // that is not.
+          (d.data is LibraryAsset && isMidiId((d.data as LibraryAsset).id)) ==
+              controller.instrumentChannel(channel.key) &&
           channel.editable &&
           !channel.locked,
       onAcceptWithDetails: (d) async {
@@ -1509,7 +1578,19 @@ class _ChannelHeader extends StatelessWidget {
   final ValueChanged<double> onMove;
   final VoidCallback onMoveEnd;
 
+  /// mix is the channel's as it plays now, its lanes' settings put in --
+  /// what its level reads. See CanvasController.mixNow.
+  final ChannelMix mix;
+
+  /// automation is whether its lanes are open under it, and onAutomation
+  /// its A button, opening or shutting them.
+  final bool automation;
+  final VoidCallback onAutomation;
+
   const _ChannelHeader({
+    required this.mix,
+    required this.automation,
+    required this.onAutomation,
     required this.channel,
     required this.label,
     required this.width,
@@ -1533,7 +1614,6 @@ class _ChannelHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     var colors = theme.colors;
-    var mix = channel.mix;
     var tall = height >= _tall && width >= 110;
     var locked = channel.locked;
 
@@ -1583,6 +1663,16 @@ class _ChannelHeader extends StatelessWidget {
           onColor: const Color(0xFFB28A1F),
           theme: theme,
           onTap: onSolo,
+        ),
+      // Its automation's lanes, opened under it.
+      if (width >= 92 && channel.editable)
+        _StripButton(
+          key: const ValueKey("channelAutomation"),
+          text: "A",
+          on: automation,
+          onColor: automationColour,
+          theme: theme,
+          onTap: onAutomation,
         ),
       if (width >= 80)
         _StripButton(
@@ -1802,12 +1892,19 @@ class _EmptyHeader extends StatelessWidget {
   /// instrument to play into.
   final VoidCallback onAudio;
   final VoidCallback onMidi;
+
+  /// onEmptyAudio and onEmptyMidi add one of either with nothing on it: an
+  /// audio channel waiting for a sound, a MIDI channel on the timeline alone.
+  final VoidCallback onEmptyAudio;
+  final VoidCallback onEmptyMidi;
   const _EmptyHeader(
       {required this.width,
       required this.name,
       required this.theme,
       required this.onAudio,
-      required this.onMidi});
+      required this.onMidi,
+      required this.onEmptyAudio,
+      required this.onEmptyMidi});
 
   @override
   Widget build(BuildContext context) {
@@ -1823,10 +1920,25 @@ class _EmptyHeader extends StatelessWidget {
               style: TextStyle(fontSize: 12)),
         ),
         MenuItemButton(
+          key: const ValueKey("addEmptyAudioChannel"),
+          leadingIcon: const Icon(Icons.graphic_eq, size: 16),
+          onPressed: onEmptyAudio,
+          child:
+              const Text("Empty audio channel", style: TextStyle(fontSize: 12)),
+        ),
+        const Divider(height: 1),
+        MenuItemButton(
           key: const ValueKey("addMidiChannel"),
           leadingIcon: const Icon(Icons.piano, size: 16),
           onPressed: onMidi,
           child: const Text("MIDI channel: an instrument to play",
+              style: TextStyle(fontSize: 12)),
+        ),
+        MenuItemButton(
+          key: const ValueKey("addEmptyMidiChannel"),
+          leadingIcon: const Icon(Icons.piano_outlined, size: 16),
+          onPressed: onEmptyMidi,
+          child: const Text("Empty MIDI channel: on the timeline only",
               style: TextStyle(fontSize: 12)),
         ),
       ],

@@ -1,3 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:bruig/plugin_system/canvas/model/musicxml.dart';
+import 'package:bruig/plugin_system/canvas/model/notation.dart' show keyNames;
+import 'package:bruig/plugin_system/canvas/render/sheet_painter.dart'
+    show sheetFifths;
+import 'package:file_picker/file_picker.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sheet_element.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
@@ -56,7 +65,12 @@ List<Widget> sheetSettings(
                 width: 190,
                 options: [
                   if (followed == null)
-                    ("", instruments.isEmpty ? "Add an instrument first" : "Choose one"),
+                    (
+                      "",
+                      instruments.isEmpty
+                          ? "Add an instrument first"
+                          : "Choose one"
+                    ),
                   for (var x in instruments) (x.id, x.name),
                 ],
                 onChanged: (id) {
@@ -87,10 +101,65 @@ List<Widget> sheetSettings(
                 color: e.ink,
                 onChanged: (c) => now(e.copyWith(ink: c)),
               ),
+              // Its key: worked out, or chosen. 99 is "worked out".
+              CanvasDropdown<int>(
+                key: const ValueKey("sheetKey"),
+                label: "Key",
+                value: e.key ?? 99,
+                width: 190,
+                options: [
+                  (
+                    99,
+                    followed?.instrument == null
+                        ? "Worked out"
+                        : "Worked out: ${keyNames[sheetFifths(followed!.instrument!, null)]!.split(" / ").first}"
+                  ),
+                  for (var k in keyNames.keys) (k, keyNames[k]!),
+                ],
+                onChanged: (k) => now(
+                    k == 99 ? e.copyWith(autoKey: true) : e.copyWith(key: k)),
+              ),
+              // How many lines to a page.
+              CanvasDropdown<int>(
+                key: const ValueKey("sheetLines"),
+                label: "Lines",
+                value: e.lines,
+                width: 190,
+                options: [
+                  for (var n = 1; n <= 8; n++)
+                    (n, n == 1 ? "1 line" : "$n lines"),
+                ],
+                onChanged: (n) => now(e.copyWith(lines: n)),
+              ),
               const CanvasHint(
                   "The part is written out in the document's tempo and time "
-                  "signature, to the nearest sixteenth: the right hand from "
-                  "middle C up on the treble staff, the left on the bass."),
+                  "signature, to the nearest sixteenth — or third of a beat, "
+                  "for a beat played in threes: the right hand from "
+                  "middle C up on the treble staff, the left on the bass. "
+                  "A page of lines shows at a time; at its last line, the "
+                  "lines above are already the next page's. "
+                  "Its key, worked out, is the Scale effect's where the "
+                  "instrument has one, else the one its notes are heard in."),
+              CanvasTextButton(
+                key: const ValueKey("sheetImport"),
+                label: "Open MusicXML…",
+                icon: Icons.file_open_outlined,
+                onPressed: followed == null
+                    ? null
+                    : () => _importScore(context, controller, e),
+              ),
+              CanvasTextButton(
+                key: const ValueKey("sheetExport"),
+                label: "Save as MusicXML…",
+                icon: Icons.save_alt,
+                onPressed: followed == null
+                    ? null
+                    : () => _exportScore(context, controller, e),
+              ),
+              const CanvasHint(
+                  "MusicXML is what MuseScore, Sibelius, Finale and Dorico "
+                  "read and write. Opened, a score's notes take the place of "
+                  "the instrument's part, on this canvas's tempo."),
             ],
           ),
         ]),
@@ -150,7 +219,9 @@ List<Widget> sheetSettings(
               Text(
                   key: const ValueKey("practiceScore"),
                   tried == 0
-                      ? (going ? "Play along on the keyboard, or a MIDI one." : "")
+                      ? (going
+                          ? "Play along on the keyboard, or a MIDI one."
+                          : "")
                       : "$right right · $wrong wrong · "
                           "${(right / tried * 100).round()}%",
                   style: TextStyle(fontSize: 12, color: colors.onSurface)),
@@ -170,4 +241,51 @@ List<Widget> sheetSettings(
           ),
         ]),
   ];
+}
+
+/// _importScore asks for a MusicXML file and puts its notes into the part
+/// [e] shows -- saying why not, where it cannot.
+Future<void> _importScore(
+    BuildContext context, CanvasController controller, SheetElement e) async {
+  var messenger = ScaffoldMessenger.maybeOf(context);
+  void say(String text) =>
+      messenger?.showSnackBar(SnackBar(content: Text(text)));
+  var picked = await FilePicker.platform.pickFiles(
+      dialogTitle: "Open a MusicXML score",
+      type: FileType.custom,
+      allowedExtensions: const ["musicxml", "xml", "mxl"],
+      withData: true);
+  var file = picked?.files.firstOrNull;
+  if (file == null) return;
+  var bytes = file.bytes ??
+      (file.path == null ? null : await File(file.path!).readAsBytes());
+  if (bytes == null) return say("That file could not be read.");
+  try {
+    var score = readMusicXml(bytes);
+    var problem = controller.importScore(e, score);
+    say(problem ??
+        "${score.notes.length} notes from ${file.name}, in "
+            "${keyNames[score.fifths]!.split(" / ").first}.");
+  } on MusicXmlException catch (x) {
+    say(x.message);
+  }
+}
+
+/// _exportScore asks where to save the part [e] shows, as MusicXML.
+Future<void> _exportScore(
+    BuildContext context, CanvasController controller, SheetElement e) async {
+  var messenger = ScaffoldMessenger.maybeOf(context);
+  var xml = controller.exportScore(e);
+  if (xml == null) return;
+  var name = (e.title.isEmpty ? "Score" : e.title)
+      .replaceAll(RegExp(r'[\\/:*?"<>|]'), "-");
+  var bytes = Uint8List.fromList(utf8.encode(xml));
+  var at = await FilePicker.platform.saveFile(
+      dialogTitle: "Save as MusicXML",
+      fileName: "$name.musicxml",
+      bytes: bytes);
+  if (at == null) return;
+  // Written here as well: on the desktop the dialog only names the place.
+  await File(at).writeAsBytes(bytes);
+  messenger?.showSnackBar(SnackBar(content: Text("Saved to $at")));
 }

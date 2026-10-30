@@ -54,6 +54,17 @@ class SheetElement extends CanvasElement {
   final PracticeHands hands;
   final double tempo;
 
+  /// key is the key it is written in, as a signature -- sharps up from
+  /// nought, flats down -- or null for one worked out: the Scale effect's,
+  /// where the instrument has one, else heard in its notes. See
+  /// keyFifthsOf.
+  final int? key;
+
+  /// lines is how many lines of the score -- systems -- show at once, from
+  /// one to eight: a page of them, turned as the playhead comes to its
+  /// last.
+  final int lines;
+
   const SheetElement(
     super.base, {
     this.follows = "",
@@ -63,6 +74,8 @@ class SheetElement extends CanvasElement {
     this.mode = PracticeMode.wait,
     this.hands = PracticeHands.both,
     this.tempo = 1,
+    this.key,
+    this.lines = 2,
   });
 
   @override
@@ -76,7 +89,9 @@ class SheetElement extends CanvasElement {
       ink: ink,
       mode: mode,
       hands: hands,
-      tempo: tempo);
+      tempo: tempo,
+      key: key,
+      lines: lines);
 
   SheetElement copyWith({
     String? follows,
@@ -86,6 +101,9 @@ class SheetElement extends CanvasElement {
     PracticeMode? mode,
     PracticeHands? hands,
     double? tempo,
+    int? key,
+    bool autoKey = false,
+    int? lines,
   }) =>
       SheetElement(base,
           follows: follows ?? this.follows,
@@ -94,7 +112,9 @@ class SheetElement extends CanvasElement {
           ink: ink ?? this.ink,
           mode: mode ?? this.mode,
           hands: hands ?? this.hands,
-          tempo: (tempo ?? this.tempo).clamp(0.4, 1.2));
+          tempo: (tempo ?? this.tempo).clamp(0.4, 1.2),
+          key: autoKey ? null : (key ?? this.key)?.clamp(-7, 7),
+          lines: (lines ?? this.lines).clamp(1, 8));
 
   @override
   Map<String, dynamic> props() => {
@@ -105,6 +125,8 @@ class SheetElement extends CanvasElement {
         if (mode != PracticeMode.wait) "mode": mode.name,
         if (hands != PracticeHands.both) "hands": hands.name,
         if (tempo != 1) "tempo": tempo,
+        if (key case var k?) "key": k,
+        if (lines != 2) "lines": lines,
       };
 
   factory SheetElement.fromJson(Map<String, dynamic> json, ElementBase b) =>
@@ -115,5 +137,8 @@ class SheetElement extends CanvasElement {
               ink: colorFromJson(json["ink"], const Color(0xFF1B1B1B)),
               mode: PracticeMode.fromName(json["mode"] as String?),
               hands: PracticeHands.fromName(json["hands"] as String?))
-          .copyWith(tempo: jsonDouble(json["tempo"], 1));
+          .copyWith(
+              tempo: jsonDouble(json["tempo"], 1),
+              key: json["key"] is num ? (json["key"] as num).toInt() : null,
+              lines: json["lines"] is num ? (json["lines"] as num).toInt() : 2);
 }

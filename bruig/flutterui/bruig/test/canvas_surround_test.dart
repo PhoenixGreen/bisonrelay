@@ -492,7 +492,7 @@ void main() {
           isTrue);
     });
 
-    testWidgets("stereo keeps its pan knob; surround has the room",
+    testWidgets("stereo keeps its pan knob; surround opens the Panner",
         (tester) async {
       var c = CanvasController(CanvasDocument(frames: 50, elements: [timed("a")]),
           audioEngine: FakeEngine({"t": 2}));
@@ -502,42 +502,34 @@ void main() {
           of: find.byKey(const ValueKey("strip-a")),
           matching: find.byKey(ValueKey(key)));
       expect(inStrip("balance"), findsOneWidget);
-      expect(inStrip("surroundPad"), findsNothing);
+      expect(inStrip("pannerButton"), findsNothing);
 
       c.apply(c.document.copyWith(
           audio: const AudioSettings(speakers: SpeakerLayout.surround51)));
       await frame(tester);
-      var pad = inStrip("surroundPad");
-      expect(pad, findsOneWidget);
+      // The room is too small to place a sound by in a strip: a button,
+      // with the room in miniature and where it is heard from.
       expect(inStrip("balance"), findsNothing);
+      expect(inStrip("pannerButton"), findsOneWidget);
       expect(find.descendant(
               of: find.byKey(const ValueKey("strip-a")),
               matching: find.text("Front")),
           findsOneWidget);
-
-      // Dragged round to the back right.
-      var box = tester.getRect(pad);
-      var centre = box.center;
-      var gesture = await tester.startGesture(centre + const Offset(0, -20));
-      await gesture.moveTo(centre + const Offset(18, 6));
-      await gesture.moveTo(centre + const Offset(20, 10));
-      await gesture.up();
+      await tester.tap(inStrip("pannerButton"));
       await frame(tester);
-      var mix = (c.document.elements.single as AudioElement).clip.mix;
-      expect(mix.surround!.angle, closeTo(116.6, 1));
-      c.undo();
-      expect((c.document.elements.single as AudioElement).clip.mix.surround,
-          isNull,
-          reason: "the drag is one undoable change");
+      expect(c.effectsOf, "a");
+      expect(c.effectsFocus, "panner", reason: "the Panner, scrolled to");
 
-      // The LFE, dragged up from off.
-      await tester.drag(inStrip("surroundLfe"), const Offset(0, -40));
+      c.setChannelMix(c.timelineChannels.single,
+          (c.document.elements.single as AudioElement)
+              .clip
+              .mix
+              .withSurround(const SurroundPan(angle: 116.6)));
       await frame(tester);
-      // Up from off: louder than nothing, by half a decibel a pixel past
-      // where the drag took hold.
-      var lfe = (c.document.elements.single as AudioElement).clip.mix.lfeDb;
-      expect(lfe, isNotNull);
-      expect(lfe!, inInclusiveRange(-60.0, -40.0));
+      expect(find.descendant(
+              of: find.byKey(const ValueKey("strip-a")),
+              matching: find.text("R117°")),
+          findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -551,16 +543,9 @@ void main() {
           audioEngine: FakeEngine({"t": 2}));
       addTearDown(c.dispose);
       await show(tester, mixer(c), settle: false);
-      expect(find.byKey(const ValueKey("surroundPad")), findsOneWidget,
+      expect(find.byKey(const ValueKey("pannerButton")), findsOneWidget,
           reason: "even in stereo: a placed sound is shown where it is");
-      expect(find.text("Placed"), findsOneWidget);
       expect(find.text("L30°"), findsOneWidget);
-      // Not to be dragged: the picture says.
-      await tester.drag(
-          find.byKey(const ValueKey("surroundPad")), const Offset(30, 0));
-      await frame(tester);
-      expect((c.document.elements.single as AudioElement).clip.mix.surround,
-          isNull);
     });
 
     testWidgets("Placement in the sound's settings", (tester) async {

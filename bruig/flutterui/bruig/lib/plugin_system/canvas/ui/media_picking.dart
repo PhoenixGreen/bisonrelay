@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/export/video_export.dart'
 import 'package:bruig/plugin_system/canvas/media/ffmpeg_video.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/midi_file.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:file_picker/file_picker.dart';
@@ -27,13 +28,16 @@ const _audioPickable = [
   "mp3", "wav", "ogg", "opus", "flac", "m4a", "aac", "aiff", "aif", "mp4" //
 ];
 
-/// pickCanvasAudio asks for a sound file and stores it, returning it as a
-/// playlist entry ready to add -- or null when nothing was added.
+/// pickCanvasAudio asks for a sound file -- or, with [midi], a MIDI file --
+/// and stores it, returning it as a playlist entry ready to add, or null
+/// when nothing was added. A MIDI file is notes: see isMidiId for what is
+/// done with one.
 Future<MediaSource?> pickCanvasAudio(
-    BuildContext context, CanvasController controller) async {
+    BuildContext context, CanvasController controller,
+    {bool midi = true}) async {
   var picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: _audioPickable,
+    allowedExtensions: [..._audioPickable, if (midi) ...["mid", "midi"]],
     withData: false,
   );
   var chosen = picked?.files.singleOrNull?.path?.trim();
@@ -55,6 +59,27 @@ Future<MediaSource?> addCanvasAudio(
   if (kind.isEmpty) {
     report("$name is not a sound file this canvas can read.");
     return null;
+  }
+
+  // A MIDI file is kept as it is: notes, read when an instrument plays it.
+  if (kind == ".mid") {
+    try {
+      var read = readMidiFile(await File(file).readAsBytes());
+      var id = await CanvasMedia.saveFile(MediaKind.audio, file);
+      if (id == null) {
+        report("$name could not be added.");
+        return null;
+      }
+      var length = read.notes.isEmpty
+          ? 0.0
+          : read.notes.map((n) => n.end).reduce((a, b) => a > b ? a : b);
+      var added = MediaSource(assetId: id, name: name, length: length);
+      await CanvasLibrary.add(LibraryAsset.fromSource(AssetKind.audio, added));
+      return added;
+    } on FormatException catch (e) {
+      report("$name is not a MIDI file Canvas can read: ${e.message}");
+      return null;
+    }
   }
 
   var source = file;

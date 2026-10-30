@@ -78,7 +78,12 @@ enum CounterSource {
   /// placement it has always had. Put one on the master canvas and every page
   /// wears it.
   page("The page number",
-      "The number of the page it is drawn on, for a document of pages");
+      "The number of the page it is drawn on, for a document of pages"),
+
+  /// game is one of the numbers a game keeps -- coins, lives -- where the
+  /// game has got it to, or its start while the game is not being played.
+  /// See CounterElement.gameCount and GameCount.
+  game("A game count", "One of the numbers the game keeps: coins, lives");
 
   final String label;
   final String description;
@@ -195,6 +200,9 @@ class CounterElement extends CanvasElement {
   final double rate;
   final bool loop;
 
+  /// gameCount is the game count shown, by id, for [CounterSource.game].
+  final String gameCount;
+
   /// mirrored puts a page number on the outside edge of the leaf.
   ///
   /// A printed page number sits away from the spine, which means the same
@@ -263,6 +271,7 @@ class CounterElement extends CanvasElement {
     this.fit = true,
     this.keyed = true,
     this.source = CounterSource.run,
+    this.gameCount = "",
     this.mirrored = false,
     this.rate = 1,
     this.loop = false,
@@ -345,6 +354,7 @@ class CounterElement extends CanvasElement {
       fit: fit,
       keyed: keyed,
       source: source,
+      gameCount: gameCount,
       // Every move and every resize comes through rebase. Left out here, the
       // mirror switched itself off the first time the number was dragged --
       // which looked like a setting that would not stay on.
@@ -379,6 +389,7 @@ class CounterElement extends CanvasElement {
     bool? fit,
     bool? keyed,
     CounterSource? source,
+    String? gameCount,
     bool? mirrored,
     double? rate,
     bool? loop,
@@ -410,6 +421,7 @@ class CounterElement extends CanvasElement {
           fit: fit ?? this.fit,
           keyed: keyed ?? this.keyed,
           source: source ?? this.source,
+          gameCount: gameCount ?? this.gameCount,
           mirrored: mirrored ?? this.mirrored,
           rate: rate ?? this.rate,
           loop: loop ?? this.loop,
@@ -442,6 +454,7 @@ class CounterElement extends CanvasElement {
         if (!fit) "noFit": true,
         if (!keyed) "live": true,
         if (source != CounterSource.run) "source": source.name,
+        if (gameCount.isNotEmpty) "gameCount": gameCount,
         if (mirrored) "mirrored": true,
         if (rate != 1) "rate": rate,
         if (loop) "loop": true,
@@ -488,6 +501,8 @@ class CounterElement extends CanvasElement {
         fit: !jsonBool(json["noFit"], false),
         keyed: !jsonBool(json["live"], false),
         source: CounterSource.fromName(json["source"] as String?),
+        gameCount:
+            json["gameCount"] is String ? json["gameCount"] as String : "",
         mirrored: jsonBool(json["mirrored"], false),
         rate: jsonDouble(json["rate"], 1),
         loop: jsonBool(json["loop"], false),
@@ -615,12 +630,17 @@ String _asTime(double value, int places, CounterSeparator separator) {
 /// picture laid across the page covered: the first page of a book whose
 /// opening spread was one photograph had none. The order the renderer draws
 /// in and the order an EPUB's layers are stacked in, so the two agree.
+///
+/// [over], all of the master over the page: a game's HUD.
 List<CanvasElement> stackedWithMaster(
-        List<CanvasElement> master, List<CanvasElement> page) =>
-    [
-      for (var e in master)
-        if (!(e is CounterElement && e.isPageNumber)) e,
-      ...page,
-      for (var e in master)
-        if (e is CounterElement && e.isPageNumber) e,
-    ];
+        List<CanvasElement> master, List<CanvasElement> page,
+        {bool over = false}) =>
+    over
+        ? [...page, ...master]
+        : [
+            for (var e in master)
+              if (!(e is CounterElement && e.isPageNumber)) e,
+            ...page,
+            for (var e in master)
+              if (e is CounterElement && e.isPageNumber) e,
+          ];

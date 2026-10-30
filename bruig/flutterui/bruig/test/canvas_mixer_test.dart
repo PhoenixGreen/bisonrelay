@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/video_element.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_media.dart';
@@ -21,6 +23,7 @@ import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_mixer.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
@@ -758,6 +761,35 @@ void main() {
       await done(tester, c);
     });
 
+    // Ken: a fader moves only when it is clicked and dragged -- never by
+    // two fingers swiped across it on a trackpad.
+    testWidgets("a two-finger swipe over a fader leaves it be", (tester) async {
+      var c = await show(tester);
+      var fader = find.descendant(
+          of: find.byKey(const ValueKey("strip-v")),
+          matching: find.byKey(const ValueKey("fader")));
+      double db() =>
+          (c.document.elements.first as VideoElement).clip.mix.gainDb;
+      var swipe = await tester.createGesture(kind: PointerDeviceKind.trackpad);
+      await swipe.panZoomStart(tester.getCenter(fader));
+      for (var i = 1; i <= 8; i++) {
+        await swipe.panZoomUpdate(tester.getCenter(fader),
+            pan: Offset(0, i * 10.0));
+        await tester.pump();
+      }
+      await swipe.panZoomEnd();
+      await tester.pump();
+      expect(db(), 0, reason: "swiped past, not moved");
+      expect(c.canUndo, isFalse);
+      // Clicked and dragged -- a mouse, or the trackpad pressed down -- it
+      // moves.
+      await tester.drag(fader, const Offset(0, 60),
+          kind: PointerDeviceKind.mouse);
+      await tester.pump();
+      expect(db(), lessThan(0));
+      await done(tester, c);
+    });
+
     // The reading under a fader is clicked and typed into, for a level to
     // the tenth of a decibel -- which a fader dragged by hand cannot hit.
     testWidgets("the level under a fader takes a typed value", (tester) async {
@@ -785,10 +817,28 @@ void main() {
       await done(tester, c);
     });
 
-    testWidgets("the knob beside the pan control says Pan", (tester) async {
+    testWidgets("a strip's pan knob says Pan, and reads where it is",
+        (tester) async {
       var c = await show(tester);
-      expect(find.text("Pan"), findsWidgets);
-      expect(find.text("Bal"), findsNothing);
+      var strip = find.byKey(const ValueKey("strip-v"));
+      var knob = find.descendant(
+          of: strip, matching: find.byKey(const ValueKey("balance")));
+      expect(
+          find
+              .ancestor(of: knob, matching: find.byType(Tooltip))
+              .evaluate()
+              .any((e) => (e.widget as Tooltip).message!.startsWith("Pan:")),
+          isTrue);
+      expect(
+          find.descendant(of: strip, matching: find.text("C")), findsOneWidget);
+      await tester.drag(knob, const Offset(0, -40));
+      await tester.pump();
+      var b = (c.document.elements.first as VideoElement).clip.mix.balance;
+      expect(b, greaterThan(0.1), reason: "dragged up, turned right");
+      expect(
+          find.descendant(
+              of: strip, matching: find.text("R${(b * 100).round()}")),
+          findsOneWidget);
       await done(tester, c);
     });
 
@@ -819,9 +869,16 @@ void main() {
     }
 
     Future<void> openOn(WidgetTester tester, String strip, String slot) async {
-      await tester.tap(find.descendant(
+      // Scrolled into view first: a column's devices band scrolls.
+      var f = find.descendant(
           of: find.byKey(ValueKey(strip)),
-          matching: find.byKey(ValueKey(slot))));
+          matching: find.byKey(ValueKey(slot)));
+      await tester.ensureVisible(find.descendant(
+          of: find.byKey(ValueKey(strip)),
+          matching: find.byKey(ValueKey(slot), skipOffstage: false),
+          skipOffstage: false));
+      await tester.pump();
+      await tester.tap(f);
       await tester.pump(const Duration(milliseconds: 300));
       // And the chain's scroll to the device, which is animated.
       await tester.pump(const Duration(milliseconds: 300));
@@ -868,6 +925,7 @@ void main() {
                                 onResize: (_) {},
                                 onClose: () {})))),
           ));
+      // Down to its least, as the screen gives it -- and past it, scrolled.
       for (var h = 400.0; h >= mixerMinHeight; h -= 3) {
         await at(h);
         expect(tester.takeException(), isNull, reason: "the mixer at $h");
@@ -909,48 +967,86 @@ void main() {
       await done(tester, c);
     });
 
-    testWidgets("short, it is one line of names over meters", (tester) async {
-      var c = CanvasController(
-          CanvasDocument(frames: 100, frameRate: 25, elements: [
-            timed("v", "Speaker"),
-            timed("w", "Backdrop"),
-          ]),
-          audioEngine: engine,
-          frameSource: FakeFrames(4));
-      tester.view.physicalSize = const Size(1200, 700);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ThemeNotifier>(
-              create: (c) => ThemeNotifier(doLoad: false)),
-          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
-        ],
-        child: MaterialApp(
-            home: Scaffold(
-                body: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: CanvasMixer(
-                        controller: c,
-                        height: mixerMinHeight,
-                        onResize: (_) {},
-                        onClose: () {})))),
-      ));
-      await tester.pump();
-      expect(find.byKey(const ValueKey("strip-v")), findsNothing);
-      for (var k in ["v", "w", mixerMasterKey]) {
-        expect(find.byKey(ValueKey("compactMeter-$k")), findsOneWidget);
+    // Ken: shrunk, the mixer keeps its bands as C, D and M say, each at its
+    // least -- never another view of it.
+    testWidgets("short, its bands as C, D and M say, each at its least",
+        (tester) async {
+      var combos = [
+        for (var c in BandState.values)
+          for (var d in BandState.values)
+            for (var m in BandState.values)
+              if (c != BandState.hidden ||
+                  d != BandState.hidden ||
+                  m != BandState.hidden)
+                [c, d, m],
+      ];
+      for (var scale in [1.0, 1.25]) {
+        for (var combo in combos) {
+          var c = CanvasController(
+              CanvasDocument(frames: 100, frameRate: 25, elements: [
+                timed("v", "Speaker"),
+                timed("w", "Backdrop"),
+              ]),
+              audioEngine: engine,
+              frameSource: FakeFrames(4));
+          c.restoreMixer([for (var b in combo) b.name], true);
+          var least = mixerLeastHeight(c);
+          tester.view.physicalSize = const Size(1200, 700);
+          tester.view.devicePixelRatio = 1.0;
+          await tester.pumpWidget(MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ThemeNotifier>(
+                  create: (c) => ThemeNotifier(doLoad: false)),
+              ChangeNotifierProvider<SnackBarModel>(
+                  create: (c) => SnackBarModel()),
+            ],
+            child: MaterialApp(
+                builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context)
+                        .copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!),
+                home: Scaffold(
+                    body: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: CanvasMixer(
+                            controller: c,
+                            height: least * scale,
+                            onResize: (_) {},
+                            onClose: () {})))),
+          ));
+          await tester.pump();
+          var why = "${combo.map((b) => b.name).join("/")} at ${scale}x";
+          expect(find.byKey(const ValueKey("strip-v")), findsOneWidget,
+              reason: "the strips still, $why");
+          expect(tester.takeException(), isNull, reason: why);
+          await tester.pumpWidget(const SizedBox());
+          c.dispose();
+        }
       }
-      var meter = tester.getRect(find.byKey(const ValueKey("compactMeter-v")));
-      expect(meter.width, greaterThan(meter.height), reason: "on its side");
-      expect(tester.getRect(find.byKey(const ValueKey("compactName-v"))).bottom,
-          lessThanOrEqualTo(meter.top + 1),
-          reason: "the name over the meter");
-      await tester.tap(find.byKey(const ValueKey("compact-w")));
-      await tester.pump();
-      expect(c.selectedChannel, "w");
-      expect(tester.takeException(), isNull);
-      await done(tester, c);
+      tester.view.reset();
+    });
+
+    test("the least it goes is its bands' least", () {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [timed("v", "Speaker")]),
+          audioEngine: engine);
+      addTearDown(c.dispose);
+      var all = mixerLeastHeight(c);
+      // Only the devices: a slot of them, scrolled.
+      c.restoreMixer(["hidden", "shown", "hidden"], true);
+      var devices = mixerLeastHeight(c);
+      expect(devices, lessThan(all));
+      // The mixer minimised is shorter than whole.
+      c.restoreMixer(["hidden", "hidden", "minimised"], true);
+      var mini = mixerLeastHeight(c);
+      c.restoreMixer(["hidden", "hidden", "shown"], true);
+      expect(mini, lessThan(mixerLeastHeight(c)));
+      // Never every band hidden: the mixer comes back.
+      c.restoreMixer(["hidden", "hidden", "hidden"], false);
+      expect(c.bandState(MixerSection.mixer), BandState.shown);
+      expect(c.returnsShown, isFalse);
+      expect(c.mixerBandNames, ["hidden", "hidden", "shown", "shown"],
+          reason: "a list kept before the sends had a band leaves them shown");
     });
 
     testWidgets("picking a strip shows its effects", (tester) async {
@@ -1141,6 +1237,9 @@ void main() {
       var c = await show(tester);
       expect(find.byKey(const ValueKey("normalise")), findsNothing,
           reason: "bringing an export to the target is a publish setting");
+      await tester.ensureVisible(
+          find.byKey(const ValueKey("loudnessSlot"), skipOffstage: false));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("loudnessSlot")));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey("measure")), findsOneWidget);
@@ -1156,6 +1255,9 @@ void main() {
         var c = await show(tester);
         c.apply(c.document.copyWith(
             masterMix: c.document.masterMix.copyWith(target: target)));
+        await tester.pump();
+        await tester.ensureVisible(
+            find.byKey(const ValueKey("loudnessSlot"), skipOffstage: false));
         await tester.pump();
         await tester.tap(find.byKey(const ValueKey("loudnessSlot")));
         await tester.pump(const Duration(milliseconds: 300));
@@ -1318,7 +1420,8 @@ void main() {
   // the mixer's grip -- that line -- follows the pointer the whole way,
   // through its fold to one line, at any text size.
   for (var scale in [1.0, 1.15]) {
-    testWidgets("the line between the effects and the mixer follows a drag "
+    testWidgets(
+        "the line between the effects and the mixer follows a drag "
         "(${scale}x)", (tester) async {
       tester.view.physicalSize = const Size(1400, 900);
       tester.view.devicePixelRatio = 1;
@@ -1358,15 +1461,15 @@ void main() {
                               CanvasMixer(
                                   controller: c,
                                   height: mixerHeight,
-                                  onResize: (h) => setState(() =>
-                                      mixerHeight = h.clamp(56.0, 600.0)),
+                                  onResize: (h) => setState(
+                                      () => mixerHeight = h.clamp(56.0, 600.0)),
                                   onClose: () {}),
                             ]))))),
       ));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byKey(const ValueKey("effectsGrip")), findsNothing);
-      var g = await tester
-          .startGesture(tester.getCenter(find.byKey(const ValueKey("mixerGrip"))));
+      var g = await tester.startGesture(
+          tester.getCenter(find.byKey(const ValueKey("mixerGrip"))));
       var seen = <double>[];
       for (var i = 0; i < 30; i++) {
         await g.moveBy(const Offset(0, 9));
@@ -1377,7 +1480,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       // Nine pixels a move, every move, down to the least it may be.
       for (var i = 1; i < seen.length; i++) {
-        expect(seen[i - 1] - seen[i], seen[i] <= 56 ? lessThanOrEqualTo(9) : closeTo(9, 0.01),
+        expect(seen[i - 1] - seen[i],
+            seen[i] <= 56 ? lessThanOrEqualTo(9) : closeTo(9, 0.01),
             reason: "step $i: $seen");
       }
       expect(seen.last, 56);
@@ -1385,4 +1489,427 @@ void main() {
       c.dispose();
     });
   }
+
+  group("the three bands", () {
+    VideoElement timed(String id, String name) =>
+        VideoElement(ElementBase(id: id, name: name),
+            clip: const MediaClip(
+                playlist: [MediaSource(assetId: "x", length: 4)], timed: true));
+
+    CanvasController make({SpeakerLayout speakers = SpeakerLayout.stereo}) =>
+        CanvasController(
+            CanvasDocument(
+                frames: 100,
+                frameRate: 25,
+                audio: AudioSettings(speakers: speakers),
+                elements: [
+                  timed("v", "Speaker"),
+                  const AudioElement(ElementBase(id: "keys", name: "Keys"),
+                      clip: MediaClip(timed: true),
+                      instrument: InstrumentPart()),
+                ]),
+            audioEngine: FakeEngine({}),
+            frameSource: FakeFrames(4));
+
+    Future<void> show(WidgetTester tester, CanvasController c,
+        {double height = 460, double scale = 1}) async {
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeNotifier>(
+              create: (c) => ThemeNotifier(doLoad: false)),
+          ChangeNotifierProvider<SnackBarModel>(create: (c) => SnackBarModel()),
+        ],
+        child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!),
+            home: Scaffold(
+                body: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: CanvasMixer(
+                        controller: c,
+                        height: height,
+                        onResize: (_) {},
+                        onClose: () {})))),
+      ));
+      await tester.pump();
+    }
+
+    Future<void> done(WidgetTester tester, CanvasController c) async {
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpWidget(const SizedBox());
+      c.dispose();
+      tester.view.reset();
+    }
+
+    Rect faderIn(WidgetTester tester, String strip) =>
+        tester.getRect(find.descendant(
+            of: find.byKey(ValueKey(strip)),
+            matching: find.byKey(const ValueKey("fader"))));
+
+    // Ken: the returns and the master start their faders on the channels'
+    // line and are as tall; their devices take the room sends take.
+    testWidgets("every column's fader starts on one line and is as tall",
+        (tester) async {
+      var c = make();
+      await show(tester, c);
+      var strips = [
+        "strip-v",
+        "strip-keys",
+        for (var r in c.document.returns) "strip-${r.id}",
+      ];
+      expect(c.document.returns, isNotEmpty);
+      var first = faderIn(tester, strips.first);
+      for (var s in strips.skip(1)) {
+        var f = faderIn(tester, s);
+        expect(f.top, closeTo(first.top, 0.5), reason: s);
+        expect(f.height, closeTo(first.height, 0.5), reason: s);
+      }
+      // The master's is as tall, from the same line, a little wider.
+      var m = faderIn(tester, "strip-master");
+      expect(m.top, closeTo(first.top, 0.5));
+      expect(m.height, closeTo(first.height, 0.5));
+      // And the devices band of a return holds its slots where a
+      // channel's holds EQ: on the same line.
+      var eq = tester.getRect(find.descendant(
+          of: find.byKey(const ValueKey("strip-v")),
+          matching: find.byKey(const ValueKey("eqSlot"))));
+      var ret = tester.getRect(find.descendant(
+          of: find.byKey(ValueKey("strip-${c.document.returns.first.id}")),
+          matching: find.byKey(const ValueKey("returnDevice-0"))));
+      expect(ret.top, closeTo(eq.top, 0.5));
+      await done(tester, c);
+    });
+
+    // Ken: each band's button goes shown, minimised, hidden -- and the
+    // devices show three slots before they scroll, unless the clips or the
+    // mixer are minimised or hidden.
+    testWidgets("the rail shows, minimises and hides each band, never the last",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, elements: [
+            VideoElement(const ElementBase(id: "v", name: "Speaker"),
+                clip: MediaClip(
+                    playlist: const [MediaSource(assetId: "x", length: 4)],
+                    timed: true,
+                    mix: ChannelMix(devices: [
+                      for (var k in DeviceKind.values.take(5)) MixDevice(k)
+                    ]))),
+          ]),
+          audioEngine: FakeEngine({}),
+          frameSource: FakeFrames(4));
+      await show(tester, c, height: 560);
+      Finder inStrip(String key) => find.descendant(
+          of: find.byKey(const ValueKey("strip-v")),
+          matching: find.byKey(ValueKey(key)));
+      Rect devicesBand() {
+        var top = tester.getRect(inStrip("chanDevice-0")).top;
+        var bottom = tester.getRect(inStrip("fader")).top;
+        return Rect.fromLTRB(0, top, 1, bottom);
+      }
+
+      // All shown: the devices three slots high, and scrolling.
+      var three = devicesBand().height;
+      expect(three, lessThan(150), reason: "three slots, the sends, gaps");
+
+      // The mixer minimised: its row, and the devices have more room.
+      await tester.tap(find.byKey(const ValueKey("section-mixer")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.minimised);
+      expect(inStrip("fader"), findsNothing);
+      expect(inStrip("miniFader"), findsOneWidget);
+      expect(inStrip("mute"), findsOneWidget, reason: "its buttons too");
+      var deviceBottom = tester.getRect(inStrip("chanDevice-4")).bottom;
+      expect(deviceBottom, lessThan(tester.getRect(inStrip("miniFader")).top),
+          reason: "all five of its devices in view, unscrolled");
+      // The minimised fader is dragged sideways.
+      var mini = tester.getRect(inStrip("miniFader"));
+      await tester.dragFrom(
+          mini.centerRight - const Offset(4, 0), Offset(-mini.width * 0.5, 0));
+      await tester.pump();
+      expect(c.timelineChannels.single.mix.gainDb, lessThan(-3));
+
+      // Then hidden; then shown again.
+      await tester.tap(find.byKey(const ValueKey("section-mixer")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.hidden);
+      expect(inStrip("miniFader"), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("section-mixer")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.shown);
+      expect(inStrip("fader"), findsOneWidget);
+
+      // The clips minimised: one slot and its stop.
+      await tester.tap(find.byKey(const ValueKey("section-clips")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.clips), BandState.minimised);
+      expect(inStrip("clipStop-v"), findsOneWidget);
+
+      // Never the last band hidden: with the others hidden, the mixer's
+      // button goes back to shown rather than hiding it.
+      await tester.tap(find.byKey(const ValueKey("section-clips")));
+      await tester.pump(); // clips hidden
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.byKey(const ValueKey("section-devices")));
+        await tester.pump();
+      }
+      expect(c.mixerSections, {MixerSection.mixer, MixerSection.sends},
+          reason: "the sends showing do not count: a mixer of dials alone "
+              "is no mixer");
+      await tester.tap(find.byKey(const ValueKey("section-mixer")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.minimised);
+      await tester.tap(find.byKey(const ValueKey("section-mixer")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.shown,
+          reason: "the last band showing stays");
+
+      // Ken: the sends, a band of their own under S -- shown and hidden.
+      expect(inStrip("sendsBand"), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("section-sends")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.sends), BandState.hidden);
+      expect(inStrip("sendsBand"), findsNothing);
+      await tester.tap(find.byKey(const ValueKey("section-sends")));
+      await tester.pump();
+      expect(c.bandState(MixerSection.sends), BandState.shown,
+          reason: "never minimised");
+      expect(inStrip("sendsBand"), findsOneWidget);
+      // Under the mixer's button on the rail.
+      expect(
+          tester.getRect(find.byKey(const ValueKey("section-sends"))).top,
+          greaterThan(
+              tester.getRect(find.byKey(const ValueKey("section-mixer"))).top));
+      expect(tester.takeException(), isNull);
+      await done(tester, c);
+    });
+
+    testWidgets("a MIDI channel is armed from its strip, and plays the keys",
+        (tester) async {
+      var c = make();
+      await show(tester, c);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("strip-v")),
+              matching: find.byKey(const ValueKey("arm"))),
+          findsNothing,
+          reason: "an audio channel has nothing to arm");
+      var arm = find.descendant(
+          of: find.byKey(const ValueKey("strip-keys")),
+          matching: find.byKey(const ValueKey("arm")));
+      await tester.tap(arm);
+      await tester.pump();
+      expect(c.armed, {"keys"});
+      expect(c.midiTarget?.id, "keys");
+      await tester.tap(arm);
+      await tester.pump();
+      expect(c.armed, isEmpty);
+      // Its switch is its number, and switches it off.
+      var on = find.descendant(
+          of: find.byKey(const ValueKey("strip-keys")),
+          matching: find.byKey(const ValueKey("mute")));
+      expect(find.descendant(of: on, matching: find.text("2")), findsOneWidget);
+      await tester.tap(on);
+      await tester.pump();
+      expect(c.timelineChannels.firstWhere((l) => l.key == "keys").mix.mute,
+          isTrue);
+      // Its In is a slot, before its EQ, that opens it in the effects.
+      var inSlot = find.descendant(
+          of: find.byKey(const ValueKey("strip-keys")),
+          matching: find.byKey(const ValueKey("midiInSlot")));
+      expect(find.descendant(of: inSlot, matching: find.text("Auto")),
+          findsOneWidget);
+      await tester.tap(inSlot);
+      await tester.pump();
+      expect(c.effectsOf, "keys");
+      expect(c.effectsFocus, "midiIn");
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("strip-v")),
+              matching: find.byKey(const ValueKey("midiInSlot"))),
+          findsNothing);
+      await done(tester, c);
+    });
+
+    testWidgets("a column is made narrow by itself, or every one together",
+        (tester) async {
+      var c = make();
+      await show(tester, c);
+      double width(String strip) =>
+          tester.getRect(find.byKey(ValueKey(strip))).width;
+      var wide = width("strip-v");
+      await tester.tap(find.byKey(const ValueKey("narrow-v")));
+      await tester.pump();
+      expect(width("strip-v"), lessThan(wide * 0.6));
+      expect(width("strip-keys"), wide, reason: "the others as they were");
+      // Narrow, still a fader, a meter and the buttons.
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey("strip-v")),
+              matching: find.byKey(const ValueKey("fader"))),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey("narrowAll")));
+      await tester.pump();
+      for (var k in ["strip-v", "strip-keys", "strip-master"]) {
+        expect(width(k), lessThan(wide * 0.6), reason: k);
+      }
+      await tester.tap(find.byKey(const ValueKey("narrowAll")));
+      await tester.pump();
+      expect(width("strip-v"), wide, reason: "and all wide again");
+      expect(tester.takeException(), isNull);
+      await done(tester, c);
+    });
+
+    // Ken: the returns pinned to the left of the master, and a button to
+    // put them away for the channels' room.
+    testWidgets("the returns are pinned beside the master, and hide",
+        (tester) async {
+      var c = CanvasController(
+          CanvasDocument(frames: 100, frameRate: 25, elements: [
+            for (var i = 0; i < 14; i++) timed("v$i", "Channel $i"),
+          ]),
+          audioEngine: FakeEngine({}),
+          frameSource: FakeFrames(4));
+      await show(tester, c);
+      var ret = "strip-${c.document.returns.first.id}";
+      Rect at(String k) => tester.getRect(find.byKey(ValueKey(k)));
+      var master = at("strip-master");
+      expect(at(ret).right, lessThan(master.left));
+      // The channels scrolled a long way: the returns have not moved.
+      var was = at(ret);
+      await tester.drag(
+          find.byKey(const ValueKey("strip-v1")), const Offset(-600, 0));
+      await tester.pump();
+      expect(at(ret), was);
+      // Put away: the channels have their room.
+      var channels = tester.getRect(find.byType(ListView).first).width;
+      await tester.tap(find.byKey(const ValueKey("showReturns")));
+      await tester.pump();
+      expect(c.returnsShown, isFalse);
+      expect(find.byKey(ValueKey(ret)), findsNothing);
+      expect(tester.getRect(find.byType(ListView).first).width,
+          greaterThan(channels));
+      expect(find.byKey(ValueKey("send-${c.document.returns.first.id}")),
+          findsWidgets,
+          reason: "the channels still send to them");
+      await tester.tap(find.byKey(const ValueKey("showReturns")));
+      await tester.pump();
+      expect(find.byKey(ValueKey(ret)), findsOneWidget);
+      await done(tester, c);
+    });
+
+    testWidgets("the buttons and the fader are half size; the pan has room",
+        (tester) async {
+      var c = make();
+      await show(tester, c);
+      Rect inStrip(String k) => tester.getRect(find.descendant(
+          of: find.byKey(const ValueKey("strip-keys")),
+          matching: find.byKey(ValueKey(k))));
+      expect(inStrip("mute").height, lessThanOrEqualTo(12));
+      expect(inStrip("solo").width, lessThanOrEqualTo(18));
+      expect(inStrip("arm").height, lessThanOrEqualTo(12));
+      expect(inStrip("fader").width, lessThanOrEqualTo(26));
+      expect(inStrip("mute").top - inStrip("balance").bottom,
+          greaterThanOrEqualTo(8),
+          reason: "a gap between the pan and the buttons");
+      // The rail's buttons drawn half size, but pressed anywhere near.
+      var rail = find.byKey(const ValueKey("section-mixer"));
+      var dot = find.descendant(of: rail, matching: find.byType(Container));
+      expect(tester.getRect(dot.first).width, lessThanOrEqualTo(12));
+      await tester.tapAt(tester.getRect(rail).topLeft + const Offset(2, 2));
+      await tester.pump();
+      expect(c.bandState(MixerSection.mixer), BandState.minimised,
+          reason: "a press at its corner, off the dot, still counts");
+      await done(tester, c);
+    });
+
+    // Ken's log: a channel with a long chain of devices left its clips band
+    // fifteen pixels, and the stop under its slots ran out of it.
+    testWidgets("a long chain of devices leaves the clips their room",
+        (tester) async {
+      var failures = <String>[];
+      for (var scale in [1.0, 1.15, 1.25]) {
+        for (var h = 260.0; h <= 460; h += 20) {
+          var c = CanvasController(
+              CanvasDocument(frames: 100, elements: [
+                VideoElement(const ElementBase(id: "v", name: "Speaker"),
+                    clip: MediaClip(
+                        playlist: const [MediaSource(assetId: "x", length: 4)],
+                        timed: true,
+                        mix: ChannelMix(devices: [
+                          for (var k in DeviceKind.values.take(10)) MixDevice(k)
+                        ]))),
+              ]),
+              audioEngine: FakeEngine({}),
+              frameSource: FakeFrames(4));
+          await show(tester, c, height: h, scale: scale);
+          if (tester.takeException() case var e?) {
+            failures.add("$h ${scale}x: ${e.toString().split("\n").first}");
+          }
+          // Its stop button too, wherever the desk -- as tall as it is
+          // laid out, before the text size zooms it -- has the room.
+          var clips = find.byKey(const ValueKey("clipStop-v"));
+          if (h / scale >= 280 && clips.evaluate().isEmpty) {
+            failures.add("$h ${scale}x: no stop");
+          }
+          await done(tester, c);
+        }
+      }
+      expect(failures, isEmpty);
+    });
+
+    testWidgets("every combination of bands fits, at every size",
+        (tester) async {
+      var failures = <String>[];
+      // Every way the clips, devices and mixer can be -- each shown,
+      // minimised or hidden, all but every one hidden -- with the sends
+      // shown or hidden.
+      const main = [
+        MixerSection.clips,
+        MixerSection.devices,
+        MixerSection.mixer,
+      ];
+      var combos = [
+        for (var sends in [BandState.shown, BandState.hidden])
+          for (var m = 0; m < 27; m++)
+            {
+              for (var (i, s) in main.indexed)
+                s: BandState.values[(m ~/ math.pow(3, i)) % 3],
+              MixerSection.sends: sends,
+            }
+      ].where((c) => main.any((s) => c[s] != BandState.hidden)).toList();
+      for (var scale in [1.0, 1.25]) {
+        for (var shown in combos) {
+          for (var h = 260.0; h <= 460; h += 40) {
+            var c = make(speakers: SpeakerLayout.surround51);
+            for (var s in MixerSection.values) {
+              while (c.bandState(s) != shown[s]) {
+                c.toggleMixerSection(s);
+              }
+            }
+            // Every other height, every column narrow.
+            if (h % 80 == 20) {
+              c.setAllNarrow([
+                "v",
+                "keys",
+                mixerMasterKey,
+                for (var r in c.document.returns) r.id
+              ], true);
+            }
+            await show(tester, c, height: h, scale: scale);
+            if (tester.takeException() case var e?) {
+              failures
+                  .add("${shown.values.map((v) => v.name[0]).join()}, $h tall, "
+                      "${scale}x: ${e.toString().split("\n").first}");
+            }
+            await done(tester, c);
+          }
+        }
+      }
+      expect(failures, isEmpty);
+    });
+  });
 }

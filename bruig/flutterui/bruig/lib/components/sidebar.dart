@@ -13,6 +13,10 @@ import 'package:bruig/screens/chats.dart';
 import 'package:bruig/screens/feed.dart';
 import 'package:bruig/theming_system/theme_manager.dart';
 
+import 'package:bruig/models/uistate.dart' show OverviewActivePath;
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart'
+    show CanvasScreen;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -326,7 +330,25 @@ class _SidebarState extends State<Sidebar> with WindowListener {
                           null =>
                             Alignment.center,
                         },
-                        child: BisonRelayLogo(size: navStyle.logoSize ?? 32),
+                        // On the canvas, the logo puts the menu away --
+                        // see CanvasPreferences.menuHidden.
+                        child: Provider.of<OverviewActivePath>(context).route ==
+                                CanvasScreen.routeName
+                            ? Tooltip(
+                                message: "Hide the menu",
+                                child: GestureDetector(
+                                  key: const ValueKey("sidebarLogoHideMenu"),
+                                  onTap: () => Provider.of<CanvasPreferences>(
+                                          context,
+                                          listen: false)
+                                      .menuHidden = true,
+                                  child: MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: BisonRelayLogo(
+                                          size: navStyle.logoSize ?? 32)),
+                                ),
+                              )
+                            : BisonRelayLogo(size: navStyle.logoSize ?? 32),
                       ),
                     )
                 : null,

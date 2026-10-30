@@ -321,8 +321,11 @@ void paintCanvasDocument(
   // With a camera, the master is drawn as it is and the scene through the
   // camera, as two runs rather than one list stacked together.
   if (camera != null) {
-    if (master != null && !doc.editingMaster) scene(master.elements);
+    var shared = master != null && !doc.editingMaster;
+    if (shared && !doc.masterOver) scene(master.elements);
     framed(() => scene(doc.elements));
+    // Over, a HUD: still while the camera moves the level under it.
+    if (shared && doc.masterOver) scene(master.elements);
     return;
   }
   // The master under the page, and its page numbers over it -- see
@@ -331,7 +334,8 @@ void paintCanvasDocument(
       canvas,
       doc,
       master != null && !doc.editingMaster
-          ? stackedWithMaster(master.elements, doc.elements)
+          ? stackedWithMaster(master.elements, doc.elements,
+              over: doc.masterOver)
           : doc.elements,
       frame,
       onMaster: onMaster,
@@ -985,7 +989,11 @@ void paintElement(
                     );
                   });
       case CharacterElement e:
-        arriving(canvas, bounds, e.animation, pose,
+        arriving(
+            canvas,
+            bounds,
+            e.animation,
+            pose,
             () => paintCharacter(canvas, bounds, e, frame,
                 frameRate: frameRate, editing: editing, images: images));
       default:

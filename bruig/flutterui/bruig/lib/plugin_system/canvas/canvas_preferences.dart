@@ -32,6 +32,7 @@ class CanvasPreferences extends ChangeNotifier {
   static const _fitKey = "canvasFit";
   static const _timelineKey = "canvasTimeline";
   static const _filesFolderKey = "canvasFilesFolder";
+  static const _elevenLabsKeyKey = "canvasElevenLabsKey";
   static const _publishKey = "canvasPublish";
   static const _timelineHeightKey = "canvasTimelineHeight";
   static const _drawBarWidthKey = "canvasDrawBarWidth";
@@ -41,6 +42,11 @@ class CanvasPreferences extends ChangeNotifier {
   static const _studioLookKey = "canvasStudioLook";
   static const _mixEngineKey = "canvasMixEngine";
   static const _studioOverridesKey = "canvasStudioColours";
+  static const _menuHiddenKey = "canvasMenuHidden";
+  static const _mixerBandsKey = "canvasMixerBands";
+  static const _returnsShownKey = "canvasReturnsShown";
+  static const _mixerHeightKey = "canvasMixerHeight";
+  static const _effectsHeightKey = "canvasEffectsHeight";
 
   /// enabled is whether the Canvas section exists.
   bool get enabled => _enabled;
@@ -137,6 +143,19 @@ class CanvasPreferences extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// elevenLabsKey is the reader's own ElevenLabs API key, for the Speech
+  /// device's cloud engine -- empty until it is pasted in. Nothing is sent
+  /// to ElevenLabs without it, and nothing at all until Speak is pressed.
+  String get elevenLabsKey => _elevenLabsKey;
+  String _elevenLabsKey = "";
+  set elevenLabsKey(String value) {
+    var v = value.trim();
+    if (_elevenLabsKey == v) return;
+    _elevenLabsKey = v;
+    StorageManager.saveString(_elevenLabsKeyKey, v);
+    notifyListeners();
+  }
+
   /// filesFolder is the folder the Files panel is looking at.
   ///
   /// Kept because being put back at the top of the library every time is
@@ -162,6 +181,58 @@ class CanvasPreferences extends ChangeNotifier {
     if (_timelineHeight == value) return;
     _timelineHeight = value;
     StorageManager.saveString(_timelineHeightKey, value.toStringAsFixed(1));
+  }
+
+  /// menuHidden is whether the app's menu -- its sidebar and its header --
+  /// is put away while the canvas is open, for the canvas to have the
+  /// room: the Bison Relay logo toggles it, and while it is away sits at
+  /// the start of the canvas's own bar. The canvas's alone; the rest of
+  /// the app is as it was.
+  bool get menuHidden => _menuHidden;
+  bool _menuHidden = false;
+  set menuHidden(bool value) {
+    if (_menuHidden == value) return;
+    _menuHidden = value;
+    StorageManager.saveBool(_menuHiddenKey, value);
+    notifyListeners();
+  }
+
+  /// mixerBands is how each of the mixer's bands was left -- clips,
+  /// devices, mixer: shown, minimised or hidden, by name -- and
+  /// returnsShown whether the returns were: put back as they were at the
+  /// next visit. Empty for as they start.
+  List<String> get mixerBands => _mixerBands;
+  List<String> _mixerBands = const [];
+  set mixerBands(List<String> value) {
+    if (_mixerBands.join(",") == value.join(",")) return;
+    _mixerBands = value;
+    StorageManager.saveString(_mixerBandsKey, value.join(","));
+  }
+
+  bool get returnsShown => _returnsShown;
+  bool _returnsShown = true;
+  set returnsShown(bool value) {
+    if (_returnsShown == value) return;
+    _returnsShown = value;
+    StorageManager.saveBool(_returnsShownKey, value);
+  }
+
+  /// mixerHeight and effectsHeight are how tall the mixer and the effects
+  /// panel were dragged to, or nought for as they start.
+  double get mixerHeight => _mixerHeight;
+  double _mixerHeight = 0;
+  set mixerHeight(double value) {
+    if (_mixerHeight == value) return;
+    _mixerHeight = value;
+    StorageManager.saveString(_mixerHeightKey, value.toStringAsFixed(1));
+  }
+
+  double get effectsHeight => _effectsHeight;
+  double _effectsHeight = 0;
+  set effectsHeight(double value) {
+    if (_effectsHeight == value) return;
+    _effectsHeight = value;
+    StorageManager.saveString(_effectsHeightKey, value.toStringAsFixed(1));
   }
 
   /// drawBarWidth is how wide a sketched character's bar over the canvas
@@ -237,8 +308,10 @@ class CanvasPreferences extends ChangeNotifier {
       next[role] = colour;
     }
     _studioOverrides = Map.unmodifiable(next);
-    StorageManager.saveString(_studioOverridesKey,
-        jsonEncode({for (var e in next.entries) e.key.name: colorToJson(e.value)}));
+    StorageManager.saveString(
+        _studioOverridesKey,
+        jsonEncode(
+            {for (var e in next.entries) e.key.name: colorToJson(e.value)}));
     notifyListeners();
   }
 
@@ -278,6 +351,7 @@ class CanvasPreferences extends ChangeNotifier {
     _fit = await StorageManager.readString(_fitKey);
     _timeline = await StorageManager.readBool(_timelineKey, defaultVal: false);
     _filesFolder = await StorageManager.readString(_filesFolderKey);
+    _elevenLabsKey = await StorageManager.readString(_elevenLabsKeyKey);
     _keyframesShown =
         await StorageManager.readBool(_keyframesShownKey, defaultVal: true);
     _scenesShown =
@@ -288,6 +362,16 @@ class CanvasPreferences extends ChangeNotifier {
             0;
     _drawBarWidth =
         double.tryParse(await StorageManager.readString(_drawBarWidthKey)) ?? 0;
+    _menuHidden = await StorageManager.readBool(_menuHiddenKey);
+    var bands = await StorageManager.readString(_mixerBandsKey);
+    _mixerBands = bands.isEmpty ? const [] : bands.split(",");
+    _returnsShown =
+        await StorageManager.readBool(_returnsShownKey, defaultVal: true);
+    _mixerHeight =
+        double.tryParse(await StorageManager.readString(_mixerHeightKey)) ?? 0;
+    _effectsHeight =
+        double.tryParse(await StorageManager.readString(_effectsHeightKey)) ??
+            0;
     useMixEngine =
         await StorageManager.readBool(_mixEngineKey, defaultVal: true);
     _studioLook =
@@ -298,8 +382,7 @@ class CanvasPreferences extends ChangeNotifier {
       if (saved is Map) {
         _studioOverrides = Map.unmodifiable({
           for (var role in StudioRole.values)
-            if (saved[role.name] is num)
-              role: colorFromJson(saved[role.name]),
+            if (saved[role.name] is num) role: colorFromJson(saved[role.name]),
         });
       }
     } catch (_) {

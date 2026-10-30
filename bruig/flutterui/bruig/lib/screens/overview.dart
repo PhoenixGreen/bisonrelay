@@ -3,6 +3,9 @@ import 'dart:math' as math;
 
 import 'package:bruig/components/clipper.dart';
 import 'package:bruig/components/containers.dart';
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:bruig/plugin_system/canvas/ui/canvas_screen.dart'
+    show CanvasScreen;
 import 'package:bruig/components/mobile_nav_bar.dart';
 import 'package:bruig/components/interactive_avatar.dart';
 import 'package:bruig/components/page_context_menu.dart';
@@ -434,6 +437,8 @@ class __MainAppBarState extends State<_MainAppBar>
       // the position's. With every one of them off there's no leading
       // content at all, and the title starts at the very edge.
       var showLogo = !headerStyle.hideHeaderLogo;
+      var onCanvas = Provider.of<OverviewActivePath>(context).route ==
+          CanvasScreen.routeName;
       var showNewPost = !headerStyle.hideHeaderNewPost;
       Widget? leadingWidget;
       double leadingWidthValue = 0;
@@ -471,7 +476,10 @@ class __MainAppBarState extends State<_MainAppBar>
                 }
                 return Stack(children: [
                   IconButton(
-                      tooltip: "About Bison Relay",
+                      // On the canvas, the logo puts the menu away -- the
+                      // canvas's bar has it then, to bring it back. See
+                      // CanvasPreferences.menuHidden.
+                      tooltip: onCanvas ? "Hide the menu" : "About Bison Relay",
                       splashRadius: 20,
                       // IconButton's iconSize reliably constrains an
                       // Icon/ImageIcon, but a plain Image (like this logo)
@@ -484,7 +492,11 @@ class __MainAppBarState extends State<_MainAppBar>
                       // asset's true (non-square) aspect ratio, regardless
                       // of the surrounding toolbar height.
                       iconSize: logoSize,
-                      onPressed: () => goToAbout(context),
+                      onPressed: onCanvas
+                          ? () => Provider.of<CanvasPreferences>(context,
+                                  listen: false)
+                              .menuHidden = true
+                          : () => goToAbout(context),
                       icon: BisonRelayLogo(size: logoSize)),
                   _connStateStyles[connStateTagKey]?.tag ??
                       const SizedBox(width: 100),
@@ -958,6 +970,15 @@ class _OverviewScreenState extends State<OverviewScreen> {
       },
     );
 
+    // On the canvas, the menu -- the header and the sidebar -- put away
+    // with the logo, for the canvas to have the room. See
+    // CanvasPreferences.menuHidden; the rest of the app keeps it.
+    var menuAway = !isScreenSmall &&
+        Provider.of<OverviewActivePath>(context).route ==
+            CanvasScreen.routeName &&
+        Provider.of<CanvasPreferences>(context).menuHidden;
+    if (menuAway) headerPosition = HeaderPosition.none;
+
     Widget contentColumn = headerPosition == HeaderPosition.content
         ? Column(children: [
             SizedBox(
@@ -983,7 +1004,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
               area: ThemeArea.masterBackground,
               child: Stack(fit: StackFit.expand, children: [
                 Row(children: [
-                  isScreenSmall
+                  isScreenSmall || menuAway
                       ? const Empty()
                       : Sidebar(widget.client, widget.mainMenu, widget.ntfns,
                           navKey, widget.feed),

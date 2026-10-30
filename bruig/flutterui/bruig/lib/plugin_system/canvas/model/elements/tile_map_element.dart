@@ -462,6 +462,10 @@ class TileLayer {
   final TileRepeat repeat;
   final Offset drift;
 
+  /// solid is whether, in a game, its tiles are ground: a player stands on
+  /// them and is stopped by them, as by a Solid element. See canvas_game.
+  final bool solid;
+
   const TileLayer({
     this.name = "Layer",
     this.cells = const {},
@@ -475,6 +479,7 @@ class TileLayer {
     this.parallax = 1,
     this.repeat = TileRepeat.none,
     this.drift = Offset.zero,
+    this.solid = false,
   });
 
   /// extent is its cells' first and last column and row, or null with none.
@@ -508,8 +513,10 @@ class TileLayer {
     double? parallax,
     TileRepeat? repeat,
     Offset? drift,
+    bool? solid,
   }) =>
       TileLayer(
+        solid: solid ?? this.solid,
         parallax: (parallax ?? this.parallax).clamp(0.0, 4.0),
         repeat: repeat ?? this.repeat,
         drift: drift ?? this.drift,
@@ -540,6 +547,7 @@ class TileLayer {
         if (parallax != 1) "parallax": parallax,
         if (repeat != TileRepeat.none) "repeat": repeat.name,
         if (drift != Offset.zero) "drift": [drift.dx, drift.dy],
+        if (solid) "solid": true,
       };
 
   static TileLayer fromJson(Object? json) {
@@ -575,6 +583,7 @@ class TileLayer {
         [num x, num y] => Offset(x.toDouble(), y.toDouble()),
         _ => Offset.zero,
       },
+      solid: jsonBool(json["solid"], false),
     );
   }
 }

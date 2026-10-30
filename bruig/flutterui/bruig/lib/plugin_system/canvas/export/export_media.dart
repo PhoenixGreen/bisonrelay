@@ -63,7 +63,13 @@ class ExportSound {
   /// SoundPlacement.
   final List<(double, Heard)> place;
 
+  /// clock is the seconds into the export its channel's timeline counts
+  /// from -- its scene's start -- for the lanes of the channel's
+  /// automation, whose points are counted from there.
+  final double clock;
+
   const ExportSound({
+    this.clock = 0,
     this.place = const [],
     required this.path,
     required this.at,
@@ -285,9 +291,22 @@ class ExportMedia {
     var out = <ExportSound>[];
     var total = document.playFrames / _rate;
     var ducks = await _duckEnvelopes();
+    // A muted channel a vocoder takes its carrier from is still carried:
+    // unheard itself, it is heard through the vocoder.
+    var carriers = {
+      for (var p in _placed)
+        for (var d in p.clip.mix.devices)
+          if (d.sidechain case var c?) c,
+      for (var r in document.returns)
+        for (var d in r.devices)
+          if (d.sidechain case var c?) c,
+    };
     for (var p in _placed) {
       var clip = p.clip;
-      if (clip.muted || clip.volume <= 0 || clip.mix.mute) continue;
+      if (clip.muted || clip.volume <= 0) continue;
+      if (clip.mix.mute && !carriers.contains(_channelOf(p.element, clip))) {
+        continue;
+      }
       var begins = (p.start + clip.at) / _rate;
       var limit = math.min(p.until / _rate, total) - begins;
       if (limit <= 0) continue;
@@ -321,6 +340,7 @@ class ExportMedia {
                 mix: clip.mix,
                 channel:
                     clip.channel.isNotEmpty ? clip.channel : p.element.id,
+                clock: p.start / _rate,
                 place: place,
                 envelope: multiplyEnvelopes(
                   [for (var g in clip.envelope) GainPoint(g.time - t, g.gain)],

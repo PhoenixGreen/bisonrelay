@@ -2,12 +2,21 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/ui/studio_colors.dart';
+import 'package:bruig/plugin_system/canvas/model/automation.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show MidiMonitor, noInput;
+import 'package:bruig/plugin_system/canvas/model/midi_effects.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
+    show SpeechSpec, VocaliserSpec;
+import 'package:bruig/plugin_system/canvas/media/midi_input.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart'
     show envelopeAt;
 import 'package:bruig/plugin_system/canvas/model/audio_tools.dart'
     show duckEnvelope;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/ui/automation_lanes.dart'
+    show automationColour;
 import 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +32,18 @@ import 'package:flutter/scheduler.dart';
 // silver compressor -- as a hardware unit does, so its colours are its own
 // rather than the theme's. Each is drawn at one height, deviceHeight, and
 // scaled to the room the chain has, never laid out again.
+
+/// dragPointers are what may drag a value -- a fader, a dial, a knob: the
+/// mouse, a finger, a pen; never the trackpad. A drag recognizer takes a
+/// trackpad's two-finger swipe as a drag, so swiping past a fader moved it.
+/// Clicked and dragged on a trackpad is the mouse's, and still works.
+const Set<PointerDeviceKind> dragPointers = {
+  PointerDeviceKind.mouse,
+  PointerDeviceKind.touch,
+  PointerDeviceKind.stylus,
+  PointerDeviceKind.invertedStylus,
+  PointerDeviceKind.unknown,
+};
 
 /// deviceHeight is the height every device is drawn at, before it is scaled
 /// to the chain.
@@ -406,6 +427,7 @@ class _Dragged extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.resizeUpDown,
       child: GestureDetector(
+        supportedDevices: dragPointers,
         behavior: HitTestBehavior.opaque,
         onVerticalDragStart: (_) => at = range.toUnit(value),
         onVerticalDragUpdate: (d) {
@@ -475,6 +497,10 @@ Color eqBandColour(EqSlot slot) => switch (slot) {
 const _eqBack = Color(0xFF0D1826);
 const _eqPanel = Color(0xFF132233);
 const _eqInk = Color(0xFFC9D6E6);
+
+/// _headerInkLight is what reads on a device's dark header bar -- its
+/// remove button, which drawn in the body's ink was there but not seen.
+const _headerInkLight = Color(0xFFE8EAEE);
 const _eqDim = Color(0xFF6E8199);
 
 /// EqDevice is a strip's Channel EQ in the chain -- the master's, with no
@@ -707,6 +733,7 @@ class _EqDeviceState extends State<EqDevice>
           },
           child: GestureDetector(
             key: const ValueKey("eqCurve"),
+            supportedDevices: dragPointers,
             // The handle is chosen where the press lands, not where the drag
             // is recognised: in the sideways-scrolling chain that is a
             // little way off, past the handle.
@@ -829,6 +856,7 @@ class _EqDeviceState extends State<EqDevice>
               var h = box.maxHeight;
               double at(double dy) => ((0.5 - dy / h) * 24).clamp(-12.0, 12.0);
               return GestureDetector(
+                supportedDevices: dragPointers,
                 key: const ValueKey("eqOutput"),
                 behavior: HitTestBehavior.opaque,
                 onVerticalDragUpdate: (d) => _write(
@@ -1384,7 +1412,14 @@ class _Knob extends StatelessWidget {
   final void Function(double v, {bool transient}) onChanged;
   final VoidCallback onCommit;
 
+  /// automated is whether a lane moves it -- a red dot by its name -- and
+  /// held whether a hand is holding it instead: the dot grey.
+  final bool automated;
+  final bool held;
+
   const _Knob({
+    this.automated = false,
+    this.held = false,
     required this.label,
     required this.text,
     required this.value,
@@ -1400,11 +1435,23 @@ class _Knob extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _silverInk)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            if (automated)
+              Container(
+                key: const ValueKey("knobAutomated"),
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 3),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: held ? const Color(0xFF7D838D) : automationColour),
+              ),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _silverInk)),
+          ]),
           const SizedBox(height: 4),
           _Dragged(
             value: value,
@@ -2224,7 +2271,10 @@ class _DuckShape extends CustomPainter {
 /// reverb or a delay -- and whatever device is added to the table next.
 class ParamDevice extends StatelessWidget {
   final CanvasController controller;
-  final String returnId;
+
+  /// owner is the strip the device is on: a return's id, or a channel's
+  /// key -- see CanvasController.devicesOf.
+  final String owner;
   final int index;
   final bool folded;
   final VoidCallback onFold;
@@ -2232,7 +2282,7 @@ class ParamDevice extends StatelessWidget {
 
   const ParamDevice({
     required this.controller,
-    required this.returnId,
+    required this.owner,
     required this.index,
     required this.folded,
     required this.onFold,
@@ -2240,31 +2290,38 @@ class ParamDevice extends StatelessWidget {
     super.key,
   });
 
-  static String _reading(DeviceParam p, double v) => switch (p.unit) {
-        "ms" => "${v.round()} ms",
-        "Hz" => v >= 1000
-            ? "${(v / 1000).toStringAsFixed(1)} kHz"
-            : "${v.round()} Hz",
-        _ => "${(v * 100).round()}%",
-      };
+  /// _range is how a knob turns for [p]: times and frequencies on a log
+  /// scale, everything else in a straight line.
+  static _Range _range(DeviceParam p) {
+    var log = p.unit == "Hz" || p.unit == "ms";
+    return _Range(log && p.min <= 0 ? 1 : p.min, p.max, log: log);
+  }
 
   @override
   Widget build(BuildContext context) {
-    var ret = controller.returnOf(returnId);
-    if (ret == null || index >= ret.devices.length) return const SizedBox();
-    var device = ret.devices[index];
+    var devices = controller.devicesOf(owner);
+    if (index >= devices.length) return const SizedBox();
+    var device = devices[index];
     void write(MixDevice next, {bool transient = false}) {
-      var now = controller.returnOf(returnId);
-      if (now == null || index >= now.devices.length) return;
+      var now = controller.devicesOf(owner);
+      if (index >= now.length) return;
       controller.beginInteraction();
-      controller.setReturn(
-          now.copyWith(devices: [...now.devices]..[index] = next),
-          transient: true);
+      controller.setDevicesOf(owner, [...now]..[index] = next, transient: true);
       if (!transient) controller.endInteraction();
     }
 
     var params = device.kind.params;
     var columns = (params.length + 1) ~/ 2;
+    // Which of its knobs a lane moves, and which a hand is holding.
+    var lane =
+        controller.timelineChannels.where((c) => c.key == owner).firstOrNull;
+    var automated = {
+      for (var l in lane?.mix.automation ?? const <AutomationLane>[])
+        if (l.points.isNotEmpty) l.target
+    };
+    var held = controller.overridden[owner] ?? const <String>{};
+    String target(DeviceParam p) =>
+        AutomationTarget.deviceSetting(index, device.kind, p.id).id;
     return DeviceFrame(
       id: "dev$index",
       title: device.kind.label,
@@ -2282,13 +2339,12 @@ class ParamDevice extends StatelessWidget {
           tooltip: "Take the ${device.kind.label.toLowerCase()} out",
           iconSize: 14,
           visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.close, color: _silverInk),
+          icon: const Icon(Icons.close, color: _headerInkLight),
           onPressed: () {
-            var now = controller.returnOf(returnId);
-            if (now == null) return;
+            var now = controller.devicesOf(owner);
+            if (index >= now.length) return;
             controller.beginInteraction();
-            controller.setReturn(now.copyWith(
-                devices: [...now.devices]..removeAt(index)));
+            controller.setDevicesOf(owner, [...now]..removeAt(index));
             controller.endInteraction();
           },
         ),
@@ -2308,17 +2364,445 @@ class ParamDevice extends StatelessWidget {
           runSpacing: 8,
           children: [
             for (var p in params)
+              if (paramShown(device, p))
+                _Knob(
+                  key: ValueKey("device-$index-${p.id}"),
+                  automated: automated.contains(target(p)),
+                  held: held.contains(target(p)),
+                  label: p.label,
+                  text: p.reading(device.value(p.id)),
+                  value: device.value(p.id),
+                  initial: p.initial,
+                  range: _range(p),
+                  size: 46,
+                  onChanged: (v, {transient = false}) =>
+                      write(device.withValue(p.id, v), transient: transient),
+                  onCommit: controller.endInteraction,
+                ),
+            if (device.kind == DeviceKind.vocoder &&
+                device.value("carrier").round() == carrierFromChannel)
+              _carrierChannel(context, device, write),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// _carrierChannel is which channel a vocoder's carrier comes from: any
+  /// but its own -- an instrument playing the chords, muted so only the
+  /// vocoder is heard.
+  Widget _carrierChannel(
+      BuildContext context, MixDevice device, void Function(MixDevice) write) {
+    var look = MixerLook.of(context);
+    var channels = [
+      for (var c in controller.timelineChannels)
+        if (c.key != owner) c,
+    ];
+    var chosen =
+        channels.any((c) => c.key == device.source) ? device.source : null;
+    const ink = TextStyle(fontSize: 11, color: _silverInk);
+    return SizedBox(
+      width: 104,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text("From", style: ink.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        DropdownButton<String>(
+          key: ValueKey("deviceSource-$index"),
+          isExpanded: true,
+          isDense: true,
+          value: chosen,
+          style: ink,
+          iconEnabledColor: _silverInk,
+          dropdownColor: look.colors.surfaceContainerHigh,
+          hint: Text(channels.isEmpty ? "No other channel" : "A channel",
+              style: ink, overflow: TextOverflow.ellipsis),
+          items: [
+            for (var c in channels)
+              DropdownMenuItem(
+                  value: c.key,
+                  child: Text(c.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: look.colors.onSurface))),
+          ],
+          selectedItemBuilder: (_) => [
+            for (var c in channels)
+              Text(c.name, overflow: TextOverflow.ellipsis, style: ink),
+          ],
+          onChanged: channels.isEmpty
+              ? null
+              : (v) {
+                  if (v != null) write(device.withSource(v));
+                },
+        ),
+      ]),
+    );
+  }
+}
+
+/// AddDeviceSlot is the end of a strip's chain -- a return's, or a
+/// channel's -- listing every kind of device that can be put on it, by
+/// group, to add one.
+class AddDeviceSlot extends StatelessWidget {
+  final CanvasController controller;
+
+  /// owner is the strip it adds to: see CanvasController.devicesOf.
+  final String owner;
+  final double height;
+
+  const AddDeviceSlot(
+      {required this.controller,
+      required this.owner,
+      required this.height,
+      super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    var look = MixerLook.of(context);
+    return Container(
+      width: 124,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: look.studio.edge),
+      ),
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text("Add a device",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: look.studio.muted)),
+        const SizedBox(height: 4),
+        Expanded(
+          child: ListView(padding: EdgeInsets.zero, children: [
+            // A voice: an audio channel's Speech device and Vocaliser, one
+            // of each to a channel.
+            if (controller.timelineChannels.any((l) => l.key == owner) &&
+                !controller.instrumentChannel(owner) &&
+                (controller.speechOf(owner) == null ||
+                    controller.vocaliserOf(owner) == null)) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
+                child: Text("VOICE",
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: look.studio.muted)),
+              ),
+              if (controller.speechOf(owner) == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: OutlinedButton(
+                    key: const ValueKey("addDevice-speech"),
+                    style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: look.studio.text,
+                        side: BorderSide(color: look.studio.edge),
+                        textStyle: const TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      controller.beginInteraction();
+                      controller.setSpeech(owner, const SpeechSpec());
+                      controller.endInteraction();
+                      controller.openEffects(owner, device: "speech");
+                    },
+                    child: const Text("Speech"),
+                  ),
+                ),
+              if (controller.vocaliserOf(owner) == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: OutlinedButton(
+                    key: const ValueKey("addDevice-vocaliser"),
+                    style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: look.studio.text,
+                        side: BorderSide(color: look.studio.edge),
+                        textStyle: const TextStyle(fontSize: 11)),
+                    onPressed: () {
+                      controller.beginInteraction();
+                      controller.setVocaliser(owner, const VocaliserSpec());
+                      controller.endInteraction();
+                      controller.openEffects(owner, device: "vocaliser");
+                    },
+                    child: const Text("Vocaliser"),
+                  ),
+                ),
+            ],
+            for (var group in DeviceGroup.values) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
+                child: Text(group.label.toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: look.studio.muted)),
+              ),
+              for (var kind in DeviceKind.values)
+                if (kind.group == group)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: OutlinedButton(
+                      key: ValueKey("addDevice-${kind.name}"),
+                      style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: look.studio.text,
+                          side: BorderSide(color: look.studio.edge),
+                          textStyle: const TextStyle(fontSize: 11)),
+                      onPressed: () {
+                        var now = controller.devicesOf(owner);
+                        controller.beginInteraction();
+                        controller
+                            .setDevicesOf(owner, [...now, MixDevice(kind)]);
+                        controller.endInteraction();
+                        controller.openEffects(owner,
+                            device: "dev${now.length}");
+                      },
+                      child: Text(kind.label),
+                    ),
+                  ),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A MIDI channel's devices: where its notes come from, and its MIDI effects
+// ---------------------------------------------------------------------------
+
+/// MidiInDevice is a MIDI channel's In: which keyboard it takes notes from,
+/// and when it plays them -- see MidiMonitor. First in its chain.
+class MidiInDevice extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const MidiInDevice({
+    required this.controller,
+    required this.channel,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var part = controller.instrumentOf(channel)?.instrument;
+    if (part == null) return const SizedBox();
+    var look = MixerLook.of(context);
+    var skin = DeviceSkin.themed(look.colors);
+    var keyboards = [
+      for (var d in MidiInput.shared.devices) d.name,
+      if (part.input.isNotEmpty &&
+          part.input != noInput &&
+          !MidiInput.shared.devices.any((d) => d.name == part.input))
+        part.input,
+    ];
+    var armed = controller.armed.contains(channel);
+    TextStyle small([Color? c]) =>
+        TextStyle(fontSize: 11, color: c ?? skin.ink);
+    return DeviceFrame(
+      id: "midiIn",
+      title: "In",
+      skin: skin,
+      folded: folded,
+      onFold: onFold,
+      width: 190,
+      height: height,
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text("In: ${part.monitor.label}", style: small(skin.dim)),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(10),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text("From", style: small(skin.dim)),
+          const SizedBox(height: 2),
+          DropdownButton<String>(
+            key: const ValueKey("midiFrom"),
+            isExpanded: true,
+            isDense: true,
+            value: part.input,
+            style: small(),
+            dropdownColor: look.colors.surfaceContainerHigh,
+            items: [
+              const DropdownMenuItem(value: "", child: Text("All MIDI inputs")),
+              for (var k in keyboards)
+                DropdownMenuItem(
+                    value: k, child: Text(k, overflow: TextOverflow.ellipsis)),
+              const DropdownMenuItem(value: noInput, child: Text("No input")),
+            ],
+            onChanged: (v) {
+              if (v == null) return;
+              controller.setChannelPart(channel, (p) => p.copyWith(input: v));
+            },
+          ),
+          const SizedBox(height: 12),
+          Text("Monitor", style: small(skin.dim)),
+          const SizedBox(height: 4),
+          Row(children: [
+            for (var m in MidiMonitor.values) ...[
+              Expanded(
+                child: Tooltip(
+                  message: m.hint,
+                  child: Material(
+                    color: part.monitor == m
+                        ? look.studio.on
+                        : look.colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(4),
+                    child: InkWell(
+                      key: ValueKey("midiMonitor-${m.name}"),
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () => controller.setChannelPart(
+                          channel, (p) => p.copyWith(monitor: m)),
+                      child: SizedBox(
+                        height: 24,
+                        child: Center(
+                          child: Text(m.label,
+                              style: small(part.monitor == m
+                                  ? look.studio.onOn
+                                  : skin.ink)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (m != MidiMonitor.values.last) const SizedBox(width: 4),
+            ],
+          ]),
+          const SizedBox(height: 12),
+          Text(
+            switch (part.monitor) {
+              MidiMonitor.input => "Plays what comes in, armed or not.",
+              MidiMonitor.auto => armed
+                  ? "Armed: plays what comes in."
+                  : "Plays what comes in once it is armed.",
+              MidiMonitor.off => "Plays only its clips and its part.",
+            },
+            style: small(skin.dim),
+          ),
+          if (MidiInput.shared.device == null) ...[
+            const SizedBox(height: 8),
+            Text("No keyboard chosen: see the instrument's settings.",
+                style: small(skin.dim)),
+          ],
+          const Spacer(),
+          OutlinedButton.icon(
+            key: const ValueKey("openPianoRoll"),
+            style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: skin.ink,
+                textStyle: const TextStyle(fontSize: 11)),
+            onPressed: () => controller.openPianoRoll(channel),
+            icon: const Icon(Icons.piano, size: 14),
+            label: const Text("Piano roll: its part"),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// MidiEffectDevice is one of a MIDI channel's MIDI effects -- see
+/// midi_effects.dart -- as knobs: a choice turned through its choices.
+class MidiEffectDevice extends StatelessWidget {
+  final CanvasController controller;
+  final String channel;
+  final int index;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const MidiEffectDevice({
+    required this.controller,
+    required this.channel,
+    required this.index,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    var part = controller.instrumentOf(channel)?.instrument;
+    if (part == null || index >= part.effects.length) return const SizedBox();
+    var effect = part.effects[index];
+    void write(MidiEffect next, {bool transient = false}) {
+      controller.beginInteraction();
+      controller.setChannelPart(
+          channel,
+          (p) => index >= p.effects.length
+              ? p
+              : p.copyWith(effects: [...p.effects]..[index] = next),
+          transient: true);
+      if (!transient) controller.endInteraction();
+    }
+
+    var params = effect.kind.params;
+    var columns = (params.length + 1) ~/ 2;
+    return DeviceFrame(
+      id: "midi$index",
+      title: effect.kind.label,
+      skin: DeviceSkin.silver,
+      on: effect.on,
+      onPower: (v) => write(effect.switched(v)),
+      powerKey: ValueKey("midiPower-$index"),
+      folded: folded,
+      onFold: onFold,
+      width: 24.0 + 80 * columns,
+      height: height,
+      actions: [
+        IconButton(
+          key: ValueKey("midiRemove-$index"),
+          tooltip: "Take the ${effect.kind.label.toLowerCase()} out",
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, color: _headerInkLight),
+          onPressed: () {
+            controller.beginInteraction();
+            controller.setChannelPart(
+                channel,
+                (p) => index >= p.effects.length
+                    ? p
+                    : p.copyWith(effects: [...p.effects]..removeAt(index)));
+            controller.endInteraction();
+          },
+        ),
+      ],
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(effect.kind.label,
+              style: const TextStyle(fontSize: 11, color: _silverInk)),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            for (var p in params)
               _Knob(
-                key: ValueKey("device-$index-${p.id}"),
+                key: ValueKey("midi-$index-${p.id}"),
                 label: p.label,
-                text: _reading(p, device.value(p.id)),
-                value: device.value(p.id),
+                text: p.reading(effect.value(p.id)),
+                value: effect.value(p.id),
                 initial: p.initial,
-                range: _Range(p.min == 0 && p.unit != "" ? 1 : p.min, p.max,
-                    log: p.unit == "Hz" || p.unit == "ms"),
+                range: _Range(p.min, p.max),
                 size: 46,
                 onChanged: (v, {transient = false}) =>
-                    write(device.withValue(p.id, v), transient: transient),
+                    write(effect.withValue(p.id, v), transient: transient),
                 onCommit: controller.endInteraction,
               ),
           ],
@@ -2328,16 +2812,16 @@ class ParamDevice extends StatelessWidget {
   }
 }
 
-/// AddDeviceSlot is the end of a return's chain: a button for each kind of
-/// device that can be put on it.
-class AddDeviceSlot extends StatelessWidget {
+/// AddMidiEffectSlot puts a MIDI effect on a MIDI channel, after the
+/// others, before its instrument.
+class AddMidiEffectSlot extends StatelessWidget {
   final CanvasController controller;
-  final String returnId;
+  final String channel;
   final double height;
 
-  const AddDeviceSlot(
+  const AddMidiEffectSlot(
       {required this.controller,
-      required this.returnId,
+      required this.channel,
       required this.height,
       super.key});
 
@@ -2345,39 +2829,278 @@ class AddDeviceSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     var look = MixerLook.of(context);
     return Container(
-      width: 92,
+      width: 112,
       height: height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: look.studio.edge),
       ),
       padding: const EdgeInsets.all(8),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text("Add",
-            style: TextStyle(fontSize: 11, color: look.studio.muted)),
-        const SizedBox(height: 6),
-        for (var kind in DeviceKind.values)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: OutlinedButton(
-              key: ValueKey("addDevice-${kind.name}"),
-              style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: look.studio.text,
-                  side: BorderSide(color: look.studio.edge),
-                  textStyle: const TextStyle(fontSize: 11)),
-              onPressed: () {
-                var ret = controller.returnOf(returnId);
-                if (ret == null) return;
-                controller.beginInteraction();
-                controller.setReturn(
-                    ret.copyWith(devices: [...ret.devices, MixDevice(kind)]));
-                controller.endInteraction();
-              },
-              child: Text(kind.label),
+      // Shrunk to a short panel, as the devices beside it are: a button
+      // for each MIDI effect is taller than the panel at its shortest.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text("MIDI effects",
+              style: TextStyle(fontSize: 11, color: look.studio.muted)),
+          const SizedBox(height: 6),
+          for (var kind in MidiEffectKind.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: OutlinedButton(
+                key: ValueKey("addMidi-${kind.name}"),
+                style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: look.studio.text,
+                    side: BorderSide(color: look.studio.edge),
+                    textStyle: const TextStyle(fontSize: 11)),
+                onPressed: () {
+                  controller.beginInteraction();
+                  controller.setChannelPart(
+                      channel,
+                      (p) => p
+                          .copyWith(effects: [...p.effects, MidiEffect(kind)]));
+                  controller.endInteraction();
+                  controller.openEffects(channel,
+                      device:
+                          "midi${controller.instrumentOf(channel)!.instrument!.effects.length - 1}");
+                },
+                child: Text(kind.label),
+              ),
             ),
-          ),
-      ]),
+        ]),
+      ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// The devices that only listen: a tuner, a spectrum
+// ---------------------------------------------------------------------------
+
+/// ListenerDevice is a Tuner or a Spectrum on strip [owner]: what it hears,
+/// drawn a few times a second, changing nothing.
+class ListenerDevice extends StatefulWidget {
+  final CanvasController controller;
+  final String owner;
+  final int index;
+  final bool folded;
+  final VoidCallback onFold;
+  final double height;
+
+  const ListenerDevice({
+    required this.controller,
+    required this.owner,
+    required this.index,
+    required this.folded,
+    required this.onFold,
+    required this.height,
+    super.key,
+  });
+
+  @override
+  State<ListenerDevice> createState() => _ListenerDeviceState();
+}
+
+class _ListenerDeviceState extends State<ListenerDevice>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  Duration _last = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((now) {
+      if (now - _last < const Duration(milliseconds: 60)) return;
+      _last = now;
+      if (mounted) setState(() {});
+    })
+      ..start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var c = widget.controller;
+    var devices = c.devicesOf(widget.owner);
+    if (widget.index >= devices.length) return const SizedBox();
+    var device = devices[widget.index];
+    var tuner = device.kind == DeviceKind.tuner;
+    var look = MixerLook.of(context);
+    var studio = look.studio;
+    Widget body;
+    if (tuner) {
+      var heard = c.pitch(widget.owner);
+      String note = "–", reading = "Listening…";
+      double cents = 0;
+      if (heard != null && heard.clarity > 0.5) {
+        var midi = 69 + 12 * math.log(heard.hz / 440) / math.ln2;
+        var nearest = midi.round();
+        cents = (midi - nearest) * 100;
+        note = "${const [
+          "C",
+          "C♯",
+          "D",
+          "E♭",
+          "E",
+          "F",
+          "F♯",
+          "G",
+          "A♭",
+          "A",
+          "B♭",
+          "B"
+        ][nearest % 12]}"
+            "${nearest ~/ 12 - 1}";
+        reading = "${heard.hz.toStringAsFixed(1)} Hz · "
+            "${cents >= 0 ? "+" : ""}${cents.round()} cents";
+      }
+      body = Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(children: [
+          Text(note,
+              key: const ValueKey("tunerNote"),
+              style: TextStyle(
+                  fontSize: 56,
+                  fontWeight: FontWeight.w700,
+                  color: cents.abs() < 5 && note != "–"
+                      ? studio.meterLow
+                      : _eqInk)),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 40,
+            width: double.infinity,
+            child: CustomPaint(painter: _TunerPainter(cents, studio)),
+          ),
+          const SizedBox(height: 8),
+          Text(reading,
+              key: const ValueKey("tunerReading"),
+              style: const TextStyle(fontSize: 12, color: _eqDim)),
+        ]),
+      );
+    } else {
+      body = Padding(
+        padding: const EdgeInsets.all(8),
+        child: CustomPaint(
+          key: const ValueKey("spectrumView"),
+          size: Size.infinite,
+          painter: _SpectrumPainter(
+              c.spectrum(widget.owner == mixerMasterKey ? null : widget.owner),
+              studio),
+        ),
+      );
+    }
+    void write(MixDevice next) {
+      var now = c.devicesOf(widget.owner);
+      if (widget.index >= now.length) return;
+      c.beginInteraction();
+      c.setDevicesOf(widget.owner, [...now]..[widget.index] = next);
+      c.endInteraction();
+    }
+
+    return DeviceFrame(
+      id: "dev${widget.index}",
+      title: device.kind.label,
+      skin: DeviceSkin.navy,
+      on: device.on,
+      onPower: (v) => write(device.switched(v)),
+      powerKey: ValueKey("devicePower-${widget.index}"),
+      folded: widget.folded,
+      onFold: widget.onFold,
+      width: tuner ? 220 : 360,
+      height: widget.height,
+      actions: [
+        IconButton(
+          key: ValueKey("deviceRemove-${widget.index}"),
+          tooltip: "Take the ${device.kind.label.toLowerCase()} out",
+          iconSize: 14,
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, color: _eqInk),
+          onPressed: () {
+            var now = c.devicesOf(widget.owner);
+            if (widget.index >= now.length) return;
+            c.beginInteraction();
+            c.setDevicesOf(widget.owner, [...now]..removeAt(widget.index));
+            c.endInteraction();
+          },
+        ),
+      ],
+      foldedBody: Center(
+        child: RotatedBox(
+          quarterTurns: 3,
+          child: Text(device.kind.label,
+              style: const TextStyle(fontSize: 11, color: _eqInk)),
+        ),
+      ),
+      body: body,
+    );
+  }
+}
+
+/// _TunerPainter is the tuner's needle: fifty cents flat to fifty sharp,
+/// in tune in the middle.
+class _TunerPainter extends CustomPainter {
+  final double cents;
+  final StudioColors studio;
+  _TunerPainter(this.cents, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var mid = size.width / 2;
+    var line = Paint()
+      ..color = _eqDim
+      ..strokeWidth = 1;
+    for (var c = -50; c <= 50; c += 10) {
+      var x = mid + c / 50 * (size.width / 2 - 6);
+      canvas.drawLine(Offset(x, size.height * (c == 0 ? 0.1 : 0.35)),
+          Offset(x, size.height * 0.65), line);
+    }
+    var x = mid + cents.clamp(-50, 50) / 50 * (size.width / 2 - 6);
+    canvas.drawLine(
+        Offset(x, 0),
+        Offset(x, size.height),
+        Paint()
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round
+          ..color = cents.abs() < 5 ? studio.meterLow : studio.meterMid);
+  }
+
+  @override
+  bool shouldRepaint(_TunerPainter old) => old.cents != cents;
+}
+
+/// _SpectrumPainter is a sound's spectrum, low on the left to high on the
+/// right, the frequencies spread as an octave a step.
+class _SpectrumPainter extends CustomPainter {
+  final Float32List? bins;
+  final StudioColors studio;
+  _SpectrumPainter(this.bins, this.studio);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+        Offset.zero & size, Paint()..color = const Color(0xFF0E1622));
+    var b = bins;
+    if (b == null || b.isEmpty) return;
+    var path = Path()..moveTo(0, size.height);
+    const lowHz = 30.0, highHz = 20000.0;
+    for (var x = 0.0; x <= size.width; x += 2) {
+      var hz = lowHz * math.pow(highHz / lowHz, x / size.width);
+      var i = (hz / 24000 * b.length).floor().clamp(0, b.length - 1);
+      var db = 20 * math.log(math.max(1e-6, b[i])) / math.ln10;
+      var y = size.height * (1 - ((db + 80) / 80).clamp(0.0, 1.0));
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height);
+    path.close();
+    canvas.drawPath(path, Paint()..color = studio.on.withValues(alpha: 0.35));
+  }
+
+  @override
+  bool shouldRepaint(_SpectrumPainter old) => true;
 }

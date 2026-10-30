@@ -24,7 +24,12 @@ enum CanvasPanel {
   /// assets is the library: the pictures, videos and sounds that have been
   /// added, to put on the canvas and the timeline. After Design, so the tab a
   /// saved choice points at does not move.
-  assets("Assets", Icons.perm_media_outlined);
+  assets("Assets", Icons.perm_media_outlined),
+
+  /// game is what each element does when the canvas is played as a game,
+  /// and the game's own settings. Only while it is being made into one --
+  /// see CanvasDocument.game -- and last, so saved choices keep their place.
+  game("Game", Icons.sports_esports_outlined);
 
   final String label;
   final IconData icon;
@@ -41,6 +46,9 @@ class CanvasSidebarShell extends StatelessWidget {
   final ValueChanged<CanvasPanel> onPanelChanged;
   final Widget child;
 
+  /// panels are the tabs there are: Game only for a game.
+  final List<CanvasPanel> panels;
+
   /// onHide puts the sidebar away, leaving the canvas the whole width.
   ///
   /// The same control the Writing page has, in the same place and with the
@@ -53,6 +61,7 @@ class CanvasSidebarShell extends StatelessWidget {
     required this.onPanelChanged,
     required this.onHide,
     required this.child,
+    this.panels = CanvasPanel.values,
     super.key,
   });
 
@@ -68,7 +77,7 @@ class CanvasSidebarShell extends StatelessWidget {
         // itself. Spaced apart, most of the row is gap that looks like part of
         // the control and does nothing when clicked.
         child: Row(children: [
-          for (var p in CanvasPanel.values) Expanded(child: _icon(theme, p)),
+          for (var p in panels) Expanded(child: _icon(theme, p)),
           // In the collapsed drawer the sidebar is already an overlay you put
           // away by tapping off it, so a control of its own for hiding it is a
           // second route to the same place -- and its chevron points at an edge

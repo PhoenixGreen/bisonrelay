@@ -9,6 +9,8 @@ import 'package:bruig/plugin_system/canvas/media/mix/click_track.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/decode.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/mix_core.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
+    show PitchReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -261,6 +263,26 @@ class DartAudioEngine implements AudioEngine {
   }
 
   @override
+  AudioVoice? launch(AudioTrack track,
+      {required double volume,
+      required double delay,
+      double at = 0,
+      (double, double)? loop,
+      String? channel}) {
+    var source = (track as _Track).source();
+    if (source == null) return null;
+    return _Voice(core.play(source,
+        volume: volume, at: at, channel: channel, delay: delay, loop: loop));
+  }
+
+  @override
+  void stopIn(AudioVoice voice, double delay) =>
+      core.stopIn((voice as _Voice).core, delay);
+
+  @override
+  double get latency => _ahead / mixRate;
+
+  @override
   void setChannel(String key, ChannelSound sound) =>
       core.setChannel(key, sound.mix ?? _fromLevels(sound));
 
@@ -312,6 +334,10 @@ class DartAudioEngine implements AudioEngine {
       _live[channel]?.$2.sampler.noteOff(key);
 
   @override
+  void control(String channel, MidiControl control, double value) =>
+      _live[channel]?.$2.sampler.control(control, value);
+
+  @override
   void setPlacement(String key, Heard? heard) =>
       core.graph.setPlacement(key, heard);
 
@@ -327,6 +353,9 @@ class DartAudioEngine implements AudioEngine {
 
   @override
   Float32List? spectrum([String? channel]) => core.spectrum(channel);
+
+  @override
+  PitchReading? pitch([String? channel]) => core.graph.pitchOf(channel);
 
   @override
   void volume(AudioVoice voice, double to, {double fade = 0}) =>

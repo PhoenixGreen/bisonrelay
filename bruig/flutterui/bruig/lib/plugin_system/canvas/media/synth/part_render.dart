@@ -118,7 +118,13 @@ Future<SoundFont?> loadSoundBank() async {
   var bl = Float32List(block), br = Float32List(block);
   var next = 0;
   var at = 0;
+  var curves = part.controls.entries.where((e) => e.value.isNotEmpty).toList();
   while (at < total) {
+    // The controllers where their curves are now, before this block's
+    // presses: a pedal down at a note's start holds it.
+    for (var e in curves) {
+      sampler.control(e.key, controlAt(e.value, at / mixRate, e.key.rest));
+    }
     while (next < events.length && events[next].$1 <= at) {
       var (_, on, n) = events[next++];
       on ? sampler.noteOn(n.key, n.velocity) : sampler.noteOff(n.key);
@@ -175,10 +181,10 @@ Uint8List wav16(Float32List l, Float32List r) {
   tag(36, "data");
   b.setUint32(40, frames * 4, Endian.little);
   for (var i = 0; i < frames; i++) {
-    b.setInt16(44 + i * 4, (l[i].clamp(-1.0, 1.0) * 32767).round(),
-        Endian.little);
-    b.setInt16(46 + i * 4, (r[i].clamp(-1.0, 1.0) * 32767).round(),
-        Endian.little);
+    b.setInt16(
+        44 + i * 4, (l[i].clamp(-1.0, 1.0) * 32767).round(), Endian.little);
+    b.setInt16(
+        46 + i * 4, (r[i].clamp(-1.0, 1.0) * 32767).round(), Endian.little);
   }
   return b.buffer.asUint8List();
 }

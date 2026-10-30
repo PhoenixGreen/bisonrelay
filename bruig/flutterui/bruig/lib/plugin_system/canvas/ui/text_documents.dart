@@ -27,7 +27,8 @@ import 'package:flutter/foundation.dart';
 const Duration canvasDocumentPoll = Duration(seconds: 3);
 
 /// refreshTextDocuments re-reads every document-backed text element in
-/// [controller]'s canvas, and returns whether anything changed.
+/// [controller]'s canvas -- and every Speech device's script read from one
+/// -- and returns whether anything changed.
 ///
 /// Applied as one transient change: it is not something the reader did, so it
 /// does not belong in the undo history -- undoing your own typing and getting
@@ -60,15 +61,39 @@ Future<bool> refreshTextDocuments(CanvasController controller) async {
   }
 
   if (changed) controller.apply(next, transient: true);
+
+  // The Speech devices' scripts: the document's words, as plain text.
+  for (var lane in controller.timelineChannels) {
+    var spec = lane.mix.speech;
+    if (spec == null || !spec.document.on) continue;
+    String? raw;
+    try {
+      raw = await PostStorage.read(spec.document.folder, spec.document.name);
+    } catch (exception) {
+      debugPrint("Unable to read ${spec.document.says}: $exception");
+      continue;
+    }
+    if (raw == null) continue;
+    var (text, _) = readDocument(raw);
+    var script = text.trim();
+    if (script == spec.script) continue;
+    controller.setSpeech(lane.key, spec.copyWith(script: script),
+        transient: true);
+    changed = true;
+  }
   return changed;
 }
 
-/// wantsDocumentPoll is whether this canvas has anything to poll for.
-bool wantsDocumentPoll(CanvasDocument document) {
+/// wantsDocumentPoll is whether this canvas has anything to poll for: a
+/// text, or a Speech device's script, read from a document.
+bool wantsDocumentPoll(CanvasDocument document,
+    {CanvasController? controller}) {
   for (var element in document.elements) {
     if (element is TextElement && element.document.on) return true;
   }
-  return false;
+  return controller?.timelineChannels
+          .any((l) => l.mix.speech?.document.on ?? false) ??
+      false;
 }
 
 /// TextDocumentWatch is the poll itself, started and stopped with the page.
@@ -95,7 +120,9 @@ class TextDocumentWatch {
   Future<void> _tick() async {
     // A slow disk must not stack polls up behind each other.
     if (_reading) return;
-    if (!wantsDocumentPoll(controller.document)) return;
+    if (!wantsDocumentPoll(controller.document, controller: controller)) {
+      return;
+    }
     _reading = true;
     try {
       await refreshTextDocuments(controller);

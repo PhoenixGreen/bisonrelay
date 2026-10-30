@@ -24,23 +24,76 @@ String keyLabel(int id) {
   };
 }
 
-class GameControlsGroup extends StatelessWidget {
+/// GameControlsGroup is each player's controls, one player at a time.
+class GameControlsGroup extends StatefulWidget {
   final CanvasController controller;
   const GameControlsGroup({required this.controller, super.key});
 
   @override
+  State<GameControlsGroup> createState() => _GameControlsGroupState();
+}
+
+class _GameControlsGroupState extends State<GameControlsGroup> {
+  /// _player is whose controls are shown.
+  int _player = 1;
+
+  @override
   Widget build(BuildContext context) {
+    var controller = widget.controller;
     var doc = controller.document;
-    var actions = doc.controlsNow;
-    void set(List<ControlAction> next) =>
-        controller.apply(doc.copyWith(controls: next));
-    void change(int i, ControlAction next) =>
-        set([...actions]..[i] = next);
+    var player = _player;
+    var actions = doc.controlsFor(player);
+    var changed = player == 1
+        ? doc.controls != null
+        : doc.playerControls.containsKey(player);
+    void set(List<ControlAction> next) => controller.apply(player == 1
+        ? doc.copyWith(controls: next)
+        : doc.copyWith(playerControls: {...doc.playerControls, player: next}));
+    void change(int i, ControlAction next) => set([...actions]..[i] = next);
     var theme = ThemeNotifier.of(context);
+    var colors = theme.colors;
+    var playing = doc.players;
     return CanvasControlGroup(label: "Controls", children: [
+      // Whose controls: a chip each, the players the game has brighter.
+      SizedBox(
+        width: double.infinity,
+        child: Row(children: [
+          for (var p = 1; p <= 4; p++) ...[
+            if (p > 1) const SizedBox(width: 4),
+            Expanded(
+              child: Material(
+                color: p == player
+                    ? colors.secondaryContainer
+                    : colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(6),
+                child: InkWell(
+                  key: ValueKey("controlsPlayer-$p"),
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => setState(() => _player = p),
+                  child: SizedBox(
+                    height: 28,
+                    child: Center(
+                      child: Text(p <= 2 ? "Player $p" : "$p",
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: p == player
+                                  ? colors.onSecondaryContainer
+                                  : playing.contains(p)
+                                      ? colors.onSurface
+                                      : colors.onSurfaceVariant
+                                          .withValues(alpha: 0.6))),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ),
       for (var (i, a) in actions.indexed)
         _ActionRow(
-          key: ValueKey("control-${a.id}"),
+          key: ValueKey("control-$player-${a.id}"),
           action: a,
           theme: theme,
           onChanged: (next) => change(i, next),
@@ -49,15 +102,20 @@ class GameControlsGroup extends StatelessWidget {
         key: const ValueKey("controlsReset"),
         label: "Reset",
         icon: Icons.restart_alt,
-        onPressed: doc.controls == null
+        onPressed: !changed
             ? null
-            : () => controller.apply(doc.copyWith(controls: defaultControls)),
+            : () => controller.apply(player == 1
+                ? doc.copyWith(controls: defaultControls)
+                : doc.copyWith(
+                    playerControls: {...doc.playerControls}..remove(player))),
       ),
       const CanvasHint(
           "What drives the canvas played as a game. An action is pressed by "
           "any of its keys or controller buttons; press + key and then the "
           "key to add one. Any controller the system knows works: Xbox, "
-          "PlayStation, Switch Pro."),
+          "PlayStation, Switch Pro. With more than one player, each "
+          "controller is a player's, in the order they are first used; "
+          "the second player shares the keyboard, on WASD."),
     ]);
   }
 }
@@ -124,8 +182,7 @@ class _ActionRowState extends State<_ActionRow> {
         for (var k in a.keys)
           _chip(
               keyLabel(k),
-              () => widget.onChanged(
-                  a.copyWith(keys: [...a.keys]..remove(k))),
+              () => widget.onChanged(a.copyWith(keys: [...a.keys]..remove(k))),
               ValueKey("key-${a.id}-$k")),
         for (var p in a.pad)
           _chip(

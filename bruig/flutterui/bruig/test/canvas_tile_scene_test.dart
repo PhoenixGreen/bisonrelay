@@ -157,7 +157,7 @@ void main() {
           ],
         ),
       ], layers: [
-        TileLayer(name: "Ground", cells: {
+        TileLayer(name: "Ground", solid: true, cells: {
           cellKey(-1, 0): TileRef.of(0, 1).word,
           cellKey(2, 3): TileRef.of(0, 0, flipX: true, swap: true).word,
         }),
@@ -174,6 +174,7 @@ void main() {
       expect(s.animations[0]!.frames, [0, 1]);
       expect(s.terrains.single.tags[0]!.sublist(1), [-1, 0, -1, -1, -1, -1, -1, 0]);
       expect(s.terrains.single.terrains.single.sample, 1);
+      expect(read.layers.first.solid, isTrue, reason: "its solid property, kept");
       var ground = read.layers.first.cells;
       expect(ground[cellKey(0, 0)], TileRef.of(0, 1).word, reason: "moved one along: the map starts at nought");
       expect(ground[cellKey(3, 3)], TileRef.of(0, 0, flipX: true, swap: true).word);
@@ -196,7 +197,9 @@ void main() {
  <tileset firstgid="3" name="Props" tilewidth="16" tileheight="16" tilecount="1">
   <tile id="0"><image width="33" height="16" source="props/one.png"/></tile>
  </tileset>
- <layer id="1" name="Csv" width="2" height="2"><data encoding="csv">
+ <layer id="1" name="Csv" width="2" height="2">
+  <properties><property name="collides" type="bool" value="true"/></properties>
+  <data encoding="csv">
 0,1,
 2,0
 </data></layer>
@@ -220,6 +223,7 @@ void main() {
         cellKey(1, 1): TileRef.of(1, 0).word,
       });
       expect(read.layers[1].opacity, 0.5);
+      expect((read.layers[0].solid, read.layers[1].solid), (true, false), reason: "a collides property is read as solid");
       expect(read.layers[2].objects.single.x, 1.5);
       expect(read.left, ["shapes and words on Things"]);
     });

@@ -53,7 +53,8 @@ List<Widget> audioSettings(
   var word = controller.document.kind;
 
   Future<void> add() async {
-    var source = await pickCanvasAudio(context, controller);
+    // A speaker plays a sound, not notes: no MIDI files here.
+    var source = await pickCanvasAudio(context, controller, midi: false);
     if (source == null) return;
     // Read again: the element may have been edited while the file dialog
     // was open, and writing the stale one back would undo that.

@@ -4,6 +4,7 @@ import 'dart:ui' show Rect;
 
 import 'package:bruig/plugin_system/canvas/model/play.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
+import 'package:bruig/plugin_system/canvas/model/session.dart';
 import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
@@ -378,6 +379,10 @@ class CanvasDocument {
   /// starts with a reverb and a delay. See devices.dart.
   final List<ReturnChannel> returns;
 
+  /// session is the mixer's clip slots and scenes, launched live. See
+  /// session.dart.
+  final SessionGrid session;
+
   /// controls are what drives it played as a game: each action and the keys
   /// and controller buttons that press it. Null is the usual six -- see
   /// defaultControls -- and is what most documents have.
@@ -386,6 +391,35 @@ class CanvasDocument {
   /// controlsNow are its controls, the usual ones where it has none of its
   /// own.
   List<ControlAction> get controlsNow => controls ?? defaultControls;
+
+  /// playerControls are the second, third and fourth players' controls, by
+  /// player, where they have been changed; controlsFor any player's.
+  final Map<int, List<ControlAction>> playerControls;
+
+  List<ControlAction> controlsFor(int player) => player <= 1
+      ? controlsNow
+      : playerControls[player] ?? defaultControlsFor(player);
+
+  /// players are the players something is played by: one, at least.
+  Set<int> get players => {
+        1,
+        for (var e in elements)
+          if (e.base.play.as.moves) e.base.play.player,
+      };
+
+  /// counts are the numbers the game keeps -- coins, lives -- each from its
+  /// start. See GameCount.
+  final List<GameCount> counts;
+
+  /// gameStart is the scene the game starts on, and starts again on, by
+  /// id -- a title screen, a menu -- or "" for the one showing when Play is
+  /// pressed.
+  final String gameStart;
+
+  /// game is whether it is being made into a game: the Game panel is in the
+  /// sidebar, and Play in the bar plays it. Its elements are still only what
+  /// each is set to be -- still, unless set otherwise.
+  final bool game;
 
   /// hasCanvas is whether there is a picture at all: false is the Ratio
   /// "None" a piece of sound starts with, which puts the canvas away and
@@ -411,6 +445,10 @@ class CanvasDocument {
   /// turning it off is not the same as throwing it away.
   final CanvasScene? master;
   final bool masterOn;
+
+  /// masterOver draws the master over each scene rather than under it: a
+  /// game's HUD -- its score, its lives -- over every level.
+  final bool masterOver;
 
   /// targets are the shapes this document is being designed for, by ratio
   /// key -- see shapeKey.
@@ -495,10 +533,16 @@ class CanvasDocument {
     this.masterMix = const MasterMix(),
     this.audio = const AudioSettings(),
     this.returns = defaultReturns,
+    this.session = const SessionGrid(),
     this.controls,
+    this.playerControls = const {},
+    this.game = false,
+    this.gameStart = "",
+    this.counts = const [],
     this.hasCanvas = true,
     this.master,
     this.masterOn = false,
+    this.masterOver = false,
     this.onMaster = false,
     this.targets = const [],
     this.cues = const [],
@@ -801,9 +845,9 @@ class CanvasDocument {
   }
 
   /// masterScene is the shared canvas when it is switched on, and null
-  /// otherwise. Asked by the painter, which must not draw a master that has
-  /// been turned off.
-  CanvasScene? get masterScene => masterOn ? master : null;
+  /// otherwise -- or on a scene that leaves it off. Asked by the painter,
+  /// which must not draw a master that has been turned off.
+  CanvasScene? get masterScene => masterOn && !scene.masterOff ? master : null;
 
   /// drawnBackground is what is actually behind the canvas being shown.
   ///
@@ -1000,6 +1044,8 @@ class CanvasDocument {
   /// scene and not the one open.
   Set<String> get mediaIds => {
         ...background.mediaIds,
+        // The clip slots' sounds, kept as the timeline's are.
+        ...session.mediaIds,
         for (var one in allScenes) ...[
           for (var e in one.elements) ...e.mediaIds,
           ...?one.background?.mediaIds,
@@ -1100,11 +1146,17 @@ class CanvasDocument {
     MasterMix? masterMix,
     AudioSettings? audio,
     List<ReturnChannel>? returns,
+    SessionGrid? session,
     List<ControlAction>? controls,
+    Map<int, List<ControlAction>>? playerControls,
+    bool? game,
+    String? gameStart,
+    List<GameCount>? counts,
     bool? hasCanvas,
     CanvasScene? master,
     bool clearMaster = false,
     bool? masterOn,
+    bool? masterOver,
     bool? onMaster,
     List<String>? targets,
     List<TimelineCue>? cues,
@@ -1170,10 +1222,16 @@ class CanvasDocument {
       masterMix: masterMix ?? this.masterMix,
       audio: audio ?? this.audio,
       returns: returns ?? this.returns,
+      session: session ?? this.session,
       controls: controls ?? this.controls,
+      playerControls: playerControls ?? this.playerControls,
+      game: game ?? this.game,
+      gameStart: gameStart ?? this.gameStart,
+      counts: counts ?? this.counts,
       hasCanvas: hasCanvas ?? this.hasCanvas,
       master: shared,
       masterOn: masterOn ?? this.masterOn,
+      masterOver: masterOver ?? this.masterOver,
       onMaster: onIt,
       targets: targets ?? this.targets,
       cues: cues ?? this.cues,
@@ -1205,10 +1263,16 @@ class CanvasDocument {
       masterMix: masterMix,
       audio: audio,
       returns: returns,
+      session: session,
       controls: controls,
+      playerControls: playerControls,
+      game: game,
+      gameStart: gameStart,
+      counts: counts,
       hasCanvas: hasCanvas,
       master: master,
       masterOn: masterOn,
+      masterOver: masterOver,
       onMaster: onMaster,
       targets: targets,
       cues: cues,
@@ -1459,7 +1523,17 @@ class CanvasDocument {
       if (!hasCanvas) "noCanvas": true,
       if (!_sameReturns(returns, defaultReturns))
         "returns": [for (var r in returns) r.toJson()],
+      if (!session.isEmpty) "session": session.toJson(),
       if (controls case var c?) "controls": [for (var a in c) a.toJson()],
+      if (game) "game": true,
+      if (gameStart.isNotEmpty) "gameStart": gameStart,
+      if (masterOver) "masterOver": true,
+      if (playerControls.isNotEmpty)
+        "playerControls": {
+          for (var MapEntry(key: p, value: list) in playerControls.entries)
+            "$p": [for (var a in list) a.toJson()],
+        },
+      if (counts.isNotEmpty) "counts": [for (var c in counts) c.toJson()],
       if (!one) ...{
         "scenes": [for (var s in allScenes) s.toJson()],
         if (sceneAt != 0) "sceneAt": at,
@@ -1573,6 +1647,25 @@ class CanvasDocument {
                 if (ReturnChannel.fromJson(r) case var ret?) ret,
             ]
           : defaultReturns,
+      session: SessionGrid.fromJson(json["session"]),
+      game: json["game"] == true,
+      gameStart: json["gameStart"] is String ? json["gameStart"] as String : "",
+      masterOver: json["masterOver"] == true,
+      playerControls: {
+        if (json["playerControls"] case Map raw)
+          for (var MapEntry(key: p, value: list) in raw.entries)
+            if (int.tryParse("$p") case var n? when n >= 2 && n <= 4)
+              if (list case List actions)
+                n: [
+                  for (var a in actions)
+                    if (ControlAction.fromJson(a) case var action?) action,
+                ],
+      },
+      counts: [
+        if (json["counts"] case List raw)
+          for (var c in raw)
+            if (GameCount.fromJson(c) case var count?) count,
+      ],
       controls: json["controls"] is List
           ? [
               for (var a in json["controls"] as List)
@@ -1701,8 +1794,7 @@ CanvasElement elementFromJson(Map<String, dynamic> json) {
     case ElementKind.parallax:
       return BackgroundElement(base,
           backdrop: BackdropKind.parallax,
-          parallax:
-              ParallaxElement.fromJson(json, const ElementBase(id: "")));
+          parallax: ParallaxElement.fromJson(json, const ElementBase(id: "")));
     case ElementKind.sprite:
       return SpriteElement.fromJson(json, base);
     case ElementKind.tileMap:

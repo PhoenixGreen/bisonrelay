@@ -80,6 +80,12 @@ void main(List<String> args) async {
     // Ensure the platform bindings are initialized.
     WidgetsFlutterBinding.ensureInitialized();
 
+    // Before anything can change the sound device: the canvas's engine,
+    // left running by a hot restart, let go of. See its note.
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      releaseAudioAfterHotRestart();
+    }
+
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
       windowManager.ensureInitialized();
     }

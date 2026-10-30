@@ -3,7 +3,8 @@ import 'dart:typed_data';
 
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
-import 'package:bruig/plugin_system/canvas/model/instrument.dart' show InstrumentLook;
+import 'package:bruig/plugin_system/canvas/model/instrument.dart'
+    show InstrumentLook, MidiControl;
 
 // sampler.dart plays notes: a bank's samples where there is a bank (see
 // soundfont.dart), and otherwise a small piano of our own, so an
@@ -24,6 +25,11 @@ abstract class Voice {
   /// release, and is done when that has died away.
   bool released = false;
   bool done = false;
+
+  /// pitch is how far the voice is bent from its key, as a ratio: the
+  /// pitch bend and the mod wheel's vibrato. The bank's voices and the
+  /// piano follow it; a plucked string and a drum keep their own.
+  double pitch = 1;
   Voice(this.key);
 
   void release() => released = true;
@@ -56,11 +62,8 @@ class _SfVoice extends Voice {
   double _x1 = 0, _x2 = 0, _y1 = 0, _y2 = 0;
 
   _SfVoice(super.key, int velocity, Zone z, this.data)
-      : end = math.min(
-            data.length - 1,
-            z.sample.end +
-                z[Gen.endOffset] +
-                z[Gen.endCoarse] * 32768),
+      : end = math.min(data.length - 1,
+            z.sample.end + z[Gen.endOffset] + z[Gen.endCoarse] * 32768),
         loopStart = z.sample.loopStart +
             z[Gen.loopStartOffset] +
             z[Gen.loopStartCoarse] * 32768,
@@ -74,22 +77,20 @@ class _SfVoice extends Voice {
             math.cos((z[Gen.pan].clamp(-500, 500) + 500) / 1000 * math.pi / 2),
         gainR = _gain(z, velocity) *
             math.sin((z[Gen.pan].clamp(-500, 500) + 500) / 1000 * math.pi / 2),
-        _pos = (z.sample.start +
-                z[Gen.startOffset] +
-                z[Gen.startCoarse] * 32768)
-            .toDouble(),
+        _pos =
+            (z.sample.start + z[Gen.startOffset] + z[Gen.startCoarse] * 32768)
+                .toDouble(),
         _delay = (_seconds(z[Gen.delayVolEnv]) * mixRate).round(),
         _attack = (_seconds(z[Gen.attackVolEnv]) * mixRate).round(),
-        _hold = (_seconds(z[Gen.holdVolEnv] +
-                    z[Gen.keyToVolEnvHold] * (60 - key)) *
-                mixRate)
-            .round(),
+        _hold =
+            (_seconds(z[Gen.holdVolEnv] + z[Gen.keyToVolEnvHold] * (60 - key)) *
+                    mixRate)
+                .round(),
         // The decay and the release are times to fall a hundred decibels.
         _decayFactor = _fall(_seconds(
             z[Gen.decayVolEnv] + z[Gen.keyToVolEnvDecay] * (60 - key))),
-        _sustain = math
-            .pow(10, -z[Gen.sustainVolEnv].clamp(0, 1440) / 200)
-            .toDouble(),
+        _sustain =
+            math.pow(10, -z[Gen.sustainVolEnv].clamp(0, 1440) / 200).toDouble(),
         _releaseFactor = _fall(_seconds(z[Gen.releaseVolEnv])),
         _f = _filter(z, velocity);
 
@@ -99,8 +100,7 @@ class _SfVoice extends Voice {
       math.pow(10, -100 / 20 / math.max(1, seconds * mixRate)).toDouble();
 
   static double _step(Zone z, int key) {
-    var root =
-        z[Gen.rootKey] >= 0 ? z[Gen.rootKey] : z.sample.originalKey;
+    var root = z[Gen.rootKey] >= 0 ? z[Gen.rootKey] : z.sample.originalKey;
     var cents = (key - root) * z[Gen.scaleTuning] +
         z[Gen.coarseTune] * 100 +
         z[Gen.fineTune] +
@@ -182,7 +182,7 @@ class _SfVoice extends Voice {
       var v = x * _next();
       l[i] += v * gainL;
       r[i] += v * gainR;
-      _pos += step;
+      _pos += step * pitch;
       var looping = loops || (loopsUntilRelease && !released);
       if (looping && loopEnd > loopStart && _pos >= loopEnd) {
         _pos -= loopEnd - loopStart;
@@ -229,7 +229,7 @@ class _PianoVoice extends Voice {
       for (var k = 0; k < 8; k++) {
         if (_amp[k] < 1e-5) continue;
         s += math.sin(_phase[k]) * _amp[k];
-        _phase[k] += _inc[k];
+        _phase[k] += _inc[k] * pitch;
         _amp[k] *= _decay[k];
       }
       // A few milliseconds' attack, so the start is a strike, not a click.
@@ -265,8 +265,7 @@ class _DrumVoice extends Voice {
 
   _DrumVoice(super.key, int velocity)
       : _gain = 0.5 * math.pow(velocity.clamp(1, 127) / 127, 1.4).toDouble() {
-    (double, double, double, double, double, double, double) d =
-        switch (key) {
+    (double, double, double, double, double, double, double) d = switch (key) {
       35 || 36 => (150, 45, 0.35, 0.01, 1, 0.15, 0.2),
       38 || 40 => (220, 180, 0.08, 0.18, 0.5, 0.8, 0.6),
       37 => (800, 700, 0.03, 0.03, 0.4, 0.6, 0.8),
@@ -336,8 +335,7 @@ class _PluckVoice extends Voice {
 
   _PluckVoice(super.key, int velocity, {bool bass = false})
       : _line = Float32List(math.max(
-            2,
-            (mixRate / (440 * math.pow(2, (key - 69) / 12))).round())),
+            2, (mixRate / (440 * math.pow(2, (key - 69) / 12))).round())),
         _gain = (bass ? 0.55 : 0.4) *
             math.pow(velocity.clamp(1, 127) / 127, 1.3).toDouble(),
         _damp = bass ? 0.996 : 0.998 {
@@ -398,6 +396,39 @@ class Sampler {
 
   int get sounding => _voices.length;
 
+  /// _controls are the channel's controllers as last set, nought to one:
+  /// see MidiControl.
+  final Map<MidiControl, double> _controls = {
+    for (var c in MidiControl.values) c: c.rest,
+  };
+
+  /// _pedalled are keys let go while the sustain pedal was down, sounding
+  /// until it is let up.
+  final Set<int> _pedalled = {};
+
+  /// _time is how long it has played, for the vibrato's swing.
+  double _time = 0;
+  double _gainL = 1, _gainR = 1;
+  bool _rendered = false;
+  Float32List _l = Float32List(0), _r = Float32List(0);
+
+  double controlValue(MidiControl c) => _controls[c]!;
+
+  /// control sets one of the channel's controllers -- the mod wheel, the
+  /// pitch bend, the sustain pedal, expression, volume, pan -- nought to
+  /// one, as a MIDI channel's are.
+  void control(MidiControl c, double value) {
+    _controls[c] = value.clamp(0.0, 1.0);
+    if (c == MidiControl.sustain && value < 0.5) {
+      for (var key in _pedalled) {
+        for (var v in _voices) {
+          if (v.key == key) v.release();
+        }
+      }
+      _pedalled.clear();
+    }
+  }
+
   void noteOn(int key, int velocity) {
     if (velocity <= 0) {
       noteOff(key);
@@ -423,6 +454,10 @@ class Sampler {
   }
 
   void noteOff(int key) {
+    if (_controls[MidiControl.sustain]! >= 0.5) {
+      _pedalled.add(key);
+      return;
+    }
     for (var v in _voices) {
       if (v.key == key) v.release();
     }
@@ -434,11 +469,53 @@ class Sampler {
     }
   }
 
-  /// render adds the next [n] frames of everything sounding to [l], [r].
+  /// render adds the next [n] frames of everything sounding to [l], [r]:
+  /// bent and swung as the controllers say, then at the channel's volume
+  /// and expression, panned.
   void render(Float32List l, Float32List r, int n) {
+    // Two semitones either way, a bend's usual range; the mod wheel a
+    // vibrato of up to half a semitone, five and a half times a second.
+    var bend = (_controls[MidiControl.pitchBend]! - 0.5) * 4;
+    var vibrato = _controls[MidiControl.modulation]! *
+        0.5 *
+        math.sin(2 * math.pi * 5.5 * _time);
+    var pitch = math.pow(2, (bend + vibrato) / 12).toDouble();
+    _time += n / mixRate;
+    if (_l.length < n) {
+      _l = Float32List(n);
+      _r = Float32List(n);
+    }
+    _l.fillRange(0, n, 0);
+    _r.fillRange(0, n, 0);
     for (var v in [..._voices]) {
-      v.render(l, r, n);
+      v.pitch = pitch;
+      v.render(_l, _r, n);
       if (v.done) _voices.remove(v);
     }
+    // Volume and expression as MIDI has them -- squared, so the middle of
+    // the travel is a usable level -- at nothing changed for volume's
+    // hundred and expression's full.
+    var volume = _controls[MidiControl.volume]! / MidiControl.volume.rest;
+    var expression = _controls[MidiControl.expression]!;
+    var gain = volume * volume * expression * expression;
+    var pan = _controls[MidiControl.pan]!;
+    var toL = gain * (pan <= 0.5 ? 1 : (1 - pan) * 2);
+    var toR = gain * (pan >= 0.5 ? 1 : pan * 2);
+    // Glided across the block, so a curve moving is never a step -- but
+    // from the first block where it is set to be, not glided down to.
+    if (!_rendered) {
+      _rendered = true;
+      _gainL = toL;
+      _gainR = toR;
+    }
+    var stepL = (toL - _gainL) / n, stepR = (toR - _gainR) / n;
+    for (var i = 0; i < n; i++) {
+      _gainL += stepL;
+      _gainR += stepR;
+      l[i] += _l[i] * _gainL;
+      r[i] += _r[i] * _gainR;
+    }
+    _gainL = toL;
+    _gainR = toR;
   }
 }

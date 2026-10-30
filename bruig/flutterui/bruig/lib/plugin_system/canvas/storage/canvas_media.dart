@@ -53,6 +53,10 @@ final _pictureIdPattern = RegExp(r"^[A-Za-z0-9]{16}(\.[a-z0-9]{2,5})?$");
 /// converted on the way in -- see media_import.dart.
 const playableAudio = {".mp3", ".wav", ".ogg", ".opus", ".flac"};
 
+/// isMidiId is whether stored sound [id] is a MIDI file: notes for an
+/// instrument to play, not a sound the engine can.
+bool isMidiId(String id) => id.endsWith(".mid");
+
 class CanvasMedia {
   /// _dir is the folder for [kind], created only when something is about to
   /// be written to it.
@@ -278,6 +282,9 @@ class CanvasMedia {
     }
 
     if (at(0, "RIFF") && at(8, "WAVE")) return ".wav";
+    // A Standard MIDI File: notes, not a sound -- kept with the sounds, and
+    // played by an instrument.
+    if (at(0, "MThd")) return ".mid";
     if (at(0, "RIFF") && at(8, "AVI ")) return ".avi";
     if (at(0, "fLaC")) return ".flac";
     if (at(0, "OggS")) {

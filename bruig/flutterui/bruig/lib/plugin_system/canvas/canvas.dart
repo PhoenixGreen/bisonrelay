@@ -79,6 +79,9 @@ export 'package:bruig/plugin_system/canvas/presets/builtin_presets.dart'
     show emptyCanvas;
 export 'package:bruig/plugin_system/canvas/ui/canvas_controller.dart'
     show CanvasController;
+// For main() to call first thing: see its note.
+export 'package:bruig/plugin_system/canvas/media/audio_engine.dart'
+    show releaseAudioAfterHotRestart;
 
 /// registerCanvas attaches this module to the plugin system.
 ///

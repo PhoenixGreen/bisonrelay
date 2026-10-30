@@ -83,8 +83,8 @@ class SfSample {
   final int start, end, loopStart, loopEnd, rate;
   final int originalKey;
   final int correction;
-  const SfSample(this.name, this.start, this.end, this.loopStart,
-      this.loopEnd, this.rate, this.originalKey, this.correction);
+  const SfSample(this.name, this.start, this.end, this.loopStart, this.loopEnd,
+      this.rate, this.originalKey, this.correction);
 }
 
 /// Zone is what one key at one velocity plays: a sample and every
@@ -137,8 +137,8 @@ class SoundFont {
   final List<SfSample> _headers;
   final String name;
 
-  SoundFont._(this.samples, this.presets, this._instruments, this._headers,
-      this.name);
+  SoundFont._(
+      this.samples, this.presets, this._instruments, this._headers, this.name);
 
   /// preset is the preset at [bank] and [program], or the bank's first
   /// with that program, or its first of all.
@@ -199,8 +199,8 @@ class SoundFont {
   /// read reads a bank from its bytes, or throws a FormatException.
   static SoundFont read(Uint8List bytes) {
     var data = ByteData.sublistView(bytes);
-    String tag(int at) => ascii.decode(bytes.sublist(at, at + 4),
-        allowInvalid: true);
+    String tag(int at) =>
+        ascii.decode(bytes.sublist(at, at + 4), allowInvalid: true);
     if (bytes.length < 12 || tag(0) != "RIFF" || tag(8) != "sfbk") {
       throw const FormatException("Not a SoundFont 2 bank");
     }
@@ -292,9 +292,8 @@ class SoundFont {
       return _RawZone(g, set);
     }
 
-    (_RawZone?, List<_RawZone>) zonesOf(
-        List<int> bagList, List<(int, int)> genList, int from, int to,
-        int terminal) {
+    (_RawZone?, List<_RawZone>) zonesOf(List<int> bagList,
+        List<(int, int)> genList, int from, int to, int terminal) {
       _RawZone? global;
       var out = <_RawZone>[];
       for (var b = from; b < to && b + 1 < bagList.length; b++) {

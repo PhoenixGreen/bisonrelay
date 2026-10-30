@@ -731,6 +731,11 @@ class CanvasScene {
   /// master covering them would be to throw its background away.
   final bool backgroundOff;
 
+  /// masterOff leaves the master canvas off this one: a game's title screen
+  /// or menu without the score and the lives the master shows on every
+  /// level.
+  final bool masterOff;
+
   /// cover marks this canvas as the outside of a document rather than one of
   /// its leaves -- see PageCover.
   ///
@@ -764,6 +769,7 @@ class CanvasScene {
     this.holds = false,
     this.background,
     this.backgroundOff = false,
+    this.masterOff = false,
     this.transition,
     this.cover = PageCover.none,
     this.camera,
@@ -799,6 +805,7 @@ class CanvasScene {
     CanvasBackground? background,
     bool clearBackground = false,
     bool? backgroundOff,
+    bool? masterOff,
     SceneTransition? transition,
     bool clearTransition = false,
     PageCover? cover,
@@ -814,6 +821,7 @@ class CanvasScene {
         holds: holds ?? this.holds,
         background: clearBackground ? null : (background ?? this.background),
         backgroundOff: backgroundOff ?? this.backgroundOff,
+        masterOff: masterOff ?? this.masterOff,
         transition: clearTransition ? null : (transition ?? this.transition),
         cover: cover ?? this.cover,
         camera: clearCamera ? null : (camera ?? this.camera),
@@ -832,6 +840,7 @@ class CanvasScene {
         if (holds) "holds": true,
         if (background != null) "background": background!.toJson(),
         if (backgroundOff) "backgroundOff": true,
+        if (masterOff) "masterOff": true,
         if (transition != null) "transition": transition!.toJson(),
         if (cover.isCover) "cover": cover.name,
         if (camera != null) "camera": camera!.toJson(),
@@ -863,6 +872,7 @@ class CanvasScene {
               json["background"] as Map<String, dynamic>)
           : null,
       backgroundOff: jsonBool(json["backgroundOff"], false),
+      masterOff: jsonBool(json["masterOff"], false),
       transition: json["transition"] is Map<String, dynamic>
           ? SceneTransition.fromJson(json["transition"] as Map<String, dynamic>)
           : null,

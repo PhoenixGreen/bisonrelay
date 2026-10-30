@@ -1059,7 +1059,9 @@ class _LipSyncGroupState extends State<_LipSyncGroup> {
             "them first if they have not been -- and spells each into the "
             "mouths it is said with. Sound only reads how loud the voice is "
             "frame by frame: rougher, but it works in any language with "
-            "nothing installed. Either way the mouths are blocks on the "
+            "nothing installed. A take the Speech device spoke needs no "
+            "hearing: its words are read from it, each to the moment. "
+            "Either way the mouths are blocks on the "
             "Mouth lane of the timeline, to move or change by hand.",
         children: [
           if (LiveCapture.available &&

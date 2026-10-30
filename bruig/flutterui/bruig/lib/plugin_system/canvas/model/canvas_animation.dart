@@ -480,6 +480,11 @@ class TimelineAction {
   final String label;
   final bool showLabel;
 
+  /// waitsFor is what a stop waits for to go on, beside Play: one of the
+  /// game controls' actions, by id -- "press A to start" -- or "" nothing
+  /// more. See CanvasDocument.controlsNow.
+  final String waitsFor;
+
   const TimelineAction({
     required this.frame,
     required this.kind,
@@ -488,6 +493,7 @@ class TimelineAction {
     this.holdFrames = 12,
     this.label = "",
     this.showLabel = true,
+    this.waitsFor = "",
   });
 
   TimelineAction copyWith({
@@ -498,6 +504,7 @@ class TimelineAction {
     int? holdFrames,
     String? label,
     bool? showLabel,
+    String? waitsFor,
   }) =>
       TimelineAction(
         frame: frame ?? this.frame,
@@ -507,6 +514,7 @@ class TimelineAction {
         holdFrames: holdFrames ?? this.holdFrames,
         label: label ?? this.label,
         showLabel: showLabel ?? this.showLabel,
+        waitsFor: waitsFor ?? this.waitsFor,
       );
 
   Map<String, dynamic> toJson() => {
@@ -517,6 +525,7 @@ class TimelineAction {
         if (holdFrames != 12) "hold": holdFrames,
         if (label.isNotEmpty) "label": label,
         if (!showLabel) "hideLabel": true,
+        if (waitsFor.isNotEmpty) "waitsFor": waitsFor,
       };
 
   factory TimelineAction.fromJson(Map<String, dynamic> json) => TimelineAction(
@@ -527,6 +536,7 @@ class TimelineAction {
         holdFrames: (json["hold"] as num?)?.toInt() ?? 12,
         label: json["label"] is String ? json["label"] as String : "",
         showLabel: json["hideLabel"] != true,
+        waitsFor: json["waitsFor"] is String ? json["waitsFor"] as String : "",
       );
 }
 

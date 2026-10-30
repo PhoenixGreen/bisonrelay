@@ -5,6 +5,8 @@ import 'package:bruig/plugin_system/canvas/model/surround.dart';
 import 'package:bruig/plugin_system/canvas/model/instrument.dart';
 import 'package:bruig/plugin_system/canvas/media/synth/soundfont.dart';
 import 'package:bruig/plugin_system/canvas/media/audio_engine.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
+    show PitchReading;
 import 'package:path/path.dart' as path;
 
 // canvas_audio_fake.dart is a sound card for tests: an engine that plays
@@ -100,6 +102,12 @@ class FakeEngine implements AudioEngine {
       notes.add((channel, key, velocity));
   @override
   void noteOff(String channel, int key) => notes.add((channel, key, 0));
+
+  /// controls is every controller set live, as (channel, control, value).
+  final List<(String, MidiControl, double)> controls = [];
+  @override
+  void control(String channel, MidiControl control, double value) =>
+      controls.add((channel, control, value));
   @override
   void setPlacement(String key, Heard? heard) =>
       heard == null ? placements.remove(key) : placements[key] = heard;
@@ -107,9 +115,38 @@ class FakeEngine implements AudioEngine {
   @override
   (double, double) levels([String? channel]) => (0.5, 0.5);
 
+  /// heardPitch is what pitch says a tuner hears.
+  PitchReading? heardPitch;
+  @override
+  PitchReading? pitch([String? channel]) => heardPitch;
+
   @override
   Float32List? spectrum([String? channel]) =>
       Float32List.fromList([for (var i = 0; i < 256; i++) 1 / (1 + i)]);
+
+  /// launches is every clip launched, as (voice, delay, loop); stopsIn
+  /// every stop set, as (voice, delay).
+  final List<(FakeVoice, double, (double, double)?)> launches = [];
+  final List<(FakeVoice, double)> stopsIn = [];
+
+  @override
+  AudioVoice? launch(AudioTrack track,
+      {required double volume,
+      required double delay,
+      double at = 0,
+      (double, double)? loop,
+      String? channel}) {
+    var v = play(track, volume: volume, at: at, channel: channel) as FakeVoice;
+    launches.add((v, delay, loop));
+    return v;
+  }
+
+  @override
+  void stopIn(AudioVoice voice, double delay) =>
+      stopsIn.add((voice as FakeVoice, delay));
+
+  @override
+  double latency = 0;
 
   @override
   AudioVoice? play(AudioTrack track,

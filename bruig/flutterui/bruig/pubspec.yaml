@@ -110,6 +110,11 @@ dependencies:
   flutter_midi_command_web: 1.0.2
   flutter_midi_command_windows: 1.0.1
   gamepads: ^0.1.13
+  # Canvas's Speech voices: Kokoro, run on the computer (Apache 2.0; from
+  # 2.0 it carries no espeak-ng, which is GPL).
+  sherpa_onnx: ^2.0.1
+  # MusicXML, for Canvas's sheet music: read and written (MIT).
+  xml: ^6.5.0
 
 msix_config:
   display_name: Bison Relay GUI
@@ -181,6 +186,9 @@ flutter:
     - assets/icons/icons-menu-settings.svg
     - assets/icons/icons-menu-stats.svg
     - assets/br_instant_call.mp3
+    # The Speech device's breaths, laughs, sighs and coughs: CC0, see
+    # its SOURCES.md.
+    - assets/canvas/cues/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

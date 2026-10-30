@@ -14,6 +14,8 @@ import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart'
 import 'package:bruig/plugin_system/canvas/model/elements/character_wardrobe.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_lipsync.dart';
 import 'package:bruig/plugin_system/canvas/model/media_clip.dart';
+import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_life.dart';
 import 'package:bruig/plugin_system/canvas/render/character/character_painter.dart' show characterBox;
@@ -501,6 +503,37 @@ void main() {
           reason: "a mouth picked by hand is keyed where it is picked");
       c.clearLipSync(get(c));
       expect(get(c).mouthKeys, isEmpty);
+    });
+
+    // A take the Speech device spoke knows its words to the moment: read
+    // from it, not heard again -- and only those its trim keeps.
+    test("a spoken take is synced from its own words", () async {
+      var take = SpeechTake("take1", 2, const [
+        (text: "hello", start: 0.2, end: 0.6),
+        (text: "world", start: 0.8, end: 1.3),
+        (text: "after", start: 1.6, end: 1.9),
+      ]);
+      var voice = AudioElement(const ElementBase(id: "v"),
+          clip: MediaClip(
+              timed: true,
+              at: 12,
+              mix: ChannelMix(speech: SpeechSpec(takes: [take])),
+              playlist: const [
+                MediaSource(assetId: "take1", length: 2, end: 1.5)
+              ]));
+      var doc = CanvasDocument(frames: 120, frameRate: 25)
+          .addElement(voice)
+          .addElement(juno());
+      var c = CanvasController(doc);
+      addTearDown(c.dispose);
+      var done = await c.lipSync(get(c), voice);
+      expect(done.problem, isNull, reason: "nothing heard: none needed");
+      expect(done.mouths, greaterThan(2));
+      var keys = get(c).mouthKeys;
+      // "hello" from 0.2s into the take, the take at frame 12: frame 17.
+      expect(keys.first.frame, inInclusiveRange(15, 17));
+      expect(keys.last.frame, lessThan(12 + 1.5 * 25 + 8),
+          reason: "the word after its trim left out");
     });
   });
 

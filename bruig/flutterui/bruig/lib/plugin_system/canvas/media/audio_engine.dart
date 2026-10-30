@@ -3,6 +3,8 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart'
+    show PitchReading;
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
@@ -101,6 +103,39 @@ class MasterSound {
   return (have.sublist(keep), want.sublist(keep));
 }
 
+/// releaseAudioAfterHotRestart lets go of a sound engine the program left
+/// running before a hot restart, as the app starts.
+///
+/// A hot restart starts the Dart program again but not the native engine,
+/// which keeps the old program's callbacks -- gone with it -- until it is
+/// next started. Anything that has it call one stops the VM: "Callback
+/// invoked after it has been deleted". A sound device changing (the app's
+/// calls choose their microphone and speakers as it starts) did; and so did
+/// tearing the engine down, which tells the old program of every sound it
+/// stops before it forgets the old program's callbacks. So they are
+/// forgotten first, here -- by the engine's own function for it, which the
+/// package does not offer from Dart -- and only then, if it is running, is
+/// it torn down. Debug builds only: nothing else restarts the program under
+/// the engine.
+void releaseAudioAfterHotRestart() {
+  if (!kDebugMode) return;
+  try {
+    var lib = Platform.isLinux || Platform.isAndroid
+        ? ffi.DynamicLibrary.open("libflutter_soloud_plugin.so")
+        : Platform.isWindows
+            ? ffi.DynamicLibrary.open("flutter_soloud_plugin.dll")
+            : ffi.DynamicLibrary.process();
+    var forget = lib.lookupFunction<ffi.Void Function(), void Function()>(
+        "clearDartCallbackRegistrations");
+    var running =
+        lib.lookupFunction<ffi.Int32 Function(), int Function()>("isInited");
+    forget();
+    if (running() == 1) SoLoud.instance.deinit();
+  } catch (exception) {
+    debugPrint("Could not release the canvas sound engine: $exception");
+  }
+}
+
 abstract class AudioEngine {
   /// start makes the engine ready, returning false where there is no sound to
   /// be had -- no device, or a library that would not load. Asked before
@@ -122,6 +157,26 @@ abstract class AudioEngine {
   /// mixer channel called [channel] where it has one.
   AudioVoice? play(AudioTrack track,
       {required double volume, double at = 0, String? channel});
+
+  /// launch plays [track] as a clip: from [delay] seconds from now -- to
+  /// the frame, where the engine can -- from [at] seconds into it, going
+  /// round [loop]'s two points, in seconds into the file, where given. See
+  /// CanvasController.launchClip.
+  AudioVoice? launch(AudioTrack track,
+      {required double volume,
+      required double delay,
+      double at = 0,
+      (double, double)? loop,
+      String? channel});
+
+  /// stopIn stops [voice] [delay] seconds from now: a clip stopped on the
+  /// next bar.
+  void stopIn(AudioVoice voice, double delay);
+
+  /// latency is how far behind what is being rendered the speakers are, in
+  /// seconds: a clip meant to be heard on a bar is started this much
+  /// earlier.
+  double get latency;
 
   /// setChannel makes or changes the mixer channel called [key].
   void setChannel(String key, ChannelSound sound);
@@ -151,6 +206,11 @@ abstract class AudioEngine {
       {SoundFont? font});
   void noteOff(String channel, int key);
 
+  /// control sets one of channel [channel]'s instrument's controllers --
+  /// the mod wheel, the pitch bend, expression -- nought to one. An engine
+  /// with no instruments of its own leaves it.
+  void control(String channel, MidiControl control, double value);
+
   /// levels is how loud a channel -- or with no [channel], the master -- is
   /// coming out right now, left and right, nought to one. For the meters;
   /// asking for it is what turns the measuring on.
@@ -160,6 +220,10 @@ abstract class AudioEngine {
   /// magnitudes from the lowest frequency to half the rate, or null where
   /// none can be had. For the EQ to draw what it is shaping.
   Float32List? spectrum([String? channel]);
+
+  /// pitch is the pitch a tuner on [channel] -- or Auto-tune -- is hearing
+  /// now, or null: nothing heard, no tuner, or an engine with none.
+  PitchReading? pitch([String? channel]);
 
   /// volume moves [voice] to [to], over [fade] seconds.
   void volume(AudioVoice voice, double to, {double fade = 0});
@@ -259,6 +323,9 @@ class SoLoudAudioEngine implements AudioEngine {
 
   @override
   void noteOff(String channel, int key) {}
+
+  @override
+  void control(String channel, MidiControl control, double value) {}
 
   @override
   void setPlacement(String key, Heard? heard) {}
@@ -532,6 +599,9 @@ class SoLoudAudioEngine implements AudioEngine {
   AudioData? _masterData;
 
   @override
+  PitchReading? pitch([String? channel]) => null;
+
+  @override
   Float32List? spectrum([String? channel]) {
     if (!_soloud.isInitialized) return null;
     // Gathered only while levels are being read -- see levels.
@@ -606,6 +676,47 @@ class SoLoudAudioEngine implements AudioEngine {
       return null;
     }
   }
+
+  // SoLoud plays a clip on a timer: on the bar to the timer's word, which is
+  // near enough for the buses the mix engine has replaced.
+  @override
+  AudioVoice? launch(AudioTrack track,
+      {required double volume,
+      required double delay,
+      double at = 0,
+      (double, double)? loop,
+      String? channel}) {
+    var voice = play(track, volume: volume, at: at, channel: channel);
+    if (voice is! _SoLoudVoice) return voice;
+    var handle = voice.handle;
+    try {
+      if (delay > 0) {
+        _soloud.setPause(handle, true);
+        Timer(_duration(delay), () {
+          if (_soloud.getIsValidVoiceHandle(handle)) {
+            _soloud.setPause(handle, false);
+          }
+        });
+      }
+      if (loop case (var from, _)) {
+        _soloud.setLooping(handle, true);
+        _soloud.setLoopPoint(handle, _duration(from));
+      }
+    } catch (exception) {
+      debugPrint("Canvas audio could not launch a clip: $exception");
+    }
+    return voice;
+  }
+
+  @override
+  void stopIn(AudioVoice voice, double delay) {
+    var handle = (voice as _SoLoudVoice).handle;
+    if (!_soloud.getIsValidVoiceHandle(handle)) return;
+    _soloud.scheduleStop(handle, _duration(delay));
+  }
+
+  @override
+  double get latency => 0;
 
   @override
   void volume(AudioVoice voice, double to, {double fade = 0}) {

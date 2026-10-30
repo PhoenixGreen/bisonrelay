@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart'
     show jsonBool, jsonDouble, jsonInt, jsonSpec, jsonString;
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
+import 'package:bruig/plugin_system/canvas/model/speech_spec.dart'
+    show SpeechTake;
 import 'package:bruig/plugin_system/canvas/model/surround.dart';
 export 'package:bruig/plugin_system/canvas/model/surround.dart'
     show SoundPlacement, PlaceBy;
@@ -248,6 +250,10 @@ class MediaClip {
           if (s.assetId.isNotEmpty) s.assetId,
           if (s.soundId.isNotEmpty) s.soundId,
         ],
+        // Its channel's Speech takes: the Vocaliser sings the latest, even
+        // where its clip has been taken off the timeline.
+        for (var t in mix.speech?.takes ?? const <SpeechTake>[])
+          if (t.assetId.isNotEmpty) t.assetId,
       };
 
   /// posterIds is the stills a video's files carry, which are pictures and

@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:bruig/plugin_system/canvas/media/mix/device_dsp.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/pitch.dart';
+import 'package:bruig/plugin_system/canvas/media/mix/vocoder.dart';
 import 'package:bruig/plugin_system/canvas/model/devices.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
 
@@ -122,7 +125,8 @@ class Limiter {
         _release = _coefficient(releaseMs, sampleRate),
         _dl = Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round())),
         _dr = Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round())),
-        _peaks = Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round()));
+        _peaks =
+            Float32List(math.max(1, (aheadMs / 1000 * sampleRate).round()));
 
   void process(Float32List l, Float32List r, int n) {
     for (var i = 0; i < n; i++) {
@@ -148,16 +152,59 @@ class Limiter {
 
 /// StripProcessor is a channel strip: EQ and compressor in the order set,
 /// then the fader and balance. A muted strip is silent.
+///
+/// Retuned -- its levels, sends or a device's settings moved, as
+/// automation moves them -- it keeps what is in it: see [retune].
 class StripProcessor {
-  final ChannelMix mix;
+  ChannelMix _mix;
   final EqProcessor _eq;
   final Compressor? _comp;
 
-  StripProcessor(this.mix)
-      : _eq = EqProcessor(mix.eq),
-        _comp = mix.comp.on ? Compressor(mix.comp) : null;
+  /// _chain is a processor for each of the channel's own devices, in
+  /// order, before its EQ and compressor -- null for one switched off: see
+  /// ChannelMix.devices.
+  final List<DeviceProcessor?> _chain;
+
+  /// _gl and _gr are the levels the last block ended on: a new level is
+  /// glided to over a block, not jumped to.
+  double _gl, _gr;
+
+  StripProcessor(ChannelMix mix)
+      : _mix = mix,
+        _eq = EqProcessor(mix.eq),
+        _comp = mix.comp.on ? Compressor(mix.comp) : null,
+        _chain = [for (var d in mix.devices) DeviceProcessor.of(d)],
+        _gl = mix.gains.$1,
+        _gr = mix.gains.$2;
+
+  ChannelMix get mix => _mix;
+
+  /// devices are the channel's own devices, running -- for a tuner's
+  /// reading.
+  List<DeviceProcessor> get devices => [
+        for (var d in _chain)
+          if (d != null) d,
+      ];
 
   Compressor? get compressor => _comp;
+
+  /// retune takes [next] in without starting again: a channel the same but
+  /// for its levels, its sends and its devices' settings. A device whose
+  /// settings changed is made again -- or tuned in place, where it can be
+  /// -- and the rest keep what is in them.
+  void retune(ChannelMix next) {
+    for (var i = 0; i < _chain.length && i < next.devices.length; i++) {
+      var was = _mix.devices[i], now = next.devices[i];
+      if (was == now) continue;
+      var running = _chain[i];
+      if (running is Tunable && now.on && was.kind == now.kind) {
+        (running as Tunable).tune(now);
+      } else {
+        _chain[i] = DeviceProcessor.of(now);
+      }
+    }
+    _mix = next;
+  }
 
   void process(Float32List l, Float32List r, int n) {
     shape(l, r, n);
@@ -168,12 +215,15 @@ class StripProcessor {
   /// the order set -- where a pre-fader send is taken. A muted strip is
   /// silent from here on, sends included.
   void shape(Float32List l, Float32List r, int n) {
-    if (mix.mute) {
+    if (_mix.mute) {
       l.fillRange(0, n, 0);
       r.fillRange(0, n, 0);
       return;
     }
-    if (mix.compFirst) {
+    for (var d in _chain) {
+      d?.process(l, r, n);
+    }
+    if (_mix.compFirst) {
       _comp?.process(l, r, n);
       _eq.process(l, r, n);
     } else {
@@ -182,12 +232,30 @@ class StripProcessor {
     }
   }
 
-  /// level is the fader and the balance.
+  /// level is the fader and the balance -- glided to from the last block's
+  /// over this one, so a level moved by automation does not click.
   void level(Float32List l, Float32List r, int n) {
-    if (mix.mute) return;
-    var (gl, gr) = mix.gains;
-    if (gl != 1 || gr != 1) _scale(l, r, n, gl, gr);
+    if (_mix.mute) return;
+    var (gl, gr) = _mix.gains;
+    if (gl == _gl && gr == _gr) {
+      if (gl != 1 || gr != 1) _scale(l, r, n, gl, gr);
+      return;
+    }
+    var dl = (gl - _gl) / n, dr = (gr - _gr) / n;
+    for (var i = 0; i < n; i++) {
+      l[i] *= _gl + dl * (i + 1);
+      r[i] *= _gr + dr * (i + 1);
+    }
+    _gl = gl;
+    _gr = gr;
   }
+}
+
+/// Tunable is a device that takes new settings without starting again:
+/// what it is in the middle of -- a delay line, a reverb's tail, an LFO's
+/// phase -- carries on.
+abstract class Tunable {
+  void tune(MixDevice device);
 }
 
 /// DeviceProcessor is a device of a chain, running.
@@ -200,6 +268,20 @@ abstract class DeviceProcessor {
     return switch (device.kind) {
       DeviceKind.reverb => Reverb(device),
       DeviceKind.delay => Delay(device),
+      DeviceKind.gate => Gate(device),
+      DeviceKind.autoFilter => AutoFilter(device),
+      DeviceKind.chorus => Chorus(device),
+      DeviceKind.flanger => Flanger(device),
+      DeviceKind.phaser => Phaser(device),
+      DeviceKind.autoPan => AutoPan(device),
+      DeviceKind.saturator => Saturator(device),
+      DeviceKind.overdrive => Overdrive(device),
+      DeviceKind.bitCrusher => BitCrusher(device),
+      DeviceKind.utility => Utility(device),
+      DeviceKind.autoTune => AutoTune(device),
+      DeviceKind.vocoder => Vocoder(device),
+      DeviceKind.tuner => PitchListener(pitch: true),
+      DeviceKind.spectrum => PitchListener(),
     };
   }
 }
@@ -208,45 +290,61 @@ abstract class DeviceProcessor {
 /// damped comb filters and four allpasses a side, the right side's delays a
 /// little longer than the left's for width -- tuned for 48kHz, with a
 /// pre-delay in front.
-class Reverb implements DeviceProcessor {
+class Reverb implements DeviceProcessor, Tunable {
   static const _combs = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
   static const _allpasses = [556, 441, 341, 225];
   static const _spread = 23;
 
-  final double _feedback, _damp, _wet1, _wet2, _dry, _wet;
+  final double _rate;
+  late double _feedback, _damp, _wet1, _wet2, _dry, _wet;
   final List<_Comb> _cl, _cr;
   final List<_Allpass> _al, _ar;
+
+  /// _preL and _preR are as long as the longest pre-delay, read [_pre]
+  /// behind where they are written: moved, nothing starts again.
   final Float32List _preL, _preR;
-  int _preAt = 0;
+  int _preAt = 0, _pre = 0;
 
   Reverb(MixDevice d, {double sampleRate = 48000})
-      : _feedback = d.value("size") * 0.28 + 0.7,
-        _damp = d.value("damping") * 0.4,
-        _wet = d.value("mix"),
-        _dry = 1 - d.value("mix"),
-        _wet1 = d.value("width") / 2 + 0.5,
-        _wet2 = (1 - d.value("width")) / 2,
+      : _rate = sampleRate,
         _cl = [for (var c in _combs) _Comb(_scaled(c, sampleRate))],
         _cr = [for (var c in _combs) _Comb(_scaled(c + _spread, sampleRate))],
         _al = [for (var a in _allpasses) _Allpass(_scaled(a, sampleRate))],
         _ar = [
           for (var a in _allpasses) _Allpass(_scaled(a + _spread, sampleRate))
         ],
-        _preL = Float32List(
-            math.max(1, (d.value("predelay") / 1000 * sampleRate).round())),
-        _preR = Float32List(
-            math.max(1, (d.value("predelay") / 1000 * sampleRate).round()));
+        _preL = Float32List(_longest(d, sampleRate)),
+        _preR = Float32List(_longest(d, sampleRate)) {
+    tune(d);
+  }
+
+  static int _longest(MixDevice d, double rate) =>
+      (d.kind.param("predelay").max / 1000 * rate).ceil() + 1;
+
+  @override
+  void tune(MixDevice d) {
+    _feedback = d.value("size") * 0.28 + 0.7;
+    _damp = d.value("damping") * 0.4;
+    _wet = d.value("mix");
+    _dry = 1 - d.value("mix");
+    _wet1 = d.value("width") / 2 + 0.5;
+    _wet2 = (1 - d.value("width")) / 2;
+    _pre =
+        (d.value("predelay") / 1000 * _rate).round().clamp(0, _preL.length - 1);
+  }
 
   static int _scaled(int samples, double rate) =>
       (samples * rate / 44100).round();
 
   @override
   void process(Float32List l, Float32List r, int n) {
+    var size = _preL.length;
     for (var i = 0; i < n; i++) {
-      var inL = _preL[_preAt], inR = _preR[_preAt];
       _preL[_preAt] = l[i];
       _preR[_preAt] = r[i];
-      _preAt = (_preAt + 1) % _preL.length;
+      var back = (_preAt - _pre + size) % size;
+      var inL = _preL[back], inR = _preR[back];
+      _preAt = (_preAt + 1) % size;
       // Freeverb's fixed input gain, so the tail sits near the level fed in.
       var input = (inL + inR) * 0.015;
       var outL = 0.0, outR = 0.0;
@@ -302,28 +400,56 @@ class _Allpass {
 /// Delay is an echo: each side delayed by the time, fed back by the
 /// feedback through a low-pass, so each repeat is quieter and darker -- and
 /// with ping-pong, each repeat crosses to the other side.
-class Delay implements DeviceProcessor {
+class Delay implements DeviceProcessor, Tunable {
+  /// _l and _r are as long as the longest time, read [_time] behind where
+  /// they are written -- a time moved glides there, as a tape delay's
+  /// does, rather than jumping.
   final Float32List _l, _r;
-  final double _feedback, _wet, _dry, _cross;
-  final double _lp;
+  final double _rate;
+  late double _feedback, _wet, _dry, _cross, _lp, _to;
+  double _time = 0;
   double _fl = 0, _fr = 0;
   int _at = 0;
 
   Delay(MixDevice d, {double sampleRate = 48000})
-      : _l = Float32List(
-            math.max(1, (d.value("time") / 1000 * sampleRate).round())),
-        _r = Float32List(
-            math.max(1, (d.value("time") / 1000 * sampleRate).round())),
-        _feedback = d.value("feedback"),
-        _wet = d.value("mix"),
-        _dry = 1 - d.value("mix"),
-        _cross = d.value("pingpong"),
-        _lp = 1 - math.exp(-2 * math.pi * d.value("tone") / sampleRate);
+      : _rate = sampleRate,
+        _l = Float32List(_longest(d, sampleRate)),
+        _r = Float32List(_longest(d, sampleRate)) {
+    tune(d);
+    _time = _to;
+  }
+
+  static int _longest(MixDevice d, double rate) =>
+      (d.kind.param("time").max / 1000 * rate).ceil() + 2;
+
+  @override
+  void tune(MixDevice d) {
+    _feedback = d.value("feedback");
+    _wet = d.value("mix");
+    _dry = 1 - d.value("mix");
+    _cross = d.value("pingpong");
+    _lp = 1 - math.exp(-2 * math.pi * d.value("tone") / _rate);
+    _to = (d.value("time") / 1000 * _rate).clamp(1.0, _l.length - 2.0);
+  }
+
+  double _read(Float32List x, double back) {
+    var size = x.length;
+    var pos = _at - back;
+    if (pos < 0) pos += size;
+    var i = pos.floor(), f = pos - i;
+    var a = x[i % size], b = x[(i + 1) % size];
+    return a + (b - a) * f;
+  }
 
   @override
   void process(Float32List l, Float32List r, int n) {
     for (var i = 0; i < n; i++) {
-      var dl = _l[_at], dr = _r[_at];
+      if (_time != _to) {
+        // Over about a tenth of a second.
+        _time += (_to - _time) * 0.0005;
+        if ((_to - _time).abs() < 0.01) _time = _to;
+      }
+      var dl = _read(_l, _time), dr = _read(_r, _time);
       _fl += _lp * (dl - _fl);
       _fr += _lp * (dr - _fr);
       // Ping-pong: each side's repeat fed into the other.
@@ -347,6 +473,10 @@ class MasterProcessor {
   final Compressor? _glue;
   final Limiter? _limiter;
 
+  /// _devices are the master's own, before its EQ and glue.
+  final List<DeviceProcessor> _devices;
+  List<DeviceProcessor> get devices => _devices;
+
   /// normaliseDb is the gain that brings the mix to its target: measured
   /// on a first pass, so it is not known until then. Nought until it is.
   double normaliseDb;
@@ -354,12 +484,19 @@ class MasterProcessor {
   MasterProcessor(this.mix, {this.normaliseDb = 0})
       : _eq = EqProcessor(mix.eq),
         _glue = mix.comp.on ? Compressor(mix.comp) : null,
-        _limiter = mix.limiter ? Limiter(mix.ceilingDb) : null;
+        _limiter = mix.limiter ? Limiter(mix.ceilingDb) : null,
+        _devices = [
+          for (var d in mix.devices)
+            if (DeviceProcessor.of(d) case var p?) p,
+        ];
 
   /// process runs the master on a block, the limiter only when [limit].
   /// The first of two passes leaves it out: what is measured there is the
   /// mix before the limiter, as a loudness normaliser measures it.
   void process(Float32List l, Float32List r, int n, {bool limit = true}) {
+    for (var d in _devices) {
+      d.process(l, r, n);
+    }
     if (mix.compFirst) {
       _glue?.process(l, r, n);
       _eq.process(l, r, n);
@@ -426,11 +563,17 @@ class LoudnessMeter {
       for (var i = 0; i + 4 <= steps.length; i++)
         (steps[i] + steps[i + 1] + steps[i + 2] + steps[i + 3]) / 4,
     ];
-    var loud = [for (var b in blocks) if (_lufs(b) > -70) b];
+    var loud = [
+      for (var b in blocks)
+        if (_lufs(b) > -70) b
+    ];
     if (loud.isEmpty) return -double.infinity;
     var mean = loud.reduce((a, b) => a + b) / loud.length;
     var gate = _lufs(mean) - 10;
-    var kept = [for (var b in loud) if (_lufs(b) > gate) b];
+    var kept = [
+      for (var b in loud)
+        if (_lufs(b) > gate) b
+    ];
     if (kept.isEmpty) return -double.infinity;
     return _lufs(kept.reduce((a, b) => a + b) / kept.length);
   }

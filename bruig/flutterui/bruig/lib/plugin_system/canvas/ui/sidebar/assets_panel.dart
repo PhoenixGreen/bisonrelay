@@ -89,6 +89,21 @@ class CanvasAssetsPanel extends StatelessWidget {
       );
 }
 
+/// audioTypeOf is what kind of file stored sound [id] is: ".mid", ".mp3".
+String audioTypeOf(String id) {
+  var dot = id.lastIndexOf(".");
+  return dot < 0 ? "" : id.substring(dot).toLowerCase();
+}
+
+/// audioTypeLabel is a kind of sound file as the filter names it.
+String audioTypeLabel(String type) => switch (type) {
+      ".mid" => "MIDI",
+      ".ogg" => "Ogg",
+      ".opus" => "Opus",
+      "" => "Other",
+      _ => type.substring(1).toUpperCase(),
+    };
+
 IconData _iconOf(AssetKind kind) => switch (kind) {
       AssetKind.picture => Icons.image_outlined,
       AssetKind.video => Icons.movie_outlined,
@@ -113,6 +128,10 @@ class AssetSection extends StatefulWidget {
 
 class _AssetSectionState extends State<AssetSection> {
   List<LibraryAsset>? _assets;
+
+  /// _type is the sounds shown, by their kind of file -- ".mid", ".mp3" --
+  /// or "" for all of them.
+  String _type = "";
 
   /// _view is this section's, and is kept: somebody who wants a list of
   /// sounds and icons of pictures sets each once.
@@ -199,6 +218,11 @@ class _AssetSectionState extends State<AssetSection> {
 
   void _use(LibraryAsset asset) {
     var controller = widget.controller;
+    // A MIDI file is played by an instrument: a MIDI channel of its own.
+    if (isMidiId(asset.id)) {
+      controller.addMidiChannelFrom(asset.source);
+      return;
+    }
     controller.addElement(elementForAsset(asset, controller.document));
   }
 
@@ -208,8 +232,25 @@ class _AssetSectionState extends State<AssetSection> {
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
-    var assets = _assets;
+    var all = _assets;
     var kind = widget.kind.name;
+    // The kinds of sound file there are, for the filter: only those there
+    // are, MIDI first.
+    var types = widget.kind != AssetKind.audio || all == null
+        ? const <String>[]
+        : ({for (var a in all) audioTypeOf(a.id)}.toList()
+          ..sort((a, b) => a == ".mid"
+              ? -1
+              : b == ".mid"
+                  ? 1
+                  : a.compareTo(b)));
+    if (_type.isNotEmpty && !types.contains(_type)) _type = "";
+    var assets = all == null || _type.isEmpty
+        ? all
+        : [
+            for (var a in all)
+              if (audioTypeOf(a.id) == _type) a
+          ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       children: [
@@ -238,6 +279,23 @@ class _AssetSectionState extends State<AssetSection> {
             onPressed: () => _setView(AssetView.list),
           ),
         ]),
+        if (types.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Wrap(spacing: 4, runSpacing: 4, children: [
+              for (var t in ["", ...types])
+                ChoiceChip(
+                  key: ValueKey(
+                      "audioType-${t.isEmpty ? "all" : t.substring(1)}"),
+                  label: Text(t.isEmpty ? "All" : audioTypeLabel(t),
+                      style: const TextStyle(fontSize: 11)),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  selected: _type == t,
+                  onSelected: (_) => setState(() => _type = t),
+                ),
+            ]),
+          ),
         if (assets == null)
           const SizedBox(height: 40)
         else if (assets.isEmpty)
@@ -327,7 +385,7 @@ class _Still extends StatelessWidget {
         height: height,
         color: theme.colors.surfaceContainerHighest,
         child: still.isEmpty
-            ? Icon(_iconOf(asset.kind),
+            ? Icon(isMidiId(asset.id) ? Icons.piano : _iconOf(asset.kind),
                 size: height * 0.5, color: theme.colors.onSurfaceVariant)
             : AssetThumb(id: still),
       ),

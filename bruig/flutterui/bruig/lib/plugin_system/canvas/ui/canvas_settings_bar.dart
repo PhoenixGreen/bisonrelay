@@ -1,6 +1,8 @@
+import 'package:bruig/components/containers.dart' show BisonRelayLogo;
+import 'package:bruig/plugin_system/canvas/canvas_preferences.dart';
+import 'package:provider/provider.dart';
 import 'package:bruig/plugin_system/canvas/model/audio_settings.dart';
 import 'package:bruig/plugin_system/canvas/model/mix.dart';
-import 'package:bruig/plugin_system/canvas/ui/settings/controls_settings.dart';
 import 'package:bruig/plugin_system/canvas/ui/canvas_strip.dart';
 import 'package:bruig/plugin_system/canvas/export/canvas_export.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -138,6 +140,16 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
     if (mounted) setState(() {});
   }
 
+  /// _menuHidden is whether the app's menu is put away for the canvas --
+  /// false where there are no preferences to say (a test's bar).
+  bool _menuHidden(BuildContext context) {
+    try {
+      return Provider.of<CanvasPreferences>(context).menuHidden;
+    } on ProviderNotFoundException {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     var theme = ThemeNotifier.of(context);
@@ -154,6 +166,27 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
+          // The app's logo, while its menu is put away for the canvas: the
+          // way back to it, as tall as this bar. See
+          // CanvasPreferences.menuHidden.
+          if (_menuHidden(context))
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Tooltip(
+                message: "Show the menu",
+                child: InkWell(
+                  key: const ValueKey("canvasShowMenu"),
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () =>
+                      Provider.of<CanvasPreferences>(context, listen: false)
+                          .menuHidden = false,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 2),
+                    child: BisonRelayLogo(size: controlHeight),
+                  ),
+                ),
+              ),
+            ),
           // The tools take what room they need and give way when there is not
           // enough: a narrow window scrolls them rather than pushing the end
           // of the row under the buttons on the right.
@@ -425,17 +458,19 @@ class _CanvasSettingsBarState extends State<CanvasSettingsBar> {
                     : "Show the canvas",
                 active: !widget.canvasShown,
                 onPressed: widget.onToggleCanvas),
-          // Played as a game: there where something is set to be played.
-          if (controller.playable || controller.gaming)
-            _barButton(theme,
-                key: const ValueKey("playGame"),
-                icon: Icons.sports_esports_outlined,
-                tooltip: controller.gaming
-                    ? "Stop playing (Esc)"
-                    : "Play it as a game: the keys and a controller drive "
-                        "what is set to be played",
-                active: controller.gaming,
-                onPressed: () => controller.gaming = !controller.gaming),
+          // Made into a game: the Game panel in the sidebar, where each
+          // element is given what it does -- and the game is played from.
+          _barButton(theme,
+              key: const ValueKey("makeGame"),
+              icon: Icons.sports_esports_outlined,
+              tooltip: controller.document.game
+                  ? "Making a game: its settings are in the Game panel. "
+                      "Press to make it an ordinary canvas again"
+                  : "Make a game: the Game panel in the sidebar gives each "
+                      "element what it does when played",
+              active: controller.document.game,
+              onPressed: () =>
+                  controller.makingGame = !controller.document.game),
           _divider(theme),
           _barButton(theme,
               icon: Icons.undo,
@@ -1047,8 +1082,6 @@ class _CanvasSettingsPanelState extends State<CanvasSettingsPanel> {
                   "paired with another page"}."),
         ]),
       _audioGroup(document),
-      // A game's controls, where something is set to be played.
-      if (controller.playable) GameControlsGroup(controller: controller),
       // What changing the size does, at the end of the line: it is set once
       // and left, and it belongs after the size and the cost rather than
       // between the ratio and the width they are worked out from.

@@ -295,13 +295,42 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   static const _trackpadKey = "canvasTimelineTrackpad";
   static const _headerKey = "canvasTimelineHeader";
+  static const _barBelowKey = "canvasTimelineBarBelow";
+
+  /// _barBelow is whether the play bar is under the timeline rather than
+  /// over it: the reader's choice, kept.
+  bool _barBelow = false;
+
+  void _setBarBelow(bool value) {
+    setState(() => _barBelow = value);
+    StorageManager.saveBool(_barBelowKey, value);
+  }
+
+  /// _stripTop is where the keyframe strip starts, down the timeline: under
+  /// the play bar, or -- the bar below -- at the top.
+  double get _stripTop =>
+      _stripPadTop + (_barBelow ? 0 : _transportHeight + _stripGap);
+
+  /// _overBar is whether [dy], down the timeline, is on the play bar --
+  /// which scrolls sideways itself, so the wheel there is not the frames'.
+  bool _overBar(double dy) {
+    if (!_barBelow) return dy < _stripTop;
+    var height = math.max(timelineCollapsedHeight, widget.height) +
+        (_showScenes ? sceneStripHeight : 0);
+    var bottomPad = _stripPadBottom + _notesGutter - _scrollbarHeight;
+    return dy > height - bottomPad - _transportHeight - _stripGap;
+  }
 
   Future<void> _readSettings() async {
     var scrolls = await StorageManager.readBool(_trackpadKey);
     var snaps = await StorageManager.readBool(_snapKey);
+    var below = await StorageManager.readBool(_barBelowKey);
     var header = double.tryParse(await StorageManager.readString(_headerKey));
     if (!mounted) return;
-    setState(() => _trackpadScrolls = scrolls);
+    setState(() {
+      _trackpadScrolls = scrolls;
+      _barBelow = below;
+    });
     controller.snapping = snaps;
     if (header != null) controller.headerWidth = header;
   }
@@ -451,12 +480,12 @@ class CanvasTimelineState extends State<CanvasTimeline> {
     var keys = HardwareKeyboard.instance;
     var zoom = keys.isControlPressed || keys.isMetaPressed;
     var local = event.localPosition;
-    var stripTop = _stripPadTop + _transportHeight + _stripGap;
+    var stripTop = _stripTop;
     var overStrip =
         local.dy >= stripTop && local.dy <= stripTop + _keysRoom + _sceneGap;
     // Not over the play bar: it scrolls sideways itself, to reach what is
     // along it, and that is not the frames being scrolled.
-    if (local.dy < stripTop) return;
+    if (_overBar(local.dy)) return;
     var delta = event.scrollDelta;
     var sideways = keys.isShiftPressed || delta.dx.abs() > delta.dy.abs();
     if (!zoom && !sideways && !overStrip) return;
@@ -484,9 +513,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
 
   void _onPanZoom(PointerPanZoomUpdateEvent event, double bodyWidth) {
     // Not over the play bar -- see _onSignal.
-    if (event.localPosition.dy < _stripPadTop + _transportHeight + _stripGap) {
-      return;
-    }
+    if (_overBar(event.localPosition.dy)) return;
     var frames = _total;
     var width = _laneWidth(bodyWidth);
     var next = _viewNow;
@@ -948,8 +975,14 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             // On the strips' side of the line only: over the lanes it covered
             // the fade handle of a sound starting on frame one.
             left: 10 + controller.headerWidth - 5,
-            top: _stripPadTop + _transportHeight + _stripGap,
-            bottom: 0,
+            top: _stripTop,
+            bottom: _barBelow
+                ? _stripPadBottom +
+                    _notesGutter -
+                    _scrollbarHeight +
+                    _transportHeight +
+                    _stripGap
+                : 0,
             width: 5,
             child: MouseRegion(
               cursor: SystemMouseCursors.resizeLeftRight,
@@ -1206,7 +1239,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         controller.apply(document.copyWith(audio: next));
     var (loopFrom, loopLength) = controller.loopRange;
     var looping = controller.looping;
-    var quantise = audio.quantise == Quantise.off ? "beat" : audio.quantise.label;
+    var quantise =
+        audio.quantise == Quantise.off ? "beat" : audio.quantise.label;
 
     Widget timing() {
       if (sound) {
@@ -1339,6 +1373,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       ]);
     }
 
+    var timelinePlays = controller.playing && !controller.sessionOnly;
     Widget transport() => TransportGroup(children: [
           TransportPosition(
             audio: audio,
@@ -1354,13 +1389,19 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             tooltip: "",
             onPressed: controller.rewind,
           ),
+          // The timeline's Play: playing only the clip slots, the timeline
+          // is not playing -- Play plays it, and the slots stop.
           TransportButton(
             key: const ValueKey("play"),
-            icon: controller.playing ? Icons.pause : Icons.play_arrow,
-            tooltip: controller.playing ? "Pause" : "",
-            on: controller.playing,
+            icon: timelinePlays ? Icons.pause : Icons.play_arrow,
+            tooltip: timelinePlays ? "Pause" : "",
+            on: timelinePlays,
             lit: const Color(0xFF3CCF7A),
-            onPressed: playable ? controller.togglePlay : null,
+            onPressed: !playable
+                ? null
+                : controller.sessionOnly
+                    ? controller.play
+                    : controller.togglePlay,
           ),
           TransportButton(
             key: const ValueKey("stopPlaying"),
@@ -1368,6 +1409,22 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             tooltip: "Stop: back to where Play started; again, to the start",
             onPressed: controller.stopPlaying,
           ),
+          // Back to the timeline, as Ableton's Back to Arrangement: lit while
+          // what is heard is not the timeline -- only the clip slots, or a
+          // channel that left the timeline for its slots.
+          if (controller.offTimeline || !controller.session.isEmpty)
+            TransportButton(
+              key: const ValueKey("backToTimeline"),
+              icon: Icons.keyboard_return,
+              tooltip: controller.offTimeline
+                  ? "Back to the timeline: what you hear is the clip slots, "
+                      "not the timeline"
+                  : "Back to the timeline: you are hearing the timeline",
+              on: controller.offTimeline,
+              lit: const Color(0xFFF2A33D),
+              onPressed:
+                  controller.offTimeline ? controller.backToTimeline : null,
+            ),
           // Record: what is played on an instrument, written into its part.
           // There only where there is an instrument to play.
           if (controller.hasInstruments)
@@ -1390,6 +1447,36 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         : const Color(0xFF9A5A5A)),
               ),
             ),
+          // Automation: armed, a setting moved while it plays writes its
+          // lane; and a setting held by hand, handed back to its lane.
+          if (controller.timelineChannels.isNotEmpty) ...[
+            TransportButton(
+              key: const ValueKey("automationArm"),
+              icon: Icons.timeline,
+              tooltip: controller.automationArmed
+                  ? "Automation armed: while it plays, a fader, a send or a "
+                      "knob moved writes its lane. Press to disarm."
+                  : "Arm automation: while it plays, a fader, a send or a "
+                      "knob moved writes its lane",
+              on: controller.automationArmed,
+              lit: const Color(0xFF4A1F1F),
+              onPressed: () =>
+                  controller.automationArmed = !controller.automationArmed,
+            ),
+            TransportButton(
+              key: const ValueKey("backToArrangement"),
+              icon: Icons.settings_backup_restore,
+              tooltip: controller.anyOverridden
+                  ? "Back to arrangement: a setting moved by hand goes back "
+                      "to following its lane"
+                  : "Back to arrangement: nothing is held by hand",
+              on: controller.anyOverridden,
+              lit: const Color(0xFFF2A33D),
+              onPressed: controller.anyOverridden
+                  ? controller.backToArrangement
+                  : null,
+            ),
+          ],
           // The end of the scene; pressed there while every scene plays,
           // the start of the next. See forward. A piece of sound has no
           // scenes to go on to.
@@ -1414,9 +1501,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             fieldKey: const ValueKey("loopFromField"),
             caption: "FROM",
             dim: !looping,
-            value: sound
-                ? barsText(audio, loopFrom, rate)
-                : "${loopFrom + 1}",
+            value: sound ? barsText(audio, loopFrom, rate) : "${loopFrom + 1}",
             widest: sound
                 ? barsText(audio, math.max(0, document.frames - 1), rate)
                 : "${document.frames}",
@@ -1433,9 +1518,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             fieldKey: const ValueKey("loopLengthField"),
             caption: "FOR",
             dim: !looping,
-            value: sound
-                ? lengthText(audio, loopLength, rate)
-                : "$loopLength",
+            value: sound ? lengthText(audio, loopLength, rate) : "$loopLength",
             widest: sound
                 ? lengthText(audio, document.frames, rate)
                 : "${document.frames}",
@@ -1519,6 +1602,22 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             label: "Show label",
             value: actionHere.showLabel,
             onChanged: (v) => _replaceAction(actionHere.copyWith(showLabel: v)),
+          ),
+        // A stop that waits for one of the game's actions as well as Play:
+        // "press A to start".
+        if (actionHere.kind == TimelineActionKind.stop)
+          CanvasDropdown<String>(
+            key: const ValueKey("actionWaitsFor"),
+            label: "Goes on when",
+            value: document.controlsNow.any((a) => a.id == actionHere.waitsFor)
+                ? actionHere.waitsFor
+                : "",
+            width: 150,
+            options: [
+              ("", "Played again"),
+              for (var a in document.controlsNow) (a.id, "${a.name} is pressed"),
+            ],
+            onChanged: (v) => _replaceAction(actionHere.copyWith(waitsFor: v)),
           ),
         if (actionHere.kind == TimelineActionKind.loop ||
             actionHere.kind == TimelineActionKind.jump)
@@ -1741,6 +1840,16 @@ class CanvasTimelineState extends State<CanvasTimeline> {
         on: _trackpadScrolls,
         onPressed: () => _setTrackpadScrolls(!_trackpadScrolls),
       ),
+      // Where this bar sits: over the timeline, or under it.
+      TransportButton(
+        key: const ValueKey("barBelow"),
+        icon:
+            _barBelow ? Icons.vertical_align_top : Icons.vertical_align_bottom,
+        tooltip: _barBelow
+            ? "Move this bar over the timeline"
+            : "Move this bar under the timeline",
+        onPressed: () => _setBarBelow(!_barBelow),
+      ),
     ]);
     var key = controller.effectsChannel;
     var shown = controller.effectsOpen;
@@ -1773,16 +1882,20 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       TransportButton(
         key: const ValueKey("mixerToggle"),
         width: null,
-        tooltip: controller.mixerOpen
-            ? "Close the mixer"
-            : "Mixer: level, panning and effects for each channel, and the "
-                "master",
+        tooltip: !controller.mixerOpen
+            ? "Mixer: level, panning and effects for each channel, and the "
+                "master. Pressed again it is minimised, then hidden."
+            : controller.mixerMinimised
+                ? "Mixer minimised to its meters. Press to hide it."
+                : "Mixer shown. Press to minimise it to its meters.",
         on: controller.mixerOpen,
-        onPressed: () => controller.mixerOpen = !controller.mixerOpen,
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.equalizer),
-          SizedBox(width: 5),
-          Text("Mixer", style: TextStyle(fontWeight: FontWeight.w500)),
+        onPressed: controller.cycleMixer,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(controller.mixerMinimised
+              ? Icons.horizontal_rule
+              : Icons.equalizer),
+          const SizedBox(width: 5),
+          const Text("Mixer", style: TextStyle(fontWeight: FontWeight.w500)),
         ]),
       ),
     ]);
@@ -1816,6 +1929,11 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       TimelineAction? actionHere,
       Keyframe? keyHere,
       String? target) {
+    // The play bar: over the timeline, or under it -- see _barBelow.
+    var bar = SizedBox(
+      height: _transportHeight,
+      child: _controlBar(theme, document, actionHere, keyHere, target),
+    );
     return Container(
       height: math.max(timelineCollapsedHeight, widget.height) +
           (_showScenes ? sceneStripHeight : 0),
@@ -1827,11 +1945,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
             top: BorderSide(color: theme.colors.outlineVariant, width: 1)),
       ),
       child: Column(children: [
-        SizedBox(
-          height: _transportHeight,
-          child: _controlBar(theme, document, actionHere, keyHere, target),
-        ),
-        if (!_collapsed) const SizedBox(height: _stripGap),
+        if (!_barBelow) ...[
+          bar,
+          if (!_collapsed) const SizedBox(height: _stripGap),
+        ],
         if (!_collapsed)
           SizedBox(
             // Less the border along the timeline's top, which comes out of the
@@ -1856,8 +1973,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                       onTapDown: (details) {
                         // The brace is switched on the release, and leaves
                         // playing alone: a loop is set while listening.
-                        if (_braceAt(details.localPosition,
-                                constraints.maxWidth) !=
+                        if (_braceAt(
+                                details.localPosition, constraints.maxWidth) !=
                             null) {
                           return;
                         }
@@ -1939,8 +2056,8 @@ class CanvasTimelineState extends State<CanvasTimeline> {
                         // about to change -- and anywhere else scrubs.
                         // A click on the brace switches the loop off, as
                         // Ableton's does; the Loop button puts it back.
-                        if (_braceAt(details.localPosition,
-                                constraints.maxWidth) !=
+                        if (_braceAt(
+                                details.localPosition, constraints.maxWidth) !=
                             null) {
                           controller.looping = !controller.looping;
                           return;
@@ -2239,6 +2356,10 @@ class CanvasTimelineState extends State<CanvasTimeline> {
               ),
             ]),
           ),
+        if (_barBelow) ...[
+          if (!_collapsed) const SizedBox(height: _stripGap),
+          bar,
+        ],
       ]),
     );
   }
@@ -2390,8 +2511,7 @@ class CanvasTimelineState extends State<CanvasTimeline> {
       case _BracePart.whole:
         var at = snap(from + frame - _braceFrom);
         controller.setLoop(
-            at.clamp(0, math.max(0, document.frames - length)).toInt(),
-            length);
+            at.clamp(0, math.max(0, document.frames - length)).toInt(), length);
     }
   }
 
@@ -2768,10 +2888,10 @@ class _TimelinePainter extends CustomPainter {
     paintPastScene(canvas, Size(size.width, _rulerHeight), view, scene, colors);
 
     if (brace case (var from, var length)) {
-      var rect = Rect.fromLTRB(xFor(from), 1, xFor(from + length), _braceHeight);
+      var rect =
+          Rect.fromLTRB(xFor(from), 1, xFor(from + length), _braceHeight);
       var lit = looping ? colors.primary : colors.onSurfaceVariant;
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)),
           Paint()..color = lit.withValues(alpha: looping ? 0.55 : 0.18));
       canvas.drawRRect(
           RRect.fromRectAndRadius(rect, const Radius.circular(2)),
