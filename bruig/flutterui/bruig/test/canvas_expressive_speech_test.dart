@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_finish.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
@@ -29,8 +30,20 @@ import 'canvas_audio_fake.dart';
 
 /// _wav24k is a mono 16-bit WAV at 24kHz, [seconds] of quiet tone, as the
 /// expressive voices' program writes.
-Uint8List _wav24k(double seconds) {
-  var n = (seconds * 24000).round();
+Uint8List _wav24k(double seconds) => _wav24kOf([seconds]);
+
+/// _wav24kOf is one of tone and exact silence by turns: each part its
+/// seconds, of tone or, negative, of silence -- as the program writes a run
+/// with pauses in it.
+Uint8List _wav24kOf(List<double> parts) {
+  var samples = <int>[];
+  for (var p in parts) {
+    var m = (p.abs() * 24000).round();
+    for (var i = 0; i < m; i++) {
+      samples.add(p > 0 ? 1000 + (3000 * math.sin(i * 0.05)).round() : 0);
+    }
+  }
+  var n = samples.length;
   var b = ByteData(44 + n * 2);
   void tag(int at, String s) {
     for (var i = 0; i < 4; i++) {
@@ -52,7 +65,7 @@ Uint8List _wav24k(double seconds) {
   tag(36, "data");
   b.setUint32(40, n * 2, Endian.little);
   for (var i = 0; i < n; i++) {
-    b.setInt16(44 + i * 2, (3000 * math.sin(i * 0.05)).round(), Endian.little);
+    b.setInt16(44 + i * 2, samples[i], Endian.little);
   }
   return b.buffer.asUint8List();
 }
@@ -163,48 +176,103 @@ void main() {
 
     test("the feel is the program's temperature, nucleus, rate and wording",
         () {
-      var line =
-          const SpeechLine("Hello there.", direction: SpeechDirection.sad);
+      var sad = qwenDirection(
+          const SpeechLine("Hello there.", direction: SpeechDirection.sad),
+          0.8);
+      expect(
+          sad, "${SpeechDirection.sad.say} Make it vivid and strongly felt.");
       var steady = qwenArguments(
           "/m",
           const SpeechSpec(
-              voice: "aiden",
-              language: "German",
-              speed: 1.2,
-              steadiness: 1,
-              expression: 0.8),
-          line,
+              voice: "aiden", language: "German", speed: 1.2, steadiness: 1),
+          sad,
           "Hello there.",
           "/o.wav",
           seed: 4);
       String after(List<String> a, String flag) => a[a.indexOf(flag) + 1];
       expect(after(steady, "-s"), "aiden");
       expect(after(steady, "-l"), "German");
-      expect(after(steady, "-T"), "0.30");
-      expect(after(steady, "-p"), "0.85");
+      expect(after(steady, "-T"), "0.95");
+      expect(after(steady, "-p"), "0.90");
       expect(after(steady, "--rate"), "1.20");
       expect(after(steady, "--seed"), "4");
-      expect(after(steady, "--instruct"),
-          "${SpeechDirection.sad.say} Make it vivid and strongly felt.");
+      expect(after(steady, "--instruct"), sad);
+      expect(after(steady, "--text"), "Hello there.");
       expect(steady, containsAll(["--int8", "-S"]));
       expect(steady, isNot(contains("--serve")),
           reason: "its server listens on every network");
       var loose = qwenArguments(
           "/m",
-          const SpeechSpec(
-              voice: "kokoro-only", speed: 1, steadiness: 0, expression: 0.5),
-          const SpeechLine("Hi."),
-          "Hi.",
+          const SpeechSpec(voice: "kokoro-only", speed: 1, steadiness: 0),
+          "",
+          "Hi. [pause:0.6s] There.",
           "/o.wav",
-          seed: 1);
+          seed: 1,
+          compose: true);
       expect(after(loose, "-s"), "ryan", reason: "a voice it has");
       expect(after(loose, "-l"), "English");
-      expect(after(loose, "-T"), "0.90");
+      expect(after(loose, "-T"), "1.05");
+      expect(after(loose, "-p"), "1.00");
+      expect(after(loose, "--compose"), "Hi. [pause:0.6s] There.");
       expect(loose, isNot(contains("--rate")));
       expect(loose, isNot(contains("--instruct")),
           reason: "as written, said as it comes");
       expect(qwenDirection(const SpeechLine("x", own: "very tired"), 0.1),
           "very tired Keep it subtle and understated.");
+    });
+
+    test("at the middle, the engine's own: freer with a direction", () {
+      // Lower flattened a direction into the line said as written.
+      expect(qwenSampling(0.5, directed: true), (1.1, 1.0));
+      expect(qwenSampling(0.5, directed: false).$1, closeTo(0.9, 1e-9));
+      expect(qwenSampling(1, directed: false).$2, closeTo(0.9, 1e-9));
+    });
+
+    test("lines and their cues, as one run's markup", () {
+      var script = qwenScript(scriptLines(
+          "Hi. [laugh]\n[cough] So [pause 0.2] we [whisper] go now."));
+      expect(script.text,
+          "Hi. [pause:1.2s] So [pause:0.6s] we [pause:0.6s] go now.");
+      expect(script.spoken, [
+        ("Hi.", false),
+        ("So", false),
+        ("we", false),
+        ("go now.", true),
+      ]);
+      expect(script.markers, 3);
+      expect(script.gaps.first, isEmpty);
+      expect(script.gaps[1].map((g) => g.runtimeType),
+          [QwenSound, QwenLineEnd, QwenSound],
+          reason: "the laugh ends the first line, the cough starts the next");
+      expect(script.gaps[3].single, isA<QwenJoin>(),
+          reason: "the whisper starts there");
+      // The program's own markup is not the reader's to write.
+      expect(qwenScript(scriptLines("A | B")).text, "A , B");
+    });
+
+    test("a take cut at its exact silences, and only those", () {
+      Float32List pcm(List<double> parts) {
+        var out = <double>[];
+        for (var p in parts) {
+          var n = (p.abs() * 24000).round();
+          for (var i = 0; i < n; i++) {
+            out.add(p > 0 ? 0.1 + 0.05 * math.sin(i * 0.3) : 0);
+          }
+        }
+        return Float32List.fromList(out);
+      }
+
+      var cut = qwenCut(pcm([1, -1.2, 0.5, -0.6, 0.8]), 2)!;
+      expect(cut.sounds.map((s) => (s.length / 24000).toStringAsFixed(1)),
+          ["1.0", "0.5", "0.8"]);
+      expect((cut.leading, cut.trailing), (false, false));
+      // A short hush in the speech is not one of them.
+      expect(qwenCut(pcm([1, -0.1, 1]), 0)!.sounds, hasLength(1));
+      var ends = qwenCut(pcm([-0.6, 1, -0.6]), 2)!;
+      expect(
+          (ends.leading, ends.trailing, ends.sounds.length), (true, true, 1));
+      expect(qwenCut(pcm([1, -1.2, 1]), 2), isNull,
+          reason: "not as written: done another way");
     });
 
     group("run as a program", () {
@@ -241,20 +309,63 @@ cp "${dir.path}/line.wav" "\$out"
       List<String> runs() =>
           File(path.join(dir.path, "runs.txt")).readAsLinesSync();
 
-      test("a line spoken once, at the mix's rate, its words spread", () async {
-        fake(_wav24k(1.2));
+      test("a line spoken once, at the mix's rate, its pause put back",
+          () async {
+        // The program's take: its words, the marker's exact silence, more.
+        fake(_wav24kOf([0.6, -0.7, 0.6]));
         var take = await QwenSpeech().speakLine(
             const SpeechSpec(voice: "serena"),
             const SpeechLine("Good evening [pause 0.5] everyone.",
                 direction: SpeechDirection.warm),
             seed: 3);
-        expect(take.l.length, (1.2 * 48000).round());
+        expect(take.seconds, closeTo(0.6 + 0.5 + 0.6, 0.01),
+            reason: "the marker swapped for the pause asked for");
         expect(take.words.map((w) => w.text), ["Good", "evening", "everyone."]);
+        expect(take.words.last.start, closeTo(1.1, 1e-6),
+            reason: "after the words before it, and the pause");
         var run = runs().single;
-        expect(run, contains("--text Good evening everyone."),
-            reason: "its cues left out");
+        expect(run, contains("--compose Good evening [pause:0.6s] everyone."));
         expect(run, contains("--seed 3"));
         expect(run, contains("--instruct ${SpeechDirection.warm.say}"));
+      }, skip: Platform.isWindows);
+
+      test("lines said the same way, in one run; each way, its own", () async {
+        // Each about as long as its words take: not run on, nor short.
+        fake(_wav24kOf([1.2, -1.3, 2.2]));
+        var takes = await QwenSpeech().speakLines(
+            const SpeechSpec(voice: "ryan"),
+            scriptLines("Good evening, all.\nIt has been a long year."));
+        expect(runs(), hasLength(1), reason: "the model loaded once");
+        expect(runs().single,
+            contains("--compose Good evening, all. [pause:1.2s] It has"));
+        expect(takes.map((t) => t.seconds.toStringAsFixed(1)), ["1.2", "2.2"]);
+        expect(takes.last.words.first.text, "It");
+        // A line said another way is another run.
+        fake(_wav24kOf([1]));
+        File(path.join(dir.path, "runs.txt")).deleteSync();
+        await QwenSpeech().speakLines(const SpeechSpec(voice: "ryan"),
+            scriptLines("[sad] Gone.\nStill here."));
+        expect(runs(), hasLength(2));
+      }, skip: Platform.isWindows);
+
+      test("a cough mid-line is a cough there; a run not as written, by line",
+          () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        fake(_wav24kOf([0.5, -0.7, 0.5]));
+        var take = await QwenSpeech().speakLine(const SpeechSpec(voice: "ryan"),
+            const SpeechLine("Well [cough] all right."));
+        var cough = await cueRecording(SpeechCue.cough, man: true);
+        expect(cough, isNotNull);
+        expect(take.seconds,
+            closeTo(0.5 + cough!.length / 48000 + 0.12 + 0.5, 0.01),
+            reason: "the man's cough, recorded, where it was written");
+        // Two lines that cannot be cut apart: each spoken by itself.
+        fake(_wav24kOf([1]));
+        File(path.join(dir.path, "runs.txt")).deleteSync();
+        var takes = await QwenSpeech()
+            .speakLines(const SpeechSpec(), scriptLines("One. Two."));
+        expect(runs(), hasLength(3), reason: "together, then one each");
+        expect(takes, hasLength(2));
       }, skip: Platform.isWindows);
 
       test("a line that runs on is spoken again with other seeds, twice",
@@ -412,7 +523,13 @@ cp "${dir.path}/line.wav" "\$out"
       expect(find.byKey(const ValueKey("speechLine-1")), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey("speechLine-1")));
       await tester.pump();
-      // How it is said, from its chips.
+      // How it is said, from its chips: on Built in, only those Kokoro can
+      // say -- nervous is not one, and does nothing.
+      await tester.tap(find.byKey(const ValueKey("speechDirection-nervous")));
+      await tester.pump();
+      expect(c.speechOf("a")!.shownLines[1].direction, SpeechDirection.plain);
+      await tester.tap(find.byKey(const ValueKey("speechEngine-expressive")));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey("speechDirection-nervous")));
       await tester.pump();
       expect(c.speechOf("a")!.lines[1].direction, SpeechDirection.nervous);
@@ -442,6 +559,8 @@ cp "${dir.path}/line.wav" "\$out"
       expect(c.speechOf("a")!.preset, "calm");
       expect(c.speechOf("a")!.boost, isFalse);
       // Kokoro cannot follow stability or expression: greyed.
+      await tester.tap(find.byKey(const ValueKey("speechEngine-local")));
+      await tester.pump();
       expect(
           tester
               .widget<Slider>(find.byKey(const ValueKey("speechExpression")))

@@ -58,6 +58,23 @@ class StubSpeech extends SpeechEngine {
   }
 }
 
+/// BatchSpeech is StubSpeech speaking a script's lines together, as Kokoro
+/// does: each call to speakLines noted.
+class BatchSpeech extends StubSpeech {
+  final List<List<String>> batched = [];
+  @override
+  bool get batches => true;
+  @override
+  Future<List<SpokenAudio>> speakLines(
+      SpeechSpec spec, List<SpeechLine> lines) async {
+    batched.add([for (var l in lines) l.text]);
+    return [
+      for (var l in lines)
+        await speak(spec.copyWith(script: lineScript(l), lines: const []))
+    ];
+  }
+}
+
 void main() {
   group("the script", () {
     test("is read as words, cues and silences", () {
@@ -211,6 +228,36 @@ void main() {
       expect(await downloadKokoro(progress: shares.add), isNull);
       expect(await kokoroReady(), isTrue);
       expect(shares.last, 1);
+    });
+
+    test("Kokoro speaks a script's lines together, a take of each", () async {
+      var dir = Platform.environment["CANVAS_KOKORO"];
+      var lib = Platform.environment["CANVAS_SHERPA"];
+      if (dir == null || lib == null) {
+        markTestSkipped("no Kokoro model to hand");
+        return;
+      }
+      var dirWas = kokoroDir;
+      kokoroDir = () async => dir;
+      KokoroSpeech.library = lib;
+      addTearDown(() {
+        kokoroDir = dirWas;
+        KokoroSpeech.library = null;
+      });
+      var kokoro = KokoroSpeech();
+      expect(kokoro.batches, isTrue);
+      var lines = scriptLines(
+          "Good evening. [whisper] It is a secret. [laughing] We won!");
+      var takes =
+          await kokoro.speakLines(const SpeechSpec(voice: "bf_emma"), lines);
+      expect(takes, hasLength(3));
+      expect([for (var t in takes) t.words.map((w) => w.text).join(" ")],
+          ["Good evening.", "It is a secret.", "We won!"]);
+      for (var t in takes) {
+        expect(t.seconds, greaterThan(0.5));
+      }
+      // The laugh, a recording, before the words of the third.
+      expect(takes[2].words.first.start, greaterThan(0.3));
     });
 
     test("Kokoro speaks the script, where its model is to hand", () async {
@@ -622,6 +669,30 @@ esac
         await c.previewVoice("a", "v1");
         expect(stub.spoken, hasLength(2));
       });
+    });
+
+    test("an engine that speaks lines together is given them together",
+        () async {
+      var batch = BatchSpeech();
+      CanvasController.speechEngineFor = (spec, key) => batch;
+      var c = make();
+      addTearDown(c.dispose);
+      c.setSpeech("a", const SpeechSpec(script: "One. Two. Three."));
+      expect(await c.speakLines("a"), isNull);
+      expect(
+          batch.batched,
+          [
+            ["One.", "Two.", "Three."]
+          ],
+          reason: "one call, the voice loaded once");
+      var spec = c.speechOf("a")!;
+      expect([for (var l in spec.lines) l.takes.length], [1, 1, 1]);
+      expect({for (var l in spec.lines) l.take!.assetId}, hasLength(3),
+          reason: "a take of each, kept apart");
+      expect(spec.takes, hasLength(1), reason: "joined once, into the clip");
+      // Another take of one line: that line alone.
+      expect(await c.anotherTake("a", spec.lines[1]), isNull);
+      expect(batch.batched.last, ["Two."]);
     });
 
     test("lines joined and split by hand, the script written from them", () {

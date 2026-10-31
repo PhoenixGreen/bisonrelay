@@ -9158,9 +9158,13 @@ class CanvasController extends ChangeNotifier {
     var queue = speechQueue[channel];
     if (queue == null) return null;
     var key = speechLineKey(line);
-    if (queue.firstOrNull == key) return "speaking";
+    if (_speakingNow[channel]?.contains(key) ?? false) return "speaking";
     return queue.contains(key) ? "waiting" : null;
   }
+
+  /// _speakingNow is the lines each channel's engine is speaking now: the
+  /// first waiting, or every one, where it speaks them together.
+  final Map<String, Set<String>> _speakingNow = {};
 
   /// speechTakesMost is how many takes a line keeps.
   static const speechTakesMost = 3;
@@ -9200,48 +9204,41 @@ class CanvasController extends ChangeNotifier {
     var spoke = false;
     try {
       while (queue.isNotEmpty && !_disposed) {
-        var key = queue.first;
         var now = speechOf(channel);
-        var line = now?.lines.where((l) => speechLineKey(l) == key).firstOrNull;
-        if (now == null || line == null) {
-          queue.removeAt(0);
-          continue;
-        }
-        // Another seed each time: a take replacing one is not the same.
-        var audio = await speechEngineFor(now, cloudKey)
-            .speakLine(now, line, seed: 1 + _seeds.nextInt(1 << 30));
-        if (_disposed) return null;
-        var id = await _keepSpeech(audio, "line");
-        if (id == null) {
-          problem = "The take could not be kept.";
-          break;
-        }
-        // Where the line is now: it may have moved while it was spoken.
-        var after = speechOf(channel);
-        if (after != null) {
-          var take = SpeechTake(id, audio.seconds, audio.words,
-              exact: audio.exact);
-          var at = after.lines.indexWhere((l) => speechLineKey(l) == key);
-          if (at >= 0) {
-            var l = withTake(after.lines[at], take);
-            setSpeech(
-                channel,
-                after.copyWith(lines: [
-                  for (var (i, x) in after.lines.indexed) i == at ? l : x,
-                ]),
-                transient: true);
-            spoke = true;
-            // In the Audio library too, to use elsewhere.
-            await speechLibrary(
-                id,
-                "${after.voiceName.isEmpty ? "Speech" : after.voiceName} · "
-                "line ${at + 1} · take ${String.fromCharCode(65 + l.chosen)} · "
-                "${_firstWords(l.text)}",
-                audio.seconds);
-          }
-        }
-        queue.remove(key);
+        if (now == null) break;
+        String? keyOf(String k) =>
+            now.lines.any((l) => speechLineKey(l) == k) ? k : null;
+        // Lines edited away while they waited are not spoken.
+        queue.removeWhere((k) => keyOf(k) == null);
+        if (queue.isEmpty) break;
+        var engine = speechEngineFor(now, cloudKey);
+        // Every line waiting, at once, where the engine does better so;
+        // else the first.
+        var keys = engine.batches ? [...queue] : [queue.first];
+        var lines = [
+          for (var k in keys)
+            now.lines.firstWhere((l) => speechLineKey(l) == k)
+        ];
+        _speakingNow[channel] = {...keys};
         notifyListeners();
+        var audios = engine.batches
+            ? await engine.speakLines(now, lines)
+            // Another seed each time: a take replacing one is not the same.
+            : [
+                await engine.speakLine(now, lines.single,
+                    seed: 1 + _seeds.nextInt(1 << 30))
+              ];
+        if (_disposed) return null;
+        for (var (i, key) in keys.indexed) {
+          if (!await _keepLineTake(channel, key, audios[i])) {
+            problem = "The take could not be kept.";
+            break;
+          }
+          spoke = true;
+          queue.remove(key);
+          notifyListeners();
+        }
+        if (problem != null) break;
       }
     } on SpeechException catch (e) {
       problem = e.message;
@@ -9250,10 +9247,41 @@ class CanvasController extends ChangeNotifier {
       problem = "The voice could not speak: $e";
     } finally {
       speechQueue.remove(channel);
+      _speakingNow.remove(channel);
       if (!_disposed) notifyListeners();
     }
     if (spoke && !_disposed) problem ??= await joinSpeech(channel);
     return problem;
+  }
+
+  /// _keepLineTake keeps [audio] as a new take of [channel]'s line [key],
+  /// chosen, and lists it in the Audio library. Whether it could be kept;
+  /// a line edited away meanwhile is let go.
+  Future<bool> _keepLineTake(
+      String channel, String key, SpokenAudio audio) async {
+    var id = await _keepSpeech(audio, "line");
+    if (id == null) return false;
+    // Where the line is now: it may have moved while it was spoken.
+    var after = speechOf(channel);
+    if (after == null) return true;
+    var at = after.lines.indexWhere((l) => speechLineKey(l) == key);
+    if (at < 0) return true;
+    var l = withTake(after.lines[at],
+        SpeechTake(id, audio.seconds, audio.words, exact: audio.exact));
+    setSpeech(
+        channel,
+        after.copyWith(lines: [
+          for (var (i, x) in after.lines.indexed) i == at ? l : x,
+        ]),
+        transient: true);
+    // In the Audio library too, to use elsewhere.
+    await speechLibrary(
+        id,
+        "${after.voiceName.isEmpty ? "Speech" : after.voiceName} · "
+        "line ${at + 1} · take ${String.fromCharCode(65 + l.chosen)} · "
+        "${_firstWords(l.text)}",
+        audio.seconds);
+    return true;
   }
 
   /// anotherTake speaks [line] of [channel] again, as a new take: with

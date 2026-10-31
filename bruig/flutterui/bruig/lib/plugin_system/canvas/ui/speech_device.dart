@@ -1009,15 +1009,21 @@ class _SpeechDeviceState extends State<SpeechDevice> {
                         ]),
                         const SizedBox(height: 4),
                         Wrap(spacing: 4, runSpacing: 4, children: [
+                          // Those the engine cannot say greyed, and why.
                           for (var d in SpeechDirection.values)
-                            k.chip(
-                                d.label,
-                                l.own.isEmpty && l.direction == d,
-                                editable
-                                    ? () => _changeLine(spec, _line,
-                                        l.copyWith(direction: d, own: ""))
-                                    : null,
-                                key: ValueKey("speechDirection-${d.name}")),
+                            Tooltip(
+                              message: engine.directs(d)
+                                  ? ""
+                                  : "Not on Built in: pick Expressive",
+                              child: k.chip(
+                                  d.label,
+                                  l.own.isEmpty && l.direction == d,
+                                  editable && engine.directs(d)
+                                      ? () => _changeLine(spec, _line,
+                                          l.copyWith(direction: d, own: ""))
+                                      : null,
+                                  key: ValueKey("speechDirection-${d.name}")),
+                            ),
                         ]),
                         const SizedBox(height: 6),
                         SizedBox(
@@ -1256,7 +1262,10 @@ class _SpeechDeviceState extends State<SpeechDevice> {
               highSpeed,
               (v) => _set(spec.copyWith(speed: v, preset: "custom"),
                   transient: true),
-              key: const ValueKey("speechSpeed")),
+              key: const ValueKey("speechSpeed"),
+              // The pauses between the lines follow it at once; the lines
+              // themselves, spoken again.
+              onEnd: refinish),
           slider(
               "Stability",
               "${(spec.steadiness * 100).round()}%",

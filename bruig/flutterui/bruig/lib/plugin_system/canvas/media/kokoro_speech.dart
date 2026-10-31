@@ -254,9 +254,25 @@ class KokoroSpeech extends SpeechEngine {
   static const _symbol = "SherpaOnnxCreateOfflineTts";
 
   @override
-  Future<SpokenAudio> speak(SpeechSpec spec) async {
-    var pieces = parseScript(spec.script);
-    if (!pieces.any((p) => p is SpokenText)) {
+  Future<SpokenAudio> speak(SpeechSpec spec) async =>
+      (await _speakAll(spec, [spec.script])).single;
+
+  /// Kokoro loads its model for each call -- most of a short line's time
+  /// -- so a script's lines are spoken in one.
+  @override
+  bool get batches => true;
+
+  @override
+  Future<List<SpokenAudio>> speakLines(
+          SpeechSpec spec, List<SpeechLine> lines) =>
+      _speakAll(spec, [for (var l in lines) lineScript(l)]);
+
+  /// _speakAll speaks [scripts], a take of each, with the model loaded
+  /// once for all of them.
+  Future<List<SpokenAudio>> _speakAll(
+      SpeechSpec spec, List<String> scripts) async {
+    var parsed = [for (var s in scripts) parseScript(s)];
+    if (parsed.isEmpty || parsed.any((p) => !p.any((x) => x is SpokenText))) {
       throw const SpeechException("The script is empty.");
     }
     if (!await kokoroReady()) {
@@ -283,9 +299,10 @@ class KokoroSpeech extends SpeechEngine {
     }
     // What is said, a stretch at a time, at its speed; the pauses between.
     var jobs = <(String, double)>[
-      for (var p in pieces)
-        if (p is SpokenText)
-          (p.words.join(" "), spec.speed * (p.slow ? 0.8 : 1))
+      for (var pieces in parsed)
+        for (var p in pieces)
+          if (p is SpokenText)
+            (p.words.join(" "), spec.speed * (p.slow ? 0.8 : 1))
     ];
     var lib = library;
     // Brought to the mix's rate there too: on the app's isolate, a long
@@ -294,8 +311,21 @@ class KokoroSpeech extends SpeechEngine {
           for (var s in _say(dir, lib, speaker, tongue, jobs, espeak: espeak))
             upsample2x(s)
         ]);
-    var out = <(Float32List, Float32List, List<TimedWord>)>[];
+    var takes = <SpokenAudio>[];
     var k = 0;
+    for (var pieces in parsed) {
+      takes.add(await _assemble(pieces, spoken, k, voice));
+      k += pieces.whereType<SpokenText>().length;
+    }
+    return takes;
+  }
+
+  /// _assemble is one script's take: [pieces], their words from [spoken]
+  /// from [from] on, with its pauses and cues between.
+  Future<SpokenAudio> _assemble(List<SpeechPiece> pieces,
+      List<Float32List> spoken, int from, String voice) async {
+    var out = <(Float32List, Float32List, List<TimedWord>)>[];
+    var k = from;
     for (var p in pieces) {
       switch (p) {
         case SpokenPause s:
@@ -363,14 +393,9 @@ List<Float32List> _say(String dir, String? library, int speaker, _Tongue tongue,
         model: path.join(dir, "model.onnx"),
         voices: path.join(dir, "voices.bin"),
         tokens: path.join(dir, "tokens.txt"),
+        // No language: from sherpa-onnx 2.0 the dictionaries say it, and
+        // one given is only warned about, every time the model loads.
         lexicon: lexicons,
-        lang: switch (tongue) {
-          _Tongue.british => "en-gb",
-          _Tongue.american => "en-us",
-          _Tongue.chinese => "zh",
-          // Never reached: those speak through _sayWithEspeak.
-          _ => tongue.espeak!,
-        },
       ),
       numThreads: math.max(1, math.min(4, Platform.numberOfProcessors - 1)),
     ),
@@ -426,7 +451,6 @@ List<Float32List> _sayWithEspeak(String dir, String? library, int speaker,
         voices: path.join(dir, "voices.bin"),
         tokens: path.join(dir, "tokens.txt"),
         lexicon: file.path,
-        lang: language,
       ),
       numThreads: math.max(1, math.min(4, Platform.numberOfProcessors - 1)),
     ),

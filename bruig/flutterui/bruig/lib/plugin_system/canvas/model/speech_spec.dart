@@ -35,12 +35,28 @@ enum SpeechEngineKind {
   /// cues are the cues it can do: our own voices pause, breathe, laugh,
   /// sigh, cough -- recordings, see speech_cues.dart -- whisper and slow
   /// down, but cannot stress a word, and that is not faked.
-  List<SpeechCue> get cues => this == local
-      ? [
-          for (var c in SpeechCue.values)
-            if (c != SpeechCue.stress) c
-        ]
-      : SpeechCue.values;
+  List<SpeechCue> get cues => switch (this) {
+        local => [
+            for (var c in SpeechCue.values)
+              if (c != SpeechCue.stress) c
+          ],
+        // Its sounds and whisper are ours, laid in after; a stressed word or
+        // a slower stretch mid-line it cannot do -- the line's direction
+        // says those.
+        expressive => [
+            for (var c in SpeechCue.values)
+              if (c != SpeechCue.stress && c != SpeechCue.slow) c
+          ],
+        cloud => SpeechCue.values,
+      };
+
+  /// directs is whether this engine can say a line as [d] says: Kokoro
+  /// only as far as its cues go -- a laugh, a sigh, a whisper, slower.
+  bool directs(SpeechDirection d) =>
+      this != local || d == SpeechDirection.plain || d.kokoro.isNotEmpty;
+
+  /// ownWords is whether it takes a direction in the reader's own words.
+  bool get ownWords => this != local;
 }
 
 /// SpeechDirection is how a line is said, chosen for it in the device: to

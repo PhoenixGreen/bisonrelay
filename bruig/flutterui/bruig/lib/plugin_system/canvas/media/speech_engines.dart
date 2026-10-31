@@ -58,10 +58,23 @@ abstract class SpeechEngine {
   /// Another [seed] is another take, where the engine can vary.
   Future<SpokenAudio> speakLine(SpeechSpec spec, SpeechLine line,
           {int seed = 1}) =>
-      speak(spec.copyWith(
-          script: "${line.direction.kokoro} ${line.text}".trim(),
-          lines: const []));
+      speak(spec.copyWith(script: lineScript(line), lines: const []));
+
+  /// batches is whether speakLines does better than one line at a time --
+  /// an engine that loads its voice for each call loads it once.
+  bool get batches => false;
+
+  /// speakLines speaks [lines], a take of each, in order: by default one at
+  /// a time.
+  Future<List<SpokenAudio>> speakLines(
+          SpeechSpec spec, List<SpeechLine> lines) async =>
+      [for (var l in lines) await speakLine(spec, l)];
 }
+
+/// lineScript is [line] as a script of its own: its direction as the
+/// nearest of our cues, then its words.
+String lineScript(SpeechLine line) =>
+    "${line.direction.kokoro} ${line.text}".trim();
 
 /// speechRunsOn is whether a line of [words] words, said at [speed], that
 /// came out [seconds] long ran on or stopped short: far longer or shorter
