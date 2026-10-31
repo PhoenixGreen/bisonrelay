@@ -106,9 +106,41 @@ void main() {
         facing: SpriteFacing.back);
     var back = elementFromJson(e.toJson()) as SpriteElement;
     expect(back.toJson(), e.toJson());
+    // Its own size and its sheet's, each kept: the sheet's was written over
+    // the element's, and every sprite came back as big as its sheet.
+    expect((back.width, back.height), (e.width, e.height));
+    expect((back.sheetW, back.sheetH), (64, 32));
+    expect(e.width, isNot(64));
+    // Saved before the sheet's size had keys of its own: read from "w".
+    var old = e.toJson()
+      ..remove("sheetW")
+      ..remove("sheetH")
+      ..["w"] = 64
+      ..["h"] = 32;
+    expect((elementFromJson(old) as SpriteElement).sheetW, 64);
     var made = newElement(ElementKind.sprite, const CanvasDocument());
     expect(made, isA<SpriteElement>());
     expect((made as SpriteElement).hasSheet, isFalse);
+  });
+
+  test("measured: the part of its frames drawn in, which a game touches", () async {
+    // Two 20 by 20 frames, each a dot drawn 5 to 15 across, 10 to 20 down.
+    var rec = ui.PictureRecorder();
+    var canvas = ui.Canvas(rec);
+    for (var x in [0, 20]) {
+      canvas.drawRect(ui.Rect.fromLTWH(x + 5.0, 10, 10, 10), ui.Paint()..color = const ui.Color(0xFFFF0000));
+    }
+    var sheet = await rec.endRecording().toImage(40, 20);
+    var drawn = await spriteDrawnPart(sheet, [const ui.Rect.fromLTWH(0, 0, 20, 20), const ui.Rect.fromLTWH(20, 0, 20, 20)]);
+    expect(drawn, const ui.Rect.fromLTRB(0.25, 0.5, 0.75, 1));
+    var e = _sprite().copyWith(sheet: "x", sheetW: 40, sheetH: 20, columns: 2, drawn: drawn);
+    // Drawn in a 100 box: the frame fills it, the dot its middle half low down.
+    expect(e.touchIn(const ui.Rect.fromLTWH(0, 0, 100, 100)), const ui.Rect.fromLTRB(25, 50, 75, 100));
+    expect((elementFromJson(e.toJson()) as SpriteElement).drawn, drawn);
+    // Another sheet is drawn elsewhere in its frames: measured afresh.
+    expect(e.copyWith(sheet: "y").drawn, isNull);
+    expect(_sprite().touchIn(const ui.Rect.fromLTWH(0, 0, 100, 100)), const ui.Rect.fromLTWH(0, 0, 100, 100),
+        reason: "not measured: all of its box");
   });
 
   test("an Aseprite sheet's notes: its frames and its tags", () {

@@ -159,6 +159,12 @@ class SpriteElement extends CanvasElement {
   /// again. See sprite_builder.dart.
   final Map<String, dynamic>? built;
 
+  /// drawn is the part of its frames anything is drawn in, as shares of a
+  /// frame -- every frame's, together -- or null where it was not measured:
+  /// what a game touches. A pack's coin is drawn in the middle of a square
+  /// of nothing, and touching the square took it from a step away.
+  final Rect? drawn;
+
   const SpriteElement(
     super.base, {
     this.sheet = "",
@@ -180,6 +186,7 @@ class SpriteElement extends CanvasElement {
     this.glow = false,
     this.tint,
     this.built,
+    this.drawn,
   });
 
   @override
@@ -212,7 +219,8 @@ class SpriteElement extends CanvasElement {
       directions: directions,
       glow: glow,
       tint: tint,
-      built: built);
+      built: built,
+      drawn: drawn);
 
   /// frameCount is how many frames the sheet is sliced into.
   int get frameCount => rects.isNotEmpty ? rects.length : columns * rows;
@@ -299,6 +307,7 @@ class SpriteElement extends CanvasElement {
     bool noTint = false,
     Map<String, dynamic>? built,
     bool notBuilt = false,
+    Rect? drawn,
   }) =>
       SpriteElement(
         base,
@@ -321,7 +330,21 @@ class SpriteElement extends CanvasElement {
         glow: glow ?? this.glow,
         tint: noTint ? null : (tint ?? this.tint),
         built: notBuilt ? null : (built ?? this.built),
+        // Another sheet is drawn somewhere else in its frames: measured
+        // again, or not at all.
+        drawn: drawn ?? (sheet == null || sheet == this.sheet ? this.drawn : null),
       );
+
+  /// touchIn is what of [box] -- its box, where it is now -- a game
+  /// touches: the part of its frame drawn in, the frame fitted as it is
+  /// drawn. All of it where that was not measured.
+  Rect touchIn(Rect box) {
+    var d = drawn;
+    if (d == null) return box;
+    var f = spriteFit(frameRect(0).size, box);
+    return Rect.fromLTRB(f.left + d.left * f.width, f.top + d.top * f.height,
+        f.left + d.right * f.width, f.top + d.bottom * f.height);
+  }
 
   /// withAction is this with [a] in place of the action of its name -- or
   /// added, when there is none.
@@ -338,8 +361,11 @@ class SpriteElement extends CanvasElement {
   Map<String, dynamic> props() => {
         "sheet": sheet,
         if (sheetName.isNotEmpty) "sheetName": sheetName,
-        "w": sheetW,
-        "h": sheetH,
+        // Not "w" and "h": those are the element's own width and height,
+        // which the sheet's size wrote over -- every sprite saved came back
+        // as big as its sheet.
+        "sheetW": sheetW,
+        "sheetH": sheetH,
         "cols": columns,
         "rows": rows,
         if (margin != 0) "margin": margin,
@@ -361,6 +387,10 @@ class SpriteElement extends CanvasElement {
         if (glow) "glow": true,
         if (tint != null) "tint": colorToJson(tint!),
         if (built != null) "built": built,
+        if (drawn case var d?)
+          "drawn": [
+            for (var v in [d.left, d.top, d.right, d.bottom]) (v * 1000).round() / 1000
+          ],
       };
 
   factory SpriteElement.fromJson(Map<String, dynamic> json, ElementBase b) {
@@ -370,8 +400,10 @@ class SpriteElement extends CanvasElement {
       b,
       sheet: json["sheet"] as String? ?? "",
       sheetName: json["sheetName"] as String? ?? "",
-      sheetW: jsonDouble(json["w"], 1).round().clamp(1, 1 << 15),
-      sheetH: jsonDouble(json["h"], 1).round().clamp(1, 1 << 15),
+      // Saved before it had keys of its own, the sheet's size is "w" and
+      // "h" -- which the element's own size was lost under.
+      sheetW: jsonDouble(json["sheetW"] ?? json["w"], 1).round().clamp(1, 1 << 15),
+      sheetH: jsonDouble(json["sheetH"] ?? json["h"], 1).round().clamp(1, 1 << 15),
       columns: jsonDouble(json["cols"], 1).round().clamp(1, 512),
       rows: jsonDouble(json["rows"], 1).round().clamp(1, 512),
       margin: jsonDouble(json["margin"], 0),
@@ -406,6 +438,11 @@ class SpriteElement extends CanvasElement {
       glow: jsonBool(json["glow"], false),
       tint: json["tint"] is num ? colorFromJson(json["tint"]) : null,
       built: json["built"] is Map<String, dynamic> ? json["built"] as Map<String, dynamic> : null,
+      drawn: switch (json["drawn"]) {
+        [num l, num t, num r, num b] =>
+          Rect.fromLTRB(l.toDouble(), t.toDouble(), r.toDouble(), b.toDouble()),
+        _ => null,
+      },
     );
   }
 }
@@ -507,4 +544,13 @@ class SheetNotes {
   var rows = runs(gaps(height, width, (y, x) => clear(x, y)));
   if (cols < 1 || rows < 1 || (cols == 1 && rows == 1)) return null;
   return (cols, rows);
+}
+
+/// spriteFit is a frame [size] across fitted into [box], standing on its
+/// bottom, in the middle across: where a sprite is drawn, and so what a
+/// game touches.
+Rect spriteFit(Size size, Rect box) {
+  var k = math.min(box.width / size.width, box.height / size.height);
+  var w = size.width * k, h = size.height * k;
+  return Rect.fromLTWH(box.center.dx - w / 2, box.bottom - h, w, h);
 }

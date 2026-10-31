@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:bruig/plugin_system/canvas/media/kokoro_speech.dart';
 import 'package:bruig/plugin_system/canvas/media/mix/dsp.dart' show mixRate;
 import 'package:bruig/plugin_system/canvas/media/qwen_speech.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_timing.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_finish.dart';
@@ -340,19 +341,19 @@ void main() {
               i ~/ 480 == 15 ? 0.2 : 0.004 * (noise.nextDouble() - 0.5)
           ]);
       var sound = Float32List.fromList([...tone(1), ...hush(0.3), ...tone(1)]);
-      var found = qwenPauses(sound);
+      var found = voicePauses(sound);
       expect(found.pauses, hasLength(1), reason: "the click is the pause");
       expect(found.pauses.single.$1, closeTo(1.0, 0.02));
       expect(found.pauses.single.$2, closeTo(1.3, 0.02));
       // Matched to the beat written, the words either side spread across
       // the time spoken.
-      var timed = qwenTimed(sound, ["Hello", "there...", "my", "friend."]);
+      var timed = timeWords(sound, ["Hello", "there...", "my", "friend."]);
       expect(timed.after.keys, [1]);
       expect(timed.words[1].end, closeTo(1.0, 0.02));
       expect(timed.words[2].start, closeTo(1.3, 0.02));
       expect(timed.words.last.end, closeTo(2.3, 0.02));
       // A pause written where the voice did not pause: matched to none.
-      expect(qwenTimed(tone(2), ["Hi,", "you."]).after, isEmpty);
+      expect(timeWords(tone(2), ["Hi,", "you."]).after, isEmpty);
       // Put in at the moment asked, the words after moved on by it.
       var sigh = Float32List.fromList(List.filled(24000, 0.1));
       var (placed, moved) =
@@ -377,7 +378,7 @@ void main() {
       // near.
       var dipped = Float32List.fromList(
           [...tone(0.7), ...Float32List(1920), ...tone(0.7)]);
-      expect(qwenDip(dipped, 0.5), closeTo(0.72, 0.02));
+      expect(quietestNear(dipped, 0.5), closeTo(0.72, 0.02));
     });
 
     test("a take cut at its exact silences, and only those", () {

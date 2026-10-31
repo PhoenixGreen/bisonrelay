@@ -324,7 +324,12 @@ class CounterElement extends CanvasElement {
   ///
   /// A page number is neither: it does not run and it is not keyed, it is
   /// read off the page it happens to be drawn on. See CounterSource.page.
-  bool get live => !keyed && source != CounterSource.page;
+  ///
+  /// A game's count is always live: it is where the game has got to, never a
+  /// number keyed on the timeline -- left keyed, as a new counter starts, a
+  /// HUD's coins sat at nought however many were taken.
+  bool get live =>
+      source == CounterSource.game || (!keyed && source != CounterSource.page);
 
   /// isPageNumber is the question the renderer and the settings both ask.
   bool get isPageNumber => source == CounterSource.page;

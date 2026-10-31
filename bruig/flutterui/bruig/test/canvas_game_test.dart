@@ -9,7 +9,9 @@ import 'package:bruig/plugin_system/canvas/model/canvas_animation.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/character_motion.dart';
+import 'package:bruig/plugin_system/canvas/model/backdrop.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/counter_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/parallax_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/shape_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
@@ -750,6 +752,181 @@ void main() {
       run(c, 1.5, keys: right);
       expect(c.gaming, isFalse, reason: "no scene after the last");
       expect(c.document.at, 1, reason: "back on the scene being worked on");
+    });
+  });
+
+  // Found playing Sky Isles, the prototype platformer (2026-10-31).
+  group("in a level", () {
+    test("a moving platform carries what stands on it", () {
+      var g = GameRun();
+      // A platform under the hero, moving 100 across over 60 frames.
+      var platform = ShapeElement(ElementBase(
+          id: "lift",
+          x: 60,
+          y: 400,
+          width: 200,
+          height: 20,
+          play: const PlaySpec(as: PlayAs.solid),
+          track: ElementTrack(const [
+            Keyframe(frame: 0),
+            Keyframe(frame: 60, dx: 100),
+          ])));
+      var doc = page.copyWith(frames: 120, elements: [
+        box("hero", 100, 300, 40, 60, as: PlayAs.platformer),
+        platform,
+      ]);
+      for (var i = 0; i < 30; i++) {
+        g.step(doc, 0, 1 / 60);
+      }
+      var b = g.bodies["hero"]!;
+      expect(b.onGround, isTrue, reason: "landed on it");
+      var x = b.at.dx;
+      for (var f = 1; f <= 60; f++) {
+        g.step(doc, f, 1 / 60);
+      }
+      expect(b.at.dx - x, closeTo(100, 1), reason: "carried as far as it went");
+      expect(b.onGround, isTrue, reason: "and still on it");
+      // Looped back to its start, the timeline is no move: not carried.
+      g.step(doc, 0, 1 / 60);
+      expect(b.at.dx - x, closeTo(100, 1));
+    });
+
+    test(
+        "a scene's own parallax backdrop moves with the view, and the "
+        "master's", () {
+      var g = GameRun();
+      ParallaxElement scenery() =>
+          ParallaxElement(const ElementBase(id: backgroundParallaxId),
+              layers: const [ParallaxLayer(kind: SceneryKind.hills)]);
+      var back = CanvasBackground(
+          backdrop: BackdropKind.parallax, parallax: scenery());
+      var doc = CanvasDocument(game: true, scenes: [
+        CanvasScene(id: "one", background: back, elements: [
+          box("hero", 1000, 600, 40, 60, as: PlayAs.platformer),
+        ]),
+        const CanvasScene(id: "two"),
+      ]);
+      g.step(doc, 0, 1 / 60);
+      expect(g.camera.dx, greaterThan(0));
+      expect(g.view(doc).scene.background!.parallax!.camera.x, g.camera.dx,
+          reason: "the scene's own: it went nowhere, the view moving");
+      var shared = doc.withMaster(CanvasScene(id: "m", background: back));
+      shared = shared.copyWith(masterOn: true);
+      expect(
+          g.view(shared).master!.background!.parallax!.camera.x, g.camera.dx);
+    });
+
+    test("show and hide: a bridge put out, a HUD's banner shown", () {
+      var g = GameRun();
+      ShapeElement hidden(String id, double x, double y) {
+        var e = box(id, x, y, 200, 40);
+        return e.rebase(e.base.copyWith(visible: false)) as ShapeElement;
+      }
+
+      var doc = page.copyWith(
+          game: true,
+          masterOn: true,
+          master: CanvasScene(id: "hud", elements: [hidden("win", 400, 200)]),
+          elements: [
+            box("hero", 100, 600, 40, 60, as: PlayAs.platformer),
+            box("gem", 100, 600, 40, 60,
+                play: const PlaySpec(
+                    as: PlayAs.pickup,
+                    touched: GameEffect(does: GameDoes.show, element: "win"))),
+            box("lever", 100, 600, 40, 60,
+                play: const PlaySpec(
+                    as: PlayAs.pickup,
+                    stays: true,
+                    touched: GameEffect(does: GameDoes.hide, element: "wall"))),
+            box("wall", 300, 500, 40, 220, as: PlayAs.solid),
+          ]);
+      expect(
+          GameEffect.fromJson(
+              const GameEffect(does: GameDoes.show, element: "win").toJson()),
+          const GameEffect(does: GameDoes.show, element: "win"));
+      g.step(doc, 0, 1 / 60);
+      var view = g.view(doc);
+      expect(view.master!.elements.firstWhere((e) => e.id == "win").visible,
+          isTrue,
+          reason: "the HUD's banner, shown");
+      expect(g.shown(doc.elementById("wall")!), isFalse,
+          reason: "hidden: no longer in the way");
+      // Shown already, showing it again leaves it shown.
+      g.step(doc, 0, 1 / 60);
+      expect(
+          g.view(doc).master!.elements.firstWhere((e) => e.id == "win").visible,
+          isTrue);
+    });
+
+    test("a sprite is touched where it is drawn, not the square round it", () {
+      var g = GameRun();
+      // A coin drawn in the middle half of its 100 box.
+      var coin = SpriteElement(
+          const ElementBase(
+              id: "coin",
+              x: 200,
+              y: 620,
+              width: 100,
+              height: 100,
+              play: PlaySpec(
+                  as: PlayAs.pickup,
+                  touched: GameEffect(does: GameDoes.add, count: "coins"))),
+          sheet: "x",
+          drawn: const Rect.fromLTRB(0.25, 0.25, 0.75, 0.75));
+      var doc = page.copyWith(game: true, counts: const [
+        GameCount("coins", "Coins")
+      ], elements: [
+        box("hero", 140, 660, 40, 60, as: PlayAs.platformer),
+        coin
+      ]);
+      g.step(doc, 0, 1 / 60);
+      g.bodies["hero"]!.at = const Offset(40, 0);
+      g.step(doc, 0, 1 / 60);
+      expect(g.countOf(doc, "coins"), 0,
+          reason: "in its square, not yet at the coin");
+      g.bodies["hero"]!.at = const Offset(100, 0);
+      g.step(doc, 0, 1 / 60);
+      expect(g.countOf(doc, "coins"), 1, reason: "at the coin");
+    });
+
+    test("a Counter of the game's count is live, however it was made", () {
+      // A new counter is keyed: chosen to show a count, it read its start.
+      var hud = const CounterElement(ElementBase(id: "coins"),
+          source: CounterSource.game, gameCount: "coins");
+      expect(hud.keyed, isTrue);
+      expect(hud.live, isTrue);
+      var c = CanvasController(page.copyWith(
+          game: true,
+          counts: const [GameCount("coins", "Coins", start: 2)],
+          elements: [hud]));
+      addTearDown(c.dispose);
+      expect(c.counterValue(hud), 2);
+    });
+
+    test("the game, and each scene of it, from its first frame", () {
+      var c = CanvasController(CanvasDocument(game: true, frames: 120, scenes: [
+        CanvasScene(id: "one", frames: 120, elements: [
+          box("hero", 100, 600, 40, 60, as: PlayAs.platformer),
+          box("flag", 100, 600, 40, 60,
+              play: const PlaySpec(
+                  as: PlayAs.pickup, touched: GameEffect(does: GameDoes.next))),
+        ]),
+        CanvasScene(id: "two", frames: 120, elements: [
+          box("hero", 100, 600, 40, 60, as: PlayAs.platformer),
+        ]),
+      ]));
+      addTearDown(c.dispose);
+      // Left part way through each while it was made.
+      c.goToScene(1);
+      c.frame = 80;
+      c.goToScene(0);
+      c.frame = 60;
+      c.gaming = true;
+      expect(c.frame, 0, reason: "a title, a wait for Space: from the start");
+      c.stepGame(1 / 60);
+      expect(c.document.at, 1, reason: "the flag");
+      expect(c.frame, 0, reason: "the next level from its start too");
+      c.gaming = false;
     });
   });
 

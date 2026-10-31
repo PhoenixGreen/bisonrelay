@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:bruig/plugin_system/canvas/model/elements/image_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/render/sprite_painter.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
@@ -39,6 +40,9 @@ const List<String> spriteActionNames = [
 Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, ui.Image image,
     {SheetNotes? notes}) async {
   var w = image.width, h = image.height;
+  // What a game touches: the part of its frames drawn in.
+  Future<SpriteElement> measured(SpriteElement m) async => m.copyWith(
+      drawn: await spriteDrawnPart(image, [for (var i = 0; i < m.frameCount; i++) m.frameRect(i)]));
   if (notes != null) {
     var actions = notes.actions.isNotEmpty
         ? notes.actions
@@ -46,7 +50,7 @@ Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, u
             SpriteAction("Play",
                 frames: {SpriteFacing.front: [for (var i = 0; i < notes.frames.length; i++) i]}),
           ];
-    return e.copyWith(
+    return measured(e.copyWith(
         sheet: id,
         sheetName: name,
         sheetW: notes.width,
@@ -56,7 +60,7 @@ Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, u
         rows: 1,
         actions: actions,
         action: actions.first.name,
-        cues: const []);
+        cues: const []));
   }
   var (cols, rows) = await findGrid(image) ?? (1, 1);
   var made = e.copyWith(
@@ -74,7 +78,7 @@ Future<SpriteElement> spriteFromSheet(SpriteElement e, String id, String name, u
     for (var r = 0; r < rows; r++)
       SpriteAction(rows == 1 ? "Play" : "Row ${r + 1}", frames: {SpriteFacing.front: made.row(r)}),
   ];
-  return made.copyWith(actions: actions, action: actions.first.name);
+  return measured(made.copyWith(actions: actions, action: actions.first.name));
 }
 
 /// findGrid is the grid [image]'s frames are laid out in, from the clear

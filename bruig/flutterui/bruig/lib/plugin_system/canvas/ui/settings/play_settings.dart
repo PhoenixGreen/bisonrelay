@@ -1,5 +1,7 @@
+import 'package:bruig/plugin_system/canvas/model/canvas_document.dart';
 import 'package:bruig/plugin_system/canvas/model/canvas_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/audio_element.dart';
+import 'package:bruig/plugin_system/canvas/model/elements/background_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/button_element.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/tile_map_element.dart';
 import 'package:bruig/plugin_system/canvas/model/play.dart';
@@ -220,6 +222,20 @@ extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;
 }
 
+/// gameShowables are what a game can show or hide: this scene's elements
+/// and the HUD's on the master -- not its sounds or its backdrop -- as id
+/// and name.
+List<(String, String)> gameShowables(CanvasDocument doc) => [
+      for (var e in [...doc.elements, ...?doc.master?.elements])
+        if (e is! AudioElement && e is! BackgroundElement)
+          (e.id, e.name.isEmpty ? e.kind.label : e.name),
+    ];
+
+/// _showableName is [id]'s name, for a summary: "something" where it has
+/// gone.
+String _showableName(CanvasDocument doc, String id) =>
+    gameShowables(doc).where((s) => s.$1 == id).firstOrNull?.$2 ?? "something";
+
 /// _touchSummary is what touching it does, in a line: "Coins +1 · vanishes".
 String _touchSummary(CanvasController controller, PlaySpec spec) {
   var doc = controller.document;
@@ -228,6 +244,8 @@ String _touchSummary(CanvasController controller, PlaySpec spec) {
   var does = switch (effect.does) {
     GameDoes.add => "${count ?? "A count"} +${effect.amount}",
     GameDoes.take => "${count ?? "A count"} −${effect.amount}",
+    GameDoes.show => "Shows ${_showableName(doc, effect.element)}",
+    GameDoes.hide => "Hides ${_showableName(doc, effect.element)}",
     GameDoes.scene => "Goes to a scene",
     GameDoes.next => "Next scene",
     GameDoes.restart => "Starts again",
@@ -363,6 +381,18 @@ class TouchSentence extends StatelessWidget {
                 onChanged: (id) => setEffect(effect.copyWith(count: id)),
               ),
             ],
+            if (effect.does.shows)
+              WordChoice<String>(
+                key: const ValueKey("playTouched-element"),
+                value: gameShowables(doc).any((e) => e.$1 == effect.element)
+                    ? effect.element
+                    : "",
+                options: [
+                  ("", "what?"),
+                  ...gameShowables(doc),
+                ],
+                onChanged: (id) => setEffect(effect.copyWith(element: id)),
+              ),
             if (effect.does == GameDoes.scene)
               WordChoice<String>(
                 key: const ValueKey("playTouched-scene"),
@@ -413,6 +443,8 @@ const _verbs = <GameDoes, String>{
   GameDoes.nothing: "Do nothing",
   GameDoes.add: "Add",
   GameDoes.take: "Take",
+  GameDoes.show: "Show",
+  GameDoes.hide: "Hide",
   GameDoes.scene: "Go to",
   GameDoes.next: "Go to the next scene",
   GameDoes.restart: "Start the game again",
@@ -622,6 +654,20 @@ List<Widget> gameEffectControls(CanvasController controller, GameEffect effect,
         onCommit: commit,
       ),
     ],
+    if (effect.does.shows)
+      CanvasDropdown<String>(
+        key: ValueKey("$key-element"),
+        label: "What",
+        value: gameShowables(doc).any((e) => e.$1 == effect.element)
+            ? effect.element
+            : "",
+        width: 170,
+        options: [
+          ("", "—"),
+          ...gameShowables(doc),
+        ],
+        onChanged: (id) => set(effect.copyWith(element: id)),
+      ),
     // Held by id, as a button's scene is: moving the scenes about does
     // not point it at another.
     if (effect.does == GameDoes.scene)

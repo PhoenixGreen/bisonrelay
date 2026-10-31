@@ -122,13 +122,7 @@ Rect spriteSource(SpriteElement e, int index, ui.Image image) {
       .intersect(Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()));
 }
 
-/// spriteFit is a frame [size] across fitted into [box], standing on its
-/// bottom, in the middle across.
-Rect spriteFit(Size size, Rect box) {
-  var k = math.min(box.width / size.width, box.height / size.height);
-  var w = size.width * k, h = size.height * k;
-  return Rect.fromLTWH(box.center.dx - w / 2, box.bottom - h, w, h);
-}
+
 
 void _paintEmpty(Canvas canvas, Rect box) {
   var line = Paint()

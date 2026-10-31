@@ -58,6 +58,10 @@ String countRule(CanvasDocument doc, GameCount c) {
     GameDoes.nothing => "nothing",
     GameDoes.add => "add ${then.amount} to ${count ?? "a count"}",
     GameDoes.take => "take ${then.amount} from ${count ?? "a count"}",
+    GameDoes.show ||
+    GameDoes.hide =>
+      "${then.does == GameDoes.show ? "show" : "hide"} "
+          "${gameShowables(doc).where((s) => s.$1 == then.element).firstOrNull?.$2 ?? "something"}",
     GameDoes.scene => "go to ${scene(then.scene)}",
     GameDoes.next => "on to the next scene",
     GameDoes.restart => doc.gameStart.isEmpty

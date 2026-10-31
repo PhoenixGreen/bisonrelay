@@ -203,6 +203,11 @@ enum GameDoes {
   nothing("Nothing"),
   add("Add to a count"),
   take("Take from a count"),
+
+  /// show and hide another element: a door opened, a bridge put out, a
+  /// "You win!" on the HUD.
+  show("Show something"),
+  hide("Hide something"),
   scene("Go to a scene"),
   next("Go to the next scene"),
   restart("Start the game again"),
@@ -214,38 +219,50 @@ enum GameDoes {
   /// counts is whether it is done to a count.
   bool get counts => this == add || this == take;
 
+  /// shows is whether it is done to an element.
+  bool get shows => this == show || this == hide;
+
   static GameDoes fromName(String? name) =>
       values.firstWhere((d) => d.name == name, orElse: () => nothing);
 }
 
 /// GameEffect is one thing that happens: [does], to the count [count] by
-/// [amount], or to the scene [scene] -- by its id, as a button keeps its
-/// own, so moving the scenes about does not point it at another.
+/// [amount], to the scene [scene], or to the element [element] -- each by
+/// its id, as a button keeps its own, so moving the scenes about does not
+/// point it at another.
 class GameEffect {
   final GameDoes does;
   final String count;
   final int amount;
   final String scene;
+  final String element;
 
   const GameEffect(
       {this.does = GameDoes.nothing,
       this.count = "",
       this.amount = 1,
-      this.scene = ""});
+      this.scene = "",
+      this.element = ""});
 
   GameEffect copyWith(
-          {GameDoes? does, String? count, int? amount, String? scene}) =>
+          {GameDoes? does,
+          String? count,
+          int? amount,
+          String? scene,
+          String? element}) =>
       GameEffect(
           does: does ?? this.does,
           count: count ?? this.count,
           amount: (amount ?? this.amount).clamp(1, 1000000),
-          scene: scene ?? this.scene);
+          scene: scene ?? this.scene,
+          element: element ?? this.element);
 
   Map<String, dynamic> toJson() => {
         "does": does.name,
         if (count.isNotEmpty) "count": count,
         if (amount != 1) "amount": amount,
         if (scene.isNotEmpty) "scene": scene,
+        if (element.isNotEmpty) "element": element,
       };
 
   factory GameEffect.fromJson(Object? json) {
@@ -256,7 +273,8 @@ class GameEffect {
         amount: json["amount"] is num
             ? (json["amount"] as num).toInt().clamp(1, 1000000)
             : 1,
-        scene: json["scene"] is String ? json["scene"] as String : "");
+        scene: json["scene"] is String ? json["scene"] as String : "",
+        element: json["element"] is String ? json["element"] as String : "");
   }
 
   @override
@@ -265,10 +283,11 @@ class GameEffect {
       other.does == does &&
       other.count == count &&
       other.amount == amount &&
-      other.scene == scene;
+      other.scene == scene &&
+      other.element == element;
 
   @override
-  int get hashCode => Object.hash(does, count, amount, scene);
+  int get hashCode => Object.hash(does, count, amount, scene, element);
 }
 
 /// GameCount is a number the game keeps -- coins, lives, keys -- from

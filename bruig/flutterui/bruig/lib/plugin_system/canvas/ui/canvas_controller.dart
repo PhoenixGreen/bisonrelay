@@ -8606,6 +8606,9 @@ class CanvasController extends ChangeNotifier {
           ? -1
           : _document.sceneIndexNamed(_document.gameStart);
       if (start >= 0 && start != _document.at) goToScene(start);
+      // From its beginning -- a title, a wait for Space -- not wherever the
+      // playhead was left while it was being made.
+      frame = 0;
       var run = GameRun();
       _game = run;
       unawaited(run.listen());
@@ -8662,6 +8665,7 @@ class CanvasController extends ChangeNotifier {
           return;
         }
         goToScene(next);
+        frame = 0;
         run.newScene();
       }
       if (event.restart && _document.gameStart.isNotEmpty) {
@@ -8742,6 +8746,8 @@ class CanvasController extends ChangeNotifier {
     var to = _document.sceneIndexNamed(id);
     if (to < 0) return;
     goToScene(to);
+    // From its beginning, not the frame it was left on while it was made.
+    frame = 0;
     run.newScene();
   }
 

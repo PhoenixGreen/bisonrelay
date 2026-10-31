@@ -243,6 +243,18 @@ class GameRun extends ChangeNotifier {
       for (var e in doc.elements)
         if (e is TileMapElement && shown(e)) ..._groundOf(e, frame),
     ];
+    // Something solid moving -- a platform on the timeline -- carries what
+    // stands on it: where each was on the last step, and is now.
+    // Carried only as the timeline goes on a frame or two -- not as it
+    // loops back to its start, or jumps.
+    var onward =
+        _frameWas != null && frame >= _frameWas! && frame - _frameWas! <= 2;
+    _frameWas = frame;
+    var moving = {
+      for (var e in doc.elements)
+        if (e.base.play.as == PlayAs.solid && shown(e) && e.track != null)
+          e.id: e.boundsAt(frame),
+    };
     var page = doc.size.rect;
     // The ground under everything: the canvas's bottom edge.
     var floor = Rect.fromLTRB(-1e6, page.bottom, 1e6, page.bottom + 1e5);
@@ -258,6 +270,7 @@ class GameRun extends ChangeNotifier {
       var box = e.boundsAt(frame);
       switch (spec.as) {
         case PlayAs.platformer:
+          if (body.onGround && onward) _ride(body, box, moving);
           body.velocity =
               Offset(dx * spec.speed, body.velocity.dy + spec.gravity * dt);
           if (pressedBy(p, "jump") && body.onGround) {
@@ -295,6 +308,9 @@ class GameRun extends ChangeNotifier {
       camera = Offset(math.max(0, f.dx - page.width / 2),
           topDown ? math.max(0, f.dy - page.height / 2) : 0);
     }
+    _platformsWere
+      ..clear()
+      ..addAll(moving);
     _presses(doc, frame, pressed);
     _touches(doc, frame);
     if (_again) {
@@ -305,6 +321,28 @@ class GameRun extends ChangeNotifier {
       input.endStep(controlsOf(p), p);
     }
     notifyListeners();
+  }
+
+  /// _platformsWere is where each moving solid was on the last step, and
+  /// _frameWas the frame it was on.
+  final Map<String, Rect> _platformsWere = {};
+  int? _frameWas;
+
+  /// _ride moves [body] -- on the ground, its box as put [box] -- with the
+  /// platform it stands on, as far as that went since the last step.
+  void _ride(GameBody body, Rect box, Map<String, Rect> platforms) {
+    var feet = box.shift(body.at);
+    for (var MapEntry(key: id, value: now) in platforms.entries) {
+      var was = _platformsWere[id];
+      if (was == null || was == now) continue;
+      if ((feet.bottom - was.top).abs() > 2 ||
+          feet.right <= was.left ||
+          feet.left >= was.right) {
+        continue;
+      }
+      body.at += now.topLeft - was.topLeft;
+      return;
+    }
   }
 
   /// counts are where each of the game's counts has got to, by id; gone the
@@ -370,6 +408,8 @@ class GameRun extends ChangeNotifier {
     gone.clear();
     toggled.clear();
     _touching.clear();
+    _platformsWere.clear();
+    _frameWas = null;
     bodies.clear();
     camera = Offset.zero;
   }
@@ -380,6 +420,8 @@ class GameRun extends ChangeNotifier {
     gone.clear();
     toggled.clear();
     _touching.clear();
+    _platformsWere.clear();
+    _frameWas = null;
     bodies.clear();
     camera = Offset.zero;
   }
@@ -397,9 +439,12 @@ class GameRun extends ChangeNotifier {
       if (spec.as != PlayAs.platformer && spec.as != PlayAs.topDown) continue;
       var body = bodies[e.id];
       if (body == null) continue;
-      var box = e.boundsAt(frame).shift(body.at);
+      var box = _touchOf(e, e.boundsAt(frame).shift(body.at));
       for (var t in things) {
-        if (gone.contains(t.id) || !box.overlaps(t.boundsAt(frame))) continue;
+        if (gone.contains(t.id) ||
+            !box.overlaps(_touchOf(t, t.boundsAt(frame)))) {
+          continue;
+        }
         var key = (e.id, t.id);
         now.add(key);
         if (_touching.contains(key)) continue;
@@ -420,6 +465,11 @@ class GameRun extends ChangeNotifier {
       ..addAll(now);
   }
 
+  /// _touchOf is what of [box] -- [e]'s, where it is now -- is touched: a
+  /// sprite's drawn part, not the nothing round it; all of anything else.
+  Rect _touchOf(CanvasElement e, Rect box) =>
+      e is SpriteElement ? e.touchIn(box) : box;
+
   /// _do does [effect]: and where a count it changes reaches its number,
   /// what that count then does -- once, as it gets there.
   void _do(CanvasDocument doc, GameEffect effect, [int depth = 0]) {
@@ -439,6 +489,13 @@ class GameRun extends ChangeNotifier {
               ? was < at && next >= at
               : was > at && next <= at;
           if (reached) _do(doc, count.then, depth + 1);
+        }
+      case GameDoes.show || GameDoes.hide:
+        var e = [...doc.elements, ...?doc.master?.elements]
+            .where((e) => e.id == effect.element)
+            .firstOrNull;
+        if (e != null && shown(e) != (effect.does == GameDoes.show)) {
+          toggle(e.id);
         }
       case GameDoes.scene:
         if (effect.scene.isNotEmpty) events.add(GameEvent(scene: effect.scene));
@@ -507,11 +564,33 @@ class GameRun extends ChangeNotifier {
       }
       shifted.add(next);
     }
-    var background = doc.background;
-    if (background.parallax case var p?) {
-      background = background.copyWith(parallax: _parallaxAt(p));
+    // The parallax moved with the view -- wherever the backdrop is kept:
+    // the document's, this scene's own, or the master's over every scene.
+    CanvasBackground? moved(CanvasBackground? b) => switch (b?.parallax) {
+          var p? => b!.copyWith(parallax: _parallaxAt(p)),
+          null => null,
+        };
+    var out = doc.copyWith(
+        elements: shifted, background: moved(doc.background) ?? doc.background);
+    if (moved(out.scene.background) case var b?) {
+      out = out.withScene(out.at, out.scene.copyWith(background: b));
     }
-    return doc.copyWith(elements: shifted, background: background);
+    if (out.master case var m? when out.masterOn) {
+      // The HUD's own shown or hidden -- a "You win!" -- where it is not
+      // seen from the camera.
+      if (m.elements.any((e) => toggled.contains(e.id))) {
+        m = m.copyWith(elements: [
+          for (var e in m.elements)
+            toggled.contains(e.id)
+                ? e.rebase(e.base.copyWith(visible: !e.visible))
+                : e,
+        ]);
+      }
+      var b = moved(m.background);
+      if (b != null) m = m.copyWith(background: b);
+      if (b != null || !identical(m, out.master)) out = out.withMaster(m);
+    }
+    return out;
   }
 
   ParallaxElement _parallaxAt(ParallaxElement p) =>

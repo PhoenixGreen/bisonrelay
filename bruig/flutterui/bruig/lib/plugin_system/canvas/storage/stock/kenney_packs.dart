@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
 import 'package:bruig/plugin_system/canvas/model/elements/sprite_element.dart';
+import 'package:bruig/plugin_system/canvas/render/sprite_pixels.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_assets.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_library.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -219,7 +220,7 @@ Future<SpriteElement?> spriteFromGroup(SpriteElement e, SpriteGroup group, Archi
   if (id == null) return null;
   await CanvasLibrary.addPicture(id, group.name, bytes);
   var count = frames.length;
-  return e.copyWith(
+  var made = e.copyWith(
     sheet: id,
     sheetName: group.name,
     sheetW: cols * cw,
@@ -241,6 +242,9 @@ Future<SpriteElement?> spriteFromGroup(SpriteElement e, SpriteGroup group, Archi
     // Drawn white on black, to be laid on as light: it glows.
     glow: await _onBlack(frames.first),
   );
+  // What a game touches: the coin, not the square round it.
+  return made.copyWith(
+      drawn: await spriteDrawnPart(sheet, [for (var i = 0; i < count; i++) made.frameRect(i)]));
 }
 
 /// _onBlack is whether [img] is drawn on black, not on nothing: its corners

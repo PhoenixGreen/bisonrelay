@@ -7,6 +7,7 @@ import 'package:bruig/plugin_system/canvas/media/espeak.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_cues.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_downloads.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_engines.dart';
+import 'package:bruig/plugin_system/canvas/media/speech_timing.dart';
 import 'package:bruig/plugin_system/canvas/media/speech_text.dart';
 import 'package:bruig/plugin_system/canvas/model/speech_spec.dart';
 import 'package:bruig/plugin_system/canvas/storage/canvas_storage.dart';
@@ -337,10 +338,15 @@ class KokoroSpeech extends SpeechEngine {
         case SpokenText t:
           var sound = spoken[k++];
           if (t.whisper) sound = softly(sound, by: kokoroSoftLevel);
+          // Timed by the voice's own pauses -- or, with none to be found,
+          // by the words' lengths.
+          var timed = timeWords(sound, t.words).words;
           out.add((
             sound,
             Float32List.fromList(sound),
-            estimateWords(t.words, 0, sound.length / 48000)
+            timed.isEmpty
+                ? estimateWords(t.words, 0, sound.length / 48000)
+                : timed
           ));
         case SpokenSound s:
           var sound = await cueRecording(s.cue, man: voice[1] == "m");

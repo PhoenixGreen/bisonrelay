@@ -152,3 +152,34 @@ class SpritePixels {
     return data?.buffer.asUint8List();
   }
 }
+
+/// spriteDrawnPart is the part of [frames] -- each a frame's place on the
+/// sheet [image] -- anything is drawn in, every frame's together, as shares
+/// of a frame; or null with nothing drawn. What a game touches of a sprite
+/// -- see SpriteElement.drawn.
+Future<ui.Rect?> spriteDrawnPart(ui.Image image, List<ui.Rect> frames) async {
+  var px = await SpritePixels.of(image);
+  if (px == null || frames.isEmpty) return null;
+  double? l, t, r, b;
+  for (var f in frames) {
+    var x0 = f.left.floor().clamp(0, px.width),
+        x1 = f.right.ceil().clamp(0, px.width);
+    var y0 = f.top.floor().clamp(0, px.height),
+        y1 = f.bottom.ceil().clamp(0, px.height);
+    if (x1 <= x0 || y1 <= y0) continue;
+    for (var y = y0; y < y1; y++) {
+      for (var x = x0; x < x1; x++) {
+        // More than faintly there: a soft edge's last pixels are not it.
+        if (px.rgba[(y * px.width + x) * 4 + 3] < 32) continue;
+        var u = (x - f.left) / f.width, v = (y - f.top) / f.height;
+        var u1 = (x + 1 - f.left) / f.width, v1 = (y + 1 - f.top) / f.height;
+        l = l == null ? u : math.min(l, u);
+        t = t == null ? v : math.min(t, v);
+        r = r == null ? u1 : math.max(r, u1);
+        b = b == null ? v1 : math.max(b, v1);
+      }
+    }
+  }
+  if (l == null) return null;
+  return ui.Rect.fromLTRB(l, t!, r!, b!);
+}
